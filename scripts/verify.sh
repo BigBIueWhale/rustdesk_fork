@@ -7835,7 +7835,6 @@ grep -q 'join_rx.recv()' src/server/connection.rs                               
 grep -q 'Condvar' src/server/connection.rs                                            || r_s11c23="$r_s11c23 cancellation-safe-input-join-wait-missing"
 grep -q 'join.join()' src/server/connection.rs                                       || r_s11c23="$r_s11c23 input-worker-join-missing"
 grep -q 'impl Drop for Connection' src/server/connection.rs                          || r_s11c23="$r_s11c23 connection-drop-backstop-missing"
-grep -q 'finish_owned_input_dispatch' src/server/connection.rs                       || r_s11c23="$r_s11c23 macos-input-barrier-missing"
 grep -q 'QUEUE.exec_sync' src/server/input_service.rs                                || r_s11c23="$r_s11c23 macos-input-dispatch-not-synchronous"
 grep -q 'desktop_input_cancellation_is_nonblocking_and_closes_admission' src/server/connection.rs || r_s11c23="$r_s11c23 input-linearization-test-missing"
 grep -q 'desktop_input_join_ownership_survives_cancelled_async_wait' src/server/connection.rs || r_s11c23="$r_s11c23 input-join-cancellation-test-missing"
@@ -8955,14 +8954,9 @@ if grep -qF 'fix_key_down_timeout_loop' src/server.rs src/server/input_service.r
   r_s11c27f="$r_s11c27f child-signal-handler-still-competes"
 fi
 server_shutdown_finalizer=$(awk '/pub\(crate\) async fn finish_graceful_shutdown\(\)/,/^}/' src/server.rs)
-echo "$server_shutdown_finalizer" | grep -qF 'crate::server::input_service::fix_key_down_timeout_at_exit();' || r_s11c27f="$r_s11c27f input-release-not-in-graceful-finalizer"
-if ! echo "$server_shutdown_finalizer" | awk '
-  /fix_key_down_timeout_at_exit/ { release = NR }
-  /graceful shutdown complete/ { complete = NR }
-  /process::exit\(exit_code\)/ { process_exit = NR }
-  END { exit !(release && complete && process_exit && release < complete && complete < process_exit) }
-'; then
-  r_s11c27f="$r_s11c27f input-release-finalizer-order-regressed"
+echo "$server_shutdown_finalizer" | grep -qF 'input_service::owned_input_is_drained()' || r_s11c27f="$r_s11c27f input-drain-not-in-graceful-finalizer"
+if grep -qE 'fix_key_down_timeout_at_exit|release_device_modifiers' src/server.rs src/server/input_service.rs; then
+  r_s11c27f="$r_s11c27f unowned-device-input-sweep-present"
 fi
 if ! echo "$service_shutdown_entry_block" | awk '
   /ctrlc::set_handler/ { install = NR }

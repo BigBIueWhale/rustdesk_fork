@@ -103,7 +103,7 @@ fn physical_lease_retirement_survives_unavailable_keyboard_state() {
             // The unavailable state collector closes ordinary dispatch. The fixture
             // supplies a real accepted physical press to the production lease registry.
             let refusal = handle_owned_key(&event, &[]).unwrap_err();
-            assert!(refusal.to_string().contains("libxdo is unavailable"));
+            assert!(refusal.to_string().contains("owned input dispatch is unavailable"));
             assert!(observer.keys(&[]) && observer.events().is_empty());
             rdev::simulate(&EventType::KeyPress(foreign)).unwrap();
             assert_eq!(observer.events(), vec![(xlib::KeyPress, foreign_code)]);
@@ -120,7 +120,6 @@ fn physical_lease_retirement_survives_unavailable_keyboard_state() {
             assert!(first.release_remaining().is_ok());
             assert!(first.held.is_empty());
             assert!(observer.keys(&[foreign_code, code]) && observer.events().is_empty());
-            assert!(!first.finish_worker(|| panic!("nonfinal worker retired global input")));
             let released = second.release_remaining();
             let observed = observer.events();
             let finality = released.is_ok() && observed == [(xlib::KeyRelease, code)]
@@ -132,7 +131,6 @@ fn physical_lease_retirement_survives_unavailable_keyboard_state() {
             observer.events();
             assert!(observer.keys(&[]));
             assert!(finality, "physical lease retirement failed: result={released:?}, events={observed:?}");
-            assert!(second.finish_worker(|| {}));
             assert_eq!(descriptors(), baseline + 1);
         }
     }

@@ -590,6 +590,8 @@ fn graceful_shutdown_exit_code(failure_latched: bool) -> i32 {
 }
 
 pub fn request_graceful_shutdown() {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    input_service::close_owned_input_admission();
     if !SHUTDOWN_TOKEN.is_cancelled() {
         log::info!("R-T9: graceful shutdown initiated — stop accepting, drain live sessions");
         SHUTDOWN_TOKEN.cancel();
@@ -617,9 +619,9 @@ pub(crate) fn request_graceful_shutdown_after_authority_failure() {
 /// (2) signal every live connection to close gracefully (each run-loop's `cancelled()` arm sends
 /// its CloseReason, flushes, and delivers the CM `Close`); (3) wait up to a BOUNDED deadline —
 /// deliberately shorter than the unit's `TimeoutStopSec` (30 s) so systemd's SIGKILL stays only a
-/// backstop — for authenticated sessions to retire and for the exact final-Remote physical cleanup
-/// transaction to drain on its retained off-runtime worker; (4) terminate any still-live connection
-/// or cleanup past the deadline. A normal requested shutdown exits 0; an unexpected authority-
+/// backstop — for authenticated sessions to retire; (4) force ordinary network exit after that
+/// deadline, while retaining accepted native input and final-Remote cleanup until their exact
+/// off-runtime workers drain. A normal requested shutdown exits 0; an unexpected authority-
 /// bearing listener loss that initiated the drain exits 1. The retained desktop lifecycle owner is
 /// the sole caller, after it has joined both the exact public-listener task and the exact native
 /// local-IPC worker.
@@ -629,10 +631,14 @@ pub(crate) async fn finish_graceful_shutdown() -> ! {
     loop {
         let remaining_sessions = authenticated_connection_reservation_count();
         let final_remote_cleanup_drained = final_remote_cleanup_is_drained();
-        if remaining_sessions == 0 && final_remote_cleanup_drained {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        let input_drained = input_service::owned_input_is_drained();
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        let input_drained = true;
+        if remaining_sessions == 0 && final_remote_cleanup_drained && input_drained {
             break;
         }
-        if start.elapsed() >= deadline {
+        if start.elapsed() >= deadline && final_remote_cleanup_drained && input_drained {
             log::warn!(
                 "R-T9: drain deadline reached with {} authenticated reservation(s) remaining and final-Remote cleanup drained={} — forcing exit",
                 remaining_sessions,
@@ -642,8 +648,6 @@ pub(crate) async fn finish_graceful_shutdown() -> ! {
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    crate::server::input_service::fix_key_down_timeout_at_exit();
     let exit_code = graceful_shutdown_exit_code(SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire));
     log::info!("R-T9: graceful shutdown complete — exiting {exit_code}");
     std::process::exit(exit_code);

@@ -15,13 +15,11 @@ use rdev::{self, EventType, Key as RdevKey, KeyCode, RawKey};
 use sha2::{Digest, Sha256};
 #[cfg(target_os = "macos")]
 use rdev::{CGEventSourceStateID, CGEventTapLocation, VirtualInput};
-#[cfg(target_os = "linux")]
-use std::sync::mpsc;
 use std::{
     convert::TryFrom,
     hash::Hash,
     ops::{Deref, DerefMut},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     thread,
     time::{self, Duration, Instant},
 };
@@ -181,7 +179,8 @@ type OwnedInputTask = Box<dyn FnOnce() + Send + 'static>;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) struct OwnedInputExecutor {
-    requests: std::sync::mpsc::SyncSender<OwnedInputTask>,
+    requests: Option<std::sync::mpsc::SyncSender<OwnedInputTask>>,
+    join: Option<std::thread::JoinHandle<()>>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -196,7 +195,7 @@ impl OwnedInputExecutor {
     ) -> Result<Self, String> {
         let (requests, receiver) = std::sync::mpsc::sync_channel::<OwnedInputTask>(1);
         let (ready, initialized) = std::sync::mpsc::sync_channel(1);
-        std::thread::Builder::new()
+        let join = std::thread::Builder::new()
             .name(name.to_owned())
             .spawn(move || {
                 initializer();
@@ -208,10 +207,15 @@ impl OwnedInputExecutor {
                 }
             })
             .map_err(|err| format!("could not start owned-input executor: {err}"))?;
-        initialized
-            .recv()
-            .map_err(|_| "owned-input executor initializer failed".to_owned())?;
-        Ok(Self { requests })
+        let mut executor = Self {
+            requests: Some(requests),
+            join: Some(join),
+        };
+        if initialized.recv().is_err() {
+            executor.retire()?;
+            return Err("owned-input executor initializer failed".to_owned());
+        }
+        Ok(executor)
     }
 
     pub(crate) fn dispatch<T: Send + 'static>(
@@ -234,6 +238,8 @@ impl OwnedInputExecutor {
             }
         });
         self.requests
+            .as_ref()
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("owned-input executor is retired"))?
             .send(task)
             .map_err(|_| hbb_common::anyhow::anyhow!("owned-input executor is unavailable"))?;
         match receiver.recv() {
@@ -242,25 +248,229 @@ impl OwnedInputExecutor {
             Err(_) => bail!("owned-input executor ended without a result"),
         }
     }
+
+    fn retire(&mut self) -> Result<(), String> {
+        drop(self.requests.take());
+        if let Some(join) = self.join.take() {
+            join.join()
+                .map_err(|_| "owned-input executor panicked".to_owned())?;
+        }
+        Ok(())
+    }
 }
 
-#[cfg(target_os = "windows")]
-lazy_static::lazy_static! {
-    static ref WINDOWS_OWNED_INPUT_EXECUTOR: Result<OwnedInputExecutor, String> =
-        OwnedInputExecutor::spawn_with_initializer("windows-owned-input", || {
-            rdev::set_mouse_extra_info(enigo::ENIGO_INPUT_EXTRA_VALUE);
-            rdev::set_keyboard_extra_info(enigo::ENIGO_INPUT_EXTRA_VALUE);
-        });
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Drop for OwnedInputExecutor {
+    fn drop(&mut self) {
+        if let Err(err) = self.retire() {
+            log::error!("Could not retire owned-input executor: {err}");
+            std::process::abort();
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
 pub(crate) fn dispatch_windows_owned_input<T: Send + 'static>(
     action: impl FnOnce() -> ResultType<T> + Send + 'static,
 ) -> ResultType<T> {
-    WINDOWS_OWNED_INPUT_EXECUTOR
+    let executor = lock_input_state(&INPUT_DISPATCH_POOL, "Windows input executor ownership")
+        .executor
         .as_ref()
-        .map_err(|err| hbb_common::anyhow::anyhow!(err.clone()))?
-        .dispatch(action)
+        .map(Arc::clone)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("Windows input executor is unavailable"))?;
+    executor.dispatch(action)
+}
+
+const INPUT_ADMISSION_CLOSED: usize = 1;
+const INPUT_ADMISSION_OWNER: usize = 2;
+static INPUT_ADMISSION: AtomicUsize = AtomicUsize::new(0);
+
+pub(crate) struct InputWorkAdmission {
+    _private: (),
+}
+
+impl InputWorkAdmission {
+    pub(crate) fn new() -> ResultType<Self> {
+        let mut state = INPUT_ADMISSION.load(Ordering::Acquire);
+        loop {
+            if state & INPUT_ADMISSION_CLOSED != 0 {
+                bail!("owned input admission is closed");
+            }
+            let next = state
+                .checked_add(INPUT_ADMISSION_OWNER)
+                .ok_or_else(|| hbb_common::anyhow::anyhow!("owned input admission exhausted"))?;
+            match INPUT_ADMISSION.compare_exchange_weak(
+                state, next, Ordering::AcqRel, Ordering::Acquire,
+            ) {
+                Ok(_) => return Ok(Self { _private: () }),
+                Err(observed) => state = observed,
+            }
+        }
+    }
+}
+
+impl Drop for InputWorkAdmission {
+    fn drop(&mut self) {
+        let previous = INPUT_ADMISSION.fetch_sub(INPUT_ADMISSION_OWNER, Ordering::AcqRel);
+        if previous < INPUT_ADMISSION_OWNER {
+            log::error!("owned input admission underflow");
+            std::process::abort();
+        }
+    }
+}
+
+pub(crate) fn close_owned_input_admission() {
+    INPUT_ADMISSION.fetch_or(INPUT_ADMISSION_CLOSED, Ordering::AcqRel);
+}
+
+pub(crate) fn owned_input_admission_is_closed() -> bool {
+    INPUT_ADMISSION.load(Ordering::Acquire) & INPUT_ADMISSION_CLOSED != 0
+}
+
+pub(crate) fn owned_input_is_drained() -> bool {
+    INPUT_ADMISSION.load(Ordering::Acquire) < INPUT_ADMISSION_OWNER
+}
+
+#[derive(Default)]
+struct InputDispatchPool {
+    users: usize,
+    #[cfg(target_os = "windows")]
+    executor: Option<Arc<OwnedInputExecutor>>,
+}
+
+pub(crate) struct InputDispatchLease {
+    _admission: InputWorkAdmission,
+}
+
+impl InputDispatchLease {
+    pub(crate) fn new() -> ResultType<Self> {
+        let admission = InputWorkAdmission::new()?;
+        let mut pool = lock_input_state(&INPUT_DISPATCH_POOL, "native input lifetime");
+        let next = pool.users
+            .checked_add(1)
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("native input ownership exhausted"))?;
+        #[cfg(target_os = "linux")]
+        if pool.users != 0 {
+            let source = lock_input_state(&ENIGO, "native input readiness");
+            source.as_ref()
+                .ok_or_else(|| hbb_common::anyhow::anyhow!("owned input dispatch is unavailable"))?
+                .ensure_input_ready()
+                .map_err(|err| hbb_common::anyhow::anyhow!(err.to_string()))?;
+        }
+        if pool.users == 0 {
+            let initialization = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                #[cfg(target_os = "windows")]
+                {
+                    pool.executor = Some(Arc::new(OwnedInputExecutor::spawn_with_initializer(
+                        "windows-owned-input", || {
+                            rdev::set_mouse_extra_info(enigo::ENIGO_INPUT_EXTRA_VALUE);
+                            rdev::set_keyboard_extra_info(enigo::ENIGO_INPUT_EXTRA_VALUE);
+                        },
+                    ).map_err(|err| hbb_common::anyhow::anyhow!(err))?));
+                    let Some(executor) = pool.executor.as_ref() else {
+                        bail!("Windows input executor initialization was lost");
+                    };
+                    executor.dispatch(initialize_native_input)
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    QUEUE.exec_sync(initialize_native_input)
+                }
+                #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+                {
+                    initialize_native_input()
+                }
+            }));
+            if !matches!(&initialization, Ok(Ok(()))) {
+                retire_native_input(&mut pool);
+            }
+            match initialization {
+                Ok(result) => result?,
+                Err(payload) => std::panic::resume_unwind(payload),
+            }
+        }
+        pool.users = next;
+        Ok(Self { _admission: admission })
+    }
+}
+
+impl Drop for InputDispatchLease {
+    fn drop(&mut self) {
+        let mut pool = lock_input_state(&INPUT_DISPATCH_POOL, "native input retirement");
+        if pool.users == 0 {
+            log::error!("native input ownership underflow");
+            std::process::abort();
+        }
+        if pool.users == 1 {
+            retire_native_input(&mut pool);
+        }
+        pool.users -= 1;
+    }
+}
+
+fn initialize_native_input() -> ResultType<()> {
+    #[allow(unused_mut)]
+    let mut enigo = Enigo::new();
+    #[cfg(target_os = "linux")]
+    enigo.ensure_input_ready()
+        .map_err(|err| hbb_common::anyhow::anyhow!(err.to_string()))?;
+    #[cfg(target_os = "macos")]
+    let virtual_input = {
+        initialize_macos_rdev_metadata();
+        enigo.set_ignore_flags(false);
+        LAST_KEY_LEGACY_MODE.store(true, Ordering::SeqCst);
+        VirtualInputState::new()?
+    };
+    *lock_input_state(&ENIGO, "native injector initialization") = Some(enigo);
+    #[cfg(target_os = "macos")]
+    VIRTUAL_INPUT_STATE.with(|state| {
+        *state.try_borrow_mut().map_err(|_| {
+            hbb_common::anyhow::anyhow!("macOS virtual input is borrowed during initialization")
+        })? = Some(virtual_input);
+        Ok::<(), hbb_common::anyhow::Error>(())
+    })?;
+    Ok(())
+}
+
+fn drop_native_input() -> ResultType<()> {
+    drop(lock_input_state(&ENIGO, "native injector retirement").take());
+    #[cfg(target_os = "macos")]
+    VIRTUAL_INPUT_STATE.with(|state| {
+        drop(state.try_borrow_mut().map_err(|_| {
+            hbb_common::anyhow::anyhow!("macOS virtual input is borrowed during retirement")
+        })?.take());
+        Ok::<(), hbb_common::anyhow::Error>(())
+    })?;
+    Ok(())
+}
+
+fn retire_native_input(_pool: &mut InputDispatchPool) {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(executor) = _pool.executor.as_ref() {
+                executor.dispatch(drop_native_input)?;
+            }
+            if let Some(executor) = _pool.executor.take() {
+                let mut executor = Arc::try_unwrap(executor)
+                    .map_err(|_| hbb_common::anyhow::anyhow!("Windows input executor still has a borrower"))?;
+                executor.retire().map_err(|err| hbb_common::anyhow::anyhow!(err))?;
+            }
+        }
+        #[cfg(target_os = "macos")]
+        {
+            QUEUE.exec_sync(drop_native_input)?;
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            drop_native_input()?;
+        }
+        Ok::<(), hbb_common::anyhow::Error>(())
+    }));
+    if !matches!(result, Ok(Ok(()))) {
+        log::error!("Could not prove native input retirement");
+        std::process::abort();
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -739,15 +949,7 @@ impl LockModesHandler {
     fn new(key_event: &KeyEvent) -> ResultType<Self> {
         let event_caps_enabled = Self::is_modifier_enabled(key_event, ControlKey::CapsLock);
         // CapsLock synchronization belongs to the retained virtual injector state.
-        let local_caps_enabled = unsafe {
-            let _lock = VIRTUAL_INPUT_MTX.lock();
-            VIRTUAL_INPUT_STATE
-                .as_ref()
-                .ok_or_else(|| {
-                    hbb_common::anyhow::anyhow!("macOS virtual input state is unavailable")
-                })?
-                .capslock_down
-        };
+        let local_caps_enabled = with_virtual_input(|input| Ok(input.capslock_down))?;
         if event_caps_enabled && !local_caps_enabled {
             press_capslock()?;
         } else if !event_caps_enabled && local_caps_enabled {
@@ -950,9 +1152,8 @@ fn run_window_focus(sp: EmptyExtraFieldService, state: &mut StateWindowFocus) ->
 }
 
 lazy_static::lazy_static! {
-    static ref ENIGO: Arc<Mutex<Enigo>> = {
-        Arc::new(Mutex::new(Enigo::new()))
-    };
+    static ref ENIGO: Mutex<Option<Enigo>> = Mutex::new(None);
+    static ref INPUT_DISPATCH_POOL: Mutex<InputDispatchPool> = Default::default();
     static ref LATEST_PEER_INPUT_CURSOR: Arc<Mutex<Input>> = Default::default();
     static ref LATEST_SYS_CURSOR_POS: Arc<Mutex<(Option<Instant>, (i32, i32))>> = Arc::new(Mutex::new((None, (INVALID_CURSOR_POS, INVALID_CURSOR_POS))));
     // Track connections that are currently using relative mouse movement.
@@ -984,8 +1185,6 @@ fn is_relative_mouse_active(conn: i32) -> bool {
 pub(crate) fn clear_relative_mouse_active(conn: i32) {
     set_relative_mouse_active(conn, false);
 }
-
-static EXITING: AtomicBool = AtomicBool::new(false);
 
 const MOUSE_MOVE_PROTECTION_TIMEOUT: Duration = Duration::from_millis(1_000);
 // Actual diff of (x,y) is (1,1) here. But 5 may be tolerant.
@@ -1104,9 +1303,20 @@ impl VirtualInputState {
 }
 
 #[cfg(target_os = "macos")]
-static mut VIRTUAL_INPUT_MTX: Mutex<()> = Mutex::new(());
+std::thread_local! {
+    static VIRTUAL_INPUT_STATE: std::cell::RefCell<Option<VirtualInputState>> = std::cell::RefCell::new(None);
+}
+
 #[cfg(target_os = "macos")]
-static mut VIRTUAL_INPUT_STATE: Option<VirtualInputState> = None;
+fn with_virtual_input<T>(action: impl FnOnce(&mut VirtualInputState) -> ResultType<T>) -> ResultType<T> {
+    VIRTUAL_INPUT_STATE.with(|state| {
+        let mut state = state.try_borrow_mut()
+            .map_err(|_| hbb_common::anyhow::anyhow!("macOS virtual input is already borrowed"))?;
+        let input = state.as_mut()
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("macOS virtual input is unavailable"))?;
+        action(input)
+    })
+}
 
 pub fn is_left_up(evt: &MouseEvent) -> bool {
     let buttons = evt.mask >> 3;
@@ -1115,15 +1325,15 @@ pub fn is_left_up(evt: &MouseEvent) -> bool {
 }
 
 #[cfg(windows)]
-pub fn mouse_move_relative(x: i32, y: i32) {
-    if let Err(err) = dispatch_windows_owned_input(move || {
+pub(crate) fn activate_owned_screen() -> ResultType<()> {
+    dispatch_windows_owned_input(|| {
         crate::platform::windows::try_change_desktop();
-        lock_input_state(&ENIGO, "Enigo state while moving the mouse")
-            .mouse_move_relative(x, y)
-            .map_err(|err| hbb_common::anyhow::anyhow!(err.to_string()))
-    }) {
-        log::error!("Could not move the Windows mouse through the owned-input executor: {err}");
-    }
+        let mut source = lock_input_state(&ENIGO, "Enigo state while activating the screen");
+        let enigo = source.as_mut().ok_or_else(|| hbb_common::anyhow::anyhow!("owned input dispatch is unavailable"))?;
+        enigo.mouse_move_relative(-6, -6).map_err(|err| hbb_common::anyhow::anyhow!(err.to_string()))?;
+        std::thread::sleep(Duration::from_millis(30));
+        enigo.mouse_move_relative(6, 6).map_err(|err| hbb_common::anyhow::anyhow!(err.to_string()))
+    })
 }
 
 #[cfg(windows)]
@@ -1171,80 +1381,6 @@ fn control_modifier(value: i32) -> Option<ModifierKey> {
         .find_map(|(control, modifier)| (control.value() == value).then_some(*modifier))
 }
 
-#[allow(unreachable_code)]
-pub fn handle_mouse(
-    evt: &MouseEvent,
-    conn: i32,
-    username: String,
-    argb: u32,
-    simulate: bool,
-    show_cursor: bool,
-) {
-    #[cfg(target_os = "macos")]
-    {
-        // having GUI (--server has tray, it is GUI too), run main GUI thread, otherwise crash
-        let evt = evt.clone();
-        QUEUE.exec_async(move || {
-            initialize_macos_rdev_metadata();
-            if let Err(err) = handle_mouse_(&evt, conn, username, argb, simulate, show_cursor, &[])
-            {
-                log::error!("Could not dispatch mouse input: {err}");
-            }
-        });
-        return;
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let evt = evt.clone();
-        if let Err(err) = dispatch_windows_owned_input(move || {
-            handle_mouse_(&evt, conn, username, argb, simulate, show_cursor, &[])
-        }) {
-            log::error!("Could not dispatch Windows mouse input: {err}");
-        }
-        return;
-    }
-    if let Err(err) = handle_mouse_(evt, conn, username, argb, simulate, show_cursor, &[]) {
-        log::error!("Could not dispatch mouse input: {err}");
-    }
-}
-
-// to-do: merge handle_mouse and handle_pointer
-#[allow(unreachable_code)]
-pub fn handle_pointer(evt: &PointerDeviceEvent, conn: i32) {
-    #[cfg(target_os = "macos")]
-    {
-        // having GUI, run main GUI thread, otherwise crash
-        let evt = evt.clone();
-        QUEUE.exec_async(move || {
-            initialize_macos_rdev_metadata();
-            if let Err(err) = handle_pointer_(&evt, conn) {
-                log::error!("Could not dispatch pointer input: {err}");
-            }
-        });
-        return;
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let evt = evt.clone();
-        if let Err(err) = dispatch_windows_owned_input(move || handle_pointer_(&evt, conn)) {
-            log::error!("Could not dispatch Windows pointer input: {err}");
-        }
-        return;
-    }
-    if let Err(err) = handle_pointer_(evt, conn) {
-        log::error!("Could not dispatch pointer input: {err}");
-    }
-}
-
-pub fn fix_key_down_timeout_at_exit() {
-    if EXITING.load(Ordering::SeqCst) {
-        return;
-    }
-    EXITING.store(true, Ordering::SeqCst);
-    release_device_modifiers();
-    log::info!("fix_key_down_timeout_at_exit");
-}
-
 fn lock_input_state<'a, T>(state: &'a Mutex<T>, context: &str) -> std::sync::MutexGuard<'a, T> {
     match state.lock() {
         Ok(state) => state,
@@ -1252,27 +1388,6 @@ fn lock_input_state<'a, T>(state: &'a Mutex<T>, context: &str) -> std::sync::Mut
             log::error!("{context} was poisoned");
             poisoned.into_inner()
         }
-    }
-}
-
-fn release_device_modifiers_inner() -> ResultType<()> {
-    let mut en = lock_input_state(&ENIGO, "Enigo state while releasing device modifiers");
-    let state = collect_keyboard_state(&mut en)?;
-    for modifier in ModifierKey::ALL {
-        if state.modifier_down(modifier) {
-            simulate_(&EventType::KeyRelease(modifier.rdev_key()))?;
-        }
-    }
-    Ok(())
-}
-
-pub fn release_device_modifiers() {
-    #[cfg(target_os = "windows")]
-    let result = dispatch_windows_owned_input(release_device_modifiers_inner);
-    #[cfg(not(target_os = "windows"))]
-    let result = release_device_modifiers_inner();
-    if let Err(err) = result {
-        log::error!("Could not release device modifiers: {err}");
     }
 }
 
@@ -1483,15 +1598,6 @@ mod input_state_tests {
         assert_eq!(*lock_input_state(&state, "test input state"), 1);
     }
 
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn macos_first_worker_reset_restores_legacy_input_mode() {
-        LAST_KEY_LEGACY_MODE.store(false, Ordering::SeqCst);
-        lock_input_state(&ENIGO, "test macOS input mode").set_ignore_flags(true);
-        reset_input();
-        assert!(LAST_KEY_LEGACY_MODE.load(Ordering::SeqCst));
-        assert!(!enigo_ignore_flags());
-    }
 }
 
 fn fix_modifiers(
@@ -1604,10 +1710,6 @@ fn handle_pointer_(evt: &PointerDeviceEvent, conn: i32) -> ResultType<()> {
         return Ok(());
     }
 
-    if EXITING.load(Ordering::SeqCst) {
-        return Ok(());
-    }
-
     #[cfg(target_os = "windows")]
     let preserve_control = evt.modifiers.iter().any(|modifier| {
         modifier.value() == ControlKey::Control.value()
@@ -1655,7 +1757,8 @@ fn handle_mouse_(
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn simulate_mouse_button(button: OwnedMouseButton, down: bool) -> ResultType<()> {
-    let mut en = lock_input_state(&ENIGO, "Enigo state while handling a mouse button");
+    let mut source = lock_input_state(&ENIGO, "Enigo state while handling a mouse button");
+    let en = source.as_mut().ok_or_else(|| hbb_common::anyhow::anyhow!("owned input dispatch is unavailable"))?;
     let result = if down {
         en.mouse_down(enigo_mouse_button(button))
     } else {
@@ -1673,14 +1776,11 @@ fn handle_mouse_simulation_(
         return Ok(());
     }
 
-    if EXITING.load(Ordering::SeqCst) {
-        return Ok(());
-    }
-
     #[cfg(windows)]
     crate::platform::windows::try_change_desktop();
     let evt_type = evt.mask & MOUSE_TYPE_MASK;
-    let mut en = lock_input_state(&ENIGO, "Enigo state while handling mouse input");
+    let mut source = lock_input_state(&ENIGO, "Enigo state while handling mouse input");
+    let en = source.as_mut().ok_or_else(|| hbb_common::anyhow::anyhow!("owned input dispatch is unavailable"))?;
     #[cfg(target_os = "linux")]
     en.ensure_input_ready()
         .map_err(|err| hbb_common::anyhow::anyhow!(err.to_string()))?;
@@ -1689,7 +1789,7 @@ fn handle_mouse_simulation_(
     #[cfg(not(target_os = "macos"))]
     let mut to_press = Vec::new();
     if evt_type == MOUSE_TYPE_DOWN {
-        let mut state = collect_keyboard_state(&mut en)?;
+        let mut state = collect_keyboard_state(en)?;
         fix_modifiers(&evt.modifiers[..], &mut state, 0, preserve_modifiers)?;
         #[cfg(target_os = "macos")]
         en.reset_flag();
@@ -1892,7 +1992,8 @@ pub fn handle_mouse_show_cursor_(evt: &MouseEvent, conn: i32, username: String, 
 
 #[cfg(target_os = "windows")]
 fn handle_scale(scale: i32, preserve_control: bool) -> ResultType<()> {
-    let mut en = lock_input_state(&ENIGO, "Enigo state while handling mouse scale input");
+    let mut source = lock_input_state(&ENIGO, "Enigo state while handling mouse scale input");
+    let en = source.as_mut().ok_or_else(|| hbb_common::anyhow::anyhow!("owned input dispatch is unavailable"))?;
     if scale == 0 {
         return Ok(());
     }
@@ -2149,41 +2250,6 @@ pub fn handle_owned_lock_screen(
     lock_screen_with_key_handler(key_handler)
 }
 
-#[cfg(target_os = "macos")]
-pub fn finish_owned_input_dispatch() {
-    QUEUE.exec_sync(|| {});
-}
-
-#[cfg(target_os = "macos")]
-#[inline]
-fn reset_input() {
-    LAST_KEY_LEGACY_MODE.store(true, Ordering::SeqCst);
-    lock_input_state(&ENIGO, "Enigo state while initializing macOS owned input")
-        .set_ignore_flags(false);
-    unsafe {
-        let _lock = VIRTUAL_INPUT_MTX.lock();
-        VIRTUAL_INPUT_STATE = match VirtualInputState::new() {
-            Ok(input) => Some(input),
-            Err(err) => {
-                log::error!("Could not initialize macOS owned input: {err}");
-                None
-            }
-        };
-    }
-}
-
-#[cfg(target_os = "macos")]
-pub fn initialize_owned_input_dispatch() {
-    QUEUE.exec_sync(|| {
-        initialize_macos_rdev_metadata();
-        reset_input();
-    });
-}
-
-#[cfg(not(target_os = "macos"))]
-#[inline]
-pub fn initialize_owned_input_dispatch() {}
-
 fn sim_rdev_rawkey_position(code: KeyCode, keydown: bool) -> ResultType<()> {
     simulate_physical_key(physical_key_from_code(code), keydown)
 }
@@ -2208,47 +2274,31 @@ fn simulate_physical_key(key: OwnedPhysicalKey, keydown: bool) -> ResultType<()>
 #[inline]
 #[cfg(target_os = "macos")]
 fn simulate_(event_type: &EventType) -> ResultType<()> {
-    unsafe {
-        let _lock = VIRTUAL_INPUT_MTX.lock();
-        let Some(input) = VIRTUAL_INPUT_STATE.as_ref() else {
-            bail!("macOS virtual input is unavailable");
-        };
-        input
-            .simulate(event_type)
-            .map_err(|err| hbb_common::anyhow::anyhow!("macOS input dispatch failed: {err:?}"))
-    }
+    with_virtual_input(|input| input.simulate(event_type))
 }
 
 #[inline]
 #[cfg(target_os = "macos")]
 fn press_capslock() -> ResultType<()> {
     let caps_key = RdevKey::RawKey(rdev::RawKey::MacVirtualKeycode(rdev::kVK_CapsLock));
-    unsafe {
-        let _lock = VIRTUAL_INPUT_MTX.lock();
-        let Some(input) = VIRTUAL_INPUT_STATE.as_mut() else {
-            bail!("macOS virtual input is unavailable for CapsLock press");
-        };
+    with_virtual_input(|input| {
         input.simulate(&EventType::KeyPress(caps_key))?;
         input.capslock_down = true;
         key_sleep();
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 #[cfg(target_os = "macos")]
 #[inline]
 fn release_capslock() -> ResultType<()> {
     let caps_key = RdevKey::RawKey(rdev::RawKey::MacVirtualKeycode(rdev::kVK_CapsLock));
-    unsafe {
-        let _lock = VIRTUAL_INPUT_MTX.lock();
-        let Some(input) = VIRTUAL_INPUT_STATE.as_mut() else {
-            bail!("macOS virtual input is unavailable for CapsLock release");
-        };
+    with_virtual_input(|input| {
         input.simulate(&EventType::KeyRelease(caps_key))?;
         input.capslock_down = false;
         key_sleep();
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -2938,14 +2988,11 @@ fn handle_key_with_preserved_modifiers(
     evt: &KeyEvent,
     preserve_modifiers: &[ControlKey],
 ) -> ResultType<()> {
-    if EXITING.load(Ordering::SeqCst) {
-        return Ok(());
-    }
-
     #[cfg(windows)]
     crate::platform::windows::try_change_desktop();
-    let mut en = lock_input_state(&ENIGO, "Enigo state while handling keyboard input");
-    let mut state = collect_keyboard_state(&mut en)?;
+    let mut source = lock_input_state(&ENIGO, "Enigo state while handling keyboard input");
+    let en = source.as_mut().ok_or_else(|| hbb_common::anyhow::anyhow!("owned input dispatch is unavailable"))?;
+    let mut state = collect_keyboard_state(en)?;
     #[cfg(windows)]
     let semantic_keys = prepare_windows_semantic_keys(evt)?;
 
@@ -2986,14 +3033,14 @@ fn handle_key_with_preserved_modifiers(
     match evt.mode.enum_value() {
         Ok(KeyboardMode::Map) => {
             #[cfg(target_os = "macos")]
-            set_last_legacy_mode(&mut en, false);
+            set_last_legacy_mode(en, false);
             map_keyboard_mode(evt)
         }
         Ok(KeyboardMode::Translate) => {
             #[cfg(target_os = "macos")]
-            set_last_legacy_mode(&mut en, false);
+            set_last_legacy_mode(en, false);
             translate_keyboard_mode(
-                &mut en,
+                en,
                 &state,
                 evt,
                 preserve_modifiers,
@@ -3005,65 +3052,15 @@ fn handle_key_with_preserved_modifiers(
             // All key down events are started from here,
             // so we can reset the flag of last legacy mode here.
             #[cfg(target_os = "macos")]
-            set_last_legacy_mode(&mut en, true);
+            set_last_legacy_mode(en, true);
             legacy_keyboard_mode(
-                &mut en,
+                en,
                 &mut state,
                 evt,
                 preserve_modifiers,
                 #[cfg(windows)]
                 &semantic_keys,
             )
-        }
-    }
-}
-
-#[cfg(target_os = "linux")]
-pub struct TemporaryMouseMoveHandle {
-    thread_handle: Option<std::thread::JoinHandle<()>>,
-    tx: Option<mpsc::Sender<(i32, i32)>>,
-}
-
-#[cfg(target_os = "linux")]
-impl TemporaryMouseMoveHandle {
-    pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel::<(i32, i32)>();
-        let thread_handle = std::thread::spawn(move || {
-            log::debug!("TemporaryMouseMoveHandle thread started");
-            for (x, y) in rx {
-                if let Err(err) =
-                    lock_input_state(&ENIGO, "Enigo state while restoring the mouse position")
-                        .mouse_move_to(x, y)
-                {
-                    log::error!("Could not restore the temporary mouse position: {err}");
-                }
-            }
-            log::debug!("TemporaryMouseMoveHandle thread exiting");
-        });
-        TemporaryMouseMoveHandle {
-            thread_handle: Some(thread_handle),
-            tx: Some(tx),
-        }
-    }
-
-    pub fn move_mouse_to(&self, x: i32, y: i32) {
-        if let Some(tx) = &self.tx {
-            let _ = tx.send((x, y));
-        }
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for TemporaryMouseMoveHandle {
-    fn drop(&mut self) {
-        log::debug!("Dropping TemporaryMouseMoveHandle");
-        // Close the channel to signal the thread to exit.
-        self.tx.take();
-        // Wait for the thread to finish.
-        if let Some(thread_handle) = self.thread_handle.take() {
-            if let Err(e) = thread_handle.join() {
-                log::error!("Error joining TemporaryMouseMoveHandle thread: {:?}", e);
-            }
         }
     }
 }

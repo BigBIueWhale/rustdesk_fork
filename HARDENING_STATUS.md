@@ -764,13 +764,11 @@ closure follows from these component receipts.
   snapshot. Rust owners retry once, then terminate directly rather than returning
   false finality. The named native Drop/unwind schedule passes controlled refusal;
   global restoration after termination and fatal transport bounds remain OPEN.
-  Application retirement is a concrete source gap: `src/server/input_service.rs`
-  holds controlled-side `ENIGO` in a lazy-static `Arc<Mutex<Enigo>>`. Rust
-  [static lifetime semantics](https://doc.rust-lang.org/reference/items/static-items.html)
-  and [lazy_static semantics](https://docs.rs/lazy_static/1.4.0/lazy_static/)
-  provide no automatic destructor at process exit. Component Drop tests therefore
-  do not establish cleanup on disconnect, service stop or process exit; explicit
-  application retirement and native lifecycle acceptance remain required.
+  Application retirement is source-corrected, with native acceptance pending:
+  `input_service::InputDispatchLease` retains explicit native state through owned
+  key/button cleanup. Its final Drop retires pending text before the main Display;
+  the Windows executor is joined and macOS state stays on the main queue.
+  Component Drop evidence alone does not prove application shutdown.
   Pending text cleanup now closes ordinary Linux text/pointer admission and
   keyboard-state collection before application physical-key planning. Mouse
   dispatch checks the same pure readiness before modifier or relative-mode
@@ -803,10 +801,13 @@ closure follows from these component receipts.
   `adc9d5de17f61fe28e272be6f57d2018c4f843d232fa3031e2194bb5f6a9509a`.
   The zero-NIC VM and networkless guest container completed in 240 seconds,
   with no host listener addition and joined X11/container/VM cleanup.
-  Full worker/server shutdown, pending text-map composition, global injector
-  retirement and native Windows/macOS remain OPEN. The last worker still uses
-  a no-op retirement callback, and server exit still collects state to release
-  device modifiers. The focused `--android-rust-lifecycle-tests --input-lifetime`
+  Full worker/server shutdown and native Windows/macOS remain OPEN. Explicit
+  native participants replace the no-op worker callback and ambient modifier sweep.
+  Worker supervisors retain admission through exact join; server shutdown closes
+  admission atomically and waits for native/final-Remote retirement. Remote startup
+  awaits native readiness; Windows wake and post-session lock use owned workers.
+  Corrected native composition is unexecuted. The focused
+  `--android-rust-lifecycle-tests --input-lifetime`
   profile executed the complete Linux application library at `748892f5`.
   Two actual typed-queue workers joined in both key/map-refusal cases, but
   neither native text nor main owner retired, the scratch map remained changed,

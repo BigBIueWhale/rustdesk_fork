@@ -2741,8 +2741,6 @@ grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11
 grep -q 'pub fn handle_owned_pointer' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-pointer-dispatch-missing"
 grep -q 'pub fn handle_owned_key' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-key-dispatch-missing"
 grep -q 'QUEUE.exec_sync' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-input-not-synchronous"
-grep -q 'pub fn finish_owned_input_dispatch' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-input-barrier-missing"
-grep -q 'finish_owned_input_dispatch' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 macos-input-cleanup-barrier-not-wired"
 grep -Fq 'const INPUT_QUEUE_CAPACITY: usize = 256;' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-count-cap-missing"
 grep -Fq 'const INPUT_QUEUE_MAX_BYTES: usize = 256 * 1024;' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-byte-cap-missing"
 grep -Fq 'state: AtomicUsize' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-nonblocking-cancellation-state-missing"

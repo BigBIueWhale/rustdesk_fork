@@ -2705,6 +2705,9 @@ enum MessageInput {
     Pointer((PointerDeviceEvent, i32)),
     BlockOn,
     BlockOff,
+    Ready(tokio::sync::oneshot::Sender<()>),
+    #[cfg(target_os = "windows")]
+    WakeScreen,
 }
 
 fn protobuf_input_size<M: hbb_common::protobuf::Message>(message: &M) -> ResultType<usize> {
@@ -2806,7 +2809,9 @@ impl MessageInput {
             Self::Key((event, _)) => validate_key_input(event)?,
             Self::SpecialKey(event) => validate_key_input(event)?,
             Self::Pointer((event, _)) => validate_pointer_input(event)?,
-            Self::BlockOn | Self::BlockOff => 1,
+            Self::BlockOn | Self::BlockOff | Self::Ready(_) => 1,
+            #[cfg(target_os = "windows")]
+            Self::WakeScreen => 1,
         };
         validate_input_size(payload_bytes)
     }
@@ -2836,7 +2841,7 @@ struct InputQueue {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl InputQueue {
     fn try_enqueue(&self, input: MessageInput) -> ResultType<()> {
-        if self.execution.is_cancelled() {
+        if self.execution.is_cancelled() || owned_input_admission_is_closed() {
             bail!("remote input worker is stopping");
         }
         let weight = input.validated_weight()?;
@@ -2939,7 +2944,12 @@ fn spawn_input_worker_supervisor(
 ) -> std::io::Result<(
     std_mpsc::SyncSender<std::thread::JoinHandle<()>>,
     Arc<InputWorkerCompletion>,
+    Arc<InputWorkAdmission>,
 )> {
+    let admission = Arc::new(InputWorkAdmission::new().map_err(|err| {
+        std::io::Error::new(std::io::ErrorKind::BrokenPipe, err.to_string())
+    })?);
+    let supervisor_admission = Arc::clone(&admission);
     let (join_tx, join_rx) = std_mpsc::sync_channel::<std::thread::JoinHandle<()>>(1);
     let completion = Arc::new(InputWorkerCompletion::new());
     let supervisor_completion = Arc::clone(&completion);
@@ -2964,8 +2974,9 @@ fn spawn_input_worker_supervisor(
             );
         }
         supervisor_completion.complete(succeeded);
+        drop(supervisor_admission);
     })?;
-    Ok((join_tx, completion))
+    Ok((join_tx, completion, admission))
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -3045,7 +3056,6 @@ struct InputOwnerState {
 struct InputKeyOwnerRegistry {
     owners: StdMutex<HashMap<OwnedPhysicalKey, InputOwnerState>>,
     mouse_buttons: StdMutex<HashMap<OwnedMouseButton, InputOwnerState>>,
-    workers: StdMutex<usize>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -3069,41 +3079,6 @@ impl InputKeyOwnerRegistry {
                 log::error!("remote input mouse-button owner registry was poisoned");
                 poisoned.into_inner()
             }
-        }
-    }
-
-    fn register_worker(&self) {
-        let mut workers = match self.workers.lock() {
-            Ok(workers) => workers,
-            Err(poisoned) => {
-                log::error!("remote input worker registry was poisoned");
-                poisoned.into_inner()
-            }
-        };
-        if *workers == 0 {
-            initialize_owned_input_dispatch();
-        }
-        *workers += 1;
-    }
-
-    fn unregister_worker(&self, on_last_worker: impl FnOnce()) -> bool {
-        let mut workers = match self.workers.lock() {
-            Ok(workers) => workers,
-            Err(poisoned) => {
-                log::error!("remote input worker registry was poisoned");
-                poisoned.into_inner()
-            }
-        };
-        if *workers == 0 {
-            log::error!("remote input worker registry underflow");
-            return false;
-        }
-        *workers -= 1;
-        if *workers == 0 {
-            on_last_worker();
-            true
-        } else {
-            false
         }
     }
 }
@@ -3131,11 +3106,6 @@ mod input_lifetime_native_tests;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl InputKeyOwnership {
     fn new(registry: Arc<InputKeyOwnerRegistry>) -> Self {
-        registry.register_worker();
-        Self::unregistered(registry)
-    }
-
-    fn unregistered(registry: Arc<InputKeyOwnerRegistry>) -> Self {
         Self {
             registry,
             held: HashSet::new(),
@@ -3460,10 +3430,6 @@ impl InputKeyOwnership {
         Ok(())
     }
 
-    fn finish_worker(&self, on_last_worker: impl FnOnce()) -> bool {
-        self.registry.unregister_worker(on_last_worker)
-    }
-
     fn release_remaining(&mut self) -> ResultType<()> {
         self.release_all(release_owned_physical_key)?;
         self.release_all_mouse_buttons(|button| {
@@ -3526,6 +3492,7 @@ impl InputKeyOwnership {
 struct InputWorkerCleanup {
     conn_id: i32,
     keys: InputKeyOwnership,
+    _native: InputDispatchLease,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -3646,18 +3613,14 @@ impl Drop for InputWorkerCleanup {
         }) {
             std::process::abort();
         }
-        if let Err(err) = self.keys.release_remaining() {
-            log::error!("Could not prove release of all remote-owned keys: {err}");
+        if !run_input_cleanup_action("releasing owned keys and buttons", || {
+            if let Err(err) = self.keys.release_remaining() {
+                log::error!("Could not prove release of all remote-owned keys: {err}");
+                std::process::abort();
+            }
+        }) {
             std::process::abort();
         }
-        #[cfg(target_os = "macos")]
-        if !run_input_cleanup_action(
-            "finishing macOS input dispatch",
-            finish_owned_input_dispatch,
-        ) {
-            std::process::abort();
-        }
-        self.keys.finish_worker(|| {});
     }
 }
 
@@ -4498,38 +4461,6 @@ mod desktop_input_queue_tests {
         assert_ne!(first_caller, second_caller);
     }
 
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn linux_last_worker_cleanup_excludes_concurrent_registration() {
-        let registry = Arc::new(InputKeyOwnerRegistry::default());
-        registry.register_worker();
-        let (cleanup_entered_tx, cleanup_entered_rx) = std_mpsc::channel();
-        let (allow_cleanup_tx, allow_cleanup_rx) = std_mpsc::channel();
-        let final_registry = Arc::clone(&registry);
-        let final_worker = std::thread::spawn(move || {
-            assert!(final_registry.unregister_worker(|| {
-                cleanup_entered_tx.send(()).unwrap();
-                allow_cleanup_rx.recv().unwrap();
-            }));
-        });
-        cleanup_entered_rx.recv().unwrap();
-
-        let (registered_tx, registered_rx) = std_mpsc::channel();
-        let registering_registry = Arc::clone(&registry);
-        let registering = std::thread::spawn(move || {
-            registering_registry.register_worker();
-            registered_tx.send(()).unwrap();
-        });
-        assert!(registered_rx
-            .recv_timeout(std::time::Duration::from_millis(50))
-            .is_err());
-        allow_cleanup_tx.send(()).unwrap();
-        registered_rx.recv().unwrap();
-        final_worker.join().unwrap();
-        registering.join().unwrap();
-        assert!(registry.unregister_worker(|| {}));
-    }
-
     #[test]
     fn desktop_key_owner_transition_is_linearized_with_physical_dispatch() {
         let registry = Arc::new(InputKeyOwnerRegistry::default());
@@ -4608,7 +4539,7 @@ mod desktop_input_queue_tests {
     #[tokio::test(flavor = "current_thread")]
     async fn desktop_input_join_ownership_survives_cancelled_async_wait() {
         let (release_tx, release_rx) = std_mpsc::channel();
-        let (join_tx, completion) = spawn_input_worker_supervisor(
+        let (join_tx, completion, admission) = spawn_input_worker_supervisor(
             "test-input-supervisor".to_owned(),
             Arc::new(AtomicUsize::new(0)),
         )
@@ -4617,6 +4548,7 @@ mod desktop_input_queue_tests {
             let _ = release_rx.recv();
         });
         join_tx.try_send(worker).unwrap();
+        drop(admission);
         let first_completion = Arc::clone(&completion);
         let first_wait = tokio::task::spawn_blocking(move || first_completion.wait());
         tokio::task::yield_now().await;
@@ -4636,7 +4568,7 @@ mod desktop_input_queue_tests {
         let worker_execution = Arc::clone(&execution);
         let (entered_tx, entered_rx) = std_mpsc::channel();
         let (release_tx, release_rx) = std_mpsc::channel();
-        let (join_tx, completion) = spawn_input_worker_supervisor(
+        let (join_tx, completion, admission) = spawn_input_worker_supervisor(
             "test-input-supervisor".to_owned(),
             Arc::new(AtomicUsize::new(0)),
         )
@@ -4648,6 +4580,7 @@ mod desktop_input_queue_tests {
             });
         });
         join_tx.try_send(worker).unwrap();
+        drop(admission);
         entered_rx.recv().unwrap();
 
         let input_worker = InputWorker {
@@ -6844,7 +6777,7 @@ impl Connection {
         let execution = Arc::clone(&self.tx_input.execution);
         let queued_bytes = Arc::clone(&self.tx_input.queued_bytes);
         let id = self.inner.id();
-        let (join_tx, completion) = match spawn_input_worker_supervisor(
+        let (join_tx, completion, admission) = match spawn_input_worker_supervisor(
             format!("remote-input-supervisor-{id}"),
             queued_bytes,
         ) {
@@ -6886,7 +6819,14 @@ impl Connection {
                     join
                 }
             };
-            let _ = tokio::task::spawn_blocking(move || join.join()).await;
+            drop(join_tx);
+            if let Err(err) = tokio::task::spawn_blocking(move || {
+                let result = join.join();
+                drop(admission);
+                result
+            }).await {
+                log::error!("Failed to join undelivered remote input worker: {err}");
+            }
             let completion = Arc::clone(&completion);
             let _ = tokio::task::spawn_blocking(move || completion.wait()).await;
             return false;
@@ -6895,6 +6835,24 @@ impl Connection {
             execution,
             completion,
         });
+        drop(admission);
+        drop(join_tx);
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let readiness = match try_enqueue_input(&self.tx_input, MessageInput::Ready(ready_tx)) {
+            Ok(()) => matches!(
+                tokio::time::timeout(std::time::Duration::from_secs(5), ready_rx).await,
+                Ok(Ok(()))
+            ),
+            Err(err) => {
+                log::error!("Could not request remote input readiness: {err}");
+                false
+            }
+        };
+        if !readiness {
+            log::error!("Remote native input did not become ready");
+            self.stop_input_worker().await;
+            return false;
+        }
         true
     }
 
@@ -6906,9 +6864,17 @@ impl Connection {
         execution: Arc<InputExecutionGate>,
         #[cfg(target_os = "windows")] runtime: tokio::runtime::Handle,
     ) {
+        let native = match InputDispatchLease::new() {
+            Ok(native) => native,
+            Err(err) => {
+                log::error!("Could not initialize owned native input: {err}");
+                return;
+            }
+        };
         let mut cleanup = InputWorkerCleanup {
             conn_id,
             keys: InputKeyOwnership::new(Arc::clone(&INPUT_KEY_OWNERS)),
+            _native: native,
         };
         let mut special_keys = SpecialKeyState::default();
         loop {
@@ -6923,7 +6889,19 @@ impl Connection {
                     };
                     let mut input_result = Ok(());
                     let dispatched = execution.dispatch(|| {
+                        let _admission = match InputWorkAdmission::new() {
+                            Ok(admission) => admission,
+                            Err(err) => {
+                                input_result = Err(err);
+                                return;
+                            }
+                        };
                         input_result = match v {
+                            MessageInput::Ready(ready) => ready.send(()).map_err(|_| {
+                                hbb_common::anyhow::anyhow!("remote input startup receiver ended")
+                            }),
+                            #[cfg(target_os = "windows")]
+                            MessageInput::WakeScreen => activate_owned_screen(),
                             MessageInput::Mouse(mouse_input) => cleanup.keys.dispatch_mouse(
                                 &mouse_input.msg,
                                 mouse_input.simulate,
@@ -7469,7 +7447,12 @@ impl Connection {
                 self.send(msg_out).await;
             }
 
-            try_activate_screen();
+            #[cfg(target_os = "windows")]
+            if let Err(err) = try_enqueue_input(&self.tx_input, MessageInput::WakeScreen) {
+                log::error!("Could not activate the screen through its Remote input worker: {err}");
+                self.send_login_error("Remote input worker is unavailable").await;
+                return None;
+            }
 
             match super::display_service::update_get_sync_displays_on_login(
                 #[cfg(target_os = "android")]
@@ -10894,8 +10877,9 @@ impl Connection {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn lock_screen_with_input_arbiter() {
-        let mut keys = InputKeyOwnership::unregistered(Arc::clone(&INPUT_KEY_OWNERS));
+    fn lock_screen_with_input_arbiter() -> ResultType<()> {
+        let _native = InputDispatchLease::new()?;
+        let mut keys = InputKeyOwnership::new(Arc::clone(&INPUT_KEY_OWNERS));
         let lock_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             handle_owned_lock_screen(|event| keys.dispatch(event, handle_owned_key).map(|_| ()))
         }));
@@ -10905,9 +10889,57 @@ impl Connection {
                 "lock-screen input dispatch unwound"
             )),
         };
-        if let Err(err) = result.and_then(|_| keys.release_remaining()) {
-            log::error!("Could not prove lock-screen input cleanup: {err}");
+        if !run_input_cleanup_action("releasing lock-screen keys", || {
+            if let Err(err) = keys.release_remaining() {
+                log::error!("Could not prove lock-screen input cleanup: {err}");
+                std::process::abort();
+            }
+        }) {
             std::process::abort();
+        }
+        result
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn lock_screen_after_session() {
+        let (join_tx, completion, admission) = match spawn_input_worker_supervisor(
+            "lock-screen-supervisor".to_owned(), Arc::new(AtomicUsize::new(0)),
+        ) {
+            Ok(supervisor) => supervisor,
+            Err(err) => {
+                log::error!("Could not admit post-session lock-screen input: {err}");
+                return;
+            }
+        };
+        match std::thread::Builder::new().name("lock-screen-input".to_owned()).spawn(|| {
+            if let Err(err) = Self::lock_screen_with_input_arbiter() {
+                log::error!("Could not dispatch post-session lock-screen input: {err}");
+            }
+        }) {
+            Ok(join) => {
+                if let Err(err) = join_tx.try_send(join) {
+                    let join = match err {
+                        std_mpsc::TrySendError::Full(join) | std_mpsc::TrySendError::Disconnected(join) => join,
+                    };
+                    drop(join_tx);
+                    if let Err(err) = tokio::task::spawn_blocking(move || {
+                        let result = join.join();
+                        drop(admission);
+                        result
+                    }).await {
+                        log::error!("Could not join undelivered lock-screen worker: {err}");
+                    }
+                    return;
+                }
+            }
+            Err(err) => log::error!("Could not start lock-screen input worker: {err}"),
+        }
+        drop(join_tx);
+        drop(admission);
+        match tokio::task::spawn_blocking(move || completion.wait()).await {
+            Ok(true) => {}
+            Ok(false) => log::error!("Lock-screen input worker did not complete normally"),
+            Err(err) => log::error!("Could not wait for lock-screen input completion: {err}"),
         }
     }
 
@@ -10923,7 +10955,7 @@ impl Connection {
         log::info!("#{} Connection closed: {}", self.inner.id(), reason);
         if lock && self.lock_after_session_end && self.keyboard {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            Self::lock_screen_with_input_arbiter();
+            Self::lock_screen_after_session().await;
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let terminal = if self.chat_unanswered || self.file_transferred && cfg!(feature = "flutter") {
@@ -13225,16 +13257,6 @@ async fn start_ipc(
             },
         }
     }
-}
-
-// in case screen is sleep and blank, here to activate it
-fn try_activate_screen() {
-    #[cfg(windows)]
-    std::thread::spawn(|| {
-        mouse_move_relative(-6, -6);
-        std::thread::sleep(std::time::Duration::from_millis(30));
-        mouse_move_relative(6, 6);
-    });
 }
 
 #[derive(Debug, Serialize)]

@@ -8023,6 +8023,66 @@ printf '%s\n' "$smoke_server_entry_output"
 printf 'VERIFIER_VM_SMOKE_SERVER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed\n' \
     "$EXPECTED_VERSION"
 
+smoke_workspace_before="$(find /tmp -mindepth 1 -maxdepth 1 -name 'rustdesk-smoke.*' \
+    -printf '%D:%i:%u:%g:%m:%n:%p\n' | sort)"
+smoke_containers_before="$(frame_docker ps --all --quiet --no-trunc)" \
+    || fail 'cannot inventory guest containers before retired smoke argument'
+smoke_root_mode_status=0
+setpriv --reuid=4000 --regid=4000 --clear-groups \
+    env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+    /bin/bash "$SMOKE_SERVER_SCRIPT" --with-root-containers \
+    >"$ROOT/retired-smoke-mode.out" 2>"$ROOT/retired-smoke-mode.err" \
+    || smoke_root_mode_status=$?
+[ "$smoke_root_mode_status" -eq 2 ] \
+    || fail "retired privileged-container smoke argument returned $smoke_root_mode_status"
+[ "$(<"$ROOT/retired-smoke-mode.out")" = \
+    "VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root" ] \
+    || fail 'retired smoke argument entered a workload or skipped VM preflight'
+[ "$(<"$ROOT/retired-smoke-mode.err")" = \
+    'usage: scripts/smoke-server.sh [--portable-rootless|--video-pipeline|--self-test-vm-authority]' ] \
+    && [ "$(stat -c '%s' "$ROOT/retired-smoke-mode.err")" -le 256 ] \
+    || fail 'retired smoke argument usage diagnostic differs'
+[ "$(find /tmp -mindepth 1 -maxdepth 1 -name 'rustdesk-smoke.*' \
+    -printf '%D:%i:%u:%g:%m:%n:%p\n' | sort)" = "$smoke_workspace_before" ] \
+    || fail 'retired smoke argument changed the smoke workspace inventory'
+[ "$(frame_docker ps --all --quiet --no-trunc)" = "$smoke_containers_before" ] \
+    || fail 'retired smoke argument changed the guest container inventory'
+printf 'VERIFIER_VM_SMOKE_ROOT_MODE_REFUSAL=pass uid=4000 gid=4000 status=2 workspace=unchanged containers=unchanged product=not-entered\n'
+
+# Run only the changed source gates; native product/installed acceptance is separate.
+smoke_source_gate=$ROOT/smoke-source-gate.sh
+{
+    printf 'set -uo pipefail\ncd %q\nrc=0\n' "$VERIFY_REPO"
+    awk '
+        /^# [(]3b-iii-d9cn[)]/ { inside=1; starts++ }
+        /^# [(]3b-iii-d9co[)]/ { if (inside) { inside=0; ends++ } }
+        inside { print }
+        END { if (starts != 1 || ends != 1) exit 1 }
+    ' "$VERIFY_SCRIPT" || fail 'cannot extract the focused smoke source gate'
+    awk '
+        /^# R-R2\/R-A6 release-gate integration:/ { inside=1; starts++ }
+        /^# R-SV9 / { if (inside) { inside=0; ends++ } }
+        inside { print }
+        END { if (starts != 1 || ends != 1) exit 1 }
+    ' "$VERIFY_SCRIPT" || fail 'cannot extract the release-dispatch source gate'
+    printf '[ "$rc" -eq 0 ]\n'
+} >"$smoke_source_gate"
+chmod 0444 "$smoke_source_gate"
+for script in "$SMOKE_SERVER_SCRIPT" "$VERIFY_SCRIPT" \
+    "$VERIFY_REPO/scripts/verify-release.sh" \
+    "$VERIFY_REPO/scripts/smoke-verifier-vm-authority.sh" \
+    "$VERIFY_REPO/scripts/smoke-verifier-vm-authority-guest.sh"; do
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        /bin/bash -n "$script" \
+        || fail "smoke retirement shell syntax check failed: $script"
+done
+setpriv --reuid=4000 --regid=4000 --clear-groups \
+    env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+    /bin/bash "$smoke_source_gate" \
+    || fail 'focused smoke or release-dispatch source invariant failed'
+printf 'VERIFIER_VM_SMOKE_SOURCE_GATE=pass uid=4000 gate=focused native_acceptance=separate\n'
+
 if /bin/bash "$RUST_AUDIT_SCRIPT" --self-test-vm-authority \
     >"$ROOT/root-rust-audit-entry.out" 2>"$ROOT/root-rust-audit-entry.err"; then
     fail 'VM root passed the Rust-audit verifier entry'

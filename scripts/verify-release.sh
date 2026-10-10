@@ -11,6 +11,8 @@
 # It does NOT run the R-B2 artifact builds (build-{debian,android,windows}*.sh) — those are the
 # separate reproducible-build step. The final installed-Debian artifact lifecycle is deliberately
 # later, after independent A==B comparison, inside the common no-NIC verifier VM.
+# Portable smoke does not execute privileged service/identity/password/capture
+# acceptance; those disposable-VM scenarios remain separate required evidence.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -36,7 +38,7 @@ GATES=(
   "online-input-provenance.py --self-test|immutable online-input snapshot mutation suite"
   "test-android-gradle-cache.sh|non-root immutable Gradle projection + pinned offline semantics"
   "android-rust-check.sh|pinned offline aarch64 Android Rust check"
-  "smoke-server.sh|runtime: VM-guest isolation + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"
+  "smoke-server.sh|runtime: portable VM-guest smoke + one-TCP/zero-UDP, fail-closed, keying, full session"
   "dart-verify.sh|flutter analyze lib/ (zero errors)"
   "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"
   "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"
@@ -53,9 +55,6 @@ for entry in "${GATES[@]}"; do
   if [[ "$s" == *.py* ]]; then
     read -r -a gate_args <<< "$s"
     python3 "scripts/${gate_args[0]}" "${gate_args[@]:1}"
-    gate_status=$?
-  elif [ "$s" = smoke-server.sh ]; then
-    bash "scripts/$s" --with-root-containers
     gate_status=$?
   else
     bash "scripts/$s"
@@ -76,6 +75,7 @@ if [ "$fail" = 0 ]; then
   echo "NOTE: these are SOURCE gates (compile + flutter analyze + KATs + greps + advisories) — they do"
   echo "      NOT build the shipped artifacts. A project-specific Gradle / CMake / msbuild / Android"
   echo "      resource-theme break can pass here yet fail the platform build. Android Rust is target-checked."
+  echo "      Portable smoke does not establish privileged service, identity, password, or capture acceptance."
   echo "      For buildability + reproducible A==B artifacts + a SHA256SUMS manifest: scripts/build-release.sh"
 else
   echo "VERIFY-RELEASE: ONE OR MORE GATES FAILED"

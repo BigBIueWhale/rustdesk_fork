@@ -163,15 +163,14 @@ sudo ss -ltnup | grep -E ':21118|:.*udp' || true
 
 # service healthy:
 systemctl status rustdesk --no-pager
-
-# the box's own pre-ship assurance (run from the source tree, in Docker):
-bash scripts/verify.sh         # KATs + handshake + two-key cipher + compile + R-A6 gates
-bash scripts/smoke-server.sh --portable-rootless  # safe default: portable one-TCP/zero-UDP + protocol smoke
-# Explicit separately authorized root-container fixtures only (service/init/user/capture):
-bash scripts/smoke-server.sh --with-root-containers
 ```
 
 A correctly-deployed host shows a single `0.0.0.0:21118` TCP LISTEN line and no UDP.
+
+Build and verification execute through the authenticated no-NIC verifier VM. Portable smoke
+uses nonroot, capability-free guest containers; installed-service and other privileged
+acceptance runs directly inside disposable VMs. The final Debian artifact lifecycle gate
+runs after cold A==B comparison. Deployment checks do not supply that release evidence.
 
 ---
 

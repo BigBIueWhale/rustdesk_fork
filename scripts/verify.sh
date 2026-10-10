@@ -5041,9 +5041,8 @@ done
 grep -qF 'root service child environment escaped its bounded allowlist' scripts/smoke-service-lifecycle.sh || r_s11e26="$r_s11e26 root-runtime-allowlist-not-enforced"
 grep -qF 'root service child adopted a hostile ambient environment value' scripts/smoke-service-lifecycle.sh || r_s11e26="$r_s11e26 hostile-runtime-value-not-rejected"
 grep -qF 'SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded' scripts/smoke-service-lifecycle.sh || r_s11e26="$r_s11e26 runtime-result-marker-missing"
-grep -qF 'FAIL R-S11e-26: root service child did not reject the hostile ambient launch environment' scripts/smoke-server.sh || r_s11e26="$r_s11e26 mandatory-smoke-consumer-missing"
 if [ -n "$r_s11e26" ]; then echo "  FAIL R-S11e-26 Linux service-child environment authority:$r_s11e26"; rc=1; else
-  echo "  ok  R-S11e-26/R-S11e-204 root and active-user children receive the selected desktop snapshot under a typed principal choice; hostile ambient session/audio/terminal variables and active-user TERM processes cannot re-enter after env_clear"; fi
+  echo "  ok  R-S11e-26/R-S11e-204 supplementary typed child principal/environment source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-d5a) Linux service selected-session observation authority (R-S11ft/R-S11ht/R-S11e-207/R-S11e-257) =="
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e207_ --color never
@@ -5130,9 +5129,8 @@ for runtime_proof in \
   'SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded'; do
   grep -qF "$runtime_proof" scripts/smoke-service-lifecycle.sh || r_s11e27="$r_s11e27 hostile-runtime-proof-missing"
 done
-grep -qF 'FAIL R-S11e-27: Linux service supervisor/child retained ambient cwd or consumed cwd-relative custom.txt' scripts/smoke-server.sh || r_s11e27="$r_s11e27 mandatory-smoke-consumer-missing"
 if [ -n "$r_s11e27" ]; then echo "  FAIL R-S11e-27 Linux service-owned working-directory authority:$r_s11e27"; rc=1; else
-  echo "  ok  R-S11e-27 Linux service supervisor and child bind cwd to '/', while custom.txt is executable-relative in debug and release builds"; fi
+  echo "  ok  R-S11e-27 supplementary service cwd and executable-relative custom.txt source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 # (3b-iii-d7) R-S11n/R-S11e-28: Linux service-owned roles accept no ambient
 # non-stdio descriptor capability from a manual/sudo/init launcher. The forked
@@ -5211,9 +5209,8 @@ for runtime_proof in \
 done
 [ "$(grep -cF 'exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"' scripts/smoke-service-lifecycle.sh)" = 6 ] \
   || r_s11e28="$r_s11e28 hostile-descriptor-launch-matrix-incomplete"
-grep -qF 'FAIL R-S11e-28: Linux service supervisor/child retained launcher file-descriptor authority' scripts/smoke-server.sh || r_s11e28="$r_s11e28 mandatory-smoke-consumer-missing"
 if [ -n "$r_s11e28" ]; then echo "  FAIL R-S11e-28 Linux service-owned inherited descriptor authority:$r_s11e28"; rc=1; else
-  echo "  ok  R-S11e-28 Linux service supervisor and child exclude ambient non-stdio descriptors while preserving only stdio and the forked child's temporary exact-executable handoff"; fi
+  echo "  ok  R-S11e-28 supplementary service descriptor exclusion/handoff source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 # (3b-iii-d8) R-S11o/R-S11e-29: Linux service-originated helper
 # commands do not rely on helper policy to discard privileged non-stdio
@@ -6881,21 +6878,16 @@ python3 -c 'from pathlib import Path; p = Path("scripts/verify-windows-ipc-dacl-
 if [ -n "$r_s11e63" ]; then echo "  FAIL R-S11e-63 Windows production-listener DACL coverage:$r_s11e63"; rc=1; else
   echo "  ok  R-S11e-63 every production Windows IPC listener uses explicit local SDDL and unknown postfixes fail closed"; fi
 
-# (3b-iii-d9cn) R-S11ax/R-S11dd/R-S11e-64/R-S11e-122: the runtime
-# smoke harness admits only the verifier-VM Docker authority, has no host-process
-# scanner, builds numeric-nonroot into a private target from an exact clean
-# commit snapshot and a pinned sealed vendor closure, and preserves the exact-image/
-# network-none policy.
+# (3b-iii-d9cn) R-S11ax/R-S11dd/R-S11e-64/R-S11e-122 runtime smoke.
+# Supplementary source invariants bind the sole verifier-VM Docker authority,
+# deleted privileged-container routes, exact-source mounts and confined launches.
+# Actual VM entry/request acceptance and native product scenarios are separate.
 echo "== (3b-iii-d9cn) Smoke container and host/build authority (R-S11ax/R-S11dd/R-S11e-64/R-S11e-122) =="
 r_s11e64=
 smoke_build_run=$(awk '/^BUILD_RUN=\(/{inside=1} /^RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
-smoke_runtime_run=$(awk '/^RUN=\(/{inside=1} /^ROOT_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
-smoke_root_run=$(awk '/^ROOT_RUN=\(/{inside=1} /^LIFECYCLE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
-smoke_lifecycle_run=$(awk '/^LIFECYCLE_RUN=\(/{inside=1} /^PID_REUSE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
-smoke_pid_reuse_run=$(awk '/^PID_REUSE_RUN=\(/{inside=1} /^XVFB_PREPARE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
+smoke_runtime_run=$(awk '/^RUN=\(/{inside=1} /^XVFB_PREPARE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 smoke_xvfb_run=$(awk '/^XVFB_PREPARE_RUN=\(/{inside=1} /^VIDEO_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 smoke_video_run=$(awk '/^VIDEO_RUN=\(/{inside=1} /^PORT_HEX=/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
-smoke_sibling_run=$(awk '/docker_out=\$\(smoke_docker run -d --name "\$SIBLING_NAME"/{inside=1} inside{print} inside && /2>&1\)/{exit}' scripts/smoke-server.sh)
 smoke_default_mode=$(awk '/^case "\$#" in$/{inside=1} /^  1\)$/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 grep -qF 'readonly DOCKER_BIN=/usr/bin/docker' scripts/smoke-server.sh || r_s11e64="$r_s11e64 fixed-docker-client-missing"
 grep -qF 'readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh' scripts/smoke-server.sh \
@@ -6933,12 +6925,16 @@ grep -qF 'IMAGE_ID=$(smoke_docker image inspect --format '\''{{.Id}}'\'' "$EXPEC
 grep -qF 'if [ "$IMAGE_ID" != "$EXPECTED_RUNTIME_IMAGE_ID" ]; then' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 exact-image-id-comparison-missing"
 grep -qF 'readonly IMAGE_ID' scripts/smoke-server.sh || r_s11e64="$r_s11e64 immutable-image-id-missing"
-for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_root_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_xvfb_run" "$smoke_video_run" "$smoke_sibling_run"; do
+for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_xvfb_run" "$smoke_video_run"; do
   grep -qF -- '--network none' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 network-none-missing"
   grep -qF -- '--pull=never' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 implicit-pull-refusal-missing"
   grep -qF '"$IMAGE_ID"' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 immutable-image-use-missing"
+  for confinement in '--user "$BUILD_UID:$BUILD_GID"' '--cap-drop ALL' '--security-opt no-new-privileges' '--read-only'; do
+    grep -qF -- "$confinement" <<<"$smoke_run_block" \
+      || r_s11e64="$r_s11e64 nonroot-container-confinement-missing"
+  done
 done
-for smoke_readonly_run_block in "$smoke_runtime_run" "$smoke_root_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_sibling_run"; do
+for smoke_readonly_run_block in "$smoke_runtime_run"; do
   grep -qF -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' <<<"$smoke_readonly_run_block" \
     || r_s11e64="$r_s11e64 runtime-read-only-source-missing"
   grep -qF -- '-v "$SMOKE_BUILD_TARGET:/smoke-target:ro"' <<<"$smoke_readonly_run_block" \
@@ -6971,16 +6967,6 @@ for smoke_rootless_token in \
 done
 grep -qF 'SMOKE_MODE=portable-rootless' <<<"$smoke_default_mode" \
   || r_s11e64="$r_s11e64 portable-rootless-default-missing"
-grep -qF -- '--with-root-containers) SMOKE_MODE=with-root-containers' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 explicit-root-container-mode-missing"
-[ "$(grep -cF 'if [ "$SMOKE_MODE" = with-root-containers ]; then' scripts/smoke-server.sh)" -eq 4 ] \
-  || r_s11e64="$r_s11e64 root-container-mode-guard-cardinality-invalid"
-grep -qF 'portable-rootless mode: root service, PID-reuse, and init-system lifecycle stages not entered' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 root-lifecycle-mode-gate-missing"
-grep -qF 'portable-rootless mode: root-owned/user-creation/installed-layout password fixtures not entered' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 root-password-mode-gate-missing"
-grep -qF 'portable-rootless mode: packet-capture stage not entered' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 root-capture-mode-gate-missing"
 grep -qF 'parked_stage_status=$STAGE_STATUS' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 parked-stage-status-not-preserved"
 grep -qF 'if [ "$parked_stage_status" -eq 0 ]; then' scripts/smoke-server.sh \
@@ -6989,10 +6975,6 @@ grep -qF 'parked product-state assertions were not evaluated because the isolate
   || r_s11e64="$r_s11e64 parked-stage-unavailable-verdict-missing"
 grep -qF 'Root/service/init-system/user-creation/installed-layout/packet-capture, graphical/native/device, performance/soak, and release-artifact evidence were not entered or claimed.' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 rootless-evidence-limit-missing"
-for root_stage in password-root password-nonroot password-installed capture; do
-  grep -qF '"${ROOT_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh '"$root_stage" scripts/smoke-server.sh \
-    || r_s11e64="$r_s11e64 root-stage-not-confined-to-explicit-array-$root_stage"
-done
 for smoke_build_env in \
   'CARGO_HOME=/tmp/smoke-cargo-home' \
   'CARGO_TARGET_DIR=/smoke-target' \
@@ -7017,14 +6999,13 @@ if grep -qF '/usr/local/cargo/' <<<"$smoke_runtime_run"; then
 fi
 smoke_launch_surface="$smoke_build_run
 $smoke_runtime_run
-$smoke_root_run
-$smoke_lifecycle_run
-$smoke_pid_reuse_run
 $smoke_xvfb_run
-$smoke_video_run
-$smoke_sibling_run"
+$smoke_video_run"
 if grep -Eq -- '(^|[[:space:]])-p([=[:space:]]|$)|(^|[[:space:]])-P([[:space:]\\]|$)|--publish|--network([=[:space:]]+)host|--pid=host|--privileged|/var/run/docker[.]sock' <<<"$smoke_launch_surface"; then
   r_s11e64="$r_s11e64 host-or-publication-authority-present"
+fi
+if grep -Eq 'with-root-containers|^(ROOT_RUN|LIFECYCLE_RUN|PID_REUSE_RUN)=|start_sibling_docker|--cap-add|apparmor=unconfined' scripts/smoke-server.sh; then
+  r_s11e64="$r_s11e64 retired-privileged-container-route-present"
 fi
 if grep -qF -- '--network bridge' scripts/smoke-server.sh \
   || grep -qF -- '/var/run/docker.sock' scripts/smoke-server.sh; then
@@ -7061,7 +7042,7 @@ for smoke_source_token in \
   grep -qF -- "$smoke_source_token" scripts/smoke-server.sh \
     || r_s11e64="$r_s11e64 exact-source-authority-missing"
 done
-[ "$(grep -Fc -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' scripts/smoke-server.sh)" -eq 8 ] \
+[ "$(grep -Fc -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' scripts/smoke-server.sh)" -eq 4 ] \
   || r_s11e64="$r_s11e64 exact-source-mount-cardinality-invalid"
 grep -qF 'verify_smoke_build_postconditions' scripts/smoke-server-stage.sh \
   || r_s11e64="$r_s11e64 build-input-postcondition-missing"
@@ -7070,7 +7051,7 @@ grep -qF 'verify_smoke_build_postconditions' scripts/smoke-server-stage.sh \
 /usr/bin/python3 -I -S scripts/verify-video-pipeline-smoke.py --repo . --self-test \
   || r_s11e64="$r_s11e64 video-pipeline-mutation-self-test-failed"
 if [ -n "$r_s11e64" ]; then echo "  FAIL R-S11e-64/R-S11e-122 smoke container/host-build authority:$r_s11e64"; rc=1; else
-  echo "  ok  R-S11e-64/R-S11e-122 smoke defaults portable stages to numeric non-root confinement, requires explicit root-container selection for privileged fixtures, admits only the authenticated verifier-VM Docker authority, has no host process scan, and keeps every build/runtime/tool container exact-image, no-pull, network-none, and unpublished"; fi
+  echo "  ok  R-S11e-64/R-S11e-122 supplementary smoke source invariants: retired privileged-container routes absent; fixed VM authority, exact source and confined launches retained; actual VM entry/request and native product acceptance are separate"; fi
 
 # (3b-iii-d9co) R-S11ay/R-S11e-65: every token-switched child launch
 # must receive a successfully created environment for the exact selected
@@ -8987,10 +8968,8 @@ grep -qF 'prove_growing_log_can_be_pinned "$log"' scripts/smoke-ready.sh \
 grep -qF 'self-test rejected append-only growth of the pinned log object' scripts/smoke-ready.sh \
   || r_s11c27f="$r_s11c27f growing-log-pin-result-missing"
 grep -qF 'service-lifecycle-manual)' scripts/smoke-server-stage.sh || r_s11c27f="$r_s11c27f mounted-stage-dispatch-missing"
-grep -qF 'LIFECYCLE_RUN=(smoke_docker run --rm --network none' scripts/smoke-server.sh || r_s11c27f="$r_s11c27f network-isolated-runtime-missing"
-grep -qF 'record_stage_status R-S11c-27f' scripts/smoke-server.sh || r_s11c27f="$r_s11c27f runtime-status-not-preserved"
 if [ -n "$r_s11c27f" ]; then echo "  FAIL R-S11c-27f Linux manual supervisor lifecycle:$r_s11c27f"; rc=1; else
-  echo "  ok  R-S11c-27f actual --service SIGTERM reaps/removes its exact child, fresh generations restart, a stopped child takes bounded KILL/reap, and an unrelated non-root portable server survives"; fi
+  echo "  ok  R-S11c-27f supplementary service shutdown, restart and exact-child ownership source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h2h) Linux actual-binary supervisor crash/restart is kernel-bound, exact, and noninterfering (R-S11c-27g) =="
 r_s11c27g=
@@ -9005,9 +8984,8 @@ grep -qF 'start_service_recovering "$FIXTURE/service-5-recovered.log"' scripts/s
 grep -qF 'Discarding (exited Linux service child record' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g production-recovery-result-not-required"
 grep -qF '[ "$GENERATION" != "$crashed_generation" ]' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g recovered-generation-not-distinct"
 grep -qF 'SERVICE_LIFECYCLE_CRASH_RESTART=pass prior_generation=' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g runtime-result-marker-missing"
-grep -qF 'record_stage_status R-S11c-27g' scripts/smoke-server.sh || r_s11c27g="$r_s11c27g runtime-status-not-preserved"
 if [ -n "$r_s11c27g" ]; then echo "  FAIL R-S11c-27g Linux actual-binary crash/restart:$r_s11c27g"; rc=1; else
-  echo "  ok  R-S11c-27g actual supervisor SIGKILL triggers exact child parent-death exit, preserves crash evidence, recovers a fresh generation, and leaves the portable server alive"; fi
+  echo "  ok  R-S11c-27g supplementary service crash/restart and parent-death source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h2i) Linux active-seat service child takes the real non-root descriptor-exec path (R-S11c-27h) =="
 r_s11c27h=
@@ -9024,14 +9002,12 @@ grep -qF 'set(parsed_environment) != set(expected_environment) | {b"TERM"}' scri
 grep -qF 'non-root service child leaked its executable descriptor' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h executable-descriptor-leak-not-rejected"
 grep -qF 'setpriv --reuid="$expected_uid" --regid="$expected_gid" --groups="$expected_groups"' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h typed-ipc-not-probed-as-active-user"
 grep -qF 'SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h runtime-result-marker-missing"
-grep -qF 'LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE' scripts/smoke-server.sh || r_s11c27h="$r_s11c27h procfs-authority-not-explicit-in-runtime"
-grep -qF 'record_stage_status R-S11c-27h' scripts/smoke-server.sh || r_s11c27h="$r_s11c27h runtime-status-not-preserved"
 grep -qF 'CAP_SYS_PTRACE is intentionally retained' res/rustdesk.service || r_s11c27h="$r_s11c27h installed-procfs-authority-undocumented"
 if grep '^CapabilityBoundingSet=' res/rustdesk.service | grep -qF 'CAP_SYS_PTRACE'; then
   r_s11c27h="$r_s11c27h installed-procfs-authority-removed"
 fi
 if [ -n "$r_s11c27h" ]; then echo "  FAIL R-S11c-27h Linux non-root service child:$r_s11c27h"; rc=1; else
-  echo "  ok  R-S11c-27h active-seat discovery descriptor-execs the exact image as UID/GID 4001 with exact groups, zero live capabilities, NNP, bounded environment, typed IPC, and graceful reap"; fi
+  echo "  ok  R-S11c-27h supplementary active-seat descriptor-exec, identity and capability source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h2j) Linux actual binary rejects hostile service-child records without signal authority (R-S11c-27i) =="
 r_s11c27i=
@@ -9051,41 +9027,8 @@ grep -qF 'pidfd_signal_only "$DECOY" "$DECOY_START" STOP' scripts/smoke-service-
 grep -qF 'assert_portable_alive' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i rustdesk-portable-survival-not-asserted"
 [ "$(grep -c '^run_rejected_record_case ' scripts/smoke-service-lifecycle.sh)" = 7 ] || r_s11c27i="$r_s11c27i exact-hostile-record-matrix-incomplete"
 grep -qF 'SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata,reused-start,executable,uid,generation,portable-role' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i runtime-result-marker-missing"
-grep -qF 'record_stage_status R-S11c-27i' scripts/smoke-server.sh || r_s11c27i="$r_s11c27i runtime-status-not-preserved"
 if [ -n "$r_s11c27i" ]; then echo "  FAIL R-S11c-27i Linux hostile service-child records:$r_s11c27i"; rc=1; else
-  echo "  ok  R-S11c-27i actual --service exits 1 and preserves malformed, untrusted, and live-ambiguous records while exact non-root decoy and portable identities survive"; fi
-
-echo "== (3b-iii-h2k) Linux service lifecycle leaves an unrelated sibling Docker namespace alive (R-S11c-27j) =="
-r_s11c27j=
-grep -qF 'sibling-docker-server)' scripts/smoke-server-stage.sh || r_s11c27j="$r_s11c27j sibling-stage-dispatch-missing"
-grep -qF 'SIBLING_DOCKER_READY pid=' scripts/smoke-server-stage.sh || r_s11c27j="$r_s11c27j sibling-ready-marker-missing"
-grep -qF 'SIBLING_DOCKER_SURVIVED=pass pid=' scripts/smoke-server-stage.sh || r_s11c27j="$r_s11c27j sibling-survival-marker-missing"
-grep -qF 'start_sibling_docker()' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-orchestrator-missing"
-grep -qF 'stop_sibling_docker()' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-stop-orchestrator-missing"
-grep -qF 'smoke_docker run -d --name "$SIBLING_NAME" --network none' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-network-isolation-missing"
-grep -qF -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' scripts/smoke-server.sh \
-  || r_s11c27j="$r_s11c27j sibling-source-bind-not-readonly"
-grep -qF -- '-v "$SIBLING_ROOT:/sibling:rw"' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-control-bind-missing"
-grep -qF 'bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-mounted-stage-missing"
-grep -qF 'sibling_container_running' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-running-check-missing"
-grep -qF 'SIBLING_DOCKER_NONINTERFERENCE=pass cid=' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-noninterference-marker-missing"
-grep -qF 'record_stage_status R-S11c-27j' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j runtime-status-not-preserved"
-sibling_docker_block=$(awk '/docker_out=\$\(smoke_docker run -d --name "\$SIBLING_NAME"/,/2>&1\)/' scripts/smoke-server.sh)
-echo "$sibling_docker_block" | grep -qF -- '--network none' || r_s11c27j="$r_s11c27j sibling-network-none-not-in-docker-run"
-if echo "$sibling_docker_block" | grep -q -- '--pid'; then
-  r_s11c27j="$r_s11c27j sibling-pid-namespace-shared"
-fi
-if ! awk '
-  /^if start_sibling_docker; then/ { start = NR }
-  /run_stage lifecycle_out/ { run = NR }
-  /if stop_sibling_docker >"\$sibling_out_file" 2>&1; then/ { stop = NR }
-  /record_stage_status R-S11c-27j/ { record = NR }
-  END { exit !(start && run && stop && record && start < run && run < stop && stop < record) }
-' scripts/smoke-server.sh; then
-  r_s11c27j="$r_s11c27j sibling-lifecycle-order-regressed"
-fi
-if [ -n "$r_s11c27j" ]; then echo "  FAIL R-S11c-27j Linux sibling Docker noninterference:$r_s11c27j"; rc=1; else
-  echo "  ok  R-S11c-27j an unrelated networkless sibling Docker container with a neutral RustDesk server remains alive until explicitly drained after all manual lifecycle stop/crash/hostile-record operations"; fi
+  echo "  ok  R-S11c-27i supplementary malformed/untrusted/ambiguous service-record source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h2l) Linux pidfd-unavailable live recovery fails closed without signaling (R-S11c-27u/R-S11ca) =="
 r_s11c27u=
@@ -9118,7 +9061,6 @@ grep -qF 'if [ "$recovery_status" -ne 1 ]; then' scripts/smoke-service-lifecycle
 grep -qF '[ "$after_identity" = "$record_identity" ]' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-record-metadata-preservation-missing"
 grep -qF 'assert_pidfd_unavailable_child_alive' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-child-survival-missing"
 grep -qF 'SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL=pass generation=' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-result-marker-missing"
-grep -qF 'record_stage_status R-S11c-27u' scripts/smoke-server.sh || r_s11c27u="$r_s11c27u runtime-status-not-preserved"
 if ! awk '
   /start_pidfd_unavailable_recorded_child/ { start = NR }
   /run_pidfd_unavailable_recovery_refusal/ { refuse = NR }
@@ -9129,7 +9071,7 @@ if ! awk '
   r_s11c27u="$r_s11c27u pidfd-unavailable-runtime-order-regressed"
 fi
 if [ -n "$r_s11c27u" ]; then echo "  FAIL R-S11c-27u Linux pidfd-unavailable recovery refusal:$r_s11c27u"; rc=1; else
-  echo "  ok  R-S11c-27u live recorded-child recovery uses only pidfd signaling; pidfd-unavailable recovery preserves the child and record, signals nothing, and fails before new authority"; fi
+  echo "  ok  R-S11c-27u supplementary pidfd-only recovery and unavailable-pidfd refusal source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h2m) installed Debian non-systemd lifecycle has exact SysV authority (R-S11c-27l) =="
 r_s11c27l=
@@ -9156,9 +9098,8 @@ grep -qF 'update-rc.d "$service" defaults >/dev/null' res/DEBIAN/postinst || r_s
 grep -qF '"etc/init.d/rustdesk"' build.py || r_s11c27l="$r_s11c27l package-init-payload-missing"
 grep -qF 'debian-sysv-installed-lifecycle)' scripts/smoke-server-stage.sh || r_s11c27l="$r_s11c27l runtime-stage-dispatch-missing"
 grep -qF 'DEBIAN_SYSV_INSTALLED_LIFECYCLE=pass os=debian-%s portable_uid=%s stale_wrong_exec=survived' scripts/smoke-debian-sysv-lifecycle.sh || r_s11c27l="$r_s11c27l runtime-result-marker-missing"
-grep -qF 'record_stage_status R-S11c-27l' scripts/smoke-server.sh || r_s11c27l="$r_s11c27l runtime-status-not-preserved"
 if [ -n "$r_s11c27l" ]; then echo "  FAIL R-S11c-27l installed Debian SysV lifecycle:$r_s11c27l"; rc=1; else
-  echo "  ok  R-S11c-27l Debian SysV package lifecycle selects one init backend, stops one PID/executable/name/UID-bound supervisor, and behavior-tests portable noninterference"; fi
+  echo "  ok  R-S11c-27l supplementary Debian SysV service lifecycle/package source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h2m1) Debian systemd lifecycle has one VM-only staging authority (R-S11dl/R-S11e-130) =="
 r_s11dl=
@@ -9403,25 +9344,8 @@ for token in \
   grep -qF -- "$token" scripts/smoke-server-launcher.c \
     || r_s11c27n="$r_s11c27n launcher:${token%% *}"
 done
-for token in \
-  'record_stage_status R-S11c-27n' \
-  'main_source" = "$sibling_source' \
-  'main_sha256" = "$sibling_sha256' \
-  'main_executable" != "$sibling_executable' \
-  'main_mount_namespace" != "$sibling_mount_namespace' \
-  'main_pid_namespace" != "$sibling_pid_namespace' \
-  'CROSS_CONTAINER_EXECUTABLE_IDENTITY=pass path=/usr/bin/rustdesk'; do
-  grep -qF -- "$token" scripts/smoke-server.sh \
-    || r_s11c27n="$r_s11c27n orchestration:${token%% *}"
-done
-sibling_docker_block=$(awk '/docker_out=\$\(smoke_docker run -d --name "\$SIBLING_NAME"/,/2>&1\)/' scripts/smoke-server.sh)
-echo "$sibling_docker_block" | grep -qF -- '--network none' \
-  || r_s11c27n="$r_s11c27n sibling-network-isolation-missing"
-if echo "$sibling_docker_block" | grep -q -- '--pid'; then
-  r_s11c27n="$r_s11c27n sibling-pid-namespace-shared"
-fi
 if [ -n "$r_s11c27n" ]; then echo "  FAIL R-S11c-27n cross-container executable identity:$r_s11c27n"; rc=1; else
-  echo "  ok  R-S11c-27n separate networkless PID/mount namespaces execute the same bytes from identical /usr/bin/rustdesk paths and exact service roles, while distinct file objects and generation-bound identities keep the sibling untargetable"; fi
+  echo "  ok  R-S11c-27n supplementary executable-object and namespace identity source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h2p) Linux recovery rejects actual kernel numeric-PID reuse (R-S11c-27o) =="
 r_s11c27o=
@@ -9437,20 +9361,6 @@ for token in \
   'send_service_child_pidfd_signal(pidfd, hbb_common::libc::SIGTERM)'; do
   grep -qF -- "$token" src/platform/linux.rs \
     || r_s11c27o="$r_s11c27o production:${token%% *}"
-done
-for token in \
-  'PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128' \
-  '--cap-drop ALL --cap-add SYS_ADMIN --cap-add CHECKPOINT_RESTORE --cap-add SETPCAP' \
-  '--security-opt no-new-privileges --security-opt apparmor=unconfined' \
-  '--tmpfs /tmp:rw,nosuid,nodev,mode=1777' \
-  '--tmpfs /run:rw,nosuid,nodev,noexec,mode=755' \
-  'run_stage pid_reuse_out "${PID_REUSE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-pid-reuse' \
-  'record_stage_status R-S11c-27o' \
-  'SERVICE_LIFECYCLE_PID_REUSE=pass old_pid=' \
-  '[ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]' \
-  '[ "${BASH_REMATCH[3]}" != "${BASH_REMATCH[4]}" ]'; do
-  grep -qF -- "$token" scripts/smoke-server.sh \
-    || r_s11c27o="$r_s11c27o orchestration:${token%% *}"
 done
 for token in \
   'service-pid-reuse)' \
@@ -9491,7 +9401,7 @@ for forbidden in 'os.kill(' 'kill -' 'pkill' 'sudo ' '--pid=host' '--privileged'
   fi
 done
 if [ -n "$r_s11c27o" ]; then echo "  FAIL R-S11c-27o actual PID reuse recovery:$r_s11c27o"; rc=1; else
-  echo "  ok  R-S11c-27o forces Linux ns_last_pid in a private PID namespace, reuses the same numeric PID for an exact-role RustDesk child with a new start time/generation, and proves recovery preserves the record while signaling nothing"; fi
+  echo "  ok  R-S11c-27o supplementary numeric PID-reuse rejection source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h2q) packaged OpenRC/runit/manual templates own only the foreground supervisor (R-S11c-27p) =="
 r_s11c27p=
@@ -9564,14 +9474,6 @@ for token in \
     || r_s11c27q="$r_s11c27q stage:${token%% *}"
 done
 for token in \
-  'LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE' \
-  'bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-openrc-native-lifecycle' \
-  'record_stage_status R-S11c-27q' \
-  'OPENRC_NATIVE_LIFECYCLE=pass os=debian-12 openrc=0\.45\.2-2\+deb12u1'; do
-  grep -qF -- "$token" scripts/smoke-server.sh \
-    || r_s11c27q="$r_s11c27q orchestration:${token%% *}"
-done
-for token in \
   'readonly SOURCE_BINARY=/smoke-target/debug/rustdesk' \
   'readonly LAUNCHER_SOURCE=/smoke-target/smoke-server-launcher' \
   'readonly PROBE=/smoke-target/debug/examples/smoke_readiness' \
@@ -9604,7 +9506,7 @@ for forbidden in 'docker ' 'sudo ' '--network=host' '--pid=host' '--privileged' 
   fi
 done
 if [ -n "$r_s11c27q" ]; then echo "  FAIL R-S11c-27q native OpenRC lifecycle:$r_s11c27q"; rc=1; else
-  echo "  ok  R-S11c-27q pinned Debian OpenRC starts/restarts/stops one pidfile-bound --service supervisor, replaces stale state through explicit native recovery, and leaves an unrelated no-privilege RustDesk process untouched"; fi
+  echo "  ok  R-S11c-27q supplementary pinned OpenRC supervisor/lifecycle source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h2s) native runit owns one exact supervision tree and preserves unrelated RustDesk (R-S11c-27r) =="
 r_s11c27r=
@@ -9619,14 +9521,6 @@ for token in \
   'bash --noprofile --norc /work/scripts/smoke-runit-lifecycle.sh'; do
   grep -qF -- "$token" scripts/smoke-server-stage.sh \
     || r_s11c27r="$r_s11c27r stage:${token%% *}"
-done
-for token in \
-  'LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE' \
-  'bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-runit-native-lifecycle' \
-  'record_stage_status R-S11c-27r' \
-  'RUNIT_NATIVE_LIFECYCLE=pass os=debian-12 runit=2\.1\.2-54'; do
-  grep -qF -- "$token" scripts/smoke-server.sh \
-    || r_s11c27r="$r_s11c27r orchestration:${token%% *}"
 done
 for token in \
   'readonly SOURCE_BINARY=/smoke-target/debug/rustdesk' \
@@ -9665,7 +9559,7 @@ for forbidden in 'docker ' 'sudo ' '--network=host' '--pid=host' '--privileged' 
   fi
 done
 if [ -n "$r_s11c27r" ]; then echo "  FAIL R-S11c-27r native runit lifecycle:$r_s11c27r"; rc=1; else
-  echo "  ok  R-S11c-27r pinned Debian runit owns one runsvdir/runsv/--service/child tree, performs native restart/stop/automatic recovery and HUP shutdown, and leaves an unrelated no-privilege RustDesk process untouched"; fi
+  echo "  ok  R-S11c-27r supplementary pinned runit tree/lifecycle source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
@@ -14735,9 +14629,10 @@ grep -qF 'GATES=(' "$release_gate" || release_gate_bad="$release_gate_bad no-gat
 grep -qF '"verify.sh|compile + KATs + handshake + policy funnel + R-A6 done-set"' "$release_gate" || release_gate_bad="$release_gate_bad missing-verify"
 grep -qF '"verify-windows-harness.py --self-test|Windows harness contracts + bounded behavioral mutation suites"' "$release_gate" || release_gate_bad="$release_gate_bad missing-windows-harness"
 grep -qF '"android-rust-check.sh|pinned offline aarch64 Android Rust check"' "$release_gate" || release_gate_bad="$release_gate_bad missing-android-rust-check"
-grep -qF '"smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"' "$release_gate" || release_gate_bad="$release_gate_bad missing-smoke"
-grep -qF 'elif [ "$s" = smoke-server.sh ]; then' "$release_gate" || release_gate_bad="$release_gate_bad missing-explicit-full-smoke-dispatch"
-grep -qF 'bash "scripts/$s" --with-root-containers' "$release_gate" || release_gate_bad="$release_gate_bad missing-explicit-full-smoke-mode"
+grep -qF '"smoke-server.sh|runtime: portable VM-guest smoke + one-TCP/zero-UDP, fail-closed, keying, full session"' "$release_gate" || release_gate_bad="$release_gate_bad missing-smoke"
+if grep -qF -- '--with-root-containers' "$release_gate"; then
+  release_gate_bad="$release_gate_bad retired-privileged-container-dispatch-present"
+fi
 grep -qF '"dart-verify.sh|flutter analyze lib/ (zero errors)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-verify"
 grep -qF '"native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"' "$release_gate" || release_gate_bad="$release_gate_bad missing-native-codec-watch"
 grep -qF '"apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"' "$release_gate" || release_gate_bad="$release_gate_bad missing-apple-conform"
@@ -14755,7 +14650,7 @@ expected = [
     "online-input-provenance.py --self-test|immutable online-input snapshot mutation suite",
     "test-android-gradle-cache.sh|non-root immutable Gradle projection + pinned offline semantics",
     "android-rust-check.sh|pinned offline aarch64 Android Rust check",
-    "smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session",
+    "smoke-server.sh|runtime: portable VM-guest smoke + one-TCP/zero-UDP, fail-closed, keying, full session",
     "dart-verify.sh|flutter analyze lib/ (zero errors)",
     "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin",
     "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks",

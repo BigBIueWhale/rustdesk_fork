@@ -4853,6 +4853,17 @@ Cargo version metadata is generated from `CARGO_PKG_VERSION` and the canonical p
 under Cargo's private `OUT_DIR`. The root and Apple Cargo gates mount source read-only, require
 `src/version.rs` to remain absent, and keep the Android target check non-root. Explicit malformed or out-of-range
 epochs fail the build; only an absent epoch retains wall-clock behavior for ordinary developer builds.
+The Debian, Android, and Windows VM release-target launchers select the committed epoch only when the
+variable is absent and reject every explicit value that differs from it, including empty input. Admission
+runs immediately after loading pins, before runtime helpers or image/source/signing/output activity.
+Exact source `6e8793b9` passed the default zero-NIC authority VM in 148 seconds: the actual three Linux
+launchers refused twelve inputs (empty, different numeric, malformed, and leading-zero), and actual Android
+and Debian authority entries accepted both unset and exact-pin inputs as UID/GID 4000. The byte-identical
+regression first failed at `3ede54a9` because Android accepted an explicitly empty epoch. The accepted raw
+serial is `.harness-state/verifier-vm/authority-smoke-run.OcGhuR9UoX.serial.log` (85,446 bytes, SHA-256
+`276b04dbef30cf492999e0dac8c55f2b1dc4f57341bd82e64e3b372e7c5f64f3`); the host listener audit and
+joined cleanup passed. This proves release-launcher epoch admission and the real Debian compiler profile,
+not Windows compilation, artifact construction, stable signing, or cold release A==B; those remain OPEN.
 The same root build script requires one canonical newline-terminated `FORK_VERSION` whose numeric base equals
 `CARGO_PKG_VERSION`; it has no missing, unreadable, empty, malformed, mismatched, or package-version fallback.
 Each pass gives every target builder an absent publication path and leaves its creation to that builder. Windows

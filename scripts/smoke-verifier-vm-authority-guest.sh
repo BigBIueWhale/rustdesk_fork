@@ -8050,14 +8050,16 @@ setpriv --reuid=4000 --regid=4000 --clear-groups \
 printf 'VERIFIER_VM_SMOKE_ROOT_MODE_REFUSAL=pass uid=4000 gid=4000 status=2 workspace=unchanged containers=unchanged product=not-entered\n'
 
 # Execute the production selector against guest-owned filesystem fixtures.
-smoke_input_work=$ROOT/smoke-input-selection
-install -d -o 4000 -g 4000 -m 0700 "$smoke_input_work"
+smoke_input_parent=$ROOT/smoke-input-selection
+smoke_input_work=$smoke_input_parent/work
+install -d -o 4000 -g 4000 -m 0700 "$smoke_input_parent"
 setpriv --reuid=4000 --regid=4000 --clear-groups \
     env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
     /bin/bash -eus -- "$SMOKE_SERVER_SCRIPT" "$smoke_input_work" <<'SH' \
     || fail 'production smoke input selection failed'
 source=$1
 work=$2
+mkdir "$work"
 {
     printf 'set -euo pipefail\nreadonly SMOKE_REPO_ROOT=$1\nreadonly SMOKE_MODE=$2\n'
     awk '
@@ -8604,6 +8606,9 @@ frame_docker run --rm --network none --pull=never --read-only --user 4000:4000 \
 setpriv --reuid=4000 --regid=4000 --clear-groups rm -rf -- "$smoke_input_work"
 [ ! -e "$smoke_input_work" ] && [ ! -L "$smoke_input_work" ] \
     || fail 'smoke input fixture cleanup failed'
+rmdir -- "$smoke_input_parent"
+[ ! -e "$smoke_input_parent" ] && [ ! -L "$smoke_input_parent" ] \
+    || fail 'smoke input fixture parent cleanup failed'
 printf 'VERIFIER_VM_SMOKE_INPUT_CLEANUP=pass fixture=absent containers=joined\n'
 
 if /bin/bash "$DEBIAN_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \

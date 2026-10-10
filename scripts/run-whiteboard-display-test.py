@@ -44,7 +44,7 @@ def main():
                 time.sleep(0.05)
             subprocess.run(
                 [str(executable),
-                 "whiteboard::linux::tests::r_s11hn_linux_whiteboard_display_owner_survives_event_loop_retirement",
+                 "whiteboard::linux::tests::r_s11hn_linux_whiteboard_retires_windows_before_event_loop_return",
                  "--exact", "--ignored", "--color", "never", "--test-threads=1"],
                 env=environment, check=True, timeout=25)
             require(server.poll() is None, "owned Xvfb exited during the native test")
@@ -62,7 +62,7 @@ def main():
             require(server.returncode == 0, "owned Xvfb terminal status differs")
             require(not socket.exists() and not lock.exists(), "Xvfb endpoint was not retired")
     print("WHITEBOARD_DISPLAY_NATIVE=pass backend=x11 pixels=server-readback owners=2 "
-          "clear=exact-owner event_loop=retired window=destroyed xvfb=joined", flush=True)
+          "clear=exact-owner event_loop=retired window=destroyed-before-return xvfb=joined", flush=True)
 
 
 if __name__ == "__main__":

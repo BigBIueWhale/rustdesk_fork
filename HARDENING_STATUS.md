@@ -12096,12 +12096,16 @@ Linux rendering now retains Winit's `OwnedDisplayHandle` in its softbuffer conte
 and surfaces. The borrowed-display `transmute` to `'static`, optional context and
 exit-time context reset are removed; surfaces retire before their window owner.
 The focused `--android-rust-lifecycle-tests --whiteboard-display-lifetime` shard
-uses a real private X11 display to test the production window after event-loop
-retirement, two owners' pixel readback, exact-owner clearing and window destruction.
+uses a real private X11 display to test two owners' production pixel readback,
+exact-owner clearing and window destruction before event-loop return.
 The first run compiled but failed before rendering because the pinned container
 lacked `libxkbcommon-x11.so.0`; it supplied no native presentation result.
 Debian Depends now declares `libxkbcommon-x11-0`, and the pinned X11 fixture adds
-that package and its `libxcb-xkb1` dependency. Native execution remains pending;
+that package and its `libxcb-xkb1` dependency. With those inputs, pixels and Clear
+passed, but the window survived app drop: destruction missed Winit's final flush.
+Production `exiting` now retires surfaces/windows before that synchronization.
+The test renders while active and requires immediate X11 BadWindow on return,
+with the owned display context still retained. Corrected execution is pending;
 no privilege escalation is claimed from the previous borrowed-handle form alone.
 
 **Retained evidence:** the independently compilable exact production lifecycle module

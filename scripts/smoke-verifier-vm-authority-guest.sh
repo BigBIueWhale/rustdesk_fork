@@ -2607,7 +2607,7 @@ run_focused_rust_tests() {
                 scripts/smoke-xvfb-files.tsv
             )
             required_tests=(
-                whiteboard::linux::tests::r_s11hn_linux_whiteboard_display_owner_survives_event_loop_retirement
+                whiteboard::linux::tests::r_s11hn_linux_whiteboard_retires_windows_before_event_loop_return
             )
         fi
     fi
@@ -3179,7 +3179,7 @@ run_focused_rust_tests() {
             [ "$(grep -Ec '^WHITEBOARD_DISPLAY_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_DISPLAY_ARTIFACT=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard artifact receipt is absent, malformed or duplicated'
-            [ "$(grep -Fxc 'WHITEBOARD_DISPLAY_NATIVE=pass backend=x11 pixels=server-readback owners=2 clear=exact-owner event_loop=retired window=destroyed xvfb=joined' "$output")" -eq 1 ] \
+            [ "$(grep -Fxc 'WHITEBOARD_DISPLAY_NATIVE=pass backend=x11 pixels=server-readback owners=2 clear=exact-owner event_loop=retired window=destroyed-before-return xvfb=joined' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_DISPLAY_NATIVE=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard behavior/cleanup receipt differs'
         elif [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then

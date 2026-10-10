@@ -776,8 +776,20 @@ closure follows from these component receipts.
   dispatch checks the same pure readiness before modifier or relative-mode
   changes; release-only button cleanup remains available. The isolated before
   fixture at `8c075737` observed movement, a retained Button3 mask and fourteen
-  unexpected events while cleanup was pending. Corrected native acceptance is
-  pending; actual application/rdev and global retirement remain OPEN.
+  unexpected events while cleanup was pending. The identical fixture at
+  `b2b18677` passed 16 native cases, including eight unwind cases: 176 ordinary
+  refusals, 128 text refusals, 16 owned button releases, no ordinary pointer effects/events,
+  retained pending keys/map and final restoration/descriptor/task retirement.
+  Raw evidence: `x11-display-tests-run.5seBAkh0Ic.serial.log`, SHA-256
+  `108038a3919e2c4230090aaaea4244074d391ec5d0f8cbaa01d1ca9a1f7daa9a`.
+  The full Linux Rust library compiled on the same source; the 13-test clipboard
+  shard passed but provides no input-dispatch evidence. Both isolated transactions
+  passed listener invariance and joined cleanup. Actual application/rdev and
+  global retirement remain OPEN. In particular, connection key-lease teardown
+  (`InputKeyOwnership::release_remaining` / `InputWorkerCleanup::drop`) reuses
+  ordinary keyboard planning; pending text refusal can reach its existing abort
+  before button cleanup or static text-owner retirement. This is a source finding,
+  not an accepted native application cleanup result.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;
   native events and an in-request lease observer do not prove text consumption.
 - Loader identity/ACL/path races, native application consumers, full

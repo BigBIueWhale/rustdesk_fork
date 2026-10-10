@@ -721,22 +721,22 @@ async fn own_controlled_server_lifecycle(
     let mut whiteboard = match startup_event {
         ControlledServerStartupEvent::DesktopIpcReady(Ok(controller)) => controller,
         ControlledServerStartupEvent::ShutdownRequested => {
-            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await;
+            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await
         }
         ControlledServerStartupEvent::Signal(Ok(name)) => {
             log::info!("R-T9: {name} received during controlled-server startup");
             crate::server::request_graceful_shutdown();
-            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await;
+            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await
         }
         ControlledServerStartupEvent::Signal(Err(err)) => {
             log::error!("Controlled-server shutdown receiver failed during startup: {err}");
             crate::server::request_graceful_shutdown_after_listener_failure();
-            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await;
+            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await
         }
         ControlledServerStartupEvent::DesktopIpcReady(Err(err)) => {
             log::error!("Controlled-server IPC readiness failed: {err}");
             crate::server::request_graceful_shutdown_after_listener_failure();
-            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await;
+            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await
         }
         ControlledServerStartupEvent::DesktopIpc(outcome) => {
             match &outcome {
@@ -747,7 +747,7 @@ async fn own_controlled_server_lifecycle(
             }
             crate::server::request_graceful_shutdown_after_listener_failure();
             finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), Some(outcome), None)
-                .await;
+                .await
         }
     };
     let mut direct_listener = server.map(|server| {

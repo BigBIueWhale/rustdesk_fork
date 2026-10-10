@@ -12190,6 +12190,11 @@ and published Drop requires command join/exact helper reap while parent/root sta
 Guest/host demand strengthened unique receipts; forced observer cleanup cannot pass.
 No corrected native result or default-feature test rerun yet. Fixture setup now uses the
 production process root; no byte-identical-fixture A/B claim or full-root/platform closure.
+The first ownership-split candidate `1f719799` failed Rust1.75 compilation at the typed
+startup match (E0308); native scenarios did not run. The five non-returning branches now
+use tail expressions. Exact build diagnostics are retained in
+`.harness-state/verifier-vm/failed-whiteboard-ipc-build-1f719799-rYUhMh5vps`;
+serial SHA-256 `27fba90cc8230395422295945e1e3fb2e2772dd1f7bfd597cb336f1f52e80b6a`.
 
 **Retained provenance:** full A/B failures, corrected runs, old artifacts and intermediate
 receipts are archived in the exact HO section of

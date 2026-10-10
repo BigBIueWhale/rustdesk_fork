@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-6e0f9d835a9a29e43ccd1afee673ae22e858a65a7b01a1106af0db71840b3b4d  requirements.html
+7b0150556ee4ea0779f007b6494c9d7506e668bc1eea423e60943f2f7102b6c4  requirements.html
 ```
 
 ## Current Verdict
@@ -67,6 +67,15 @@ integration/release checkpoint.
 Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
 Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
 model. Whole-document and test classification remains OPEN.
+
+§12.1 places Debian/Android compilation and separate Android signing inside the admitted no-NIC
+verifier VM, with acquisition solely in R-S11cj. The old per-builder network-fetch/direct-host
+Docker and host-forwarded-control recipes are deleted. Target/toolchain pins, offline closure,
+software-codec features, stable certificate/content verification, independent generated state,
+epoch control and cold artifact equality remain binding. This is specification correction only;
+no compiler, product or VM workload ran. Exact-current builder/artifact, installed/native,
+complete input/signing and independent acceptance remain OPEN. Other inherited upstream-parity
+wording still requires classification; whole-document restoration is not complete.
 
 Windows §12.2 and R-B8/R-B10/R-B11/R-B11a/§12.3 state the admitted verifier-VM boundary,
 sole acquisition authority, immutable host baseline and exact creator-owned retirement. Historical
@@ -1960,7 +1969,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `6e0f9d835a9a29e43ccd1afee673ae22e858a65a7b01a1106af0db71840b3b4d  requirements.html`.
+Current normative specification SHA-256: `7b0150556ee4ea0779f007b6494c9d7506e668bc1eea423e60943f2f7102b6c4  requirements.html`.
 
 ### Current authority and source closure
 

@@ -1864,7 +1864,10 @@ def main():
                 run_self_test(scratch)
             finally:
                 scratch.close(sys.exc_info()[1])
-            print("OWNED_TREE_REMOVAL=pass retained=complete handoff=refused links=consumed symlink_target=preserved descriptors=closed")
+            print(
+                "OWNED_TREE_REMOVAL=pass retained=complete handoff=refused links=consumed symlink_target=preserved descriptors=closed",
+                file=sys.stderr,
+            )
         elif arguments.remove_private_root is not None:
             if (
                 arguments.scratch_fd is not None

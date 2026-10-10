@@ -118,7 +118,7 @@ fi
 tree_output="$(
     /usr/bin/timeout --foreground --signal=TERM --kill-after=5s 120s \
     /usr/bin/python3 -I -S "$TREE_HELPER" --self-test --scratch-fd 9 \
-    --expected-identity "$ROOT_ID" 9<"$ROOT"
+    --expected-identity "$ROOT_ID" 9<"$ROOT" 2>&1
 )" || fail 'private-tree descriptor fixture failed'
 [ "$tree_output" = "$TREE_REMOVAL_RECEIPT" ] \
     || fail 'private-tree descriptor fixture receipt differs'

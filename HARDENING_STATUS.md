@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-c882bee0e3c840e5ed5f8f938687c71258cb6d005a8f441bd91b29c66bb272ee  requirements.html
+50e67154cd5557658fde5d9c2a864580358fdec47ea1354eeed54fa9d4458d6c  requirements.html
 ```
 
 ## Current Verdict
@@ -1847,7 +1847,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `f2b797ac2670b3063450cfc61abe46bdc469c1da6355ca51d1b0fa1bbe75eb98  requirements.html`.
+Current normative specification SHA-256: `50e67154cd5557658fde5d9c2a864580358fdec47ea1354eeed54fa9d4458d6c  requirements.html`.
 
 ### Current authority and source closure
 
@@ -10473,37 +10473,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   test remain, and the main gate still runs `pake` and `cpace_it`. Wording/symbol
   checks are not behavioral coverage. Retaining these executable tests is not a fresh
   test pass, native or current-release acceptance, or external review; R-V3 remains open.
-- **Crypto protocol-logic audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
-  dedicated adversarial pass over the STATE-MACHINE / KEY-DISCIPLINE that KATs do
-  not cover (both endpoints' keying paths traced in source): confirm-before-key
-  fail-closed (`pake/lib.rs:486,612`; keys installed only after `Ok`, `is_secured()`
-  guard `server.rs:498`/`client.rs:306`); host-proof binding + no-TOFU pin
-  (`cpace.rs:361-370`, `client.rs:339-343,383-390`; PRS Argon2id-salted by the pinned
-  key); two-key nonce/key discipline (distinct c2s/s2c, mirrored+cross-checked,
-  `split_session_keys` asserts send≠recv `cpace.rs:494-497`, counters `checked_add`
-  can't-wrap `cpace.rs:416-420,459-463`, single-writer-per-direction); ristretto
-  canonical-decode + identity-reject; no-downgrade (`set_raw` panics on keyed);
-  replay/desync (monotonic recv counter, atomic decode, cross-session abort);
-  framing caps both sides; CT confirm/at-rest compares. **No exploitable flaw.**
-  Three DEFENSE-IN-DEPTH observations (all NON-exploitable, severity none): (DiD-1)
-  the no-TOFU-on-mismatch friction is caller-enforced (Dart re-pin dialog + `--pin-host`
-  CLI), not core-structural — now backstopped by a new `verify.sh` R-S17 gate that
-  confines `host_pin::set_pinned_pk` to those two friction callers so a future
-  non-Flutter UI can't silently add a no-friction adopt; (DiD-2) the online-guess
-  limiter is a tumbling (not sliding) window → ~2× guesses possible straddling a
-  boundary — DoS-defense only, each connection is still exactly one guess vs the
-  memory-hard PRS; (DiD-3) the host-proof signs `DSI‖sid‖CI‖Ya‖Yb` (not the literal
-  ISK) but is key-bound because it travels encrypted as the first post-key frame with
-  session-unique CPace-authenticated `sid/Ya/Yb` (test `r_s17_host_proof_binds_pk_to_the_session`).
-  The AI review above is complete (2026-07-02, docs/CRYPTO-AUDIT-2026-07-02.md); the independent
-  external expert audit required by R-V3 remains outstanding.
-  **Superseded (2026-07-04, host-key retirement):** the host-proof / no-TOFU host-key-pin elements
-  these two audits reviewed (the `HostIdentity` Ed25519 proof, the viewer pin-compare, the DiD-1
-  `set_pinned_pk` confinement gate, DiD-3's host-proof signing, and the host-key-derived PRS salt) are
-  now RETIRED — the CPace PRS is derived from the password alone (fixed salt, R-P1) with no host
-  identity, host-proof, or local pin (R-P5), so those specific items are moot. The audits' core
-  findings on the PAKE state machine, two-key cipher, constant-time paths, R-P3 MAC, and Argon2id
-  memory-hardness are UNAFFECTED and stand.
+  **R-S10 limiter scope:** production uses a ten-confirmation-failure, 60-second
+  tumbling window per source; roughly twice that count can straddle a boundary.
+  This is flood shedding, not a stronger credential guarantee.
 - **Local IPC/CM authorization audit — ⚠️ SUPERSEDED 2026-07-08 by R-S11b/R-S11c.** The
   2026-07-01 pass remains useful only for its transport facts: owner-only channels are
   0600 socket + 0700 per-uid parent; the service parent-dir hardening uses

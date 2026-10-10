@@ -591,7 +591,7 @@ fn graceful_shutdown_exit_code(failure_latched: bool) -> i32 {
 
 pub fn request_graceful_shutdown() {
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-    close_connection_worker_admission();
+    close_connection_admission();
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     input_service::close_owned_input_admission();
     if !SHUTDOWN_TOKEN.is_cancelled() {

@@ -889,7 +889,7 @@ fn ensure_final_remote_cleanup_dispatcher() -> Result<(), String> {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-pub(crate) fn close_connection_worker_admission() {
+pub(crate) fn close_connection_admission() {
     FINAL_REMOTE_CLEANUP_COORDINATOR.state.lock().unwrap().closed = true;
     FINAL_REMOTE_CLEANUP_COORDINATOR.notify();
 }
@@ -14055,17 +14055,14 @@ mod raii {
             #[cfg(not(any(target_os = "android", target_os = "ios")))] cm_clipboard: bool,
         ) -> ResultType<Self> {
             let registry_generation = next_authed_conn_generation()?;
-            ensure_authed_conn_registry_admission(&AUTHED_CONNS.lock().unwrap(), conn_id)?;
-
-            #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-            let final_remote_cleanup = if conn_type == AuthConnType::Remote {
-                Some(acquire_final_remote_cleanup_lease().await?)
-            } else {
-                None
-            };
-
-            {
+            let owner = {
                 let mut authed_conns = AUTHED_CONNS.lock().unwrap();
+                #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+                let admission = FINAL_REMOTE_CLEANUP_COORDINATOR.state.lock().unwrap();
+                #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+                if admission.closed {
+                    bail!("authenticated connection admission is closed");
+                }
                 ensure_authed_conn_registry_admission(&authed_conns, conn_id)?;
                 authed_conns.push(AuthedConn {
                     conn_id,
@@ -14081,15 +14078,22 @@ mod raii {
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     cm_clipboard,
                 });
+                Self {
+                    conn_id,
+                    conn_type,
+                    registry_generation,
+                    published: false,
+                    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+                    final_remote_cleanup: None,
+                }
+            };
+            #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+            if conn_type == AuthConnType::Remote {
+                let mut owner = owner;
+                owner.final_remote_cleanup = Some(acquire_final_remote_cleanup_lease().await?);
+                return Ok(owner);
             }
-            Ok(Self {
-                conn_id,
-                conn_type,
-                registry_generation,
-                published: false,
-                #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-                final_remote_cleanup,
-            })
+            Ok(owner)
         }
 
         pub(super) fn commit_publication(&mut self) -> ResultType<()> {

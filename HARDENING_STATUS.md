@@ -826,9 +826,10 @@ closure follows from these component receipts.
   `4b04d3dfde0241c1496c26370db3dbffb429db36ca89d14f4dd49f016efc14e6`.
   Resource admission, real finalizer/native X11; `network_auth=false`,
   `os_inhibitor=false`. Native wake inhibition remains OPEN.
-  Registry admission remains OPEN: a Remote constructor awaits cleanup before
-  reserving its ID/count, and four other session types can construct after stop.
-  Native reservation/collision/cancellation and all-five stop fixtures are prepared.
+  Registry reservations now precede await; cancellation owns exact retirement.
+  Root stop closes all five session types under the same admission latch.
+  At `6a666fef`, native reservation/collision and four-type stop cases failed;
+  corrected native acceptance is pending.
   The earlier physical regression at `6a675303` passed; macOS recorded CapsLock
   retirement is source-corrected. Three Apple anchors compiled at `c5d0984a`;
   application checks stopped at SDK/header boundaries and the outer transaction rejected

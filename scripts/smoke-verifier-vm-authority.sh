@@ -4873,6 +4873,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'WHITEBOARD_CLIENT_WITHDRAWAL=pass old=retained-through-withdrawal idle_observation_ms=500 successor=later-explicit-demand generations=2 pixels=both-generations cleanup=production-reap task=joined' \
         'native global client withdrawn demand and later explicit retry'
     require_exact_fixed_receipt \
+        'WHITEBOARD_CLIENT_HELPER_CLOSE=pass failure=native-window-close demand=retained old=joined-before-process-exit idle_observation_ms=500 retry=later-explicit-registration generations=2 pixels=both-generations cleanup=production-reap' \
+        'native global client helper close and retained-demand refusal of automatic retry'
+    require_exact_fixed_receipt \
         'WHITEBOARD_HELPER_CREATOR=pass thread=joined owner=alive helper=live proof=mutual pixels=two-owner-clear' \
         'native creator-thread retirement with a live parent and authenticated rendering'
     require_exact_fixed_receipt \

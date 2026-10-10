@@ -392,6 +392,8 @@ def observe_client_generation(executable, environment, display, server, case):
     environment = dict(environment, WHITEBOARD_PROBE_CLIENT_GENERATION=case)
     log_path = Path(f"/tmp/whiteboard-client-{case}.log")
     generations = 1 if case == "shutdown" else 2
+    needs_idle = case in ("withdrawal", "helper-close")
+    idle_connections = 2 if case == "helper-close" else 0
     with log_path.open("xb") as log:
         owner = subprocess.Popen([str(executable), "--server"], env=environment,
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
@@ -430,12 +432,13 @@ def observe_client_generation(executable, environment, display, server, case):
                     snapshot = re.fullmatch(rf"WHITEBOARD_CLIENT_STATE case={case} generation=([0-9]+) phase=(Idle|Starting|Running|Stopping) task=(true|false) connections=([0-9]+) expected_generation=([1-9][0-9]*) pid=([1-9][0-9]*) task_joined=true helper_owned=true", text)
                     reaped = re.fullmatch(rf"WHITEBOARD_CLIENT_REAPED case={case} generation=([1-9][0-9]*) pid=([1-9][0-9]*) status=0 owner=production task=joined", text)
                     cleanup = re.fullmatch(rf"WHITEBOARD_CLIENT_CLEANUP case={case} generation=([1-9][0-9]*) pid=([1-9][0-9]*) status=0 owner=production child=normal-exit-reaped task=joined", text)
+                    window_close = re.fullmatch(r"WHITEBOARD_CLIENT_WINDOW_CLOSE case=helper-close generation=1 pid=([1-9][0-9]*)", text)
                     if ready:
                         generation, pid = map(int, ready.groups())
                         require(not cleaned and len(helpers) < generations
                                 and generation == len(helpers) + 1
                                 and all(helper["reaped"] and not helper_alive(helper) for helper in helpers)
-                                and (case != "withdrawal" or generation == 1 or idle_seen),
+                                and (not needs_idle or generation == 1 or idle_seen),
                                 "successor preceded old helper reap or explicit later demand")
                         active = {"generation": generation, "pid": pid, "fd": os.pidfd_open(pid, 0),
                                   "window": None, "phases": [], "returned": False,
@@ -462,8 +465,17 @@ def observe_client_generation(executable, environment, display, server, case):
                         active["phases"].append(phase)
                         owner.stdin.write(b"drawn\n" if phase == "draw" else b"cleared\n")
                         owner.stdin.flush()
+                    elif window_close:
+                        require(case == "helper-close" and active is not None and active["generation"] == 1
+                                and window_close.group(1) == str(active["pid"])
+                                and active["phases"] == ["draw"] and not active["returned"]
+                                and helper_alive(active) and owner.poll() is None,
+                                "global helper close did not follow live two-owner presentation")
+                        display.request_close(active["window"])
+                        active["phases"].append("cancel")
                     elif text == "returned":
-                        require(active is not None and active["phases"] == ["draw", "clear"]
+                        expected_phases = ["draw", "cancel"] if case == "helper-close" and len(helpers) == 1 else ["draw", "clear"]
+                        require(active is not None and active["phases"] == expected_phases
                                 and not active["returned"] and helper_alive(active)
                                 and owner.poll() is None, "global client helper did not return while alive")
                         display.require_destroyed(active["window"])
@@ -473,7 +485,7 @@ def observe_client_generation(executable, environment, display, server, case):
                         require(active is not None and active["returned"] and not active["state"]
                                 and helper_alive(active) and owner.poll() is None,
                                 "client snapshot missed its live helper")
-                        expected_connections = "2" if case == "replacement" and active["generation"] == 1 else "0"
+                        expected_connections = "2" if case in ("replacement", "helper-close") and active["generation"] == 1 else "0"
                         generation = str(active["generation"])
                         require(snapshot.groups() == (generation, "Stopping", "false", expected_connections,
                                                       generation, str(active["pid"])),
@@ -489,10 +501,10 @@ def observe_client_generation(executable, environment, display, server, case):
                                 and not helper_alive(active) and not Path(f"/proc/{active['pid']}").exists(),
                                 "production owner did not normally reap its exact old helper")
                         active["reaped"] = True
-                    elif text == "WHITEBOARD_CLIENT_IDLE case=withdrawal retired_generation=1 observation_ms=500":
-                        require(case == "withdrawal" and not idle_seen and len(helpers) == 1
+                    elif text == f"WHITEBOARD_CLIENT_IDLE case={case} retired_generation=1 observation_ms=500 connections={idle_connections}":
+                        require(needs_idle and not idle_seen and len(helpers) == 1
                                 and active["reaped"] and not helper_alive(active) and owner.poll() is None,
-                                "withdrawn demand did not leave the retired generation idle")
+                                "retired demand did not leave the generation idle before explicit retry")
                         idle_seen = True
                         owner.stdin.write(b"idle\n")
                         owner.stdin.flush()
@@ -504,7 +516,7 @@ def observe_client_generation(executable, environment, display, server, case):
                         cleaned = True
                     else:
                         raise RuntimeError("unexpected global client control output")
-            require(not pending and cleaned and (case != "withdrawal" or idle_seen)
+            require(not pending and cleaned and (not needs_idle or idle_seen)
                     and owner.wait(timeout=5) == 0,
                     "global client fixture did not complete normal cleanup")
         finally:
@@ -540,8 +552,10 @@ def observe_client_generation(executable, environment, display, server, case):
         print("WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=production-reap task=joined", flush=True)
     elif case == "replacement":
         print("WHITEBOARD_CLIENT_REPLACEMENT=pass old=retained-through-demand successor=after-normal-reap generations=2 duplicate=shared pixels=both-generations cleanup=production-reap task=joined", flush=True)
-    else:
+    elif case == "withdrawal":
         print("WHITEBOARD_CLIENT_WITHDRAWAL=pass old=retained-through-withdrawal idle_observation_ms=500 successor=later-explicit-demand generations=2 pixels=both-generations cleanup=production-reap task=joined", flush=True)
+    else:
+        print("WHITEBOARD_CLIENT_HELPER_CLOSE=pass failure=native-window-close demand=retained old=joined-before-process-exit idle_observation_ms=500 retry=later-explicit-registration generations=2 pixels=both-generations cleanup=production-reap", flush=True)
 
 
 def main():
@@ -577,7 +591,7 @@ def main():
             display = Display()
             observe_owner(executable, environment, display, server)
             observe_owner(executable, environment, display, server, parent_exit=True)
-            for case in ("shutdown", "replacement", "withdrawal"):
+            for case in ("shutdown", "replacement", "withdrawal", "helper-close"):
                 observe_client_generation(executable, environment, display, server, case)
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")

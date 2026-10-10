@@ -12165,22 +12165,17 @@ Linux whole-parent pidfd lifetime and the creator-thread/actual-parent native su
 recorded in R-S11hn. The corrected client fixture polls the production root and requires
 external task join plus production normal reap while preserving the eight receiver cases.
 
-**Accepted Linux native correction:** both commands below used source
-`df9daec4cc261bfec574afa0c4f33536b6d99438`, tree
-`e3acf564c394c49c7a045476766beed563ae9d22`, pinned Rust1.75/vendor/devcheck inputs.
-`--android-rust-lifecycle-tests --whiteboard-helper-lifetime` passed in 250s / 168s build.
-All eight receiver cases remained required and passed; the actual global registration
-case also drew two owners and cleared only the unregistered owner. At helper20234's
-real CLI return, retained pidfd and live parent proved the helper alive and X11 returned
-BadWindow. Production root reported generation1/Stopping/task=false/connections0,
-task_joined=true/helper_owned=true. After observer release, production stop_and_join
-recorded successful normal child exit/reap; pidfd death and /proc absence were independently
-observed. No fixture-owned Child/reap substituted for production ownership. Artifact
+**Accepted Linux native correction:** source `df9daec4cc261bfec574afa0c4f33536b6d99438`,
+tree `e3acf564c394c49c7a045476766beed563ae9d22`, pinned Rust1.75/vendor/devcheck.
+`--android-rust-lifecycle-tests --whiteboard-helper-lifetime` passed in250s/build168s with
+eight receiver cases and healthy two-owner/exact-clear global registration. Live helper20234/
+parent and X11 BadWindow preceded root generation1/Stopping/task=false/connections0/
+task_joined=true/helper_owned=true; production normal reap preceded independent pidfd death
+and /proc absence. Artifact
 `5d9c210729737757f3723b3d834b9c93276a67abd4da19925bb878bfa236bc85`
 was unchanged before/after. Serial `android-rust-lifecycle-tests-run.2Cyu0vIJky.serial.log`
 SHA-256 `a9793d89b1f77453ec526ff3abb13f77d6aa0b5c5b16c6f1c2ee0a0efb260962`.
-That receipt proves healthy global-client delayed retirement; it alone does not prove
-replacement, actual Remote/PAKE admission, complete root/failure/cancellation or soak.
+This closes the named healthy delayed-retirement failure only.
 
 **Accepted committed-stop native subset:** source `6489c7c6c6ce768967155f19a5c3db03370175f0`,
 tree `cfd4a3de9779b6779d684459d86e01c215c6c45c`, passed the same helper-lifetime command
@@ -12203,6 +12198,14 @@ before/during/after host endpoint no-addition audits and joined helper/Xvfb/cont
 capture/filesystem cleanup passed. This finite global-registration subset proves the named
 committed-stop demand cases; actual Remote/PAKE producer admission, other phase/failure/race
 paths, abrupt root loss, complete OS-resource bounds/soak and Windows/macOS remain OPEN.
+
+**Quiet helper transport loss: native test pending.** The command worker currently selects
+only outgoing commands and a timer; it does not observe incoming EOF. The new global-client
+case closes the real X11 helper window after two-owner pixels and four moves per owner leave
+no pending cursor, retaining both registrations and the live helper at CLI return. It requires
+external task join before process exit, production normal reap, 500ms Idle with retained
+demand and no self-retry, then later explicit same-ID registration and generation2 rendering.
+Native falsification/correction remains pending; crash, other failures and root loss stay OPEN.
 
 **Accepted executable state/handle subset:** `--android-rust-lifecycle-tests --whiteboard-client`
 passed 9 tests, 0 failed/ignored, 598 filtered, 0.00s execution; probe feature disabled.

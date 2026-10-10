@@ -821,11 +821,11 @@ closure follows from these component receipts.
   on `127.0.0.1:9444`; Apple integration, full builds and native behavior remain OPEN.
   Raw `apple-conform-run.U7DV8gknyH.serial.log`, SHA-256
   `e56e433d52e7e50ad26621e336c2220b93457475bae54b7aed1fb6e7b5c5c722`.
-  Cursor-recorder ownership remains OPEN: Remote subscription drops its thread
-  handle and a shared stop flag permits overlapping generations. A native X11
-  fixture now covers shared Remote resource admission, blocked retirement and
-  successor exclusion; before code exposed two live contexts after cleanup finality.
-  Corrected ownership and native regression remain pending. Full shutdown/network/installed
+  Cursor startup now shares a retained worker from Remote resource admission.
+  Final cleanup disconnects its channel, joins native TLS and invalidates the cache.
+  The reusable flag, detached subscription startup and ambient registry guard are
+  deleted. Before code at `1871f8b1` exposed two live native contexts after cleanup
+  finality; identical native regression is pending. Full shutdown/network/installed
   acceptance remains OPEN. Before/regression receipts are in the audit.
   Windows virtual-key up/repeat still resolves the foreground
   mapping before lease lookup; layout/desktop identity retention remains required.

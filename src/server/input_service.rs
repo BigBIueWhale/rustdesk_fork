@@ -15,11 +15,13 @@ use rdev::{self, EventType, Key as RdevKey, KeyCode, RawKey};
 use sha2::{Digest, Sha256};
 #[cfg(target_os = "macos")]
 use rdev::{CGEventSourceStateID, CGEventTapLocation, VirtualInput};
+#[cfg(target_os = "macos")]
+use std::sync::atomic::AtomicBool;
 use std::{
     convert::TryFrom,
     hash::Hash,
     ops::{Deref, DerefMut},
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::atomic::{AtomicUsize, Ordering},
     thread,
     time::{self, Duration, Instant},
 };
@@ -1199,7 +1201,12 @@ const MOUSE_MOVE_PROTECTION_TIMEOUT: Duration = Duration::from_millis(1_000);
 // Actual diff of (x,y) is (1,1) here. But 5 may be tolerant.
 const MOUSE_ACTIVE_DISTANCE: i32 = 5;
 
-static RECORD_CURSOR_POS_RUNNING: AtomicBool = AtomicBool::new(false);
+struct CursorRecorder {
+    stop: std::sync::mpsc::SyncSender<()>,
+    worker: thread::JoinHandle<()>,
+}
+
+static CURSOR_RECORDER: Mutex<Option<CursorRecorder>> = Mutex::new(None);
 
 // https://github.com/rustdesk/rustdesk/issues/9729
 // We need to do some special handling for macOS when using the legacy mode.
@@ -1221,38 +1228,49 @@ fn set_last_legacy_mode(en: &mut Enigo, v: bool) {
     en.set_ignore_flags(!v);
 }
 
-pub fn try_start_record_cursor_pos() -> Option<thread::JoinHandle<()>> {
-    if RECORD_CURSOR_POS_RUNNING.load(Ordering::SeqCst) {
-        return None;
+pub(super) fn try_start_record_cursor_pos() -> ResultType<()> {
+    let mut recorder = CURSOR_RECORDER.lock().unwrap();
+    if let Some(recorder) = recorder.as_ref() {
+        if recorder.worker.is_finished() {
+            bail!("cursor recorder stopped before its Remote owners retired");
+        }
+        return Ok(());
     }
 
-    RECORD_CURSOR_POS_RUNNING.store(true, Ordering::SeqCst);
-    let handle = thread::spawn(|| {
-        let interval = time::Duration::from_millis(33);
-        loop {
-            if !RECORD_CURSOR_POS_RUNNING.load(Ordering::SeqCst) {
-                break;
+    let (stop, receiver) = std::sync::mpsc::sync_channel::<()>(0);
+    let worker = thread::Builder::new()
+        .name("cursor-recorder".into())
+        .spawn(move || {
+            let interval = time::Duration::from_millis(33);
+            let mut wait = Duration::ZERO;
+            loop {
+                match receiver.recv_timeout(wait) {
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+                let now = time::Instant::now();
+                if let Some((x, y)) = crate::get_cursor_pos() {
+                    update_last_cursor_pos(x, y);
+                }
+                wait = interval.saturating_sub(now.elapsed());
             }
-
-            let now = time::Instant::now();
-            if let Some((x, y)) = crate::get_cursor_pos() {
-                update_last_cursor_pos(x, y);
-            }
-            let elapsed = now.elapsed();
-            if elapsed < interval {
-                thread::sleep(interval - elapsed);
-            }
-        }
-        update_last_cursor_pos(INVALID_CURSOR_POS, INVALID_CURSOR_POS);
-    });
-    Some(handle)
+        })?;
+    *recorder = Some(CursorRecorder { stop, worker });
+    Ok(())
 }
 
-pub fn try_stop_record_cursor_pos() {
-    if has_authenticated_remote_reservation() {
-        return;
+pub(super) fn try_stop_record_cursor_pos() -> ResultType<()> {
+    // Keep replacement excluded until native thread-local destruction has completed.
+    let mut recorder = CURSOR_RECORDER.lock().unwrap();
+    if let Some(CursorRecorder { stop, worker }) = recorder.take() {
+        drop(stop);
+        let result = worker.join();
+        update_last_cursor_pos(INVALID_CURSOR_POS, INVALID_CURSOR_POS);
+        result.map_err(|_| {
+            hbb_common::anyhow::anyhow!("cursor recorder panicked during retirement")
+        })?;
     }
-    RECORD_CURSOR_POS_RUNNING.store(false, Ordering::SeqCst);
+    Ok(())
 }
 
 // mac key input must be run in main thread, otherwise crash on >= osx 10.15

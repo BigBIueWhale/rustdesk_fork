@@ -811,6 +811,7 @@ fn run_final_remote_cleanup_worker(
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 fn perform_final_remote_cleanup() -> ResultType<()> {
+    try_stop_record_cursor_pos()?;
     privacy_mode::wait_for_pending_privacy_activation()?;
 
     #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -831,7 +832,6 @@ fn perform_final_remote_cleanup() -> ResultType<()> {
         failures.push(format!("virtual-display teardown failed: {error}"));
     }
 
-    try_stop_record_cursor_pos();
     if !failures.is_empty() {
         bail!(failures.join("; "));
     }
@@ -876,10 +876,12 @@ async fn acquire_final_remote_cleanup_lease() -> ResultType<FinalRemoteCleanupLe
             .begin_admission(joined_retry);
         match decision {
             FinalRemoteAdmissionDecision::Admit(generation) => {
-                return Ok(FinalRemoteCleanupLease {
+                let lease = FinalRemoteCleanupLease {
                     generation,
                     retire_on_drop: true,
-                });
+                };
+                try_start_record_cursor_pos()?;
+                return Ok(lease);
             }
             FinalRemoteAdmissionDecision::StartRetry(revision) => {
                 joined_retry = Some(revision);
@@ -1209,16 +1211,6 @@ lazy_static::lazy_static! {
 // Admission and shutdown count every unpublished, live, and retiring reservation.
 pub(crate) fn authenticated_connection_reservation_count() -> usize {
     AUTHED_CONNS.lock().unwrap().len()
-}
-
-// Cursor finality must wait for every Remote reservation, including one not yet published or still
-// performing same-ID retirement.
-pub(crate) fn has_authenticated_remote_reservation() -> bool {
-    AUTHED_CONNS
-        .lock()
-        .unwrap()
-        .iter()
-        .any(|connection| connection.conn_type == AuthConnType::Remote)
 }
 
 #[cfg(windows)]
@@ -7629,8 +7621,6 @@ impl Connection {
                     noperms.push(super::audio_service::NAME);
                 }
                 let mut s = s.write().unwrap();
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                let _h = try_start_record_cursor_pos();
                 self.auto_disconnect_timer = Self::get_auto_disconenct_timer();
                 s.try_add_primay_video_service();
                 s.add_connection(self.inner.clone(), &noperms);

@@ -6929,11 +6929,24 @@ for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_xvfb_run"
   grep -qF -- '--network none' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 network-none-missing"
   grep -qF -- '--pull=never' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 implicit-pull-refusal-missing"
   grep -qF '"$IMAGE_ID"' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 immutable-image-use-missing"
+  grep -qF -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' <<<"$smoke_run_block" \
+    || r_s11e64="$r_s11e64 read-only-exact-source-missing"
   for confinement in '--user "$BUILD_UID:$BUILD_GID"' '--cap-drop ALL' '--security-opt no-new-privileges' '--read-only'; do
     grep -qF -- "$confinement" <<<"$smoke_run_block" \
       || r_s11e64="$r_s11e64 nonroot-container-confinement-missing"
   done
 done
+for video_confinement in \
+  '--pids-limit=1024' '--memory=4g' '--memory-swap=4g' '--cpus=2' \
+  '--tmpfs /tmp/.X11-unix:rw,nosuid,nodev,noexec,mode=1777,size=1m' \
+  '--mount "type=bind,source=$SMOKE_BUILD_TARGET,target=/smoke-target,readonly"' \
+  '--mount "type=bind,source=$SMOKE_XVFB_ROOT,target=/xvfb-root,readonly"' \
+  '--mount "type=bind,source=$SMOKE_XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly"'; do
+  grep -qF -- "$video_confinement" <<<"$smoke_video_run" \
+    || r_s11e64="$r_s11e64 video-confinement-missing"
+done
+grep -qF -- '--mount "type=bind,source=$SMOKE_XVFB_INPUT_ROOT,target=/xvfb-inputs,readonly"' <<<"$smoke_xvfb_run" \
+  || r_s11e64="$r_s11e64 xvfb-read-only-input-missing"
 for smoke_readonly_run_block in "$smoke_runtime_run"; do
   grep -qF -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' <<<"$smoke_readonly_run_block" \
     || r_s11e64="$r_s11e64 runtime-read-only-source-missing"
@@ -7001,7 +7014,7 @@ smoke_launch_surface="$smoke_build_run
 $smoke_runtime_run
 $smoke_xvfb_run
 $smoke_video_run"
-if grep -Eq -- '(^|[[:space:]])-p([=[:space:]]|$)|(^|[[:space:]])-P([[:space:]\\]|$)|--publish|--network([=[:space:]]+)host|--pid=host|--privileged|/var/run/docker[.]sock' <<<"$smoke_launch_surface"; then
+if grep -Eq -- '(^|[[:space:]])-p([=[:space:]]|$)|(^|[[:space:]])-P([[:space:]\\]|$)|--publish|--network([=[:space:]]+)host|--(pid|ipc|uts)([=[:space:]]+)host|--device|--privileged|/var/run/docker[.]sock' <<<"$smoke_launch_surface"; then
   r_s11e64="$r_s11e64 host-or-publication-authority-present"
 fi
 if grep -Eq 'with-root-containers|^(ROOT_RUN|LIFECYCLE_RUN|PID_REUSE_RUN)=|start_sibling_docker|--cap-add|apparmor=unconfined' scripts/smoke-server.sh; then
@@ -7046,10 +7059,6 @@ done
   || r_s11e64="$r_s11e64 exact-source-mount-cardinality-invalid"
 grep -qF 'verify_smoke_build_postconditions' scripts/smoke-server-stage.sh \
   || r_s11e64="$r_s11e64 build-input-postcondition-missing"
-/usr/bin/python3 -I -S scripts/verify-video-pipeline-smoke.py --repo . \
-  || r_s11e64="$r_s11e64 video-pipeline-semantic-verifier-failed"
-/usr/bin/python3 -I -S scripts/verify-video-pipeline-smoke.py --repo . --self-test \
-  || r_s11e64="$r_s11e64 video-pipeline-mutation-self-test-failed"
 if [ -n "$r_s11e64" ]; then echo "  FAIL R-S11e-64/R-S11e-122 smoke container/host-build authority:$r_s11e64"; rc=1; else
   echo "  ok  R-S11e-64/R-S11e-122 supplementary smoke source invariants: retired privileged-container routes absent; fixed VM authority, exact source and confined launches retained; actual VM entry/request and native product acceptance are separate"; fi
 

@@ -5,8 +5,8 @@ by `requirements.html` R-V3. It identifies the minimum code and evidence that
 must be reviewed, but it is not an audit report and it is not a project-authored
 substitute for one.
 
-**Current status: R-V3 is outstanding.** Repository tests, the 2026-07-02 AI
-review and this scope document do not satisfy R-V3.
+**Current status: R-V3 is outstanding.** Repository tests, project-authored
+reviews and this scope document do not satisfy R-V3.
 Only an independently authored expert review of an exact public Git commit,
 followed by publication of the resulting report and disposition of every
 finding, can satisfy it.
@@ -186,9 +186,9 @@ retain or reuse a key or nonce after an error.
   `libs/config_it/tests/lockdown.rs`.
 - `scripts/verify.sh`, `scripts/audit.sh`, `deny.toml`, and the relevant pinned
   inputs in `scripts/pins.env`.
-- `docs/CRYPTO-AUDIT-2026-07-02.md`: historical AI review only. It is partially
-  superseded by retirement of host identity/pinning and must not be imported as
-  independent evidence.
+- The [archived AI review and finding dispositions](https://github.com/BigBIueWhale/rustdesk_fork/blob/57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f/docs/CRYPTO-AUDIT-2026-07-02.md)
+  are historical material about a partially superseded design and must not be
+  imported as independent evidence.
 - `HARDENING_STATUS.md`, `README.md`, and release disclosure text: check that
   status and limitations agree with the code and with the external findings.
 
@@ -198,21 +198,6 @@ advisory review is `scripts/audit.sh`. The auditor should also use independent
 implementations, vectors, static/dynamic analysis, fuzzing or property tests,
 and platform/runtime checks appropriate to the findings. Passing project tests
 is necessary evidence of the reviewed commit, not the audit conclusion.
-
-**Behavioral R-A10 evidence now present:**
-`partial_prekey_frame_times_out_without_key_or_guess_charge` in
-`libs/cpace_it/tests/handshake.rs` sends a valid 64-byte pre-key frame header and
-only one payload byte while holding the raw TCP peer open. With Tokio's paused
-test clock, it proves the responder remains pending until the exact 5-second
-R-P14b WAIT_1 deadline, returns `HandshakeError::Io`, never engages the
-`FramedStream` cipher, and drops the connection. The test passes that actual
-error through the production accounting choke after priming a unique source to
-nine confirmed guesses and proves the source remains allowed; the companion
-wrong-password test proves a tenth `HandshakeError::Confirmation` is recorded
-and blocks. The same no-key/no-charge assertions now cover the oversize,
-out-of-order, duplicate, and malformed wire negatives.
-**This closes the known project-test evidence gap.** It is not independent
-review evidence and does not satisfy R-V3.
 
 ## 4. Required questions and deliverable
 

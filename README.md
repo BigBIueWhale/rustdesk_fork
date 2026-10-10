@@ -15,9 +15,7 @@ wire, **as defensible as SSH** — the opposite of zero-config remote access.
 
 - **One mandatory balanced PAKE — CPace over ristretto255 + SHA-512** (CFRG draft), enforced at the
   transport choke point before any application message, on every transport, with no legacy fallback. No
-  password hash ever touches the wire. A published
-  [AI-conducted review](docs/CRYPTO-AUDIT-2026-07-02.md) reproduced the byte construction on a separate
-  libsodium stack and analyzed the protocol, but it is not organizationally independent.
+  password hash ever touches the wire.
   **R-V3 remains outstanding**: the required external expert audit has not happened. The exact-commit
   [external audit handoff and mandatory scope](docs/CRYPTO-AUDIT-SCOPE.md) records that release blocker.
 - **Sovereign / dial-nobody.** Rendezvous, relay, KCP, NAT traversal and LAN discovery are compiled out —

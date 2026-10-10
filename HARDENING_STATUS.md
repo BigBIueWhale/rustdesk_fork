@@ -10459,8 +10459,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `docs/CRYPTO-AUDIT-SCOPE.md` retains the whole-repository call-graph rule, mandatory
   credential/NFC/Argon2id PRS, CPace, wire/authorization and two-key frame-lifecycle roots,
   primary references and required external deliverable. It is a handoff, not proof of
-  cryptographic soundness. The historical AI review and its finding dispositions remain
-  in `docs/CRYPTO-AUDIT-2026-07-02.md`; that single-model report is not organizationally
+  cryptographic soundness. The historical [AI review and finding dispositions](https://github.com/BigBIueWhale/rustdesk_fork/blob/57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f/docs/CRYPTO-AUDIT-2026-07-02.md)
+  remain in Git history; that single-model report is not organizationally
   independent and is partially superseded by host-identity retirement.
   **R-A10 project-test scope:** the retained
   `partial_prekey_frame_times_out_without_key_or_guess_charge` regression in

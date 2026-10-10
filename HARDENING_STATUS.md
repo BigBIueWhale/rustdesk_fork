@@ -12181,9 +12181,22 @@ retention of another owner, fixed owners 16/17 and ripples 64/65, independent
 per-owner ripple budgets, oldest-first eviction and refusal without retained state.
 The fixtures use literal required boundaries rather than production limit constants.
 Their shared `r_s11hp_` command and the real whiteboard protocol/token-authority
-tests remain. The source-bound VM runner also has a focused
-`--android-rust-lifecycle-tests --whiteboard-presentation` state shard; it requires
-both exact tests and the executed library-test binary digest. Execution is pending.
+tests remain. The source-bound
+`scripts/smoke-verifier-vm-authority.sh --android-rust-lifecycle-tests --whiteboard-presentation`
+shard passed both exact state tests from commit
+`2b2c256e8485f984c04f4b473fdd10deded9a1a7`, tree
+`5529f77b8e6b64d2ba2ab5455b6b4da62188c2c9`: 2 passed, 0 failed/ignored,
+598 filtered out. Rust 1.75.0 compiled the real Linux library-test binary in 174
+seconds; VM runtime was 266 seconds. Executed artifact SHA-256
+`2d3f574e66d7a784f9ae853c22d2e57f57d5c6fb1dec4a75d91ce0fb54c74239`
+was unchanged before/after execution. The zero-NIC VM and ordinary-user
+network-none container used read-only source/inputs and a private ephemeral target;
+offline canary, full host endpoint audit and joined cleanup passed. Retained serial
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.H1fOuVeUJZ.serial.log`
+has SHA-256 `b60100d2f78747d0244566813b16e1d3165e886d501afe742021df5c2c6a4068`.
+This establishes production presentation-state behavior, without native overlay,
+helper IPC, installed-principal or compositor/resource acceptance.
+
 The 535-line
 `scripts/verify-whiteboard-presentation-lifecycle.py` and its shared/Apple calls are
 deleted: source substring/order/count checks and 42 in-memory text replacements
@@ -12192,8 +12205,7 @@ The recorded confined checks had no Rust/native toolchain and establish no test
 or renderer execution; none ran for this deletion. Original review/source-check
 receipts remain in Git history at `78bbce8e4`. Native acceptance remains OPEN.
 
-**Still required:** execute the focused tests from the exact current source, then
-exercise two concurrent owners, refusal/toggle/Close/abrupt retirement, boundary
+**Still required:** exercise two concurrent owners, refusal/toggle/Close/abrupt retirement, boundary
 owners/ripples, occlusion, cross-monitor cleanup, actual compositor output,
 final clearing frames, idle/animation CPU/GPU and bounded memory/thread/handle
 state on installed Windows, macOS, and Linux artifacts. Exact release artifacts,

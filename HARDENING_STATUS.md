@@ -12090,8 +12090,9 @@ or fix for that defect.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Current disposition: SOURCE IMPLEMENTED; focused Linux state/admission execution passed;
-complete task/helper and target-native lifecycle evidence OPEN.** `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
+**Current disposition: state/admission source implemented and focused Linux execution passed;
+exact task/helper retirement has a source ownership gap; native lifecycle evidence OPEN.**
+`src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
 containing registrations, the exact-generation sender, retained Tokio task handle, and
 Idle/Starting/Running/Stopping phase. Checked generation reservation prevents wraparound;
 duplicate Starting/Running demand does not launch another task. Sender publication and the
@@ -12107,7 +12108,29 @@ not self-retry. The queue remains nonblocking and bounded to 64 commands, regist
 16 connections; only cursor overflow is lossy, while required-command refusal retires the
 sender/phase. The at-most-two-command hot path uses fixed storage and a borrowed sender.
 Token-derived endpoints, exact launch/parent proof, parent-death binding, and deadline writes
-remain. Split globals, detached OS threads, nested runtimes, and automatic retry are absent.
+remain. The client state/queue path has no split registration/sender globals, detached
+OS threads, nested runtimes or automatic generation retry.
+
+**Exact helper retirement OPEN:** `start_whiteboard_` puts each spawned `Child` in
+the process-wide `CHILD_PROCESS` list rather than its generation owner. The task
+returns after writing Shutdown; its terminal guard clears the sender/task/phase and
+may start a demanded successor without waiting for that exact helper to exit/reap.
+`src/server.rs::check_zombie` independently polls already-exited children every 100ms;
+it neither owns this generation nor initiates helper retirement on worker failure.
+Thus state finalization and a successful shutdown write do not prove process cleanup.
+The retained task handle is also dropped by its own finalizer rather than joined by
+an external owner. The seven tests below exercise neither boundary.
+
+Linux's `PR_SET_PDEATHSIG` follows the creating thread, not whole-process lifetime;
+the launch path does not retain that thread as part of the helper owner. Creator-thread
+retirement and true owner-process death need distinct native tests. Moving launch to
+`spawn_blocking` or relying on kill-on-drop without exact reaping cannot close this gap.
+Required correction: retain the exact helper and task through startup, shutdown,
+failure, panic and cancellation; release the generation/permit replacement only after
+positive retirement. Timeout initiates cancellation while ownership remains retained.
+Native acceptance must observe those boundaries while the parent stays alive, including
+delayed helper retirement, creator-thread exit and actual parent death. These are source
+ownership findings, not a reproduced privilege escalation or new runtime acceptance.
 
 Seven Rust regressions exercise the production lifecycle and command-admission methods:
 duplicate demand; one successor across committed stop and none after demand withdrawal;

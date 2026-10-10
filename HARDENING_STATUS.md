@@ -12110,8 +12110,8 @@ or fix for that defect.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Current disposition: actual global-client retirement failed natively; root-owned launch,
-task and helper correction implemented; candidate execution and full lifecycle acceptance OPEN.**
+**Current disposition: root-owned launch/task/helper correction implemented; focused Linux
+native retirement and nine executable regressions passed; full lifecycle acceptance OPEN.**
 `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
 containing registrations, the exact-generation sender, retained launch/task handles and helper, and
 Idle/Starting/Running/Stopping phase. Checked generation reservation prevents wraparound;
@@ -12132,7 +12132,7 @@ Token-derived endpoints, exact launch/parent proof, parent-death binding, and de
 remain. The client state/queue path has no split registration/sender globals, detached
 OS threads, nested runtimes or automatic generation retry.
 
-**Candidate ownership topology:** registration reserves rather than spawns. The existing
+**Ownership topology:** registration reserves rather than spawns. The existing
 `direct_service.rs` root polls `WhiteboardClientOwner`; one retained `spawn_blocking`
 job performs creation off the executor and returns an exact generation-owned helper.
 Unix uses retained `Child::try_wait`/reap; Windows `WindowsWhiteboardProcess` retains
@@ -12146,7 +12146,7 @@ positive retirement. Uncertain creation panic or process observation retains own
 and refuses replacement. Unexpected root drop likewise refuses replacement; complete
 abrupt-root-loss/native failure cleanup remains unproved.
 
-**Actual global-client defect reproduced; expanded profile FAILS:** at source
+**Native failing baseline:** at source
 `7e437223dd367191719e322989db7297b8fcfbf7`, tree
 `1213b9b0e2ff0198450460a7f2edc4b68a4c8752`, the same-image Linux CLI/X11 probe
 called production register/cursor/unregister with duplicate enable and two connections.
@@ -12165,7 +12165,7 @@ After-artifact/input acceptance gates were not reached. Retained serial
 `6449dbc4d98dda94dfea0e1b695eb1c64ea05f026430bbf3cb81066e3fb152e0`.
 Source archive matches the named commit; host endpoint inventories were identical,
 owned VM/capture/filesystem helpers were joined, and failed diagnostics are preserved
-at `failed-whiteboard-client-7e437223-tPqhqKH7FF`. Production ownership remains OPEN.
+at `failed-whiteboard-client-7e437223-tPqhqKH7FF`. Full acceptance remains OPEN.
 
 Linux whiteboard now observes whole-parent exit through the helper's owned pidfd,
 and its shared launch constructor removes creating-thread `PR_SET_PDEATHSIG`.
@@ -12176,34 +12176,40 @@ while the helper stays alive behind its CLI-return barrier, and requires product
 normal-exit reap; fixture cleanup cannot substitute for that result. Existing eight
 receiver cases remain required. Two added real-Tokio tests retain a cancelled command
 handle until external join and a started blocking launch through abort/cancellation
-until its result is observed. Candidate default-feature nine-test and native CLI shards
-are pending. Windows/macOS native acceptance, every-phase demanded replacement,
+until its result is observed. Both focused shards below passed. Windows/macOS native
+acceptance, every-phase demanded replacement,
 launch/transport/helper failure, abrupt owner loss and sustained resource bounds remain OPEN.
 
-Seven Rust regressions exercise the production lifecycle and command-admission methods:
-duplicate demand; one successor across committed stop and none after demand withdrawal;
-failure without self-retry and explicit later retry; stale finalization in every live phase;
-fixed 64/65-command saturation with cursor-only loss, preservation of queued data, and
-retirement on refused Bind/Close/Shutdown; closed-channel retirement for every command
-type; and generation exhaustion without wraparound. They use real Tokio channels, without
-starting a task or helper. The old capacity test only exercised Tokio at a limit derived
-from the same production constant and is replaced.
+**Accepted Linux native correction:** both commands below used source
+`df9daec4cc261bfec574afa0c4f33536b6d99438`, tree
+`e3acf564c394c49c7a045476766beed563ae9d22`, pinned Rust1.75/vendor/devcheck inputs.
+`--android-rust-lifecycle-tests --whiteboard-helper-lifetime` passed in 250s / 168s build.
+All eight receiver cases remained required and passed; the actual global registration
+case also drew two owners and cleared only the unregistered owner. At helper20234's
+real CLI return, retained pidfd and live parent proved the helper alive and X11 returned
+BadWindow. Production root reported generation1/Stopping/task=false/connections0,
+task_joined=true/helper_owned=true. After observer release, production stop_and_join
+recorded successful normal child exit/reap; pidfd death and /proc absence were independently
+observed. No fixture-owned Child/reap substituted for production ownership. Artifact
+`5d9c210729737757f3723b3d834b9c93276a67abd4da19925bb878bfa236bc85`
+was unchanged before/after. Serial `android-rust-lifecycle-tests-run.2Cyu0vIJky.serial.log`
+SHA-256 `a9793d89b1f77453ec526ff3abb13f77d6aa0b5c5b16c6f1c2ee0a0efb260962`.
+This proves the healthy global-client delayed-retirement correction; actual Remote/PAKE
+producer admission, demanded successor, complete root/failure/cancellation and soak remain open.
 
-**Accepted executable subset:** the source-bound
-`--android-rust-lifecycle-tests --whiteboard-client` shard passed all seven named tests
-from commit `45b309c5aeec2d752aa93b822bfad9647c505803`, tree
-`1769bb5efcb2bc874b886408ce93c161e201fd33`: 7 passed, 0 failed/ignored,
-596 filtered out. Rust 1.75.0 compiled the real Linux library-test binary in 148s;
-VM runtime was 215s and test execution reported 0.00s. Executable SHA-256
-`14890efb4db890ade17df9157b821f97224ad01a9800bf9fec79ce986e2bb6d3`
-was unchanged before/after execution. Source/inputs, offline canary, zero-NIC VM,
-nonroot network-none container, full host endpoint audit with no additions and
-joined cleanup passed. Retained serial
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.IILs5QXiTn.serial.log`
-SHA-256 `1b5343e88eb83eeaeb1f8aa875ba5ee10b851ca6abb91065ad5ff5a150b1b4b0`.
-This exercises production state methods and real in-process queue admission;
-global task finalization, helper startup, authenticated IPC, installed principals,
-multi-connection native lifecycles and resource bounds remain unproved.
+**Accepted executable state/handle subset:** `--android-rust-lifecycle-tests --whiteboard-client`
+passed 9 tests, 0 failed/ignored, 598 filtered, 0.00s execution; probe feature disabled.
+The seven state/real-channel cases cover duplicate demand, demanded successor/withdrawal,
+failure without self-retry and explicit later retry, stale finalization, fixed64/65 saturation
+with cursor-only loss and required-command retirement, closed sender, and generation exhaustion.
+Two actual Tokio-handle cases additionally prove external join before release after task
+cancellation and retained started blocking work through abort/cancellation until result observation.
+They do not launch an OS helper. Library-test build152s / VM225s; unchanged artifact
+`eaedf4653366f2e038ded44dc0175575f12926f21f5579a5c85bd4adb6cee566`.
+Serial `android-rust-lifecycle-tests-run.nasGHxZcO2.serial.log` SHA-256
+`e8d3c27965aaa137747f797ba360b9db1689f36cbc4202d0ac40cac96142e779`.
+Both shards passed source/input/offline-canary, UID/GID1000 network-none container,
+zero-NIC VM, complete before/during/after host endpoint no-addition audits and joined cleanup.
 
 The 526-line `scripts/verify-whiteboard-client-lifecycle.py` and its shared/Apple calls
 are deleted. Its source substring/order/count assertions and 42 in-memory substitutions

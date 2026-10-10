@@ -12081,7 +12081,7 @@ external review, and the global connection-flow correctness/performance obligati
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 
-**Current disposition: SOURCE IMPLEMENTED; focused Linux startup/rendering/retirement passed;
+**Current disposition: SOURCE IMPLEMENTED; focused Linux startup/rendering and CLI/proof retirement passed;
 complete helper and target-native finality evidence OPEN.** `src/whiteboard/event_lifecycle.rs`
 owns the proxy and terminal latch. `src/whiteboard/server.rs` installs the terminal guard
 before runtime/startup work, serializes proxy installation and termination, and delivers
@@ -12095,13 +12095,27 @@ proxy mutation are absent from this source topology.
 Exact kernel-parent admission now closes the listener before launch proof. Proof failure
 and listener accept error retire the generation through its terminal guard instead of
 returning to accept. Unauthorized peers remain refused before proof without retiring
-the permitted parent's listener. Native execution of this correction is pending.
-The focused `--whiteboard-helper-lifetime` VM profile builds one same-image probe that
-dispatches the real `core_main --whiteboard` helper. Five cases require a real PID-bound
-X11 window before proof/commands, normal helper exit, window removal, endpoint refusal
-and immediate address reuse; shutdown also requires copied-token wrong-parent refusal.
-This fixture is not an installed or release artifact and supplies no acceptance until
-the exact source-bound transaction and all cleanup complete.
+the permitted parent's listener.
+
+**Accepted Linux CLI subset:** `--android-rust-lifecycle-tests --whiteboard-helper-lifetime`
+passed at source `f64d25cca0ca07564415e93d7b29e78ce7555bb3`, tree
+`3f304afed0614b8fcc572ba1b6a14201d8eb82e4`, in 221s / 154s build.
+One same-image probe dispatched the real `core_main --whiteboard` helper under an
+exact `--server` parent. Five cases passed: authorized empty-state Shutdown,
+bad proof, stalled proof, proof EOF and authenticated EOF. A same-image server-role
+wrong-parent peer carrying the public fixture token received pre-proof EOF, followed
+by the permitted parent's successful mutual proof/Shutdown. Each case required a
+unique PID-bound native X11 window before proceeding and normal child exit/reap,
+then immediate BadWindow, connection refusal and address reuse. The observer acknowledged
+retirement before the next generation. In the proof-failure cases, another connection
+was refused while the helper/admitted stream remained alive before the owner proof reply.
+Artifact SHA-256 `0156e9f14a0150cd1f9bf74129ccc9663fe556b71167748e637a7a7c2fd6baf7`
+was unchanged before/after; pinned zero-NIC/nonroot network-none/source-RO execution,
+full host endpoint invariance and Xvfb/container/VM joined cleanup passed.
+Serial `android-rust-lifecycle-tests-run.3rogo3sDbA.serial.log` SHA-256
+`809074a40b242b883478e5ccd359dd9495f27c3d02643ccfa0f4a4576ed83a9f`.
+This nonrelease probe establishes post-process window absence, not independent
+window retirement before process death, installed authority, cross-UID coverage or soak.
 
 Linux rendering now retains Winit's `OwnedDisplayHandle` in its softbuffer context
 and surfaces. The borrowed-display `transmute` to `'static`, optional context and
@@ -12131,10 +12145,8 @@ transaction preserved source/inputs, joined Xvfb/container/VM cleanup and passed
 the full host endpoint audit with no additions. Retained serial
 `android-rust-lifecycle-tests-run.ffv8m5nPLu.serial.log` SHA-256
 `f1502434f1d0e3f090fceb5743d17aa790fa2783419046655cf1c4c717bbf9d4`.
-Earlier renderer/startup runs and failed attempts remain in the audit/Git history.
-This subset does not execute CLI/proof, remaining failure/cancellation paths,
-a compositor, animation/occlusion, sustained resource/soak bounds, other platforms,
-or installed Debian acceptance.
+That renderer/listener subset excludes CLI/proof, other failure/cancellation,
+compositor/occlusion/animation, soak, other platforms and installed acceptance.
 
 **Linux listener lifetime corrected; focused native checks passed:** the earlier
 `04eab95b` run retained socket/PID inodes after join, establishing a resource finding,
@@ -12153,24 +12165,19 @@ factory/worker observation does not prove a complete helper or soak. macOS pathn
 native allowed/forbidden principal coverage, authenticated stream/overlay cancellation,
 complete helper and sustained resource/soak acceptance remain OPEN.
 
-**Lifecycle state evidence:** the same root-crate test executable passed all three
-current production module tests: termination before proxy publication, exact installed-proxy
-take with repeated-finalization refusal, and proxy retirement with preserved terminal state.
-These are state tests. The listener case executes a real worker and Unix listener;
-the two X11 cases additionally execute real proxies and native event loops.
-Earlier standalone-module results, dependency-discovery failure and original correction
-remain in Git history at `8d2af913`/`8d794d41` and the R-S11hn audit entries in
-`/tmp/privilege_securiry_deep_audit.md`; they are superseded as current module evidence.
+**Lifecycle state evidence:** the e655e193 root-crate executable passed three production
+module tests: termination before proxy publication, exact installed-proxy take with
+repeated-finalization refusal, and proxy retirement preserving the terminal latch.
+These state tests are distinct from its real worker/listener and two native X11 cases.
+Superseded standalone-module receipts remain in Git at `8d2af913`/`8d794d41` and the audit.
 
-The 414-line `scripts/verify-whiteboard-ipc-lifecycle.py` and its shared/Apple calls
-are deleted. Its source substring/order/count checks and 36 in-memory substitutions
-did not execute a worker, proxy, native loop, IPC peer or cleanup. Shared fast module
-execution and full root-crate Rust commands remain; their presence and
-state results do not establish complete helper or platform acceptance.
+`scripts/verify-whiteboard-ipc-lifecycle.py` and its calls are deleted: source wording
+did not execute lifecycle behavior. Shared state tests and full-root Rust commands
+remain supplementary to required native runs.
 
 **Still required:** remaining full-root suites and isolated Windows/macOS/Linux
-helper runs covering launch-identity refusal, listener construction/end/error, proof and
-transport failure, cancellation, authenticated close/shutdown, both proxy-publication
+helper runs covering launch-identity refusal, listener construction/end/error, remaining proof and
+transport failures, cancellation, authenticated overlay close, both proxy-publication
 orders, every returning event-loop path, and permitted spawn/join failure injection.
 Observe one terminal outcome, no surviving helper/thread/listener/handle, and bounded
 resources through startup, failure, replacement, and owner loss. Installed artifacts,

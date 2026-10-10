@@ -4704,6 +4704,15 @@ require_exact_fixed_receipt \
     'VERIFIER_VM_SMOKE_SOURCE_GATE=pass uid=4000 gate=focused native_acceptance=separate' \
     'focused smoke and release-dispatch source invariants'
 printf 'VERIFIER_VM_SMOKE_SOURCE_GATE=pass uid=4000 gate=focused native_acceptance=separate\n'
+require_exact_fixed_receipt \
+    'VERIFIER_VM_SMOKE_INPUT_SELECTION=pass uid=4000 cases=10 source=production-block canonical=online/inputs legacy=ignored symlinks=refused delimiters=refused xvfb=required product=unexecuted' \
+    'production smoke input selection filesystem cases'
+require_exact_fixed_receipt \
+    'VERIFIER_VM_SMOKE_INPUT_MOUNT=pass uid=4000 canonical=direct legacy=absent write=denied network=none image=authority-fixture product=unexecuted' \
+    'selected canonical smoke input read-only mount'
+require_exact_fixed_receipt \
+    'VERIFIER_VM_SMOKE_INPUT_CLEANUP=pass fixture=absent containers=joined' \
+    'smoke input fixture and container cleanup'
 /usr/bin/grep -Fq \
     "VERIFIER_VM_DART_AUDIT_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION prepost=replayed" \
     "$SERIAL_LOG" \

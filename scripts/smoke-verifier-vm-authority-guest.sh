@@ -8049,6 +8049,66 @@ setpriv --reuid=4000 --regid=4000 --clear-groups \
     || fail 'retired smoke argument changed the guest container inventory'
 printf 'VERIFIER_VM_SMOKE_ROOT_MODE_REFUSAL=pass uid=4000 gid=4000 status=2 workspace=unchanged containers=unchanged product=not-entered\n'
 
+# Execute the production selector against guest-owned filesystem fixtures.
+smoke_input_work=$ROOT/smoke-input-selection
+install -d -o 4000 -g 4000 -m 0700 "$smoke_input_work"
+setpriv --reuid=4000 --regid=4000 --clear-groups \
+    env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+    /bin/bash -eu - "$SMOKE_SERVER_SCRIPT" "$smoke_input_work" <<'SH' \
+    || fail 'production smoke input selection failed'
+source=$1
+work=$2
+{
+    printf 'set -euo pipefail\nreadonly SMOKE_REPO_ROOT=$1\nreadonly SMOKE_MODE=$2\n'
+    awk '
+        /^readonly SMOKE_ONLINE_ROOT=/ { inside=1; starts++ }
+        /^\[ -z "\$\(git status / { if (inside) { inside=0; ends++ } }
+        inside { print }
+        END { if (starts != 1 || ends != 1) exit 1 }
+    ' "$source"
+    printf 'printf "%%s\\n" "$SMOKE_ONLINE_ROOT"\n'
+} >"$work/select.sh"
+chmod 0400 "$work/select.sh"
+select_root() { /bin/bash "$work/select.sh" "$work/$1" "$2"; }
+refuse_root() {
+    local status=0
+    select_root "$1" "$2" >"$work/refused.out" 2>"$work/refused.err" || status=$?
+    [ "$status" -eq 1 ] && [ ! -s "$work/refused.out" ] \
+        && [ "$(<"$work/refused.err")" = "$3" ] \
+        || { echo "smoke input fixture was not refused: $1 ($status)" >&2; exit 1; }
+}
+mkdir -p "$work/good/online/inputs/cargo-vendor" "$work/good/online/inputs/xvfb-debs"
+printf 'canonical-fixture\n' >"$work/good/online/inputs/cargo-vendor-config.toml"
+printf 'legacy-fixture\n' >"$work/good/online/cargo-vendor-config.toml"
+for mode in portable-rootless video-pipeline-rootless; do
+    selected=$(select_root good "$mode")
+    [ "$selected" = "$work/good/online/inputs" ] \
+        || { echo "smoke selected $selected instead of $work/good/online/inputs" >&2; exit 1; }
+done
+for name in legacy-only file leaf-link parent-link 'comma,' 'colon:' no-xvfb linked-xvfb; do
+    mkdir -p "$work/$name/online"
+done
+mkdir "$work/legacy-only/online/cargo-vendor"
+printf 'legacy-fixture\n' >"$work/legacy-only/online/cargo-vendor-config.toml"
+touch "$work/file/online/inputs"
+ln -s "$work/good/online/inputs" "$work/leaf-link/online/inputs"
+rmdir "$work/parent-link/online"
+ln -s "$work/good/online" "$work/parent-link/online"
+for name in legacy-only file leaf-link parent-link; do
+    refuse_root "$name" portable-rootless 'smoke: canonical online input root is unavailable'
+done
+for name in 'comma,' 'colon:'; do
+    mkdir "$work/$name/online/inputs"
+    refuse_root "$name" portable-rootless 'smoke: online input path contains a Docker mount delimiter'
+done
+mkdir "$work/no-xvfb/online/inputs" "$work/linked-xvfb/online/inputs"
+ln -s "$work/good/online/inputs/xvfb-debs" "$work/linked-xvfb/online/inputs/xvfb-debs"
+for name in no-xvfb linked-xvfb; do
+    refuse_root "$name" video-pipeline-rootless 'smoke: authenticated offline Xvfb package closure is unavailable'
+done
+printf 'VERIFIER_VM_SMOKE_INPUT_SELECTION=pass uid=4000 cases=10 source=production-block canonical=online/inputs legacy=ignored symlinks=refused delimiters=refused xvfb=required product=unexecuted\n'
+SH
+
 # Run only the changed source gates; native product/installed acceptance is separate.
 smoke_source_gate=$ROOT/smoke-source-gate.sh
 {
@@ -8518,6 +8578,33 @@ printf '%s\n' "$dart_frb_source_gate_output"
 printf 'VERIFIER_VM_DART_FRB_SOURCE_GATE=pass mutations=%s\n' "$dart_frb_source_gate_mutations"
 
 prepare_authority_probe_image
+
+smoke_selected_input="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
+    /bin/bash "$smoke_input_work/select.sh" "$smoke_input_work/good" portable-rootless)" \
+    || fail 'cannot replay the production smoke selector before mounting'
+smoke_input_before="$(sha256sum "$smoke_selected_input/cargo-vendor-config.toml")"
+smoke_mount_containers_before="$(frame_docker ps --all --quiet --no-trunc)"
+frame_docker run --rm --network none --pull=never --read-only --user 4000:4000 \
+    --cap-drop ALL --security-opt no-new-privileges --pids-limit 16 \
+    --memory 32m --memory-swap 32m --cpus 1 \
+    --mount "type=bind,source=$smoke_selected_input,target=/online,readonly" \
+    "$(<"$ROOT/image-id")" -eu -c '
+        IFS= read -r marker </online/cargo-vendor-config.toml
+        [ "$marker" = canonical-fixture ]
+        [ -d /online/cargo-vendor ] && [ -d /online/xvfb-debs ]
+        [ ! -e /online/inputs ]
+        if (printf "changed\n" >/online/cargo-vendor-config.toml) 2>/dev/null; then exit 1; fi
+        IFS= read -r marker </online/cargo-vendor-config.toml
+        [ "$marker" = canonical-fixture ]
+        printf "VERIFIER_VM_SMOKE_INPUT_MOUNT=pass uid=4000 canonical=direct legacy=absent write=denied network=none image=authority-fixture product=unexecuted\n"
+    ' || fail 'selected canonical smoke input mount failed'
+[ "$(sha256sum "$smoke_selected_input/cargo-vendor-config.toml")" = "$smoke_input_before" ] \
+    && [ "$(frame_docker ps --all --quiet --no-trunc)" = "$smoke_mount_containers_before" ] \
+    || fail 'smoke input mount changed its fixture or retained a container'
+setpriv --reuid=4000 --regid=4000 --clear-groups rm -rf -- "$smoke_input_work"
+[ ! -e "$smoke_input_work" ] && [ ! -L "$smoke_input_work" ] \
+    || fail 'smoke input fixture cleanup failed'
+printf 'VERIFIER_VM_SMOKE_INPUT_CLEANUP=pass fixture=absent containers=joined\n'
 
 if /bin/bash "$DEBIAN_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
     >"$ROOT/root-debian-builder-entry.out" 2>"$ROOT/root-debian-builder-entry.err"; then

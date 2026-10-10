@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-9299eeeac8283aea3e97acf5110273616c287a448042a81d9608dea94bb7724e  requirements.html
+4de43df21bb9c5070c8ca4fba8057ec5de4bbc7e833dac88057c7a5e8ec7ee6e  requirements.html
 ```
 
 ## Current Verdict
@@ -1949,7 +1949,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `9299eeeac8283aea3e97acf5110273616c287a448042a81d9608dea94bb7724e  requirements.html`.
+Current normative specification SHA-256: `4de43df21bb9c5070c8ca4fba8057ec5de4bbc7e833dac88057c7a5e8ec7ee6e  requirements.html`.
 
 ### Current authority and source closure
 
@@ -8432,164 +8432,69 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   then execute exact-current Windows builds, artifacts and install/upgrade/uninstall/service
   lifecycle. Cold R-B2/R-B10 equality, independent certification/release reproduction, every
   maintenance-image distribution, target-native/device acceptance and R-V3 review remain OPEN.
-- **R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write
-  authority — SOURCE MIGRATED TO THE SOLE VERIFIER VM; REAL VM ENTRY/DOCKER REQUEST, ROOT/FOREIGN
-  REFUSAL, LISTENER INVARIANCE, AND JOINED CLEANUP GREEN 2026-09-15; FULL PRODUCT SMOKE, EXACT R-B2
-  ARTIFACT, NATIVE TARGETS, AND EXTERNAL REVIEW REMAIN OPEN.** Platform: the unprivileged
-  Linux orchestration host, networkless verifier VM, and guest-container Linux
-  runtime-smoke fixtures. Endpoint/action: `scripts/smoke-server.sh` Docker resolution,
-  compilation, ordinary runtime, service lifecycle, PID-reuse, and sibling orchestration;
-  `scripts/smoke-process-guard.py` process-identity proof. Boundary: the invoking user and
-  live repository ↔ Docker-client/daemon selection, host `/proc`, build-container identity,
-  dependency caches, and container runtime fixtures.
+- **R-S11dd/R-S11e-122 — runtime-smoke VM entry and exact-source authority implemented;
+  privileged-container mode/release dispatch and canonical input selection OPEN/STOP-SHIP;
+  full current product, installed/native and release acceptance OPEN.**
+  R-S11dd and Appendix C #257 define authority. `scripts/smoke-server.sh` refuses numeric
+  UID/primary GID zero before product inputs, authenticates the R-S11dh entry, and uses one
+  fixed guest Docker Unix socket/client/root-read-only empty configuration in an empty
+  environment with pre/post authority proof. The build uses the invoking nonroot UID:GID,
+  dropped capabilities, NNP, read-only root, no network/pull, bounded resources, exact clean
+  committed source via a private read-only `git archive`, and disjoint private writable
+  `/smoke-target`. Archive/tree identities and postconditions survive compilation and runtime;
+  runtime source/target are read-only. The former host-wide process selector is deleted;
+  `smoke-process-guard.py` has exact PID-specific guest operations and its pure self-test.
+  Growing-log object identity and zero-exit stage gating preserve truthful product assertions.
 
-  Before this slice, the harness invoked `docker` through `PATH` and inherited the caller's
-  Docker context, host, TLS, configuration, and related client environment. Docker documents
-  that `DOCKER_CONTEXT` overrides `DOCKER_HOST` and that client configuration participates in
-  daemon selection (https://docs.docker.com/reference/cli/docker/). The harness also executed
-  `scripts/smoke-process-guard.py` directly on the host before and throughout the smoke; its
-  `record` and `monitor` modes enumerated the complete host `/proc` process set to reject new
-  command lines matching a historical RustDesk selector. Finally, `BUILD_RUN` accepted the
-  image's default UID 0 and mounted the live checkout read-write. Docker documents both that
-  the default container user is root
-  (https://docs.docker.com/engine/containers/run/#user) and that a writable bind mount lets a
-  container create, change, or delete host files
-  (https://docs.docker.com/engine/storage/bind-mounts/#considerations-and-constraints). These
-  were unnecessary daemon-selection, host-process-inspection, and source/build authorities.
-  They are not evidence that a remote daemon was actually selected, any host process was
-  signaled, the checkout was changed, Docker escaped, host root was acquired, a listener or
-  public port was exposed, host RustDesk/service/configuration/firewall/network state changed,
-  exploitation occurred, or the host was compromised.
+  **Reachable policy mismatch.** `smoke-server.sh:154` accepts `--with-root-containers`;
+  four mode branches select root-owned password, service/init, PID-reuse and packet-capture
+  fixtures. Its `ROOT_RUN`/`LIFECYCLE_RUN`/`PID_REUSE_RUN` arrays at lines 469–484 inherit
+  image-root authority; they retain default capabilities or add SYS_PTRACE, SYS_ADMIN,
+  CHECKPOINT_RESTORE and SETPCAP, and the PID-reuse array disables AppArmor confinement.
+  `verify-release.sh:58` selects this mode; `docs/DEPLOYMENT.md:171` recommends it.
+  `verify.sh`'s R-S11e-64 and release-dispatch wording checks require this mode.
+  Those paths violate R-S11dh's nonroot/capability-free container rule despite the
+  outer VM isolation. They remain reachable and were not executed for this correction.
+  Required next implementation: delete the mode, privileged launch arrays and obsolete
+  dispatch/assertions; retain genuine service/identity/password/capture acceptance in the
+  appropriate disposable VM lanes, and demonstrate actual retired-argument refusal plus
+  authorized VM behavior. The existing final-Debian artifact VM gate remains required.
 
-  The current orchestrator refuses UID or primary GID 0 before reading product inputs and
-  admits only the authenticated R-S11dh verifier-VM entry. It uses the fixed guest-private
-  Docker Unix socket, root-owned mode-0555 client, and root-owned canonical-empty read-only
-  configuration in an otherwise empty environment; the common entry preflight re-proves the
-  exact client/daemon bytes, daemon PID/start generation, socket metadata and root peer before
-  and after every operation. There is no `/var/run/docker.sock`, host-root Docker, rootless-host
-  Docker, network API, or second authority fallback. Private source/target identities remain
-  independently rechecked and identity-safe cleanup still preserves ambiguous state.
+  **Current input state and separate path gap.** Read-only stable no-follow checks found
+  current-owner mode-0400 single-link devcheck archive bytes matching the current pins:
+  681,163,937 bytes / SHA-256
+  `7fdb435c7fd6323fef3e5b54d410c4c5df85ea6a3636aa836359a18deec0abd7`.
+  The seven `online/inputs/xvfb-debs/<name>.deb` files match their exact TSV lengths/SHA-256;
+  `online/inputs/cargo-vendor-config.toml` is 4,361 bytes at pinned SHA-256
+  `a83d604b007513c6aecfa4a34a0f0cc6c0cdde9218417a7a2e01dd194645620c`.
+  The vendor directory is present; its complete content/provenance closure was not reverified.
+  These are byte/basic-metadata checks, not archive/package semantics or a loaded runtime.
+  The smoke still mounts `online/` as `/online` (`smoke-server.sh:301`) and expects
+  `online/cargo-vendor`, `online/cargo-vendor-config.toml` and `online/xvfb-debs`; those
+  legacy locations are absent. Correct canonical input selection and source-bound execution
+  remain OPEN. Present subsets do not establish the complete R-B2/R-B10 offline closure.
 
-  `BUILD_RUN` is now the invoking numeric non-root UID:GID with all capabilities dropped,
-  no-new-privileges, a read-only container root, no network or pull, and explicit PID,
-  memory/no-swap, CPU, and executable scratch ceilings. A 2026-08-04 source-authority
-  follow-up removed the complete live-checkout bind, including ignored residue, from every
-  container. The orchestrator now requires a clean tracked/nonignored tree, resolves one full
-  `HEAD` commit, creates a private `git archive`, extracts it with canonical read-only modes,
-  records independent archive and complete-tree SHA-256 values, and verifies source object
-  identity and tree content after compilation and again after all runtime stages. The only
-  Cargo output bind is a new private mode-0700 target owned by the invoking user. It is mounted
-  at the disjoint top-level `/smoke-target`, never below the read-only `/work` source mount. The
-  build alone receives the canonical offline-input root read-only; every ordinary, lifecycle,
-  PID-reuse, and sibling fixture receives only the exact source snapshot and private target
-  read-only. The root/capability-requiring service and
-  PID-reuse fixtures remain container-only with network none, no published port, Docker
-  socket, device, host namespace, writable source, or writable build output. Their root and
-  capability semantics are intentionally not described as non-root because they exercise
-  installed-service behavior; reducing those per-fixture capabilities remains separate from
-  this host/build-authority closure.
+  **Retained evidence and limits.** The full pre-compression item is retained at
+  `dffc5abb57f26ded47896ea2169867a6198cdd44`; original host/build-authority correction is
+  `80cf32130024623954d5a55bad2c7ec9f0e36085`. Exact-source/disjoint-mount/growing-log
+  corrections are `e5ec1105e0b18ee512060632b99ff7ed759a8cfc`,
+  `12ebd52614e969134a31c10cc26600879374c3ac` and
+  `c2004d46c2d5026ec74e997c5b12a4530196c9c6`. The final historical portable run passed
+  real parked/no-listener, loopback one-TCP/zero-UDP, graceful drain, VP9 MDWE, correct/wrong
+  CPace, capacity, authenticated headless Remote refusal, sealed tunnel/FileTransfer,
+  forged-frame and owner-safe limiter/decay behavior. It predates the sole-VM migration and
+  cannot satisfy current isolation or later-tree acceptance; no installed/native display or
+  release evidence follows. Earlier mount/log failures were harness failures, not green runs.
 
-  The host-wide selector, baseline, monitor, stop-control, and record modes and every host
-  call site are deleted. `scripts/smoke-process-guard.py` now has only `wait-server`,
-  `wait-service-server`, and a pure self-test. Its `/proc` reads are PID-specific exact
-  executable/start-time/closed-argv authority proofs invoked only from isolated smoke
-  containers. The prior host-monitor evidence recorded under R-S11c-27j and related
-  historical runtime entries is historical only and no longer describes a current execution
-  path. R-S11dd and Appendix C #257 make this closure normative.
-
-  The trigger for that follow-up was an evidence review, not an observed product failure: two
-  ignored generated Rust bridge files existed beside the clean checkout and the prior smoke
-  mounted that checkout wholesale. The smoke build uses default `use_dasp` plus
-  `linux-pkg-config`, not the optional `flutter` feature; `src/lib.rs` therefore compile-time
-  excludes `bridge_generated.rs` and `bridge_generated.io.rs` from this server build. The
-  earlier green portable run remains real working-tree Linux behavior, but is deliberately not
-  promoted to new exact-commit evidence until the corrected committed harness is replayed. No
-  source-generation transaction is added to this non-Flutter smoke, and no ignored output is
-  silently treated as committed authority.
-
-  The first replay of committed exact-source correction
-  `e5ec1105e0b18ee512060632b99ff7ed759a8cfc` on 2026-08-04 failed closed before any
-  container command or RustDesk product code started: Docker could not create the requested
-  nested `/work/target` mountpoint beneath the read-only exact-source mount. The transcript had
-  already bound source archive SHA-256
-  `17c52eae53782d9b8e48c852dec174610787285ca77c462aff5eb83d066aa690` and tree SHA-256
-  `7eb9c258ec3ba5fec97d7bfc7f29165ada67a1aa4fd1b274d727b349ae7aca08`.
-  Cleanup removed the private smoke workspace and test container state; the attempt opened no
-  listener and exercised no product behavior. This was a harness mount-topology defect, not a
-  RustDesk runtime failure. The source correction now uses disjoint `/work` and
-  `/smoke-target` mounts. Bash/Python syntax, the independent normal semantic contract, the
-  native-codec normal/self-test gates, and one uninterrupted complete source-mutation catalog
-  passed in the same pinned non-root, networkless, read-only verifier image. The correction
-  remains unpromoted to runtime evidence until that exact committed topology passes the complete
-  confined product replay.
-
-  The first exact-commit replay of the disjoint topology at
-  `12ebd52614e969134a31c10cc26600879374c3ac` bound source archive SHA-256
-  `185896ccfbe94b99f2d7ef8f33f02f4452f98c366e06ba97bd756521b3c6e321` and tree
-  SHA-256 `e53532644da30a688b458edd9c4f414466409f1a3ed69a42b2c845ebc3c6803d`.
-  Compilation and every later portable stage completed, including loopback-only/zero-UDP listener
-  proof, graceful drain, correct/wrong CPace, capacity shed, authenticated Remote admission to the
-  exact headless result, port-forward echo, FileTransfer admission, forged-frame rejection,
-  different-source limiter safety, and real 60-second limiter decay. The run nevertheless ended
-  red because the initial no-password parked stage's readiness checker compared a live log's byte
-  size before and after opening its pinned descriptor. A legitimate append in that interval changed
-  size and produced `log changed while being pinned` before the stage emitted its complete
-  alive/socket/diagnostic result. Typed IPC subsequently reported `state=parked`, but that alone is
-  not promoted to no-listener proof. The orchestrator then emitted three unsupported derivative
-  failure claims from the absent result lines. Source review proves this as an evidence-harness race:
-  immutable probe identity correctly retains size, while an append-growing log must be pinned by
-  stable object/type/ownership/mode/link identity without size. The correction separates those
-  identities, adds a deterministic growing-log self-test, and evaluates parked product assertions
-  only after a zero-exit isolated stage. No RustDesk product source or policy changes in this
-  follow-up. The failed replay published no port, touched no host RustDesk/service/firewall/network
-  state, and cleaned all private smoke/container state; its successful later stages remain truthful
-  partial behavior, not a green transaction.
-
-  The evidence-only correction was committed and pushed as
-  `c2004d46c2d5026ec74e997c5b12a4530196c9c6`; local `HEAD`, `origin/master`, the
-  fetched branch, and an independent remote-head query matched before the replay. Its fresh
-  exact-commit portable-rootless replay bound source archive SHA-256
-  `362a413dd43fcc068bd43a6e9f963437c6e337b07e428f205ba3124362fad03d` and tree
-  SHA-256 `1b3d060c0a332388b883ac9fbd3705c3f3f06801fbc3ea0bc02d9d086185ae86`,
-  rebuilt the server and probes in a new private target, and exited zero. The runtime proved the
-  readiness helper, VP9 MDWE, no-password alive/parked/no-listener state, exactly one
-  container-local `127.0.0.1:21118` TCP listener with zero UDP, graceful drain, correct/wrong
-  CPace, capacity shedding, keyed Remote admission to the exact expected headless-display refusal,
-  sealed port-forward echo, FileTransfer admission, forged-frame AEAD rejection, different-source
-  limiter safety, and a real 64-second hold followed by recovery after the 60-second limiter
-  window. The entire run used the exact numeric non-root executable, no published port, no host
-  network/namespace/device/Docker-socket mount, and no host RustDesk/service/firewall/network
-  inspection or mutation. Scoped cleanup found a clean Git tree, no current-user
-  `/tmp/rustdesk-smoke.*` workspace, and no `rd-smoke-` container.
-
-  This green result is server/protocol evidence, not end-to-end evidence for the reported stale
-  display/focus lifecycle fault. Portable-rootless mode did not enter root/service/init-system/
-  user-creation/installed-layout/packet-capture stages, and the replay had no Flutter engine,
-  Android persistent-service lifecycle, Windows focus transition, native graphical session,
-  physical device, real peer screen stream, background/suspend transition, performance/soak, or
-  release artifact. Those native cross-platform connection/display lifecycle obligations remain
-  open and must not be inferred from this smoke.
-
-  No project application binary, root fixture, host-process scan, listener, firewall/network
-  query, or host RustDesk process/service/configuration inspection or mutation was performed
-  while implementing or verifying the original source slice. The later failed exact-source
-  replay entered Docker only far enough to encounter the pre-command mount error described
-  above; it did not start the application. The full root-containing runtime smoke was
-  intentionally not run; its current-source runtime behavior and exact artifact remain R-B2
-  evidence, and external expert review remains R-V3.
-
-  Current correction: `smoke-server.sh` now authenticates the R-S11dh entry before reading
-  product inputs or creating scratch, refuses UID/GID 0, binds the guest marker to pinned Docker
-  27.5.1, and wraps the fixed guest socket/client/read-only configuration with pre/post entry
-  replay. The VM harness carries the actual entry on read-only media and behaviorally refused VM
-  root and UID/GID 4001, admitted only UID/GID 4000, and completed a real Docker client/server
-  version operation. Repeated complete KVM executions finished in 16–17 seconds with `-nic none`,
-  unchanged host listener sets, and joined cleanup. Xvfb preparation now uses `--network none`,
-  a read-only `/xvfb-inputs` mount, exact package metadata/digests, and no Curl/Wget path; this
-  source correction was not runtime-exercised because its authenticated package closure is not
-  present. The exact development image and complete source/vendor/Xvfb input medium are likewise
-  absent, so no RustDesk build, listener, protocol, display, video, root fixture, installed-service,
-  artifact, native-platform, or performance/soak claim is made.
+  Migration `6aca5f52c67653c96d7a7e834c4828a6bfa67f74` and the retained 2026-09-15 audit
+  record repeated actual KVM entry tests in 16–17 seconds: VM root/UID:GID-4001 refusal,
+  authorized UID:GID-4000 admission, real Docker-27.5.1 request, no NIC, unchanged host
+  listeners and joined cleanup. Entry/request evidence does not execute the product.
+  No helper, source gate, fixture, container, VM, compiler or product ran for this
+  documentation correction. Focused source checks are supplementary. Root-mode retirement,
+  canonical-input repair, exact-current full portable/video smoke, privileged VM scenarios,
+  native/device/installed lifecycle, performance/soak, cold R-B2/R-B10 artifacts/equality,
+  independent reproduction and R-V3 review remain OPEN.
 - **R-S11df/R-S11e-124 — Dart advisory execution authority — CURRENT NO-NIC OSV
   SCAN PASS 2026-09-22; RELEASE EVIDENCE OPEN.** `scripts/dart-audit.sh` refuses UID/GID
   zero and authenticates R-S11dh before reading the lockfile/policy or creating scratch.

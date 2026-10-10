@@ -1994,23 +1994,17 @@ if [ -n "$r_s11d13" ]; then echo "  FAIL R-S11d-13 Windows service/session token
 
 echo "== (3b-iii-a5d2b) Windows helper launch API is role-confined (R-S11u/R-S11e-35) =="
 r_s11e35=
-windows_run_user_helper=$(awk '/^pub\(crate\) fn run_user_helper\(/,/^fn windows_env_block/' src/platform/windows.rs)
-grep -Fq "pub(crate) enum WindowsUserHelperLaunch<'a>" src/platform/windows.rs || r_s11e35="$r_s11e35 typed-helper-role-policy-missing"
-grep -Fq 'Tray,' src/platform/windows.rs || r_s11e35="$r_s11e35 tray-typed-role-missing"
-grep -Fq "Whiteboard { launch_token: &'a str }" src/platform/windows.rs || r_s11e35="$r_s11e35 whiteboard-typed-role-missing"
 grep -Fq 'let mut decoded = crate::decode64(launch_token)' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-token-base64-validation-missing"
 grep -Fq '== hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES;' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-token-length-validation-missing"
 grep -Fq 'decoded.fill(0);' src/platform/windows.rs || r_s11e35="$r_s11e35 decoded-helper-token-not-zeroed"
 grep -Fq 'let parent = OsString::from(std::process::id().to_string());' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-parent-not-receiver-derived"
-grep -Fq 'WindowsUserHelperLaunch::Tray => Ok(("--tray", Vec::new()))' src/platform/windows.rs || r_s11e35="$r_s11e35 tray-exact-role-missing"
-grep -Fq 'WindowsUserHelperLaunch::Whiteboard { launch_token } =>' src/platform/windows.rs || r_s11e35="$r_s11e35 whiteboard-exact-role-missing"
 for key in CM_LAUNCH_TOKEN_ENV CM_LAUNCH_PARENT_ENV CM_LAUNCH_PARENT_CREATION_ENV WHITEBOARD_LAUNCH_TOKEN_ENV WHITEBOARD_LAUNCH_PARENT_ENV; do
   grep -Fq "crate::common::$key" src/platform/windows.rs || r_s11e35="$r_s11e35 helper-environment-key-missing:$key"
 done
-echo "$windows_run_user_helper" | grep -Fq 'windows_user_helper_launch_parts(&launch)?' || r_s11e35="$r_s11e35 typed-helper-policy-not-enforced"
-echo "$windows_run_user_helper" | grep -Fq 'return run_current_exe_in_current_session_with_env(' || r_s11e35="$r_s11e35 localsystem-current-image-route-missing"
-echo "$windows_run_user_helper" | grep -Fq 'let exe = std::env::current_exe()?' || r_s11e35="$r_s11e35 non-system-current-image-route-missing"
-echo "$windows_run_user_helper" | grep -Fq 'std::process::Command::new(exe)' || r_s11e35="$r_s11e35 non-system-current-image-spawn-missing"
+windows_run_whiteboard_helper=$(awk '/^pub\(crate\) fn launch_whiteboard_user_helper\(/,/^pub\(crate\) fn run_connection_manager_user_helper/' src/platform/windows.rs)
+for required in 'windows_whiteboard_launch_environment(launch_token)?' 'create_windows_service_process_job()?' 'launch_process_in_session_with_env(' 'launch_current_process_with_env_and_job(' 'WindowsWhiteboardProcess { job, process,'; do
+  grep -Fq "$required" <<<"$windows_run_whiteboard_helper" || r_s11e35="$r_s11e35 whiteboard-owned-launch-missing:$required"
+done
 windows_run_cm_helper=$(awk '/^pub\(crate\) fn run_connection_manager_user_helper\(/,/^fn windows_env_block/' src/platform/windows.rs)
 echo "$windows_run_cm_helper" | grep -Fq 'windows_connection_manager_launch_environment(launch_token, parent)' || r_s11e35="$r_s11e35 cm-dedicated-policy-not-enforced"
 echo "$windows_run_cm_helper" | grep -Fq 'create_windows_service_process_job()?' || r_s11e35="$r_s11e35 cm-unified-job-owner-missing"
@@ -2019,9 +2013,6 @@ echo "$windows_run_cm_helper" | grep -Fq 'launch_current_process_with_env_and_jo
 echo "$windows_run_cm_helper" | grep -Fq 'WindowsConnectionManagerProcessHandle { _job: job, process }' || r_s11e35="$r_s11e35 cm-unified-process-job-owner-missing"
 if echo "$windows_run_cm_helper" | grep -Fq 'std::process::Command'; then
   r_s11e35="$r_s11e35 cm-jobless-same-user-spawn-remains"
-fi
-if grep -Fq 'WindowsUserHelperLaunch::ConnectionManager' src/platform/windows.rs src/server/connection.rs; then
-  r_s11e35="$r_s11e35 generic-cm-helper-role-remains"
 fi
 grep -Fq 'fn windows_user_helper_launch_shape_is_typed_and_exact()' src/platform/windows.rs || r_s11e35="$r_s11e35 closed-launch-shape-test-missing"
 grep -Fq 'CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,' src/platform/windows.cc || r_s11e35="$r_s11e35 token-launch-handle-inheritance-not-disabled"
@@ -2061,8 +2052,6 @@ done
 grep -Fq 'Refusing root-to-user connection-manager launch; the user-context service must own it' src/server/connection.rs || r_s11e38="$r_s11e38 cm-root-transition-not-fail-closed"
 grep -Fq 'Refusing root-to-user whiteboard launch; the user-context service must own it' src/whiteboard/client.rs || r_s11e38="$r_s11e38 whiteboard-root-transition-not-fail-closed"
 grep -Fq 'crate::platform::run_connection_manager_user_helper(launch_token)' src/server/connection.rs || r_s11e38="$r_s11e38 owned-windows-cm-launch-missing"
-grep -Fq 'WindowsUserHelperLaunch::Whiteboard {' src/whiteboard/client.rs || r_s11e38="$r_s11e38 typed-windows-whiteboard-launch-missing"
-grep -Fq 'WindowsUserHelperLaunch::Tray' src/server/connection.rs || r_s11e38="$r_s11e38 typed-windows-tray-launch-missing"
 same_user_cm_launch=$(awk '/if stream.is_none\(\) \{/,/for _ in 0\.\.20/' src/server/connection.rs)
 grep -Fq 'cm_launch_env(cm_launch_token())' <<<"$same_user_cm_launch" \
   || r_s11e38="$r_s11e38 linux-same-user-cm-parent-bound-launch-missing"
@@ -2070,7 +2059,7 @@ grep -Fq 'lease_or_launch_platform_cm("--cm")?;' <<<"$same_user_cm_launch" \
   || r_s11e38="$r_s11e38 macos-windows-owned-cm-launch-missing"
 grep -Fq 'super::CHILD_PROCESS.lock().unwrap().push(child);' <<<"$same_user_cm_launch" \
   || r_s11e38="$r_s11e38 linux-same-user-cm-child-ownership-missing"
-grep -Fq 'whiteboard_launch_env(&launch_token)' src/whiteboard/client.rs || r_s11e38="$r_s11e38 same-user-whiteboard-launch-missing"
+grep -Fq 'whiteboard_launch_env(launch_token)' src/whiteboard/client.rs || r_s11e38="$r_s11e38 same-user-whiteboard-launch-missing"
 grep -Fq 'Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38)' scripts/apple-conform-check.sh || r_s11e38="$r_s11e38 apple-source-conformance-gate-missing"
 if [ -n "$r_s11e38" ]; then echo "  FAIL R-S11e-38 cross-platform root-to-user helper authority:$r_s11e38"; rc=1; else
   echo "  ok  R-S11e-38 Linux/macOS carry no generic root-to-user CM/whiteboard launcher; Windows uses typed current-image roles and same-user launches retain exact proof environments"; fi
@@ -8396,16 +8385,15 @@ grep -q 'let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);' src/
 grep -q 'sender.try_send(command)' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-command-admission-not-nonblocking"
 grep -q 'TrySendError::Full(WhiteboardIpcCommand::Cursor { .. })' src/whiteboard/client.rs || r_s11c8="$r_s11c8 cursor-overflow-policy-missing"
 grep -q 'static ref WHITEBOARD_CLIENT: Mutex<WhiteboardClientState>' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-lifecycle-owner-not-unified"
-grep -q 'worker: Option<(u64, tokio::task::JoinHandle<()>)>' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-task-handle-not-retained"
-grep -q 'runtime.spawn(run_whiteboard_worker(generation))' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-worker-does-not-use-existing-runtime"
+grep -Fq 'worker: Option<tokio::task::JoinHandle<()>>' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-task-handle-not-retained"
+grep -Fq 'owner.worker = Some(tokio::spawn(run_whiteboard_worker(' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-worker-does-not-use-existing-runtime"
 grep -q 'let _terminal = WhiteboardClientWorkerGuard { generation };' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-worker-finalizer-missing"
 grep -q 'drop(tx);' src/whiteboard/client.rs || r_s11c8="$r_s11c8 local-sender-prevents-channel-closure"
 grep -q 'send_whiteboard_command_timeout(' src/whiteboard/client.rs || r_s11c8="$r_s11c8 typed-deadline-command-writer-missing"
 grep -q 'register_whiteboard(self.inner.id)' src/server/connection.rs || r_s11c8="$r_s11c8 connection-register-not-id-based"
 grep -q 'unregister_whiteboard(self.inner.id)' src/server/connection.rs || r_s11c8="$r_s11c8 connection-unregister-not-id-based"
 grep -q 'Refusing root-to-user whiteboard launch; the user-context service must own it' src/whiteboard/client.rs || r_s11c8="$r_s11c8 unix-root-to-user-whiteboard-not-fail-closed"
-grep -q 'WindowsUserHelperLaunch::Whiteboard {' src/whiteboard/client.rs || r_s11c8="$r_s11c8 windows-typed-whiteboard-launch-missing"
-grep -q 'pub(crate) fn run_user_helper(' src/platform/windows.rs || r_s11c8="$r_s11c8 windows-typed-helper-launcher-missing"
+grep -Fq 'crate::platform::launch_whiteboard_user_helper(launch_token)' src/whiteboard/client.rs || r_s11c8="$r_s11c8 windows-owned-whiteboard-launch-missing"
 grep -q 'LPCWSTR extraEnvironment' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-createprocess-env-missing"
 if awk '/^extern "C"[[:space:]]*$/,/end of extern "C"/' src/platform/windows.cc | grep -q 'std::vector<wchar_t> merge_environment_blocks'; then
   r_s11c8="$r_s11c8 windows-env-helper-has-c-linkage"

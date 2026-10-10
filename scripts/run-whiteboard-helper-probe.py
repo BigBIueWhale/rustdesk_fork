@@ -394,10 +394,8 @@ def observe_client_generation(executable, environment, display, server):
     with log_path.open("xb") as log:
         owner = subprocess.Popen([str(executable), "--server"], env=environment,
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
-        owner_fd = os.pidfd_open(owner.pid, 0)
+        owner_fd = None
         selector = selectors.DefaultSelector()
-        selector.register(owner.stdout, selectors.EVENT_READ)
-        os.set_blocking(owner.stdout.fileno(), False)
         pending, pid, helper_fd, window = b"", None, None, None
         phases, returned, state, cleaned = [], False, None, False
 
@@ -408,6 +406,9 @@ def observe_client_generation(executable, environment, display, server):
 
         deadline = time.monotonic() + 25
         try:
+            owner_fd = os.pidfd_open(owner.pid, 0)
+            selector.register(owner.stdout, selectors.EVENT_READ)
+            os.set_blocking(owner.stdout.fileno(), False)
             while True:
                 require(time.monotonic() < deadline and server.poll() is None,
                         "global client scenario deadline or Xvfb lifetime failed")
@@ -425,8 +426,8 @@ def observe_client_generation(executable, environment, display, server):
                     print(text, flush=True)
                     ready = re.fullmatch(r"WHITEBOARD_CLIENT_READY generation=1 pid=([1-9][0-9]*) connections=2 task=retained", text)
                     overlay = re.fullmatch(r"WHITEBOARD_HELPER_OVERLAY phase=(draw|clear)", text)
-                    snapshot = re.fullmatch(r"WHITEBOARD_CLIENT_STATE generation=([0-9]+) phase=(Idle|Starting|Running|Stopping) task=(true|false) connections=0 expected_generation=1 pid=([1-9][0-9]*)", text)
-                    cleanup = re.fullmatch(r"WHITEBOARD_CLIENT_CLEANUP pid=([1-9][0-9]*) status=0 owner=fixture child=normal-exit-reaped", text)
+                    snapshot = re.fullmatch(r"WHITEBOARD_CLIENT_STATE generation=([0-9]+) phase=(Idle|Starting|Running|Stopping) task=(true|false) connections=0 expected_generation=1 pid=([1-9][0-9]*) task_joined=true helper_owned=true", text)
+                    cleanup = re.fullmatch(r"WHITEBOARD_CLIENT_CLEANUP pid=([1-9][0-9]*) status=0 owner=production child=normal-exit-reaped task=joined", text)
                     if ready:
                         require(pid is None, "global client published more than one generation")
                         pid = int(ready.group(1))
@@ -469,7 +470,7 @@ def observe_client_generation(executable, environment, display, server):
                     elif cleanup:
                         require(state is not None and not cleaned and cleanup.group(1) == str(pid)
                                 and not helper_alive() and not Path(f"/proc/{pid}").exists(),
-                                "fixture did not normally reap its exact helper")
+                                "production owner did not reap its exact helper")
                         cleaned = True
                     else:
                         raise RuntimeError("unexpected global client control output")
@@ -488,12 +489,16 @@ def observe_client_generation(executable, environment, display, server):
                 except subprocess.TimeoutExpired:
                     owner.kill()
                     owner.wait()
-            os.close(owner_fd)
+            if owner_fd is not None:
+                os.close(owner_fd)
             if helper_fd is not None:
                 try:
                     if helper_alive():
-                        signal.pidfd_send_signal(helper_fd, signal.SIGKILL)
-                    # Normal cleanup was performed by the retained parent Child;
+                        try:
+                            signal.pidfd_send_signal(helper_fd, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass  # The retained process exited between observation and signal.
+                    # Normal cleanup was performed by the production generation owner;
                     # on fixture failure the subreaper owns any orphan instead.
                     if not cleaned and Path(f"/proc/{pid}").exists():
                         os.waitpid(pid, 0)
@@ -501,7 +506,7 @@ def observe_client_generation(executable, environment, display, server):
                     os.close(helper_fd)
             if owner.returncode != 0:
                 sys.stderr.write(log_path.read_text())
-    print("WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=fixture-reap", flush=True)
+    print("WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=production-reap task=joined", flush=True)
 
 
 def main():

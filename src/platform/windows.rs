@@ -3746,11 +3746,6 @@ fn windows_command_line(exe: &Path, arg: &[&str]) -> ResultType<Vec<u16>> {
     Ok(command_line)
 }
 
-pub(crate) enum WindowsUserHelperLaunch<'a> {
-    Tray,
-    Whiteboard { launch_token: &'a str },
-}
-
 fn validate_windows_user_helper_launch_token(role: &str, launch_token: &str) -> ResultType<()> {
     let mut decoded = crate::decode64(launch_token)
         .map_err(|err| anyhow!("Invalid {role} launch token: {err}"))?;
@@ -3762,29 +3757,19 @@ fn validate_windows_user_helper_launch_token(role: &str, launch_token: &str) -> 
     Ok(())
 }
 
-fn windows_user_helper_launch_parts(
-    launch: &WindowsUserHelperLaunch<'_>,
-) -> ResultType<(&'static str, Vec<(OsString, OsString)>)> {
+fn windows_whiteboard_launch_environment(launch_token: &str) -> ResultType<Vec<(OsString, OsString)>> {
     let parent = OsString::from(std::process::id().to_string());
-    match launch {
-        WindowsUserHelperLaunch::Tray => Ok(("--tray", Vec::new())),
-        WindowsUserHelperLaunch::Whiteboard { launch_token } => {
-            validate_windows_user_helper_launch_token("whiteboard", launch_token)?;
-            Ok((
-                "--whiteboard",
-                vec![
-                    (
-                        OsString::from(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV),
-                        OsString::from(launch_token),
-                    ),
-                    (
-                        OsString::from(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV),
-                        parent,
-                    ),
-                ],
-            ))
-        }
-    }
+    validate_windows_user_helper_launch_token("whiteboard", launch_token)?;
+    Ok(vec![
+        (
+            OsString::from(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV),
+            OsString::from(launch_token),
+        ),
+        (
+            OsString::from(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV),
+            parent,
+        ),
+    ])
 }
 
 fn windows_connection_manager_launch_environment(
@@ -3907,12 +3892,7 @@ mod process_launch_tests {
             ))
         );
 
-        let (role, environment) =
-            windows_user_helper_launch_parts(&WindowsUserHelperLaunch::Whiteboard {
-                launch_token: &launch_token,
-            })
-            .unwrap();
-        assert_eq!(role, "--whiteboard");
+        let environment = windows_whiteboard_launch_environment(&launch_token).unwrap();
         assert_eq!(
             environment,
             vec![
@@ -3927,17 +3907,11 @@ mod process_launch_tests {
             ]
         );
 
-        assert_eq!(
-            windows_user_helper_launch_parts(&WindowsUserHelperLaunch::Tray).unwrap(),
-            ("--tray", Vec::new())
-        );
         assert!(
             windows_connection_manager_launch_environment("", parent_identity, None).is_err()
         );
         assert!(
-            windows_user_helper_launch_parts(&WindowsUserHelperLaunch::Whiteboard {
-                launch_token: &crate::encode64([0u8; 31]),
-            })
+            windows_whiteboard_launch_environment(&crate::encode64([0u8; 31]))
             .is_err()
         );
     }
@@ -4079,28 +4053,90 @@ where
     })
 }
 
-pub(crate) fn run_user_helper(
-    launch: WindowsUserHelperLaunch<'_>,
-) -> ResultType<Option<std::process::Child>> {
-    let (arg, envs) = windows_user_helper_launch_parts(&launch)?;
-    let arg = vec![arg];
+pub(crate) fn run_tray_user_helper() -> ResultType<Option<std::process::Child>> {
+    let arg = vec!["--tray"];
     if is_root() {
         return run_current_exe_in_current_session_with_env(
             arg,
-            envs.iter().map(|(key, value)| (key, value)),
+            std::iter::empty::<(&str, &str)>(),
         );
     }
 
     let exe = std::env::current_exe()?;
     let mut command = std::process::Command::new(exe);
     command
-        .envs(envs.iter().map(|(key, value)| (key, value)))
         .args(arg)
         .creation_flags(CREATE_NO_WINDOW);
     command
         .spawn()
         .map(Some)
         .map_err(|err| anyhow!("Failed to start current RustDesk process: {err}"))
+}
+
+pub(crate) struct WindowsWhiteboardProcess {
+    job: ServiceOwnedWindowsHandle,
+    process: Option<ServiceOwnedWindowsHandle>,
+    pid: DWORD,
+    startup_error: Option<String>,
+}
+
+impl WindowsWhiteboardProcess {
+    pub(crate) fn id(&self) -> ResultType<u32> {
+        if let Some(err) = self.startup_error.as_ref() {
+            bail!("{err}");
+        }
+        Ok(self.pid)
+    }
+
+    pub(crate) fn try_reap_exited(&mut self) -> ResultType<bool> {
+        if let Some(process) = self.process.as_ref() {
+            match unsafe { WaitForSingleObject(process.raw(), 0) } {
+                WAIT_TIMEOUT => return Ok(false),
+                WAIT_OBJECT_0 => {},
+                WAIT_FAILED => return Err(io::Error::last_os_error().into()),
+                status => bail!("whiteboard process wait returned {status:#x}"),
+            }
+        }
+        Ok(windows_job_active_process_count(self.job.raw())? == 0)
+    }
+
+    pub(crate) fn terminate(&mut self) -> ResultType<()> {
+        if unsafe { TerminateJobObject(self.job.raw(), 1) } == FALSE {
+            return Err(io::Error::last_os_error().into());
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn launch_whiteboard_user_helper(launch_token: &str) -> ResultType<WindowsWhiteboardProcess> {
+    let environment = windows_whiteboard_launch_environment(launch_token)?;
+    let exe = std::env::current_exe()?;
+    let job = create_windows_service_process_job()?;
+    let launched = if is_root() {
+        let session_id = get_current_process_session_id()
+            .ok_or_else(|| anyhow!("whiteboard launch has no current session"))?;
+        launch_process_in_session_with_env(&exe, &["--whiteboard"], session_id, TRUE, FALSE,
+            environment.iter().map(|(key, value)| (key, value)), job.raw(), NULL)?
+    } else {
+        launch_current_process_with_env_and_job(&exe, &["--whiteboard"],
+            environment.iter().map(|(key, value)| (key, value)), job.raw())?
+    };
+    // From this point even a failed launch retains its job until zero-process proof.
+    let process = if launched.process.is_null() || launched.process == INVALID_HANDLE_VALUE {
+        None
+    } else {
+        Some(ServiceOwnedWindowsHandle { handle: launched.process, label: "whiteboard helper process" })
+    };
+    let mut owned = WindowsWhiteboardProcess { job, process, pid: launched.process_id, startup_error: None };
+    if owned.process.is_none() {
+        owned.startup_error = Some(format!("whiteboard process creation failed: {}", io::Error::last_os_error()));
+    } else if owned.pid == 0 {
+        owned.startup_error = Some("whiteboard process creation returned no process id".to_owned());
+    }
+    if let Some(err) = owned.startup_error.as_ref() {
+        log::error!("{err}; whiteboard job retained until empty");
+    }
+    Ok(owned)
 }
 
 pub(crate) fn run_connection_manager_user_helper(

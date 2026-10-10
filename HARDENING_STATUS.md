@@ -1847,7 +1847,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `2cb902a0b52b3b989b20fa876d7927beff42397fee4a0f9ac03ddf67a89aebd7  requirements.html`.
+Current normative specification SHA-256: `f2b797ac2670b3063450cfc61abe46bdc469c1da6355ca51d1b0fa1bbe75eb98  requirements.html`.
 
 ### Current authority and source closure
 
@@ -12110,15 +12110,16 @@ or fix for that defect.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Current disposition: state/admission source implemented and focused Linux execution passed;
-actual global-client retirement fails natively; complete task/helper lifecycle evidence OPEN.**
+**Current disposition: actual global-client retirement failed natively; root-owned launch,
+task and helper correction implemented; candidate execution and full lifecycle acceptance OPEN.**
 `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
-containing registrations, the exact-generation sender, retained Tokio task handle, and
+containing registrations, the exact-generation sender, retained launch/task handles and helper, and
 Idle/Starting/Running/Stopping phase. Checked generation reservation prevents wraparound;
 duplicate Starting/Running demand does not launch another task. Sender publication and the
 initial registration snapshot share the same lock. The task runs on the existing runtime,
 installs its exact-generation terminal guard first, diagnoses error/panic, and makes stale
-finalizers inert. Runtime/task installation failure cancels only its exact reservation.
+finalizers inert. Its guard retires admission; only the existing controlled-server root
+observes completed launch/task results, reaps the exact helper and releases the generation.
 
 Idle stop proves the locked registration set empty and retires only that Running generation's
 sender. Explicit demand crossing committed stop latches at most one successor; finalization
@@ -12131,15 +12132,19 @@ Token-derived endpoints, exact launch/parent proof, parent-death binding, and de
 remain. The client state/queue path has no split registration/sender globals, detached
 OS threads, nested runtimes or automatic generation retry.
 
-**Exact helper retirement OPEN:** `start_whiteboard_` puts each spawned `Child` in
-the process-wide `CHILD_PROCESS` list rather than its generation owner. The task
-returns after writing Shutdown; its terminal guard clears the sender/task/phase and
-may start a demanded successor without waiting for that exact helper to exit/reap.
-`src/server.rs::check_zombie` independently polls already-exited children every 100ms;
-it neither owns this generation nor initiates helper retirement on worker failure.
-Thus state finalization and a successful shutdown write do not prove process cleanup.
-The retained task handle is also dropped by its own finalizer rather than joined by
-an external owner. The seven tests below exercise neither boundary.
+**Candidate ownership topology:** registration reserves rather than spawns. The existing
+`direct_service.rs` root polls `WhiteboardClientOwner`; one retained `spawn_blocking`
+job performs creation off the executor and returns an exact generation-owned helper.
+Unix uses retained `Child::try_wait`/reap; Windows `WindowsWhiteboardProcess` retains
+the creation-time unnamed kill-on-close job and process object through process exit
+and zero-job accounting. Whiteboard no longer uses `CHILD_PROCESS` or the handle-closing
+tray launcher. Command-task finalization cannot clear its own handle or start a successor.
+Root shutdown closes registration authority and cancels work before listener drain,
+then observes/joins whiteboard before final process shutdown. The three-second retirement
+deadline initiates cancellation/owned termination; handles and Stopping remain until
+positive retirement. Uncertain creation panic or process observation retains ownership
+and refuses replacement. Unexpected root drop likewise refuses replacement; complete
+abrupt-root-loss/native failure cleanup remains unproved.
 
 **Actual global-client defect reproduced; expanded profile FAILS:** at source
 `7e437223dd367191719e322989db7297b8fcfbf7`, tree
@@ -12166,19 +12171,14 @@ Linux whiteboard now observes whole-parent exit through the helper's owned pidfd
 and its shared launch constructor removes creating-thread `PR_SET_PDEATHSIG`.
 The baseline reproduced SIGKILL after creator join; corrected creator-thread and
 true parent-process-death CLI/helper subsets passed as detailed in R-S11hn.
-The production client still
-spawns synchronously inside its async task and uses the global child registry;
-off-executor launch, cancellation ownership and exact reaping remain required.
-Windows root launch additionally closes its returned process handle and reports
-`Ok(None)` in `run_current_exe_in_current_session_with_env`; a `Child`-only generation
-owner cannot retain that process through the existing API. The launch surface must
-return an exact owned process object. Native Windows acceptance remains missing.
-Required correction: retain the exact helper and task through startup, shutdown,
-failure, panic and cancellation; release the generation/permit replacement only after
-positive retirement. Timeout initiates cancellation while ownership remains retained.
-Native acceptance must observe those boundaries while the parent stays alive, including
-delayed helper retirement, creator-thread exit and actual parent death. These are source
-ownership findings, not a reproduced privilege escalation or new runtime acceptance.
+The corrected fixture now polls the actual production root, observes external task join
+while the helper stays alive behind its CLI-return barrier, and requires production
+normal-exit reap; fixture cleanup cannot substitute for that result. Existing eight
+receiver cases remain required. Two added real-Tokio tests retain a cancelled command
+handle until external join and a started blocking launch through abort/cancellation
+until its result is observed. Candidate default-feature nine-test and native CLI shards
+are pending. Windows/macOS native acceptance, every-phase demanded replacement,
+launch/transport/helper failure, abrupt owner loss and sustained resource bounds remain OPEN.
 
 Seven Rust regressions exercise the production lifecycle and command-admission methods:
 duplicate demand; one successor across committed stop and none after demand withdrawal;

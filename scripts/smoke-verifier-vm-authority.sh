@@ -4864,7 +4864,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'WHITEBOARD_HELPER_NATIVE=pass cases=8 cli=core-main parent=kernel-admitted wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit worker=absent-before-exit window=badwindow-before-exit reconnect=refused address=rebindable overlay=two-owner-clear window_close=authenticated-cancel creator_thread=joined-live parent_exit=preproof-retired client_phase=retained-before-exit xvfb=joined' \
         'native helper process/window/endpoint cleanup receipt'
     require_exact_fixed_receipt \
-        'WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=fixture-reap' \
+        'WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=production-reap task=joined' \
         'native global client generation retained while its helper remains alive'
     require_exact_fixed_receipt \
         'WHITEBOARD_HELPER_CREATOR=pass thread=joined owner=alive helper=live proof=mutual pixels=two-owner-clear' \
@@ -4907,16 +4907,16 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
     mapfile -t whiteboard_client_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'WHITEBOARD_CLIENT_STATE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=7 unchanged=before-after$'
+            'WHITEBOARD_CLIENT_STATE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=9 unchanged=before-after$'
     )
     [ "${#whiteboard_client_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'WHITEBOARD_CLIENT_STATE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'whiteboard client state artifact receipt is absent, malformed or duplicated'
     whiteboard_client_before=${whiteboard_client_artifacts[0]/WHITEBOARD_CLIENT_STATE_ARTIFACT=pass /WHITEBOARD_CLIENT_STATE_ARTIFACT_BEFORE=}
-    whiteboard_client_before=${whiteboard_client_before% tests=7 unchanged=before-after}
+    whiteboard_client_before=${whiteboard_client_before% tests=9 unchanged=before-after}
     require_exact_fixed_receipt "$whiteboard_client_before" 'whiteboard client state artifact before execution'
     require_exact_fixed_receipt \
-        "WHITEBOARD_CLIENT_STATE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=7 target=linux-x86_64 scope=production-whiteboard-client-state-and-command-admission rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "WHITEBOARD_CLIENT_STATE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=9 target=linux-x86_64 scope=production-whiteboard-client-state-and-command-admission rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused whiteboard client state receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused whiteboard client state cloud-init completion marker'

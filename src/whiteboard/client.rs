@@ -1,8 +1,5 @@
 use super::Cursor;
-use crate::{
-    ipc::{self, WhiteboardIpcCommand},
-    CHILD_PROCESS,
-};
+use crate::ipc::{self, WhiteboardIpcCommand};
 use hbb_common::{
     anyhow::anyhow,
     bail,
@@ -10,22 +7,30 @@ use hbb_common::{
     log, sleep,
     tokio::{
         self,
-        sync::mpsc::{channel, error::TrySendError, Sender},
-        time::interval_at,
+        sync::{
+            mpsc::{channel, error::TrySendError, Sender},
+            Notify,
+        },
+        time::{interval_at, Interval},
     },
+    tokio_util::sync::CancellationToken,
     ResultType,
 };
 use lazy_static::lazy_static;
 use std::{
     collections::HashMap,
+    future::{poll_fn, Future},
     panic::AssertUnwindSafe,
+    pin::Pin,
     sync::Mutex,
-    time::Instant,
+    task::{Context, Poll},
+    time::{Duration, Instant},
 };
 
 lazy_static! {
     static ref WHITEBOARD_CLIENT: Mutex<WhiteboardClientState> =
         Mutex::new(WhiteboardClientState::default());
+    static ref WHITEBOARD_OWNER_WAKE: Notify = Notify::new();
 }
 
 #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
@@ -37,7 +42,21 @@ pub(crate) fn probe_whiteboard_client_state() -> (&'static str, u64, bool, usize
         WhiteboardWorkerPhase::Running { generation } => ("Running", generation),
         WhiteboardWorkerPhase::Stopping { generation, .. } => ("Stopping", generation),
     };
-    (phase, generation, state.worker.is_some(), state.conns.len())
+    (phase, generation, state.generation.as_ref().is_some_and(|owner| owner.worker.is_some()), state.conns.len())
+}
+
+#[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+pub(crate) fn probe_whiteboard_helper() -> (Option<u32>, bool) {
+    let state = WHITEBOARD_CLIENT.lock().unwrap();
+    match state.generation.as_ref() {
+        Some(owner) => (owner.helper.as_ref().and_then(|helper| helper.id().ok()), owner.worker_joined),
+        None => (None, false),
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+pub(crate) fn probe_whiteboard_helper_exit() -> Option<(u64, bool)> {
+    WHITEBOARD_CLIENT.lock().unwrap().last_reaped_helper
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -136,6 +155,16 @@ impl WhiteboardWorkerLifecycle {
         }
     }
 
+    fn retire_generation(&mut self, generation: u64) {
+        match self.phase {
+            WhiteboardWorkerPhase::Starting { generation: current }
+            | WhiteboardWorkerPhase::Running { generation: current } if current == generation => {
+                self.phase = WhiteboardWorkerPhase::Stopping { generation, restart_requested: false };
+            }
+            _ => {}
+        }
+    }
+
     fn cancel_reserved_generation(&mut self, generation: u64) {
         if self.phase == (WhiteboardWorkerPhase::Starting { generation }) {
             self.phase = WhiteboardWorkerPhase::Idle;
@@ -181,7 +210,10 @@ enum WhiteboardCommandAdmission {
 struct WhiteboardClientState {
     lifecycle: WhiteboardWorkerLifecycle,
     sender: Option<(u64, Sender<WhiteboardIpcCommand>)>,
-    worker: Option<(u64, tokio::task::JoinHandle<()>)>,
+    owner: WhiteboardOwnerAdmission,
+    generation: Option<WhiteboardGeneration>,
+    #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+    last_reaped_helper: Option<(u64, bool)>,
     conns: HashMap<i32, Conn>,
 }
 
@@ -190,8 +222,262 @@ impl Default for WhiteboardClientState {
         Self {
             lifecycle: WhiteboardWorkerLifecycle::default(),
             sender: None,
-            worker: None,
+            owner: WhiteboardOwnerAdmission::Absent,
+            generation: None,
+            #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+            last_reaped_helper: None,
             conns: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum WhiteboardOwnerAdmission {
+    Absent,
+    Serving,
+    Draining,
+    Orphaned,
+}
+
+struct WhiteboardGeneration {
+    generation: u64,
+    launch_token: String,
+    postfix: String,
+    launch: Option<tokio::task::JoinHandle<ResultType<WhiteboardLaunch>>>,
+    helper: Option<WhiteboardHelperProcess>,
+    worker: Option<tokio::task::JoinHandle<()>>,
+    worker_joined: bool,
+    cancellation: CancellationToken,
+    launch_not_before: tokio::time::Instant,
+    retirement_deadline: Option<tokio::time::Instant>,
+    launch_uncertain: bool,
+    retirement_error_logged: bool,
+}
+
+enum WhiteboardLaunch {
+    WaitingForUser,
+    Spawned(WhiteboardHelperProcess),
+}
+
+#[cfg(target_os = "windows")]
+type WhiteboardHelperProcess = crate::platform::WindowsWhiteboardProcess;
+
+#[cfg(not(target_os = "windows"))]
+struct WhiteboardHelperProcess {
+    child: std::process::Child,
+    exit_success: Option<bool>,
+}
+
+#[cfg(not(target_os = "windows"))]
+impl WhiteboardHelperProcess {
+    fn id(&self) -> ResultType<u32> {
+        Ok(self.child.id())
+    }
+    fn try_reap_exited(&mut self) -> ResultType<bool> {
+        match self.child.try_wait()? {
+            Some(status) => {
+                self.exit_success = Some(status.success());
+                if !status.success() {
+                    log::error!("whiteboard helper {} exited with {status}", self.child.id());
+                }
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+    fn terminate(&mut self) -> ResultType<()> {
+        Ok(self.child.kill()?)
+    }
+}
+
+/// Polled inline by the existing controlled-server root, never by the command task it joins.
+pub(crate) struct WhiteboardClientOwner {
+    timer: Interval,
+}
+
+impl WhiteboardClientOwner {
+    pub(crate) fn new() -> ResultType<Self> {
+        tokio::runtime::Handle::try_current()?;
+        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        if state.owner != WhiteboardOwnerAdmission::Absent || state.generation.is_some()
+            || state.lifecycle.phase != WhiteboardWorkerPhase::Idle {
+            bail!("whiteboard client already has an owner or unreconciled generation");
+        }
+        state.owner = WhiteboardOwnerAdmission::Serving;
+        let mut timer = tokio::time::interval(Duration::from_millis(100));
+        timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        Ok(Self { timer })
+    }
+
+    async fn observe(&mut self) -> bool {
+        poll_fn(|cx| {
+            let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+            poll_whiteboard_generation(&mut state, cx);
+            Poll::Ready(state.generation.is_some())
+        }).await
+    }
+
+    pub(crate) async fn run(&mut self) {
+        loop {
+            let active = self.observe().await;
+            tokio::select! {
+                _ = WHITEBOARD_OWNER_WAKE.notified() => {},
+                _ = self.timer.tick(), if active => {},
+            }
+        }
+    }
+
+    pub(crate) fn begin_shutdown(&mut self) {
+        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        state.owner = WhiteboardOwnerAdmission::Draining;
+        state.sender.take();
+        state.conns.clear();
+        if let Some(owner) = state.generation.as_ref() {
+            let generation = owner.generation;
+            owner.cancellation.cancel();
+            state.lifecycle.retire_generation(generation);
+        }
+        WHITEBOARD_OWNER_WAKE.notify_one();
+    }
+
+    pub(crate) async fn stop_and_join(&mut self) {
+        self.begin_shutdown();
+        while self.observe().await { self.timer.tick().await; }
+    }
+}
+
+impl Drop for WhiteboardClientOwner {
+    fn drop(&mut self) {
+        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        if state.generation.is_none() {
+            state.owner = WhiteboardOwnerAdmission::Absent;
+            return;
+        }
+        state.owner = WhiteboardOwnerAdmission::Orphaned;
+        state.sender.take();
+        if let Some(owner) = state.generation.as_mut() {
+            owner.cancellation.cancel();
+            if let Some(helper) = owner.helper.as_mut() {
+                match helper.try_reap_exited() {
+                    Ok(false) => if let Err(err) = helper.terminate() {
+                        log::error!("whiteboard owner cancellation could not terminate its helper: {err}");
+                    },
+                    Ok(true) => {},
+                    Err(err) => log::error!("whiteboard owner cancellation could not observe its helper: {err}"),
+                }
+            }
+            let generation = owner.generation;
+            state.lifecycle.retire_generation(generation);
+        }
+        // Retain all handles in the locked owner; uncertainty can never admit a replacement.
+        log::error!("whiteboard root was dropped without joining its generation; replacement is refused");
+    }
+}
+
+fn poll_whiteboard_generation(state: &mut WhiteboardClientState, cx: &mut Context<'_>) {
+    let has_demand = !state.conns.is_empty();
+    let Some(owner) = state.generation.as_mut() else { return; };
+    let generation = owner.generation;
+    let now = tokio::time::Instant::now();
+    if !has_demand && state.lifecycle.phase == (WhiteboardWorkerPhase::Starting { generation }) {
+        state.lifecycle.retire_generation(generation);
+        owner.cancellation.cancel();
+    }
+    if let Some(launch) = owner.launch.as_mut() {
+        if let Poll::Ready(result) = Pin::new(launch).poll(cx) {
+            owner.launch.take();
+            match result {
+                Ok(Ok(WhiteboardLaunch::Spawned(helper))) => owner.helper = Some(helper),
+                Ok(Ok(WhiteboardLaunch::WaitingForUser)) => owner.launch_not_before = now + Duration::from_secs(1),
+                Ok(Err(err)) => {
+                    state.lifecycle.retire_generation(generation);
+                    log::error!("whiteboard generation {generation} launch failed: {err}");
+                }
+                Err(err) => {
+                    // A panicked creation operation cannot prove that it created no process.
+                    owner.launch_uncertain = err.is_panic();
+                    state.lifecycle.retire_generation(generation);
+                    log::error!("whiteboard generation {generation} launch task failed: {err}; uncertain={}", owner.launch_uncertain);
+                }
+            }
+        }
+    }
+    let mut helper_known_live = false;
+    if let Some(helper) = owner.helper.as_mut() {
+        match helper.try_reap_exited() {
+            Ok(true) => {
+                #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+                { state.last_reaped_helper = Some((generation, helper.exit_success == Some(true))); }
+                owner.helper.take();
+                state.lifecycle.retire_generation(generation);
+                state.sender.take();
+                owner.cancellation.cancel();
+            }
+            Ok(false) => helper_known_live = true,
+            Err(err) => {
+                state.lifecycle.retire_generation(generation);
+                state.sender.take();
+                owner.cancellation.cancel();
+                if !owner.retirement_error_logged {
+                    log::error!("whiteboard generation {generation} helper observation failed; ownership retained: {err}");
+                    owner.retirement_error_logged = true;
+                }
+            }
+        }
+    }
+    if state.lifecycle.phase == (WhiteboardWorkerPhase::Starting { generation }) {
+        if owner.helper.is_none() && owner.launch.is_none() && now >= owner.launch_not_before {
+            let launch_token = owner.launch_token.clone();
+            owner.launch = Some(tokio::task::spawn_blocking(move || launch_whiteboard_helper(&launch_token)));
+        } else if let Some(helper) = owner.helper.as_ref() {
+            if owner.worker.is_none() {
+                match helper.id() {
+                    Ok(pid) => {
+                        owner.worker = Some(tokio::spawn(run_whiteboard_worker(generation,
+                            owner.launch_token.clone(), owner.postfix.clone(), pid, owner.cancellation.clone())));
+                    }
+                    Err(err) => {
+                        state.lifecycle.retire_generation(generation);
+                        log::error!("whiteboard generation {generation} helper launch identity failed: {err}");
+                    }
+                }
+            }
+        }
+    }
+    if let Some(worker) = owner.worker.as_mut() {
+        if let Poll::Ready(result) = Pin::new(worker).poll(cx) {
+            owner.worker.take();
+            owner.worker_joined = true;
+            state.lifecycle.retire_generation(generation);
+            state.sender.take();
+            if let Err(err) = result { log::error!("whiteboard generation {generation} task join failed: {err}"); }
+        }
+    }
+    if matches!(state.lifecycle.phase, WhiteboardWorkerPhase::Stopping { generation: current, .. } if current == generation) {
+        let deadline = *owner.retirement_deadline.get_or_insert(now + Duration::from_secs(3));
+        if now >= deadline {
+            owner.cancellation.cancel();
+            if helper_known_live {
+                if let Some(helper) = owner.helper.as_mut() {
+                    if let Err(err) = helper.terminate() {
+                        if !owner.retirement_error_logged {
+                            log::error!("whiteboard generation {generation} helper termination failed; ownership retained: {err}");
+                            owner.retirement_error_logged = true;
+                        }
+                    }
+                }
+            }
+        }
+        if owner.worker.is_none() && owner.launch.is_none() && owner.helper.is_none() && !owner.launch_uncertain {
+            state.generation.take();
+            match state.lifecycle.finish(generation, has_demand && state.owner == WhiteboardOwnerAdmission::Serving) {
+                Ok(Some(next)) => if let Err(err) = reserve_whiteboard_generation(state, next) {
+                    state.lifecycle.cancel_reserved_generation(next);
+                    log::error!("failed to reserve demanded whiteboard generation {next}: {err}");
+                },
+                Ok(None) => {},
+                Err(err) => log::error!("whiteboard generation {generation} retirement failed: {err}"),
+            }
         }
     }
 }
@@ -202,6 +488,8 @@ impl WhiteboardClientState {
             let Some((generation, sender)) = self.sender.as_ref() else {
                 if let Some(generation) = self.lifecycle.running_generation() {
                     self.lifecycle.sender_failed(generation);
+                    if let Some(owner) = self.generation.as_ref() { owner.cancellation.cancel(); }
+                    WHITEBOARD_OWNER_WAKE.notify_one();
                 }
                 return WhiteboardCommandAdmission::NoWorker;
             };
@@ -215,11 +503,15 @@ impl WhiteboardClientState {
             Err(TrySendError::Full(_)) => {
                 self.sender.take();
                 self.lifecycle.sender_failed(generation);
+                if let Some(owner) = self.generation.as_ref() { owner.cancellation.cancel(); }
+                WHITEBOARD_OWNER_WAKE.notify_one();
                 WhiteboardCommandAdmission::WorkerRetiredAfterSaturation
             }
             Err(TrySendError::Closed(_)) => {
                 self.sender.take();
                 self.lifecycle.sender_failed(generation);
+                if let Some(owner) = self.generation.as_ref() { owner.cancellation.cancel(); }
+                WHITEBOARD_OWNER_WAKE.notify_one();
                 WhiteboardCommandAdmission::WorkerRetiredAfterClosure
             }
         }
@@ -238,25 +530,28 @@ struct LastCursorEvent {
     c: usize,
 }
 
-fn install_reserved_whiteboard_worker(
+fn reserve_whiteboard_generation(
     state: &mut WhiteboardClientState,
     generation: u64,
 ) -> ResultType<()> {
     if state.lifecycle.phase != (WhiteboardWorkerPhase::Starting { generation }) {
         bail!("whiteboard worker generation {generation} was not reserved");
     }
-    if state.worker.is_some() {
+    if state.generation.is_some() {
         bail!("whiteboard worker ownership overlaps generation {generation}");
     }
-    let runtime = tokio::runtime::Handle::try_current()
-        .map_err(|err| anyhow!("whiteboard worker requires the existing Tokio runtime: {err}"))?;
-    let worker = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        runtime.spawn(run_whiteboard_worker(generation))
-    }))
-    .map_err(|_| {
-        anyhow!("existing Tokio runtime refused whiteboard worker generation {generation}")
-    })?;
-    state.worker = Some((generation, worker));
+    if state.owner != WhiteboardOwnerAdmission::Serving {
+        bail!("whiteboard controlled-server owner is unavailable");
+    }
+    let launch_token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
+    let postfix = ipc::whiteboard_endpoint_postfix(&launch_token)?;
+    state.generation = Some(WhiteboardGeneration {
+        generation, launch_token, postfix, launch: None, helper: None, worker: None,
+        worker_joined: false, cancellation: CancellationToken::new(),
+        launch_not_before: tokio::time::Instant::now(), retirement_deadline: None,
+        launch_uncertain: false, retirement_error_logged: false,
+    });
+    WHITEBOARD_OWNER_WAKE.notify_one();
     Ok(())
 }
 
@@ -271,52 +566,27 @@ impl Drop for WhiteboardClientWorkerGuard {
 }
 
 fn finish_whiteboard_worker(generation: u64) {
-    let mut diagnostics = Vec::new();
-    let retired_worker = {
-        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
-        if state.sender.as_ref().map(|(owner, _)| *owner) == Some(generation) {
-            state.sender.take();
-        }
-        let retired_worker =
-            if state.worker.as_ref().map(|(owner, _)| *owner) == Some(generation) {
-                state.worker.take().map(|(_, worker)| worker)
-            } else {
-                diagnostics.push(format!(
-                    "whiteboard worker generation {generation} lost its exact task handle"
-                ));
-                None
-            };
-        let has_demand = !state.conns.is_empty();
-        let restart_generation = match state.lifecycle.finish(generation, has_demand) {
-            Ok(generation) => generation,
-            Err(err) => {
-                diagnostics.push(format!("whiteboard worker finalization failed: {err}"));
-                None
-            }
-        };
-        if let Some(restart_generation) = restart_generation {
-            if let Err(err) =
-                install_reserved_whiteboard_worker(&mut state, restart_generation)
-            {
-                state
-                    .lifecycle
-                    .cancel_reserved_generation(restart_generation);
-                diagnostics.push(format!(
-                    "failed to start demanded whiteboard successor generation {restart_generation}: {err}"
-                ));
-            }
-        }
-        retired_worker
-    };
-    drop(retired_worker);
-    for diagnostic in diagnostics {
-        log::error!("{diagnostic}");
+    let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+    if state.generation.as_ref().map(|owner| owner.generation) != Some(generation) {
+        log::error!("stale whiteboard generation {generation} task finalizer");
+        return;
     }
+    if state.sender.as_ref().map(|(owner, _)| *owner) == Some(generation) { state.sender.take(); }
+    state.lifecycle.retire_generation(generation);
+    WHITEBOARD_OWNER_WAKE.notify_one();
 }
 
-async fn run_whiteboard_worker(generation: u64) {
+async fn run_whiteboard_worker(generation: u64, launch_token: String, postfix: String,
+    helper_pid: u32, cancellation: CancellationToken) {
     let _terminal = WhiteboardClientWorkerGuard { generation };
-    match AssertUnwindSafe(start_whiteboard_(generation))
+    let result = async {
+        tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => bail!("whiteboard generation {generation} cancelled"),
+            result = start_whiteboard_(generation, &launch_token, &postfix, helper_pid) => result,
+        }
+    };
+    match AssertUnwindSafe(result)
         .catch_unwind()
         .await
     {
@@ -352,6 +622,10 @@ pub fn register_whiteboard(conn_id: i32) {
     let mut admission = WhiteboardCommandAdmission::NoWorker;
     {
         let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        if state.owner != WhiteboardOwnerAdmission::Serving {
+            log::warn!("whiteboard registration refused while the controlled-server owner is unavailable");
+            return;
+        }
         let bind = if state.conns.contains_key(&conn_id) {
             None
         } else {
@@ -393,7 +667,7 @@ pub fn register_whiteboard(conn_id: i32) {
             }
         }
         if let Some(generation) = launch_generation {
-            if let Err(err) = install_reserved_whiteboard_worker(&mut state, generation) {
+            if let Err(err) = reserve_whiteboard_generation(&mut state, generation) {
                 state.lifecycle.cancel_reserved_generation(generation);
                 launch_error = Some(err.to_string());
             }
@@ -538,64 +812,45 @@ async fn connect_whiteboard_endpoint(
     ms_timeout: u64,
     postfix: &str,
     launch_token: &str,
+    helper_pid: u32,
 ) -> ResultType<ipc::ConnectionTmpl<parity_tokio_ipc::ConnectionClient>> {
     let mut stream = ipc::connect(ms_timeout, postfix).await?;
+    #[cfg(target_os = "linux")]
+    if stream.peer_pid() != Some(helper_pid) { bail!("whiteboard endpoint is not the retained helper"); }
+    #[cfg(not(target_os = "linux"))]
+    let _ = helper_pid;
     ipc::authenticate_whiteboard_endpoint_launch_proof(&mut stream, launch_token).await?;
     Ok(stream)
 }
 
-async fn start_whiteboard_(generation: u64) -> ResultType<()> {
-    let headless_service_user = loop {
-        if crate::platform::is_headless_no_console_user() {
-            break true;
-        }
-        if !crate::platform::is_prelogin() {
-            break false;
-        }
-        sleep(1.).await;
-    };
-    let mut stream = None;
-    let launch_token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
-    let postfix = ipc::whiteboard_endpoint_postfix(&launch_token)?;
-    #[cfg(not(target_os = "linux"))]
-    let args = vec!["--whiteboard"];
-
+fn launch_whiteboard_helper(launch_token: &str) -> ResultType<WhiteboardLaunch> {
+    let headless_service_user = crate::platform::is_headless_no_console_user();
+    if !headless_service_user && crate::platform::is_prelogin() {
+        return Ok(WhiteboardLaunch::WaitingForUser);
+    }
+    #[cfg(target_os = "windows")]
+    return crate::platform::launch_whiteboard_user_helper(launch_token).map(WhiteboardLaunch::Spawned);
+    #[cfg(not(target_os = "windows"))]
+    {
     if crate::platform::is_root() && !headless_service_user {
-        #[cfg(target_os = "windows")]
-        {
-            let mut res = Ok(None);
-            for _ in 0..10 {
-                log::debug!("Start whiteboard");
-                res = crate::platform::run_user_helper(
-                    crate::platform::WindowsUserHelperLaunch::Whiteboard {
-                        launch_token: &launch_token,
-                    },
-                );
-                if res.is_ok() {
-                    break;
-                }
-                log::error!("Failed to run whiteboard: {res:?}");
-                sleep(1.).await;
-            }
-            if let Some(task) = res? {
-                CHILD_PROCESS.lock().unwrap().push(task);
-            }
-        }
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         bail!("Refusing root-to-user whiteboard launch; the user-context service must own it");
-        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         bail!("Refusing unsupported root-to-user whiteboard launch");
-    } else {
-        log::debug!("Start whiteboard");
-        #[cfg(target_os = "linux")]
-        let child = whiteboard_helper_command(&launch_token)?.spawn()?;
-        #[cfg(not(target_os = "linux"))]
-        let child = crate::run_me_with_env(args, whiteboard_launch_env(&launch_token))?;
-        CHILD_PROCESS.lock().unwrap().push(child);
     }
+    #[cfg(target_os = "linux")]
+    let child = whiteboard_helper_command(launch_token)?.spawn()?;
+    #[cfg(not(target_os = "linux"))]
+    let child = crate::run_me_with_env(vec!["--whiteboard"], whiteboard_launch_env(launch_token))?;
+    Ok(WhiteboardLaunch::Spawned(WhiteboardHelperProcess { child, exit_success: None }))
+    }
+}
+
+async fn start_whiteboard_(generation: u64, launch_token: &str, postfix: &str, helper_pid: u32) -> ResultType<()> {
+    let mut stream = None;
     for _ in 0..20 {
         sleep(0.3).await;
-        match connect_whiteboard_endpoint(1000, &postfix, &launch_token).await {
+        match connect_whiteboard_endpoint(1000, postfix, launch_token, helper_pid).await {
             Ok(s) => {
                 stream = Some(s);
                 break;
@@ -725,6 +980,78 @@ async fn start_whiteboard_(generation: u64) -> ResultType<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn reserved_client() -> (WhiteboardClientState, u64) {
+        let mut state = WhiteboardClientState::default();
+        state.owner = WhiteboardOwnerAdmission::Serving;
+        let generation = state.lifecycle.request_worker().unwrap().unwrap();
+        reserve_whiteboard_generation(&mut state, generation).unwrap();
+        state.lifecycle.retire_generation(generation);
+        state.owner = WhiteboardOwnerAdmission::Draining;
+        (state, generation)
+    }
+
+    async fn observe_client(state: &mut WhiteboardClientState) {
+        poll_fn(|cx| {
+            poll_whiteboard_generation(state, cx);
+            Poll::Ready(())
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11ho_cancelled_task_retains_generation_until_external_join() {
+        let (mut state, generation) = reserved_client();
+        let (started, running) = tokio::sync::oneshot::channel();
+        state.generation.as_mut().unwrap().worker = Some(tokio::spawn(async move {
+            started.send(()).unwrap();
+            std::future::pending::<()>().await;
+        }));
+        running.await.unwrap();
+        observe_client(&mut state).await;
+        assert_eq!(state.lifecycle.phase, WhiteboardWorkerPhase::Stopping {
+            generation, restart_requested: false,
+        });
+        let worker = state.generation.as_ref().unwrap().worker.as_ref().unwrap();
+        worker.abort();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !worker.is_finished() { tokio::task::yield_now().await; }
+        }).await.unwrap();
+        assert!(state.generation.as_ref().unwrap().worker.is_some());
+        assert!(!state.generation.as_ref().unwrap().worker_joined);
+        observe_client(&mut state).await;
+        assert!(state.generation.is_none());
+        assert_eq!(state.lifecycle.phase, WhiteboardWorkerPhase::Idle);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11ho_started_launch_retains_generation_through_cancellation() {
+        let (mut state, generation) = reserved_client();
+        let (started, running) = tokio::sync::oneshot::channel();
+        let (release, finish) = std::sync::mpsc::channel();
+        state.generation.as_mut().unwrap().launch = Some(tokio::task::spawn_blocking(move || {
+            started.send(()).unwrap();
+            finish.recv().unwrap();
+            Ok(WhiteboardLaunch::WaitingForUser)
+        }));
+        running.await.unwrap();
+        let owner = state.generation.as_mut().unwrap();
+        owner.cancellation.cancel();
+        owner.retirement_deadline = Some(tokio::time::Instant::now());
+        owner.launch.as_ref().unwrap().abort();
+        observe_client(&mut state).await;
+        assert_eq!(state.lifecycle.phase, WhiteboardWorkerPhase::Stopping {
+            generation, restart_requested: false,
+        });
+        assert!(!state.generation.as_ref().unwrap().launch.as_ref().unwrap().is_finished());
+        release.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while state.generation.is_some() {
+                observe_client(&mut state).await;
+                tokio::task::yield_now().await;
+            }
+        }).await.unwrap();
+        assert_eq!(state.lifecycle.phase, WhiteboardWorkerPhase::Idle);
+    }
 
     #[test]
     fn r_s11ho_duplicate_whiteboard_demand_owns_one_generation() {

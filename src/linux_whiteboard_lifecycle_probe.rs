@@ -219,15 +219,16 @@ async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, add
 }
 
 async fn client_generation() -> ResultType<()> {
-    use crate::whiteboard::{probe_whiteboard_client_state, register_whiteboard,
-        unregister_whiteboard, update_whiteboard_cursor, Cursor};
+    use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper, probe_whiteboard_helper_exit, register_whiteboard,
+        unregister_whiteboard, update_whiteboard_cursor, WhiteboardClientOwner, Cursor};
     ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
-        && crate::CHILD_PROCESS.lock().unwrap().is_empty(), "client fixture is not initially empty");
+        && probe_whiteboard_helper() == (None, false), "client fixture is not initially empty");
+    let mut owner = WhiteboardClientOwner::new()?;
     let mut inspect = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::user_defined1())?;
     register_whiteboard(7);
     register_whiteboard(7);
     register_whiteboard(8);
-    let result = async {
+    let exercise = async {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         let generation = loop {
             let (phase, generation, task, connections) = probe_whiteboard_client_state();
@@ -240,11 +241,8 @@ async fn client_generation() -> ResultType<()> {
                 "global whiteboard client failed startup: phase={phase} generation={generation}");
             tokio::time::sleep(Duration::from_millis(10)).await;
         };
-        let pid = {
-            let children = crate::CHILD_PROCESS.lock().unwrap();
-            ensure!(children.len() == 1, "global client launched more than one helper");
-            children[0].id()
-        };
+        let pid = probe_whiteboard_helper().0
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("global client lost its retained helper"))?;
         println!("WHITEBOARD_CLIENT_READY generation={generation} pid={pid} connections=2 task=retained");
         std::io::stdout().flush()?;
         observer_ack(b"go\n").await?;
@@ -260,24 +258,34 @@ async fn client_generation() -> ResultType<()> {
         // No parent stdin read may race the helper's inherited CLI-return barrier.
         ensure!(tokio::time::timeout(Duration::from_secs(5), inspect.recv()).await?.is_some(),
             "client inspection signal ended");
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        while !probe_whiteboard_helper().1 {
+            ensure!(tokio::time::Instant::now() < deadline, "production owner did not join its command task");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         let (phase, current, task, connections) = probe_whiteboard_client_state();
-        println!("WHITEBOARD_CLIENT_STATE generation={current} phase={phase} task={task} connections={connections} expected_generation={generation} pid={pid}");
+        let (helper, task_joined) = probe_whiteboard_helper();
+        ensure!(helper == Some(pid), "production owner released its helper before exit");
+        println!("WHITEBOARD_CLIENT_STATE generation={current} phase={phase} task={task} connections={connections} expected_generation={generation} pid={pid} task_joined={task_joined} helper_owned=true");
         std::io::stdout().flush()?;
         ensure!(tokio::time::timeout(Duration::from_secs(5), inspect.recv()).await?.is_some(),
             "client cleanup signal ended");
-        Ok(())
-    }.await;
+        Ok(pid)
+    };
+    let result = tokio::select! {
+        result = exercise => result,
+        _ = owner.run() => Err(hbb_common::anyhow::anyhow!("production whiteboard root ended unexpectedly")),
+    };
     unregister_whiteboard(7);
     unregister_whiteboard(8);
-    let children = std::mem::take(&mut *crate::CHILD_PROCESS.lock().unwrap());
-    for mut child in children {
-        let pid = child.id();
-        let retirement = wait_normal_exit(&mut child).await;
-        reap(child, retirement).await?;
-        println!("WHITEBOARD_CLIENT_CLEANUP pid={pid} status=0 owner=fixture child=normal-exit-reaped");
-        std::io::stdout().flush()?;
-    }
-    result
+    owner.stop_and_join().await;
+    let pid = result?;
+    ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
+        && probe_whiteboard_helper() == (None, false)
+        && probe_whiteboard_helper_exit() == Some((1, true)), "production owner did not normally reap its helper");
+    println!("WHITEBOARD_CLIENT_CLEANUP pid={pid} status=0 owner=production child=normal-exit-reaped task=joined");
+    std::io::stdout().flush()?;
+    Ok(())
 }
 
 pub async fn run() -> ResultType<()> {

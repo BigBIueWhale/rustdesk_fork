@@ -2598,6 +2598,8 @@ run_focused_rust_tests() {
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
             source_fingerprints+=(src/whiteboard/client.rs)
             required_tests=(
+                whiteboard::client::tests::r_s11ho_cancelled_task_retains_generation_until_external_join
+                whiteboard::client::tests::r_s11ho_started_launch_retains_generation_through_cancellation
                 whiteboard::client::tests::r_s11ho_duplicate_whiteboard_demand_owns_one_generation
                 whiteboard::client::tests::r_s11ho_demand_during_committed_stop_starts_one_successor
                 whiteboard::client::tests::r_s11ho_unexpected_worker_failure_does_not_self_retry
@@ -3050,7 +3052,7 @@ run_focused_rust_tests() {
                                 "$clipboard_executable" whiteboard::client::tests::r_s11ho_ \
                                 --color never --test-threads=1
                             [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
-                            printf "WHITEBOARD_CLIENT_STATE_ARTIFACT=pass sha256=%s executable=%s tests=7 unchanged=before-after\n" \
+                            printf "WHITEBOARD_CLIENT_STATE_ARTIFACT=pass sha256=%s executable=%s tests=9 unchanged=before-after\n" \
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             exit 0
                         fi
@@ -3168,7 +3170,7 @@ run_focused_rust_tests() {
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
-        printf 'WHITEBOARD_CLIENT_STATE_PROFILE=whiteboard-client stage=container-start tests=7 bridge=absent\n'
+        printf 'WHITEBOARD_CLIENT_STATE_PROFILE=whiteboard-client stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
         printf 'WHITEBOARD_PRESENTATION_STATE_PROFILE=whiteboard-presentation stage=container-start tests=2 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
@@ -3248,7 +3250,7 @@ run_focused_rust_tests() {
         [ "$(grep -Fxc 'WHITEBOARD_HELPER_NATIVE=pass cases=8 cli=core-main parent=kernel-admitted wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit worker=absent-before-exit window=badwindow-before-exit reconnect=refused address=rebindable overlay=two-owner-clear window_close=authenticated-cancel creator_thread=joined-live parent_exit=preproof-retired client_phase=retained-before-exit xvfb=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WHITEBOARD_HELPER_NATIVE=' "$output")" -eq 1 ] \
             || fail 'native helper behavior/cleanup receipt differs'
-        [ "$(grep -Fxc 'WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=fixture-reap' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=production-reap task=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WHITEBOARD_CLIENT_PHASE=' "$output")" -eq 1 ] \
             || fail 'native global client generation retirement receipt differs'
         for helper_case in creator-thread shutdown bad-proof proof-timeout proof-close stream-close window-close parent-exit; do
@@ -3283,7 +3285,7 @@ run_focused_rust_tests() {
                 && [ "$(grep -Fc 'WHITEBOARD_LISTENER_CANCEL=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard listener cancellation receipt differs'
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
-            [ "$(grep -Ec '^WHITEBOARD_CLIENT_STATE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=7 unchanged=before-after$' "$output")" -eq 1 ] \
+            [ "$(grep -Ec '^WHITEBOARD_CLIENT_STATE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=9 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_CLIENT_STATE_ARTIFACT=' "$output")" -eq 1 ] \
                 || fail 'whiteboard client state artifact receipt is absent, malformed or duplicated'
         elif [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then

@@ -8155,10 +8155,9 @@ impl Connection {
             #[cfg(all(windows, feature = "flutter"))]
             std::thread::spawn(move || {
                 if crate::is_server() && !crate::check_process("--tray", false) {
-                    crate::platform::run_user_helper(
-                        crate::platform::WindowsUserHelperLaunch::Tray,
-                    )
-                    .ok();
+                    if let Err(err) = crate::platform::run_tray_user_helper() {
+                        log::error!("Failed to launch tray helper: {err}");
+                    }
                 }
             });
         }

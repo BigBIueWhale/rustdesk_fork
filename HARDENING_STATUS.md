@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-a2fbb44b321ced28a1e88ff509c188e47496c6ddfc50dae6efb053e493751d25  requirements.html
+0b3677322e476cc252c3a10edd794d049ba99cbdb29fc475ac13ed548f44720b  requirements.html
 ```
 
 ## Current Verdict
@@ -1949,7 +1949,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `a2fbb44b321ced28a1e88ff509c188e47496c6ddfc50dae6efb053e493751d25  requirements.html`.
+Current normative specification SHA-256: `0b3677322e476cc252c3a10edd794d049ba99cbdb29fc475ac13ed548f44720b  requirements.html`.
 
 ### Current authority and source closure
 
@@ -10422,10 +10422,11 @@ Windows golden or complete Windows input closure, so no exact-current real build
 source. Success, failure, timeout, signal, substitution, cleanup-failure, and residue behavior around the native
 Windows VM therefore remain mandatory runtime evidence; source and focused non-VM fixtures do not close it.
 
-### R-S11gm/R-S11e-225 release-parent workspace principal closure (2026-09-15)
+### R-B9/R-S11gm/R-S11e-225 — release-parent workspace principal and retained authority
 
-**Source closed; real reset/terminal-cleanup fixtures pass; cold release remains
-open.** The release parent has no container launches, Docker socket, image
+**Principal boundary source-corrected; focused reset/terminal-cleanup fixtures pass;
+complete directory retention and cold release remain OPEN.** The release parent has
+no container launches, Docker socket, image
 provenance request, capability grant, root fixture, or ownership-conversion
 path. Every persistent release-workspace object must remain owned by the
 admitted numeric nonroot principal. The commit-bound in-memory helper directly
@@ -10434,6 +10435,16 @@ mount, bounded inventory, uniform current-principal ownership, retained inode
 edges, and complete internal hardlink closure. Foreign ownership,
 non-traversable or changed state, external hardlinks, special objects, and
 descendant mounts are preserved for explicit reconciliation.
+
+R-B9 requires the same nonroot, owner-only helper authority as R-S11dm/R-S11gm;
+its retired root/capability-based normalization and cleanup clauses are removed.
+The normalizer retains directory descriptors and inventories through mutation.
+Terminal cleanup currently retains non-directory inode authorities, releases directory
+descriptors during acquisition, and walks directory edges again during removal
+(`PrivateTreeRoot.collect_inode_links/remove_contents`). Full pre-mutation directory
+inventory/metadata retention is not established by that path or the existing fixtures.
+This source gap requires correction and isolated behavioral acceptance; the specification
+keeps the invariant. Same-UID quiescence does not prove its implementation.
 
 The current ordinary-user reset fixture behaviorally rejected an external
 hardlink without changing its target, handled internal hardlinks plus

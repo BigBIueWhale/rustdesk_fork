@@ -268,6 +268,9 @@ async fn client_generation() -> ResultType<()> {
                 println!("WHITEBOARD_CLIENT_WINDOW_CLOSE case=helper-close generation=1 pid={pid}");
                 std::io::stdout().flush()?;
             } else if case == "root-shutdown" {
+                ensure!(probe_whiteboard_client_state() == ("Running", expected_generation, true, 2)
+                    && probe_whiteboard_helper() == (Some(pid), false),
+                    "root shutdown missed its active Running generation");
                 println!("WHITEBOARD_CLIENT_ROOT_STOP case=root-shutdown generation=1 pid={pid}");
                 std::io::stdout().flush()?;
                 root_shutdown.notify_one();

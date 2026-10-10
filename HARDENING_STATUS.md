@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-9eed8ae61ff8330c59432feacdc88c2d8c545bf779dd326731a617982f744286  requirements.html
+ba17a4bdddbb251c64743977497983a3239c3dba172374e01d08f07211deda48  requirements.html
 ```
 
 ## Current Verdict
@@ -1922,7 +1922,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `9eed8ae61ff8330c59432feacdc88c2d8c545bf779dd326731a617982f744286  requirements.html`.
+Current normative specification SHA-256: `ba17a4bdddbb251c64743977497983a3239c3dba172374e01d08f07211deda48  requirements.html`.
 
 ### Current authority and source closure
 
@@ -6689,189 +6689,60 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   filesystem transaction self-test remains authoritative for the behavior it actually exercises.
   Android SDK acquisition, maintenance-image publication, exact cold R-B2/R-B10 artifacts, native
   device behavior, independent reproduction, and external R-V3 review remain open.
-- **R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority — SOURCE
-  CORRECTION IN PROGRESS 2026-08-04; ADVERSARIAL TRANSACTION AND EARLIER CLOSURE EVIDENCE RECORDED;
-  CORRECTED DISPOSABLE ACQUISITION, EXACT CLEAN RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: the
-  unprivileged Linux acquisition host and immutable Android-builder container. Endpoint/action:
-  `scripts/online-fetch.sh::stage_android_sdk` and the downstream `stage_gradle` warm-cache
-  transaction. Boundary: remote Android repository resolution and dependency-controlled Gradle
-  execution ↔ the complete offline-input cache and the durable exact SDK name.
+- **R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority —
+  SOURCE CONTRACT IMPLEMENTED; EXACT-CURRENT ACQUISITION/PUBLICATION, COLD RELEASE AND
+  INSTALLED-DEVICE ACCEPTANCE OPEN.** The owning acquisition VM runs
+  `scripts/online-fetch.sh::stage_android_sdk`; its numeric non-root inner producer has no
+  authority over the complete offline cache or final SDK. `stage_gradle` consumes that SDK
+  read-only under R-S11fv, including its validated guest-local projection.
 
-  Before this slice, `stage_android_sdk` treated `sdkmanager` package paths as content pins. It
-  requested moving `platform-tools`, `build-tools;34.0.0`, and `platforms;android-34`, ignored a
-  license-command failure, gave the networked resolver a writable mount of all `online`, recursively
-  removed the prior SDK, and copied the resolver's broad mutable tree into the final name.
-  Repository inspection proved that `platforms;android-34` currently occurs under multiple extension
-  revisions, so the alias is not a stable byte identity. `stage_gradle` then cloned the SDK into a
-  writable output and atomically exchanged that clone back into the final SDK. File transfer versus
-  screen-control behavior in the Android runtime is unrelated to this build-harness finding; this
-  slice changes no host or mobile RustDesk process, service, configuration, listener, firewall, or
-  network state.
+  `scripts/online-android-sdk-output.py` and `scripts/pins.env` bind eight inputs:
+  command-line tools revision 21, platform-tools 37.0.1, build-tools 30.0.3/34.0.0,
+  and platforms 31/32/33-ext3/34-ext7. Seven are fixed Google downloads; command-line tools
+  is the independently verified local archive. No moving alias, resolver license/state,
+  generated `package.xml`, `.temp` or `.knownPackages` belongs to the output.
+  Nonempty executable `adb` and `Pkg.Revision=37.0.1` satisfy the pinned Flutter 3.24.5
+  SDK-recognition contract. Complete tree identity/count/size is fixed by R-S11cr.
 
-  `scripts/pins.env` now records exact SHA-256 values for seven fixed Google repository archives:
-  `platform-tools_r37.0.1-linux.zip`, `build-tools_r30.0.3-linux.zip`,
-  `build-tools_r34-linux.zip`, `platform-31_r01.zip`,
-  `platform-32_r01.zip`, `platform-33-ext3_r03.zip`, and `platform-34-ext7_r03.zip`. Each record
-  also carries the exact byte length and independently checked official repository XML SHA-1 in its
-  provenance comment. The existing command-line-tools revision-21 archive remains the seventh exact
-  input. The final closure intentionally omits the moving `platform-tools` alias, resolver licenses,
-  `.temp`, `.knownPackages`, and generated `package.xml` files; it includes only the fixed exact
-  platform-tools 37.0.1 archive.
+  Admission rejects zero UID/GID, verifies the immutable builder/archive, locks the canonical
+  private online root, reconciles recorded transactions and validates occupied output without
+  deletion, replacement or relabeling. Private same-filesystem downloads/output children and
+  an external bounded fsynced journal separate producer work from publication. Four narrow
+  mounts provide two read-only inputs and two private writable outputs; no final/cache root,
+  repository, Docker socket, device, published port or host namespace reaches the producer.
+  Fixed HTTPS filenames, exact status/length/digest, closed ZIP paths/types/modes/flags/resources,
+  exclusive no-follow extraction and independent full inventory/byte/mount/link/xattr checks
+  precede sealing. Extraction explicitly normalizes the new raw root despite umask.
+  Publication uses synchronized 0444/0555 descendants and one exact mode-0700 root for the
+  cross-parent no-clobber rename, then descriptor-seals that inode 0555. Recovery, rollback
+  and private retirement require the recorded inode arrangement and complete revalidation.
 
-  `stage_android_sdk` now exclusively locks the canonical current-user-private online root,
-  reconciles every `.rustdesk-android-sdk.*` transaction, and fully checks a present final tree
-  rather than presence-trusting or deleting it. A cold run creates unpredictable mode-0700
-  same-filesystem staging with separate `downloads` and `output` children. The bounded fsynced
-  transaction record binds the exact online/staging/container/archive identities, UID/GID, complete
-  pin map, immutable builder, destination, verification phase, candidate inode, and tree digest.
-  Every command rejects UID or GID 0.
+  Gradle owns only private guest-local `/outputs/gradle-home`. Trusted import follows producer
+  termination, input/output revalidation and R-S11cl/R-S11fv/R-S11fz publication barriers.
+  SDK overrides, writable clones, exchanges and two-name commits are absent; SDK identity
+  and complete digest are checked after execution, after publication and during recovery.
 
-  The new networked archive-acquisition funnel keeps the fixed Docker client, fixed local socket,
-  and private empty Docker configuration. It uses the already loaded immutable Android builder with
-  `--pull=never`, isolated bridge egress, read-only root, numeric UID:GID, zero capabilities,
-  no-new-privileges, fixed PID/memory/no-swap/CPU ceilings, and bounded non-executable scratch. The
-  producer receives exactly four mounts: the command-line ZIP and exact helper read-only, plus only
-  the private downloads and SDK-output directories writable. It receives no online root, final
-  name, repository, Docker socket, device, published port, or host network/PID/IPC/UTS namespace.
+  The real filesystem transaction self-test retains production extraction, restrictive umask,
+  publication, occupied-destination/byte/extra-entry/hardlink/digest/path refusal and exact
+  post-rename recovery cases using synthetic archives. It remains wired beside the supplementary
+  source/pin/topology checker in `scripts/verify.sh`. Documentary coupling and the duplicate
+  workspace validator were already removed; neither is required by the current gate.
+  No helper/test/acquisition/build/native execution ran for this documentation-only cleanup.
 
-  `scripts/online-android-sdk-output.py` downloads only the seven fixed filenames from
-  `https://dl.google.com/android/repository/`. It rejects redirects, non-200 status, transformed
-  content, absent or wrong lengths, per-file/aggregate excess, and SHA-256 mismatch; creates every
-  file exclusively; synchronizes it; and never executes an archive. Its ZIP contract binds each
-  exact length, digest, entry count, root, destination, Unix mode set, and observed general-purpose
-  flag set. It rejects comments, unsupported flags/compression, NUL truncation, non-ASCII or
-  absolute/traversing/deep/long names, duplicates, special/set-id/sticky members, size/count
-  overflow, and cross-package collisions. Extraction creates explicit directories and
-  `O_EXCL|O_NOFOLLOW` regular files and normalizes only the archive-derived executable bit.
+  Historical rationale and receipts remain at
+  `b8bfb5f197fbcfe9b5df7775735030b36afb8ea0:HARDENING_STATUS.md` and source commits
+  `f5ab2254`, `7c3f55a5` and `529d9d91`. The earlier six-download/seven-package temporary
+  acquisition is not evidence for the eight-package closure. R-S11fv separately records named
+  warm-publication/reuse runs and their original outer-verdict limits; those are unchanged.
+  The old `online/android-sdk` path is absent; `online/inputs/android-sdk` is present with
+  current-user mode-0555 root metadata. That read-only observation is not full tree validation.
 
-  After the producer stops, the host reopens and rehashes all eight archives, requires exact output
-  inventory and same-filesystem/mount closure, current ownership, raw modes, no symlink, special
-  object, xattr, or external hardlink, and equality of every regular-file byte with a fresh archive
-  stream. Consumer semantics require command-line tools revision 21 and executable `sdkmanager`,
-  fixed platform-tools revision 37.0.1 with executable nonempty `adb`, both exact build-tools
-  revisions with `aapt2`, `apksigner`, and `zipalign`, and platforms 31–34 with their exact API-level
-  property and `android.jar`. The normalized complete tree is independently
-  bound at SHA-256
-  `f7fa90b41ea168fc385f46e9c5f48f3cee28bddddd44abd5036d97d17a72fd2b`,
-  43,480 files, 11,295 directories, and 898,205,722 regular-file bytes. Every file and inner
-  directory is sealed 0444/0555 and synchronized before descriptor-relative publication. The
-  candidate root stays private mode 0700 because Linux must update its `..` entry during a
-  cross-parent directory rename. `renameat2(RENAME_NOREPLACE)` installs the absent final name, then a
-  descriptor-bound exact-identity transition seals that root 0555 and synchronizes it before
-  postcheck. Restart recovery independently revalidates every archive and output byte before
-  completing only the exact recorded post-rename/pre-root-seal arrangement; postcheck, rollback, and
-  exact private retirement bind every other inode arrangement.
-
-  The established live `online/android-sdk` was inspected read-only and is intentionally not
-  accepted: it is root-owned resolver output and contains moving/resolver state outside the exact
-  archive closure. The new flow fails closed on it and tells the operator to retire it explicitly;
-  it does not delete, replace, or chmod it. This is the same deliberate legacy-state rule used for
-  the stale Android NDK output.
-
-  The corrected Gradle warmer no longer clones or mounts an SDK output. Its sole writable durable
-  mount is private `/outputs/gradle-home`; the exact SDK remains at read-only
-  `/online/android-sdk`, and `RUSTDESK_ANDROID_SDK_HOME` is rejected in warm mode. The transaction
-  records and rehashes the live SDK before warming, after the producer, after Gradle-home
-  publication, and during recovery. Only Gradle home is synchronized and installed with
-  `RENAME_NOREPLACE`; there is no `RENAME_EXCHANGE`, SDK rollback, SDK-only recovery, `adb`
-  requirement, or SDK publication authority. This explicitly supersedes the writable-SDK-clone and
-  two-name-publication portion of R-S11cl/R-S11e-104 while retaining its lock, wrapper checksum,
-  structural/semantic, no-clobber Gradle, recovery, and private-retirement protections.
-
-  Both transaction helpers pass their adversarial self-tests in the immutable Android builder as
-  numeric non-root with no pull/network, read-only root/source, zero capabilities,
-  no-new-privileges, and bounded resources. SDK fixtures cover exact publication/recovery, byte
-  tampering, extra entries, external hardlinks, occupied destination, wrong archive digest,
-  traversal, and exact post-rename/pre-root-seal recovery. Gradle fixtures cover one-name
-  publication/recovery, SDK mutation, occupied destination, wrong publisher checksum, and symlink
-  rejection.
-
-  The earlier disposable networked proof used immutable Android-builder image
-  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`
-  as UID:GID 1000:1000 with no pull, read-only root and exact input binds, no capabilities or
-  privilege gain, no port/device/socket/host namespace, fixed resources, and container-only tmpfs
-  outputs. It fetched the then-six exact network archives, verified their lengths and hashes,
-  expanded the then-seven-package closure, compared all 43,468 files to those archives, and
-  independently produced the former whole-tree digest. The tmpfs vanished with the container; no
-  archive or SDK output was published to the host. The 2026-08-04 correction below supersedes that
-  closure, so this earlier run is not acquisition or build evidence for the current eight-package SDK.
-
-  `scripts/verify-online-fetch-android-sdk-output-authority.py` and the corrected Gradle focused
-  verifier bind the exact pins, archive names/lengths, four-mount producer topology, runtime floor,
-  network response checks, closed ZIP and byte/inventory/resource contract, independent tree
-  closure, durable transaction, no-clobber publication, read-only Gradle SDK, shared gates,
-  R-S11cr, Appendix C #245, this ledger, and independent workspace ownership through deliberate
-  mutations. The adjacent container gate now treats the archive funnel as its own fourth Docker
-  primitive and passes with 36 mutations rejected.
-
-  No root command, image pull/build/tag, release build, host RustDesk process/service/config/
-  listener/firewall/network operation, or live online SDK mutation occurred. The networked action
-  was limited to the disposable container proof above. This is source, negative-fixture, exact
-  archive, and complete temporary acquisition evidence—not exact clean R-B2/R-B10 release output or
-  installed Android device evidence.
-
-  Follow-up correction (2026-07-29), **R-S11cr/R-S11e-110 umask-independent raw SDK root authority**:
-  the exact-output contract requires the producer's raw SDK root and every descendant
-  directory to be mode 0755 before the verified tree is sealed. Descendant directories were
-  explicitly normalized after creation, but the root used only `Path.mkdir(mode=0o755)`. Python
-  applies the process umask to that requested creation mode, so an otherwise valid extraction under
-  ambient umask 0077 created the root as 0700 and the helper's own raw-profile comparison correctly
-  rejected it. This was a fail-closed availability and reproducibility defect in the build
-  transaction, not a relaxation of validation, an SDK-content change, root execution, a container
-  escape, a public listener, or a host RustDesk/service/firewall/network mutation.
-
-  Extraction now no-follow normalizes the newly and exclusively created root to 0755 immediately
-  after creation, matching the existing explicit normalization of every inner directory and file.
-  The transaction self-test scopes umask 0077 around the real extraction call and restores the
-  caller's previous mask in `finally`; it therefore exercises the production path rather than a
-  mode-only surrogate. The focused verifier binds the exact normalization order, restrictive-mask
-  fixture, and restoration through deliberate mutations. The shared R-S11cr gate executes both that
-  behavioral self-test and the focused matrix, while the independent workspace verifier binds and
-  source-mutates the helper, focused verifier, and this ledger. The normative R-S11cr text and
-  Appendix C #245 already require exact raw modes independent of archive/extractor authority, so
-  their existing requirements hash remains unchanged.
-
-  Confined verification used cached immutable development image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as numeric UID:GID 1000:1000 with no pull or network, read-only root and repository, all
-  capabilities dropped, no-new-privileges, bounded resources and non-executable scratch, and no
-  port, device, socket, or host namespace. Under explicit umask 0077, the real transaction self-test
-  passed, the focused authority verifier rejected all 42 deliberate mutations, the independent
-  workspace baseline passed, and the complete unsliced independent source-mutation matrix passed.
-  Two preceding full-matrix attempts correctly failed on new meta-verifier debt: first, the
-  independent gate did not bind the focused verifier's exact 0755 assertion; second, its deliberate
-  mutation expected the old diagnostic label. The independent assertion and mutation classification
-  were corrected before the successful full rerun. No acquisition, release build, live SDK
-  publication, or host/mobile runtime action was part of this evidence.
-
-  Follow-up correction (2026-08-04), **R-S11cr/R-S11e-110 fixed platform-tools/Flutter SDK-recognition
-  closure — SOURCE AUTHORED; CORRECTED ACQUISITION AND REAL-JNI APK BUILD PENDING**: the first
-  real-JNI candidate build against the newly acquired exact SDK generated the Flutter bridge and
-  completed the optimized ARM64 Rust library, then stopped before Gradle with `No Android SDK found`.
-  Exact inspection of the independently SHA-256-pinned Flutter 3.24.5 source established the cause:
-  `AndroidSdk.validSdkDirectory` accepts an SDK root only when it contains `licenses/` or
-  `platform-tools/`, and the closure deliberately omits resolver license state. The dummy-JNI
-  build-graph diagnostic had used the historical broad SDK, which contained platform-tools, and
-  therefore concealed this acquisition defect. This is a build-input completeness failure, not an
-  Android product-runtime failure and not evidence of host RustDesk/service/configuration/listener/
-  firewall/network mutation.
-
-  The corrected closure pins Google's stable `platform-tools_r37.0.1-linux.zip` by its official
-  repository2-1.xml length 9,054,187 and SHA-1
-  `477254aa5f903c15cf51001717bdf347fb6b53e0`, plus independently streamed SHA-256
-  `d230f13842f60f782a8645f9c813f8f845bf36089ea7289f28c48f17979313f1`. Its exact twelve regular
-  entries, root, modes, flags, compression, and 22,198,160 expanded bytes enter the existing closed
-  archive contract; no moving package alias or resolver is reintroduced. Consumer semantics require
-  `Pkg.Revision=37.0.1` and an executable nonempty `platform-tools/adb`. An independent virtual-tree
-  calculation first reproduced the former sealed candidate identity exactly, then added only the
-  fixed archive and derived the new normative closure:
-  `f7fa90b41ea168fc385f46e9c5f48f3cee28bddddd44abd5036d97d17a72fd2b`, 43,480 files, 11,295
-  directories, and 898,205,722 regular-file bytes. The transaction self-test fixture, focused pin/
-  archive/consumer mutations, independent workspace bindings, R-S11cr, and Appendix C #245 are
-  updated with the same requirement. The fresh exact acquisition, source comparison, real-JNI
-  Gradle warm, networkless APK build, artifact inspection, and pinned-epoch payload comparison are
-  recorded immediately below. Stable-key signed A/B release reproduction and device execution
-  remain open.
+  **OPEN:** exact-current seven-download/eight-package acquisition, publication and recovery,
+  independent complete source/input/output comparison, real-JNI warm/offline APK and artifact/
+  pinned-epoch inspection, stable-key signed cold R-B2/R-B10 A==B, installed-device lifecycle,
+  maintenance-image publication, other producers' own acceptance, independent reproduction
+  and external review. Synthetic fixtures, source checks, historical smaller closure and
+  current directory metadata do not close these obligations.
 - **R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure — CURRENT CANONICAL FIRST
   PUBLICATION EXECUTED; CLEAN REUSE/FINALITY GREEN; COLD-RELEASE AND DEVICE EVIDENCE OPEN.** Platform: the unprivileged
   Linux acquisition transaction and immutable Android builder. Endpoint/action:

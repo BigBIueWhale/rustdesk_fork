@@ -3218,7 +3218,7 @@ run_focused_rust_tests() {
             [ "$(grep -Fxc 'WHITEBOARD_DISPLAY_NATIVE=pass backend=x11 pixels=server-readback owners=2 clear=exact-owner startup=missing-launch worker=joined terminal=before-and-after-proxy-once event_loop=retired window=destroyed-before-return state_tests=3 native_tests=2 xvfb=joined' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_DISPLAY_NATIVE=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard behavior/cleanup receipt differs'
-            [ "$(grep -Ec '^WHITEBOARD_LISTENER_CANCEL=pass transport=unix readiness=kernel-connect worker=joined reconnect=refused socket_path=(present|absent) pid_path=(present|absent)$' "$output")" -eq 1 ] \
+            [ "$(grep -Fxc 'WHITEBOARD_LISTENER_CANCEL=pass transport=unix-abstract readiness=kernel-connect unauthorized=preproof-eof worker=joined reconnect=refused address=rebindable filesystem=absent generations=32 fd_delta=0' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_LISTENER_CANCEL=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard listener cancellation receipt differs'
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then

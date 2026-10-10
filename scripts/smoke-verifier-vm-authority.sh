@@ -4862,7 +4862,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'native whiteboard pixels and cleanup receipt'
     mapfile -t whiteboard_listener_receipts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'WHITEBOARD_LISTENER_CANCEL=pass transport=unix readiness=kernel-connect worker=joined reconnect=refused socket_path=(present|absent) pid_path=(present|absent)$'
+            'WHITEBOARD_LISTENER_CANCEL=pass transport=unix-abstract readiness=kernel-connect unauthorized=preproof-eof worker=joined reconnect=refused address=rebindable filesystem=absent generations=32 fd_delta=0$'
     )
     [ "${#whiteboard_listener_receipts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'WHITEBOARD_LISTENER_CANCEL=' "$SERIAL_LOG")" -eq 1 ] \

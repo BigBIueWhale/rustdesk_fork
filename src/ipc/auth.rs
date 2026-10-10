@@ -5002,7 +5002,7 @@ pub(crate) fn authorize_cm_ipc_connection(stream: &Connection) -> bool {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) fn authorize_whiteboard_ipc_connection(
-    stream: &Connection,
+    stream: &super::WhiteboardConnection,
     expected_parent_pid: u32,
 ) -> bool {
     #[cfg(target_os = "linux")]

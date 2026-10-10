@@ -12100,7 +12100,7 @@ synchronization; late app-drop destruction previously missed that flush. Debian
 Depends declares the existing `libxkbcommon-x11-0` runtime requirement; the pinned
 X11 fixture includes it and `libxcb-xkb1`. No privilege escalation was reproduced.
 
-**Accepted Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
+**Accepted previous Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
 passed at source `04eab95beb27ec6222a6cb349fa10edfb533afff`, tree
 `ba2d6e09bf4240c12ca99083080fd02418be7f3e`: six actual tests, zero failed/ignored,
 221s VM / 155s build / 0.00s state tests / 0.01s listener cancellation /
@@ -12126,21 +12126,22 @@ CLI/complete helper or authenticated IPC, other listener/startup/worker failure
 or cancellation paths, a compositor, animation/occlusion, resource/soak bounds,
 other platforms, or installed Debian acceptance.
 
-**Listener cancellation passed; pathname retirement OPEN:** the focused profile constructs the
-real Unix listener with a test launch identity, requires a successful kernel connection
-and the exact worker PID marker before requesting stop, joins the worker and requires
-subsequent connection refusal while the test process remains alive. It records whether
-the same socket/PID pathname inodes remain; it neither unlinks them nor treats absence
-of an accepting listener as proof of filesystem retirement. The accepted run above
-observed both original pathname inodes still present after join. Source `new_listener`
-creates both paths and the pinned Unix Incoming has no pathname retirement owner;
-fresh tokens derive distinct postfixes, so repeated-generation disk growth remains
-a source-supported concern, not a measured soak result. No live listener or LPE was observed.
-Exact generation-bound pathname retirement and bounded repeated-generation disk use
-remain OPEN; a path-based unlink without retained ownership proof is not a fix.
-This unauthenticated readiness probe proves neither allowed/forbidden principal
-admission nor post-authenticated stream/overlay cancellation. The PID marker is
-an observation of the current constructor, not a normative requirement to retain it.
+**Linux listener lifetime SOURCE CORRECTED; native execution pending:** the accepted previous
+run observed both original socket/PID inodes after join, establishing a resource finding,
+not a surviving listener or LPE. Linux now uses one kernel-owned abstract Unix address
+derived from the same UID/token-scoped name. `LinuxWhiteboardListener` owns its socket;
+the ordinary filesystem factory rejects whiteboard, and connecting uses only that
+abstract address. No socket/PID file, stale-path scrub, unlink or filesystem fallback
+exists on this route. Kernel peer/process/parent admission, mutual launch proof and
+the pre-proof frame ceiling remain required; abstract names and their UID component
+are not authority, and filesystem permissions do not restrict abstract reachability.
+The revised fixture requires a real connection, wrong-parent EOF before proof while
+the listener remains bound, exact worker join, refusal and immediate address reuse;
+32 distinct factory generations must also retire with no filesystem entries or FD growth.
+No fixture unlink or process death supplies cleanup. Execution is pending; the old
+receipt above does not validate this source change. macOS pathname retirement,
+native allowed/forbidden principal coverage, authenticated stream/overlay cancellation,
+complete helper and sustained resource/soak acceptance remain OPEN.
 
 **Lifecycle state evidence:** the same root-crate test executable passed all three
 current production module tests: termination before proxy publication, exact installed-proxy

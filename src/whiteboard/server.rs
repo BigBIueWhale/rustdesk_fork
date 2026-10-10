@@ -1,5 +1,7 @@
 use super::{event_lifecycle::WhiteboardEventLifecycle, Cursor, CustomEvent};
-use crate::ipc::{self, new_listener, Connection, WhiteboardIpcCommand};
+use crate::ipc::{self, WhiteboardConnection as Connection, WhiteboardIpcCommand};
+#[cfg(not(target_os = "linux"))]
+use crate::ipc::new_listener;
 use hbb_common::{
     allow_err, anyhow::anyhow, log,
     tokio::{self, sync::oneshot},
@@ -133,7 +135,11 @@ async fn start_ipc(mut stop_requested: oneshot::Receiver<()>) {
             return;
         }
     };
-    match new_listener(&postfix).await {
+    #[cfg(target_os = "linux")]
+    let incoming = ipc::LinuxWhiteboardListener::bind(&postfix);
+    #[cfg(not(target_os = "linux"))]
+    let incoming = new_listener(&postfix).await;
+    match incoming {
         Ok(mut incoming) => loop {
             tokio::select! {
                 _ = &mut stop_requested => {
@@ -363,11 +369,13 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires isolated whiteboard launch identity and IPC paths"]
     async fn r_s11hn_whiteboard_listener_cancellation_joins_worker_and_refuses_reconnect() {
+        use hbb_common::tokio::io::AsyncReadExt;
         use std::io::{ErrorKind, Write};
-        use std::os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt};
+        use std::os::unix::fs::OpenOptionsExt;
         use std::path::Path;
 
         let postfix = ipc::whiteboard_endpoint_postfix_from_env().unwrap();
+        let address = ipc::linux_whiteboard_endpoint_address(&postfix).unwrap();
         let path = hbb_common::config::Config::ipc_path(&postfix);
         let pid_path = format!("{path}.pid");
         let receipt_path = Path::new("/tmp/whiteboard-listener-cancel.receipt");
@@ -383,73 +391,97 @@ mod tests {
             .unwrap();
         assert!(parent > 0 && parent != std::process::id());
         let worker = WhiteboardIpcWorker::spawn().unwrap();
-        let readiness = tokio::time::timeout(Duration::from_secs(3), async {
-            let peer = loop {
-                match tokio::net::UnixStream::connect(&path).await {
-                    Ok(peer) => break peer,
+        let mut readiness = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                match tokio::net::UnixStream::connect(&address).await {
+                    Ok(peer) => break Ok(peer),
                     Err(err)
                         if matches!(
                             err.kind(),
                             ErrorKind::NotFound | ErrorKind::ConnectionRefused
                         ) => {}
-                    Err(err) => panic!("whiteboard listener readiness failed: {err}"),
-                }
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            };
-            loop {
-                match std::fs::read_to_string(&pid_path) {
-                    Ok(value) if value.parse::<u32>().ok() == Some(std::process::id()) => break,
-                    Ok(_) => {}
-                    Err(err) if err.kind() == ErrorKind::NotFound => {}
-                    Err(err) => panic!("whiteboard PID readiness failed: {err}"),
+                    Err(err) => return Err(err),
                 }
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
-            let socket = std::fs::symlink_metadata(&path).unwrap();
-            let pid = std::fs::symlink_metadata(&pid_path).unwrap();
-            assert!(socket.file_type().is_socket());
-            assert!(pid.is_file());
-            for metadata in [&socket, &pid] {
-                assert_eq!(metadata.uid(), 1000);
-                assert_eq!(metadata.mode() & 0o777, 0o600);
-                assert_eq!(metadata.nlink(), 1);
-            }
-            assert_eq!(
-                std::fs::read_to_string(&pid_path)
-                    .unwrap()
-                    .parse::<u32>()
-                    .unwrap(),
-                std::process::id()
-            );
-            (peer, socket, pid)
         })
         .await;
+        let mut byte = [0];
+        let rejection = match &mut readiness {
+            Ok(Ok(peer)) => Some(
+                tokio::time::timeout(Duration::from_secs(1), peer.read(&mut byte)).await,
+            ),
+            _ => None,
+        };
+        let duplicate = ipc::LinuxWhiteboardListener::bind(&postfix);
         tokio::task::spawn_blocking(move || worker.stop_and_join())
             .await
             .unwrap()
             .unwrap();
-        let (peer, socket, pid) = readiness.expect("whiteboard listener never became ready");
+        let peer = readiness
+            .expect("whiteboard listener never became ready")
+            .unwrap();
+        assert_eq!(rejection.unwrap().unwrap().unwrap(), 0);
+        match duplicate {
+            Err(err) => assert_eq!(
+                err.downcast_ref::<std::io::Error>().unwrap().kind(),
+                ErrorKind::AddrInUse
+            ),
+            Ok(_) => panic!("whiteboard listener did not exclusively own its address"),
+        }
         drop(peer);
-        match tokio::net::UnixStream::connect(&path).await {
-            Err(err) if matches!(err.kind(), ErrorKind::ConnectionRefused | ErrorKind::NotFound) => {}
+        match tokio::net::UnixStream::connect(&address).await {
+            Err(err) if err.kind() == ErrorKind::ConnectionRefused => {}
             result => panic!("whiteboard listener survived worker join: {result:?}"),
         }
-        let mut retained = [false; 2];
-        for (index, (path, original)) in [(&path, &socket), (&pid_path, &pid)]
-            .into_iter()
-            .enumerate()
-        {
-            match std::fs::symlink_metadata(path) {
-                Ok(metadata) => {
-                    assert_eq!(
-                        (metadata.dev(), metadata.ino()),
-                        (original.dev(), original.ino())
-                    );
-                    retained[index] = true;
-                }
-                Err(err) if err.kind() == ErrorKind::NotFound => {}
-                Err(err) => panic!("whiteboard path observation failed: {err}"),
+        drop(ipc::LinuxWhiteboardListener::bind(&postfix).unwrap());
+        assert!(ipc::new_listener(&postfix).await.is_err());
+        for path in [&path, &pid_path] {
+            assert_eq!(
+                std::fs::symlink_metadata(path).unwrap_err().kind(),
+                ErrorKind::NotFound
+            );
+        }
+
+        let fd_count = || {
+            std::fs::read_dir("/proc/self/fd")
+                .unwrap()
+                .map(|entry| entry.unwrap())
+                .count()
+        };
+        let baseline_fds = fd_count();
+        for generation in 0..32 {
+            let postfix = ipc::whiteboard_endpoint_postfix(&token(generation)).unwrap();
+            let path = hbb_common::config::Config::ipc_path(&postfix);
+            let mut listener = ipc::LinuxWhiteboardListener::bind(&postfix).unwrap();
+            let client = ipc::connect(1000, &postfix).await.unwrap();
+            assert_eq!(client.peer_pid(), Some(std::process::id()));
+            let stream = tokio::time::timeout(Duration::from_secs(1), listener.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            let stream = Connection::new_whiteboard(stream);
+            assert_eq!(stream.peer_pid(), Some(std::process::id()));
+            drop(stream);
+            drop(client);
+            drop(listener);
+            let address = ipc::linux_whiteboard_endpoint_address(&postfix).unwrap();
+            assert_eq!(
+                tokio::net::UnixStream::connect(&address)
+                    .await
+                    .unwrap_err()
+                    .kind(),
+                ErrorKind::ConnectionRefused
+            );
+            drop(ipc::LinuxWhiteboardListener::bind(&postfix).unwrap());
+            for path in [&path, &format!("{path}.pid")] {
+                assert_eq!(
+                    std::fs::symlink_metadata(path).unwrap_err().kind(),
+                    ErrorKind::NotFound
+                );
             }
+            assert_eq!(fd_count(), baseline_fds);
         }
         let mut receipt = std::fs::OpenOptions::new()
             .write(true)
@@ -459,9 +491,7 @@ mod tests {
             .unwrap();
         writeln!(
             receipt,
-            "WHITEBOARD_LISTENER_CANCEL=pass transport=unix readiness=kernel-connect worker=joined reconnect=refused socket_path={} pid_path={}",
-            if retained[0] { "present" } else { "absent" },
-            if retained[1] { "present" } else { "absent" }
+            "WHITEBOARD_LISTENER_CANCEL=pass transport=unix-abstract readiness=kernel-connect unauthorized=preproof-eof worker=joined reconnect=refused address=rebindable filesystem=absent generations=32 fd_delta=0"
         )
         .unwrap();
     }

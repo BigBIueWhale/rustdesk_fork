@@ -4943,6 +4943,10 @@ async fn handle_windows_service_control_transaction(
     }
 }
 pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
+    #[cfg(target_os = "linux")]
+    if whiteboard_ipc_postfix_is_valid(postfix) {
+        bail!("Linux whiteboard requires its owned abstract listener");
+    }
     let path = Config::ipc_path(postfix);
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     let should_scrub_parent_entries = ensure_secure_ipc_parent_dir(&path, postfix)?;
@@ -5361,6 +5365,31 @@ pub(crate) fn whiteboard_endpoint_postfix_from_env() -> ResultType<String> {
     let launch_token = std::env::var(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV)
         .map_err(|err| hbb_common::anyhow::anyhow!("missing whiteboard launch token: {err}"))?;
     whiteboard_endpoint_postfix(&launch_token)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn linux_whiteboard_endpoint_address(postfix: &str) -> ResultType<String> {
+    if !whiteboard_ipc_postfix_is_valid(postfix) {
+        bail!("invalid whiteboard endpoint postfix");
+    }
+    Ok(format!("\0{}", Config::ipc_path(postfix)))
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) struct LinuxWhiteboardListener(tokio::net::UnixListener);
+
+#[cfg(target_os = "linux")]
+impl LinuxWhiteboardListener {
+    pub(crate) fn bind(postfix: &str) -> ResultType<Self> {
+        // The kernel owns this generation's name; no socket/PID file or path cleanup exists.
+        Ok(Self(tokio::net::UnixListener::bind(
+            linux_whiteboard_endpoint_address(postfix)?,
+        )?))
+    }
+
+    pub(crate) async fn next(&mut self) -> Option<std::io::Result<tokio::net::UnixStream>> {
+        Some(self.0.accept().await.map(|(stream, _)| stream))
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -7224,6 +7253,15 @@ fn user_main_ipc_server_uid() -> ResultType<u32> {
 }
 
 pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmpl<ConnClient>> {
+    #[cfg(target_os = "linux")]
+    if whiteboard_ipc_postfix_is_valid(postfix) {
+        return connect_with_path(
+            ms_timeout,
+            &linux_whiteboard_endpoint_address(postfix)?,
+            postfix,
+        )
+        .await;
+    }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if matches!(
         postfix,
@@ -7467,6 +7505,11 @@ pub struct ConnectionTmpl<T> {
 }
 
 pub type Connection = ConnectionTmpl<Conn>;
+
+#[cfg(target_os = "linux")]
+pub(crate) type WhiteboardConnection = ConnectionTmpl<tokio::net::UnixStream>;
+#[cfg(not(any(target_os = "linux", target_os = "android", target_os = "ios")))]
+pub(crate) type WhiteboardConnection = Connection;
 
 impl<T> ConnectionTmpl<T>
 where

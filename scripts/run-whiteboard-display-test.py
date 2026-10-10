@@ -67,8 +67,8 @@ def main():
                 "listener cancellation receipt authority differs")
         listener_receipt = receipt.read(1025)
     require(re.fullmatch(
-        r"WHITEBOARD_LISTENER_CANCEL=pass transport=unix readiness=kernel-connect worker=joined "
-        r"reconnect=refused socket_path=(present|absent) pid_path=(present|absent)\n",
+        r"WHITEBOARD_LISTENER_CANCEL=pass transport=unix-abstract readiness=kernel-connect unauthorized=preproof-eof worker=joined "
+        r"reconnect=refused address=rebindable filesystem=absent generations=32 fd_delta=0\n",
         listener_receipt) is not None, "listener cancellation receipt differs")
     print(listener_receipt, end="", flush=True)
     with open("/tmp/whiteboard-xvfb.log", "xb") as log:

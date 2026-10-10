@@ -9132,7 +9132,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   preserve that boundary without a host execution or reversal exception.
 
 - **R-S11dq/R-S11e-135 — process/domain/path retirement: exact creators retained;
-  focused current VM integration pending, broader native/release OPEN.**
+  focused current VM integration accepted, broader native/release OPEN.**
   The retired reporter's `verify-cleanup-authority.py`, verifier wiring,
   payload admission/hash entries and decoy default-path fixture are deleted.
   Its checker required explicit host-mutation modes and the fixture exercised
@@ -9142,6 +9142,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   workspace deletion, cancellation, listener and terminal-cleanup tests remain.
   The existing no-NIC authority smoke checks modified shell syntax inside the
   VM as numeric UID/GID 4000, then exercises those actual supported boundaries.
+  Candidate `8903e3a9615a771a55cbf15db9afcab927dccba4` (tree
+  `b5c2fc9772e1f49149afc19ffc6a1bde4996b9d7`) passed the default smoke in 91 seconds:
+  real guest-Docker helper profiles, root/foreign refusal, concurrent admission,
+  artifact publication and actual owned-workspace retirement passed; the complete
+  before/during/after host listener audit found no harness addition. All 33 frozen
+  source/control/input identities stayed exact, cleanup joined and the owned run
+  root/PID/socket markers are absent. Retained 84,061-byte raw serial log:
+  `.harness-state/verifier-vm/authority-smoke-run.tYmTcTxeX1.serial.log`, SHA-256
+  `9a25a9297b213e15eda77964620c180de079717aca845d4df4f9fac23bb52d85`.
+  This is Linux VM authority/helper integration, not Windows provisioning or a
+  product/release build. Failed first-run diagnostics remain in the audit.
   No host package, service, network, RustDesk or legacy manifest is touched.
   Native Windows/session-libvirt and installed service behavior, complete
   canonical/signing/golden inputs, cold artifacts, independent reproduction

@@ -65,7 +65,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Condvar, Mutex as StdMutex,
+        Condvar, Mutex as StdMutex, OnceLock,
     },
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -538,6 +538,7 @@ enum FinalRemoteAdmissionDecision {
     test
 ))]
 struct FinalRemoteCleanupState {
+    closed: bool,
     next_lease: u64,
     revision: u64,
     active: HashSet<u64>,
@@ -556,6 +557,7 @@ struct FinalRemoteCleanupState {
 impl Default for FinalRemoteCleanupState {
     fn default() -> Self {
         Self {
+            closed: false,
             next_lease: 1,
             revision: 0,
             active: HashSet::new(),
@@ -575,6 +577,11 @@ impl Default for FinalRemoteCleanupState {
 ))]
 impl FinalRemoteCleanupState {
     fn begin_admission(&mut self, joined_retry: Option<u64>) -> FinalRemoteAdmissionDecision {
+        if self.closed {
+            return FinalRemoteAdmissionDecision::Failed(
+                "Remote resource admission is closed".to_owned(),
+            );
+        }
         if let Some(running) = self.running {
             let retry_revision = running.retry.then_some(running.revision);
             if joined_retry.is_some() && joined_retry != retry_revision {
@@ -758,8 +765,8 @@ impl FinalRemoteCleanupCoordinator {
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 struct FinalRemoteCleanupDispatcher {
-    wake: std_mpsc::SyncSender<()>,
-    _worker: StdMutex<Option<std::thread::JoinHandle<()>>>,
+    wake: StdMutex<Option<std_mpsc::SyncSender<()>>>,
+    worker: StdMutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
@@ -776,8 +783,8 @@ fn start_final_remote_cleanup_dispatcher() -> Result<FinalRemoteCleanupDispatche
         .name("rustdesk-final-remote-cleanup".to_owned())
         .spawn(move || run_final_remote_cleanup_worker(coordinator, receiver))
         .map(|worker| FinalRemoteCleanupDispatcher {
-            wake,
-            _worker: StdMutex::new(Some(worker)),
+            wake: StdMutex::new(Some(wake)),
+            worker: StdMutex::new(Some(worker)),
         })
         .map_err(|error| format!("failed to create final-Remote cleanup worker: {error}"))
 }
@@ -806,7 +813,9 @@ fn run_final_remote_cleanup_worker(
             coordinator.notify();
         }
     }
-    log::error!("final-Remote cleanup worker stopped unexpectedly");
+    if !coordinator.state.lock().unwrap().closed {
+        log::error!("final-Remote cleanup worker stopped unexpectedly");
+    }
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
@@ -840,14 +849,18 @@ fn perform_final_remote_cleanup() -> ResultType<()> {
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 fn dispatch_final_remote_cleanup(revision: u64) {
-    let result = match &*FINAL_REMOTE_CLEANUP_DISPATCHER {
-        Ok(dispatcher) => match dispatcher.wake.try_send(()) {
-            Ok(()) | Err(std_mpsc::TrySendError::Full(_)) => Ok(()),
-            Err(std_mpsc::TrySendError::Disconnected(_)) => {
-                Err("final-Remote cleanup worker stopped unexpectedly".to_owned())
-            }
+    let result = match FINAL_REMOTE_CLEANUP_DISPATCHER.get() {
+        Some(Ok(dispatcher)) => match dispatcher.wake.lock().unwrap().as_ref() {
+            Some(wake) => match wake.try_send(()) {
+                Ok(()) | Err(std_mpsc::TrySendError::Full(_)) => Ok(()),
+                Err(std_mpsc::TrySendError::Disconnected(_)) => {
+                    Err("final-Remote cleanup worker stopped unexpectedly".to_owned())
+                }
+            },
+            None => Err("final-Remote cleanup worker is retired".to_owned()),
         },
-        Err(error) => Err(error.clone()),
+        Some(Err(error)) => Err(error.clone()),
+        None => Err("final-Remote cleanup worker was not admitted".to_owned()),
     };
     if let Err(error) = result {
         FINAL_REMOTE_CLEANUP_COORDINATOR
@@ -861,9 +874,58 @@ fn dispatch_final_remote_cleanup(revision: u64) {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn ensure_final_remote_cleanup_dispatcher() -> Result<(), String> {
+    let state = FINAL_REMOTE_CLEANUP_COORDINATOR.state.lock().unwrap();
+    if state.closed {
+        return Err("Remote resource admission is closed".to_owned());
+    }
+    // Creation and root admission closure share this lock. Shutdown's get() cannot miss
+    // an in-progress initializer, and an unused worker is never created just to retire it.
+    FINAL_REMOTE_CLEANUP_DISPATCHER
+        .get_or_init(start_final_remote_cleanup_dispatcher)
+        .as_ref()
+        .map(|_| ())
+        .map_err(Clone::clone)
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+pub(crate) fn close_connection_worker_admission() {
+    FINAL_REMOTE_CLEANUP_COORDINATOR.state.lock().unwrap().closed = true;
+    FINAL_REMOTE_CLEANUP_COORDINATOR.notify();
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+pub(crate) fn retire_connection_workers() -> ResultType<()> {
+    let mut failures = Vec::new();
+    if let Some(Ok(dispatcher)) = FINAL_REMOTE_CLEANUP_DISPATCHER.get() {
+        let wake = dispatcher.wake.lock().unwrap().take();
+        drop(wake);
+        let worker = dispatcher.worker.lock().unwrap().take();
+        if let Some(worker) = worker {
+            if worker.join().is_err() {
+                failures.push("final-Remote cleanup worker panicked during retirement");
+            }
+        }
+    }
+    if let Some(Ok(wakelock)) = WAKELOCK_WORKER.get() {
+        wakelock.sender.close();
+        let worker = wakelock.worker.lock().unwrap().take();
+        if let Some(worker) = worker {
+            if worker.join().is_err() {
+                failures.push("wakelock worker panicked during retirement");
+            }
+        }
+    }
+    if !failures.is_empty() {
+        bail!(failures.join("; "));
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 async fn acquire_final_remote_cleanup_lease() -> ResultType<FinalRemoteCleanupLease> {
-    if let Err(error) = &*FINAL_REMOTE_CLEANUP_DISPATCHER {
-        bail!(error.clone());
+    if let Err(error) = ensure_final_remote_cleanup_dispatcher() {
+        bail!(error);
     }
     let coordinator = &*FINAL_REMOTE_CLEANUP_COORDINATOR;
     let mut changed = coordinator.changed.subscribe();
@@ -1187,8 +1249,14 @@ struct WakelockSnapshotReceiver {
 
 struct WakelockWorker {
     sender: WakelockSnapshotPublisher,
-    _thread: Option<std::thread::JoinHandle<()>>,
+    worker: StdMutex<Option<std::thread::JoinHandle<()>>>,
 }
+
+static WAKELOCK_WORKER: OnceLock<Result<WakelockWorker, String>> = OnceLock::new();
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+static FINAL_REMOTE_CLEANUP_DISPATCHER: OnceLock<Result<FinalRemoteCleanupDispatcher, String>> =
+    OnceLock::new();
 
 lazy_static::lazy_static! {
     // R-T15(b)/R-S10: the inherited LOGIN_FAILURES limiter is excised (see update/check_failure) —
@@ -1196,7 +1264,6 @@ lazy_static::lazy_static! {
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
     pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
-    static ref WAKELOCK_WORKER: WakelockWorker = start_wakelock_worker();
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
 }
 
@@ -1204,8 +1271,6 @@ lazy_static::lazy_static! {
 lazy_static::lazy_static! {
     static ref FINAL_REMOTE_CLEANUP_COORDINATOR: Arc<FinalRemoteCleanupCoordinator> =
         Arc::new(FinalRemoteCleanupCoordinator::new());
-    static ref FINAL_REMOTE_CLEANUP_DISPATCHER: Result<FinalRemoteCleanupDispatcher, String> =
-        start_final_remote_cleanup_dispatcher();
 }
 
 // Admission and shutdown count every unpublished, live, and retiring reservation.
@@ -13398,7 +13463,7 @@ fn publish_wakelock_snapshot(
     snapshot: WakelockSnapshot,
 ) -> bool {
     let mut state = sender.inner.state.lock().unwrap();
-    if !state.receiver_alive {
+    if !state.publisher_alive || !state.receiver_alive {
         return false;
     }
     state.snapshot = snapshot;
@@ -13421,12 +13486,19 @@ fn wait_for_wakelock_snapshot(receiver: &mut WakelockSnapshotReceiver) -> Option
     Some(state.snapshot)
 }
 
-impl Drop for WakelockSnapshotPublisher {
-    fn drop(&mut self) {
+impl WakelockSnapshotPublisher {
+    fn close(&self) {
         let mut state = self.inner.state.lock().unwrap();
         state.publisher_alive = false;
+        state.pending = false;
         drop(state);
         self.inner.changed.notify_one();
+    }
+}
+
+impl Drop for WakelockSnapshotPublisher {
+    fn drop(&mut self) {
+        self.close();
     }
 }
 
@@ -13445,11 +13517,7 @@ fn run_wakelock_worker(mut receiver: WakelockSnapshotReceiver) {
     use crate::platform::{get_wakelock, WakeLock};
     let mut wakelock: Option<WakeLock> = None;
     let mut last_display = false;
-    loop {
-        let Some(snapshot) = wait_for_wakelock_snapshot(&mut receiver) else {
-            log::error!("wakelock snapshot publisher stopped");
-            break;
-        };
+    while let Some(snapshot) = wait_for_wakelock_snapshot(&mut receiver) {
         let keep_awake =
             config::Config::get_bool_option(keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS);
         *WAKELOCK_KEEP_AWAKE_OPTION.lock().unwrap() = Some(keep_awake);
@@ -13481,22 +13549,33 @@ fn run_wakelock_worker(mut receiver: WakelockSnapshotReceiver) {
     }
 }
 
-fn start_wakelock_worker() -> WakelockWorker {
+fn wakelock_worker() -> Result<&'static WakelockWorker, String> {
+    // Accepted sessions may publish their final snapshot while root admission is closed.
+    if let Some(worker) = WAKELOCK_WORKER.get() {
+        return worker.as_ref().map_err(Clone::clone);
+    }
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    let state = FINAL_REMOTE_CLEANUP_COORDINATOR.state.lock().unwrap();
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    if state.closed {
+        return Err("connection worker admission is closed".to_owned());
+    }
+    WAKELOCK_WORKER
+        .get_or_init(start_wakelock_worker)
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+fn start_wakelock_worker() -> Result<WakelockWorker, String> {
     let (sender, receiver) = wakelock_snapshot_channel();
-    let thread = match std::thread::Builder::new()
+    let worker = std::thread::Builder::new()
         .name("rustdesk-wakelock".to_owned())
         .spawn(move || run_wakelock_worker(receiver))
-    {
-        Ok(thread) => Some(thread),
-        Err(err) => {
-            log::error!("failed to start wakelock worker: {err}");
-            None
-        }
-    };
-    WakelockWorker {
+        .map_err(|error| format!("failed to start wakelock worker: {error}"))?;
+    Ok(WakelockWorker {
         sender,
-        _thread: thread,
-    }
+        worker: StdMutex::new(Some(worker)),
+    })
 }
 
 #[cfg(test)]
@@ -14061,10 +14140,14 @@ mod raii {
                     .filter(|conn| conn.is_live() && conn.conn_type == AuthConnType::Remote)
                     .count(),
             };
-            let published = publish_wakelock_snapshot(&WAKELOCK_WORKER.sender, snapshot);
+            let publication = match wakelock_worker() {
+                Ok(worker) if publish_wakelock_snapshot(&worker.sender, snapshot) => Ok(()),
+                Ok(_) => Err("wakelock worker stopped before snapshot publication".to_owned()),
+                Err(error) => Err(error),
+            };
             drop(authed_conns);
-            if !published {
-                log::error!("wakelock worker stopped before snapshot publication");
+            if let Err(error) = publication {
+                log::error!("Wakelock snapshot publication failed: {error}");
             }
         }
 

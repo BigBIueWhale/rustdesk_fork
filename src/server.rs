@@ -590,6 +590,8 @@ fn graceful_shutdown_exit_code(failure_latched: bool) -> i32 {
 }
 
 pub fn request_graceful_shutdown() {
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    close_connection_worker_admission();
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     input_service::close_owned_input_admission();
     if !SHUTDOWN_TOKEN.is_cancelled() {
@@ -624,7 +626,8 @@ pub(crate) fn request_graceful_shutdown_after_authority_failure() {
 /// off-runtime workers drain. A normal requested shutdown exits 0; an unexpected authority-
 /// bearing listener loss that initiated the drain exits 1. The retained desktop lifecycle owner is
 /// the sole caller, after it has joined both the exact public-listener task and the exact native
-/// local-IPC worker.
+/// local-IPC worker. It then closes and joins the retained final-Remote and wakelock threads
+/// before process exit, without constructing workers that were never admitted.
 pub(crate) async fn finish_graceful_shutdown() -> ! {
     let deadline = std::time::Duration::from_secs(8);
     let start = std::time::Instant::now();
@@ -647,6 +650,18 @@ pub(crate) async fn finish_graceful_shutdown() -> ! {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    match tokio::task::spawn_blocking(retire_connection_workers).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            log::error!("Connection worker retirement failed: {error}");
+            SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);
+        }
+        Err(error) => {
+            log::error!("Connection worker retirement task failed: {error}");
+            SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);
+        }
     }
     let exit_code = graceful_shutdown_exit_code(SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire));
     log::info!("R-T9: graceful shutdown complete — exiting {exit_code}");

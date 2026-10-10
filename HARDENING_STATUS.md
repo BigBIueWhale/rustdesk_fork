@@ -8433,7 +8433,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   lifecycle. Cold R-B2/R-B10 equality, independent certification/release reproduction, every
   maintenance-image distribution, target-native/device acceptance and R-V3 review remain OPEN.
 - **R-S11dd/R-S11e-122 — runtime-smoke VM entry and exact-source authority implemented;
-  privileged-container mode/release dispatch and canonical input selection OPEN/STOP-SHIP;
+  privileged-container mode/callers retired and native guest CLI refusal verified;
+  canonical input selection OPEN/STOP-SHIP;
   full current product, installed/native and release acceptance OPEN.**
   R-S11dd and Appendix C #257 define authority. `scripts/smoke-server.sh` refuses numeric
   UID/primary GID zero before product inputs, authenticates the R-S11dh entry, and uses one
@@ -8446,19 +8447,30 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `smoke-process-guard.py` has exact PID-specific guest operations and its pure self-test.
   Growing-log object identity and zero-exit stage gating preserve truthful product assertions.
 
-  **Reachable policy mismatch.** `smoke-server.sh:154` accepts `--with-root-containers`;
-  four mode branches select root-owned password, service/init, PID-reuse and packet-capture
-  fixtures. Its `ROOT_RUN`/`LIFECYCLE_RUN`/`PID_REUSE_RUN` arrays at lines 469–484 inherit
-  image-root authority; they retain default capabilities or add SYS_PTRACE, SYS_ADMIN,
-  CHECKPOINT_RESTORE and SETPCAP, and the PID-reuse array disables AppArmor confinement.
-  `verify-release.sh:58` selects this mode; `docs/DEPLOYMENT.md:171` recommends it.
-  `verify.sh`'s R-S11e-64 and release-dispatch wording checks require this mode.
-  Those paths violate R-S11dh's nonroot/capability-free container rule despite the
-  outer VM isolation. They remain reachable and were not executed for this correction.
-  Required next implementation: delete the mode, privileged launch arrays and obsolete
-  dispatch/assertions; retain genuine service/identity/password/capture acceptance in the
-  appropriate disposable VM lanes, and demonstrate actual retired-argument refusal plus
-  authorized VM behavior. The existing final-Debian artifact VM gate remains required.
+  **Privileged-container route removed.** `57b65f0c691ab13d761839b6403c0bcfc8ae1372`
+  deletes `--with-root-containers`, the root/capability-added launch arrays, sibling
+  orchestration, privileged stage branches/verdict, and release/deployment callers.
+  `verify.sh` forbids the retired routes and retains focused source/build/mount/cleanup
+  invariants for all four unchanged confined arrays. Obsolete wrapper assertions are
+  removed; production and genuine service/identity/password/capture fixtures remain.
+  The final-Debian artifact VM gate remains required. Other privileged scenarios still
+  need direct disposable-VM execution and acceptance; their source fixtures do not close it.
+
+  **Native entry/refusal evidence.** Candidate
+  `21ae379b3bd97895c1e6981312521254edc90182` passed the actual no-NIC KVM authority run
+  in 97 seconds: VM root and UID:GID-4001 refused, UID:GID-4000 admitted, real fixed-client
+  Docker-27.5.1 request, and retired argument status 2 with exact usage/output and unchanged
+  guest scratch/container inventories. Focused smoke/release source gates and individual
+  shell syntax checks passed as UID 4000. Sources/inputs remained pinned; host listeners
+  gained no endpoint and exact VM/container/channel cleanup joined. Retained receipt
+  `authority-smoke-run.lIIBAa3OTQ.serial.log`: 82,955 bytes / SHA-256
+  `0bfaf63c7521b07d20afed0613bd94540a7eb3bd5d9bba9f4bb54282aa402519`.
+  This executes harness admission/Docker authority, not product or installed behavior.
+  The first run failed after CLI success because a stale video wording checker demanded
+  five packages from the genuine seven-package manifest. Its failed diagnostics are
+  preserved; the whole run does not pass. Candidate `21ae379b` deletes that 500-line
+  checker and its calls, retaining small confinement invariants and all genuine video
+  probes, viewer tests, fixtures, manifests and runtime assertions unchanged.
 
   **Current input state and separate path gap.** Read-only stable no-follow checks found
   current-owner mode-0400 single-link devcheck archive bytes matching the current pins:
@@ -8469,7 +8481,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `a83d604b007513c6aecfa4a34a0f0cc6c0cdde9218417a7a2e01dd194645620c`.
   The vendor directory is present; its complete content/provenance closure was not reverified.
   These are byte/basic-metadata checks, not archive/package semantics or a loaded runtime.
-  The smoke still mounts `online/` as `/online` (`smoke-server.sh:301`) and expects
+  The smoke still mounts `online/` as `/online` (`smoke-server.sh:267`) and expects
   `online/cargo-vendor`, `online/cargo-vendor-config.toml` and `online/xvfb-debs`; those
   legacy locations are absent. Correct canonical input selection and source-bound execution
   remain OPEN. Present subsets do not establish the complete R-B2/R-B10 offline closure.
@@ -8490,9 +8502,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   record repeated actual KVM entry tests in 16–17 seconds: VM root/UID:GID-4001 refusal,
   authorized UID:GID-4000 admission, real Docker-27.5.1 request, no NIC, unchanged host
   listeners and joined cleanup. Entry/request evidence does not execute the product.
-  No helper, source gate, fixture, container, VM, compiler or product ran for this
-  documentation correction. Focused source checks are supplementary. Root-mode retirement,
-  canonical-input repair, exact-current full portable/video smoke, privileged VM scenarios,
+  Focused source checks are supplementary. Canonical-input repair, exact-current full
+  portable/video smoke, privileged VM scenarios,
   native/device/installed lifecycle, performance/soak, cold R-B2/R-B10 artifacts/equality,
   independent reproduction and R-V3 review remain OPEN.
 - **R-S11df/R-S11e-124 — Dart advisory execution authority — CURRENT NO-NIC OSV

@@ -1,5 +1,6 @@
 use super::*;
 use hbb_common::x11::xlib;
+use rdev::{EventType, Key as RdevKey};
 
 struct Observer {
     display: *mut xlib::Display,

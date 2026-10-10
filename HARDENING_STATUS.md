@@ -12081,7 +12081,7 @@ external review, and the global connection-flow correctness/performance obligati
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 
-**Current disposition: SOURCE IMPLEMENTED; focused Linux rendering/retirement passed;
+**Current disposition: SOURCE IMPLEMENTED; focused Linux startup/rendering/retirement passed;
 complete helper and target-native finality evidence OPEN.** `src/whiteboard/event_lifecycle.rs`
 owns the proxy and terminal latch. `src/whiteboard/server.rs` installs the terminal guard
 before runtime/startup work, serializes proxy installation and termination, and delivers
@@ -12101,28 +12101,26 @@ Depends declares the existing `libxkbcommon-x11-0` runtime requirement; the pinn
 X11 fixture includes it and `libxcb-xkb1`. No privilege escalation was reproduced.
 
 **Accepted Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
-passed at source `011780e1a124118e24bca4cabbd2fa2191a0fc26`, tree
-`c00f46f86b96e2df70e209c18cf2fa1d6f120638`: one actual test, zero failed/ignored,
-215s VM / 149s build / 0.02s native execution. The production constructor/draw path
-created a real X11 window, read back two owners' pixels, cleared only one owner,
+passed at source `c5f2417251627ff9beae41ce0d52f53cbd2e866c`, tree
+`fe9d98ebecb54d25b745b25b122032eafdd8d3e9`: one actual test, zero failed/ignored,
+216s VM / 149s build / 0.02s native execution. With both launch variables absent,
+the fixture spawned and joined the real IPC worker before creating/publishing its
+real Winit proxy. Exactly one latched Exit reached the production user-event and
+idle-exit path; the fixture did not exit the loop itself. The production constructor/draw
+path created a real X11 window, read back two owners' pixels, cleared only one owner,
 and returned immediate GetWindowAttributes BadWindow after event-loop return while
 the application/context remained alive. Executable SHA-256
-`9ded5707e7455c906f6c3bc4f7bb5aad29cdd68c6a669167ac12d43b20522060`
+`6febcb8d65eb3d64886afe30df1c55e92bb8fc24540301f4bb44832f0d0f1e5f`
 was unchanged before/after execution. The zero-NIC VM/nonroot network-none container
 transaction preserved source/inputs, joined Xvfb/container/VM cleanup and passed
 the full host endpoint audit with no additions. Retained serial
-`android-rust-lifecycle-tests-run.z6Uy7QdzH2.serial.log` SHA-256
-`47202aff092f9dc8bf827ec936b2874e14ed3e5de1eb2a144949d2bbe76f3486`.
-Acquisition/publication self-test and publisher-pin checks passed separately in
-42s; its retained receipt and three failed native attempts are recorded in the audit.
-This does not execute authenticated helper IPC/worker finality, a compositor,
-animation/occlusion, resource/soak bounds, or installed Debian acceptance.
-
-The current fixture also spawns and joins the real IPC worker with launch identity
-absent before publishing its real Winit proxy. It requires exactly one latched Exit
-to reach the production user-event/idle-exit path; the fixture no longer exits the
-loop itself. Execution of that extension is pending; the receipt above covers only
-the earlier renderer test.
+`android-rust-lifecycle-tests-run.7qfhAfHe3z.serial.log` SHA-256
+`9ada49ec7539c6466b18e7323dd2be41826ece6c05f58544713d7d7ed6514120`.
+The earlier accepted renderer run, 42s acquisition/publication checks and three failed
+native attempts remain in the audit/Git history. This subset does not execute the
+CLI/complete helper, listener construction or authenticated IPC, later worker failure
+or cancellation paths, a compositor, animation/occlusion, resource/soak bounds,
+other platforms, or installed Debian acceptance.
 
 **Retained evidence:** the independently compilable exact production lifecycle module
 passed three state tests under Rust 1.75.0 in builder

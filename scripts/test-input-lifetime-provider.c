@@ -198,7 +198,7 @@ void input_lifetime_begin(int key_fault) {
   b_code = XKeysymToKeycode(observer, XK_b);
   control_code = XKeysymToKeycode(observer, XK_Control_R);
   assert(a_code && b_code && control_code && !XKeysymToKeycode(observer, 0x0101f642UL));
-  assert(keys(0, 0, 0) && buttons(0));
+  assert(keys(0, 0, 0));
   XGetInputFocus(observer, &previous_focus, &previous_revert);
   Window child;
   int x, y;
@@ -215,7 +215,7 @@ void input_lifetime_begin(int key_fault) {
   fault_key = key_fault != 0;
   armed = refusals = main_frees = child_frees = 0;
   scratch_code = 0;
-  assert(no_events());
+  assert(no_events() && buttons(0));
 }
 
 unsigned int input_lifetime_observe(int stage) {

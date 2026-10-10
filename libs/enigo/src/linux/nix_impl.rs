@@ -8,6 +8,8 @@ pub struct Enigo {
 }
 
 impl Enigo {
+    /// Checks ordinary input admission without submitting native requests.
+    /// Pending text cleanup refuses admission; release-only mouse cleanup remains available.
     pub fn ensure_input_ready(&self) -> crate::ResultType {
         self.xdo.ensure_input_ready()
     }

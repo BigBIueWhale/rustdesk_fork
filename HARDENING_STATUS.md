@@ -12101,9 +12101,10 @@ Depends declares the existing `libxkbcommon-x11-0` runtime requirement; the pinn
 X11 fixture includes it and `libxcb-xkb1`. No privilege escalation was reproduced.
 
 **Accepted Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
-passed at source `346c0e3c177b92c93da380d06a4d5e9b59e7dfd3`, tree
-`748f592c40a769b0371b2d5353efd7a72a4467cb`: five actual tests, zero failed/ignored,
-216s VM / 149s build / 0.00s state tests / 0.02s and 0.03s native cases.
+passed at source `04eab95beb27ec6222a6cb349fa10edfb533afff`, tree
+`ba2d6e09bf4240c12ca99083080fd02418be7f3e`: six actual tests, zero failed/ignored,
+221s VM / 155s build / 0.00s state tests / 0.01s listener cancellation /
+0.02s and 0.01s X11 cases.
 With both launch variables absent, one fixture spawned/joined the real worker before
 creating its real Winit proxy; the other installed the proxy and started the worker
 from the running loop after rendering, retained it through loop return and joined it.
@@ -12113,33 +12114,39 @@ Both production constructor/draw paths created real X11 windows, read back two o
 pixels, cleared only one owner,
 and returned immediate GetWindowAttributes BadWindow after event-loop return while
 the application/context remained alive. Executable SHA-256
-`a729dd8c13e9dcd4b439960de92a1c1b7157c6b765596f0d887a8021555d35d7`
-was unchanged before/between/after all three test processes. The zero-NIC VM/nonroot network-none container
+`a19fb5b15e3eacc0b3e4b4b960c2453544a7dfbabfbe83482523d7ece72023d9`
+was unchanged before/between/after all four test processes. The zero-NIC VM/nonroot network-none container
 transaction preserved source/inputs, joined Xvfb/container/VM cleanup and passed
 the full host endpoint audit with no additions. Retained serial
-`android-rust-lifecycle-tests-run.xUopFs05R3.serial.log` SHA-256
-`62fa713deb00142e4f38ff8da3927b814b8cd95af45b517aa1244f10a30e1ea5`.
+`android-rust-lifecycle-tests-run.xtEOrVE8vq.serial.log` SHA-256
+`3318575ae0e8bbfaeda81cfdf2c7c1de399711b6a3d9c93e615c44f642e40c9f`.
 Earlier accepted renderer/startup runs, 42s acquisition/publication checks and three failed
 native attempts remain in the audit/Git history. This subset does not execute the
-CLI/complete helper, listener construction or authenticated IPC, later worker failure
+CLI/complete helper or authenticated IPC, other listener/startup/worker failure
 or cancellation paths, a compositor, animation/occlusion, resource/soak bounds,
 other platforms, or installed Debian acceptance.
 
-**Listener cancellation/resource audit:** the focused profile now constructs the
+**Listener cancellation passed; pathname retirement OPEN:** the focused profile constructs the
 real Unix listener with a test launch identity, requires a successful kernel connection
 and the exact worker PID marker before requesting stop, joins the worker and requires
 subsequent connection refusal while the test process remains alive. It records whether
 the same socket/PID pathname inodes remain; it neither unlinks them nor treats absence
-of an accepting listener as proof of filesystem retirement. Execution is pending;
-the accepted binding above covers the previous five tests. Source `new_listener`
-creates both paths and the pinned Unix Incoming has no pathname retirement owner.
+of an accepting listener as proof of filesystem retirement. The accepted run above
+observed both original pathname inodes still present after join. Source `new_listener`
+creates both paths and the pinned Unix Incoming has no pathname retirement owner;
+fresh tokens derive distinct postfixes, so repeated-generation disk growth remains
+a source-supported concern, not a measured soak result. No live listener or LPE was observed.
 Exact generation-bound pathname retirement and bounded repeated-generation disk use
 remain OPEN; a path-based unlink without retained ownership proof is not a fix.
+This unauthenticated readiness probe proves neither allowed/forbidden principal
+admission nor post-authenticated stream/overlay cancellation. The PID marker is
+an observation of the current constructor, not a normative requirement to retain it.
 
 **Lifecycle state evidence:** the same root-crate test executable passed all three
 current production module tests: termination before proxy publication, exact installed-proxy
 take with repeated-finalization refusal, and proxy retirement with preserved terminal state.
-These are state tests; only the two X11 cases execute real workers/proxies/native loops.
+These are state tests. The listener case executes a real worker and Unix listener;
+the two X11 cases additionally execute real proxies and native event loops.
 Earlier standalone-module results, dependency-discovery failure and original correction
 remain in Git history at `8d2af913`/`8d794d41` and the R-S11hn audit entries in
 `/tmp/privilege_securiry_deep_audit.md`; they are superseded as current module evidence.

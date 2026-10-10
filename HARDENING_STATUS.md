@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-b6130122f68ecea59e915b770e184064c4ebab0774aac1995aff821a1364140d  requirements.html
+9299eeeac8283aea3e97acf5110273616c287a448042a81d9608dea94bb7724e  requirements.html
 ```
 
 ## Current Verdict
@@ -1949,7 +1949,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `b6130122f68ecea59e915b770e184064c4ebab0774aac1995aff821a1364140d  requirements.html`.
+Current normative specification SHA-256: `9299eeeac8283aea3e97acf5110273616c287a448042a81d9608dea94bb7724e  requirements.html`.
 
 ### Current authority and source closure
 
@@ -8376,66 +8376,62 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   compilation/package workloads, installed install/upgrade/uninstall/service lifecycle,
   cold exact-commit R-B2/R-B10 equality, every maintenance-image distribution, target-native
   and device acceptance, independent reproduction and R-V3 external review. These remain OPEN.
-- **R-S11dc/R-S11e-121 — authenticated Windows helper image distribution authority —
-  RENEWED BOOTSTRAP AND CERTIFIED FINAL BUILT, REVIEWED, PINNED, AND PROMOTED;
-  COLD RELEASE, WINDOWS GUEST LIFECYCLE, INDEPENDENT REPRODUCTION,
-  AND EXTERNAL REVIEW REMAIN OPEN.** Platform/boundary: the unprivileged acquisition host,
-  local Docker/BuildKit certification transaction, and every offline Windows-release helper
-  consumer must admit one authenticated final helper without treating a mutable image tag,
-  network response, or self-asserted historical capture as authority.
+- **R-S11dc/R-S11e-121 — Windows helper certification/distribution implemented;
+  historical bootstrap/certification/review/promotion and confined Linux helper evidence
+  retained; current Windows product, installed lifecycle and release acceptance OPEN.**
+  R-S11dc and Appendix C #256 define authority; `scripts/pins.env` holds the complete bootstrap,
+  final, recipe/package, certification and OCI-layout identities. Candidate-only acquisition,
+  exact local-OCI networkless UID:GID-1000 certification through
+  `scripts/Dockerfile.win-helper-certify`, bounded direct normalization, and separate pin-bound
+  no-clobber promotion are owned by `scripts/online-fetch.sh`. The final-only ordinary loader,
+  `scripts/windows-helper-runtime.sh` and all three Windows consumers require the semantic
+  archive verdict and confined runtime fingerprint, including tools and `olefile`; kernel
+  derivation repeats the complete archive verdict afterward. Generic final capture and
+  mutable/tag/save/bootstrap/candidate selection fallbacks are absent.
 
-  The current bootstrap is the reviewed 995,301,648-byte archive at SHA-256
-  `541abfbed8600324a89d7e77acb7b1782682dab52ca97f039abd4622347a2e69`, image/config
-  `sha256:d87ce47b24a9c71a9053d163043c0e64d70a80c342b2c6a7e4c9824f1ce40c13`, manifest
-  `sha256:40c34d0ec4ce22ead7c57f194fe98b0c4e8b6b397d5c5252ba6a63319a643320`, and OCI-layout
-  SHA-256 `2383c9c3405e937568b62a5eee85237d0874d28c45bf41e671b5dd69bb257644`.
-  It binds the current recipe/package contract, remains bootstrap-only, and cannot enter the
-  ordinary loader. Acquisition and pin-bound promotion are the separate reviewed transactions
-  recorded above; no mutable tag, registry lookup, or unreviewed network response authorizes use.
-
-  Final authority is one networkless UID/GID-1000 certification from that descriptor-verified
-  local OCI layout. The exact `Dockerfile.win-helper-certify` proves the embedded recipe,
-  live/stored package inventory, helper tools, `olefile`, and role contract without acquiring
-  or repairing anything. BuildKit receives no registry/tag context, pull, cache, secret, SSH
-  agent, privileged entitlement, load, tag, save, or push authority and directly exports one
-  private mode-max OCI result. The bounded shared canonicalizer produces the deterministic
-  null-tag mode-0400 archive and promotion verifies every final pin before descriptor-relative
-  `RENAME_NOREPLACE`.
-
-  The final archive pins are image
-  `sha256:5fe6b794695afc69c32d037f1e6e24224f2925c2e48e98d82c35a23b584ee256`,
-  manifest
-  `sha256:72e72381f5402ae5ab495b99b9a4ff4ce9c7d08aea2a679ab8760cc2de6bc030`,
-  config
-  `sha256:a5a8ff785ebe749eabc4bb4aaf8e438bbf12a6551663148d6ac60f94c02a9ea3`,
-  998,725,383 bytes, and SHA-256
+  **Current retained inputs.** Fresh read-only no-follow descriptor checks found current-owner
+  mode-0400 single-link archives under `online/inputs/build-images`, with stable descriptor/path
+  identity, size and timestamps, and exact pinned SHA-256 bytes:
+  bootstrap 995,301,648 bytes /
+  `541abfbed8600324a89d7e77acb7b1782682dab52ca97f039abd4622347a2e69`;
+  final 998,725,383 /
   `e7dae7a080fda65778ef7ed3c05bcb31b98830f56f514b2f01c084f055b66995`.
-  Ordinary loading, all three Windows helper consumers, and kernel derivation select only that
-  final archive; the runtime repeats full archive verification before and after derivation and
-  requires the exact loaded fingerprint. Networked acquisition and capture are bootstrap-only,
-  and generic/tag/save/final-capture fallbacks are absent.
+  The final image/index is
+  `sha256:5fe6b794695afc69c32d037f1e6e24224f2925c2e48e98d82c35a23b584ee256`, manifest
+  `sha256:72e72381f5402ae5ab495b99b9a4ff4ce9c7d08aea2a679ab8760cc2de6bc030`, config
+  `sha256:a5a8ff785ebe749eabc4bb4aaf8e438bbf12a6551663148d6ac60f94c02a9ea3`.
+  These current checks establish file bytes/basic metadata only. Archive semantics, loaded
+  runtime, certification, kernel derivation and Windows product behavior were not rerun.
 
-  Verification is split by observable property. The shared executable provenance suite owns a
-  distinct 21-decision Windows-helper archive/inspect/attestation/direct-OCI branch: it validates
-  the exact role contract and rejects identity, recipe, package, epoch, root, network, VCS,
-  source, exporter-name, and layer-map drift. The compact Windows-specific source gate owns only
-  pins, Dockerfile and shell transaction shape, final-only runtime selection, downstream
-  consumers, and retired-fallback absence; the former 49-mutation catalog, documentation checks,
-  provenance implementation scan, and reciprocal whole-workspace validator are deleted. Both
-  gates execute as UID/GID 4000 in the sole no-NIC verifier VM, which uses private Unix
-  management channels and proves host-listener invariance and joined residue-free cleanup.
-
-  The current certification, independent archive review, pin transition, and separate final
-  promotion are recorded above. They prove the real networkless graph, exact loaded-runtime
-  fingerprint, final archive identity, no-clobber publication, candidate retirement, and cleanup.
-  This builder prerequisite is not Windows product or release evidence. Historical evidence also
-  records device-free derivation of the pinned 15,042,952-byte
-  `vmlinuz-6.8.0-134-generic` at SHA-256
+  **Historical evidence and provenance.** The complete pre-compression item is retained at
+  `1daf121f89ae59ddb666db03357a45f5919f63aa`; original authority work is in
+  `bcede4f2e56660e7774d1d6f2b7ad17082f535d4`. Certification `run.XuSoknb382` at
+  `fe2e6c0eb492bec879ff6611d6c7a7669838787f` completed in 110 seconds; final promotion
+  `run.IfymT8ruhE` at `5878252113856ef0388bd2b35f085492bbfd8049` completed in 41 seconds.
+  The historical audit records the real networkless certification graph, independent archive
+  review, exact guest-loaded Linux runtime, pin verification before descriptor-relative
+  no-clobber publication, final-name runtime revalidation, candidate retirement and cleanup.
+  Retained current-owner mode-0400 single-link receipts in
+  `.harness-state/verifier-vm/online-fetch-receipts` rehashed unchanged:
+  `run.XuSoknb382.receipt`, 2,378 bytes / SHA-256
+  `bd8009e0cca29ed49c4aedbddf1a4b58bb52c843e83071ec790a9f413c282342`;
+  `run.IfymT8ruhE.receipt`, 2,374 /
+  `71cd18f7357ee480bb9133d8406559127fb8b415aeb985659c9ff8112f6e4253`.
+  They bind exact source/tree, guest-only Docker/BuildKit, no host forwarding, denied UDP,
+  unchanged host listeners and joined cleanup. Historical device-free kernel derivation also
+  produced `vmlinuz-6.8.0-134-generic`, 15,042,952 bytes / SHA-256
   `72526aac4c8c3f63d30fe0741f0c3b1923e700585750cb135815d5c2f831b691`.
-  The generated executable fixture is not the real bootstrap or certified archive, a current loaded
-  container, or a Windows artifact. Current clean exact-commit R-B2/R-B10 output, Windows guest
-  build/install/upgrade/uninstall and native
-  behavior, other maintenance images, independent reproduction, and R-V3 review remain open.
+
+  **Verification and next work.** The distinct executable Windows-helper provenance fixture
+  remains alongside the supplementary `scripts/verify-win-helper-image-authority.py` topology
+  guard, which has no requirement/ledger inputs. Historical no-NIC UID:GID-4000 fixture/gate
+  evidence is separate from real archive certification and loaded runtime; generated fixtures
+  do not prove a Windows artifact. No helper, fixture, container, VM, BuildKit, compiler or
+  product ran for this documentation correction. `.harness-state/win11-golden.qcow2` remains
+  absent. Restore the authenticated golden/operator inputs and complete canonical closure,
+  then execute exact-current Windows builds, artifacts and install/upgrade/uninstall/service
+  lifecycle. Cold R-B2/R-B10 equality, independent certification/release reproduction, every
+  maintenance-image distribution, target-native/device acceptance and R-V3 review remain OPEN.
 - **R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write
   authority — SOURCE MIGRATED TO THE SOLE VERIFIER VM; REAL VM ENTRY/DOCKER REQUEST, ROOT/FOREIGN
   REFUSAL, LISTENER INVARIANCE, AND JOINED CLEANUP GREEN 2026-09-15; FULL PRODUCT SMOKE, EXACT R-B2

@@ -8054,7 +8054,7 @@ smoke_input_work=$ROOT/smoke-input-selection
 install -d -o 4000 -g 4000 -m 0700 "$smoke_input_work"
 setpriv --reuid=4000 --regid=4000 --clear-groups \
     env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
-    /bin/bash -eu - "$SMOKE_SERVER_SCRIPT" "$smoke_input_work" <<'SH' \
+    /bin/bash -eus -- "$SMOKE_SERVER_SCRIPT" "$smoke_input_work" <<'SH' \
     || fail 'production smoke input selection failed'
 source=$1
 work=$2

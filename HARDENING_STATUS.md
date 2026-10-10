@@ -12092,6 +12092,15 @@ Windows/macOS owner joins whenever its event loop returns. Spawn/join failure is
 Handler-only termination, unbounded exit channels, detached threads, and direct platform
 proxy mutation are absent from this source topology.
 
+Linux rendering now retains Winit's `OwnedDisplayHandle` in its softbuffer context
+and surfaces. The borrowed-display `transmute` to `'static`, optional context and
+exit-time context reset are removed; surfaces retire before their window owner.
+The focused `--android-rust-lifecycle-tests --whiteboard-display-lifetime` shard
+uses a real private X11 display to test the production window after event-loop
+retirement, two owners' pixel readback, exact-owner clearing and window destruction.
+Execution is pending; no native failure or privilege escalation is claimed from
+the previous borrowed-handle form alone.
+
 **Retained evidence:** the independently compilable exact production lifecycle module
 passed three state tests under Rust 1.75.0 in builder
 `sha256:304b251e77fafe03192e035cc22479e0909d688035fbd30b1ac685e878ae9646`.

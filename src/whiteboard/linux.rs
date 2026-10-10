@@ -16,14 +16,12 @@ use std::{
 };
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, PixmapMut, Stroke, Transform};
 use ttf_parser::Face;
-use winit::raw_window_handle::{
-    DisplayHandle, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
-};
+use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
     event::{StartCause, WindowEvent},
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop, OwnedDisplayHandle},
     platform::x11::{WindowAttributesExtX11, WindowType},
     window::{Window, WindowId, WindowLevel},
 };
@@ -130,32 +128,23 @@ pub fn run() {
 }
 
 struct WindowState {
-    window: Arc<Window>,
     // NOTE: This surface must be dropped before the `Window`.
-    surface: Surface<DisplayHandle<'static>, Arc<Window>>,
+    surface: Surface<OwnedDisplayHandle, Arc<Window>>,
+    window: Arc<Window>,
     presentation: WhiteboardPresentationState<Cursor, Ripple>,
 }
 
 struct WhiteboardApplication {
     windows: Vec<WindowState>,
-    // Drawing context.
-    //
-    // With OpenGL it could be EGLDisplay.
-    context: Option<Context<DisplayHandle<'static>>>,
+    context: Context<OwnedDisplayHandle>,
     face: Option<Face<'static>>,
     close_requested: bool,
 }
 
 impl WhiteboardApplication {
     fn new<T>(event_loop: &EventLoop<T>) -> ResultType<Self> {
-        // https://github.com/rust-windowing/winit/blob/f6893a4390dfe6118ce4b33458d458fd3efd3025/examples/window.rs#L91
-        // SAFETY: we drop the context right before the event loop is stopped, thus making it safe.
-        let context = match Context::new(unsafe {
-            std::mem::transmute::<DisplayHandle<'_>, DisplayHandle<'static>>(
-                event_loop.display_handle()?,
-            )
-        }) {
-            Ok(ctx) => Some(ctx),
+        let context = match Context::new(event_loop.owned_display_handle()) {
+            Ok(ctx) => ctx,
             Err(e) => {
                 bail!("Failed to create context: {}", e);
             }
@@ -307,13 +296,7 @@ impl ApplicationHandler<(i32, CustomEvent)> for WhiteboardApplication {
             }
         }
 
-        let Some(ctx) = self.context.as_ref() else {
-            // unreachable
-            self.close_requested = true;
-            return;
-        };
-
-        let surface = match Surface::new(ctx, window.clone()) {
+        let surface = match Surface::new(&self.context, window.clone()) {
             Ok(s) => s,
             Err(e) => {
                 log::error!("Failed to create surface: {}", e);
@@ -370,11 +353,6 @@ impl ApplicationHandler<(i32, CustomEvent)> for WhiteboardApplication {
         } else {
             event_loop.set_control_flow(ControlFlow::Wait);
         }
-    }
-
-    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        // We must drop the context here.
-        self.context = None;
     }
 }
 
@@ -487,5 +465,98 @@ impl WindowState {
         self.window.set_cursor_hittest(false).ok();
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use winit::platform::x11::EventLoopBuilderExtX11;
+    use x11rb_listener::{
+        errors::ReplyError,
+        protocol::{xproto::ConnectionExt, ErrorKind},
+    };
+
+    struct NativeApplication(WhiteboardApplication);
+
+    impl ApplicationHandler<(i32, CustomEvent)> for NativeApplication {
+        fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+            self.0.resumed(event_loop);
+            assert!(!self.0.close_requested);
+            assert_eq!(self.0.windows.len(), 1);
+            event_loop.exit();
+        }
+
+        fn window_event(
+            &mut self,
+            event_loop: &ActiveEventLoop,
+            window_id: WindowId,
+            event: WindowEvent,
+        ) {
+            self.0.window_event(event_loop, window_id, event);
+        }
+
+        fn exiting(&mut self, event_loop: &ActiveEventLoop) {
+            self.0.exiting(event_loop);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires an isolated X11 display"]
+    fn r_s11hn_linux_whiteboard_display_owner_survives_event_loop_retirement() {
+        let mut builder = EventLoop::<(i32, CustomEvent)>::with_user_event();
+        builder.with_x11().with_any_thread(true);
+        let event_loop = builder.build().unwrap();
+        let mut app = NativeApplication(WhiteboardApplication::new(&event_loop).unwrap());
+        event_loop.run_app(&mut app).unwrap();
+        let _: &Context<OwnedDisplayHandle> = &app.0.context;
+
+        let (observer, _) = x11rb_listener::connect(None).unwrap();
+        let state = &mut app.0.windows[0];
+        let window_id = match state.window.window_handle().unwrap().as_raw() {
+            RawWindowHandle::Xlib(handle) => handle.window as u32,
+            _ => panic!("native whiteboard fixture is not X11"),
+        };
+        observer.get_geometry(window_id).unwrap().reply().unwrap();
+
+        for (conn_id, x, y, argb) in [
+            (7, 32.0, 32.0, 0xff00ff00),
+            (8, 128.0, 96.0, 0xff0000ff),
+        ] {
+            assert!(state.presentation.update(
+                conn_id,
+                Cursor {
+                    x,
+                    y,
+                    argb,
+                    btns: 0,
+                    text: String::new(),
+                },
+                None,
+            ));
+        }
+        state.draw(&app.0.face).unwrap();
+        let width = state.window.inner_size().width as usize;
+        let pixels = state.surface.fetch().unwrap();
+        assert_eq!(pixels[42 * width + 35] & 0x00ffffff, 0x0000ff00);
+        assert_eq!(pixels[106 * width + 131] & 0x00ffffff, 0x000000ff);
+
+        state.presentation.clear(7);
+        state.draw(&app.0.face).unwrap();
+        let pixels = state.surface.fetch().unwrap();
+        assert_eq!(pixels[42 * width + 35] & 0x00ffffff, 0);
+        assert_eq!(pixels[106 * width + 131] & 0x00ffffff, 0x000000ff);
+        drop(app);
+
+        let deadline = Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            match observer.get_geometry(window_id).unwrap().reply() {
+                Err(ReplyError::X11Error(error)) if error.error_kind == ErrorKind::Window => break,
+                Ok(_) if Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                result => panic!("whiteboard window was not retired: {result:?}"),
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Execute the compiled whiteboard display-owner regression in a private X11 server."""
+import base64
 import hashlib
 import os
 from pathlib import Path
@@ -46,6 +47,30 @@ def main():
          "--color", "never", "--test-threads=1"],
         env=environment, check=True, timeout=25)
     require(artifact_digest() == artifact_sha, "artifact changed during lifecycle state tests")
+    receipt_path = Path("/tmp/whiteboard-listener-cancel.receipt")
+    require(not os.path.lexists(receipt_path), "listener cancellation receipt already exists")
+    listener_environment = dict(environment)
+    listener_environment["RUSTDESK_WHITEBOARD_LAUNCH_TOKEN"] = base64.b64encode(bytes(range(32))).decode()
+    listener_environment["RUSTDESK_WHITEBOARD_LAUNCH_PARENT"] = str(os.getpid())
+    subprocess.run(
+        [str(executable),
+         "whiteboard::server::tests::r_s11hn_whiteboard_listener_cancellation_joins_worker_and_refuses_reconnect",
+         "--exact", "--ignored", "--color", "never", "--test-threads=1"],
+        env=listener_environment, check=True, timeout=25)
+    require(artifact_digest() == artifact_sha, "artifact changed during listener cancellation")
+    receipt_fd = os.open(receipt_path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(receipt_fd, "r") as receipt:
+        metadata = os.fstat(receipt.fileno())
+        require(stat.S_ISREG(metadata.st_mode) and metadata.st_uid == 1000
+                and metadata.st_gid == 1000 and stat.S_IMODE(metadata.st_mode) == 0o600
+                and metadata.st_nlink == 1 and 0 < metadata.st_size <= 1024,
+                "listener cancellation receipt authority differs")
+        listener_receipt = receipt.read(1025)
+    require(re.fullmatch(
+        r"WHITEBOARD_LISTENER_CANCEL=pass transport=unix readiness=kernel-connect worker=joined "
+        r"reconnect=refused socket_path=(present|absent) pid_path=(present|absent)\n",
+        listener_receipt) is not None, "listener cancellation receipt differs")
+    print(listener_receipt, end="", flush=True)
     with open("/tmp/whiteboard-xvfb.log", "xb") as log:
         server = subprocess.Popen(
             ["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "320x240x24",

@@ -12125,6 +12125,17 @@ CLI/complete helper, listener construction or authenticated IPC, later worker fa
 or cancellation paths, a compositor, animation/occlusion, resource/soak bounds,
 other platforms, or installed Debian acceptance.
 
+**Listener cancellation/resource audit:** the focused profile now constructs the
+real Unix listener with a test launch identity, requires a successful kernel connection
+and the exact worker PID marker before requesting stop, joins the worker and requires
+subsequent connection refusal while the test process remains alive. It records whether
+the same socket/PID pathname inodes remain; it neither unlinks them nor treats absence
+of an accepting listener as proof of filesystem retirement. Execution is pending;
+the accepted binding above covers the previous five tests. Source `new_listener`
+creates both paths and the pinned Unix Incoming has no pathname retirement owner.
+Exact generation-bound pathname retirement and bounded repeated-generation disk use
+remain OPEN; a path-based unlink without retained ownership proof is not a fix.
+
 **Lifecycle state evidence:** the same root-crate test executable passed all three
 current production module tests: termination before proxy publication, exact installed-proxy
 take with repeated-finalization refusal, and proxy retirement with preserved terminal state.

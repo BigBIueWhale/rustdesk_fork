@@ -359,6 +359,113 @@ impl<C, R> WhiteboardPresentationState<C, R> {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires isolated whiteboard launch identity and IPC paths"]
+    async fn r_s11hn_whiteboard_listener_cancellation_joins_worker_and_refuses_reconnect() {
+        use std::io::{ErrorKind, Write};
+        use std::os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt};
+        use std::path::Path;
+
+        let postfix = ipc::whiteboard_endpoint_postfix_from_env().unwrap();
+        let path = hbb_common::config::Config::ipc_path(&postfix);
+        let pid_path = format!("{path}.pid");
+        let receipt_path = Path::new("/tmp/whiteboard-listener-cancel.receipt");
+        for path in [Path::new(&path), Path::new(&pid_path), receipt_path] {
+            assert_eq!(
+                std::fs::symlink_metadata(path).unwrap_err().kind(),
+                ErrorKind::NotFound
+            );
+        }
+        let parent = std::env::var(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV)
+            .unwrap()
+            .parse::<u32>()
+            .unwrap();
+        assert!(parent > 0 && parent != std::process::id());
+        let worker = WhiteboardIpcWorker::spawn().unwrap();
+        let readiness = tokio::time::timeout(Duration::from_secs(3), async {
+            let peer = loop {
+                match tokio::net::UnixStream::connect(&path).await {
+                    Ok(peer) => break peer,
+                    Err(err)
+                        if matches!(
+                            err.kind(),
+                            ErrorKind::NotFound | ErrorKind::ConnectionRefused
+                        ) => {}
+                    Err(err) => panic!("whiteboard listener readiness failed: {err}"),
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            };
+            loop {
+                match std::fs::read_to_string(&pid_path) {
+                    Ok(value) if value.parse::<u32>().ok() == Some(std::process::id()) => break,
+                    Ok(_) => {}
+                    Err(err) if err.kind() == ErrorKind::NotFound => {}
+                    Err(err) => panic!("whiteboard PID readiness failed: {err}"),
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            let socket = std::fs::symlink_metadata(&path).unwrap();
+            let pid = std::fs::symlink_metadata(&pid_path).unwrap();
+            assert!(socket.file_type().is_socket());
+            assert!(pid.is_file());
+            for metadata in [&socket, &pid] {
+                assert_eq!(metadata.uid(), 1000);
+                assert_eq!(metadata.mode() & 0o777, 0o600);
+                assert_eq!(metadata.nlink(), 1);
+            }
+            assert_eq!(
+                std::fs::read_to_string(&pid_path)
+                    .unwrap()
+                    .parse::<u32>()
+                    .unwrap(),
+                std::process::id()
+            );
+            (peer, socket, pid)
+        })
+        .await;
+        tokio::task::spawn_blocking(move || worker.stop_and_join())
+            .await
+            .unwrap()
+            .unwrap();
+        let (peer, socket, pid) = readiness.expect("whiteboard listener never became ready");
+        drop(peer);
+        match tokio::net::UnixStream::connect(&path).await {
+            Err(err) if matches!(err.kind(), ErrorKind::ConnectionRefused | ErrorKind::NotFound) => {}
+            result => panic!("whiteboard listener survived worker join: {result:?}"),
+        }
+        let mut retained = [false; 2];
+        for (index, (path, original)) in [(&path, &socket), (&pid_path, &pid)]
+            .into_iter()
+            .enumerate()
+        {
+            match std::fs::symlink_metadata(path) {
+                Ok(metadata) => {
+                    assert_eq!(
+                        (metadata.dev(), metadata.ino()),
+                        (original.dev(), original.ino())
+                    );
+                    retained[index] = true;
+                }
+                Err(err) if err.kind() == ErrorKind::NotFound => {}
+                Err(err) => panic!("whiteboard path observation failed: {err}"),
+            }
+        }
+        let mut receipt = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(receipt_path)
+            .unwrap();
+        writeln!(
+            receipt,
+            "WHITEBOARD_LISTENER_CANCEL=pass transport=unix readiness=kernel-connect worker=joined reconnect=refused socket_path={} pid_path={}",
+            if retained[0] { "present" } else { "absent" },
+            if retained[1] { "present" } else { "absent" }
+        )
+        .unwrap();
+    }
+
     fn token(value: u8) -> String {
         crate::encode64(&[value; 32])
     }

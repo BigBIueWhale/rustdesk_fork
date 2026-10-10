@@ -14118,7 +14118,7 @@ mod raii {
             if !self.published {
                 bail!("authenticated connection resources require a published owner");
             }
-            Self::check_wake_lock();
+            Self::publish_wakelock_state()?;
             use std::sync::Once;
             static _ONCE: Once = Once::new();
             _ONCE.call_once(|| {
@@ -14135,7 +14135,7 @@ mod raii {
             Ok(())
         }
 
-        fn check_wake_lock() {
+        fn publish_wakelock_state() -> ResultType<()> {
             let authed_conns = AUTHED_CONNS.lock().unwrap();
             let snapshot = WakelockSnapshot {
                 connection_count: authed_conns.iter().filter(|conn| conn.is_live()).count(),
@@ -14150,9 +14150,7 @@ mod raii {
                 Err(error) => Err(error),
             };
             drop(authed_conns);
-            if let Err(error) = publication {
-                log::error!("Wakelock snapshot publication failed: {error}");
-            }
+            publication.map_err(|error| hbb_common::anyhow::anyhow!(error))
         }
 
         pub fn check_wake_lock_on_setting_changed() {
@@ -14160,7 +14158,9 @@ mod raii {
                 config::Config::get_bool_option(keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS);
             let cached = *WAKELOCK_KEEP_AWAKE_OPTION.lock().unwrap();
             if cached != Some(current) {
-                Self::check_wake_lock();
+                if let Err(error) = Self::publish_wakelock_state() {
+                    log::error!("Wakelock option reevaluation failed: {error}");
+                }
             }
         }
 
@@ -14250,7 +14250,9 @@ mod raii {
             #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
             drop(self.final_remote_cleanup.take());
             if self.published {
-                Self::check_wake_lock();
+                if let Err(error) = Self::publish_wakelock_state() {
+                    log::error!("Wakelock retirement snapshot publication failed: {error}");
+                }
             }
         }
     }

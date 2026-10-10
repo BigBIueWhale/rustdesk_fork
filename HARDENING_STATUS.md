@@ -11365,7 +11365,7 @@ connection flow remaining correct and performant.
 
 ### R-S11hd/R-S11e-242 — coherent latest-state wakelock snapshot ownership (2026-08-21)
 
-**SOURCE STATE MACHINE IMPLEMENTED; AUTHENTICATED PUBLICATION ERROR CORRECTION PENDING;
+**SOURCE STATE MACHINE IMPLEMENTED; AUTHENTICATED PUBLICATION ERROR SOURCE-CORRECTED;
 FOUR EXECUTABLE RUST REGRESSIONS AUTHORED AND WIRED; EXACT CURRENT
 NATIVE/DEVICE/PERFORMANCE/ARTIFACT EVIDENCE OPEN.** The inherited controlled-side
 path sent every `(connection_count, remote_count)` reevaluation through an unbounded
@@ -11380,9 +11380,12 @@ variable latest-state cell: one zero-initialized typed snapshot, one pending bit
 publisher/receiver liveness. Each reevaluation derives both counts under one connection
 guard, publishes the full snapshot before releasing the guard, and coalesces arbitrary
 intermediate revisions. Identical snapshots still wake the worker so a keep-awake setting
-change is observed. Publisher/receiver retirement is explicit. The current resource-publication
-caller still reports success after worker-start/publication failure: the error is logged but
-not returned to admission. Result propagation and native before/after evidence are PENDING.
+change is observed. Publisher/receiver retirement is explicit. Authenticated resource
+publication now returns snapshot/startup failure through its result-bearing private
+`publish_wakelock_state` operation. The existing login caller clears authorization and
+returns its resource-unavailable error; option reevaluation and retirement log explicit
+errors. Counts and publication retain the same connection guard. No successful resource
+publication may hide a failed worker; corrected native acceptance is PENDING.
 Existing platform wakelock/display behavior is preserved; no queue, retry,
 reconnect, timer, poller, additional worker/thread/runtime, listener, port, dependency,
 privilege transition, service restart, network route, or Android persistent-service change
@@ -11400,9 +11403,14 @@ the actual publication/retry Results and remembered failed worker, exact limit r
 joined recovery, exact reservation retirement/reuse, and real process-exit finality with all
 five late factories refused. The canonical isolated `--input-lifetime` profile retains its
 three ordinary native tests and adds this as a fourth separately observed process exit.
-Baseline execution is PENDING and must reject the current successful-publication behavior;
-no production correction or native acceptance is recorded yet. OS wake inhibition, full
-login/network/CM and installed/other-platform behavior remain OPEN.
+At `62eafb56`, actual kernel EAGAIN left the wake worker failed while publication and retry
+both returned success. The independent native receipt rejected that behavior; existing
+controls passed. Baseline raw `android-rust-lifecycle-tests-run.hXY5hNzN6S.serial.log`, SHA-256
+`7649c041b78cfffd9d3af56663882da4311a307031b4d96f0f4c47ac87e3d42e`, remains retained with
+joined Xvfb/VM cleanup and no host-listener additions. The minimal production Result
+correction is applied; the identical fixture/provider/runner/harness must now pass.
+Corrected native execution remains PENDING. OS wake inhibition, full login/network/CM
+and installed/other-platform behavior remain OPEN.
 
 Exact target-runtime admission/removal/setting changes, worker and power-state lifecycle,
 latency and bounded-resource finality remain OPEN. Physical Android task-swipe/reopen/Force-Stop

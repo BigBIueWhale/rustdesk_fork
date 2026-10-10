@@ -4289,6 +4289,12 @@ MACOS_INFO_KEYS = {
 ios_info = assert_keys("flutter/ios/Runner/Info.plist", IOS_INFO_KEYS)
 macos_info = assert_keys("flutter/macos/Runner/Info.plist", MACOS_INFO_KEYS)
 
+for path in ("flutter/third_party/uni_links/ios/Classes/UniLinksPlugin.m",
+             "flutter/third_party/uni_links/ios/Classes/UniLinksPlugin.h"):
+    with open(path, encoding="utf-8") as fh:
+        if re.search(r'\b(?:continueUserActivity|NSUserActivityTypeBrowsingWeb)\b', fh.read()):
+            fail(f"{path}: forbidden iOS web-activity URL ingress")
+
 def assert_rustdesk_scheme(path, obj):
     url_types = obj.get("CFBundleURLTypes")
     if not isinstance(url_types, list):

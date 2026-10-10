@@ -62,19 +62,6 @@ static id _instance;
   return YES;
 }
 
-- (BOOL)application:(UIApplication *)application
-    continueUserActivity:(NSUserActivity *)userActivity
-      restorationHandler:(void (^)(NSArray *_Nullable))restorationHandler {
-  if ([userActivity.activityType isEqualToString:NSUserActivityTypeBrowsingWeb]) {
-    self.latestLink = [userActivity.webpageURL absoluteString];
-    if (!_eventSink) {
-      self.initialLink = self.latestLink;
-    }
-    return YES;
-  }
-  return NO;
-}
-
 - (void)handleMethodCall:(FlutterMethodCall *)call result:(FlutterResult)result {
   if ([@"getInitialLink" isEqualToString:call.method]) {
     result(self.initialLink);

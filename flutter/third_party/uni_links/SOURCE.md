@@ -11,3 +11,7 @@ the plugin build declaration with the application's pinned AGP version, removing
 the now-ignored manifest `package` attribute, and deleting the obsolete Flutter
 V1 `PluginRegistry.Registrar` registration entry point. The current RustDesk
 Android application uses Flutter's V2 embedding.
+
+The iOS plugin excludes the Universal-Link/Handoff delegate callback and its
+declaration under R-X6. Custom-scheme URL delivery uses the retained cold-launch
+and open-URL callbacks.

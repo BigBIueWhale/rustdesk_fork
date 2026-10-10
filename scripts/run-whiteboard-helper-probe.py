@@ -425,7 +425,7 @@ def desktop_ipc_thread_alive(identity):
 def observe_client_generation(executable, environment, display, server, case):
     environment = dict(environment, WHITEBOARD_PROBE_CLIENT_GENERATION=case)
     log_path = Path(f"/tmp/whiteboard-client-{case}.log")
-    generations = 1 if case in ("shutdown", "root-shutdown", "parent-loss", "owner-loss") else 2
+    generations = 1 if case in ("shutdown", "root-shutdown", "parent-loss", "owner-loss", "ipc-worker-panic") else 2
     needs_idle = case in ("withdrawal", "helper-close", "helper-crash", "root-shutdown")
     idle_connections = 2 if case in ("helper-close", "helper-crash") else 0
     with log_path.open("xb") as log:
@@ -477,6 +477,10 @@ def observe_client_generation(executable, environment, display, server, case):
                     owner_dropped = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_DROPPED generation=1 pid=([1-9][0-9]*) admission=refused replacement=refused", text)
                     owner_finished = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_FINISHED generation=1 pid=([1-9][0-9]*) task_finished=true task_joined=(true|false)", text)
                     owner_done = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_DONE generation=1 pid=([1-9][0-9]*) parent=alive admission=refused replacement=refused", text)
+                    panic_ready = re.fullmatch(r"WHITEBOARD_CLIENT_IPC_PANIC_READY generation=1 pid=([1-9][0-9]*) address_hex=([0-9a-f]+)", text)
+                    panic_requested = re.fullmatch(r"WHITEBOARD_CLIENT_IPC_PANIC_REQUESTED generation=1 pid=([1-9][0-9]*)", text)
+                    panic_retired = re.fullmatch(r"WHITEBOARD_CLIENT_IPC_PANIC_RETIRED generation=1 pid=([1-9][0-9]*) task=joined helper=reaped admission=refused", text)
+                    panic_timeout = re.fullmatch(r"WHITEBOARD_CLIENT_IPC_PANIC_TIMEOUT generation=1 pid=([1-9][0-9]*) task_finished=(true|false) task_joined=(true|false)", text)
                     root_thread = re.fullmatch(r"WHITEBOARD_CLIENT_PROCESS_ROOT_THREAD tid=([1-9][0-9]*)", text)
                     if root_thread:
                         require(process_root is None and not helpers, "process-root thread identity repeated or followed helper startup")
@@ -596,6 +600,72 @@ def observe_client_generation(executable, environment, display, server, case):
                         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
                             listener.bind(active["address"])
                         active["reaped"] = True
+                    elif panic_ready:
+                        require(case == "ipc-worker-panic" and active is not None
+                                and panic_ready.group(1) == str(active["pid"])
+                                and active["phases"] == ["draw"] and helper_alive(active)
+                                and desktop_ipc_thread_alive(process_root) and owner.poll() is None,
+                                "IPC panic missed the real live worker/helper/pixels")
+                        active["address"] = bytes.fromhex(panic_ready.group(2))
+                        require(active["address"].startswith(b"\0") and len(active["address"]) <= 108,
+                                "IPC panic helper endpoint differs")
+                        active["phases"].append("panic-requested")
+                        owner.stdin.write(b"panic\n")
+                        owner.stdin.flush()
+                    elif panic_requested:
+                        require(case == "ipc-worker-panic" and active is not None
+                                and panic_requested.group(1) == str(active["pid"])
+                                and active["phases"] == ["draw", "panic-requested"], "IPC panic request differs")
+                        death_deadline = time.monotonic() + 3
+                        while desktop_ipc_thread_alive(process_root):
+                            require(owner.poll() is None and time.monotonic() < death_deadline,
+                                    "exact IPC worker did not end while its parent stayed alive")
+                            time.sleep(0.01)
+                        require(owner.poll() is None and not process_root[0].exists(), "IPC panic lost its live parent")
+                        print("WHITEBOARD_CLIENT_IPC_PANIC_OBSERVED worker=absent parent=alive", flush=True)
+                        active["phases"].append("ipc-ended")
+                        owner.stdin.write(b"ipc-ended\n")
+                        owner.stdin.flush()
+                    elif panic_timeout:
+                        require(case == "ipc-worker-panic" and active is not None
+                                and panic_timeout.group(1) == str(active["pid"]) and owner.poll() is None
+                                and not process_root[0].exists(), "IPC panic timeout has no exact failure precondition")
+                        dead = not helper_alive(active)
+                        reaped = not Path(f"/proc/{active['pid']}").exists()
+                        print(f"WHITEBOARD_CLIENT_IPC_PANIC_FAILURE helper_dead={str(dead).lower()} helper_reaped={str(reaped).lower()} task_joined={panic_timeout.group(3)} parent=alive", flush=True)
+                        raise RuntimeError("IPC worker unwind left whiteboard retirement incomplete")
+                    elif panic_retired:
+                        require(case == "ipc-worker-panic" and active is not None
+                                and panic_retired.group(1) == str(active["pid"])
+                                and active["phases"] == ["draw", "panic-requested", "ipc-ended"]
+                                and owner.poll() is None and not process_root[0].exists()
+                                and not helper_alive(active) and not Path(f"/proc/{active['pid']}").exists(),
+                                "IPC unwind did not retain production helper reap/task join")
+                        display.wait_destroyed(active["window"], owner, server)
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                            peer.settimeout(1)
+                            try:
+                                peer.connect(active["address"])
+                            except OSError as error:
+                                require(error.errno == errno.ECONNREFUSED, "IPC panic endpoint refusal differs")
+                            else:
+                                raise RuntimeError("IPC panic retained a helper endpoint")
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                            listener.bind(active["address"])
+                        active["reaped"], cleaned = True, True
+                        owner.stdin.write(b"observed\n")
+                        owner.stdin.flush()
+                    elif text == "WHITEBOARD_CLIENT_IPC_PANIC_JOINED outcome=failed thread=joined parent=alive":
+                        require(case == "ipc-worker-panic" and cleaned and not ipc_joined
+                                and not process_root[0].exists() and owner.poll() is None,
+                                "IPC unwind result/native join preceded helper retirement")
+                        ipc_joined = True
+                        owner.stdin.write(b"ipc-joined\n")
+                        owner.stdin.flush()
+                    elif text == "returned" and case == "ipc-worker-panic":
+                        require(active is not None and active["phases"] == ["draw", "panic-requested", "ipc-ended"]
+                                and not active["returned"] and owner.poll() is None, "IPC panic helper return differs")
+                        active["returned"] = True
                     elif owner_loss:
                         require(case == "owner-loss" and active is not None
                                 and owner_loss.group(1) == str(active["pid"])
@@ -792,6 +862,8 @@ def observe_client_generation(executable, environment, display, server, case):
         print("WHITEBOARD_CLIENT_HELPER_LOSS=pass helper=pidfd-sigkill parent=alive old=production-reaped task=joined window=badwindow endpoint=refused-rebindable idle_observation_ms=500 demand=retained retry=later-explicit-same-id generations=2 pixels=both-generations", flush=True)
     elif case == "owner-loss":
         print("WHITEBOARD_CLIENT_OWNER_LOSS=pass boundary=running-published-helper controller=dropped process-root=desktop-ipc-retained parent=alive task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
+    elif case == "ipc-worker-panic":
+        print("WHITEBOARD_CLIENT_IPC_PANIC=pass boundary=native-worker-unwind parent=alive worker=absent thread=joined outcome=failed task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
     else:
         raise RuntimeError("unknown global client scenario")
 
@@ -958,7 +1030,8 @@ def main():
                 observe_client_generation(executable, environment, display, server, case)
             observe_launch_owner_loss(executable, environment, display, server)
             observe_client_generation(executable, environment, display, server, "owner-loss")
-            print("WHITEBOARD_CLIENT_PROCESS_ROOT=pass owner=desktop-ipc ready=9 joined=8 parent-loss=kernel-exit helper-retirement=before-thread-join", flush=True)
+            observe_client_generation(executable, environment, display, server, "ipc-worker-panic")
+            print("WHITEBOARD_CLIENT_PROCESS_ROOT=pass owner=desktop-ipc ready=10 joined=8 panicked-joined=1 parent-loss=kernel-exit helper-retirement=before-parent-exit", flush=True)
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")
         finally:

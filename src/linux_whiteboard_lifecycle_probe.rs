@@ -3,6 +3,17 @@ use crate::ipc::{self, WhiteboardHelperHandshake, WhiteboardIpcCommand, Whiteboa
 use hbb_common::{anyhow::{bail, ensure}, tokio, ResultType};
 use std::{io::{Read, Write}, process::{Child, Command, Stdio}, time::Duration};
 
+lazy_static::lazy_static! {
+    static ref IPC_WORKER_PANIC: tokio::sync::Notify = tokio::sync::Notify::new();
+}
+
+pub(crate) async fn with_requested_ipc_panic<F: std::future::Future>(operation: F) -> F::Output {
+    tokio::select! {
+        outcome = operation => outcome,
+        _ = IPC_WORKER_PANIC.notified() => panic!("isolated native IPC-worker unwind injection"),
+    }
+}
+
 pub(crate) fn report_desktop_ipc_thread() -> ResultType<()> {
     let tid = unsafe { hbb_common::libc::syscall(hbb_common::libc::SYS_gettid) };
     ensure!(tid > 0, "desktop IPC kernel thread identity is unavailable");
@@ -347,11 +358,61 @@ async fn published_owner_loss(mut owner: crate::whiteboard::WhiteboardClientCont
     Ok(())
 }
 
+async fn ipc_worker_panic(mut owner: crate::whiteboard::WhiteboardClientController) -> ResultType<()> {
+    use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper,
+        probe_whiteboard_helper_endpoint, probe_whiteboard_owner_loss, register_whiteboard,
+        probe_whiteboard_helper_exit, update_whiteboard_cursor, Cursor, WhiteboardClientRoot};
+    register_whiteboard(7);
+    register_whiteboard(8);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while probe_whiteboard_client_state() != ("Running", 1, true, 2) {
+        ensure!(tokio::time::Instant::now() < deadline, "IPC panic fixture did not publish its helper");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let pid = probe_whiteboard_helper().0
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("IPC panic helper is absent"))?;
+    println!("WHITEBOARD_CLIENT_READY case=ipc-worker-panic generation=1 pid={pid} connections=2 task=retained");
+    std::io::stdout().flush()?;
+    observer_ack(b"go\n").await?;
+    for (conn_id, x, y, argb) in [(7, 32.0, 32.0, 0xff00ff00), (8, 128.0, 96.0, 0xff0000ff)] {
+        update_whiteboard_cursor(conn_id, Cursor { x, y, argb, btns: 0, text: String::new() });
+    }
+    overlay_phase("draw", b"drawn\n").await?;
+    println!("WHITEBOARD_CLIENT_IPC_PANIC_READY generation=1 pid={pid} address_hex={}",
+        hex::encode(probe_whiteboard_helper_endpoint()?));
+    std::io::stdout().flush()?;
+    observer_ack(b"panic\n").await?;
+    IPC_WORKER_PANIC.notify_one();
+    println!("WHITEBOARD_CLIENT_IPC_PANIC_REQUESTED generation=1 pid={pid}");
+    std::io::stdout().flush()?;
+    observer_ack(b"ipc-ended\n").await?;
+    owner.begin_shutdown();
+    register_whiteboard(9);
+    register_whiteboard(10);
+    ensure!(probe_whiteboard_owner_loss().2 && WhiteboardClientRoot::new().is_err(),
+        "IPC panic admitted new demand or a replacement root");
+    if tokio::time::timeout(Duration::from_secs(5), owner.stop_and_join()).await.is_err() {
+        let (finished, joined, _) = probe_whiteboard_owner_loss();
+        println!("WHITEBOARD_CLIENT_IPC_PANIC_TIMEOUT generation=1 pid={pid} task_finished={finished} task_joined={joined}");
+        std::io::stdout().flush()?;
+        observer_ack(b"failed\n").await?;
+        bail!("IPC worker unwind lost the whiteboard retirement driver");
+    }
+    ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
+        && probe_whiteboard_helper() == (None, false) && probe_whiteboard_owner_loss().1
+        && probe_whiteboard_helper_exit() == Some((1, false)) && WhiteboardClientRoot::new().is_err(),
+        "IPC unwind returned before exact helper/task retirement");
+    println!("WHITEBOARD_CLIENT_IPC_PANIC_RETIRED generation=1 pid={pid} task=joined helper=reaped admission=refused");
+    std::io::stdout().flush()?;
+    observer_ack(b"observed\n").await
+}
+
 async fn exercise_client_generation(mut owner: crate::whiteboard::WhiteboardClientController, case: String) -> ResultType<()> {
     use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper, probe_whiteboard_helper_exit, probe_whiteboard_helper_endpoint,
         register_whiteboard, unregister_whiteboard, update_whiteboard_cursor, Cursor};
     if case == "launch-owner-loss" { return launch_owner_loss(owner).await; }
     if case == "owner-loss" { return published_owner_loss(owner).await; }
+    if case == "ipc-worker-panic" { return ipc_worker_panic(owner).await; }
     ensure!(matches!(case.as_str(), "shutdown" | "replacement" | "withdrawal" | "helper-close" | "helper-crash" | "root-shutdown" | "parent-loss"), "invalid client case");
     let generations = if matches!(case.as_str(), "shutdown" | "root-shutdown" | "parent-loss") { 1 } else { 2 };
     ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
@@ -544,6 +605,7 @@ async fn exercise_client_generation(mut owner: crate::whiteboard::WhiteboardClie
 
 async fn client_generation() -> ResultType<()> {
     let case = std::env::var("WHITEBOARD_PROBE_CLIENT_GENERATION")?;
+    let ipc_panic = case == "ipc-worker-panic";
     let mut worker = crate::ipc::spawn_desktop_ipc_worker()?;
     let (readiness, completion) = worker.startup_receivers();
     let (startup, completed) = tokio::select! {
@@ -569,6 +631,14 @@ async fn client_generation() -> ResultType<()> {
     };
     let joined = worker.join().await;
     result?;
+    if ipc_panic {
+        ensure!(completion == Err("desktop IPC worker ended without reporting an outcome".to_owned())
+            && joined == Err("desktop IPC worker panicked".to_owned()),
+            "native IPC unwind did not propagate its channel and thread failures");
+        println!("WHITEBOARD_CLIENT_IPC_PANIC_JOINED outcome=failed thread=joined parent=alive");
+        std::io::stdout().flush()?;
+        return observer_ack(b"ipc-joined\n").await;
+    }
     completion.map_err(|err| hbb_common::anyhow::anyhow!(err))?;
     joined.map_err(|err| hbb_common::anyhow::anyhow!(err))?;
     println!("WHITEBOARD_CLIENT_PROCESS_ROOT_JOINED worker=desktop-ipc outcome=ok thread=joined");

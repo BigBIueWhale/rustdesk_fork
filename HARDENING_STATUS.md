@@ -12122,6 +12122,12 @@ retains uncertainty/refuses replacement. If the IPC worker unwinds with a live g
 the controller can await retirement without a surviving resource driver; this full-root
 failure path remains unresolved. Runtime destruction may also wait for started blocking work.
 Neither that path nor release-abort cleanup is covered by controller-loss acceptance.
+The extended native profile now injects an actual IPC-thread unwind only after Running/
+two-owner pixels. It independently requires native thread absence with parent alive,
+then production helper reap/command join and exact failed-thread join. Probe-only fault
+injection cannot enter default builds. Its first current-source run is pending; no
+full-root correction or acceptance is claimed. Earlier accepted receipts below cover nine
+global cases and do not establish the added tenth case.
 
 **Latest accepted native Linux profile:** source `1bb67917bacbf64dfb967782c627ca07016ec33a`,
 tree `2bc9436259305b67a3b2f14f61042400f7021bf7`. Command:

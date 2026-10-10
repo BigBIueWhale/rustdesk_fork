@@ -3537,6 +3537,8 @@ async fn run_desktop_ipc(
         }
         run_main_ipc(main).await
     };
+    #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+    let listeners = crate::linux_whiteboard_lifecycle_probe::with_requested_ipc_panic(listeners);
     let outcome = tokio::select! {
         outcome = listeners => outcome,
         _ = whiteboard.run() => Err(hbb_common::anyhow::anyhow!("whiteboard process owner ended unexpectedly")),

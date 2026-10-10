@@ -4891,7 +4891,10 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'WHITEBOARD_CLIENT_OWNER_LOSS=pass boundary=running-published-helper controller=dropped process-root=desktop-ipc-retained parent=alive task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused' \
         'native global client owner loss joins and reaps its published helper with parent retained'
     require_exact_fixed_receipt \
-        'WHITEBOARD_CLIENT_PROCESS_ROOT=pass owner=desktop-ipc ready=9 joined=8 parent-loss=kernel-exit helper-retirement=before-thread-join' \
+        'WHITEBOARD_CLIENT_IPC_PANIC=pass boundary=native-worker-unwind parent=alive worker=absent thread=joined outcome=failed task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused' \
+        'native IPC worker unwind retains exact whiteboard retirement with its parent alive'
+    require_exact_fixed_receipt \
+        'WHITEBOARD_CLIENT_PROCESS_ROOT=pass owner=desktop-ipc ready=10 joined=8 panicked-joined=1 parent-loss=kernel-exit helper-retirement=before-parent-exit' \
         'native desktop IPC resource ownership through controller loss and exact thread join'
     require_exact_fixed_receipt \
         'WHITEBOARD_HELPER_CREATOR=pass thread=joined owner=alive helper=live proof=mutual pixels=two-owner-clear' \

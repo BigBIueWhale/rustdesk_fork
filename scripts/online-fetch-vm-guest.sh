@@ -281,6 +281,7 @@ case "$REQUEST" in
     __full__|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-discover-flutter-android-maven|--maintenance-stage-android-emulator-inputs|--maintenance-stage-rust-android-x86-input|--maintenance-stage-vcpkg-x64-android|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|\
     --maintenance-build-deb-builder-bootstrap-candidate|\
     --maintenance-discover-flutter-linux-engine-bootstrap|\
+    --maintenance-acquire-verifier-media-kernel|\
     --maintenance-stage-flutter-linux-engine-bootstrap|\
     --maintenance-probe-flutter-linux-engine-bootstrap|\
     --maintenance-stage-flutter-linux-engine-graph|\
@@ -808,7 +809,9 @@ readonly INNER_ENV=(
     RUSTDESK_ONLINE_FETCH_VM_RETIRED_POLICY="$([ "$REQUEST" = __authority_smoke__ ] && printf required || printf ephemeral)"
 )
 root_probe=(/bin/bash "$REPO/scripts/online-fetch.sh" --vm-authority-probe)
-if [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ]; then
+if [ "$REQUEST" = --maintenance-acquire-verifier-media-kernel ]; then
+    root_probe=(/bin/bash "$REPO/scripts/acquire-verifier-media-kernel.sh")
+elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ]; then
     root_probe=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh")
 elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ]; then
     root_probe=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh" --stage-tools)
@@ -851,7 +854,9 @@ run_online_fetch() {
     local stderr_overflow=$ROOT/transaction.stderr.overflow
     local transaction_status=0 reader_status=0 reader_pid path
     [ "$REQUEST" = __full__ ] || command+=("$REQUEST")
-    if [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ]; then
+    if [ "$REQUEST" = --maintenance-acquire-verifier-media-kernel ]; then
+        command=(/bin/bash "$REPO/scripts/acquire-verifier-media-kernel.sh")
+    elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ]; then
         command=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh")
     elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ]; then
         command=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh" --stage-tools)

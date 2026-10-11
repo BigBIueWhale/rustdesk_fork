@@ -31,6 +31,7 @@ case "$#:${1:-}" in
     1:--rust-test-inputs|1:--flutter-test-inputs|1:--flutter-peer-inputs|1:--android-build-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|1:--maintenance-discover-osv-pub-database|1:--maintenance-discover-android-emulator-inputs|1:--maintenance-discover-rust-android-x86-input|1:--maintenance-discover-flutter-android-maven|1:--maintenance-stage-android-emulator-inputs|1:--maintenance-stage-rust-android-x86-input|1:--maintenance-stage-vcpkg-x64-android|1:--maintenance-stage-flutter-presentation-candidate|1:--maintenance-discover-flutter-presentation-pub|\
     1:--maintenance-build-deb-builder-bootstrap-candidate|\
     1:--maintenance-discover-flutter-linux-engine-bootstrap|\
+    1:--maintenance-acquire-verifier-media-kernel|\
     1:--maintenance-stage-flutter-linux-engine-bootstrap|\
     1:--maintenance-probe-flutter-linux-engine-bootstrap|\
     1:--maintenance-stage-flutter-linux-engine-graph|\
@@ -106,7 +107,8 @@ elif [ "$REQUEST" = --fixed-archives ]; then
     readonly VM_MEMORY=4096
 elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
      || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ] \
-     || [ "$REQUEST" = --maintenance-probe-flutter-linux-engine-bootstrap ]; then
+     || [ "$REQUEST" = --maintenance-probe-flutter-linux-engine-bootstrap ] \
+     || [ "$REQUEST" = --maintenance-acquire-verifier-media-kernel ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=4096
@@ -626,6 +628,11 @@ SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
     || fail 'online acquisition requires a clean source tree'
 [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
     || fail 'Git replacement refs are forbidden'
+if [ "$REQUEST" = --maintenance-acquire-verifier-media-kernel ]; then
+    candidate="$REPO_ROOT/online/candidates/verifier-media-kernel"
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || fail 'media kernel candidate is occupied; review it before another acquisition'
+fi
 if [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
    || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ]; then
     candidate="$REPO_ROOT/online/candidates/flutter-linux-engine-bootstrap"
@@ -708,6 +715,8 @@ for source in "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$BOOT_DERIVER" \
     "$SCRIPT_DIR/discover-flutter-android-maven.py" \
     "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" \
     "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" \
+    "$SCRIPT_DIR/acquire-verifier-media-kernel.sh" \
+    "$SCRIPT_DIR/acquire-verifier-media-kernel.py" \
     "$SCRIPT_DIR/stage-pa-runtime-candidate.sh" \
     "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" \
     "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" \
@@ -815,6 +824,7 @@ if [ "$MODE" != authority-smoke ]; then
        || [ "$REQUEST" = --maintenance-stage-android-emulator-inputs ] \
        || [ "$REQUEST" = --maintenance-discover-flutter-presentation-pub ] \
        || [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
+       || [ "$REQUEST" = --maintenance-acquire-verifier-media-kernel ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ] \
@@ -895,6 +905,7 @@ git_package_before="$(/usr/bin/sha256sum "$GIT_PACKAGE")"
 virtiofsd_package_before="$(/usr/bin/sha512sum "$VIRTIOFSD_PACKAGE")"
 kernel_before="$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/sha256sum "$INITRD")"
+media_kernel_before="$(/usr/bin/sha256sum "$SCRIPT_DIR/acquire-verifier-media-kernel.sh" "$SCRIPT_DIR/acquire-verifier-media-kernel.py")"
 source_before="$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")"
 capture_listeners >"$LISTENERS_BEFORE"
 
@@ -1182,6 +1193,8 @@ fi
     && [ "$(/usr/bin/sha256sum "$KERNEL")" = "$kernel_before" ] \
     && [ "$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'authenticated VM input changed during acquisition'
+[ "$(/usr/bin/sha256sum "$SCRIPT_DIR/acquire-verifier-media-kernel.sh" "$SCRIPT_DIR/acquire-verifier-media-kernel.py")" = "$media_kernel_before" ] \
+    || fail 'media kernel acquisition source changed during acquisition'
 [ "$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")" = "$source_before" ] \
     || fail 'live orchestration source changed during acquisition'
 [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" = "$SOURCE_COMMIT" ] \

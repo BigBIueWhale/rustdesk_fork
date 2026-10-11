@@ -6847,6 +6847,10 @@ mod tests {
         })
         .await
         .expect("stage the complete first file");
+        let Some(DataStream::FileStream(stream)) = job.data_stream.as_mut() else {
+            panic!("receive fixture must retain its file stream");
+        };
+        stream.flush().await.expect("finish the fixture's pending write");
         let mut truncated = compress(b"Z").expect("encode the truncated fixture");
         assert!(truncated.pop().is_some());
         let oversized = compress(b"ZZ").expect("encode the oversized fixture");

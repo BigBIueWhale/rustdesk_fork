@@ -35,7 +35,7 @@ target OS has executed them or that every in-flight helper operation drains on c
 | --- | --- |
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
 | Named Linux full-peer lifecycles (app `a3755044`; harness `7f6649f0`) | The exact retained Flutter 3.47.5 bundle, independently selected patched engine and shared overlay passed six uninstrumented viewer lifecycles in a 458-second zero-NIC replay without rebuilding the app. Real password prompts, visible publication-bound X11 pixels, eighteen 2/6/12-second focus-loss cycles on unchanged connections, eighteen server-generation reconnects, eighteen native resizes of the same accessible dialog, sampled resource bounds and joined teardown passed. Maximum measured pixel age was 444 ms; focus recovery at most 8 ms and first fresh reconnect pixels at most 367 ms. Complete raw serial and outer receipt are retained below. This named Linux 640x480/4-Hz scenario does not establish Android/Windows causation, the full FlView restart/dispose/subtree/Wayland matrix, sustained soak, cross-version, installed-service, cold-equality or release-artifact closure. |
-| Named Linux filesystem library evidence (`babdb676`, `bf1242ea`) | A complete 143-second zero-NIC transaction passed 89 `hbb_common::fs` tests, four configuration transactions, five address/IPv6-formatting tests and one socket-helper test on pinned Rust 1.75. Two common-producer retirement regressions first failed at `de370fb5`; the byte-identical test module passed after correction. Initialization, reading and terminal retirement now use one selected entry, preserving a paused entry even when the fixture deliberately supplies repeated IDs. Three real-file/native guest-loopback TCP cases decode encrypted error/block/Done responses, own exact writer receipts and resume the survivor's exact bytes. This does not prove ordinary UI duplicate-ID reachability, PAKE or installed admission/routing. Earlier length/EOF, receive completion, index, enumeration and resume cases also passed. One executable retained its SHA-256 across all groups; the endpoint-only audit and joined cleanup passed. R-S11c-4d retains named evidence and unaccepted runs. Exact `bf1242ea` accepted the later confirmation correction's 102-test Linux library transaction in 165 VM seconds, including the unchanged strict host endpoint audit and joined cleanup; the two earlier corrected outer failures remain unaccepted. Full viewer/CM/installed peer behavior, privileged receivers, other platforms, namespace/content races, response-memory bounds, soak and release evidence remain OPEN. |
+| Named Linux filesystem library evidence (`babdb676`, `bf1242ea`, `30b3cdb0`) | A complete 143-second zero-NIC transaction passed 89 `hbb_common::fs` tests, four configuration transactions, five address/IPv6-formatting tests and one socket-helper test on pinned Rust 1.75. Two common-producer retirement regressions first failed at `de370fb5`; the byte-identical test module passed after correction. Initialization, reading and terminal retirement now use one selected entry, preserving a paused entry even when the fixture deliberately supplies repeated IDs. Three real-file/native guest-loopback TCP cases decode encrypted error/block/Done responses, own exact writer receipts and resume the survivor's exact bytes. This does not prove ordinary UI duplicate-ID reachability, PAKE or installed admission/routing. Earlier length/EOF, receive completion, index, enumeration and resume cases also passed. One executable retained its SHA-256 across all groups; the endpoint-only audit and joined cleanup passed. R-S11c-4d retains named evidence and unaccepted runs. Exact `bf1242ea` accepted the later confirmation correction's 102-test Linux library transaction in 165 VM seconds, including the unchanged strict host endpoint audit and joined cleanup; the two earlier corrected outer failures remain unaccepted. Exact `30b3cdb0` accepted 104 tests in 153 VM seconds after two real-directory path-quota regressions failed on `22fde885`; full returned paths now share the byte budget before copying, while the prior relative-name bound remains unchanged. Full viewer/CM/installed peer behavior, privileged receivers, other platforms, namespace/content races, response-memory bounds, soak and release evidence remain OPEN. |
 | Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added and cleanup joined. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
 | Exact Android/CM Rust lifecycles (`ceec168e8a25d231156e59c25b08365a29fef5d7`) | A zero-NIC VM freshly generated the Flutter bridge, compiled the complete Linux-host Rust library with `linux-pkg-config,flutter`, and executed 24 exact production tests in a networkless guest-only container. Four cover listener generation and owned-child convergence; 20 cover exact CM registry/file-log/Android-child ownership, privacy activation/retirement, final-Remote cleanup, and resolution restoration. The offline canary, pinned sub-closures, read-only source/generated bindings, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, real socket/peer, APK/device, task-swipe, Force Stop, rendered presentation, or native Windows evidence. |
@@ -13119,7 +13119,7 @@ platform behavior, performance/soak, cold equality, independent reproduction, an
 ### R-S11c-4d — receive-file commit, resume, and failure finality
 
 **SOURCE CORRECTED; NAMED HEADLESS LINUX CM/VIEWER REPLAY AND EARLIER LINUX LIBRARY
-TRANSACTIONS PASSED; NAMED CURRENT CONFIRMATION LINUX LIBRARY TRANSACTION ACCEPTED;
+TRANSACTIONS PASSED; NAMED CONFIRMATION AND DIRECTORY-PATH LINUX LIBRARY TRANSACTIONS ACCEPTED;
 PRIOR CROSS-PROCESS/PROCESS-DEATH AND SYSCALL-TRACED DURABILITY
 EVIDENCE RETAINED; CURRENT NATIVE INTEGRATION, INSTALLED AND PHYSICAL POWER-LOSS
 EVIDENCE OPEN.**
@@ -13144,7 +13144,7 @@ native integration OPEN.** The relevant implementation is in `libs/hbb_common/sr
 | Send resume source ownership | `set_stream_offset` checks metadata and seeks on the retained send `FileStream`; it does not reopen the pathname to replace an active stream. A first open remains provisional until length validation and seek succeed. Refused offsets preserve confirmation and accounting. |
 | Resume admitted size | Both roles reject offsets beyond the admitted entry size before path resolution, open, seek or accounting. Send also checks the retained object's actual length; in-place growth does not enlarge the admitted authority. |
 | File confirmation entry | Every filesystem-backed skip, overwrite and resume action requires a present entry at the exact matching current index before changing flags, counters, streams or cleanup state. Empty and completed lists cannot confirm an absent file; a present zero-byte file remains valid. |
-| File-list construction | `read_dir_with_budget`, both recursive scanners and `new_read_with_budget` propagate iterator, root/entry metadata and descendant failures. Unsupported UTF-8 names, unavailable modification times and pre-epoch times fail explicitly. Every scanned entry consumes quota even when hidden filtering excludes it; recursive byte accounting includes the complete relative name. Child-error string classification and partial-success branches are deleted. |
+| File-list construction | `read_dir_with_budget`, both recursive scanners and `new_read_with_budget` propagate iterator, root/entry metadata and descendant failures. Unsupported UTF-8 names, unavailable modification times and pre-epoch times fail explicitly. Every scanned entry consumes quota even when hidden filtering excludes it; recursive byte accounting includes the complete relative name. Flat and empty-directory results reserve each full returned path in the shared byte counter before copying it. The private scanner returns entries without allocating a discarded directory path. Child-error string classification and partial-success branches are deleted. |
 
 CM, controlled-side and viewer constructor/confirmation/finalization error propagation remains
 source-reviewed for these corrections. The direct common producer has the separate native TCP
@@ -13243,6 +13243,40 @@ Raw serial `hbb-common-fs-run.9a2Gj2iOJe.serial.log` is 69,263 bytes, SHA-256
 an assistant-recorded observation. The serial retains summaries and source/artifact receipts;
 executable bytes and full test stdout were ephemeral. This accepts only the named ordinary-user
 Linux library isolation transaction. Every broader OPEN obligation above remains required.
+
+**Directory-result path accounting — source corrected; named Linux library transaction ACCEPTED,
+native integration OPEN.** The old scanner copied `FileDirectory.path` without charging it;
+empty-directory recursion repeated the full absolute prefix in every returned directory. The private
+scanner now returns only entries. Flat reads and empty-directory publication reserve the complete
+UTF-8 path with the existing conservative checked byte estimator before copying it into a result.
+Scanned-entry, directory and depth quotas are unchanged, including hidden-entry accounting and the
+inclusive 435-byte/refused 434-byte relative-file-path fixture. This closes the omitted-path estimate,
+not the broader response-envelope, JSON, cloning or installed resource obligations.
+
+Baseline `22fde885614e1cf8cda639f0f77bfc6a2c7ca67e` failed both new real-directory regressions:
+an empty root bypassed the budget in flat and recursive empty-directory APIs, and sixteen empty
+children returned 4,496 protobuf bytes under a 4,495-byte budget. Four configuration and 92 prior
+filesystem tests passed; address/socket groups did not run after the filesystem failure. The failed
+whole transaction remains unaccepted. Correction `30b3cdb0c5480716760a4d648fb186fb1849a6cd`
+(tree `7aada4bd57a2193456ef8f6ac6eab314db245b4f`) passed the same unchanged `--hbb-common-fs`
+lane in **153 VM seconds**: 94 filesystem, four configuration, five address and one socket test,
+104 total, zero failed/ignored. The entire test module was byte-identical, both new names were
+required, and executable SHA-256 `80d95d5fae44b9d964544eb72e1b1bf6f99912d3bc1f5318a790587499709347`
+held before, between and after the groups. The pinned Rust 1.75/vendor/builder/base, ordinary-user
+zero-NIC VM, guest-only networkless container and strict endpoint audit were unchanged. No host
+listener was added; exact children joined and the corrected run root retired. All 1,271 tracked files,
+index and frozen source/control/input records stayed unchanged through each terminal cleanup.
+
+Under `.harness-state/verifier-vm`, `directory-path-22fde885-evidence/` retains assistant-recorded
+baseline/corrected observations, full outer terminal results and before/after input records;
+`retained-directory-path-before-wDYVlb1X1c/` preserves the entire inert failed diagnostic root.
+Baseline raw `hbb-common-fs-run.wDYVlb1X1c.serial.log` is 87,576 bytes, SHA-256
+`23ceabd0a9f3ac330fb86555a041d4cbf5a63c1f6990bab0f26dd3301db2b755`; accepted raw
+`hbb-common-fs-run.bZUdeYjFTv.serial.log` is 67,906 bytes, SHA-256
+`d7ff53a87220fcd1ffebc435a1f65f10144e4a6355cd601a6857bef841c0e5c7`. Successful serial retains
+summaries and source/artifact receipts; executable bytes and full container stdout were ephemeral.
+These are ordinary-user Linux production-library outcomes, not independent attestations. Every
+broader OPEN obligation above remains required; no installed receiver or LPE boundary closes here.
 
 Receive blocks advance files monotonically. A terminal `Done` commits only the exact next index at the
 end of the whole admitted file list, after the active stream and retained staged handle are synchronized

@@ -7365,6 +7365,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   live, and then observed cleanup before native/manager retirement. The ignored raw receipts are no
   longer local, so these are named historical results, not exact-current reruns or release artifacts.
 
+  The 2592-line `scripts/verify-flutter-presentation-windows.py` and its shared gate are
+  deleted. Literal/count/order checks and in-memory string replacements did not execute the
+  Windows engine, controller, compositor, pointer path, or teardown. The actual VM runner,
+  native probes, input/digest/result validation, and full-peer result validator with executable
+  behavioral tests remain unchanged. None ran for this deletion, and the default Windows golden
+  is absent locally; current native acceptance remains OPEN.
+
   Current verification must additionally exercise R-S11gh's repeated-close and non-success result
   paths. R-S11gk remains the release-blocking real-peer transaction: exact current artifacts,
   uninterrupted focus/minimize freshness without reconnect, capture-to-compositor timestamps,

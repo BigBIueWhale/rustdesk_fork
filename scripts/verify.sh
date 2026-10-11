@@ -10381,12 +10381,6 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter ui_cm_interface::tests::r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter server::connection::cm_file_response_authority_tests::r_s11fi_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fj_ --color never
-if /usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test; then
-  echo "  ok  R-S11gb/R-S11e-215 native Windows presentation evidence remains exact-commit, isolated, loopback-only, pixel-observed, and latency-bounded"
-else
-  echo "  FAIL R-S11gb/R-S11e-215: native Windows presentation evidence lost source finality, isolation, real transition/pointer/pixel proof, or latency bounds"
-  rc=1
-fi
 if /usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo .; then
   echo "  ok  R-S11gc/R-S11e-216 Linux full-peer harness retains its focused VM-isolation, candidate-input, and native-observer source guard"
 else

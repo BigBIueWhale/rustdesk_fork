@@ -3243,7 +3243,7 @@ Next: native ViewCamera and disposal/subtree replacement/FlView restart coverage
 platforms, original display-delay causation, sustained resources, installed-service loader/FFI
 authority and broader native/installed/release acceptance remain OPEN.
 
-**ViewCamera native identity — MEDIA INPUT CANDIDATE VERIFIED; PRODUCT FIX/NATIVE CAMERA REPLAY OPEN.**
+**ViewCamera native identity — GUEST V4L2 FIXTURE PASS; PRODUCT IDENTITY/GENERATION FIX OPEN.**
 `libs/scrap/src/common/camera.rs::all_info` selects an actual native camera index but publishes only
 ordinal `DisplayInfo`; resolution and capturer creation reconstruct `CameraIndex::Index` from that ordinal.
 A nonzero-only Linux node can therefore be advertised at ordinal zero and then opened as native zero.
@@ -3278,16 +3278,39 @@ Raw `online-fetch-run.g8E8ylI6W7.serial.log` is 67,195 bytes, SHA-256
 streams and joined cleanup. No host listener was added; all 1,284 source/control/input observations
 were unchanged. Six exact freeze records, terminal observations, preserved failure-tree inventories and
 accepted stdout are retained in `.harness-state/verifier-vm/media-kernel-027e6218-evidence`.
-This is candidate acquisition and inert package inspection. Canonical boot-pin admission, matching
-initramfs/module provisioning, zero-NIC guest boot and actual V4L2/nonzero-node capture remain OPEN,
-followed by the product identity/generation correction and hotplug/overlap replay. No host camera/device
-mount, physical-device acceptance, camera execution, installed kernel or product fix is claimed.
+That acquisition performed inert package inspection; guest execution is established separately below.
 
-Media boot/fixture source is now prepared in `scripts/smoke-verifier-media.py` and
-`scripts/verifier-media-guest.py`; **native acceptance is pending**. The fixed package/kernel/config
-pins select the authenticated candidate. One zero-NIC guest produces matching initramfs files, and a
-second boot must read real nonzero-node frames as guest UID/GID 4000, reject absent native zero,
-retire/recreate vivid and join cleanup. No product correction or successful boot is claimed here.
+The closed `python3 -I -S scripts/smoke-verifier-media.py` passed at final harness source
+`dce168983c3214249c7f0f0b72f7509705b876cb`: provisioning took 25 seconds and native capture 8 seconds.
+The ordinary-user launcher admits the fixed package/kernel/config pins, retains exact input descriptors
+and the shared-root lock, uses read-only input media and a pass-private overlay, and gives QEMU no NIC,
+host share/device or TCP control listener. Guest root extracts to a private package stage, preserves
+Debian's `/lib → usr/lib` identity, and places only fixed boot members and the matching 4,022-module tree.
+It runs the authenticated base's `mkinitramfs` twice for explicit release `6.1.0-50-amd64` and epoch
+`1700000000`; both files are equal. The second direct boot executes the 8,222,656-byte pinned kernel,
+SHA-256 `d8808aa4ca188560da1e6d749dcb930c87a5fd8b11ebff1f3fa6d728af35203d`, and matching 38,363,830-byte
+initramfs, SHA-256 `01d13a130e0cc4d1eca987acba56b7cf6f718781cdecf6941ae8dac574d249da`.
+The identical guest recipe produced equal initramfs bytes in two accepted fresh overlays; this is
+fixture reproducibility, not independent operator reproduction or cold release R-B2/R-B10 acceptance.
+
+Actual `vivid` QUERYCAP/S_FMT and native read calls ran as guest UID/GID 4000 with no supplementary groups.
+Only `/dev/video2` existed: opening native zero returned `ENOENT`; the character device at native two
+returned four advancing 320×180 RGB3 frames, each exactly 172,800 bytes with eight complete RGB colors.
+Two actual module load/unload generations passed, including root/foreign probe-principal refusal and
+final module/node absence. All guest interfaces were loopback. Both exact QEMU processes joined;
+listener inventories were equal, all 1,281 source/control/input observations were unchanged, and exact
+overlay/raw/root/ISO/channel cleanup completed before no-clobber evidence publication.
+`.harness-state/verifier-vm/media-v4l2-run.839840d23e` retains the full 65,575-byte provisioning serial,
+SHA-256 `1e9b43dea30c078cbacaac74f6e45d396de1ba2164d56984b3b240eca91ef1b5`, and 69,355-byte fixture serial,
+SHA-256 `043b7aee7af450df1232220d10eb9eae2ca428fc397a7f79d6adb4d202d6be90`. Its receipt binds stream
+metadata/digests, source/tree, boot outputs and native results; both 328,878-byte freezes are equal.
+The first accepted recipe replay is retained in `media-v4l2-run.5c341b8fa6`; three rejected attempts and
+their exact failure evidence remain preserved. The ledger records acceptance only for the final source.
+
+This executes the guest kernel and Python V4L2 probe. Production nokhwa/RustDesk camera discovery,
+metadata/capture identity, coherent catalog generations, stale-open/hotplug/overlapping login behavior,
+physical devices, Windows cameras, canonical reusable media boot-cache promotion and broader native,
+installed and release acceptance remain OPEN. No camera product API was corrected in this slice.
 
 **Linux Flutter build/replay separation — CAPSULE/PRODUCER PASS; CURRENT REMOTE CONSUMER ACCEPTED ABOVE.**
 

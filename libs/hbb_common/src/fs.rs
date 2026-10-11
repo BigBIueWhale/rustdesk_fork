@@ -3602,7 +3602,7 @@ impl TransferJob {
                         bail!("file-path write branch changed data-source variant")
                     }
                 };
-                let entry = &self.files[file_num];
+                let entry = &self.files[block.file_num as usize];
                 let final_path = join_validated_path(base, &entry.name)?;
                 let digest = self.digest;
                 let (stream_file, claim) = tokio::task::spawn_blocking(move || {

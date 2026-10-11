@@ -8780,84 +8780,52 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   portable/video smoke, privileged VM scenarios,
   native/device/installed lifecycle, performance/soak, cold R-B2/R-B10 artifacts/equality,
   independent reproduction and R-V3 review remain OPEN.
-- **R-S11df/R-S11e-124 — Dart advisory execution authority — CURRENT NO-NIC OSV
-  SCAN PASS 2026-09-22; RELEASE EVIDENCE OPEN.** `scripts/dart-audit.sh` refuses UID/GID
-  zero and authenticates R-S11dh before reading the lockfile/policy or creating scratch.
-  Image inspection and both bounded scanner launches use only the fixed guest client,
-  guest-private socket, and root-owned read-only configuration in an empty environment,
-  with VM preflight replay before and after every operation. Its former host
-  `/var/run/docker.sock` authority and private host-client configuration lifecycle are
-  deleted. The KVM harness carries the actual entry on read-only media, rejects VM root
-  and UID/GID 4001, admits only UID/GID 4000, and completes a real Docker client/server
-  request without a VM NIC or host listener; repeated current runs finished in 19–20
-  seconds with joined cleanup. The old 958-line cross-subsystem mutation
-  catalog is replaced by a compact no-fallback and launch-shape source check; the same
-  guest executes the separate 31-decision scanner-result behavioral test, while
-  acquisition/OCI provenance retain their own focused gates.
-  Focused fixed-archive acquisition owns authenticated loading of its exact certified builder into each
-  fresh guest containerd store instead of relying on caller preload order; the WiX entry no longer loads
-  unrelated builders. The July Pub generation's clean HTTP-404 refusal established that a GCS generation
-  is immutable only while retained. Maintenance discovery at `3b0e50a` therefore queries one fixed GCS
-  object, binds an exact generation and metageneration, validates the publisher and independent checksums
-  plus bounded ZIP/OSV structure, rechecks latest metadata for replacement, and emits review-only pins
-  without publication authority. Run `run.xpZPC90COW` discovered generation `1789013095985302`, updated
-  `2026-09-10T04:04:56.119Z`, at SHA-256
-  `6d103d73cb21483dfb0f1c04f3a37e1485e8d37b568d084f772dc9cfb28e9716`.
-  Commit `55dc913` deliberately promotes that reviewed revision once in `pins.env`; the fixed-archive
-  verifier now checks canonical bounded pin shape, timestamp/epoch and size relationships, and exact
-  manifest consumption instead of duplicating a stale database version. Exact ordinary acquisition run
-  `run.rAYEcZNjXU` then loaded and verified the certified Android builder, requested only that generation,
-  independently validated the 19,142-byte/13-record/47,157-expanded-byte database and the 56,676,514-byte
-  scanner, and no-clobber published both mode-0400 inputs. Its 49-second receipt binds exact source,
-  QEMU user-only egress, UDP denial, absent host forwarding, unchanged 605-byte host listener inventories,
-  guest-only Docker/BuildKit, and joined cleanup.
+- **R-S11df/R-S11e-124 — Dart advisory execution authority — CURRENT SNAPSHOT EXPIRED;
+  HISTORICAL NAMED SCAN PASS; CURRENT ADVISORY AND RELEASE ACCEPTANCE OPEN.**
+  `scripts/dart-audit.sh` authenticates R-S11dh before reading inputs or creating scratch,
+  refuses UID/GID zero, and confines immutable-image inspection and bounded scanner launches to
+  the fixed guest client, guest-private socket and root-owned read-only configuration in an empty
+  environment, with pre/post authority replay. Host Docker and host-client fallback remain absent.
+  Its compact source check is supplementary; the 31-decision result test exercises policy/status/
+  schema decisions rather than proving a current scanner verdict.
 
-  Repository-local Dart audit-image reconstruction and archive distribution are now closed for this
-  snapshot. Commits `22b5c339`, `fed5eaa0`, `d8b1fe3a`, `21a5704f`, `4bcf4450`, and `fdcb194a` make
-  reconstruction recoverable, bind deterministic created/layer epochs, model the exact native SLSA v0.2
-  statement and LLB graph emitted by pinned BuildKit 0.18.2, and retain useful fail-closed graph diagnostics.
-  The intermediate VM runs stopped before publication on a misplaced spec property, an incorrect v1
-  provenance assumption, and a newer-builder-only source attribute; their retained evidence was used to
-  correct the exact model rather than weaken it or fabricate a fixture pass.
+  **Current native refusal.** At clean pushed source `3ba0822f133b9c63e6e100966a8cfde6ce83d831`,
+  `scripts/smoke-verifier-vm-authority.sh --dart-audit` ran the unchanged production entry in the
+  zero-NIC guest. It refused the pinned snapshot at guest time 16.54 seconds with
+  `capture age 31 days exceeds the 30-day release limit`. The positive-only wrapper truthfully
+  exited 1; there was no green verdict or `DART_AUDIT_VM=pass`. This is actual stale-input refusal
+  before the entry's scanner launch, not a clean scan or a successful full audit transaction.
+  Raw `.harness-state/verifier-vm/dart-audit-run.evPrgaWoSu.serial.log` retains 65,026 bytes,
+  SHA-256 `a422f27c2ceb05ea75d793aa512557599acfc6abb0ad01a09bdee4afe505a7a5`.
+  Host-side VM/capture cleanup joined; complete listener snapshots were byte-equal with no additions.
+  The failed tree is preserved as `dart-audit-stale-run.evPrgaWoSu` under that private root after
+  exclusive rename and exact child-byte/identity verification. Six 0400 evidence records in
+  `dart-stale-3ba0822f-evidence` retain the command, terminal observations, failure-tree inventory
+  and exact 290,146-byte before/after source/control/input freeze pair; these are local observations.
 
-  Fresh acquisition run `run.n4FnJ8P0Uq` at `fdcb194a` performed two no-cache, `--network=none` builds in
-  one disposable guest. Both produced runtime manifest
-  `sha256:cfddb726527d6434eaf6e652f0c404d6115aa879fcc02a71645446f0bac5baf6` and config
-  `sha256:0a4213605273bbe7272cde29fa6376cd6391aa3d1797add39121822131879443`; the reviewed second
-  provenance index is `sha256:f44a8c8c2cdbb7269dbcc6a3a726acfe35f94d2a183ec62ef821d94ff57d5f2b`.
-  Its private candidate archive was 45,818,990 bytes at SHA-256
-  `8ccf86653e1a1de16ddf9dc6657daad49b29c51d58771ad70fa779a038272a0c`. Commit `f6ff9b38`
-  records those reviewed pins. Separate fresh-VM run `run.xzqruM0OmH` then reverified the candidate against
-  that commit, no-clobber promoted it to the final mode-0400 archive, loaded it into the empty guest store,
-  and verified the exact image. The 69- and 27-second receipts bind guest-only Docker/BuildKit, QEMU
-  user-only networking with no host forwarding, UDP denial, byte-identical 605-byte host listener
-  inventories, and joined cleanup.
+  Discovery at `2235b68a` still returned generation `1789013095985302`, publisher update
+  `2026-09-10T04:04:56.119Z` and epoch `1789013096`, exactly the existing pins. Reacquisition
+  cannot renew that age. Current acceptance requires a reviewed fresh immutable snapshot,
+  corresponding authenticated image/provenance/archive and a new actual verdict; the 30-day rule,
+  lack of overrides and acquisition/verdict separation remain unchanged.
 
-  Commit `4ca6c2f` adds the actual focused transaction rather than promoting an entry/source check into verdict
-  evidence. Three retained VM failures then corrected real integration faults: unreadable root-extracted source
-  (`run.JQqIXQMRLV`, fixed by `f115da6`), confusion between the OCI publication index and classic-Docker runtime
-  config identity (`run.AFpgN5nwWg`, fixed for Dart by `be5f6b4`), and a focused-path descriptor ceiling below the
-  descriptor-bound cleanup requirement (`run.CImYjMHdDD`, fixed globally by `a82aaba`). Their listener inventories
-  were unchanged; none is counted as a pass.
+  **Historical evidence, exact scope.** Source `a82aaba7fd8b4d89df2280f3ab1afb9d26e512da`,
+  tree `61ed3e89d224d417fb7f5613ab31c7d48ac3abcd`, run `EDeOJHBrIT` passed the offline
+  OSV verdict on September 22 in 28 seconds for the September 10 snapshot. It bound lock
+  SHA-256 `cc7da12d2a7033bd76f5d19926ee39242ff1cd19f55223d2d9ad12d530329eae`,
+  policy SHA-256 `c60870472e03eaa1cda0b1cd0b2c74591c6255d1c8ab1dde13e7b7392938e143`,
+  publication index `sha256:f44a8c8c2cdbb7269dbcc6a3a726acfe35f94d2a183ec62ef821d94ff57d5f2b`
+  and runtime config `sha256:0a4213605273bbe7272cde29fa6376cd6391aa3d1797add39121822131879443`.
+  The pin-bound 45,818,990-byte image archive remains present at
+  `online/inputs/verifier-images/dart-audit.docker.tar.gz`, SHA-256
+  `8ccf86653e1a1de16ddf9dc6657daad49b29c51d58771ad70fa779a038272a0c`; identity does not
+  renew database freshness. Detailed acquisition, two-build reconstruction, provenance repairs,
+  promotion and earlier failures remain in the ledger at `3ba0822f`, Git history and the audit.
 
-  Exact clean pushed-source run `run.EDeOJHBrIT` at
-  `a82aaba7fd8b4d89df2280f3ab1afb9d26e512da`, tree
-  `61ed3e89d224d417fb7f5613ab31c7d48ac3abcd`, completed the real offline OSV scan in 28 seconds. It binds image
-  publication index `sha256:f44a8c8c2cdbb7269dbcc6a3a726acfe35f94d2a183ec62ef821d94ff57d5f2b`, runtime config
-  `sha256:0a4213605273bbe7272cde29fa6376cd6391aa3d1797add39121822131879443`, lock SHA-256
-  `cc7da12d2a7033bd76f5d19926ee39242ff1cd19f55223d2d9ad12d530329eae`, and empty-policy SHA-256
-  `c60870472e03eaa1cda0b1cd0b2c74591c6255d1c8ab1dde13e7b7392938e143`. The exact R-R3/R-S11be green verdict
-  was present once; root and UID/GID 4001 were refused; UID/GID 4000 ran with exact soft/hard `nofile=524544`;
-  QEMU and the scanner container had no network; source/image inputs stayed read-only; Docker remained guest-only;
-  host listeners were unchanged; and cleanup joined. Separate default no-NIC run `run.MU5pT3LVL3` completed in 82
-  seconds and exercised the 31-decision result gate plus offline-image provenance fixtures. This closes the current
-  Dart verdict only for that exact 2026-09-10 Pub snapshot, lockfile, policy, image, and source.
-
-  A separately administered independent reconstruction, analogous publication/runtime identity assumptions in
-  other Docker consumers, complete canonical closure/current cold artifacts, release and
-  signed artifacts, native/device behavior, display/session lifecycle, performance/soak, and external review remain
-  open. Neither run used host/root Docker, host RustDesk or Haggai state, a published port, or host firewall/network
-  mutation.
+  Independent reconstruction, other Docker consumers' publication/runtime identity assumptions,
+  complete canonical closure, current cold/release/signed artifacts, native/device and display/session
+  behavior, performance/soak and external review remain OPEN. No pin, product, scanner, freshness
+  rule or broader release acceptance changed in this current-state ledger correction.
 - **R-S11dg/R-S11e-125 — Rust advisory execution authority — CURRENT NO-NIC
   RUSTSEC SCAN PASS 2026-09-22; RELEASE EVIDENCE OPEN.** `scripts/audit.sh`
   refuses UID/GID zero and authenticates R-S11dh before reading repository audit

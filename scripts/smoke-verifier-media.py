@@ -436,6 +436,8 @@ def main():
         require(capture['principal'] == '4000:4000' and capture['node'] == '/dev/video2'
                 and capture['driver'] == 'vivid' and capture['native_zero_errno'] == 2
                 and capture['frame_bytes'] == 172800 and len(capture['frame_sha256']) == 4
+                and len(capture['pixel_color_counts']) == 4
+                and min(capture['pixel_color_counts']) >= 8
                 and len(set(capture['frame_sha256'])) >= 2, 'native capture result differs')
     after = {str(p): observe(p) for p in frozen_paths}
     exclusive(run / 'freeze.after.json', json.dumps(after, sort_keys=True).encode() + b'\n')

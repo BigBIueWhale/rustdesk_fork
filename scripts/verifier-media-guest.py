@@ -90,6 +90,7 @@ def capture():
         require((width, height, pixel, field, stride, size)
                 == (320, 180, rgb, 1, 960, 172800), 'native negotiated format differs')
         frames = []
+        pixel_counts = []
         deadline = time.monotonic() + 5
         while len(frames) < 4:
             require(time.monotonic() < deadline, 'native frame deadline exceeded')
@@ -98,15 +99,17 @@ def capture():
             except BlockingIOError:
                 select.select([fd], [], [], min(0.1, max(0, deadline - time.monotonic())))
                 continue
-            require(len(frame) == size and len(set(frame)) >= 8,
-                    'native frame is short or lacks test-pattern variation')
+            require(len(frame) == size, 'native frame bytes differ: ' + str(len(frame)))
+            colors = len({frame[offset:offset + 3] for offset in range(0, size, 3)})
+            require(colors >= 8, 'native RGB colorbar count differs: ' + str(colors))
+            pixel_counts.append(colors)
             frames.append(hashlib.sha256(frame).hexdigest())
         require(len(set(frames)) >= 2, 'native frame content did not advance')
         return {'principal': '4000:4000', 'node': '/dev/video2', 'driver': 'vivid',
                 'rdev': [os.major(info.st_rdev), os.minor(info.st_rdev)],
                 'native_zero_errno': errno.ENOENT, 'format': 'RGB3',
                 'width': width, 'height': height, 'frame_bytes': size,
-                'frame_sha256': frames}
+                'frame_sha256': frames, 'pixel_color_counts': pixel_counts}
     finally:
         os.close(fd)
 

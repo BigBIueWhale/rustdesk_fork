@@ -4864,6 +4864,15 @@ serial is `.harness-state/verifier-vm/authority-smoke-run.OcGhuR9UoX.serial.log`
 `276b04dbef30cf492999e0dac8c55f2b1dc4f57341bd82e64e3b372e7c5f64f3`); the host listener audit and
 joined cleanup passed. This proves release-launcher epoch admission and the real Debian compiler profile,
 not Windows compilation, artifact construction, stable signing, or cold release A==B; those remain OPEN.
+Android compilation now passes the admitted epoch as an explicit Docker key=value argument, preserving the
+closed client environment. The same production compiler function and native probe at `5ce7cc8c` passed in
+119 seconds with both unset and exact-pin entry: the container observed the canonical epoch, offline mode,
+canary, Flutter version, and tools-lock digest. The identical probe at `8b4d581d` first failed because the
+old bare-name option left the container epoch unset. Raw serial
+`.harness-state/verifier-vm/authority-smoke-run.Pi8ZPdQtoj.serial.log` is 84,294 bytes, SHA-256
+`20ead2e417c8232aad415bb0e1cc6345c627384f58261969d7c875c132401af5`; the three-target refusal matrix,
+host listener audit, and joined cleanup passed. This is compiler-profile environment evidence; no APK
+compiler, signing operation, final artifact, or cold equality ran.
 The same root build script requires one canonical newline-terminated `FORK_VERSION` whose numeric base equals
 `CARGO_PKG_VERSION`; it has no missing, unreadable, empty, malformed, mismatched, or package-version fallback.
 Each pass gives every target builder an absent publication path and leaves its creation to that builder. Windows
@@ -8747,9 +8756,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `scripts/build-android.sh` now refuses UID or primary GID zero before
   repository shell/pin sourcing and requires the R-S11dh verifier-VM admission
   before evaluating source, online, output, keystore, or password defaults.
-  `--self-test-vm-authority` performs one real guest client/server version
-  exchange and exits before provenance, scratch, source, signing, output, or
-  container work. Normal provenance and the four operation shapes use only the
+  `--self-test-vm-authority PROBE_IMAGE_ID` performs the real guest client/server
+  version exchange and shared production compiler profile against private fixtures.
+  It observes the epoch, canary, offline mode, Flutter version, and tools-lock digest
+  inside the container and joins container/workspace cleanup before returning.
+  Signing, public output, and APK compilation remain untouched; current epoch-delivery
+  evidence is recorded under R-B2. Normal provenance and the four operation shapes use only the
   fixed guest client, VM-local root daemon's permissioned Unix socket, and
   root-owned read-only canonical-empty configuration. Their wrappers have an
   empty environment, explicit endpoint/configuration arguments, and admission

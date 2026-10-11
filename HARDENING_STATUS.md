@@ -112,10 +112,10 @@ Pinned toolchains, golden identity, offline media, independent passes and artifa
 **Windows provisioning and native acceptance remain OPEN:** both wrappers admit the verifier VM
 before repository helpers. Golden provisioning has no NIC; its exact production XML parser rejects
 interfaces and passthrough while retaining loopback VNC, disk identity and creator-owned finality.
-Source `85e2ab84` passed seven parser fixtures plus eight helper runtime decisions as UID 4000 in
-107 seconds with unchanged host listeners and joined cleanup. Retained
-`authority-smoke-run.MInjbJ05pW.serial.log` SHA-256
-`28ab1ca709d623e184af0014f56d551b699b5afa6a0d5ec03f957496e9c0bdfd` binds Linux parser evidence,
+Source `b134ec04` passed the supplementary receipt/source gate, seven production parser fixtures
+and eight helper runtime decisions as UID 4000 in the no-NIC VM in 123 seconds, with unchanged host
+listeners and joined cleanup. Retained `authority-smoke-run.8bEH85AsYx.serial.log` SHA-256
+`04deda64cf6c25b28c881285350c639a2ed34ef135f2550a9ec4d9f2e099b7a2` binds Linux parser/helper evidence,
 not actual libvirt launch or Windows installation. `win-guest-setup.ps1` now routes all native setup
 commands through `Invoke-SetupProcess`, which waits for the tree and requires a zero exit before
 continuing. Launch failure, missing status and nonzero/reboot-required exits refuse this single-pass
@@ -125,7 +125,7 @@ The exact v4 receipt in `windows-golden-inspect.sh` rejects unchecked v3 goldens
 golden hash remains pinned; a v4 image must actually be provisioned and certified before replacement.
 `test-windows-guest-setup.ps1` extracts the production launcher and prepares native exit0/7/3010/1641
 and missing-executable continuation tests; these are UNEXECUTED because Windows inputs/golden are
-absent. Supplementary receipt/source verification is pending; native installer readiness remains OPEN.
+absent; native installer readiness remains OPEN.
 The fixed MSI packager uses Cargo `OUT_DIR`, required bounded `SOURCE_DATE_EPOCH` and locked
 Rust Brotli/MD5; the generic Python generator and unpinned Brotli dependency are deleted. Source
 `25637dc1` passed six actual encoder/decoder integration tests with Cargo 1.75 `--offline --locked`

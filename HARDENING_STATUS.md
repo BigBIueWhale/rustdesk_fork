@@ -2034,19 +2034,19 @@ installed LocalSystem admission. None ran for this deletion. Exact Windows same-
 legitimate macOS process/principal, copied-token, stale-generation, lease/reuse, owner-death/restart,
 graphical retention and cleanup acceptance remain required; no native boundary is closed here.
 
-The six current Android, Debian, and Windows-helper bootstrap/certified builder archives are present under
-`online/inputs/build-images`; the current devcheck verifier archive is present under
-`online/inputs/verifier-images`. Their pin-bound acquisition, certification or reconstruction, and promotion
-evidence remains in the bounded receipts and audit. They prove builder/verifier distribution and runtime identity
-only. The complete canonical
-`online/inputs` closure, `.harness-state/win11-golden.qcow2`, and
-`.harness-state/android-keystore/{rustdesk-fork.jks,pass}` are not locally present. The required Android signing
-certificate remains pinned to SHA-256 `1091322BA0425AFA1EB50DEEAE439A5FFFE2B1DD82C82B04515D9290A0CEEFA9`;
-a new key is not a valid substitute. Consequently, an exact-current cold product/release build and its native or
-installed lifecycle evidence cannot presently be completed from the retained local inputs. Restoring or reacquiring
-those inputs must preserve R-B2 and R-B10's single complete canonical closure and must not introduce a partial-cache
-fallback. R-S11cs now records complete presence of its fourteen fixed archives after an accepted isolated-VM
-publication; that subset does not establish the whole closure or any final release artifact.
+The six current Android, Debian, and Windows-helper builder archives are present in
+`online/inputs/build-images`; the devcheck verifier archive is in `online/inputs/verifier-images`.
+Pin-bound acquisition/certification/reconstruction and promotion receipts remain retained; they prove
+builder/verifier distribution and runtime identity only. The complete canonical `online/inputs` closure,
+`.harness-state/win11-golden.qcow2`, and `.harness-state/android-keystore/{rustdesk-fork.jks,pass}`
+are absent. Android signing remains pinned to SHA-256
+`1091322BA0425AFA1EB50DEEAE439A5FFFE2B1DD82C82B04515D9290A0CEEFA9`; a new key cannot substitute.
+Current cold release and installed/native artifact acceptance remain OPEN. Input restoration must retain
+R-B2/R-B10's complete canonical closure without a partial-cache fallback. R-S11cs's fourteen accepted
+fixed archives establish neither that closure nor final artifacts. The obsolete README release guide,
+universal reproducibility promise, fresh-key setup recipe and same-source checksum shortcut are deleted;
+it now links the existing independent manifest-verification and signing-recovery procedures. This is
+documentation correction, not new build/runtime/release evidence.
 
 ### R-S11bb/R-S11e-68 — IPC phase coverage; native acceptance OPEN
 

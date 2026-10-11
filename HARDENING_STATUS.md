@@ -112,10 +112,11 @@ Pinned toolchains, golden identity, offline media, independent passes and artifa
 **Windows provisioning and native acceptance remain OPEN:** both wrappers admit the verifier VM
 before repository helpers. Golden provisioning has no NIC; its exact production XML parser rejects
 interfaces and passthrough while retaining loopback VNC, disk identity and creator-owned finality.
-Source `b134ec04` passed the supplementary receipt/source gate, seven production parser fixtures
-and eight helper runtime decisions as UID 4000 in the no-NIC VM in 123 seconds, with unchanged host
-listeners and joined cleanup. Retained `authority-smoke-run.8bEH85AsYx.serial.log` SHA-256
-`04deda64cf6c25b28c881285350c639a2ed34ef135f2550a9ec4d9f2e099b7a2` binds Linux parser/helper evidence,
+Source `2dd98e4c` passed 14 production byte-parser cases and two former-normalization counterexamples,
+seven XML parser fixtures, eight helper runtime decisions and supplementary source gates as UID 4000
+in the no-NIC VM in 111 seconds, with unchanged host listeners and joined cleanup. Retained
+`authority-smoke-run.3dL4xK6xUx.serial.log` SHA-256
+`95db1859406f0205f0b0f338f03c50c269bc329efeea3b794a70b9217a332240` binds Linux parser/helper evidence,
 not actual libvirt launch or Windows installation. `win-guest-setup.ps1` now routes all native setup
 commands through `Invoke-SetupProcess`, which waits for the tree and requires a zero exit before
 continuing. Launch failure, missing status and nonzero/reboot-required exits refuse this single-pass
@@ -124,8 +125,8 @@ execution and VS network fallback; failed vcpkg extraction/rename can no longer 
 `windows-golden-inspect.sh` now has one marker assertion: bounded binary comparison requires exact
 ASCII v4 bytes with final CRLF and EOF, and pipeline failure refuses. The producer writes explicit
 bytes; `verify-windows-golden.sh` consumes assertion status. Inventory mode, normalized text capture,
-log-based verdicts and complete-toolchain claims are deleted. Production byte-parser fixtures are
-pending; real libguestfs reading and Windows byte production remain UNEXECUTED. The historical v3
+log-based verdicts and complete-toolchain claims are deleted. Real libguestfs reading and Windows
+byte production remain UNEXECUTED. The historical v3
 golden hash remains pinned; a v4 image must actually be provisioned and certified before replacement.
 `test-windows-guest-setup.ps1` extracts the production launcher and prepares native exit0/7/3010/1641
 and missing-executable continuation tests; these are UNEXECUTED because Windows inputs/golden are

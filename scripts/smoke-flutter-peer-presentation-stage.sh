@@ -1017,6 +1017,15 @@ PY
       local generation=$1
       [ -n "$SERVER_PID" ] && [ -n "$SERVER_START" ] \
         || fail 'controlled-server generation authority is absent'
+      "$READY" --is-running "$SERVER_PID" "$SERVER_START" \
+        && wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" \
+          /usr/lib/rustdesk-fork/libxdo.so.3 \
+        && "$READY" --is-running "$SERVER_PID" "$SERVER_START" \
+        || fail "controlled server generation $generation did not map the protected input provider"
+      grep -Fq 'libxdo-sys Loaded /usr/lib/rustdesk-fork/libxdo.so.3' "$SERVER_LOG" \
+        || fail "controlled server generation $generation did not report loading the protected input provider"
+      printf 'FLUTTER_PEER_INPUT_PROVIDER_LOADED generation=%s path=/usr/lib/rustdesk-fork/libxdo.so.3 live_mapping=true loader=true\n' \
+        "$generation"
       "$READY" --stop "$SERVER_PID" "$SERVER_START"
       wait "$SERVER_PID" \
         || fail "controlled server generation $generation exited unsuccessfully"

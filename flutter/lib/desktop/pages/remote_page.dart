@@ -13,7 +13,6 @@ import '../../common/widgets/overlay.dart';
 import '../../common/widgets/remote_input.dart';
 import '../../common.dart';
 import '../../common/widgets/dialog.dart';
-import '../../common/widgets/toolbar.dart';
 import '../../models/model.dart';
 import '../../models/input_model.dart';
 import '../../models/platform_model.dart';
@@ -110,7 +109,7 @@ class _RemotePageState extends State<RemotePage>
   late RxBool _keyboardEnabled;
   final _uniqueKey = UniqueKey();
 
-  var _blockableOverlayState = BlockableOverlayState();
+  final _blockableOverlayState = BlockableOverlayState();
 
   final FocusNode _rawKeyFocusNode = FocusNode(debugLabel: "rawkeyFocusNode");
 
@@ -482,15 +481,6 @@ class _RemotePageState extends State<RemotePage>
     debugPrint('Desktop presentation refresh failed: ${error.runtimeType}');
   }
 
-  Widget emptyOverlay() => BlockableOverlay(
-        /// the Overlay key will be set with _blockableOverlayState in BlockableOverlay
-        /// see override build() in [BlockableOverlay]
-        state: _blockableOverlayState,
-        underlying: Container(
-          color: Colors.transparent,
-        ),
-      );
-
   Widget buildBody(BuildContext context) {
     remoteToolbar(BuildContext context) => RemoteToolbar(
           id: widget.id,
@@ -542,7 +532,7 @@ class _RemotePageState extends State<RemotePage>
             children: [
               _ffi.ffiModel.pi.isSet.isTrue &&
                       _ffi.ffiModel.waitForFirstImage.isTrue
-                  ? emptyOverlay()
+                  ? const Offstage()
                   : () {
                       if (!_ffi.ffiModel.isPeerAndroid) {
                         return Offstage();
@@ -570,7 +560,6 @@ class _RemotePageState extends State<RemotePage>
                           OverlayEntry(builder: remoteToolbar)
                         ])
                       : remoteToolbar(context)),
-              _ffi.ffiModel.pi.isSet.isFalse ? emptyOverlay() : Offstage(),
             ],
           ),
         ],
@@ -579,32 +568,10 @@ class _RemotePageState extends State<RemotePage>
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
-      body: Obx(() {
-        final imageReady = _ffi.ffiModel.pi.isSet.isTrue &&
-            _ffi.ffiModel.waitForFirstImage.isFalse;
-        if (imageReady) {
-          // If the privacy mode(disable physical displays) is switched,
-          // we should not dismiss the dialog immediately.
-          if (DateTime.now().difference(togglePrivacyModeTime) >
-              const Duration(milliseconds: 3000)) {
-            // `dismissAll()` is to ensure that the state is clean.
-            // It's ok to call dismissAll() here.
-            _ffi.dialogManager.dismissAll();
-            // Recreate the block state to refresh the state.
-            _blockableOverlayState = BlockableOverlayState();
-            _blockableOverlayState.applyFfi(_ffi);
-          }
-          // Block the whole `bodyWidget()` when dialog shows.
-          return BlockableOverlay(
+      body: Obx(() => BlockableOverlay(
             underlying: bodyWidget(),
             state: _blockableOverlayState,
-          );
-        } else {
-          // `_blockableOverlayState` is not recreated here.
-          // The toolbar's block state won't work properly when reconnecting, but that's okay.
-          return bodyWidget();
-        }
-      }),
+          )),
     );
   }
 

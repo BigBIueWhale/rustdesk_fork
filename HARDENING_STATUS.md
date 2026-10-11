@@ -3081,9 +3081,12 @@ acceptance is separately retained. Positive serial contains aggregate test accep
 retired native JSON or detailed host snapshots. This closes the shared ownership regression on
 the pinned Linux-host Flutter engine/plugin dispatch, not actual Android hardware back delivery,
 current APK/device or Windows app behavior, the original display hang, sustained resources or LPE.
-**Desktop build-time overlay reset — OPEN.** Remote and ViewCamera still dismiss all dialogs and
-allocate a new owner in the image-ready build path behind a global three-second privacy timestamp.
-First-image completion already performs its own readiness dismissal. The Linux peer controller
+**Desktop build-time overlay reset — SOURCE CORRECTED; NATIVE COMPARISON OPEN.** Remote and
+ViewCamera retain one final page overlay owner, applied once during initialization, and one
+whole-body host across connection/readiness/theme rebuilds. Build-time dismissal/reallocation,
+the relocating empty-overlay helper and global privacy timestamp are removed; explicit first-image
+and cleanup paths retain dismissal. The existing mobile-action readiness condition is preserved.
+The corrected app must still pass the unchanged native comparison. The Linux peer controller
 requires actual toolbar activation, the same native accessibility object and changed dialog layout
 through three observed window resizes, explicit Escape retirement and an unchanged authenticated
 TCP connection. The retained patched-engine consumer already passed six lifecycles/18 dialog resizes
@@ -3183,7 +3186,7 @@ Source/index/control/consumed inputs stayed unchanged through each transaction; 
 inventories before/during/after agree, addition lists are empty, all owners joined and no run
 markers remain. Both app capsules remain at their original paths.
 
-Next: correct stable overlay ownership, build the corrected app and run the same native A/B.
+Next: build the corrected overlay source and run the same native A/B against this retained baseline.
 The replay input prerequisite is accepted; installed-service loader/FFI authority, overlay product
 ownership, ViewCamera and broader native/installed/release acceptance remain OPEN.
 

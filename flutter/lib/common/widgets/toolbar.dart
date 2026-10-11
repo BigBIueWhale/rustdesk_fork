@@ -674,8 +674,6 @@ Future<List<TToggleMenu>> toolbarDisplayToggle(
   return v;
 }
 
-var togglePrivacyModeTime = DateTime.now().subtract(const Duration(hours: 1));
-
 List<TToggleMenu> toolbarPrivacyMode(
     RxString privacyModeState, BuildContext context, String id, FFI ffi) {
   final ffiModel = ffi.ffiModel;
@@ -725,7 +723,6 @@ List<TToggleMenu> toolbarPrivacyMode(
     return [
       getDefaultMenu((sid, opt) async {
         bind.sessionToggleOption(sessionId: sid, value: opt);
-        togglePrivacyModeTime = DateTime.now();
       })
     ];
   }
@@ -739,7 +736,6 @@ List<TToggleMenu> toolbarPrivacyMode(
       getDefaultMenu((sid, opt) async {
         bind.sessionTogglePrivacyMode(
             sessionId: sid, implKey: implKey, on: privacyModeState.isEmpty);
-        togglePrivacyModeTime = DateTime.now();
       })
     ];
   } else {
@@ -761,7 +757,6 @@ List<TToggleMenu> toolbarPrivacyMode(
               ? (value) {
                   if (value == null) return;
                   if (value && !hasPrivacyModePermission) return;
-                  togglePrivacyModeTime = DateTime.now();
                   bind.sessionTogglePrivacyMode(
                       sessionId: sessionId, implKey: implKey, on: value);
                 }

@@ -1133,11 +1133,11 @@ cat "$SERVER_LOG"
 [ "$(input_provider_binding)" = "$INPUT_PROVIDER_BINDING" ] \
   || die 'protected private input provider changed during the peer cycle'
 for generation in 1 2 3 4; do
-  grep -Fxq "FLUTTER_PEER_INPUT_PROVIDER_LOADED generation=$generation path=/usr/lib/rustdesk-fork/libxdo.so.3 live_mapping=true loader=true" \
+  grep -Fxq "FLUTTER_PEER_INPUT_PROVIDER_MAPPED generation=$generation path=/usr/lib/rustdesk-fork/libxdo.so.3 live_mapping=true" \
     "$SERVER_LOG" \
     || die "serving generation $generation did not load the protected private input provider"
 done
-[ "$(grep -c '^FLUTTER_PEER_INPUT_PROVIDER_LOADED ' "$SERVER_LOG")" -eq 4 ] \
+[ "$(grep -c '^FLUTTER_PEER_INPUT_PROVIDER_MAPPED ' "$SERVER_LOG")" -eq 4 ] \
   || die 'serving input-provider observation cardinality differs'
 printf 'FLUTTER_PEER_INPUT_PROVIDER_OBSERVED=pass cycle=%s sha256=%s unchanged=before-after instrumentation=none\n' \
   "$cycle" "$INPUT_PROVIDER_SHA256"

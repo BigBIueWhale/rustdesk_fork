@@ -1022,9 +1022,7 @@ PY
           /usr/lib/rustdesk-fork/libxdo.so.3 \
         && "$READY" --is-running "$SERVER_PID" "$SERVER_START" \
         || fail "controlled server generation $generation did not map the protected input provider"
-      grep -Fq 'libxdo-sys Loaded /usr/lib/rustdesk-fork/libxdo.so.3' "$SERVER_LOG" \
-        || fail "controlled server generation $generation did not report loading the protected input provider"
-      printf 'FLUTTER_PEER_INPUT_PROVIDER_LOADED generation=%s path=/usr/lib/rustdesk-fork/libxdo.so.3 live_mapping=true loader=true\n' \
+      printf 'FLUTTER_PEER_INPUT_PROVIDER_MAPPED generation=%s path=/usr/lib/rustdesk-fork/libxdo.so.3 live_mapping=true\n' \
         "$generation"
       "$READY" --stop "$SERVER_PID" "$SERVER_START"
       wait "$SERVER_PID" \

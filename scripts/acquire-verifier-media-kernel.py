@@ -173,12 +173,16 @@ def main():
         records = [download(root, 'Release', 'dists/bookworm/Release', 1048576),
                    download(root, 'Release.gpg', 'dists/bookworm/Release.gpg', 65536)]
         verified = verify_signature('/output/Release.gpg', '/output/Release')
-        require(verified.returncode == 0, 'Debian archive signature failed')
+        require(len(verified.stdout) + len(verified.stderr) <= 65536,
+                'Debian signature status exceeds bound')
+        seal_file(root, 'signature-status.txt',
+                  ('exit=' + str(verified.returncode) + '\n').encode()
+                  + verified.stdout + verified.stderr)
+        require(verified.returncode == 0, 'Debian archive signature failed; see signature-status.txt')
         valid = [line.split() for line in verified.stdout.decode('ascii').splitlines()
                  if line.startswith('[GNUPG:] VALIDSIG ')]
         signers = {parts[-1] for parts in valid if len(parts) == 12}
         require(BOOKWORM_KEYS <= signers, 'both exact bookworm signing principals are required')
-        seal_file(root, 'signature-status.txt', verified.stdout + verified.stderr)
         with open('/output/Release', 'rb') as source:
             release_bytes = source.read(1048577)
         with tempfile.NamedTemporaryFile(dir='/tmp') as tampered:

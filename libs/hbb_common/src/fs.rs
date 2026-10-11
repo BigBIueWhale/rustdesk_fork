@@ -148,10 +148,16 @@ impl FileEnumerationUsage {
                 budget.max_entries
             );
         }
-        let entry_bytes = 128usize.saturating_add(name.len());
+        self.add_serialized_string(name, budget)?;
+        self.entries += 1;
+        Ok(())
+    }
+
+    fn add_serialized_string(&mut self, value: &str, budget: FileEnumerationBudget) -> ResultType<()> {
+        let value_bytes = 128usize.saturating_add(value.len());
         let next_bytes = self
             .approx_serialized_bytes
-            .checked_add(entry_bytes)
+            .checked_add(value_bytes)
             .ok_or_else(|| anyhow!("file enumeration budget byte counter overflow"))?;
         if next_bytes > budget.max_serialized_bytes {
             bail!(
@@ -161,7 +167,6 @@ impl FileEnumerationUsage {
                 budget.max_serialized_bytes
             );
         }
-        self.entries += 1;
         self.approx_serialized_bytes = next_bytes;
         Ok(())
     }
@@ -189,25 +194,31 @@ pub fn read_dir_with_budget(
     budget: FileEnumerationBudget,
 ) -> ResultType<FileDirectory> {
     let mut usage = FileEnumerationUsage::default();
-    read_dir_with_usage(path, Path::new(""), include_hidden, budget, &mut usage, 0)
+    let directory_path = path
+        .to_str()
+        .ok_or_else(|| anyhow!("directory path is not valid UTF-8"))?;
+    usage.add_serialized_string(directory_path, budget)?;
+    let entries =
+        read_dir_entries_with_usage(path, Path::new(""), include_hidden, budget, &mut usage, 0)?;
+    Ok(FileDirectory {
+        path: directory_path.to_owned(),
+        entries,
+        ..Default::default()
+    })
 }
 
-fn read_dir_with_usage(
+fn read_dir_entries_with_usage(
     path: &Path,
     prefix: &Path,
     include_hidden: bool,
     budget: FileEnumerationBudget,
     usage: &mut FileEnumerationUsage,
     depth: usize,
-) -> ResultType<FileDirectory> {
+) -> ResultType<Vec<FileEntry>> {
     usage.enter_dir(depth, budget)?;
-    let mut dir = FileDirectory {
-        path: path
-            .to_str()
-            .ok_or_else(|| anyhow!("directory path is not valid UTF-8"))?
-            .to_owned(),
-        ..Default::default()
-    };
+    path.to_str()
+        .ok_or_else(|| anyhow!("directory path is not valid UTF-8"))?;
+    let mut entries = Vec::new();
     #[cfg(windows)]
     if "/" == &get_string(path) {
         let drives = unsafe { winapi::um::fileapi::GetLogicalDrives() };
@@ -218,14 +229,14 @@ fn read_dir_with_usage(
                     std::char::from_u32('A' as u32 + i as u32).unwrap_or('A')
                 );
                 usage.push_entry(&name, budget)?;
-                dir.entries.push(FileEntry {
+                entries.push(FileEntry {
                     name,
                     entry_type: FileType::DirDrive.into(),
                     ..Default::default()
                 });
             }
         }
-        return Ok(dir);
+        return Ok(entries);
     }
     for entry in path.read_dir()? {
         let entry = entry?;
@@ -272,7 +283,7 @@ fn read_dir_with_usage(
             }
         };
         let modified_time = meta.modified()?.duration_since(UNIX_EPOCH)?.as_secs();
-        dir.entries.push(FileEntry {
+        entries.push(FileEntry {
             name: name.to_owned(),
             entry_type,
             is_hidden,
@@ -281,7 +292,7 @@ fn read_dir_with_usage(
             ..Default::default()
         });
     }
-    Ok(dir)
+    Ok(entries)
 }
 
 #[inline]
@@ -333,8 +344,9 @@ fn read_dir_recursive_with_budget(
     let mut files = Vec::new();
     let meta = std::fs::metadata(path)?;
     if meta.is_dir() {
-        let fd = read_dir_with_usage(path, prefix, include_hidden, budget, usage, depth)?;
-        for mut entry in fd.entries {
+        let entries =
+            read_dir_entries_with_usage(path, prefix, include_hidden, budget, usage, depth)?;
+        for mut entry in entries {
             match entry.entry_type.enum_value() {
                 Ok(FileType::File) => {
                     entry.name = get_string(&prefix.join(&entry.name));
@@ -418,11 +430,20 @@ fn read_empty_dirs_recursive_with_budget(
     let mut dirs = Vec::new();
     let meta = std::fs::metadata(path)?;
     if meta.is_dir() {
-        let fd = read_dir_with_usage(path, prefix, include_hidden, budget, usage, depth)?;
-        if fd.entries.is_empty() {
-            dirs.push(fd);
+        let entries =
+            read_dir_entries_with_usage(path, prefix, include_hidden, budget, usage, depth)?;
+        if entries.is_empty() {
+            let directory_path = path
+                .to_str()
+                .ok_or_else(|| anyhow!("directory path is not valid UTF-8"))?;
+            usage.add_serialized_string(directory_path, budget)?;
+            dirs.push(FileDirectory {
+                path: directory_path.to_owned(),
+                entries,
+                ..Default::default()
+            });
         } else {
-            for entry in fd.entries {
+            for entry in entries {
                 match entry.entry_type.enum_value() {
                     Ok(FileType::Dir) => {
                         let child_depth = depth

@@ -25,6 +25,24 @@ lazy_static::lazy_static! {
 }
 
 const LOGINCTL_PATHS: [&str; 2] = ["/usr/bin/loginctl", "/bin/loginctl"];
+const LOGINCTL_STDOUT_MAX_BYTES: usize = 1024 * 1024;
+const LOGINCTL_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+
+pub struct LoginctlLookup<'a> {
+    deadline: std::time::Instant,
+    remaining_stdout_bytes: usize,
+    cancelled: &'a dyn Fn() -> bool,
+}
+
+impl<'a> LoginctlLookup<'a> {
+    pub fn new(deadline: std::time::Instant, cancelled: &'a dyn Fn() -> bool) -> Self {
+        Self {
+            deadline,
+            remaining_stdout_bytes: LOGINCTL_STDOUT_MAX_BYTES,
+            cancelled,
+        }
+    }
+}
 
 pub const DISPLAY_SERVER_WAYLAND: &str = "wayland";
 pub const DISPLAY_SERVER_X11: &str = "x11";
@@ -775,7 +793,11 @@ fn run_loginctl(query: LoginctlQuery<'_>) -> std::io::Result<std::process::Outpu
     configure_loginctl_environment(&mut cmd);
     cmd.args(query.arguments());
     configure_command_close_nonstdio_on_exec(&mut cmd)?;
-    let output = cmd.output()?;
+    let mut lookup = LoginctlLookup::new(
+        std::time::Instant::now() + LOGINCTL_LOOKUP_TIMEOUT,
+        &|| false,
+    );
+    let output = capture_loginctl_output(&mut cmd, &mut lookup)?;
     if !output.status.success() {
         return Err(io::Error::new(
             io::ErrorKind::Other,
@@ -783,6 +805,13 @@ fn run_loginctl(query: LoginctlQuery<'_>) -> std::io::Result<std::process::Outpu
         ));
     }
     Ok(output)
+}
+
+fn capture_loginctl_output(
+    command: &mut Command,
+    _lookup: &mut LoginctlLookup<'_>,
+) -> io::Result<std::process::Output> {
+    command.output()
 }
 
 #[derive(Debug, Clone)]
@@ -918,6 +947,156 @@ pub fn get_effective_home_dir_trusted() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const LOGINCTL_FIXTURE_ROLE: &str = "RUSTDESK_TEST_LOGINCTL_FIXTURE_ROLE";
+    const LOGINCTL_FIXTURE_PID: &str = "RUSTDESK_TEST_LOGINCTL_FIXTURE_PID";
+
+    #[test]
+    fn loginctl_output_fixture_child() {
+        use std::io::Write;
+        let Ok(role) = std::env::var(LOGINCTL_FIXTURE_ROLE) else {
+            return;
+        };
+        let pid_file = std::env::var(LOGINCTL_FIXTURE_PID).unwrap();
+        let ready_file = format!("{pid_file}.ready");
+        std::fs::write(&ready_file, std::process::id().to_string()).unwrap();
+        std::fs::rename(ready_file, pid_file).unwrap();
+        match role.as_str() {
+            "silent" => std::thread::sleep(std::time::Duration::from_secs(10)),
+            "oversized" => {
+                std::io::stdout()
+                    .write_all(&vec![b'X'; 2 * LOGINCTL_STDOUT_MAX_BYTES])
+                    .unwrap();
+                std::thread::sleep(std::time::Duration::from_secs(10));
+            }
+            "success" => std::io::stdout()
+                .write_all(b"loginctl fixture payload\n")
+                .unwrap(),
+            _ => panic!("unknown loginctl fixture role"),
+        }
+    }
+
+    fn loginctl_fixture_command(role: &str, pid_file: &Path) -> Command {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        configure_loginctl_environment(&mut command);
+        command
+            .env(LOGINCTL_FIXTURE_ROLE, role)
+            .env(LOGINCTL_FIXTURE_PID, pid_file)
+            .args([
+                "--exact",
+                "platform::linux::tests::loginctl_output_fixture_child",
+                "--nocapture",
+                "--test-threads=1",
+            ]);
+        configure_command_close_nonstdio_on_exec(&mut command).unwrap();
+        command
+    }
+
+    fn assert_loginctl_fixture_reaped(pid_file: &Path) {
+        let pid = std::fs::read_to_string(pid_file)
+            .unwrap()
+            .parse::<u32>()
+            .unwrap();
+        assert!(
+            !Path::new("/proc").join(pid.to_string()).exists(),
+            "owned fixture child remains"
+        );
+    }
+
+    #[test]
+    fn r_s11at_loginctl_output_deadline_reaps_silent_child() {
+        let temp = tempfile::tempdir().unwrap();
+        let pid_file = temp.path().join("child.pid");
+        let mut command = loginctl_fixture_command("silent", &pid_file);
+        let started = std::time::Instant::now();
+        let mut lookup = LoginctlLookup::new(started + LOGINCTL_LOOKUP_TIMEOUT, &|| false);
+        let result = capture_loginctl_output(&mut command, &mut lookup);
+        assert_loginctl_fixture_reaped(&pid_file);
+        match result {
+            Err(err) => assert_eq!(err.kind(), io::ErrorKind::TimedOut),
+            Ok(output) => panic!(
+                "silent child ignored deadline: elapsed_ms={} stdout_bytes={}",
+                started.elapsed().as_millis(),
+                output.stdout.len()
+            ),
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+    }
+
+    #[test]
+    fn r_s11at_loginctl_output_limit_reaps_writing_child() {
+        let temp = tempfile::tempdir().unwrap();
+        let pid_file = temp.path().join("child.pid");
+        let mut command = loginctl_fixture_command("oversized", &pid_file);
+        let started = std::time::Instant::now();
+        let mut lookup = LoginctlLookup::new(started + LOGINCTL_LOOKUP_TIMEOUT, &|| false);
+        let result = capture_loginctl_output(&mut command, &mut lookup);
+        assert_loginctl_fixture_reaped(&pid_file);
+        match result {
+            Err(err) => assert_eq!(err.kind(), io::ErrorKind::InvalidData),
+            Ok(output) => panic!(
+                "writing child exceeded output limit: elapsed_ms={} stdout_bytes={}",
+                started.elapsed().as_millis(),
+                output.stdout.len()
+            ),
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+    }
+
+    #[test]
+    fn r_s11at_loginctl_output_cancellation_reaps_active_child() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        let temp = tempfile::tempdir().unwrap();
+        let pid_file = temp.path().join("child.pid");
+        let mut command = loginctl_fixture_command("silent", &pid_file);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let controller_cancelled = cancelled.clone();
+        let controller_pid_file = pid_file.clone();
+        let controller = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !controller_pid_file.exists() {
+                assert!(std::time::Instant::now() < deadline, "fixture did not start");
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            controller_cancelled.store(true, Ordering::Release);
+        });
+        let is_cancelled = || cancelled.load(Ordering::Acquire);
+        let started = std::time::Instant::now();
+        let mut lookup = LoginctlLookup::new(started + LOGINCTL_LOOKUP_TIMEOUT, &is_cancelled);
+        let result = capture_loginctl_output(&mut command, &mut lookup);
+        controller.join().unwrap();
+        assert_loginctl_fixture_reaped(&pid_file);
+        assert!(cancelled.load(Ordering::Acquire));
+        match result {
+            Err(err) => assert_eq!(err.kind(), io::ErrorKind::Interrupted),
+            Ok(output) => panic!(
+                "active child ignored cancellation: elapsed_ms={} stdout_bytes={}",
+                started.elapsed().as_millis(),
+                output.stdout.len()
+            ),
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+    }
+
+    #[test]
+    fn r_s11at_loginctl_output_success_preserves_payload_and_reaps_child() {
+        let temp = tempfile::tempdir().unwrap();
+        let pid_file = temp.path().join("child.pid");
+        let mut command = loginctl_fixture_command("success", &pid_file);
+        let mut lookup = LoginctlLookup::new(
+            std::time::Instant::now() + LOGINCTL_LOOKUP_TIMEOUT,
+            &|| false,
+        );
+        let output = capture_loginctl_output(&mut command, &mut lookup).unwrap();
+        assert!(output.status.success());
+        assert!(String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("loginctl fixture payload\n"));
+        assert_loginctl_fixture_reaped(&pid_file);
+    }
 
     #[test]
     fn r_s11e40_loginctl_queries_are_typed_and_noninteractive() {

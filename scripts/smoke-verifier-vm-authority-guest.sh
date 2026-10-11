@@ -2283,6 +2283,7 @@ run_focused_rust_tests() {
             Cargo.lock
             libs/hbb_common/src/lib.rs
             libs/hbb_common/src/socket_client.rs
+            libs/hbb_common/src/platform/linux.rs
             libs/hbb_common/src/config.rs
             libs/hbb_common/src/fs.rs
             flutter/test/fixtures/direct_address.json
@@ -2293,6 +2294,10 @@ run_focused_rust_tests() {
             scripts/test-hbb-common-test-artifact.py
         )
         required_tests=(
+            platform::linux::tests::r_s11at_loginctl_output_deadline_reaps_silent_child
+            platform::linux::tests::r_s11at_loginctl_output_limit_reaps_writing_child
+            platform::linux::tests::r_s11at_loginctl_output_cancellation_reaps_active_child
+            platform::linux::tests::r_s11at_loginctl_output_success_preserves_payload_and_reaps_child
             test::direct_address_ipv4
             test::direct_address_ipv6_formatting
             test::direct_address_hostname_port
@@ -3070,6 +3075,9 @@ run_focused_rust_tests() {
                         printf "HBB_COMMON_FS_ARTIFACT_START=observed sha256=%s executable=%s\n" \
                             "$artifact_sha" "$test_executable"
                         cd /source/libs/hbb_common
+                        "$test_executable" platform::linux::tests::r_s11at_loginctl_output_ \
+                            --color never --test-threads=1
+                        [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                         "$test_executable" config::tests::config_transaction_ \
                             --color never --test-threads=1
                         [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
@@ -3375,7 +3383,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output"
     )
     if [ "$MODE" = hbb-common-fs ]; then
-        [ "${#result_lines[@]}" -eq 4 ] \
+        [ "${#result_lines[@]}" -eq 5 ] \
             || { tail -n 200 "$output" >&2; fail 'focused shared-library test summary count differs'; }
         local -a hbb_artifact_receipts
         mapfile -t hbb_artifact_receipts < <(
@@ -3601,6 +3609,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     fi
     printf '%s\n' "${result_lines[@]}"
     if [ "$MODE" = hbb-common-fs ]; then
+        grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         printf '%s\n' "${hbb_artifact_receipts[@]}"
         printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

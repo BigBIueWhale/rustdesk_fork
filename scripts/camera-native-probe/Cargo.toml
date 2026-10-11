@@ -1,0 +1,16 @@
+[package]
+name = "rustdesk-camera-native-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+libc = "=0.2.171"
+nokhwa = { git = "https://github.com/rustdesk-org/nokhwa.git", branch = "fix_from_raw_parts", features = ["input-native"] }
+serde_json = "=1.0.118"
+sha2 = "=0.10.8"
+
+[profile.release]
+panic = "abort"

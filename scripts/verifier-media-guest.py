@@ -3,6 +3,7 @@
 import errno
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -164,7 +165,7 @@ def provision(pins):
     return result
 
 
-def fixture(pins):
+def fixture(pins, contract):
     require(os.uname().release == RELEASE, 'media boot kernel release differs')
     require(file_record(Path('/boot/config-' + RELEASE), 1048576)['sha256']
             == pins['SHA256_VERIFIER_MEDIA_KERNEL_CONFIG'], 'running media module config differs')
@@ -208,7 +209,15 @@ def fixture(pins):
             run(['/usr/bin/udevadm', 'settle', '--timeout=10'])
         require(not list(Path('/dev').glob('video*'))
                 and not Path('/sys/module/vivid').exists(), 'fixture retirement incomplete')
-    return {'kernel_release': RELEASE, 'captures': captures,
+    for name, expected in contract['sources'].items():
+        require(file_record(MEDIA / name, 1048576) == expected, 'native component source differs: ' + name)
+    module_spec = importlib.util.spec_from_file_location('media_nokhwa', MEDIA / 'nokhwa.py')
+    require(module_spec is not None and module_spec.loader is not None, 'native component loader absent')
+    module = importlib.util.module_from_spec(module_spec)
+    sys.dont_write_bytecode = True
+    module_spec.loader.exec_module(module)
+    native = module.verify(pins)
+    return {'kernel_release': RELEASE, 'captures': captures, 'nokhwa': native,
             'module_retired': True, 'root_foreign_probe_refused': True, 'product_executed': False}
 
 
@@ -225,7 +234,7 @@ def main():
     require(file_record(MEDIA / PACKAGE, 70305560)
             == {'bytes': int(pins['SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE']),
                 'sha256': pins['SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE']}, 'media package pin differs')
-    result = provision(pins) if sys.argv[1] == '--provision' else fixture(pins)
+    result = provision(pins) if sys.argv[1] == '--provision' else fixture(pins, contract)
     result.update({'source_commit': contract['source_commit'], 'nonce': contract['nonce'],
                    'phase': sys.argv[1][2:], 'interfaces': ['lo']})
     print('\nMEDIA_GUEST_RESULT=' + json.dumps(result, sort_keys=True), flush=True)

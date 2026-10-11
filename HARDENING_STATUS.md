@@ -3266,6 +3266,12 @@ contains both paths; the retained vendor file matches its Cargo checksum entry, 
 Native acceptance must cover two distinct retained opens and node-index reuse with an old handle still
 live, as well as nonzero discovery, matching metadata, failed discovery, hotplug and overlapping logins.
 
+The fixed media harness now stages `scripts/camera-native-probe` and compiles it with the unchanged
+pinned devcheck image, exact Cargo vendor closure and projected product lock inside guest-only Docker.
+The unprivileged guest probe targets nonzero capture, two retained devices and native node-number reuse;
+root/foreign refusal, decoded frames, live device identities and joined retirement are required.
+Execution acceptance is pending. Node rename is a lifetime fixture, not physical hotplug or RustDesk login evidence.
+
 **Fixture evidence retained.** The authenticated cloud base lacks `CONFIG_MEDIA_SUPPORT`; its complete
 config and observations remain in `.harness-state/verifier-vm/camera-kernel-inspection-61d8cb61-complete`.
 The closed media-kernel acquisition passed at `027e6218419438f72d99012f6b3766f68d9eb8d6`; signed metadata,

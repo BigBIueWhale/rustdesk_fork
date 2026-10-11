@@ -30,7 +30,14 @@ KEYS = ('DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD', 'SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE',
         'VERIFIER_MEDIA_KERNEL_RELEASE', 'VERIFIER_MEDIA_KERNEL_PACKAGE_VERSION',
         'SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE', 'SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE',
         'SIZE_VERIFIER_MEDIA_KERNEL', 'SHA256_VERIFIER_MEDIA_KERNEL',
-        'SHA256_VERIFIER_MEDIA_KERNEL_CONFIG', 'SOURCE_DATE_EPOCH_PIN')
+        'SHA256_VERIFIER_MEDIA_KERNEL_CONFIG', 'SOURCE_DATE_EPOCH_PIN',
+        'SIZE_VERIFIER_VM_DOCKER_STATIC', 'SHA256_VERIFIER_VM_DOCKER_STATIC',
+        'DEV_CHECK_IMAGE_ID', 'DEV_CHECK_BASE_IMAGE_ID', 'DEV_CHECK_IMAGE_CONFIG_ID',
+        'DEV_CHECK_IMAGE_MANIFEST_ID', 'SIZE_DEV_CHECK_IMAGE_ARCHIVE', 'SHA256_DEV_CHECK_IMAGE_ARCHIVE',
+        'SHA256_DEV_CHECK_DOCKERFILE', 'SHA256_DEV_CHECK_DPKG_MANIFEST',
+        'SHA256_DEV_CHECK_CARGO', 'SHA256_DEV_CHECK_RUSTC', 'DEV_CHECK_DEBIAN_SNAPSHOT',
+        'DEV_CHECK_SECURITY_SNAPSHOT', 'DEV_CHECK_SOURCE_DATE_EPOCH',
+        'SHA256_CARGO_VENDOR_CLOSURE_V1', 'SHA256_CARGO_VENDOR_CONFIG', 'SIZE_CARGO_VENDOR_CONFIG')
 TOOLS = ('/usr/bin/git', '/usr/bin/qemu-img', '/usr/bin/qemu-system-x86_64',
          '/usr/bin/xorriso', '/usr/bin/ss', '/usr/bin/dd', '/usr/sbin/debugfs', '/usr/sbin/sgdisk')
 STREAM_LIMIT = 16 * 1024 * 1024
@@ -72,6 +79,28 @@ def observe(path):
         require(metadata(info) == metadata(os.fstat(source.fileno())), 'frozen file changed while read')
     require(metadata(info) == metadata(path.lstat()), 'frozen path identity changed')
     return {'metadata': metadata(info), 'sha256': digest}
+
+
+def vendor_observations(root):
+    result = {}
+    total = 0
+    for parent, directories, files in os.walk(root, followlinks=False):
+        for path in [Path(parent)] + [Path(parent, name) for name in files]:
+            info = path.lstat()
+            require((info.st_uid, info.st_gid) == (os.getuid(), os.getgid()), 'vendor principal differs')
+            if stat.S_ISDIR(info.st_mode):
+                require(stat.S_IMODE(info.st_mode) == 0o500, 'vendor directory seal differs')
+                result[str(path)] = {'metadata': metadata(info), 'kind': 'directory'}
+            else:
+                require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+                        and stat.S_IMODE(info.st_mode) in (0o400, 0o500), 'vendor file seal/type differs')
+                total += info.st_size
+                result[str(path)] = observe(path)
+            require(len(result) <= 128000 and total <= 3 * 1024 * 1024 * 1024,
+                    'vendor inventory exceeds bounds')
+        require(all(not Path(parent, name).is_symlink() for name in directories),
+                'vendor contains a symlinked directory')
+    return result
 
 
 def listeners():
@@ -118,6 +147,22 @@ def exclusive(path, data, mode=0o400):
         os.fsync(output.fileno())
 
 
+def copy_input(fd, path, size):
+    os.lseek(fd, 0, os.SEEK_SET)
+    target = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(target, 'wb') as output:
+        remaining = size
+        while remaining:
+            block = os.read(fd, min(remaining, 1048576))
+            require(block, 'immutable input copy ended early')
+            require(output.write(block) == len(block), 'immutable input copy was short')
+            remaining -= len(block)
+        require(not os.read(fd, 1), 'immutable input copy exceeds size')
+        output.flush()
+        os.fchmod(output.fileno(), 0o400)
+        os.fsync(output.fileno())
+
+
 class Transaction:
     def __init__(self, parent, baseline):
         self.parent = parent
@@ -145,7 +190,7 @@ class Transaction:
         require(not set(current) - set(self.baseline), 'host listener endpoint added')
         return current
 
-    def boot(self, phase, base, overlay, kernel, initrd, payload, pins):
+    def boot(self, phase, base, overlay, kernel, initrd, payload, tools_disk, pins):
         seed = self.path / (phase + '-seed')
         seed.mkdir(mode=0o700)
         user_data = ('#!/bin/sh\nset -eu\nexport PATH=/usr/sbin:/usr/bin:/sbin:/bin\n'
@@ -170,12 +215,13 @@ class Transaction:
         seed_fd = os.open(seed_iso, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         serial = self.path / 'serial.sock'
         argv = ['/usr/bin/qemu-system-x86_64', '-name', 'rustdesk-media-fixture',
-                '-machine', 'q35', '-accel', 'kvm', '-cpu', 'host', '-m', '2048', '-smp', '2',
+                '-machine', 'q35', '-accel', 'kvm', '-cpu', 'host', '-m', '4096', '-smp', '2',
                 '-no-reboot', '-no-user-config', '-nodefaults', '-display', 'none',
                 '-monitor', 'none', '-parallel', 'none', '-nic', 'none',
                 '-kernel', '/proc/self/fd/' + str(kernel), '-initrd', '/proc/self/fd/' + str(initrd),
                 '-append', 'root=UUID=' + pins['VERIFIER_VM_ROOT_FILESYSTEM_UUID']
                 + ' rw rootfstype=ext4 rootwait console=ttyS0,115200n8 rustdesk.media_vm=1'
+                + ' rustdesk.verifier_vm=1'
                 + ' systemd.mask=systemd-networkd-wait-online.service'
                 + ' systemd.mask=serial-getty@ttyS0.service'
                 + ' systemd.mask=ssh.service systemd.mask=ssh.socket',
@@ -190,6 +236,10 @@ class Transaction:
                  '-blockdev', json.dumps({'driver': 'qcow2', 'node-name': 'disk',
                                          'file': 'disk-file', 'backing': 'base'}),
                  '-device', 'virtio-blk-pci,drive=disk']
+        argv += ['-blockdev', json.dumps({'driver': 'qcow2', 'node-name': 'media-tools',
+                                          'file': {'driver': 'file', 'filename': '/proc/self/fd/' + str(tools_disk)},
+                                          'backing': None}),
+                 '-device', 'virtio-blk-pci,drive=media-tools,serial=rd-media-tools']
         for media_fd in (seed_fd, payload):
             argv += ['-drive', 'file=/proc/self/fd/' + str(media_fd)
                      + ',if=virtio,format=raw,media=cdrom,readonly=on']
@@ -209,7 +259,7 @@ class Transaction:
                 counts[kind] = 0
             process = subprocess.Popen(argv, cwd=REPO, env=ENV, stdin=subprocess.DEVNULL,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                       pass_fds=(base, overlay, kernel, initrd, payload, seed_fd,
+                                       pass_fds=(base, overlay, kernel, initrd, payload, seed_fd, tools_disk,
                                                  self.parent, self.fd))
             os.set_blocking(process.stderr.fileno(), False)
             selector.register(process.stderr, selectors.EVENT_READ, 'stderr')
@@ -337,7 +387,7 @@ def main():
     pins_text = (REPO / 'scripts/pins.env').read_text()
     pins = {}
     for key in KEYS:
-        matches = re.findall(r'^' + key + r'="([A-Za-z0-9.+-]+)"(?:\s.*)?$', pins_text, re.M)
+        matches = re.findall(r'^' + key + r'="([A-Za-z0-9.:+-]+)"(?:\s.*)?$', pins_text, re.M)
         require(len(matches) == 1, 'pin absent or ambiguous: ' + key)
         pins[key] = matches[0]
     require(pins['VERIFIER_MEDIA_KERNEL_RELEASE'] == '6.1.0-50-amd64'
@@ -368,6 +418,14 @@ def main():
         ('SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE', 'SHA256_VERIFIER_VM_KERNEL',
          'SHA256_VERIFIER_VM_INITRD', 'SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE'))]
     base, kernel, initrd, package = fds
+    compiler_paths = [ROOT / 'docker-27.5.1.tgz', REPO / 'online/inputs/verifier-images/devcheck.docker.tar.gz',
+                      REPO / 'online/inputs/cargo-vendor-config.toml']
+    for path, size, digest in zip(compiler_paths,
+            ('SIZE_VERIFIER_VM_DOCKER_STATIC', 'SIZE_DEV_CHECK_IMAGE_ARCHIVE', 'SIZE_CARGO_VENDOR_CONFIG'),
+            ('SHA256_VERIFIER_VM_DOCKER_STATIC', 'SHA256_DEV_CHECK_IMAGE_ARCHIVE', 'SHA256_CARGO_VENDOR_CONFIG')):
+        fds.append(admit(path, int(pins[size]), pins[digest]))
+    vendor_root = REPO / 'online/inputs/cargo-vendor'
+    vendor_dir = directory(vendor_root, 0o500)
     with os.fdopen(os.dup(base), 'rb') as source:
         require(hashlib.file_digest(source, 'sha512').hexdigest()
                 == pins['SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE'], 'publisher base SHA512 differs')
@@ -376,8 +434,9 @@ def main():
     require(base_info['format'] == 'qcow2' and base_info['virtual-size'] == 3221225472
             and 'backing-filename' not in base_info, 'base image topology differs')
     source_paths = [REPO / os.fsdecode(p) for p in command(['/usr/bin/git', 'ls-files', '-z']).split(b'\0') if p]
-    frozen_paths = source_paths + CONTROLS + input_paths
+    frozen_paths = source_paths + CONTROLS + input_paths + compiler_paths
     before = {str(p): observe(p) for p in frozen_paths}
+    before.update(vendor_observations(vendor_root))
     baseline = listeners()
     transaction = Transaction(parent, baseline)
     transaction.commit = commit
@@ -390,16 +449,35 @@ def main():
     media.mkdir(mode=0o700)
     guest = command(['/usr/bin/git', 'show', 'HEAD:scripts/verifier-media-guest.py'])
     exclusive(media / 'guest.py', guest)
-    contract = {'source_commit': commit, 'nonce': transaction.name, 'pins': pins}
+    sources = {'guest.py': {'bytes': len(guest), 'sha256': hashlib.sha256(guest).hexdigest()}}
+    for source, target in (
+        ('scripts/verifier-media-nokhwa.py', 'nokhwa.py'),
+        ('scripts/verify-vm-entry-preflight.sh', 'scripts/verify-vm-entry-preflight.sh'),
+        ('scripts/offline-image-provenance.py', 'scripts/offline-image-provenance.py'),
+        ('scripts/online-input-provenance.py', 'scripts/online-input-provenance.py'),
+        ('scripts/camera-native-probe/Cargo.toml', 'probe/Cargo.toml'),
+        ('scripts/camera-native-probe/Cargo.lock', 'probe/Cargo.lock'),
+        ('scripts/camera-native-probe/build.rs', 'probe/build.rs'),
+        ('scripts/camera-native-probe/src/main.rs', 'probe/src/main.rs')):
+        destination = media / target
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        data = command(['/usr/bin/git', 'show', 'HEAD:' + source])
+        exclusive(destination, data)
+        sources[target] = {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
+    for directory_path in (media / 'scripts', media / 'probe', media / 'probe/src'):
+        os.chmod(directory_path, 0o500)
+    contract = {'source_commit': commit, 'nonce': transaction.name, 'pins': pins, 'sources': sources}
     exclusive(media / 'contract.json', json.dumps(contract, sort_keys=True).encode() + b'\n')
     # Copy only authenticated inert bytes to the read-only guest input ISO.
-    os.lseek(package, 0, os.SEEK_SET)
-    with os.fdopen(os.dup(package), 'rb') as source:
-        exclusive(media / package_path.name, source.read(70305561))
+    copy_input(package, media / package_path.name, 70305560)
     transaction.remember('media/' + package_path.name)
+    for fd, path in zip(fds[4:], compiler_paths):
+        copy_input(fd, media / path.name, path.stat().st_size)
+        transaction.remember('media/' + path.name)
     payload_path = run / 'payload.iso'
     command(['/usr/bin/xorriso', '-as', 'mkisofs', '-quiet', '-volid', 'RD_MEDIA', '-joliet',
-             '-rock', '-output', str(payload_path), str(media)])
+             '-rock', '-uid', '1000', '-gid', '1000', '-output', str(payload_path),
+             '-graft-points', '/=' + str(media), '/cargo-vendor=' + str(vendor_root)])
     os.chmod(payload_path, 0o400)
     transaction.remember('payload.iso')
     payload = os.open(payload_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
@@ -408,7 +486,11 @@ def main():
              '/proc/self/fd/' + str(base), str(overlay_path)], fds=(base,))
     transaction.remember('overlay.qcow2')
     overlay = os.open(overlay_path, os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC)
-    provision = transaction.boot('provision', base, overlay, kernel, initrd, payload, pins)
+    tools_path = run / 'tools.qcow2'
+    command(['/usr/bin/qemu-img', 'create', '-q', '-f', 'qcow2', str(tools_path), '16G'])
+    transaction.remember('tools.qcow2')
+    tools_disk = os.open(tools_path, os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC)
+    provision = transaction.boot('provision', base, overlay, kernel, initrd, payload, tools_disk, pins)
     image_options = ('driver=qcow2,file.driver=file,file.filename=/proc/self/fd/' + str(overlay)
                      + ',backing.driver=qcow2,backing.file.driver=file,backing.file.filename=/proc/self/fd/' + str(base))
     raw = run / 'disk.raw'
@@ -441,7 +523,7 @@ def main():
             and provision['same_guest_initrd_equality'] is True, 'boot producer identity/equality differs')
     media_kernel = admit(run / 'vmlinuz', provision['kernel']['bytes'], provision['kernel']['sha256'])
     media_initrd = admit(run / 'initrd.img', provision['initrd']['bytes'], provision['initrd']['sha256'])
-    fixture = transaction.boot('fixture', base, overlay, media_kernel, media_initrd, payload, pins)
+    fixture = transaction.boot('fixture', base, overlay, media_kernel, media_initrd, payload, tools_disk, pins)
     require(len(fixture['captures']) == 2 and fixture['module_retired'] is True
             and fixture['root_foreign_probe_refused'] is True
             and fixture['product_executed'] is False, 'fixture lifecycle result differs')
@@ -452,7 +534,37 @@ def main():
                 and len(capture['pixel_color_counts']) == 4
                 and min(capture['pixel_color_counts']) >= 8
                 and len(set(capture['frame_sha256'])) >= 2, 'native capture result differs')
+    require(fixture['nokhwa']['supplier_executed'] is True
+            and fixture['nokhwa']['rustdesk_product_executed'] is False
+            and fixture['nokhwa']['compiler_container_retired'] is True
+            and fixture['nokhwa']['daemon_joined'] is True
+            and fixture['nokhwa']['root_foreign_probe_refused'] is True
+            and fixture['nokhwa']['compile_network_canary_refused'] is True
+            and fixture['nokhwa']['compiler_image'] == pins['DEV_CHECK_IMAGE_CONFIG_ID']
+            and fixture['nokhwa']['cargo_vendor_sha256'] == pins['SHA256_CARGO_VENDOR_CLOSURE_V1']
+            and len(fixture['nokhwa']['scenarios']) == 3, 'native supplier result differs')
+    captured, retained, reused = fixture['nokhwa']['scenarios']
+    require(captured['scenario'] == 'capture' and captured['indices'] == [2]
+            and captured['device_handles_retired'] is True
+            and retained['scenario'] == 'two-retained-baseline' and retained['signal'] == 'SIGABRT'
+            and retained['next_operation'] == 'open-native-three'
+            and 'Device list should not contain duplicate indexes' in retained['stderr']
+            and reused['scope'] == 'guest-native-node-rename; physical-hotplug-unexecuted'
+            and reused['readiness']['scenario'] == 'reuse-ready'
+            and reused['result']['scenario'] == 'reuse-baseline'
+            and reused['result']['retained_rdevs'] == [reused['readiness']['original_rdev']]
+            and reused['result']['current_node_rdev'] == reused['readiness']['replacement_rdev']
+            and reused['readiness']['original_rdev'] != reused['readiness']['replacement_rdev']
+            and reused['result']['device_handles_retired'] is True, 'supplier native scenarios differ')
+    for sample in (captured['sample'], retained['first_sample'], reused['readiness']['first_sample']):
+        require(sample['decoded_format'] == 'RGBA' and 0 < sample['width'] <= 1920
+                and 0 < sample['height'] <= 1080
+                and sample['frame_bytes'] == sample['width'] * sample['height'] * 4
+                and len(sample['frame_sha256']) == 4 and len(set(sample['frame_sha256'])) >= 2
+                and all(re.fullmatch('[0-9a-f]{64}', digest) for digest in sample['frame_sha256']),
+                'supplier decoded native frame observation differs')
     after = {str(p): observe(p) for p in frozen_paths}
+    after.update(vendor_observations(vendor_root))
     exclusive(run / 'freeze.after.json', json.dumps(after, sort_keys=True).encode() + b'\n')
     require(before == after, 'source/control/input changed during media transaction')
     require(tools == {str(p): observe(Path(p).resolve()) for p in tools}, 'orchestration tool changed')
@@ -462,7 +574,8 @@ def main():
                'provision': provision, 'fixture': fixture, 'source_input_freeze_equal': True,
                'host_listener_additions': [], 'guest_processes_joined': True}
     exclusive(run / 'receipt.json', json.dumps(receipt, sort_keys=True).encode() + b'\n')
-    for fd in fds + [overlay, payload, media_kernel, media_initrd, candidate_dir, boot_dir, acquisition]:
+    for fd in fds + [overlay, payload, media_kernel, media_initrd, tools_disk, vendor_dir,
+                     candidate_dir, boot_dir, acquisition]:
         os.close(fd)
     evidence = transaction.finish()
     os.close(transaction.fd)

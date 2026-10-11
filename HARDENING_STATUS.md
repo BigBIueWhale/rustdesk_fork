@@ -1851,37 +1851,36 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   receipts; the keyed test uses an in-memory duplex stream. Neither establishes installed socket/peer
   behavior. Full native typed/generic admission, complete caller error propagation and read/write/digest/
   cancel/error, saturation, interruption, reconnect and resource/latency acceptance remain required and OPEN.
-- **R-S11fi/R-S11e-196 receive-file failure and cleanup finality** — **PARTIAL; DELAYED-WRITE PUBLICATION
-  CORRECTED; NAMED LINUX LIBRARY ACCEPTED; BROADER NATIVE EXECUTION OPEN.** A block, confirmation, finalization, peer error, skip, or cancellation
-  retires exact current-file state through one fallible operation. Cleanup uncertainty is terminal and visible; an identity-mismatched replacement
-  survives, and CM cancellation retains its exact generation until cleanup finality instead of manufacturing `Done`.
-  Whole-job `Done` also requires the end of the admitted list before active-file publication; the named Linux
-  early-completion refusal/cleanup and valid-list evidence is under R-S11c-4d. Installed caller and peer-visible
-  finality remain OPEN.
-  `TransferJob::finish_current_write_file` now consumes `flush().await?` before `sync_all()` and
-  publication. Pinned [Tokio 1.44.2](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/fs/file.rs)
-  can otherwise retain a pending write error while filesystem sync succeeds. Correction `d853188a`
-  changes the shared flush/sync boundary. Its native regression reduces only the exact disposable
-  child's soft `RLIMIT_FSIZE`, drives a resumed production job, and requires actual `EFBIG`, bytes
-  `oNE!` with matching length four, no final publication, retained claim and explicit sidecar/lease
-  retirement. Unchanged-production baseline `d950909f` falsely published those partial bytes.
-  **Accepted named source `53e831a44f0c4b07bb59e2e69b8d975d05a04285`:** all 65 filesystem and four
-  configuration tests passed in 158 VM seconds on pinned Rust 1.75, vendor and certified Debian builder,
-  in a zero-NIC VM and UID/GID-1000 networkless, read-only-root, capability-free guest container.
-  One Cargo-selected executable SHA-256
-  `bf43606068713d837cca556c2d70186c8634591f6309266f1a7dd3e0afe3e8bf` was checked before/between/after
-  both groups and bound into the guest/outer receipts. Six focused metadata-selector tests were a
-  prerequisite. Outer exit 0, source/input postconditions, no added host endpoint and joined automatic
-  disk/media/run retirement passed. Retained raw serial `hbb-common-fs-run.ql3tZ1uk4r.serial.log`
-  is 66,854 bytes/SHA-256 `f4e994ed718612ab243e3bc6cae8aa3ff103bc77ec45f9fa53da1fdaa57cb422`;
-  `.harness-state/verifier-vm/evidence/hbb-common-fs-run.ql3tZ1uk4r.outer.receipt` records exact source,
-  command, artifact, environment and limits (assistant-observed, not independent attestation).
-  Earlier `d853188a` guest success failed its outer endpoint audit and remains invalid; its retained
-  failure/baseline evidence remains in the audit journal. Full Cargo metadata/test stdout and binary
-  bytes were ephemeral; the retained serial contains summaries and the source-bound artifact receipt.
-  Direct-viewer/CM peer-visible failure, next-file fault transition,
-  in-flight cancellation/owner-loss drain, installed/cross-OS operation, resource/latency soak,
-  artifact/reproduction/review evidence and complete receive-error propagation remain OPEN.
+- **R-S11fi/R-S11e-196 receive-file failure and cleanup finality** — **PARTIAL; NORMAL BLOCK NATIVE IO
+  AND DELAYED-WRITE PUBLICATION CORRECTED; NAMED LINUX LIBRARY ACCEPTED; BROADER NATIVE EXECUTION OPEN.**
+  One fallible operation retires exact current-file state; cleanup uncertainty is visible and preserves
+  identity-mismatched replacements. CM cancellation retains its generation until cleanup finality rather
+  than manufacturing `Done`. Whole-job completion requires the admitted-list end before publication
+  (R-S11c-4d). `DataStream::write_all` now awaits native file write plus flush before receive progress or
+  accepted-operation completion; in-memory buffering is unchanged. Finalization still flushes before
+  sync/publication. [Pinned Tokio 1.44.2](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/fs/file.rs)
+  otherwise returns with queued native IO whose descriptor can outlive drop.
+  Tests-first `deb21f65` reproduced successful retirement with all sidecars absent but one exact staged
+  inode descriptor still live. The same native scenario, apart from two panic-format repairs, passed on
+  **`2d75d1f06061e33625d06ef7889999985c4b8436`**: `bash scripts/smoke-verifier-vm-authority.sh --hbb-common-fs`
+  passed all 107 tests (4 config, 97 filesystem, 5 address, 1 socket), zero ignored, in 158 seconds.
+  Its real receive job waits while the sole test blocking worker is occupied, then writes exact bytes;
+  retirement leaves zero exact native descriptors and no sidecars. The real partial-write child now
+  requires write-phase `EFBIG`, actual `oNE!`/length four, unchanged counters, refused completion,
+  unpublished destination and exact sidecar/lease retirement. Its process limits remain child-only.
+  Current raw `hbb-common-fs-run.qEreQ6kE0T.serial.log` (68,687 bytes), SHA-256
+  `ea3285eb3bf5795f9c119a11d657fa77f2d9a70cf1c81d3f57de17b2b75063c4`, binds source and the
+  stable executable digest. Pinned Rust 1.75/vendor/Debian builder, zero-NIC VM, UID/GID-1000
+  networkless read-only guest container, caps none, no new host endpoint and joined cleanup passed.
+  Earlier `d853188a` guest success failed its outer audit and remains invalid; `d950909f` falsely
+  published the real partial bytes. Accepted `53e831a4` passed 65 filesystem/four config tests in 158s;
+  raw `hbb-common-fs-run.ql3tZ1uk4r.serial.log`, SHA-256
+  `f4e994ed718612ab243e3bc6cae8aa3ff103bc77ec45f9fa53da1fdaa57cb422`, and its retained outer receipt
+  preserve that binding. Complete provenance and failed baselines remain in the audit/Git history.
+  Receipts are assistant-observed, not independent attestation; full test stdout and executables were
+  ephemeral. Direct-viewer/CM peer-visible failure, next-file fault transition, forced cancellation
+  during an await/owner-loss drain, installed/cross-OS operations, resource/latency soak,
+  final artifacts/reproduction/review and complete receive-error propagation remain OPEN.
 - **R-S11fj/R-S11e-197 viewer download digest inspection failure** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION
   PARTIAL, FAILURE PATHS OPEN.** One exact-current headless Linux production-`Session` download completed through
   the ordinary absent-destination digest path and committed exact bytes. A second source-bound Linux replay

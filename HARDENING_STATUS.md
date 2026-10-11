@@ -2068,54 +2068,61 @@ resource retirement, installed artifacts, and independent review remain OPEN.
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**UID-policy evidence accepted; lookup correction pending native verification.
+**UID policy, native capture and Linux IPC coordinator checks accepted.
 Installed receiver, whole-app and release acceptance remain OPEN.**
 
-Both Linux endpoints use `src/ipc/uid_policy.rs`: UID 0 bypasses both lazy providers;
-a cached negative rejects without a fresh lookup; a cache match requires fresh authority.
-This does not replace kernel peer proof, finite requester role, PID/UID/start/argv/executable
-identity, launch ancestry or live-generation replay. Selector/wrapper bytes are unchanged.
+Both endpoints use `src/ipc/uid_policy.rs`: root bypasses both lazy providers;
+cached negatives reject early; cache matches require fresh authority. Selector/wrapper
+bytes are unchanged. Kernel peer, finite role, PID/UID/start/argv/executable identity,
+launch ancestry and live-generation replay remain separate requirements.
 
-Pending `hbb_common::platform::linux::LoginctlLookup` shares one deadline and 1 MiB stdout
-budget across queries; overflow prevents later commands and query/parse uncertainty stops
-selection. Fixed paths/environment/arguments/descriptors remain constrained.
-`OwnedAuthorizationChild` retains pidfd/wait ownership through cancellation and unwind;
-incompatible SIGCHLD or failed pidfd acquisition refuses the command. Raw no-seat Type
-now skips TTY/unspecified instead of normalizing to X11; opening/Mir/Web remain recognized.
-Native session selection and application-wide child/resource bounds remain unproved.
+`LoginctlLookup` shares one deadline and 1 MiB stdout budget; overflow stops later
+commands and query/parse uncertainty stops selection. Fixed command provenance remains.
+`OwnedAuthorizationChild` keeps pidfd/wait ownership through cancellation/unwind;
+incompatible SIGCHLD or missing pidfd rejects authorization. Raw no-seat
+TTY/unspecified now skips instead of normalizing to X11; opening/Mir/Web remain recognized.
+`run_service_ipc` joins blocking proof workers retaining permits, proves before secret read,
+and passes the original proof deadline to the raw handler. Polkit, fresh replay and consuming
+admission share one worker; deadline/cancellation/shutdown are checked under the ledger lock.
+Shutdown joins workers before transactions. Old async grant and wording-only cleanup test deleted.
 
-Linux `run_service_ipc` joins blocking proof workers retaining endpoint permits.
-Proof precedes secret read. `authorize_and_admit_linux_password_request` performs polkit,
-fresh replay and consuming `admit_commit` in one worker; the coordinator checks deadline,
-cancellation and shutdown under its admission lock. Shutdown closes requests and joins
-workers before transactions. The old async grant and wording-only child-cleanup test are
-deleted. Compilation/native verification, installed authority and responsiveness remain open.
-
-**Accepted policy transaction:** `--linux-service-uid-tests`, source
-`aa437333945074d447150bbe8d9a4ca36c5f1490`, tree `b884b1a3863074b6a2507b29be300d919ba452b1`;
-Four selector/provider tests and source guard passed in38s, outer0/joined cleanup.
-Artifact SHA-256 `b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
+**Accepted UID policy:** `--linux-service-uid-tests`, source `aa437333945074d447150bbe8d9a4ca36c5f1490`,
+four selector/provider tests plus guard; 38s, outer0. Artifact
+`b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
 Under `.harness-state/verifier-vm/`, `linux-service-uid-tests-run.FQjze4G9se.serial.log`
-(65,958B; SHA-256 `514d43c0aac294aee891a4afa05309dd5ab171c61ab0584325d41d55b83241ad`)
-and `.success.receipt` (1,008B/0400; `25879b12597807c6867f0bf7382d6150099d5735ec082d769ea04721eccb1d32`)
-bind Rust1.75 and the isolated topology/unchanged endpoints. Broad-profile three-provider
-coverage and rejected caller integration receipts remain under R-S11fi.
+(65,958B/SHA256 `514d43c0aac294aee891a4afa05309dd5ab171c61ab0584325d41d55b83241ad`).
+Matching success receipt: 1,008B/0400.
+Broad three-provider coverage and rejected caller receipts remain under R-S11fi.
 
-**Diagnostic old-behavior baseline:** source8167a5e0, `hbb-common-fs-run.cpLHhRm0Wo.serial.log`
-(80,949B; SHA-256 `4412a9a0ab5db0496ff89ef4f3fe65131f7c61c22a5eb5bc53f51ee86497f7f0`).
-Cancellation/deadline each took about10s; capture retained2,097,333B despite a1MiB budget.
-Three probes failed; small success passed. Children eventually reaped; no leak or privilege
-bypass demonstrated. Outer1 rejected a new127.0.0.1:9333 endpoint of unknown owner, untouched.
-No accepted integration. Prepared `--hbb-common-fs` has eight capture cases, four byte-identical
-to8167a5e0; `--linux-password-admission-tests` compiles the actual Linux IPC library and selects
-seven coordinator cases in the existing300s topology without bridge generation. Execution
-pending; coordinator evidence cannot establish installed peer authority.
+**Diagnostic old capture:** source 8167a5e0, `hbb-common-fs-run.cpLHhRm0Wo.serial.log`
+(80,949B/SHA256 `4412a9a0ab5db0496ff89ef4f3fe65131f7c61c22a5eb5bc53f51ee86497f7f0`).
+Cancellation/deadline took about 10s; capture retained 2,097,333B against 1MiB.
+Three failed, small success passed; children eventually reaped. No leak/privilege bypass proved.
+Outer1 rejected a new 127.0.0.1:9333 endpoint of unknown owner, untouched.
 
-**Still OPEN:** corrected native capture/coordinator execution; installed Linux both-endpoint
-root/cache/session changes, principal allow/deny, contention, cancellation/drain, receiver
-responsiveness, and lookup/transaction/descendant resources; whole-app integration; native macOS;
-current installed/release artifacts, cold R-B2/R-B10 equality, independent reproduction and
-external review. This work does not explain the reported Android/Windows display symptoms.
+**Accepted capture:** `--hbb-common-fs`, source `3eabd727cc93628cb42b7596288b478f1aff6e15`;
+116 tests/five groups, eight capture cases in 2.03s; original four bodies unchanged.
+Artifact `d6f419bbf26d9411e305ddfd18300bd662db2e69497177438f926ef498e17573`.
+`hbb-common-fs-run.ixZTOykXvs.serial.log` (68,542B/SHA256
+`4fb8de38efc021a46a3ddb7fec8908ecf2243eb3991c4773769fd3c2f82d5fb3`); outer0/168s.
+
+**Accepted coordinator:** `--linux-password-admission-tests`, source
+`657e788187df5804bbcd4bdb636c9b20170ccdb6`; actual Linux IPC library, seven cases/four groups,
+including shutdown refusal and deadline expiry after mutex contention, plus supplementary guard.
+Artifact `fb9adb974a06e69e7b21577769761028337525c5aa2d524b64585f8a76b35052`.
+`android-rust-lifecycle-tests-run.xUMynzFeoP.serial.log` (68,752B/SHA256
+`85b82b69f660c3544989938818a43344824137c0a755133c51f0af533e164e33`); outer0/276s.
+Initial qQbkGLjypv run passed seven cases but obsolete deadline guard rejected outer1;
+retained raw SHA256 `3ab352f311ca969fa3ab76ad59ffd36afbb674bbe9d6343a38c4a8355313ca58`.
+Repair changed only guard; accepted retry used the same artifact. Both accepted current runs
+bind unchanged before/between/after artifacts, Rust1.75, zero-NIC/no-network, uid1000,
+read-only/caps-none/NNP confinement, no listener additions and joined cleanup.
+
+**Still OPEN:** installed Linux both-endpoint root/cache/session changes, principal allow/deny,
+contention, cancellation/drain, responsiveness; raw session selection, exclusive wait/SIGCHLD
+interop, abrupt-drop and lookup/transaction/descendant resources; whole-app and native macOS;
+current installed/release artifacts, cold R-B2/R-B10 equality, independent reproduction/external
+review. These tests do not explain the Android/Windows display symptoms.
 
 ### Flutter result inventory — single model-count source
 

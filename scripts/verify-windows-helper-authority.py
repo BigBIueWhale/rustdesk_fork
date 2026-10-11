@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Keep the Windows helper on the sole verifier-VM Docker authority."""
+"""Check Windows helper authority and execute its golden-domain XML admission."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import os
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import xml.etree.ElementTree as ET
 
 
 class VerificationError(RuntimeError):
@@ -439,16 +445,95 @@ def load_sources(repo: Path) -> dict[str, str]:
     return loaded
 
 
+def exercise_provision_domain_xml(source: str) -> None:
+    if (
+        os.geteuid() == 0
+        or os.getegid() == 0
+        or Path("/proc/cmdline").read_text().split().count("rustdesk.verifier_vm=1") != 1
+        or sorted(path.name for path in Path("/sys/class/net").iterdir()) != ["lo"]
+    ):
+        raise VerificationError("golden XML execution requires a nonroot zero-NIC verifier VM")
+    launcher = shell_function(source, "build_golden")
+    require_count(launcher, "--network none \\\n", 1, "zero-NIC golden launch")
+    forbid(launcher, "--network user", "golden user-mode NIC")
+    validator = shell_function(source, "verify_owned_golden_domain_xml")
+    opening = "<<'PY'\n"
+    require_count(validator, opening, 1, "production XML parser")
+    require_count(validator, "\nPY\n", 1, "production XML parser terminator")
+    program = validator.split(opening, 1)[1].split("\nPY\n", 1)[0] + "\n"
+    cases = (
+        ("zero-nic", (), "", ""),
+        ("user-nic", ("user",), "", "a network interface"),
+        ("bridge-nic", ("bridge",), "", "a network interface"),
+        ("two-nics", ("user", "user"), "", "a network interface"),
+        ("host-device", (), "hostdev", "a host device or filesystem passthrough"),
+        ("filesystem", (), "filesystem", "a host device or filesystem passthrough"),
+        ("raw-qemu", (), "{http://libvirt.org/schemas/domain/qemu/1.0}commandline",
+         "raw QEMU command-line configuration"),
+    )
+    with tempfile.TemporaryDirectory(prefix="windows-golden-xml-") as directory:
+        xml = Path(directory) / "domain.xml"
+        disks = [str(Path(directory) / name) for name in
+                 ("golden.qcow2", "provision.iso", "toolchains.iso", "windows.iso")]
+        name = "golden-xml-test"
+        uuid = "4a1b3a94-a050-47f0-bf06-7411fcb093e8"
+        for label, interfaces, extra, rejection in cases:
+            root = ET.Element("domain", type="kvm")
+            ET.SubElement(root, "name").text = name
+            ET.SubElement(root, "uuid").text = uuid
+            devices = ET.SubElement(root, "devices")
+            for index, path in enumerate(disks):
+                disk = ET.SubElement(devices, "disk", type="file",
+                                     device="disk" if index == 0 else "cdrom")
+                ET.SubElement(disk, "source", file=path)
+            graphic = ET.SubElement(devices, "graphics", type="vnc", listen="127.0.0.1")
+            ET.SubElement(graphic, "listen", type="address", address="127.0.0.1")
+            for interface_type in interfaces:
+                interface = ET.SubElement(devices, "interface", type=interface_type)
+                ET.SubElement(interface, "model", type="e1000e")
+                if interface_type == "bridge":
+                    ET.SubElement(interface, "source", bridge="br0")
+            if extra:
+                ET.SubElement(root if label == "raw-qemu" else devices, extra)
+            xml.write_bytes(ET.tostring(root))
+            xml.chmod(0o600)
+            result = subprocess.run(
+                ["/usr/bin/python3", "-I", "-S", "-", str(xml), name, uuid, *disks],
+                input=program.encode(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"}, timeout=5, check=False,
+            )
+            expected_error = (
+                f"golden domain unexpectedly has {rejection}\n".encode()
+                if rejection else b""
+            )
+            if (
+                result.returncode != (1 if rejection else 0)
+                or result.stdout != b""
+                or result.stderr != expected_error
+            ):
+                raise VerificationError(
+                    f"golden XML case {label} failed: exit={result.returncode}, "
+                    f"stderr={result.stderr[:4096]!r}"
+                )
+    print(
+        f"WINDOWS_PROVISION_XML=pass uid={os.geteuid()} cases={len(cases)} "
+        f"parser_sha256={hashlib.sha256(program.encode()).hexdigest()} "
+        "scope=production-parser windows=unexecuted", file=sys.stderr,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, default=Path("."))
     args = parser.parse_args()
-    validate(load_sources(args.repo.resolve()))
+    sources = load_sources(args.repo.resolve())
+    validate(sources)
+    exercise_provision_domain_xml(sources["provision"])
     print("verify-windows-helper-authority: ok")
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, ValueError, VerificationError) as error:
+    except (OSError, ValueError, VerificationError, subprocess.SubprocessError) as error:
         raise SystemExit(f"verify-windows-helper-authority: FAIL: {error}")

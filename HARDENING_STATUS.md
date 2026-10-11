@@ -110,10 +110,15 @@ sole acquisition authority, immutable host baseline and exact creator-owned reti
 host inventories, direct-host recipes and package/network reversal exceptions are deleted.
 Pinned toolchains, golden identity, offline media, independent passes and artifact integrity remain.
 **Windows provisioning and native acceptance remain OPEN:** both wrappers admit the verifier VM
-before repository helpers (`build-windows-vm.sh:14`, `provision-windows-vm.sh:30`), but provisioning
-still requires/launches a user-mode NIC (`provision-windows-vm.sh:410,676`) and
-`win-guest-setup.ps1:72` runs `pip install brotli` without a pinned offline input. Those paths need
-reconciliation with the complete offline closure and native acceptance. Cold equality,
+before repository helpers (`build-windows-vm.sh:14`, `provision-windows-vm.sh:30`). Golden provisioning
+now launches with `--network none` and its production XML validator rejects every interface
+(`provision-windows-vm.sh:410,664`); loopback VNC, exact disk identity, passthrough refusal and
+creator-owned finality remain. `verify-windows-helper-authority.py` executes that exact parser on
+seven private XML fixtures as a nonroot principal in the no-NIC verifier VM; execution is pending.
+This component check does not establish actual libvirt launch or Windows installation acceptance.
+`win-guest-setup.ps1:72` still runs `pip install brotli` without a pinned offline input; VS, vcpkg
+and Flutter acquisition paths also need complete offline closure and native acceptance. With no
+NIC, missing dependencies fail provisioning; no network fallback is admitted. Cold equality,
 whole-document restoration and the Windows harness replay below remain OPEN.
 
 A source/model check is supplementary unless it executes the behavior it claims to establish. Gates must not treat

@@ -406,14 +406,8 @@ expected_disk_devices = [
 ]
 if sorted(actual_disks) != sorted(expected_disk_devices):
     raise SystemExit(f"golden domain disk set mismatch: {actual_disks!r}")
-interfaces = root.findall("./devices/interface")
-if len(interfaces) != 1 or interfaces[0].get("type") != "user":
-    raise SystemExit("golden domain does not have exactly one user-mode network interface")
-models = interfaces[0].findall("./model")
-if len(models) != 1 or models[0].get("type") != "e1000e":
-    raise SystemExit("golden domain user-mode interface is not exactly e1000e")
-if interfaces[0].findall("./portForward"):
-    raise SystemExit("golden domain user-mode interface has host port forwarding")
+if root.findall("./devices/interface"):
+    raise SystemExit("golden domain unexpectedly has a network interface")
 graphics = root.findall("./devices/graphics")
 if len(graphics) != 1:
     raise SystemExit("golden domain does not have exactly one graphics device")
@@ -647,18 +641,12 @@ build_golden() {
     # PROVISION CD (Win11 Pro -> the SATA disk; Setup has the AHCI driver built-in, whereas a
     # virtio disk would need the virtio-win drivers loaded in WinPE), then the first-logon
     # win-guest-setup.ps1 installs the pinned toolchain off the TOOLCHAINS CD and shuts down.
-    # Network is ON for THIS one golden-build step (vcpkg bootstrap + the §3.2 native build +
-    # the WiX/NuGet warm) — the NAT'd guest never LISTENS; the per-build overlay is --network=none.
+    # Provisioning uses only the pinned disk/CD inputs and has no network interface.
     # VNC binds 127.0.0.1 only (never 0.0.0.0), to diagnose a stuck unattended install.
     # A prior unowned domain with this name is an operator-reconciliation error, not
     # cleanup authority. Re-prove absence immediately before creation and never
     # destroy a domain merely because its mutable name collides with this one.
     require_domain_identity_absent
-    # NIC model=e1000e (NOT virt-install's default): Win11 ships an inbox e1000e driver but NOT one for the
-    # default qemu NIC, so the default guest has NO working network -> the provision-time `flutter pub get`
-    # residual download fails its TLS handshake ("Handshake error in client"), which ALSO explains the
-    # historical "98-call stall" (= 98 dead-NIC timeouts). The working rdwinvm SSH VM uses e1000e over the
-    # same slirp `-netdev user`, proving the model is the fix. (slirp NAT; the guest never LISTENS.)
     PROVISION_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))
     PROVISION_DOMAIN_CREATION_STARTED=1
     /usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \
@@ -673,7 +661,7 @@ build_golden() {
         --disk "path=$TOOLCHAINS_ISO,device=cdrom" \
         --cdrom "$ONLINE_DIR/win11.iso" \
         --boot uefi \
-        --network user,model=e1000e \
+        --network none \
         --graphics vnc,listen=127.0.0.1 \
         --noautoconsole --wait -1 &
     PROVISION_VIRT_PID=$!

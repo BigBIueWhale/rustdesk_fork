@@ -1873,13 +1873,18 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   `ea3285eb3bf5795f9c119a11d657fa77f2d9a70cf1c81d3f57de17b2b75063c4`, binds source and the
   stable executable digest. Pinned Rust 1.75/vendor/Debian builder, zero-NIC VM, UID/GID-1000
   networkless read-only guest container, caps none, no new host endpoint and joined cleanup passed.
-  Earlier `d853188a` guest success failed its outer audit and remains invalid; `d950909f` falsely
-  published the real partial bytes. Accepted `53e831a4` passed 65 filesystem/four config tests in 158s;
-  raw `hbb-common-fs-run.ql3tZ1uk4r.serial.log`, SHA-256
-  `f4e994ed718612ab243e3bc6cae8aa3ff103bc77ec45f9fa53da1fdaa57cb422`, and its retained outer receipt
-  preserve that binding. Complete provenance and failed baselines remain in the audit/Git history.
+  Next-file setup refusal also passed on `b2c01dba2959cb699a197f13e213d21bd1d0421a`:
+  the same isolated command passed 108 tests (4 config, 98 filesystem, 5 address, 1 socket),
+  zero ignored, in 161s. Its real two-file job commits the predecessor, refuses a foreign next-file
+  digest with `AlreadyExists`, preserves its bytes/inode, retires new staging/lease artifacts,
+  preserves accepted counters and refuses whole-job completion. The guest requires the exact
+  named regression to pass. Raw `hbb-common-fs-run.phatqsH40b.serial.log` (66,852 bytes), SHA-256
+  `19c6f2028f727d1c047c6774cb5eb824533c90c425dfb7805c85c78f91f90cb2`; stable executable SHA-256
+  `4ae2ad69e3f4478ab2d59a31c9baf333f3e1d2e912dcc7b7b10730d99b0c9f6b`.
+  Earlier outer-rejected and partial-publication failures remain unaccepted; older accepted
+  receipts and failed baselines remain in the audit/Git history.
   Receipts are assistant-observed, not independent attestation; full test stdout and executables were
-  ephemeral. Direct-viewer/CM peer-visible failure, next-file fault transition, forced cancellation
+  ephemeral. Direct-viewer/CM peer-visible failure and next-file fault propagation, forced cancellation
   during an await/owner-loss drain, installed/cross-OS operations, resource/latency soak,
   final artifacts/reproduction/review and complete receive-error propagation remain OPEN.
 - **R-S11fj/R-S11e-197 viewer download digest inspection failure** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION

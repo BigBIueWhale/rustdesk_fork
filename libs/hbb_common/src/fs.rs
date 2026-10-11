@@ -5821,6 +5821,11 @@ mod tests {
         assert_eq!(job.finished_size(), 0);
         assert_eq!(job.transferred(), 0);
         assert!(!tmp.join("incoming.bin").exists());
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
+        for suffix in [".download", ".digest", ".download.lock"] {
+            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+        }
         job.retire_current_file_state()
             .expect("retire the refused exact receive generation");
         for suffix in [".download", ".digest", ".download.lock"] {
@@ -6810,10 +6815,102 @@ mod tests {
         assert_eq!(job.finished_size(), 0);
         assert_eq!(job.transferred(), 0);
         assert!(!tmp.join("incoming.bin").exists());
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
+        for suffix in [".download", ".digest", ".download.lock"] {
+            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+        }
         job.retire_current_file_state()
             .expect("clean malformed-compression receive artifacts");
         assert!(!tmp.join("incoming.bin.download").exists());
         assert!(!tmp.join("incoming.bin.digest").exists());
+    }
+
+    #[tokio::test]
+    async fn receive_refused_next_block_preserves_the_unpublished_current_file() {
+        let tmp = TestTempDir::new("rustdesk_receive_refused_transition");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let payload = b"complete first file";
+        let mut first = new_file_entry("first.bin");
+        first.size = payload.len() as u64;
+        let mut second = new_file_entry("second.bin");
+        second.size = 1;
+        let mut job = new_write_job(213, tmp.path.clone(), "first.bin")
+            .expect("create receive job")
+            .with_files(vec![first, second])
+            .expect("admit both files");
+        job.write(FileTransferBlock {
+            id: 213,
+            file_num: 0,
+            data: payload.to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("stage the complete first file");
+        let mut truncated = compress(b"Z").expect("encode the truncated fixture");
+        assert!(truncated.pop().is_some());
+        let oversized = compress(b"ZZ").expect("encode the oversized fixture");
+        let finished_size = job.finished_size();
+        let transferred = job.transferred();
+        let digest = std::fs::read(tmp.join("first.bin.digest")).expect("read admitted digest");
+
+        for (data, compressed) in [
+            (b"not a zstd frame".to_vec(), true),
+            (truncated, true),
+            (b"ZZ".to_vec(), false),
+            (oversized, true),
+        ] {
+            job.write(FileTransferBlock {
+                id: 213,
+                file_num: 1,
+                data: data.into(),
+                compressed,
+                ..Default::default()
+            })
+            .await
+            .expect_err("invalid next-file payload must be refused before transition");
+            assert!(
+                !tmp.join("first.bin").exists(),
+                "a refused block must not publish the preceding file"
+            );
+            assert!(!tmp.join("second.bin").exists());
+            assert_eq!(job.file_num(), 0);
+            assert_eq!(job.receive_file_offset, payload.len() as u64);
+            assert_eq!(job.finished_size(), finished_size);
+            assert_eq!(job.transferred(), transferred);
+            assert!(job.data_stream.is_some());
+            assert!(job.receive_write_claim.is_some());
+            assert_eq!(
+                std::fs::read(tmp.join("first.bin.download")).expect("read current staging"),
+                payload
+            );
+            assert_eq!(
+                std::fs::read(tmp.join("first.bin.digest")).expect("read unchanged digest"),
+                digest
+            );
+            for suffix in [".download", ".digest", ".download.lock"] {
+                assert!(tmp.join(&format!("first.bin{suffix}")).exists());
+                assert!(!tmp.join(&format!("second.bin{suffix}")).exists());
+            }
+        }
+
+        let valid = compress(b"Z").expect("encode valid next-file payload");
+        job.write(FileTransferBlock {
+            id: 213,
+            file_num: 1,
+            data: valid.into(),
+            compressed: true,
+            ..Default::default()
+        })
+        .await
+        .expect("a valid compressed block may advance the file");
+        job.finalize_write(2).await.expect("complete both admitted files");
+        assert_eq!(std::fs::read(tmp.join("first.bin")).expect("read first file"), payload);
+        assert_eq!(std::fs::read(tmp.join("second.bin")).expect("read second file"), b"Z");
+        assert_eq!(job.finished_size(), payload.len() as u64 + 1);
+        assert_eq!(std::fs::read_dir(&tmp.path).expect("read receive directory").count(), 2);
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
     }
 
     #[tokio::test]

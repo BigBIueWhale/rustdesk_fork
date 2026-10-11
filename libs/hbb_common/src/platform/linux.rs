@@ -84,12 +84,6 @@ impl<'a> LoginctlLookup<'a> {
         parse_loginctl_session_properties(&output.stdout, properties)
     }
 
-    fn property(&mut self, session: &str, property: LoginctlProperty) -> io::Result<String> {
-        self.properties(session, &[property])?.pop().ok_or_else(|| {
-            invalid_loginctl_output("requested loginctl session property is missing")
-        })
-    }
-
     fn query(&mut self, query: LoginctlQuery<'_>) -> io::Result<std::process::Output> {
         self.check_pending()?;
         let loginctl = trusted_command_path(&LOGINCTL_PATHS).ok_or_else(|| {
@@ -118,37 +112,30 @@ impl<'a> LoginctlLookup<'a> {
         ignore_gdm_wayland: bool,
     ) -> io::Result<Vec<String>> {
         let output = self.query(LoginctlQuery::ListSessions)?;
-        let sessions = parse_loginctl_sessions(&output.stdout)?;
+        let mut sessions = Vec::new();
+        for id in parse_loginctl_session_ids(&output.stdout)? {
+            let values = self.properties(&id, &LOGINCTL_SELECTION_PROPERTIES)?;
+            sessions.push(LoginctlSession::from_properties(id, values)?);
+        }
         for seat0_only in [true, false] {
             for session in &sessions {
                 self.check_pending()?;
                 if seat0_only && session.seat != "seat0" {
                     continue;
                 }
-                let state = self.property(&session.id, LoginctlProperty::State)?;
-                if !matches!(state.as_str(), "opening" | "active" | "online" | "closing") {
-                    return Err(invalid_loginctl_output("loginctl session state is unknown"));
-                }
-                if state != "active" {
+                if session.state != "active" {
                     continue;
                 }
-                if !seat0_only || (ignore_gdm_wayland && is_gdm_user(&session.username)) {
-                    let display = self.property(&session.id, LoginctlProperty::Type)?;
-                    if !matches!(
-                        display.as_str(),
-                        "x11" | "wayland" | "mir" | "web" | "tty" | "unspecified"
-                    ) {
-                        return Err(invalid_loginctl_output("loginctl session type is unknown"));
-                    }
-                    if ignore_gdm_wayland
-                        && is_gdm_user(&session.username)
-                        && display == DISPLAY_SERVER_WAYLAND
-                    {
-                        continue;
-                    }
-                    if !seat0_only && (display == "tty" || display == "unspecified") {
-                        continue;
-                    }
+                if ignore_gdm_wayland
+                    && is_gdm_user(&session.username)
+                    && session.display_server == DISPLAY_SERVER_WAYLAND
+                {
+                    continue;
+                }
+                if !seat0_only
+                    && matches!(session.display_server.as_str(), "tty" | "unspecified")
+                {
+                    continue;
                 }
                 self.check_pending()?;
                 return Ok(session_values(indices, Some(session)));
@@ -783,10 +770,12 @@ pub fn is_session_locked(sid: &str) -> bool {
 enum LoginctlProperty {
     Display,
     LockedHint,
+    Name,
     Scope,
     Seat,
     State,
     Type,
+    User,
 }
 
 impl LoginctlProperty {
@@ -794,10 +783,12 @@ impl LoginctlProperty {
         match self {
             Self::Display => "Display",
             Self::LockedHint => "LockedHint",
+            Self::Name => "Name",
             Self::Scope => "Scope",
             Self::Seat => "Seat",
             Self::State => "State",
             Self::Type => "Type",
+            Self::User => "User",
         }
     }
 
@@ -805,10 +796,12 @@ impl LoginctlProperty {
         match self {
             Self::Display => "--property=Display",
             Self::LockedHint => "--property=LockedHint",
+            Self::Name => "--property=Name",
             Self::Scope => "--property=Scope",
             Self::Seat => "--property=Seat",
             Self::State => "--property=State",
             Self::Type => "--property=Type",
+            Self::User => "--property=User",
         }
     }
 }
@@ -819,6 +812,52 @@ struct LoginctlSession {
     uid: String,
     username: String,
     seat: String,
+    state: String,
+    display_server: String,
+}
+
+const LOGINCTL_SELECTION_PROPERTIES: [LoginctlProperty; 5] = [
+    LoginctlProperty::User,
+    LoginctlProperty::Name,
+    LoginctlProperty::Seat,
+    LoginctlProperty::State,
+    LoginctlProperty::Type,
+];
+
+impl LoginctlSession {
+    fn from_properties(id: String, values: Vec<String>) -> io::Result<Self> {
+        let [uid, username, seat, state, display_server]: [String; 5] = values
+            .try_into()
+            .map_err(|_| invalid_loginctl_output("loginctl selection property count differs"))?;
+        let parsed_uid = uid
+            .parse::<u32>()
+            .map_err(|_| invalid_loginctl_output("loginctl session uid is not decimal"))?;
+        if parsed_uid.to_string() != uid {
+            return Err(invalid_loginctl_output(
+                "loginctl session uid is not canonical decimal",
+            ));
+        }
+        if username.is_empty() {
+            return Err(invalid_loginctl_output("loginctl session username is empty"));
+        }
+        if !matches!(state.as_str(), "opening" | "active" | "online" | "closing") {
+            return Err(invalid_loginctl_output("loginctl session state is unknown"));
+        }
+        if !matches!(
+            display_server.as_str(),
+            "x11" | "wayland" | "mir" | "web" | "tty" | "unspecified"
+        ) {
+            return Err(invalid_loginctl_output("loginctl session type is unknown"));
+        }
+        Ok(Self {
+            id,
+            uid,
+            username,
+            seat,
+            state,
+            display_server,
+        })
+    }
 }
 
 enum LoginctlQuery<'a> {
@@ -867,49 +906,34 @@ fn invalid_loginctl_output(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
-fn parse_loginctl_sessions(stdout: &[u8]) -> io::Result<Vec<LoginctlSession>> {
+fn parse_loginctl_session_ids(stdout: &[u8]) -> io::Result<Vec<String>> {
     let stdout = std::str::from_utf8(stdout)
         .map_err(|_| invalid_loginctl_output("loginctl session list is not UTF-8"))?;
     let mut sessions = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for line in stdout.lines() {
         if line.is_empty() {
             return Err(invalid_loginctl_output(
                 "loginctl session list contains an empty row",
             ));
         }
-        // The first four fields are the session authority consumed here. systemd 252
-        // appends TTY, while newer versions append further presentation fields.
-        let mut fields = line.split_ascii_whitespace();
-        let Some(id) = fields.next() else {
+        // Only the generated ID is enumerated here. Empty table cells and username
+        // whitespace cannot encode UID/seat authority; named properties supply it.
+        let Some(id) = line.split_ascii_whitespace().next() else {
             return Err(invalid_loginctl_output(
                 "loginctl session row has no identifier",
             ));
         };
-        let Some(uid) = fields.next() else {
-            return Err(invalid_loginctl_output("loginctl session row has no uid"));
-        };
-        let Some(username) = fields.next() else {
+        let number = id.strip_prefix('c').unwrap_or(id);
+        let parsed = number
+            .parse::<u64>()
+            .map_err(|_| invalid_loginctl_output("loginctl session identifier is invalid"))?;
+        if parsed.to_string() != number || !seen.insert(id) {
             return Err(invalid_loginctl_output(
-                "loginctl session row has no username",
-            ));
-        };
-        let Some(seat) = fields.next() else {
-            return Err(invalid_loginctl_output("loginctl session row has no seat"));
-        };
-        let parsed_uid = uid
-            .parse::<u32>()
-            .map_err(|_| invalid_loginctl_output("loginctl session uid is not decimal"))?;
-        if parsed_uid.to_string() != uid {
-            return Err(invalid_loginctl_output(
-                "loginctl session uid is not canonical decimal",
+                "loginctl session identifier is noncanonical or duplicated",
             ));
         }
-        sessions.push(LoginctlSession {
-            id: id.to_owned(),
-            uid: uid.to_owned(),
-            username: username.to_owned(),
-            seat: seat.to_owned(),
-        });
+        sessions.push(id.to_owned());
     }
     Ok(sessions)
 }
@@ -1514,38 +1538,72 @@ mod tests {
                 "c7",
             ]
         );
+        assert_eq!(
+            LoginctlQuery::SessionProperties {
+                session: "c7",
+                properties: &LOGINCTL_SELECTION_PROPERTIES,
+            }
+            .arguments(),
+            [
+                "--no-pager",
+                "--property=User",
+                "--property=Name",
+                "--property=Seat",
+                "--property=State",
+                "--property=Type",
+                "show-session",
+                "--",
+                "c7",
+            ]
+        );
     }
 
     #[test]
-    fn r_s11e40_loginctl_session_list_parser_validates_stable_leading_fields() {
+    fn r_s11e40_loginctl_session_list_supplies_only_generated_ids() {
         assert_eq!(
-            parse_loginctl_sessions(b"1 1000 owner seat0 tty2\nc4 1001 other - -\n").unwrap(),
-            vec![
-                LoginctlSession {
-                    id: "1".to_owned(),
-                    uid: "1000".to_owned(),
-                    username: "owner".to_owned(),
-                    seat: "seat0".to_owned(),
-                },
-                LoginctlSession {
-                    id: "c4".to_owned(),
-                    uid: "1001".to_owned(),
-                    username: "other".to_owned(),
-                    seat: "-".to_owned(),
-                },
-            ]
+            parse_loginctl_session_ids(b"1 1000 owner seat0 tty2\nc4 1001 other   \n").unwrap(),
+            ["1", "c4"]
         );
-        assert!(
-            parse_loginctl_sessions(b"SESSION UID USER SEAT TTY\n1 1000 owner seat0 tty2\n")
-                .is_err()
+        assert_eq!(
+            parse_loginctl_session_ids(b"c8 01000 name with spaces seat0\n").unwrap(),
+            ["c8"]
         );
-        assert!(parse_loginctl_sessions(b"1 01000 owner seat0 tty2\n").is_err());
-        let current = parse_loginctl_sessions(b"7 1000 owner seat0 1234 user tty2 no -\n").unwrap();
-        assert_eq!(current[0].id, "7");
-        assert_eq!(current[0].seat, "seat0");
-        let ambiguous = parse_loginctl_sessions(b"1 1000 seat0-owner - tty2\n").unwrap();
-        assert_eq!(ambiguous[0].username, "seat0-owner");
-        assert_eq!(ambiguous[0].seat, "-");
+        for invalid in [
+            b"SESSION UID USER SEAT TTY\n".as_slice(),
+            b"c01 1000 owner\n",
+            b"1 1000 owner\n1 1000 owner\n",
+            b"\n",
+            b"c 1000 owner\n",
+        ] {
+            assert!(parse_loginctl_session_ids(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn r_s11e40_loginctl_selection_uses_named_properties_and_preserves_empty_seat() {
+        let values = parse_loginctl_session_properties(
+            b"State=active\nType=x11\nSeat=\nName=seat0 owner\nUser=1000\n",
+            &LOGINCTL_SELECTION_PROPERTIES,
+        )
+        .unwrap();
+        let session = LoginctlSession::from_properties("c1".to_owned(), values).unwrap();
+        assert_eq!(session.uid, "1000");
+        assert_eq!(session.username, "seat0 owner");
+        assert!(session.seat.is_empty());
+        for (index, invalid) in [
+            (0, "01000"),
+            (0, "4294967296"),
+            (1, ""),
+            (3, "stale"),
+            (4, "future"),
+        ] {
+            let mut values: Vec<String> = ["1000", "owner", "", "active", "x11"]
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect();
+            values[index] = invalid.to_owned();
+            assert!(LoginctlSession::from_properties("c1".to_owned(), values).is_err());
+        }
     }
 
     #[test]

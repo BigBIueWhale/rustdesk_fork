@@ -2014,7 +2014,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `ff51cecc78492ecc39d91c20500b746155107e19cb5bb011a921dc811e7dd124  requirements.html`.
+Current normative specification SHA-256: `434c0eaaae139429ce769e01d419b699c4c7b435181e7c21b5ff63d5be1108f9  requirements.html`.
 
 ### Current authority and source closure
 

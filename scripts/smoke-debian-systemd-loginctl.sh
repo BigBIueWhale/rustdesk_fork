@@ -9,6 +9,9 @@ case "$#:$*" in
   "3:--no-pager --no-legend list-sessions")
     printf '%s\n' '1 4001 rdseat seat0'
     ;;
+  "9:--no-pager --property=User --property=Name --property=Seat --property=State --property=Type show-session -- 1")
+    printf '%s\n' 'User=4001' 'Name=rdseat' 'Seat=seat0' 'State=active' 'Type=x11'
+    ;;
   "5:--no-pager --property=State show-session -- 1")
     printf '%s\n' 'State=active'
     ;;

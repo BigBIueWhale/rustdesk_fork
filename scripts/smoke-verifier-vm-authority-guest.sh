@@ -2385,6 +2385,14 @@ run_focused_rust_tests() {
             toolchain_mode=devcheck-image
             toolchain_mount=()
             required_tests=("${required_tests[@]:0:8}")
+            required_tests+=(
+                platform::linux::tests::r_s11e40_loginctl_queries_are_typed_and_noninteractive
+                platform::linux::tests::r_s11e40_loginctl_session_list_supplies_only_generated_ids
+                platform::linux::tests::r_s11e40_loginctl_selection_uses_named_properties_and_preserves_empty_seat
+                platform::linux::tests::r_s11e40_loginctl_property_parser_requires_exact_requested_rows
+                platform::linux::tests::r_s11e40_session_display_fallback_is_binary_owned
+                platform::linux::tests::r_s11e40_loginctl_child_excludes_inherited_environment
+            )
             source_fingerprints+=(scripts/test-linux-logind-session-selection.py)
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
@@ -3112,7 +3120,11 @@ run_focused_rust_tests() {
                         "$test_executable" platform::linux::tests::r_s11at_loginctl_output_ \
                             --color never --test-threads=1
                         [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
-                        if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
+                        if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+                            "$test_executable" platform::linux::tests::r_s11e40_ \
+                                --color never --test-threads=1
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                        else
                             "$test_executable" config::tests::config_transaction_ \
                                 --color never --test-threads=1
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
@@ -3440,7 +3452,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     )
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=5
-        if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=1; fi
+        if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
             || { tail -n 200 "$output" >&2; fail 'focused shared-library test summary count differs'; }
         local -a hbb_artifact_receipts
@@ -3650,7 +3662,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         local native_test_executable native_output=$ROOT/logind-native.out
         native_test_executable=${hbb_artifact_receipts[0]#*executable=}
         native_test_executable=${native_test_executable%% *}
-        printf 'LINUX_LOGINCTL_NATIVE_STAGE=running fixture=systemd-pam execution=uid1000\n'
+        printf 'LINUX_LOGINCTL_NATIVE_STAGE=running artifact_sha256=%s fixture=systemd-pam execution=uid1000\n' \
+            "$hbb_test_artifact_sha"
         python3 -I -S "$source_root/scripts/test-linux-logind-session-selection.py" \
             --docker-client "$CLIENT" --docker-socket "$SOCK" --image "$image_config" \
             --artifact "$target_root/${native_test_executable#/cargo-target/}" \
@@ -3690,7 +3703,10 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         printf '%s\n' "${hbb_artifact_receipts[@]}"
-        if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then cat "$native_output"; fi
+        if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+            grep -E '^test platform::linux::tests::r_s11e40_.* \.\.\. ok$' "$output"
+            cat "$native_output"
+        fi
         printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$hbb_test_artifact_sha" \

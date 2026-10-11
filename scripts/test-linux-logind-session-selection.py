@@ -148,6 +148,7 @@ def native_tests(args):
             or artifact.stat().st_nlink != 1 or digest(artifact) != args.sha256
             or not re.fullmatch(r"sha256:[0-9a-f]{64}", args.image)):
         raise RuntimeError("source-bound native artifact identity differs")
+    print(f"LINUX_LOGINCTL_ARTIFACT=observed sha256={args.sha256} executable={artifact}", flush=True)
     docker = ["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
               args.docker_client, "--host", "unix://" + args.docker_socket]
     # Use the guest's actual loginctl and its distro libraries, never a command shim.

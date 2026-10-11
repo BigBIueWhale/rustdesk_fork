@@ -27,6 +27,9 @@ case "$#:$*" in
   "3:--no-pager --no-legend list-sessions")
     printf '1 %s %s seat0\n' "$uid" "$username"
     ;;
+  "9:--no-pager --property=User --property=Name --property=Seat --property=State --property=Type show-session -- 1")
+    printf 'User=%s\nName=%s\nSeat=seat0\nState=active\nType=x11\n' "$uid" "$username"
+    ;;
   "5:--no-pager --property=State show-session -- 1")
     printf '%s\n' 'State=active'
     ;;

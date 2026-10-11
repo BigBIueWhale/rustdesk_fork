@@ -10354,10 +10354,10 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11it_ --color never -- --test-threads=1
-if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
-  echo "  ok  R-S11go native Flutter display selection is exact-owner, typed, ordered, bounded, and failure-visible"
+if python3 scripts/verify-display-selection-finality.py --repo .; then
+  echo "  ok  R-S11go display-selection source checks passed"
 else
-  echo "  FAIL R-S11go: display selection regained stale-owner, generic-message, split-refresh, premature-local-commit, or controlled-side divergence"
+  echo "  FAIL R-S11go display-selection source checks"
   rc=1
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never

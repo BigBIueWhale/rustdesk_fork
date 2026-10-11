@@ -4550,11 +4550,11 @@ else
   rc=1
 fi
 
-echo "== (2g-c2b) R-S11go exact-owner ordered display-selection finality =="
-if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
-  note "ok  R-S11go Apple/shared display selection is exact-owner, typed, ordered, bounded, and failure-visible"
+echo "== (2g-c2b) R-S11go display-selection source checks =="
+if python3 scripts/verify-display-selection-finality.py --repo .; then
+  note "ok  R-S11go Apple/shared display-selection source checks passed"
 else
-  echo "  FAIL R-S11go Apple/shared display selection regained stale-owner, generic-message, split-refresh, premature-local-commit, or controlled-side divergence"
+  echo "  FAIL R-S11go Apple/shared display-selection source checks"
   rc=1
 fi
 

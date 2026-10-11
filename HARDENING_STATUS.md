@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-db3ea67633bba8cc41ca348cd9b86799de8485559541b0d95fe06a607b5d3f09  requirements.html
+68a0aac765b81a2bc02ebb1e7eb91d4b7256b31107d7bbf8f31ec990a914b2fd  requirements.html
 ```
 
 ## Current Verdict
@@ -2005,7 +2005,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `db3ea67633bba8cc41ca348cd9b86799de8485559541b0d95fe06a607b5d3f09  requirements.html`.
+Current normative specification SHA-256: `68a0aac765b81a2bc02ebb1e7eb91d4b7256b31107d7bbf8f31ec990a914b2fd  requirements.html`.
 
 ### Current authority and source closure
 
@@ -10778,19 +10778,18 @@ before UI mutation. Invalid controlled requests, retired controlled owners, or l
 failure terminate the exact connection. Split/generic display-control paths and reconnect-based
 recovery are absent. Local admission and ordered transport are not peer-operation acknowledgement.
 
-**Shared evidence boundary for R-S11go–R-S11gr.** Named source
-`7c5a1b1da791f501619427bd70367e0f7b960acd` passed 20 focused Flutter suites/166 tests in a
-293-second zero-NIC transaction, including `display_selection_queue_test.dart`,
-`session_event_queue_test.dart`, and `latest_frame_queue_test.dart`. The selection and topology queue
-modules/tests are unchanged; the frame queue and its tests now have the web lifetime correction below,
-which this historical transaction does not validate. Raw serial
-`.harness-state/verifier-vm/flutter-model-tests-run.kJzOp1z49w.serial.log` is 68,319 bytes,
-SHA-256 `afa8bb041749ddb58949f6416cebe4eee3273119b4f5a9bfb4c7cc19dc30dfc2`.
-The journal records the terminal outer success, read-only sealed inputs, no added host listener,
-and joined guest-only Docker/QEMU/virtiofsd cleanup. This is generated-bridge and executable
-Dart queue/model evidence, not current native FFI execution, all later caller wiring, a browser,
-an installed platform, or a full peer/presentation result. The focused display-selection source
-checker and selected `r_s11go_` Rust regressions remain; mutation counts are not native evidence.
+**Shared evidence boundary for R-S11go–R-S11gr.** The display-selection checker now reports
+source checks only. Its 180 source-string mutations, runner and `--self-test` interface are deleted;
+shared/generated/Apple callers retain the source checks and real executable regressions. R-S11go–gr
+retain their complete behavior/native acceptance contract and require source checks plus independent
+executable regressions instead of the deleted catalogue. Current isolated replay is pending.
+Named source `7c5a1b1da791f501619427bd70367e0f7b960acd` passed 20 Flutter suites/166 tests in
+293 seconds, including selection/session/frame queues; raw `flutter-model-tests-run.kJzOp1z49w.serial.log`
+(68,319 bytes), SHA-256 `afa8bb041749ddb58949f6416cebe4eee3273119b4f5a9bfb4c7cc19dc30dfc2`.
+The audit records sealed inputs, no new host listener and joined cleanup. Selection/topology queues
+are unchanged; later web-frame corrections are not validated by that historical run. This is named
+bridge/Dart model evidence, not current native FFI, browser, installed or peer/presentation behavior.
+Selected `r_s11go_` Rust regressions remain; mutation rejection is not native evidence.
 
 **Still OPEN:** exact native command shape/byte admission, invisible-slot commit ordering,
 owner/inventory refusal, predecessor preservation, typed startup, cross-owner capture union,

@@ -121,7 +121,11 @@ commands through `Invoke-SetupProcess`, which waits for the tree and requires a 
 continuing. Launch failure, missing status and nonzero/reboot-required exits refuse this single-pass
 setup. Fixed OS tool paths, exact unique Build Tools selection and `--noWeb` replace ambient/arbitrary
 execution and VS network fallback; failed vcpkg extraction/rename can no longer be ignored.
-The exact v4 receipt in `windows-golden-inspect.sh` rejects unchecked v3 goldens. The historical v3
+`windows-golden-inspect.sh` now has one marker assertion: bounded binary comparison requires exact
+ASCII v4 bytes with final CRLF and EOF, and pipeline failure refuses. The producer writes explicit
+bytes; `verify-windows-golden.sh` consumes assertion status. Inventory mode, normalized text capture,
+log-based verdicts and complete-toolchain claims are deleted. Production byte-parser fixtures are
+pending; real libguestfs reading and Windows byte production remain UNEXECUTED. The historical v3
 golden hash remains pinned; a v4 image must actually be provisioned and certified before replacement.
 `test-windows-guest-setup.ps1` extracts the production launcher and prepares native exit0/7/3010/1641
 and missing-executable continuation tests; these are UNEXECUTED because Windows inputs/golden are

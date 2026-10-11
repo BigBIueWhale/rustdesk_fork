@@ -407,6 +407,14 @@ def validate(sources: dict[str, str]) -> None:
     # Supplementary invariant: unchecked v3 setup must not satisfy current admission.
     require(sources["inspector"], "rustdesk-windows-golden-v4", "checked golden setup receipt")
     forbid(sources["inspector"], "rustdesk-windows-golden-v3", "unchecked golden receipt")
+    for key in ("golden", "inspector"):
+        forbid(sources[key], "GOLDEN-OK", "log-based golden completion authority")
+        forbid(sources[key], " inventory", "inventory-based golden completion authority")
+    require_order(sources["golden"], (
+        "windows_helper_kvm_guestfish_run",
+        "/authority/windows-golden-inspect.sh marker",
+        'log "golden hash and exact completed-setup receipt verified"',
+    ), "golden assertion exit status before success")
 
     extractor = sources["extractor"]
     for token, label in (
@@ -527,6 +535,71 @@ def exercise_provision_domain_xml(source: str) -> None:
     )
 
 
+def exercise_golden_receipt(source: str) -> None:
+    if (
+        os.geteuid() == 0
+        or os.getegid() == 0
+        or Path("/proc/cmdline").read_text().split().count("rustdesk.verifier_vm=1") != 1
+        or sorted(path.name for path in Path("/sys/class/net").iterdir()) != ["lo"]
+    ):
+        raise VerificationError("golden receipt execution requires a nonroot zero-NIC verifier VM")
+    opening = "/usr/bin/python3 -I -S -c '\n"
+    require_count(source, opening, 1, "production golden receipt parser")
+    require_count(source, "\n'\n", 1, "production golden receipt parser terminator")
+    program = source.split(opening, 1)[1].split("\n'\n", 1)[0] + "\n"
+    expected = (
+        b"rustdesk-windows-golden-v4\r\n"
+        b"builder-password-never-expires=true\r\n"
+        b"builder-logon-task=interactive\r\n"
+        b"setup-complete=true\r\n"
+    )
+    cases = (
+        ("exact", expected, True),
+        ("empty", b"", False),
+        ("v3", expected.replace(b"v4", b"v3"), False),
+        ("truncated", expected[:-1], False),
+        ("no-final-crlf", expected[:-2], False),
+        ("lf-only", expected.replace(b"\r\n", b"\n"), False),
+        ("repeated-cr", expected.replace(b"\r\n", b"\r\r\n"), False),
+        ("extra-newline", expected + b"\n", False),
+        ("nul-suffix", expected + b"\0", False),
+        ("nul-prefix", b"\0" + expected, False),
+        ("bom", b"\xef\xbb\xbf" + expected, False),
+        ("forged-verdict", b"GOLDEN-OK: forged inventory entry\n", False),
+        ("extra-field", expected + b"extra=true\r\n", False),
+        ("overlong", expected + b"x" * (1024 * 1024), False),
+    )
+    for label, payload, accepted in cases:
+        result = subprocess.run(
+            ["/usr/bin/python3", "-I", "-S", "-c", program],
+            input=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"}, timeout=5, check=False,
+        )
+        error = b"" if accepted else b"golden completion receipt is absent or incompatible\n"
+        if result.returncode != (0 if accepted else 1) or result.stdout or result.stderr != error:
+            raise VerificationError(f"golden receipt case {label} failed: exit={result.returncode}")
+
+    # Former b134ec04 byte comparison, with the image-read output supplied directly.
+    # These malformed fixtures were normalized into success; the production parser above rejects them.
+    old_comparison = "marker=\"$(/usr/bin/tr -d '\\r')\"\n[ \"$marker\" = \"$1\" ]\n"
+    for payload in (expected + b"\n", expected.replace(b"\r\n", b"\r\r\n")):
+        result = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c", old_comparison,
+             "former-golden-comparison", expected.replace(b"\r\n", b"\n").decode().rstrip("\n")],
+            input=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"}, timeout=5, check=False,
+        )
+        if result.returncode or result.stdout or result.stderr:
+            raise VerificationError("former golden normalization counterexample did not reproduce")
+    print(
+        f"WINDOWS_GOLDEN_RECEIPT=pass uid={os.geteuid()} cases={len(cases)} "
+        f"parser_sha256={hashlib.sha256(program.encode()).hexdigest()} "
+        f"former_comparison_sha256={hashlib.sha256(old_comparison.encode()).hexdigest()} "
+        "normalization_counterexamples=2 scope=production-byte-parser "
+        "libguestfs=unexecuted windows=unexecuted", file=sys.stderr,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, default=Path("."))
@@ -534,6 +607,7 @@ def main() -> None:
     sources = load_sources(args.repo.resolve())
     validate(sources)
     exercise_provision_domain_xml(sources["provision"])
+    exercise_golden_receipt(sources["inspector"])
     print("verify-windows-helper-authority: ok")
 
 

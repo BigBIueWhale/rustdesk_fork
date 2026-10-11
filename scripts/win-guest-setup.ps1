@@ -258,12 +258,8 @@ if ($registeredTask.Principal.LogonType -cne 'Interactive' -or
     Die 'the per-build task is not bound to the interactive builder logon at its declared run level'
 }
 
-@'
-rustdesk-windows-golden-v4
-builder-password-never-expires=true
-builder-logon-task=interactive
-setup-complete=true
-'@ | Set-Content -Encoding ASCII 'C:\guest-setup-done.txt'
+$receipt = "rustdesk-windows-golden-v4`r`nbuilder-password-never-expires=true`r`nbuilder-logon-task=interactive`r`nsetup-complete=true`r`n"
+[IO.File]::WriteAllBytes('C:\guest-setup-done.txt', [Text.Encoding]::ASCII.GetBytes($receipt))
 Log 'guest toolchain provisioning complete -- shutting down (this powered-off image IS the golden)'
 # Shut down so provision-windows-vm.sh's `virt-install --wait` returns and the golden is the
 # clean, provisioned baseline. A failed setup leaves NO marker + never shuts down -> the wait

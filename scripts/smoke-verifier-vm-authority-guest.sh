@@ -6624,6 +6624,19 @@ run_flutter_model_tests() {
     fi
 }
 
+flutter_peer_provider_docker() {
+    local status=0
+    setpriv --reuid=1000 --regid=1000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT" >/dev/null || return 1
+    setpriv --reuid=1000 --regid=1000 --clear-groups \
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_CONFIG="$CONFIG_ROOT" "$CLIENT" \
+        --host "unix://$SOCK" --config "$CONFIG_ROOT" "$@" || status=$?
+    setpriv --reuid=1000 --regid=1000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT" >/dev/null || return 1
+    return "$status"
+}
+
 run_flutter_peer_presentation() {
     local sealed_root=/mnt/rustdesk-sealed-inputs
     local candidate_root=/mnt/rustdesk-flutter-candidate-input
@@ -6638,6 +6651,9 @@ run_flutter_peer_presentation() {
     local devcheck_archive= builder_archive= candidate_archive=
     local output=$ROOT/flutter-peer-presentation.out
     local source_archive_sha load_output mount_options peer_status=0 trace_abort
+    local provider_build=$ROOT/flutter-peer-input-provider-build
+    local provider_installed=$ROOT/flutter-peer-input-provider-installed
+    local provider_copy provider_output provider_sha provider_bytes provider_source_sha inspect
     local -a peer_args=()
     local -a peer_environment=()
 
@@ -6885,6 +6901,69 @@ run_flutter_peer_presentation() {
           'FATAL: caller DOCKER_HOST authority is forbidden' ] \
         || fail 'caller-authority Flutter full-peer workload refusal differs'
 
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ]; then
+        [ ! -e "$provider_build" ] && [ ! -L "$provider_build" ] \
+            && [ ! -e "$provider_installed" ] && [ ! -L "$provider_installed" ] \
+            || fail 'Flutter peer input-provider preparation is already occupied'
+        provider_source_sha="$(cd "$source_root" && sha256sum \
+            libs/libxdo-sys-stub/native/build.py libs/libxdo-sys-stub/native/xdo.c \
+            libs/libxdo-sys-stub/native/xdo.h libs/libxdo-sys-stub/native/xdo_version.h \
+            | sha256sum | awk '{print $1}')"
+        install -d -o 1000 -g 1000 -m 0700 "$provider_build"
+        for provider_copy in first second; do
+            install -d -o 1000 -g 1000 -m 0700 "$provider_build/$provider_copy"
+            CONTAINER_ID="$(flutter_peer_provider_docker create \
+                --pull=never --network=none --read-only --user 1000:1000 \
+                --cap-drop=ALL --security-opt=no-new-privileges \
+                --security-opt=apparmor=docker-default --pids-limit=128 \
+                --memory=512m --memory-swap=512m --cpus=2 --ulimit core=0:0 \
+                --mount "type=bind,source=$source_root,target=/source,readonly,bind-recursive=disabled" \
+                --mount "type=bind,source=$provider_build/$provider_copy,target=/provider-build,bind-recursive=disabled" \
+                --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m,mode=700,uid=1000,gid=1000 \
+                "$DEV_CHECK_IMAGE_CONFIG_ID" /usr/bin/python3 -I -S \
+                /source/libs/libxdo-sys-stub/native/build.py \
+                --output /provider-build/libxdo.so.3)" \
+                || fail 'cannot create the nonroot Flutter peer input-provider compiler'
+            [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'input-provider compiler identity differs'
+            inspect="$(flutter_peer_provider_docker inspect --format \
+                '{{.Image}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' "$CONTAINER_ID")"
+            [ "$inspect" = "$DEV_CHECK_IMAGE_CONFIG_ID|none|true|1000:1000|false||private|private|[]|{}|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]" ] \
+                || fail 'Flutter peer input-provider compiler authority differs'
+            inspect="$(flutter_peer_provider_docker inspect --format \
+                '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
+            [ "$inspect" = "$(printf '%s\n' "bind|$source_root|/source|false" \
+                "bind|$provider_build/$provider_copy|/provider-build|true" | LC_ALL=C sort)" ] \
+                || fail 'Flutter peer input-provider compiler mounts differ'
+            provider_output=$ROOT/flutter-peer-input-provider-$provider_copy.out
+            flutter_peer_provider_docker start --attach "$CONTAINER_ID" >"$provider_output" 2>&1 \
+                || { cat "$provider_output" >&2; fail 'Flutter peer input-provider compilation failed'; }
+            [ "$(flutter_peer_provider_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+                || fail 'Flutter peer input-provider compiler did not join cleanly'
+            flutter_peer_provider_docker rm "$CONTAINER_ID" >/dev/null
+            CONTAINER_ID=
+            [ -f "$provider_build/$provider_copy/libxdo.so.3" ] \
+                && [ ! -L "$provider_build/$provider_copy/libxdo.so.3" ] \
+                && [ "$(stat -c '%u:%g:%a:%h' "$provider_build/$provider_copy/libxdo.so.3")" = 1000:1000:644:1 ] \
+                || fail 'Flutter peer compiled input-provider metadata differs'
+            provider_bytes="$(stat -c '%s' "$provider_build/$provider_copy/libxdo.so.3")"
+            [ "$provider_bytes" -gt 0 ] && [ "$provider_bytes" -le 1048576 ] \
+                || fail 'Flutter peer compiled input-provider byte bound differs'
+            provider_sha="$(sha256sum <"$provider_build/$provider_copy/libxdo.so.3" | awk '{print $1}')"
+            [ "$(grep -Fxc "NATIVE_XDO_BUILD=pass sha256=$provider_sha bytes=$provider_bytes version=3.20160805.1-rustdesk24 source=checked-in" "$provider_output")" -eq 1 ] \
+                || fail 'Flutter peer input-provider build receipt differs'
+            cat "$provider_output"
+        done
+        cmp -s "$provider_build/first/libxdo.so.3" "$provider_build/second/libxdo.so.3" \
+            || fail 'Flutter peer input-provider builds are not byte-identical'
+        install -d -o 0 -g 0 -m 0555 "$provider_installed"
+        install -o 0 -g 0 -m 0444 "$provider_build/first/libxdo.so.3" "$provider_installed/libxdo.so.3"
+        [ "$(stat -c '%u:%g:%a:%h:%s' "$provider_installed/libxdo.so.3")" = "0:0:444:1:$provider_bytes" ] \
+            && [ "$(sha256sum <"$provider_installed/libxdo.so.3" | awk '{print $1}')" = "$provider_sha" ] \
+            || fail 'protected Flutter peer input-provider installation differs'
+        printf 'FLUTTER_PEER_INPUT_PROVIDER_PREPARED=pass sha256=%s bytes=%s source_commit=%s source_sha256=%s builds=2 equality=bytes instrumentation=none root=disposable-guest-only fixed_path=/usr/lib/rustdesk-fork/libxdo.so.3\n' \
+            "$provider_sha" "$provider_bytes" "$FLUTTER_PEER_SOURCE_COMMIT" "$provider_source_sha"
+    fi
+
     peer_args=(
         --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE"
         --commit "$FLUTTER_PEER_SOURCE_COMMIT"
@@ -6911,6 +6990,13 @@ run_flutter_peer_presentation() {
         2>&1 | tee "$output"
     peer_status=${PIPESTATUS[0]}
     set -e
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ]; then
+        [ "$(stat -c '%u:%g:%a:%h:%s' "$provider_installed/libxdo.so.3")" = "0:0:444:1:$provider_bytes" ] \
+            && [ "$(sha256sum <"$provider_installed/libxdo.so.3" | awk '{print $1}')" = "$provider_sha" ] \
+            || fail 'protected Flutter peer input provider changed during replay'
+        printf 'FLUTTER_PEER_INPUT_PROVIDER_RETIRED=pass sha256=%s unchanged=before-after peer_status=%s\n' \
+            "$provider_sha" "$peer_status"
+    fi
     [ "$peer_status" -eq 0 ] \
         || { tail -n 240 "$output" >&2; fail "Flutter full-peer workload exited with status $peer_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 8388608 ] \

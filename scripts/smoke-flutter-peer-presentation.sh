@@ -145,6 +145,55 @@ else
 fi
 readonly FAILURE_ARTIFACT_DIR APP_OUTPUT_PARENT
 
+readonly INPUT_PROVIDER=/var/tmp/rustdesk-verifier-authority/flutter-peer-input-provider-installed
+input_provider_binding() {
+  /usr/bin/python3 -I -S - "$INPUT_PROVIDER" <<'PY'
+import hashlib
+import os
+from pathlib import Path
+import stat
+import sys
+path = Path(sys.argv[1])
+if path.resolve(strict=True) != path:
+    raise RuntimeError("input-provider installation is not canonical")
+fields = lambda s: (s.st_dev, s.st_ino, s.st_uid, s.st_gid, s.st_mode,
+                    s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+try:
+    parent = os.fstat(directory)
+    if (parent.st_uid, parent.st_gid, stat.S_IMODE(parent.st_mode)) != (0, 0, 0o555) \
+            or os.listxattr(directory) or os.listdir(directory) != ["libxdo.so.3"]:
+        raise RuntimeError("input-provider directory authority differs")
+    library = os.open("libxdo.so.3", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory)
+    try:
+        before = os.fstat(library)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 \
+                or (before.st_uid, before.st_gid, stat.S_IMODE(before.st_mode)) != (0, 0, 0o444) \
+                or not 0 < before.st_size <= 1048576 or os.listxattr(library):
+            raise RuntimeError("input-provider file authority differs")
+        digest = hashlib.sha256()
+        while True:
+            block = os.read(library, 65536)
+            if not block:
+                break
+            digest.update(block)
+        if fields(os.fstat(library)) != fields(before) or fields(os.fstat(directory)) != fields(parent):
+            raise RuntimeError("input-provider identity changed during admission")
+        print(digest.hexdigest(), ":".join(map(str, fields(parent))), ":".join(map(str, fields(before))))
+    finally:
+        os.close(library)
+finally:
+    os.close(directory)
+PY
+}
+INPUT_PROVIDER_BINDING=
+INPUT_PROVIDER_SHA256=
+if [ "$BUILD_APP_ONLY" -eq 0 ]; then
+  INPUT_PROVIDER_BINDING="$(input_provider_binding)" || die 'protected input-provider admission failed'
+  read -r INPUT_PROVIDER_SHA256 _ <<<"$INPUT_PROVIDER_BINDING"
+fi
+readonly INPUT_PROVIDER_BINDING INPUT_PROVIDER_SHA256
+
 EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"
 EVIDENCE_PUB_CACHE_SHA256="$SHA256_PUB_CACHE_CLOSURE_V1"
 BUILD_PROJECT_LOCK_MODE=source-current
@@ -458,6 +507,7 @@ inspect_container_contract() {
   local passwd_mounts=0 machine_id_mounts=0 diagnostic_mounts=0
   local atspi_root_mounts=0 atspi_launcher_mounts=0 atspi_registry_mounts=0
   local atspi_defaults_mounts=0 atspi_services_mounts=0
+  local input_provider_mounts=0
   local receipt_ends=0
   case "$label" in
     server) expected_machine_id_source=$SERVER_MACHINE_ID ;;
@@ -531,6 +581,11 @@ inspect_container_contract() {
           || die "$label app checksum mount contract differs"
         app_checksum_mounts=$((app_checksum_mounts + 1))
         ;;
+      /usr/lib/rustdesk-fork)
+        [ "$source" = "$INPUT_PROVIDER" ] && [ "$writable" = false ] \
+          || die "$label private input-provider mount contract differs"
+        input_provider_mounts=$((input_provider_mounts + 1))
+        ;;
       /xvfb-root)
         [ "$source" = "$XVFB_ROOT" ] && [ "$writable" = false ] \
           || die "$label Xvfb root mount contract differs"
@@ -600,6 +655,7 @@ inspect_container_contract() {
     && [ "$app_checksum_mounts" -eq 1 ] && [ "$xvfb_root_mounts" -eq 1 ] \
     && [ "$xkbcomp_mounts" -eq 1 ] && [ "$coord_mounts" -eq 1 ] \
     && [ "$machine_id_mounts" -eq 1 ] \
+    && [ "$input_provider_mounts" -eq 1 ] \
     || die "$label runtime mount cardinality differs"
   if [ -n "$expected_passwd_source" ]; then
     [ "$passwd_mounts" -eq 1 ] && [ "$diagnostic_mounts" -eq 1 ] \
@@ -626,17 +682,21 @@ capture_viewer_failure() {
     -mindepth 1 -maxdepth 1 -type f -name 'core.*' -print0)
   [ "${#core_files[@]}" -le 1 ] \
     || die "viewer produced multiple bounded cores: ${#core_files[@]}"
-  mkdir -m 0700 -- "$destination" "$destination/bundle" "$destination/bundle/lib"
+  mkdir -m 0700 -- "$destination" "$destination/bundle" "$destination/bundle/lib" \
+    "$destination/input-provider"
   if [ "${#core_files[@]}" -eq 1 ]; then
     mv -- "${core_files[0]}" "$destination/core"
   fi
   cp -a -- "$APP_EXECUTION/bundle/rustdesk" "$destination/bundle/rustdesk"
   cp -a -- "$APP_EXECUTION/bundle/lib/." "$destination/bundle/lib/"
+  [ "$(input_provider_binding)" = "$INPUT_PROVIDER_BINDING" ] \
+    || die 'private input provider changed before failure capture'
+  cp -- "$INPUT_PROVIDER/libxdo.so.3" "$destination/input-provider/libxdo.so.3"
   cp -- "$viewer_log" "$destination/viewer.log"
-  printf 'cycle=%s\nviewer_status=%s\nharness_commit=%s\nharness_tree=%s\napp_commit=%s\napp_tree=%s\napp_manifest_sha256=%s\nflutter=%s\ncore_pattern=/diagnostic/core.%%p\n' \
+  printf 'cycle=%s\nviewer_status=%s\nharness_commit=%s\nharness_tree=%s\napp_commit=%s\napp_tree=%s\napp_manifest_sha256=%s\nflutter=%s\ninput_provider_sha256=%s\ncore_pattern=/diagnostic/core.%%p\n' \
     "$cycle" "$viewer_status" "$SOURCE_COMMIT" "$SOURCE_TREE" \
     "$APP_COMMIT" "$APP_TREE" "$APP_MANIFEST_SHA256" \
-    "$BUILD_FLUTTER_VERSION" > "$destination/identity"
+    "$BUILD_FLUTTER_VERSION" "$INPUT_PROVIDER_SHA256" > "$destination/identity"
   (
     cd "$destination"
     find . -type f ! -name SHA256SUMS -print0 \
@@ -970,6 +1030,7 @@ peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --mount "type=bind,source=$BUILD_OUTPUT,target=/out,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$APP_EXECUTION,target=/app,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$APP_CHECKSUMS,target=/app.sha256,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$INPUT_PROVIDER,target=/usr/lib/rustdesk-fork,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
@@ -1011,6 +1072,7 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --mount "type=bind,source=$BUILD_OUTPUT,target=/out,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$APP_EXECUTION,target=/app,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$APP_CHECKSUMS,target=/app.sha256,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$INPUT_PROVIDER,target=/usr/lib/rustdesk-fork,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
@@ -1068,6 +1130,12 @@ for _ in $(seq 1 900); do
 done
 peer_vm_docker logs "$SERVER_CID" > "$SERVER_LOG" 2>&1 || true
 cat "$SERVER_LOG"
+[ "$(input_provider_binding)" = "$INPUT_PROVIDER_BINDING" ] \
+  || die 'protected private input provider changed during the peer cycle'
+grep -Fq 'libxdo-sys Loaded /usr/lib/rustdesk-fork/libxdo.so.3' "$SERVER_LOG" \
+  || die 'serving process did not load the protected private input provider'
+printf 'FLUTTER_PEER_INPUT_PROVIDER_OBSERVED=pass cycle=%s sha256=%s unchanged=before-after instrumentation=none\n' \
+  "$cycle" "$INPUT_PROVIDER_SHA256"
 [ "$server_stopped" -eq 1 ] || die 'controlled peer container did not retire'
 server_status="$(peer_vm_docker inspect --format '{{.State.ExitCode}}' "$SERVER_CID")"
 [[ "$server_status" =~ ^[0-9]+$ ]] || die 'server exit status is malformed'

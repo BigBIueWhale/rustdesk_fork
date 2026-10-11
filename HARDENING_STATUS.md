@@ -149,9 +149,11 @@ self-loading mutation machinery, stale fixtures, and ceremonial tests that estab
 artifact, performance, resource, lifecycle, and reproducibility claims require the isolated runtime evidence named
 by their requirements and the STOP-SHIP matrices below.
 
-Isolated execution of `scripts/verify-windows-harness.py --repo . --self-test` remains **OPEN**:
-its four exact rejection regressions and seven bounded behavioral suites have not been replayed on the
-current source. Syntax and structural inspection do not establish checker or Windows runtime acceptance.
+`scripts/verify-windows-harness.py --self-test` no longer mutates its source inputs and reruns
+its own validator four times. Existing source guards and seven bounded harness/artifact suites
+remain; receipt fixtures establish parser rejection only. The seven-suite isolated replay is
+**OPEN**. The installer-package lane checks source contracts without `--self-test`; that path
+does not establish these suites or native Windows acceptance. Current-source execution is pending.
 
 Further cleanup must classify remaining prose and purported tests by the current requirement or real behavior they
 protect, preserve load-bearing contracts and executable coverage, and delete obsolete history or make-believe proof.

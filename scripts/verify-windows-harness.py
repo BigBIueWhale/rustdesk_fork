@@ -2886,66 +2886,9 @@ def run_behavioral_self_tests(repo: pathlib.Path) -> None:
     )
     for command, marker, description, timeout_seconds in tests:
         run_bounded_self_test(repo, command, marker, description, timeout_seconds)
-
-
-def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
-    mutations = [
-        (
-            "Windows missing default feature declaration",
-            "cargo",
-            'default = ["use_dasp"]',
-            'default-retired = ["use_dasp"]',
-        ),
-        (
-            "Windows full-peer probe enabled by default",
-            "cargo",
-            'default = ["use_dasp"]',
-            'default = ["use_dasp", "windows-full-peer-presentation-probe"]',
-        ),
-        (
-            "Windows extra diagnostic preference save",
-            "guest",
-            "$savedErrorActionPreference = $ErrorActionPreference",
-            "$savedErrorActionPreference = $ErrorActionPreference\n"
-            "    $savedErrorActionPreference = $ErrorActionPreference",
-        ),
-        (
-            "Windows extra diagnostic preference restore",
-            "guest",
-            "$ErrorActionPreference = $savedErrorActionPreference",
-            "$ErrorActionPreference = $savedErrorActionPreference\n"
-            "        $ErrorActionPreference = $savedErrorActionPreference",
-        ),
-    ]
-    expected_rejection_errors = {
-        "Windows missing default feature declaration":
-            "Windows full-peer presentation probe feature is absent from or present in the default feature line",
-        "Windows full-peer probe enabled by default":
-            "Windows full-peer presentation probe feature is absent from or present in the default feature line",
-        "Windows extra diagnostic preference save":
-            "guest must isolate both native PowerShell diagnostic-capture boundaries",
-        "Windows extra diagnostic preference restore":
-            "guest must restore fail-loud behavior after both diagnostic-capture boundaries",
-    }
-    for description, name, old, new in mutations:
-        mutated = dict(sources)
-        if old not in mutated[name]:
-            raise VerificationError(f"self-test fixture is absent for {description}")
-        mutated[name] = mutated[name].replace(old, new, 1)
-        expected = expected_rejection_errors[description]
-        try:
-            validate_sources(mutated)
-        except VerificationError as error:
-            if str(error) != expected:
-                raise VerificationError(
-                    f"self-test {description} failed for the wrong reason: {error}"
-                ) from error
-            continue
-        raise VerificationError(f"self-test mutation was accepted: {description}")
-    run_behavioral_self_tests(repo)
     print(
         "verify-windows-harness self-test: ok "
-        f"({len(mutations)} exact rejection regressions, 7 bounded behavioral suites)"
+        "(7 bounded harness/artifact suites; native Windows unexecuted)"
     )
 
 
@@ -2961,7 +2904,7 @@ def main(argv: list[str]) -> int:
     sources = load_sources(args.repo.resolve())
     validate_sources(sources)
     if args.self_test:
-        run_self_test(args.repo.resolve(), sources)
+        run_behavioral_self_tests(args.repo.resolve())
     else:
         print("verify-windows-harness: ok")
     return 0

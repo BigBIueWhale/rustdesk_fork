@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-7f6a64258cc0757dc08c31af9edc3030c8ae0a67e5e88bbd4899b33a08e06cd8  requirements.html
+ff51cecc78492ecc39d91c20500b746155107e19cb5bb011a921dc811e7dd124  requirements.html
 ```
 
 ## Current Verdict
@@ -75,7 +75,7 @@ These documentation corrections supply no compiler, artifact, scanner or native 
 | --- | --- |
 | R-S11b-3q / Appendix C #241 | The typed-PRS availability, sole receiver-derived status, preset/local-surface exclusion and startup-refusal contract is intact. R-S11b-3q's obsolete-API repair narrative is removed; the full normative opening and required suffix and Appendix disposition are unchanged. |
 | Appendix C #118 | Repair narration is removed; the full Windows terminal principal, token/lease identity, cancellation, pipe rights, output/finality bounds, teardown and referenced contract remain. |
-| Appendix C #354–#356 | Findings retain timeless refresh, native display-owner and cursor-publication risks. Source-repair narration and symptom-causation theories are deleted; all three complete dispositions, requirement bodies, IDs and references are unchanged. |
+| Appendix C #354–#362 | Findings retain timeless refresh, native display/cursor ownership, service/CM/writer bounds, clipboard routing and terminal-log risks. Source-repair narration and symptom theories are deleted; all nine complete dispositions, requirement bodies, IDs and references are unchanged. |
 | Appendix C #182/#183 | Scanner-failure, freshness, mutable-input and verdict-authority risks replace chronology and obsolete advisory dates; both required dispositions and references remain. |
 | §12.1 | Debian/Android compilation and separate Android signing require the admitted no-NIC verifier VM and sole R-S11cj acquisition. Direct-host Docker, per-builder fetching and host-forwarded control recipes are deleted. Target/toolchain pins, complete offline closure, software codecs, stable certificate/content verification, independent generated state, epoch and cold equality remain binding. |
 | R-B7 / §15 | Every release target requires a reproduced pinned upstream baseline and complete fork-delta accounting. False two-delta/verbatim-build claims are removed from the specification and three builder headers; Windows bridge commentary names the VM. FRB 1.80.1, authenticated offline code generation, pass-private state, VM authority and native/cold acceptance remain; builder command bytes are unchanged. |
@@ -2011,7 +2011,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `7f6a64258cc0757dc08c31af9edc3030c8ae0a67e5e88bbd4899b33a08e06cd8  requirements.html`.
+Current normative specification SHA-256: `ff51cecc78492ecc39d91c20500b746155107e19cb5bb011a921dc811e7dd124  requirements.html`.
 
 ### Current authority and source closure
 

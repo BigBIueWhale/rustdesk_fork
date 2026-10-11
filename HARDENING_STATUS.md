@@ -3248,69 +3248,49 @@ authority and broader native/installed/release acceptance remain OPEN.
 ordinal `DisplayInfo`; resolution and capturer creation reconstruct `CameraIndex::Index` from that ordinal.
 A nonzero-only Linux node can therefore be advertised at ordinal zero and then opened as native zero.
 The Linux name also comes from the first enumerated info when another index-zero device was selected.
-`src/server/video_service.rs::get_capturer_camera` reads metadata and creates capture separately while
-another ViewCamera login can replace their process-wide catalog. A cache-only index lookup would leave
-that identity/metadata/lifetime ambiguity. The replacement needs one owned native identity, matching
-metadata and a coherent catalog/capture generation; hotplug and overlapping logins require native replay.
+`src/server/video_service.rs::get_capturer_camera` reads metadata and creates capture separately;
+ViewCamera logins replace that process-wide catalog while `src/server.rs` keys camera services by ordinal.
+The correction must bind advertised metadata, the selected native handle, connection and service to one
+owned catalog/capture generation. An index cache alone cannot establish that lifetime.
 
-Offline inspection authenticated the exact `20260712-2537` base and read its
-`/boot/config-6.1.0-50-cloud-amd64`: **`# CONFIG_MEDIA_SUPPORT is not set`**. Full 123,137-byte config,
-SHA-256 `a45c93c38bf743189078b34efdd52881fb6a12e505a9af13d8e174fa109ad4e3`, and byte-equal source/control
-observations are retained in `.harness-state/verifier-vm/camera-kernel-inspection-61d8cb61-complete`.
-This is authenticated input inspection, not camera execution. Linux's documented
-[vivid driver](https://docs.kernel.org/admin-guide/media/vivid.html) can provide guest-only V4L2 capture
-with a selectable nonzero node; the retained cloud kernel cannot provide that media topology.
-The closed `scripts/online-fetch.sh --maintenance-acquire-verifier-media-kernel` transaction passed at
-source `027e6218419438f72d99012f6b3766f68d9eb8d6` in a 54-second acquisition VM phase. Its immutable
-nonroot devcheck container verified both exact Bookworm signing principals, authenticated the by-hash
-Packages index, and cross-checked the fixed package digest against Debian's independent
-[package metadata](https://packages.debian.org/bookworm/amd64/linux-image-6.1.0-50-amd64/download).
-`online/candidates/verifier-media-kernel` retains the 70,305,560-byte `6.1.176-1` package,
-SHA-256 `7b5597492a0a65aee61985a492e6bcc3f2cde830072a0e3b3d8c7e1b90279bd3`, signed metadata,
-259,569-byte config and 4,022-module inventory, including actual `vivid.ko` and `videodev.ko` members.
-The config has `CONFIG_MEDIA_SUPPORT=m`, `CONFIG_VIDEO_DEV=m`, `CONFIG_VIDEO_VIVID=m`.
-Real gpgv checks rejected altered Release bytes and an automatic-only keyring lacking the required
-stable principal; an occupied-output invocation refused before VM allocation. Extra unknown-key
-signatures cannot supply either required principal; the parser rejects bad, expired, revoked, weak
-or ambiguous verifier status. These native negatives do not establish current key-revocation discovery.
-Raw `online-fetch-run.g8E8ylI6W7.serial.log` is 67,195 bytes, SHA-256
-`ed27b60a269be005588ebba1aeb74f16e76e17f227c19f7e8209866918aa0a24`; its v5 receipt binds source,
-streams and joined cleanup. No host listener was added; all 1,284 source/control/input observations
-were unchanged. Six exact freeze records, terminal observations, preserved failure-tree inventories and
-accepted stdout are retained in `.harness-state/verifier-vm/media-kernel-027e6218-evidence`.
-That acquisition performed inert package inspection; guest execution is established separately below.
+**Additional supplier source findings; native reproduction OPEN.** The locked nokhwa revision
+`c2f74662b6ce117f7f94301693fdfadc0b1ec91a` uses a process-global weak device cache keyed only by numeric
+index (`nokhwa-bindings-linux/src/lib.rs::new_shared_device`, lines 143–205). An existing live entry is
+returned without reopening the current node; a catalog refresh cannot establish fresh native identity.
+Its `devices.len() > 1` assertion compares a count from `windows(2)` with the full list length: that count
+is at most `len - 1`, so a successful second distinct retained-device open reaches an impossible assertion.
+This is an availability finding from source, not a demonstrated privilege escalation or native crash.
+The [pinned supplier source](https://github.com/rustdesk-org/nokhwa/blob/c2f74662b6ce117f7f94301693fdfadc0b1ec91a/nokhwa-bindings-linux/src/lib.rs)
+contains both paths; the retained vendor file matches its Cargo checksum entry, SHA-256
+`9fb446f29bcc50a20e786704f9c91bcf404a744208a361264a7e4e0fc1573da4`.
+Native acceptance must cover two distinct retained opens and node-index reuse with an old handle still
+live, as well as nonzero discovery, matching metadata, failed discovery, hotplug and overlapping logins.
 
-The closed `python3 -I -S scripts/smoke-verifier-media.py` passed at final harness source
-`dce168983c3214249c7f0f0b72f7509705b876cb`: provisioning took 25 seconds and native capture 8 seconds.
-The ordinary-user launcher admits the fixed package/kernel/config pins, retains exact input descriptors
-and the shared-root lock, uses read-only input media and a pass-private overlay, and gives QEMU no NIC,
-host share/device or TCP control listener. Guest root extracts to a private package stage, preserves
-Debian's `/lib → usr/lib` identity, and places only fixed boot members and the matching 4,022-module tree.
-It runs the authenticated base's `mkinitramfs` twice for explicit release `6.1.0-50-amd64` and epoch
-`1700000000`; both files are equal. The second direct boot executes the 8,222,656-byte pinned kernel,
-SHA-256 `d8808aa4ca188560da1e6d749dcb930c87a5fd8b11ebff1f3fa6d728af35203d`, and matching 38,363,830-byte
-initramfs, SHA-256 `01d13a130e0cc4d1eca987acba56b7cf6f718781cdecf6941ae8dac574d249da`.
-The identical guest recipe produced equal initramfs bytes in two accepted fresh overlays; this is
-fixture reproducibility, not independent operator reproduction or cold release R-B2/R-B10 acceptance.
+**Fixture evidence retained.** The authenticated cloud base lacks `CONFIG_MEDIA_SUPPORT`; its complete
+config and observations remain in `.harness-state/verifier-vm/camera-kernel-inspection-61d8cb61-complete`.
+The closed media-kernel acquisition passed at `027e6218419438f72d99012f6b3766f68d9eb8d6`; signed metadata,
+the fixed Debian `6.1.176-1` package and 4,022-module inventory remain in `online/candidates/verifier-media-kernel`.
+Both required Bookworm principals and the by-hash chain passed; altered Release and missing-required-signer
+negatives passed. Occupied output refused before allocation. Current key-revocation discovery is unproved.
+Exact acquisition streams, freezes and terminal records remain in `media-kernel-027e6218-evidence` under
+`.harness-state/verifier-vm`; boot/package/config identities are in `scripts/pins.env`.
 
-Actual `vivid` QUERYCAP/S_FMT and native read calls ran as guest UID/GID 4000 with no supplementary groups.
-Only `/dev/video2` existed: opening native zero returned `ENOENT`; the character device at native two
-returned four advancing 320×180 RGB3 frames, each exactly 172,800 bytes with eight complete RGB colors.
-Two actual module load/unload generations passed, including root/foreign probe-principal refusal and
-final module/node absence. All guest interfaces were loopback. Both exact QEMU processes joined;
-listener inventories were equal, all 1,281 source/control/input observations were unchanged, and exact
-overlay/raw/root/ISO/channel cleanup completed before no-clobber evidence publication.
-`.harness-state/verifier-vm/media-v4l2-run.839840d23e` retains the full 65,575-byte provisioning serial,
-SHA-256 `1e9b43dea30c078cbacaac74f6e45d396de1ba2164d56984b3b240eca91ef1b5`, and 69,355-byte fixture serial,
-SHA-256 `043b7aee7af450df1232220d10eb9eae2ca428fc397a7f79d6adb4d202d6be90`. Its receipt binds stream
-metadata/digests, source/tree, boot outputs and native results; both 328,878-byte freezes are equal.
-The first accepted recipe replay is retained in `media-v4l2-run.5c341b8fa6`; three rejected attempts and
-their exact failure evidence remain preserved. The ledger records acceptance only for the final source.
+`python3 -I -S scripts/smoke-verifier-media.py` passed at `dce168983c3214249c7f0f0b72f7509705b876cb`
+(25-second provisioning, 8-second capture). The no-NIC guest staged matching `6.1.0-50-amd64` modules,
+preserved `/lib → usr/lib`, and produced equal initramfs bytes twice at epoch `1700000000` and across
+two fresh overlays: 38,363,830 bytes, SHA-256 `01d13a130e0cc4d1eca987acba56b7cf6f718781cdecf6941ae8dac574d249da`.
+Guest UID/GID 4000, without supplementary groups, read four advancing 320×180 RGB3 frames of 172,800 bytes
+and eight RGB colors from `/dev/video2`; native zero returned `ENOENT`. Two module load/unload generations,
+root/foreign probe refusal and final module/node absence passed. Exact VM joins, unchanged host listeners,
+equal source/input freezes and owned scratch cleanup are bound by
+[the final receipt](./.harness-state/verifier-vm/media-v4l2-run.839840d23e/receipt.json), SHA-256
+`3951100fc36e74495c3adb6efa581499c76baa7b42b0d67e1f4540c212324b29`, and its complete streams/freezes.
+`media-v4l2-run.5c341b8fa6` retains the first recipe replay; three rejected trees remain preserved.
 
-This executes the guest kernel and Python V4L2 probe. Production nokhwa/RustDesk camera discovery,
-metadata/capture identity, coherent catalog generations, stale-open/hotplug/overlapping login behavior,
-physical devices, Windows cameras, canonical reusable media boot-cache promotion and broader native,
-installed and release acceptance remain OPEN. No camera product API was corrected in this slice.
+This ran the guest kernel/Python probe, with `product_executed: false`; no camera product API is corrected.
+Production nokhwa/RustDesk discovery, capture/catalog generation ownership, supplier failure reproduction,
+stale-open/hotplug/overlapping logins, physical and Windows cameras, canonical reusable media boot-cache
+promotion, independent reproduction, cold R-B2/R-B10 and broader native/installed/release acceptance remain OPEN.
 
 **Linux Flutter build/replay separation — CAPSULE/PRODUCER PASS; CURRENT REMOTE CONSUMER ACCEPTED ABOVE.**
 

@@ -541,7 +541,13 @@ fn read_clipboard_message(
         Ok(content) => {
             if !content.is_empty() {
                 let mut msg = Message::new();
-                let clipboards = proto::create_multi_clipboards(content);
+                let clipboards = match proto::create_multi_clipboards(content) {
+                    Ok(clipboards) => clipboards,
+                    Err(err) => {
+                        log::warn!("Clipboard compression failed: {err}");
+                        return None;
+                    }
+                };
                 msg.set_multi_clipboards(clipboards.clone());
                 return Some((msg, clipboards));
             }
@@ -771,7 +777,8 @@ mod native_clipboard_limit_tests {
 
     #[test]
     fn r_s7_truncated_compressed_clipboard_refuses_native_handoff() {
-        let mut compressed = hbb_common::compress::compress(b"clipboard text");
+        let mut compressed = hbb_common::compress::compress(b"clipboard text")
+            .expect("compress clipboard fixture");
         assert!(!compressed.is_empty());
         compressed.truncate(compressed.len() / 2);
         let clips = vec![Clipboard {
@@ -791,7 +798,8 @@ mod native_clipboard_limit_tests {
         ]
         .into_iter()
         .map(|(format, content)| {
-            let compressed = hbb_common::compress::compress(content);
+            let compressed = hbb_common::compress::compress(content)
+                .expect("compress clipboard fixture");
             assert!(!compressed.is_empty());
             Clipboard {
                 content: compressed.into(),
@@ -886,7 +894,7 @@ pub fn check_clipboard_cm() -> ResultType<MultiClipboards> {
     }
     if let Some(ctx) = ctx.as_mut() {
         let content = ctx.get(ClipboardSide::Host, false)?;
-        let clipboards = proto::create_multi_clipboards(content);
+        let clipboards = proto::create_multi_clipboards(content)?;
         Ok(clipboards)
     } else {
         hbb_common::bail!("Failed to create clipboard context");
@@ -1258,7 +1266,13 @@ pub fn get_current_clipboard_msg(
     let mut multi_clipboards = LAST_MULTI_CLIPBOARDS.lock().unwrap();
     if multi_clipboards.clipboards.is_empty() {
         let mut ctx = ClipboardContext::new().ok()?;
-        *multi_clipboards = proto::create_multi_clipboards(ctx.get(side, true).ok()?);
+        *multi_clipboards = match proto::create_multi_clipboards(ctx.get(side, true).ok()?) {
+            Ok(clipboards) => clipboards,
+            Err(err) => {
+                log::warn!("Clipboard compression failed: {err}");
+                return None;
+            }
+        };
     }
     if multi_clipboards.clipboards.is_empty() {
         return None;
@@ -1324,28 +1338,29 @@ mod proto {
         log,
         message_proto::{Clipboard, ClipboardFormat, Message, MultiClipboards},
     };
+    use std::io;
 
-    fn plain_to_proto(s: String, format: ClipboardFormat) -> Clipboard {
-        let compressed = compress_func(s.as_bytes());
+    fn plain_to_proto(s: String, format: ClipboardFormat) -> io::Result<Clipboard> {
+        let compressed = compress_func(s.as_bytes())?;
         let compress = compressed.len() < s.as_bytes().len();
         let content = if compress {
             compressed
         } else {
             s.bytes().collect::<Vec<u8>>()
         };
-        Clipboard {
+        Ok(Clipboard {
             compress,
             content: content.into(),
             format: format.into(),
             ..Default::default()
-        }
+        })
     }
 
     #[cfg(not(target_os = "android"))]
-    fn image_to_proto(a: arboard::ImageData) -> Clipboard {
-        match &a {
+    fn image_to_proto(a: arboard::ImageData) -> io::Result<Clipboard> {
+        Ok(match &a {
             arboard::ImageData::Rgba(rgba) => {
-                let compressed = compress_func(&a.bytes());
+                let compressed = compress_func(&a.bytes())?;
                 let compress = compressed.len() < a.bytes().len();
                 let content = if compress {
                     compressed
@@ -1368,7 +1383,7 @@ mod proto {
                 ..Default::default()
             },
             arboard::ImageData::Svg(_) => {
-                let compressed = compress_func(&a.bytes());
+                let compressed = compress_func(&a.bytes())?;
                 let compress = compressed.len() < a.bytes().len();
                 let content = if compress {
                     compressed
@@ -1382,44 +1397,47 @@ mod proto {
                     ..Default::default()
                 }
             }
-        }
+        })
     }
 
-    fn special_to_proto(d: Vec<u8>, s: String) -> Clipboard {
-        let compressed = compress_func(&d);
+    fn special_to_proto(d: Vec<u8>, s: String) -> io::Result<Clipboard> {
+        let compressed = compress_func(&d)?;
         let compress = compressed.len() < d.len();
         let content = if compress { compressed } else { d };
-        Clipboard {
+        Ok(Clipboard {
             compress,
             content: content.into(),
             format: ClipboardFormat::Special.into(),
             special_name: s,
             ..Default::default()
-        }
+        })
     }
 
     #[cfg(not(target_os = "android"))]
-    fn clipboard_data_to_proto(data: ClipboardData) -> Option<Clipboard> {
+    fn clipboard_data_to_proto(data: ClipboardData) -> io::Result<Option<Clipboard>> {
         let d = match data {
-            ClipboardData::Text(s) => plain_to_proto(s, ClipboardFormat::Text),
-            ClipboardData::Rtf(s) => plain_to_proto(s, ClipboardFormat::Rtf),
-            ClipboardData::Html(s) => plain_to_proto(s, ClipboardFormat::Html),
-            ClipboardData::Image(a) => image_to_proto(a),
-            ClipboardData::Special((s, d)) => special_to_proto(d, s),
-            _ => return None,
+            ClipboardData::Text(s) => plain_to_proto(s, ClipboardFormat::Text)?,
+            ClipboardData::Rtf(s) => plain_to_proto(s, ClipboardFormat::Rtf)?,
+            ClipboardData::Html(s) => plain_to_proto(s, ClipboardFormat::Html)?,
+            ClipboardData::Image(a) => image_to_proto(a)?,
+            ClipboardData::Special((s, d)) => special_to_proto(d, s)?,
+            _ => return Ok(None),
         };
-        Some(d)
+        Ok(Some(d))
     }
 
     #[cfg(not(target_os = "android"))]
-    pub fn create_multi_clipboards(vec_data: Vec<ClipboardData>) -> MultiClipboards {
-        MultiClipboards {
-            clipboards: vec_data
-                .into_iter()
-                .filter_map(clipboard_data_to_proto)
-                .collect(),
-            ..Default::default()
+    pub fn create_multi_clipboards(vec_data: Vec<ClipboardData>) -> io::Result<MultiClipboards> {
+        let mut clipboards = Vec::new();
+        for data in vec_data {
+            if let Some(clipboard) = clipboard_data_to_proto(data)? {
+                clipboards.push(clipboard);
+            }
         }
+        Ok(MultiClipboards {
+            clipboards,
+            ..Default::default()
+        })
     }
 
     #[cfg(not(target_os = "android"))]
@@ -1525,7 +1543,13 @@ pub fn get_clipboards_msg(client: bool) -> Option<Message> {
     let mut clipboards = scrap::android::ffi::get_clipboards(client)?;
     let mut msg = Message::new();
     for c in &mut clipboards.clipboards {
-        let compressed = hbb_common::compress::compress(&c.content);
+        let compressed = match hbb_common::compress::compress(&c.content) {
+            Ok(compressed) => compressed,
+            Err(err) => {
+                log::warn!("Android clipboard compression failed: {err}");
+                return None;
+            }
+        };
         let compress = compressed.len() < c.content.len();
         if compress {
             c.content = compressed.into();

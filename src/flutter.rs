@@ -4681,7 +4681,8 @@ mod compressed_ui_handoff_tests {
     #[test]
     fn truncated_terminal_output_does_not_post_a_success_event() {
         let handler = terminal_handler();
-        let mut encoded = hbb_common::compress::compress(b"terminal output");
+        let mut encoded = hbb_common::compress::compress(b"terminal output")
+            .expect("compress terminal fixture");
         assert!(encoded.pop().is_some());
         assert!(hbb_common::compress::try_decompress(&encoded).is_err());
         terminal_data(&handler, encoded, true);
@@ -4694,7 +4695,7 @@ mod compressed_ui_handoff_tests {
         for compressed in [false, true] {
             for payload in [&b"\x00\xffterminal\r\n"[..], &b""[..]] {
                 let encoded = if compressed {
-                    hbb_common::compress::compress(payload)
+                    hbb_common::compress::compress(payload).expect("compress terminal fixture")
                 } else {
                     payload.to_vec()
                 };
@@ -4721,7 +4722,9 @@ mod compressed_ui_handoff_tests {
         let mut cursor = CursorData {
             width: 1,
             height: 1,
-            colors: hbb_common::compress::compress(&[1, 2, 3, 4]).into(),
+            colors: hbb_common::compress::compress(&[1, 2, 3, 4])
+                .expect("compress cursor fixture")
+                .into(),
             ..Default::default()
         };
         assert_eq!(remote_cursor_rgba_for_ui(&cursor), Some(vec![1, 2, 3, 4]));
@@ -4730,8 +4733,9 @@ mod compressed_ui_handoff_tests {
         for encoded in [
             b"not a zstd frame".to_vec(),
             truncated,
-            hbb_common::compress::compress(&[]),
-            hbb_common::compress::compress(&[1, 2, 3, 4, 5]),
+            hbb_common::compress::compress(&[]).expect("compress cursor fixture"),
+            hbb_common::compress::compress(&[1, 2, 3, 4, 5])
+                .expect("compress cursor fixture"),
         ] {
             cursor.colors = encoded.into();
             assert!(remote_cursor_rgba_for_ui(&cursor).is_none());

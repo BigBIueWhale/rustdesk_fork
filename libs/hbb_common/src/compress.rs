@@ -9,24 +9,22 @@ thread_local! {
     static COMPRESSOR: RefCell<io::Result<Compressor<'static>>> = RefCell::new(Compressor::new(crate::config::COMPRESS_LEVEL));
 }
 
-pub fn compress(data: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    COMPRESSOR.with(|c| {
-        if let Ok(mut c) = c.try_borrow_mut() {
-            match &mut *c {
-                Ok(c) => match c.compress(data) {
-                    Ok(res) => out = res,
-                    Err(err) => {
-                        crate::log::debug!("Failed to compress: {}", err);
-                    }
-                },
-                Err(err) => {
-                    crate::log::debug!("Failed to get compressor: {}", err);
-                }
-            }
-        }
-    });
-    out
+pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
+    COMPRESSOR.with(|compressor| {
+        let mut state = compressor.try_borrow_mut().map_err(|err| {
+            io::Error::new(
+                io::ErrorKind::WouldBlock,
+                format!("compression context is unavailable: {err}"),
+            )
+        })?;
+        let compressor = state.as_mut().map_err(|err| {
+            io::Error::new(
+                err.kind(),
+                format!("compression context initialization failed: {err}"),
+            )
+        })?;
+        compressor.compress(data)
+    })
 }
 
 #[cfg(test)]

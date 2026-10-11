@@ -3820,7 +3820,7 @@ impl TransferJob {
                 .checked_add(offset as u64)
                 .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
             if matches!(self.data_source, DataSource::FilePath(_)) && !is_compressed_file(name) {
-                let tmp = compress(&buf);
+                let tmp = compress(&buf)?;
                 if tmp.len() < buf.len() {
                     buf = tmp;
                     compressed = true;

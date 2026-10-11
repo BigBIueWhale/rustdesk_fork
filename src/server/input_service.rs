@@ -1112,10 +1112,7 @@ fn run_cursor(sp: MouseCursorService, state: &mut StateCursor) -> ResultType<()>
                     cached
                 } else {
                     data.id = state.next_protocol_cursor_id()?;
-                    let compressed = hbb_common::compress::compress(&data.colors);
-                    if compressed.is_empty() {
-                        bail!("failed to compress local cursor data");
-                    }
+                    let compressed = hbb_common::compress::compress(&data.colors)?;
                     data.colors = compressed.into();
                     let mut tmp = Message::new();
                     tmp.set_cursor_data(data);

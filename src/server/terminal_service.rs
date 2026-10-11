@@ -3401,14 +3401,22 @@ impl TerminalServiceProxy {
         }
     }
 
-    /// Helper to create a TerminalResponse with optional compression.
-    fn create_terminal_data_response(terminal_id: i32, data: Vec<u8>) -> TerminalResponse {
+    fn create_terminal_output_response(terminal_id: i32, data: Vec<u8>) -> TerminalResponse {
         let mut response = TerminalResponse::new();
         let mut terminal_data = TerminalData::new();
         terminal_data.terminal_id = terminal_id;
 
         if data.len() > COMPRESS_THRESHOLD {
-            let compressed = compress::compress(&data);
+            let compressed = match compress::compress(&data) {
+                Ok(compressed) => compressed,
+                Err(err) => {
+                    let mut error = TerminalError::new();
+                    error.terminal_id = terminal_id;
+                    error.message = format!("Failed to compress terminal output: {err}");
+                    response.set_error(error);
+                    return response;
+                }
+            };
             if compressed.len() < data.len() {
                 terminal_data.data = bytes::Bytes::from(compressed);
                 terminal_data.compressed = true;
@@ -3556,7 +3564,7 @@ impl TerminalServiceProxy {
                         responses.push(Self::current_session_output(
                             terminal_id,
                             &session_arc,
-                            Self::create_terminal_data_response(terminal_id, buffer),
+                            Self::create_terminal_output_response(terminal_id, buffer),
                         ));
                     }
                 }
@@ -3607,7 +3615,7 @@ impl TerminalServiceProxy {
                     responses.push(Self::current_session_output(
                         terminal_id,
                         &session_arc,
-                        Self::create_terminal_data_response(terminal_id, data),
+                        Self::create_terminal_output_response(terminal_id, data),
                     ));
                 }
                 let output_exhaustion_is_observable =

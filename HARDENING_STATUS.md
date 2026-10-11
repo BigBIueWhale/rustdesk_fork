@@ -6473,11 +6473,23 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   owns each acquisition container and only its typed cache outputs. Host Docker, root, a live-source mount,
   host forwarding/TAP/bridge, a published port, and a non-loopback management listener are absent.
 
-  Acquisition serial retention is source-corrected; native replay is pending. The existing bounded
-  archiver now retains `online-fetch-run.<nonce>.serial.log` outside disposable scratch, refuses
-  replacement, and requires exact metadata, byte equality and digest before success. The v5 receipt
-  names that archive; older v4 receipts remain historical hash-only records. No new acquisition,
-  advisory verdict, installed/native product or release acceptance follows from this source change.
+  Acquisition serial retention passed native replay at source `2235b68a1d01a5b890dda5a5d3c5b654c51e65c1`.
+  The existing archiver retains a bounded, no-clobber, fsynced 0600 serial copy outside disposable scratch;
+  success requires exact metadata, byte equality and digest, and the v5 receipt names the archive.
+  `scripts/smoke-verifier-vm-authority.sh --android-runtime-log-tests` passed in a 38-second zero-NIC VM
+  phase, including four real archive cases: exact retention, occupied preservation, symlink refusal and
+  bounded overflow refusal. Its raw `android-runtime-log-tests-run.c9NQB7JR48.serial.log` is 66,415 bytes,
+  SHA-256 `372491d732943efd4999fb7b9a0e4f58dd675878cb69acb0db514d288ebf848d`; no Android device ran.
+  `scripts/online-fetch.sh --maintenance-discover-osv-pub-database` passed in a 42-second acquisition VM
+  phase. After scratch retirement, `online-fetch-runs/online-fetch-run.HBjmVxxZMd.serial.log` retains
+  68,538 bytes, SHA-256 `1649deb2b1aa241337c56b2ad302e84acbc04e128b6e0a4aec264726e01207b0`;
+  `online-fetch-receipts/run.HBjmVxxZMd.receipt` binds its exact path, bytes, digest and source.
+  Both runs joined cleanup without added host listeners. Four exact 289,902-byte source/control/input
+  freezes and observed tool records are retained in `.harness-state/verifier-vm/acquisition-serial-2235b68a-evidence`;
+  each before/after pair is byte-equal, and retained discovery stdout equals the receipt digest.
+  Discovery still reports the pinned September 10 Pub snapshot, now beyond the 30-day age limit;
+  freshness remains OPEN. No pins, database/image promotion, scanner verdict or product acceptance changed.
+  Older v4 receipts remain historical hash-only records; these local observations are not independent attestation.
 
   Every non-bootstrap `online-fetch.sh` request enters that VM before Docker inspection. The host authenticates
   the Debian qcow2, direct-boot kernel/initramfs, static Docker archive, Debian Git package, and Ubuntu

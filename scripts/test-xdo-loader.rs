@@ -1,7 +1,7 @@
 //! Native test of the complete production loader through its public API.
 use hbb_common::{libc, libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW}, x11::{keysym::*, xlib::*}};
 use libxdo_sys::*;
-use std::{collections::HashSet, ffi::CString, ptr};
+use std::{collections::HashSet, ffi::CString, io::Read, os::unix::fs::MetadataExt, ptr};
 
 #[link(name = "Xtst")]
 extern "C" {
@@ -26,10 +26,49 @@ unsafe fn state(context: *const xdo_t) -> XdoInputState {
     value
 }
 
+fn assert_provider_mappings(loaded: bool) {
+    let path = "/usr/lib/rustdesk-fork/libxdo.so.3";
+    let before = loaded.then(|| std::fs::metadata(path).unwrap());
+    let mut maps = String::new();
+    std::fs::File::open("/proc/self/maps").unwrap().take(1024 * 1024 + 1)
+        .read_to_string(&mut maps).unwrap();
+    assert!(maps.len() <= 1024 * 1024, "process mapping inventory exceeded its bound");
+    let mappings: Vec<_> = maps.lines().map(|line| line.split_whitespace().collect::<Vec<_>>())
+        .filter(|fields| fields.get(5).is_some_and(|name| {
+            name.rsplit('/').next().is_some_and(|name| name.starts_with("libxdo.so"))
+        })).collect();
+    if !loaded {
+        assert!(mappings.is_empty(), "refused or unrequested XDO provider remains mapped");
+        return;
+    }
+    let before = before.unwrap();
+    assert!(before.is_file());
+    assert_eq!((before.uid(), before.gid(), before.mode() & 0o7777), (0, 0, 0o644));
+    assert!(!mappings.is_empty(), "accepted provider has no kernel mapping");
+    assert!(mappings.iter().any(|fields| fields[1].contains('x')),
+            "accepted provider has no executable mapping");
+    for fields in mappings {
+        assert_eq!(fields.len(), 6, "provider mapping is deleted or has an unexpected pathname");
+        assert_eq!(fields[5], path, "another XDO provider is mapped");
+        let (major, minor) = fields[3].split_once(':').unwrap();
+        assert_eq!(u32::from_str_radix(major, 16).unwrap(), libc::major(before.dev()));
+        assert_eq!(u32::from_str_radix(minor, 16).unwrap(), libc::minor(before.dev()));
+        assert_eq!(fields[4].parse::<u64>().unwrap(), before.ino(),
+                   "mapped provider differs from the staged executable object");
+    }
+    let after = std::fs::metadata(path).unwrap();
+    assert_eq!((before.dev(), before.ino(), before.mode(), before.uid(), before.gid(),
+                before.len(), before.mtime(), before.mtime_nsec(), before.ctime(), before.ctime_nsec()),
+               (after.dev(), after.ino(), after.mode(), after.uid(), after.gid(),
+                after.len(), after.mtime(), after.mtime_nsec(), after.ctime(), after.ctime_nsec()),
+               "staged provider identity changed during mapping observation");
+}
+
 fn main() {
     assert_eq!(unsafe { libc::geteuid() }, 4000);
     assert_eq!(unsafe { libc::getegid() }, 4000);
     let scenario = std::env::args().nth(1).unwrap();
+    assert_provider_mappings(false);
     let baseline = descriptors();
     let name = CString::new(":98").unwrap();
     let display = DisplayOwner(unsafe { XOpenDisplay(name.as_ptr()) });
@@ -39,6 +78,7 @@ fn main() {
     let mut unpublished = XdoInputState { pointer_mask: 0xa5a5a5a5, ..Default::default() };
     assert_ne!(unsafe { xdo_query_input_state(ptr::null(), &mut unpublished) }, 0);
     assert_eq!(unpublished.pointer_mask, 0xa5a5a5a5);
+    assert_provider_mappings(scenario == "complete" || scenario == "no-xtest");
     if scenario != "complete" {
         if scenario == "no-xtest" {
             unsafe {
@@ -59,6 +99,7 @@ fn main() {
         drop(context);
         drop(display);
         assert_eq!(descriptors(), baseline);
+        assert_provider_mappings(scenario == "no-xtest");
         assert!(!admitted, "incomplete or unavailable provider admitted a native context");
         let capability = if scenario == "no-xtest" { " extension=absent paths=3 borrowed_display=usable" } else { "" };
         println!("XDO_LOADER_COMPONENT=pass scenario={scenario} constructors=refused{capability} descriptors=retired");
@@ -136,5 +177,6 @@ fn main() {
     assert_eq!(unsafe { xdo_free(ptr::null_mut()) }, 0);
     assert_eq!(descriptors(), baseline);
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), 1);
+    assert_provider_mappings(true);
     println!("XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a input=xtest retired_lookups=63 retired_symbols=absent descriptors=retired");
 }

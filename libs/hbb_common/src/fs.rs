@@ -4566,6 +4566,64 @@ mod tests {
         (log, response)
     }
 
+    #[tokio::test]
+    async fn read_step_compressor_refusal_reports_error_and_preserves_other_job() {
+        use std::future::Future;
+
+        let tmp = TestTempDir::new("rustdesk_read_compression_refusal");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        let failed_source = tmp.join("failed.bin");
+        let survivor_source = tmp.join("survivor.bin");
+        let content = vec![0x69; 4_096];
+        std::fs::write(&failed_source, &content).expect("create refused source");
+        std::fs::write(&survivor_source, &content).expect("create surviving source");
+        let mut jobs = Vec::new();
+        for (id, path) in [(211, failed_source.clone()), (212, survivor_source.clone())] {
+            jobs.push(TransferJob::new_read(
+                id, JobType::Generic, id.to_string(), DataSource::FilePath(path),
+                0, false, false, false,
+            ).expect("admit real-file read job"));
+        }
+        jobs[1].is_last_job = true;
+        let (mut sender, mut receiver) = keyed_read_job_tcp_pair().await;
+        let (log, response) = {
+            let mut step = Box::pin(read_job_tcp_step(&mut jobs, &mut sender, &mut receiver));
+            std::future::poll_fn(|cx| {
+                crate::compress::with_busy_compressor_for_test(|| step.as_mut().poll(cx))
+            }).await
+        };
+        assert!(matches!(
+            response.union,
+            Some(file_response::Union::Error(error))
+                if error.id == 211 && error.file_num == 0 && !error.error.is_empty()
+        ), "compression failure must publish an error, not a successful empty block");
+        let log: serde_json::Value = serde_json::from_str(&log).expect("decode error log");
+        assert_eq!(log["done"], false);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].id(), 212);
+        assert!(jobs[0].is_last_job);
+        assert!(jobs[0].data_stream.is_none());
+        assert_eq!(jobs[0].finished_size(), 0);
+        assert_eq!(jobs[0].transferred(), 0);
+        assert_eq!(std::fs::read(&failed_source).expect("read refused source"), content);
+        jobs[0].is_last_job = false;
+        let (_, response) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+        let Some(file_response::Union::Block(block)) = response.union else {
+            panic!("survivor did not publish its real file block");
+        };
+        assert_eq!(block.id, 212);
+        assert!(block.compressed);
+        assert_eq!(try_decompress(&block.data).expect("decode real survivor bytes"), content);
+        let (_, eof) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+        assert!(matches!(eof.union, Some(file_response::Union::Block(block))
+            if block.id == 212 && block.data.is_empty()));
+        let (_, done) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+        assert!(matches!(done.union, Some(file_response::Union::Done(done))
+            if done.id == 212 && done.file_num == 1));
+        assert!(jobs.is_empty());
+        assert_eq!(std::fs::read(&survivor_source).expect("read surviving source"), content);
+    }
+
     enum ReadJobRetirementCase {
         ReadError,
         Complete,

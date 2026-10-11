@@ -29,6 +29,14 @@ pub fn compress(data: &[u8]) -> Vec<u8> {
     out
 }
 
+#[cfg(test)]
+pub(crate) fn with_busy_compressor_for_test<T>(action: impl FnOnce() -> T) -> T {
+    COMPRESSOR.with(|compressor| {
+        let _borrow = compressor.borrow_mut();
+        action()
+    })
+}
+
 /// The post-key decompressed-output ceiling (R-S7, the twin of the pre-auth
 /// frame cap). zstd's ratio is unbounded, so a small compressed file-block,
 /// clipboard, or cursor payload from a *keyed* peer can amplify to an unbounded

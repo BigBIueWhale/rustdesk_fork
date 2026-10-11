@@ -3243,7 +3243,7 @@ Next: native ViewCamera and disposal/subtree replacement/FlView restart coverage
 platforms, original display-delay causation, sustained resources, installed-service loader/FFI
 authority and broader native/installed/release acceptance remain OPEN.
 
-**ViewCamera native identity and guest media prerequisite — SOURCE FINDING; PRODUCT FIX/NATIVE REPLAY OPEN.**
+**ViewCamera native identity — MEDIA INPUT CANDIDATE VERIFIED; PRODUCT FIX/NATIVE CAMERA REPLAY OPEN.**
 `libs/scrap/src/common/camera.rs::all_info` selects an actual native camera index but publishes only
 ordinal `DisplayInfo`; resolution and capturer creation reconstruct `CameraIndex::Index` from that ordinal.
 A nonzero-only Linux node can therefore be advertised at ordinal zero and then opened as native zero.
@@ -3260,8 +3260,28 @@ observations are retained in `.harness-state/verifier-vm/camera-kernel-inspectio
 This is authenticated input inspection, not camera execution. Linux's documented
 [vivid driver](https://docs.kernel.org/admin-guide/media/vivid.html) can provide guest-only V4L2 capture
 with a selectable nonzero node; the retained cloud kernel cannot provide that media topology.
-Review and authenticate a media-capable guest kernel/module closure before the exact production replay;
-no host camera/device mount, inferred physical-device acceptance or product fix is claimed here.
+The closed `scripts/online-fetch.sh --maintenance-acquire-verifier-media-kernel` transaction passed at
+source `027e6218419438f72d99012f6b3766f68d9eb8d6` in a 54-second acquisition VM phase. Its immutable
+nonroot devcheck container verified both exact Bookworm signing principals, authenticated the by-hash
+Packages index, and cross-checked the fixed package digest against Debian's independent
+[package metadata](https://packages.debian.org/bookworm/amd64/linux-image-6.1.0-50-amd64/download).
+`online/candidates/verifier-media-kernel` retains the 70,305,560-byte `6.1.176-1` package,
+SHA-256 `7b5597492a0a65aee61985a492e6bcc3f2cde830072a0e3b3d8c7e1b90279bd3`, signed metadata,
+259,569-byte config and 4,022-module inventory, including actual `vivid.ko` and `videodev.ko` members.
+The config has `CONFIG_MEDIA_SUPPORT=m`, `CONFIG_VIDEO_DEV=m`, `CONFIG_VIDEO_VIVID=m`.
+Real gpgv checks rejected altered Release bytes and an automatic-only keyring lacking the required
+stable principal; an occupied-output invocation refused before VM allocation. Extra unknown-key
+signatures cannot supply either required principal; the parser rejects bad, expired, revoked, weak
+or ambiguous verifier status. These native negatives do not establish current key-revocation discovery.
+Raw `online-fetch-run.g8E8ylI6W7.serial.log` is 67,195 bytes, SHA-256
+`ed27b60a269be005588ebba1aeb74f16e76e17f227c19f7e8209866918aa0a24`; its v5 receipt binds source,
+streams and joined cleanup. No host listener was added; all 1,284 source/control/input observations
+were unchanged. Six exact freeze records, terminal observations, preserved failure-tree inventories and
+accepted stdout are retained in `.harness-state/verifier-vm/media-kernel-027e6218-evidence`.
+This is candidate acquisition and inert package inspection. Canonical boot-pin admission, matching
+initramfs/module provisioning, zero-NIC guest boot and actual V4L2/nonzero-node capture remain OPEN,
+followed by the product identity/generation correction and hotplug/overlap replay. No host camera/device
+mount, physical-device acceptance, camera execution, installed kernel or product fix is claimed.
 
 **Linux Flutter build/replay separation — CAPSULE/PRODUCER PASS; CURRENT REMOTE CONSUMER ACCEPTED ABOVE.**
 

@@ -1187,6 +1187,26 @@ pub fn get_effective_home_dir_trusted() -> Option<PathBuf> {
 mod tests {
     use super::*;
 
+    #[test]
+    #[ignore = "requires the isolated systemd/PAM session fixture"]
+    fn r_s11at_loginctl_native_session_selection() {
+        assert_eq!(get_current_uid(), 1000);
+        assert_eq!(get_effective_uid(), 1000);
+        let status = std::fs::read_to_string("/proc/self/status").unwrap();
+        assert!(status.lines().any(|line| line == "CapEff:\t0000000000000000"));
+        assert!(status.lines().any(|line| line == "NoNewPrivs:\t1"));
+        let expected = std::env::var("RUSTDESK_NATIVE_LOGINCTL_EXPECTED_UID").unwrap();
+        assert!(matches!(expected.as_str(), "" | "4001" | "4002"));
+        let mut lookup = LoginctlLookup::new(
+            std::time::Instant::now() + LOGINCTL_LOOKUP_TIMEOUT,
+            &|| false,
+        );
+        assert_eq!(
+            lookup.active_session_values(&[1], true).unwrap(),
+            vec![expected]
+        );
+    }
+
     const LOGINCTL_FIXTURE_ROLE: &str = "RUSTDESK_TEST_LOGINCTL_FIXTURE_ROLE";
     const LOGINCTL_FIXTURE_PID: &str = "RUSTDESK_TEST_LOGINCTL_FIXTURE_PID";
 

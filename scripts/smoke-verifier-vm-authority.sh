@@ -18,6 +18,7 @@ MODE=authority-smoke
 BASE_READONLY_TEST=0
 FLUTTER_TEST_PROFILE=models
 RUST_TEST_PROFILE=integration
+HBB_LOGIND_NATIVE=0
 APPLE_CURSOR_ONLY=0
 X11_CLIPBOARD_ONLY=0
 X11_KEY_INPUT_ONLY=0
@@ -50,11 +51,14 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'verifier-VM input/run overrides are lifecycle-internal' >&2; exit 2; }
         ;;
-    1:--hbb-common-fs)
+    1:--hbb-common-fs|1:--linux-logind-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Rust-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=hbb-common-fs
+        if [ "$1" = --linux-logind-tests ]; then
+            HBB_LOGIND_NATIVE=1
+        fi
         ;;
     1:--cpace-recovery-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -322,6 +326,7 @@ case "$#:${1:-}" in
         printf 'Native Linux whiteboard CLI/helper lifetime: %s --android-rust-lifecycle-tests --whiteboard-helper-lifetime\n' "${0##*/}" >&2
         printf 'Native Linux physical-key teardown: %s --android-rust-lifecycle-tests --input-release\n' "${0##*/}" >&2
         printf 'Native Linux input-worker/global lifetime: %s --android-rust-lifecycle-tests --input-lifetime\n' "${0##*/}" >&2
+        printf 'Native Linux logind session selection: %s --linux-logind-tests\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --linux-pa-authority-tests | --linux-service-uid-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario {peer-lifecycle|controlled-cm} --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --linux-flutter-app-build | --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCH]\n' "${0##*/}" >&2
         exit 2
         ;;
@@ -562,7 +567,11 @@ elif [ "$MODE" = android-rust-target-check ]; then
     readonly OVERLAY_SIZE=40G
     readonly VM_MEMORY=16384
 elif [ "$MODE" = hbb-common-fs ]; then
-    readonly VM_TIMEOUT_SECONDS=1800
+    if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+        readonly VM_TIMEOUT_SECONDS=300
+    else
+        readonly VM_TIMEOUT_SECONDS=1800
+    fi
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=8192
 elif [ "$MODE" = cpace-recovery-tests ]; then
@@ -2020,7 +2029,13 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
              "$HOST_UID:$HOST_GID:700" ] \
         || fail 'sealed focused-test input root metadata differs'
-    if [ "$MODE" = linux-service-uid-tests ]; then
+    if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+        focused_input_files=(
+            "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG"
+            "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
+            "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+        )
+    elif [ "$MODE" = linux-service-uid-tests ]; then
         focused_input_files=(
             "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
             "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
@@ -3213,7 +3228,12 @@ elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = linux-pa-authority-tests ]; then
     focused_inputs_before="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
-        if [ "$MODE" = linux-pa-authority-tests ]; then
+        if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+            /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+            /usr/bin/sha256sum -- \
+                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        elif [ "$MODE" = linux-pa-authority-tests ]; then
             /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
                 "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" \
                 "$PA_RUNTIME_CANDIDATE" "$VIRTIOFSD_PACKAGE"
@@ -3808,6 +3828,9 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     fi
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
+    if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+        guest_invocation+=' --native-logind'
+    fi
 elif [ "$MODE" = cpace-recovery-tests ]; then
     guest_invocation+=" --cpace-recovery-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = linux-pa-authority-tests ]; then
@@ -4848,9 +4871,15 @@ printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
 /usr/bin/grep -Fq 'VERIFIER_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'cloud-init completion marker is absent'; }
 elif [ "$MODE" = hbb-common-fs ]; then
+    hbb_image_index=$DEB_BUILDER_IMAGE_ID
+    hbb_image_config=$DEB_BUILDER_CONFIG_ID
+    if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+        hbb_image_index=$DEV_CHECK_IMAGE_ID
+        hbb_image_config=$DEV_CHECK_IMAGE_CONFIG_ID
+    fi
     mapfile -t hbb_common_fs_receipts < <(
         /usr/bin/grep -Eo \
-            "HBB_COMMON_FS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=[1-9][0-9]* artifact_sha256=[0-9a-f]{64} rust=1\\.75\\.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+            "HBB_COMMON_FS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=[1-9][0-9]* artifact_sha256=[0-9a-f]{64} rust=1\\.75\\.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$hbb_image_index builder_runtime=$hbb_image_config uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
             "$SERIAL_LOG" || true
     )
     [ "${#hbb_common_fs_receipts[@]}" -eq 1 ] \
@@ -4859,6 +4888,11 @@ elif [ "$MODE" = hbb-common-fs ]; then
     HBB_COMMON_FS_ARTIFACT_SHA256=${hbb_common_fs_receipts[0]#*artifact_sha256=}
     HBB_COMMON_FS_ARTIFACT_SHA256=${HBB_COMMON_FS_ARTIFACT_SHA256%% *}
     printf '%s\n' "${hbb_common_fs_receipts[0]}"
+    if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+        require_exact_fixed_receipt \
+            "LINUX_LOGINCTL_NATIVE=pass cases=7 artifact_sha256=$HBB_COMMON_FS_ARTIFACT_SHA256 fixture=systemd-pam scope=logind-session-selection installed=unexecuted uid=1000 caps=none nnp=on cleanup=joined" \
+            'native Linux logind session-selection receipt'
+    fi
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Rust-test cloud-init completion marker'
@@ -5716,7 +5750,12 @@ elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = linux-pa-authority-tests ]; then
     focused_inputs_after="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
-        if [ "$MODE" = linux-pa-authority-tests ]; then
+        if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+            /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+            /usr/bin/sha256sum -- \
+                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        elif [ "$MODE" = linux-pa-authority-tests ]; then
             /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
                 "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" \
                 "$PA_RUNTIME_CANDIDATE" "$VIRTIOFSD_PACKAGE"
@@ -6018,6 +6057,11 @@ elif [ "$MODE" = hbb-common-fs ]; then
     printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
+    if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+        printf 'LINUX_LOGINCTL_NATIVE_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s scope=logind-session-selection installed=unexecuted network=none listeners=no-harness-addition docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+            "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
+    fi
 elif [ "$MODE" = cpace-recovery-tests ]; then
     printf 'CPACE_RECOVERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"

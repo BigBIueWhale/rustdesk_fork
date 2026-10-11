@@ -13,6 +13,7 @@ FLUTTER_APP_MANIFEST_SHA256=
 FLUTTER_APP_ENGINE_CONTEXT=
 FLUTTER_TEST_PROFILE=models
 RUST_TEST_PROFILE=integration
+HBB_LOGIND_NATIVE=0
 APPLE_CURSOR_ONLY=0
 X11_KEY_INPUT_ONLY=0
 case "$#:${8:-}" in
@@ -51,6 +52,11 @@ case "$#:${8:-}" in
         ;;
     12:--hbb-common-fs)
         MODE=hbb-common-fs
+        ;;
+    13:--hbb-common-fs)
+        [ "${13}" = --native-logind ] || exit 2
+        MODE=hbb-common-fs
+        HBB_LOGIND_NATIVE=1
         ;;
     12:--cpace-recovery-tests)
         MODE=cpace-recovery-tests
@@ -2371,6 +2377,16 @@ run_focused_rust_tests() {
             fs::tests::directory_enumeration_budgets_returned_root_paths
             fs::tests::empty_directory_enumeration_budgets_repeated_absolute_paths
         )
+        if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+            container_name=rustdesk-linux-logind-tests
+            image_archive=$inputs/verifier-images/devcheck.docker.tar.gz
+            image_config=$DEV_CHECK_IMAGE_CONFIG_ID
+            image_index=$DEV_CHECK_IMAGE_ID
+            toolchain_mode=devcheck-image
+            toolchain_mount=()
+            required_tests=("${required_tests[@]:0:8}")
+            source_fingerprints+=(scripts/test-linux-logind-session-selection.py)
+        fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
         container_name=rustdesk-cpace-recovery-tests
         memory=8g
@@ -2830,7 +2846,8 @@ run_focused_rust_tests() {
                 --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             || fail 'sealed Cargo vendor closure differs'
     fi
-    if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ]; then
+    if { [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ]; } \
+       && [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
           "1000:1000:400:1:$SIZE_RUST_1_75" ] \
             && [ "$(sha256sum "$rust_archive" | awk '{ print $1 }')" = "$SHA256_RUST_1_75" ] \
@@ -3012,6 +3029,7 @@ run_focused_rust_tests() {
             --user 1000:1000 \
             --env "RUST_TEST_MODE=$MODE" \
             --env "RUST_TEST_PROFILE=$RUST_TEST_PROFILE" \
+            --env "HBB_LOGIND_NATIVE=$HBB_LOGIND_NATIVE" \
             --env "RUST_TOOLCHAIN_MODE=$toolchain_mode" \
             --env RUSTDESK_CANARY_OFFLINE=1 \
             --mount "type=bind,source=$source_root,target=/source,readonly" \
@@ -3094,15 +3112,17 @@ run_focused_rust_tests() {
                         "$test_executable" platform::linux::tests::r_s11at_loginctl_output_ \
                             --color never --test-threads=1
                         [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
-                        "$test_executable" config::tests::config_transaction_ \
-                            --color never --test-threads=1
-                        [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
-                        "$test_executable" fs::tests:: --color never --test-threads=1
-                        [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
-                        "$test_executable" test::direct_address_ --color never --test-threads=1
-                        [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
-                        "$test_executable" socket_client::tests:: --color never --test-threads=1
-                        [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                        if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
+                            "$test_executable" config::tests::config_transaction_ \
+                                --color never --test-threads=1
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            "$test_executable" fs::tests:: --color never --test-threads=1
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            "$test_executable" test::direct_address_ --color never --test-threads=1
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            "$test_executable" socket_client::tests:: --color never --test-threads=1
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                        fi
                         printf "HBB_COMMON_FS_ARTIFACT=pass sha256=%s executable=%s unchanged=before-between-after\n" \
                             "$artifact_sha" "$test_executable"
                         ;;
@@ -3419,7 +3439,9 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output"
     )
     if [ "$MODE" = hbb-common-fs ]; then
-        [ "${#result_lines[@]}" -eq 5 ] \
+        expected_groups=5
+        if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=1; fi
+        [ "${#result_lines[@]}" -eq "$expected_groups" ] \
             || { tail -n 200 "$output" >&2; fail 'focused shared-library test summary count differs'; }
         local -a hbb_artifact_receipts
         mapfile -t hbb_artifact_receipts < <(
@@ -3624,6 +3646,21 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         || fail 'focused Rust-test container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
+    if [ "$MODE" = hbb-common-fs ] && [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+        local native_test_executable native_output=$ROOT/logind-native.out
+        native_test_executable=${hbb_artifact_receipts[0]#*executable=}
+        native_test_executable=${native_test_executable%% *}
+        printf 'LINUX_LOGINCTL_NATIVE_STAGE=running fixture=systemd-pam execution=uid1000\n'
+        python3 -I -S "$source_root/scripts/test-linux-logind-session-selection.py" \
+            --docker-client "$CLIENT" --docker-socket "$SOCK" --image "$image_config" \
+            --artifact "$target_root/${native_test_executable#/cargo-target/}" \
+            --sha256 "$hbb_test_artifact_sha" >"$native_output" 2>&1 \
+            || { cat "$native_output" >&2; fail 'native logind session selection failed'; }
+        [ "$(stat -c '%s' "$native_output")" -le 1048576 ] \
+            || fail 'native logind fixture output exceeds its bound'
+        grep -Fxq "LINUX_LOGINCTL_NATIVE=pass cases=7 artifact_sha256=$hbb_test_artifact_sha fixture=systemd-pam scope=logind-session-selection installed=unexecuted uid=1000 caps=none nnp=on cleanup=joined" \
+            "$native_output" || fail 'native logind fixture receipt differs'
+    fi
     "$CLIENT" --host "unix://$SOCK" image rm "$image_config" >/dev/null
     [ "$source_before" = \
       "$source_archive_sha:$(
@@ -3653,11 +3690,12 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         printf '%s\n' "${hbb_artifact_receipts[@]}"
+        if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then cat "$native_output"; fi
         printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$hbb_test_artifact_sha" \
-            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
-            "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" \
+            "$image_config"
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "$tests_passed" -eq 20 ] \
             || fail "CPace recovery test count differs: $tests_passed"

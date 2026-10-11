@@ -5,7 +5,7 @@ use std::{
 };
 
 #[cfg(windows)]
-const BIN_DATA: &[u8] = include_bytes!("../data.bin");
+const BIN_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/data.bin"));
 #[cfg(not(windows))]
 const BIN_DATA: &[u8] = &[];
 // 4bytes
@@ -16,7 +16,7 @@ const BUF_SIZE: usize = 4096;
 
 pub(crate) struct BinaryData {
     pub md5_code: &'static [u8],
-    // compressed gzip data
+    // compressed Brotli data
     pub raw: &'static [u8],
     pub path: String,
 }
@@ -207,16 +207,20 @@ fn write_new_file(path: &Path, content: &[u8]) -> Result<(), String> {
 
 impl BinaryReader {
     fn read() -> (Vec<BinaryData>, String) {
+        Self::read_from(BIN_DATA)
+    }
+
+    pub(crate) fn read_from(data: &'static [u8]) -> (Vec<BinaryData>, String) {
         let mut base: usize = 0;
         let mut parsed = vec![];
-        assert!(BIN_DATA.len() > IDENTIFIER_LENGTH, "bin data invalid!");
-        let mut iden = String::from_utf8_lossy(&BIN_DATA[base..base + IDENTIFIER_LENGTH]);
+        assert!(data.len() > IDENTIFIER_LENGTH, "bin data invalid!");
+        let mut iden = String::from_utf8_lossy(&data[base..base + IDENTIFIER_LENGTH]);
         if iden != "rustdesk" {
             panic!("bin file is not valid!");
         }
         base += IDENTIFIER_LENGTH;
         loop {
-            iden = String::from_utf8_lossy(&BIN_DATA[base..base + IDENTIFIER_LENGTH]);
+            iden = String::from_utf8_lossy(&data[base..base + IDENTIFIER_LENGTH]);
             if iden == "rustdesk" {
                 base += IDENTIFIER_LENGTH;
                 break;
@@ -224,28 +228,28 @@ impl BinaryReader {
             // start reading
             let mut offset = 0;
             let path_length = u32::from_be_bytes([
-                BIN_DATA[base + offset],
-                BIN_DATA[base + offset + 1],
-                BIN_DATA[base + offset + 2],
-                BIN_DATA[base + offset + 3],
+                data[base + offset],
+                data[base + offset + 1],
+                data[base + offset + 2],
+                data[base + offset + 3],
             ]) as usize;
             offset += LENGTH;
             let path =
-                String::from_utf8_lossy(&BIN_DATA[base + offset..base + offset + path_length])
+                String::from_utf8_lossy(&data[base + offset..base + offset + path_length])
                     .to_string();
             offset += path_length;
             // file sz
             let file_length = u32::from_be_bytes([
-                BIN_DATA[base + offset],
-                BIN_DATA[base + offset + 1],
-                BIN_DATA[base + offset + 2],
-                BIN_DATA[base + offset + 3],
+                data[base + offset],
+                data[base + offset + 1],
+                data[base + offset + 2],
+                data[base + offset + 3],
             ]) as usize;
             offset += LENGTH;
-            let raw = &BIN_DATA[base + offset..base + offset + file_length];
+            let raw = &data[base + offset..base + offset + file_length];
             offset += file_length;
             // md5
-            let md5 = &BIN_DATA[base + offset..base + offset + MD5_LENGTH];
+            let md5 = &data[base + offset..base + offset + MD5_LENGTH];
             offset += MD5_LENGTH;
             parsed.push(BinaryData {
                 md5_code: md5,
@@ -255,7 +259,7 @@ impl BinaryReader {
             base += offset;
         }
         // executable
-        let executable = String::from_utf8_lossy(&BIN_DATA[base..]).to_string();
+        let executable = String::from_utf8_lossy(&data[base..]).to_string();
         (parsed, executable)
     }
 

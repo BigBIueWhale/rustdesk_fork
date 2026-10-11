@@ -2500,9 +2500,9 @@ def validate_sources(sources: dict[str, str]) -> None:
     for pinned_call in (
         "& $PYTHON_EXE build.py --flutter",
         "& $PYTHON_EXE preprocess.py --arp -d $msiDist",
-        "& $PYTHON_EXE .\\generate.py -f $setupPayloadDir -o . -e $setupPayloadMsi",
     ):
         require(build, pinned_call, f"pinned Python invocation {pinned_call}")
+    require(build, "cargo build --offline --locked --release -p rustdesk-portable-packer", "locked Rust installer packaging")
 
     build_flutter_windows = python_function(orchestrator_tree, "build_flutter_windows")
     require(orchestrator, "canonicalizer_input = pe.with_name(f'.canonicalize-input-{pe.name}')", "distinct PE input path")

@@ -1,10 +1,8 @@
 # scripts/win-guest-setup.ps1 -- provisions the sec12.2 Win11 build guest's toolchain (R-B8).
 #
-# Run ONCE inside the guest at first logon (autounattend.xml FirstLogonCommands) while the VM
-# still has network (the golden-template build is the one networked guest step -- like the
-# android stage_gradle). It installs EXACTLY the pinned toolchain from the toolchains CD that
-# provision-windows-vm.sh attaches (the ./online windows artifacts), then the per-build VM is a
-# throwaway CoW overlay run --network=none (build-windows.ps1).
+# Run ONCE inside the no-NIC guest at first logon (autounattend.xml FirstLogonCommands).
+# Install the pinned toolchain from the toolchains CD attached by provision-windows-vm.sh;
+# missing offline inputs fail provisioning. Per-build guests are disposable no-NIC overlays.
 #
 # Pinned set (pins.env): Rust 1.75 (MSVC), Flutter 3.24.5 (windows), LLVM 15.0.6 (windows),
 # VS Build Tools (MSVC + Win SDK), vcpkg @120deac3, Git. The vcpkg x64-windows natives are
@@ -56,21 +54,16 @@ Start-Process -Wait -FilePath $vsexe.FullName -ArgumentList @(
 Log 'installing LLVM 15.0.6'
 Start-Process -Wait -FilePath (Join-Path $tc 'llvm-windows-15.0.6.exe') -ArgumentList '/S'
 
-# --- Python 3.11.9 (build.py orchestrator + libs/portable/generate.py brotli) -----------------
-Log 'installing Python 3.11.9 (+ brotli for the portable packer)'
+# --- Python 3.11.9 (build.py and PE/MSI canonicalizers) --------------------------------------
+Log 'installing Python 3.11.9'
 $pyExit = (Start-Process -Wait -PassThru -FilePath (Join-Path $tc 'python-windows-3.11.9.exe') `
     -ArgumentList '/quiet','InstallAllUsers=1','PrependPath=1','Include_test=0','Include_pip=1').ExitCode
 if ($pyExit -ne 0) { Die "Python install failed (exit $pyExit)" }
 $pyExe = 'C:\Program Files\Python311\python.exe'
 if (-not (Test-Path $pyExe)) { Die 'Python install did not land python.exe at C:\Program Files\Python311' }
-# build.py shells out to `python3 ./generate.py` (a unix-ism); Windows Python ships python.exe NOT python3.exe
-# (pip3.exe IS created by the installer). Copy one so the build's `python3` resolves.
+# Canonicalization helpers use python3; Windows Python ships python.exe. Both aliases must
+# resolve to the same pinned installation.
 Copy-Item $pyExe (Join-Path (Split-Path $pyExe) 'python3.exe') -Force
-# brotli is the ONLY non-stdlib import in libs/portable/generate.py (requirements.txt = just `brotli`). Install
-# it NOW (the provision is networked) so the OFFLINE per-build's `pip3 install -r requirements.txt` is a
-# "Requirement already satisfied" no-op (no network needed at build time).
-$pipExit = (Start-Process -Wait -PassThru -NoNewWindow -FilePath $pyExe -ArgumentList '-m','pip','install','brotli').ExitCode
-if ($pipExit -ne 0) { Die "pip install brotli failed (exit $pipExit)" }
 
 # --- Flutter 3.24.5 (windows) ----------------------------------------------------------------
 Log 'extracting Flutter 3.24.5 (windows) -> C:\flutter'

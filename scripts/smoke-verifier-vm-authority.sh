@@ -74,6 +74,13 @@ case "$#:${1:-}" in
             || { echo 'focused Linux UID-policy input/run overrides are forbidden' >&2; exit 2; }
         MODE=linux-service-uid-tests
         ;;
+    1:--installer-package-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'installer-package input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=installer-package
+        ;;
     1:--android-rust-lifecycle-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -301,6 +308,7 @@ case "$#:${1:-}" in
         printf 'Focused production frame-queue runtime: %s --flutter-model-tests --frame-queue\n' "${0##*/}" >&2
         printf 'Focused direct-address validation: %s --flutter-model-tests --direct-address\n' "${0##*/}" >&2
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
+        printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
         printf 'Focused whiteboard client state tests: %s --android-rust-lifecycle-tests --whiteboard-client\n' "${0##*/}" >&2
         printf 'Native Linux whiteboard display ownership: %s --android-rust-lifecycle-tests --whiteboard-display-lifetime\n' "${0##*/}" >&2
@@ -5068,6 +5076,21 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'focused whiteboard presentation state receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused whiteboard presentation state cloud-init completion marker'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
+    mapfile -t installer_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'INSTALLER_PACKAGE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/installer_package-[0-9a-f]{16} tests=6 unchanged=before-after$'
+    )
+    [ "${#installer_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'INSTALLER_PACKAGE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'installer package artifact receipt is absent, malformed or duplicated'
+    installer_before=${installer_artifacts[0]/INSTALLER_PACKAGE_ARTIFACT=pass /INSTALLER_PACKAGE_ARTIFACT_BEFORE=}
+    installer_before=${installer_before% tests=6 unchanged=before-after}
+    require_exact_fixed_receipt "$installer_before" 'installer package artifact before execution'
+    require_exact_fixed_receipt \
+        "INSTALLER_PACKAGE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=6 target=linux-x86_64 scope=production-encoder-decoder windows=unexecuted rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'focused installer package receipt'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installer package cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     mapfile -t clipboard_decode_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -5984,7 +6007,10 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$UID_POLICY_ARTIFACT_SHA256" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    if [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
+    if [ "$RUST_TEST_PROFILE" = installer-package ]; then
+        printf 'INSTALLER_PACKAGE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-encoder-decoder windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
         printf 'INPUT_LIFETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-input-worker-global-text-lifetime network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = input-release ]; then

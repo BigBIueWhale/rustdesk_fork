@@ -119,10 +119,15 @@ in 107 seconds; the existing eight helper runtime decisions also passed, with no
 addition and joined cleanup. Retained `authority-smoke-run.MInjbJ05pW.serial.log` SHA-256
 `28ab1ca709d623e184af0014f56d551b699b5afa6a0d5ec03f957496e9c0bdfd` binds the exact parser
 digest. This is Linux parser behavior, not actual libvirt launch or Windows installation acceptance.
-`win-guest-setup.ps1:72` still runs `pip install brotli` without a pinned offline input; VS, vcpkg
-and Flutter acquisition paths also need complete offline closure and native acceptance. With no
-NIC, missing dependencies fail provisioning; no network fallback is admitted. Cold equality,
-whole-document restoration and the Windows harness replay below remain OPEN.
+Installer packaging now uses `libs/portable/build.rs` and `src/installer_package.rs` with the
+workspace's locked Rust Brotli/MD5 dependencies. Unpinned Python Brotli installation, its preflight,
+and the generic Python generator are deleted. Only the fixed, previously validated MSI is encoded;
+`SOURCE_DATE_EPOCH` is required and bounded, generated files live in Cargo `OUT_DIR`, and input,
+compression and output failures refuse the build. The six encoder/actual-decoder integration tests
+are prepared for `smoke-verifier-vm-authority.sh --installer-package-tests`; execution is pending.
+Native Windows packaging/installation, VS/vcpkg/Flutter acquisition and the complete offline closure
+remain OPEN. With no NIC, missing dependencies fail provisioning; no network fallback is admitted.
+Cold equality, whole-document restoration and the Windows harness replay below remain OPEN.
 
 A source/model check is supplementary unless it executes the behavior it claims to establish. Gates must not treat
 exact requirement, ledger, README, comment, test-name, other-verifier, or historical-receipt wording as product

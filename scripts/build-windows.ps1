@@ -441,10 +441,6 @@ function Assert-PythonToolchain {
             Die "Python version mismatch for ${executable}: expected Python $PYTHON_VERSION, got '$reported'"
         }
     }
-    & $PYTHON_EXE -I -c "import brotli, os; p=os.path.normcase(os.path.abspath(brotli.__file__)); root=os.path.normcase(os.path.abspath(r'C:\Program Files\Python311\Lib\site-packages'))+os.sep; assert p.startswith(root), p"
-    if ($LASTEXITCODE -ne 0) {
-        Die "Python brotli module is absent from the pinned Python installation ($LASTEXITCODE)"
-    }
 }
 
 function Assert-BuildIdentity {
@@ -1512,8 +1508,13 @@ if /I "%~1"=="build" (
         $env:CARGO_NET_OFFLINE = 'true'
         Push-Location (Join-Path $SRC 'libs\portable')
         try {
-            & $PYTHON_EXE .\generate.py -f $setupPayloadDir -o . -e $setupPayloadMsi
+            cargo build --offline --locked --release -p rustdesk-portable-packer
             $packExit = $LASTEXITCODE
+            if ($packExit -eq 0 -and
+                ((Get-FileHash -LiteralPath $setupPayloadMsi -Algorithm SHA256).Hash -ne $payloadMsiHash -or
+                 (Get-FileHash -LiteralPath $msiOut -Algorithm SHA256).Hash -ne $sourceMsiHash)) {
+                Die '.msi: canonical MSI or setup payload changed during packaging'
+            }
         } finally {
             Pop-Location
         }
@@ -1526,7 +1527,7 @@ if /I "%~1"=="build" (
             Remove-Item -LiteralPath $setupPayloadDir -Recurse -Force
         }
     }
-    if ($packExit -ne 0) { Die "libs/portable/generate.py failed (exit $packExit)" }
+    if ($packExit -ne 0) { Die "Rust installer packaging failed (exit $packExit)" }
     if (-not (Test-Path -LiteralPath $setupOut -PathType Leaf)) { Die "portable packer did not produce $setupOut" }
     if ((Get-Item -LiteralPath $setupOut).Length -le 0) { Die "portable packer produced an empty file at $setupOut" }
     $portableResource = Get-SingleCompiledWindowsResource 'rustdesk-portable-packer'

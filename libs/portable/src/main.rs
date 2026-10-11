@@ -13,7 +13,7 @@ pub mod bin_reader;
 mod ui;
 
 #[cfg(windows)]
-const APP_METADATA: &[u8] = include_bytes!("../app_metadata.toml");
+const APP_METADATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/app_metadata.toml"));
 #[cfg(not(windows))]
 const APP_METADATA: &[u8] = &[];
 const APP_METADATA_CONFIG: &str = "meta.toml";

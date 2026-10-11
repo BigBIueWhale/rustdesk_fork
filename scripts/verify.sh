@@ -2430,9 +2430,6 @@ grep -Fq 'Get-FileHash -LiteralPath $olefileWheel -Algorithm SHA256' "$windows_b
 grep -Fq 'loader.archive' "$windows_build" || r_s11e20="$r_s11e20 olefile-isolated-wheel-authority-missing"
 if grep -Eq 'pip[[:space:]]+install|python[[:space:]]+-m[[:space:]]+pip' "$windows_build"; then r_s11e20="$r_s11e20 ambient-python-package-install-leftover"; fi
 grep -Fq 'Copy-Item -LiteralPath $msiOut -Destination $setupPayloadMsi' "$windows_build" || r_s11e20="$r_s11e20 exact-msi-payload-copy-missing"
-grep -Fq '& $PYTHON_EXE .\generate.py -f $setupPayloadDir -o . -e $setupPayloadMsi' "$windows_build" || r_s11e20="$r_s11e20 packer-not-fed-one-file-payload"
-grep -Fq 'command = ["cargo", "build", "--offline", "--locked", "--release"]' libs/portable/generate.py || r_s11e20="$r_s11e20 packer-cargo-build-not-offline-locked"
-grep -Fq 'subprocess.run(command, check=True)' libs/portable/generate.py || r_s11e20="$r_s11e20 packer-cargo-failure-not-propagated"
 grep -Fq 'Remove-Item -LiteralPath $setupPayloadDir -Recurse -Force' "$windows_build" || r_s11e20="$r_s11e20 payload-finally-cleanup-missing"
 grep -Fq "\$setup = Join-Path \$SRC 'target\release\rustdesk-portable-packer.exe'" "$windows_build" || r_s11e20="$r_s11e20 exact-setup-output-missing"
 grep -Fq "\$msi = Join-Path \$SRC 'target\canonical-msi\rustdesk.msi'" "$windows_build" || r_s11e20="$r_s11e20 exact-msi-output-missing"

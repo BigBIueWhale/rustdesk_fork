@@ -67,7 +67,8 @@ case "$#:${8:-}" in
     13:--android-rust-lifecycle-tests)
         [[ "${13}" = --clipboard || "${13}" = --whiteboard-presentation \
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
-            || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release || "${13}" = --input-lifetime ]] || exit 2
+            || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release || "${13}" = --input-lifetime \
+            || "${13}" = --installer-package ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -2590,7 +2591,24 @@ run_focused_rust_tests() {
             valid_empty_frame_is_successful_even_at_zero_limit
             truncated_frame_is_an_explicit_error
         )
-        if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+        if [ "$RUST_TEST_PROFILE" = installer-package ]; then
+            container_name=rustdesk-installer-package-tests
+            source_fingerprints=(
+                Cargo.lock libs/portable/Cargo.toml libs/portable/build.rs
+                libs/portable/tests/installer_package.rs libs/portable/src/installer_package.rs
+                libs/portable/src/bin_reader.rs libs/portable/src/main.rs
+                scripts/build-windows.ps1 scripts/win-guest-setup.ps1
+                scripts/verify-windows-harness.py
+            )
+            required_tests=(
+                installer_package::tests::package_round_trips_through_installer_decoder
+                installer_package::tests::generation_is_deterministic_and_overwrites_old_outputs
+                installer_package::tests::epoch_is_required_canonical_and_bounded
+                installer_package::tests::input_refuses_missing_empty_non_msi_and_oversized_files
+                installer_package::tests::input_refuses_symlink_without_reading_target
+                installer_package::tests::compression_and_length_patch_failures_are_returned
+            )
+        elif [ "$RUST_TEST_PROFILE" = clipboard ]; then
             clipboard_tests=()
             for test_name in "${required_tests[@]}"; do
                 case "$test_name" in
@@ -3074,6 +3092,39 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        if [ "$RUST_TEST_PROFILE" = installer-package ]; then
+                            python3 -I -S /source/scripts/verify-windows-harness.py --repo /source
+                            python3 -I -S -c '\''import errno, socket
+s = socket.socket()
+try:
+    s.connect(("192.0.2.1", 9))
+except OSError as error:
+    assert error.errno == errno.ENETUNREACH, error
+else:
+    raise SystemExit("installer package offline canary unexpectedly connected")
+finally:
+    s.close()
+print("R-B10 canary: build confirmed network-isolated (offline compile stage).")'\''
+                            cargo test --offline --locked -p rustdesk-portable-packer --test installer_package \
+                                --no-run --color never
+                            test_executable=
+                            for candidate in /cargo-target/debug/deps/installer_package-*; do
+                                [[ "$candidate" =~ ^/cargo-target/debug/deps/installer_package-[0-9a-f]{16}$ ]] || continue
+                                [ -f "$candidate" ] && [ ! -L "$candidate" ] && [ -x "$candidate" ] \
+                                    && [ "$(stat -c "%u:%g:%h" -- "$candidate")" = 1000:1000:1 ] || exit 95
+                                [ -z "$test_executable" ] || exit 95
+                                test_executable=$candidate
+                            done
+                            [ -n "$test_executable" ] || exit 95
+                            artifact_sha="$(sha256sum "$test_executable" | cut -d " " -f 1)"
+                            printf "INSTALLER_PACKAGE_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
+                                "$artifact_sha" "$test_executable"
+                            "$test_executable" --color never --test-threads=1
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            printf "INSTALLER_PACKAGE_ARTIFACT=pass sha256=%s executable=%s tests=6 unchanged=before-after\n" \
+                                "$artifact_sha" "$test_executable"
+                            exit 0
+                        fi
                         clipboard_build_started=$SECONDS
                         if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
                             cargo build --offline --locked --example linux_whiteboard_lifecycle_probe \
@@ -3286,6 +3337,8 @@ run_focused_rust_tests() {
         printf 'WHITEBOARD_PRESENTATION_STATE_PROFILE=whiteboard-presentation stage=container-start tests=2 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
         printf 'WHITEBOARD_DISPLAY_PROFILE=whiteboard-display-lifetime stage=container-start tests=6 bridge=absent backend=x11\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
+        printf 'INSTALLER_PACKAGE_PROFILE=installer-package stage=container-start tests=6 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
@@ -3359,6 +3412,12 @@ run_focused_rust_tests() {
         uid_test_artifact_sha="$(sha256sum "$target_root/uid-policy-tests" | awk '{ print $1 }')"
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'installer package summary count differs'
+        [ "$(grep -Ec '^INSTALLER_PACKAGE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/installer_package-[0-9a-f]{16} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'INSTALLER_PACKAGE_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'verify-windows-harness: ok' "$output")" -eq 1 ] \
+            || fail 'installer package artifact or supplementary source receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
         [ "${#result_lines[@]}" -eq 0 ] || fail 'helper probe unexpectedly reported Rust unit tests'
         [ "$(grep -Ec '^WHITEBOARD_HELPER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/whiteboard-helper-probe cases=8 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -3558,7 +3617,12 @@ run_focused_rust_tests() {
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
+        if [ "$RUST_TEST_PROFILE" = installer-package ]; then
+            grep -E '^INSTALLER_PACKAGE_ARTIFACT(_BEFORE)?=|^test installer_package::tests::.* \.\.\. ok$|^verify-windows-harness: ok$' "$output"
+            printf 'INSTALLER_PACKAGE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-encoder-decoder windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
             grep -E '^WHITEBOARD_HELPER_(ARTIFACT_BEFORE|ARTIFACT|BUILD|NATIVE|READY|RETURNED|DONE|OVERLAY|WRONG_PARENT|CREATOR|PARENT)[= ]' "$output"
             grep -E '^WHITEBOARD_CLIENT_(READY|STATE|OBSERVED|REAPED|IDLE|CLEANUP|PHASE|REPLACEMENT|WITHDRAWAL|WINDOW_CLOSE|HELPER_CLOSE|HELPER_LOSS_READY|CRASH_REAPED|HELPER_LOSS|ROOT_STOP|ROOT_JOIN|ROOT_SHUTDOWN|PARENT_LOSS|PARENT_LOSS_READY|PARENT_LOSS_OBSERVED|PARENT_LOSS_REAPED|LAUNCH_BLOCKED|LAUNCH_DROPPED|LAUNCH_FINISHED|LAUNCH_OWNER_LOSS_DONE|LAUNCH_OWNER_LOSS|OWNER_LOSS_READY|OWNER_LOSS_DROPPED|OWNER_LOSS_FINISHED|OWNER_LOSS_OBSERVED|OWNER_LOSS_DONE|OWNER_LOSS|PROCESS_ROOT_[A-Z_]+|PROCESS_ROOT)[= ]' "$output"
             grep -E '^WHITEBOARD_CLIENT_IPC_PANIC[_A-Z]*[= ]' "$output"

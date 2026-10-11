@@ -2356,6 +2356,8 @@ run_focused_rust_tests() {
             fs::tests::confirmation_refuses_a_send_job_after_exact_eof
             fs::tests::confirmation_refuses_a_receive_job_after_publication
             fs::tests::confirmation_preserves_active_empty_files_and_skip_actions
+            fs::tests::directory_enumeration_budgets_returned_root_paths
+            fs::tests::empty_directory_enumeration_budgets_repeated_absolute_paths
         )
     elif [ "$MODE" = cpace-recovery-tests ]; then
         container_name=rustdesk-cpace-recovery-tests

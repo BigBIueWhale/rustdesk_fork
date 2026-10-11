@@ -7919,6 +7919,132 @@ mod tests {
     }
 
     #[test]
+    fn directory_enumeration_budgets_returned_root_paths() {
+        let tmp = TestTempDir::new("rustdesk_enum_root_path_budget");
+        std::fs::create_dir_all(&tmp.path).expect("create empty directory");
+        let path = get_string(&tmp.path);
+        let ordinary_budget = FileEnumerationBudget::for_max_entries(8);
+        let directory = read_dir_with_budget(&tmp.path, true, ordinary_budget)
+            .expect("admit the empty directory with an ordinary budget");
+        assert_eq!(directory.path, path);
+        assert!(directory.entries.is_empty());
+        let empty_dirs = get_empty_dirs_recursive_with_budget(&path, true, ordinary_budget)
+            .expect("admit the empty-directory result with an ordinary budget");
+        assert_eq!(empty_dirs.len(), 1);
+        assert_eq!(empty_dirs[0].path, path);
+
+        let budget = FileEnumerationBudget {
+            max_serialized_bytes: path.len() - 1,
+            ..ordinary_budget
+        };
+        let results = [
+            (
+                "directory",
+                read_dir_with_budget(&tmp.path, true, budget).map(|dir| vec![dir]),
+            ),
+            (
+                "empty directories",
+                get_empty_dirs_recursive_with_budget(&path, true, budget),
+            ),
+        ];
+        let mut admitted = Vec::new();
+        for (operation, result) in results {
+            match result {
+                Err(error) => assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED),
+                Ok(directories) => {
+                    assert_eq!(directories.len(), 1);
+                    let bytes = directories[0]
+                        .write_to_bytes()
+                        .expect("encode the actual directory result");
+                    assert!(bytes.len() > budget.max_serialized_bytes);
+                    admitted.push(operation);
+                }
+            }
+        }
+        assert!(
+            admitted.is_empty(),
+            "directory paths bypassed the byte budget: {:?}",
+            admitted
+        );
+        assert_eq!(
+            std::fs::read_dir(&tmp.path)
+                .expect("inspect unchanged empty directory")
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn empty_directory_enumeration_budgets_repeated_absolute_paths() {
+        let tmp = TestTempDir::new("rustdesk_enum_repeated_path_budget");
+        let root = tmp.join(&"p".repeat(200));
+        std::fs::create_dir_all(&root).expect("create long shared directory prefix");
+        let mut expected = Vec::new();
+        for index in 0..16 {
+            let directory = root.join(format!("empty_{index:02}"));
+            std::fs::create_dir(&directory).expect("create empty child directory");
+            expected.push(get_string(&directory));
+        }
+        expected.sort();
+        let ordinary_budget = FileEnumerationBudget::for_max_entries(32);
+        let directories = get_empty_dirs_recursive_with_budget(
+            &get_string(&root),
+            true,
+            ordinary_budget,
+        )
+        .expect("admit real empty directories with an ordinary budget");
+        assert!(directories.iter().all(|directory| directory.entries.is_empty()));
+        let mut actual: Vec<_> = directories
+            .iter()
+            .map(|directory| directory.path.clone())
+            .collect();
+        actual.sort();
+        assert_eq!(actual, expected);
+        let response = ReadEmptyDirsResponse {
+            empty_dirs: directories,
+            ..Default::default()
+        };
+        let wire_bytes = response
+            .write_to_bytes()
+            .expect("encode the actual repeated-directory result");
+        let result = get_empty_dirs_recursive_with_budget(
+            &get_string(&root),
+            true,
+            FileEnumerationBudget {
+                max_serialized_bytes: wire_bytes.len() - 1,
+                ..ordinary_budget
+            },
+        );
+        match result {
+            Err(error) => assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED),
+            Ok(directories) => {
+                let refused_response = ReadEmptyDirsResponse {
+                    empty_dirs: directories,
+                    ..Default::default()
+                };
+                assert_eq!(
+                    refused_response
+                        .write_to_bytes()
+                        .expect("encode the oversized admitted result")
+                        .len(),
+                    wire_bytes.len()
+                );
+                panic!(
+                    "repeated directory paths returned {} bytes above the {}-byte budget",
+                    wire_bytes.len(),
+                    wire_bytes.len() - 1
+                );
+            }
+        }
+        assert_eq!(
+            std::fs::read_dir(&root)
+                .expect("inspect unchanged child directory inventory")
+                .count(),
+            16
+        );
+    }
+
+    #[test]
     fn recursive_enumeration_budgets_complete_relative_paths() {
         let tmp = TestTempDir::new("rustdesk_enum_prefix_budget");
         let parent = tmp.join("abcdefgh/ijklmnop");

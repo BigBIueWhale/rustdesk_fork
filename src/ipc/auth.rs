@@ -2404,8 +2404,14 @@ fn active_uid_fresh() -> Option<u32> {
 
 #[cfg(target_os = "linux")]
 #[inline]
-fn active_uid_fresh() -> Option<u32> {
-    let reported_uid_raw = crate::platform::linux::get_active_userid_fresh();
+fn active_uid_fresh(lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>) -> Option<u32> {
+    let reported_uid_raw = match crate::platform::linux::get_active_userid_fresh(lookup) {
+        Ok(uid) => uid,
+        Err(err) => {
+            log::warn!("Fresh Linux session authority lookup refused: {err}");
+            return None;
+        }
+    };
     let trimmed = reported_uid_raw.trim();
     if let Ok(uid) = trimmed.parse::<u32>() {
         return Some(uid);
@@ -3195,6 +3201,7 @@ where
 #[cfg(target_os = "linux")]
 pub(crate) fn authenticate_linux_service_owned_password_requester<T>(
     stream: &T,
+    lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>,
 ) -> ResultType<PeerProcessIdentity>
 where
     T: std::os::unix::io::AsRawFd,
@@ -3207,7 +3214,7 @@ where
             identity.pid
         );
     }
-    if !linux_service_owned_password_requester_is_live(&identity) {
+    if !linux_service_owned_password_requester_is_live(&identity, lookup) {
         bail!(
             "Linux service-owned password requester identity changed during admission: pid={}",
             identity.pid
@@ -3415,9 +3422,14 @@ where
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn peer_process_identity_is_live(identity: &PeerProcessIdentity, postfix: &str) -> bool {
-    let active_uid =
-        linux_service_peer_active_uid(Some(identity.uid), active_uid_cached, active_uid_fresh);
+pub(crate) fn peer_process_identity_is_live(
+    identity: &PeerProcessIdentity,
+    postfix: &str,
+    lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>,
+) -> bool {
+    let active_uid = linux_service_peer_active_uid(Some(identity.uid), active_uid_cached, || {
+        active_uid_fresh(lookup)
+    });
     if !is_allowed_service_peer_uid(identity.uid, active_uid) {
         return false;
     }
@@ -3433,9 +3445,14 @@ pub(crate) fn peer_process_identity_is_live(identity: &PeerProcessIdentity, post
 #[cfg(target_os = "linux")]
 pub(crate) fn linux_service_owned_password_requester_is_live(
     identity: &PeerProcessIdentity,
+    lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>,
 ) -> bool {
     linux_service_owned_password_client_argv_is_expected(&identity.argv)
-        && peer_process_identity_is_live(identity, super::password::SERVICE_PASSWORD_IPC_POSTFIX)
+        && peer_process_identity_is_live(
+            identity,
+            super::password::SERVICE_PASSWORD_IPC_POSTFIX,
+            lookup,
+        )
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -3787,14 +3804,21 @@ pub(crate) struct ServiceScopedIpcAuthorization {
 pub(crate) fn service_scoped_ipc_authorization_snapshot(
     stream: &Connection,
     postfix: &str,
+    #[cfg(target_os = "linux")] lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>,
 ) -> ServiceScopedIpcAuthorization {
-    service_scoped_ipc_authorization_snapshot_from_stream(stream.inner.get_ref(), postfix)
+    service_scoped_ipc_authorization_snapshot_from_stream(
+        stream.inner.get_ref(),
+        postfix,
+        #[cfg(target_os = "linux")]
+        lookup,
+    )
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn service_scoped_ipc_authorization_snapshot_from_stream<T>(
     stream: &T,
     postfix: &str,
+    #[cfg(target_os = "linux")] lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>,
 ) -> ServiceScopedIpcAuthorization
 where
     T: std::os::unix::io::AsRawFd,
@@ -3813,7 +3837,9 @@ where
     #[cfg(target_os = "macos")]
     let active_uid = active_uid_fresh();
     #[cfg(target_os = "linux")]
-    let active_uid = linux_service_peer_active_uid(peer_uid, active_uid_cached, active_uid_fresh);
+    let active_uid = linux_service_peer_active_uid(peer_uid, active_uid_cached, || {
+        active_uid_fresh(lookup)
+    });
     let uid_authorized = peer_uid.is_some_and(|uid| is_allowed_service_peer_uid(uid, active_uid));
     ServiceScopedIpcAuthorization {
         postfix: postfix.to_owned(),
@@ -4041,9 +4067,16 @@ where
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-pub(crate) fn authorize_service_scoped_ipc_connection(stream: &Connection, postfix: &str) -> bool {
+pub(crate) fn authorize_service_scoped_ipc_connection(
+    stream: &Connection,
+    postfix: &str,
+    #[cfg(target_os = "linux")] lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>,
+) -> bool {
     authorize_service_scoped_ipc_authorization_snapshot(service_scoped_ipc_authorization_snapshot(
-        stream, postfix,
+        stream,
+        postfix,
+        #[cfg(target_os = "linux")]
+        lookup,
     ))
 }
 

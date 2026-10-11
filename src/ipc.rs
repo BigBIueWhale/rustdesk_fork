@@ -117,7 +117,7 @@ pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
 pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
     authorize_windows_url_ipc_connection(stream, "_url")
 }
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use hbb_common::tokio::sync::mpsc;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::tokio::{
@@ -1542,24 +1542,29 @@ impl LinuxPasswordAdmissionCoordinator {
         admission: &LinuxServiceOwnedPasswordAdmission,
         operation_id: &str,
         value: &str,
-    ) -> bool {
+        lookup: &hbb_common::platform::linux::LoginctlLookup<'_>,
+    ) -> std::io::Result<bool> {
         let caller = LinuxPasswordCaller::from(&admission.requester);
         let mut ledger = self.ledger.lock().unwrap();
+        lookup.check_pending()?;
+        if ledger.shutting_down {
+            return Ok(false);
+        }
         let fingerprint = ledger.fingerprint(value);
         let Some(entry) = ledger.entries.get_mut(operation_id) else {
-            return false;
+            return Ok(false);
         };
         if entry.kind != PasswordMutationKind::ServiceOwned
             || entry.fingerprint != fingerprint
             || entry.caller != caller
             || entry.state != LinuxPasswordAdmissionState::Authorizing
         {
-            return false;
+            return Ok(false);
         }
         entry.state = LinuxPasswordAdmissionState::Committing;
         drop(ledger);
         self.changed.notify_waiters();
-        true
+        Ok(true)
     }
 
     fn cancel_authorization(
@@ -3899,6 +3904,119 @@ fn protected_service_ipc_result(listener_error: Option<String>) -> ResultType<()
     }
 }
 
+#[cfg(target_os = "linux")]
+struct LinuxPasswordAuthorizationRequest {
+    coordinator: Arc<LinuxPasswordAdmissionCoordinator>,
+    operation_id: String,
+    value: SensitivePassword,
+    identity: PeerProcessIdentity,
+    reply: oneshot::Sender<ResultType<bool>>,
+}
+
+#[cfg(target_os = "linux")]
+enum LinuxServiceAuthorizationCompletion {
+    Service {
+        stream: Connection,
+        permit: OwnedSemaphorePermit,
+        postfix: String,
+        authorization: ResultType<()>,
+        deadline: std::time::Instant,
+    },
+    Password {
+        stream: Conn,
+        permit: OwnedSemaphorePermit,
+        identity: ResultType<PeerProcessIdentity>,
+        deadline: std::time::Instant,
+    },
+    Credential {
+        stream: Conn,
+        permit: OwnedSemaphorePermit,
+        requester: ResultType<LinuxServiceOwnedCredentialReplicaRequester>,
+        deadline: std::time::Instant,
+    },
+    PasswordAdmission {
+        reply: oneshot::Sender<ResultType<bool>>,
+        result: ResultType<bool>,
+    },
+}
+
+#[cfg(target_os = "linux")]
+enum LinuxServiceAuthorizationEvent {
+    Completed(Option<Result<LinuxServiceAuthorizationCompletion, tokio::task::JoinError>>),
+    PasswordRequest(Option<LinuxPasswordAuthorizationRequest>),
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxServiceAuthorizationCompletion {
+    fn finish(
+        self,
+        transactions: &mut JoinSet<()>,
+        password_authorizations: &mpsc::Sender<LinuxPasswordAuthorizationRequest>,
+        stopping: bool,
+    ) {
+        match self {
+            Self::Service {
+                stream,
+                permit,
+                postfix,
+                authorization: Ok(()),
+                deadline,
+            }
+                if !stopping && std::time::Instant::now() < deadline => {
+                transactions.spawn(async move {
+                    let _permit = permit;
+                    handle_service_ipc_transaction(stream, &postfix, ()).await;
+                });
+            }
+            Self::Service {
+                authorization: Err(err),
+                ..
+            } => {
+                log::warn!("Rejected Linux service IPC peer: {err}");
+            }
+            Self::Password {
+                stream,
+                permit,
+                identity: Ok(identity),
+                deadline,
+            }
+                if !stopping && std::time::Instant::now() < deadline => {
+                transactions.spawn(handle_sensitive_linux_service_ipc_transaction(
+                    stream,
+                    identity,
+                    permit,
+                    password_authorizations.clone(),
+                    tokio::time::Instant::from_std(deadline),
+                ));
+            }
+            Self::Password { identity: Err(err), .. } => {
+                log::warn!("Rejected Linux service password IPC peer: {err}");
+            }
+            Self::Credential {
+                stream,
+                permit,
+                requester: Ok(requester),
+                deadline,
+            }
+                if !stopping && std::time::Instant::now() < deadline => {
+                transactions.spawn(handle_linux_service_credential_snapshot_transaction(
+                    stream, requester, permit,
+                ));
+            }
+            Self::Credential { requester: Err(err), .. } => {
+                log::warn!("Rejected Linux service credential replica requester: {err}");
+            }
+            Self::PasswordAdmission { reply, result } => {
+                if let Err(result) = reply.send(result) {
+                    log::error!("Linux password authorization lost its retained transaction: {result:?}");
+                    crate::server::request_graceful_shutdown_after_authority_failure();
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {
     let PreparedServiceIpc {
@@ -3909,14 +4027,71 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
     } = listeners;
     let mut transactions = JoinSet::new();
     let shutdown = crate::server::shutdown_token();
+    #[cfg(target_os = "linux")]
+    let mut authorization_workers = JoinSet::<LinuxServiceAuthorizationCompletion>::new();
+    #[cfg(target_os = "linux")]
+    let (password_authorizations, mut password_authorization_requests) =
+        mpsc::channel::<LinuxPasswordAuthorizationRequest>(SERVICE_PASSWORD_IPC_TRANSACTION_BUDGET);
     let mut listener_error = None;
     loop {
         tokio::select! {
             biased;
             _ = shutdown.cancelled() => break,
+            authorization_event = async {
+                #[cfg(target_os = "linux")]
+                {
+                    tokio::select! {
+                        biased;
+                        completed = authorization_workers.join_next(), if !authorization_workers.is_empty() => {
+                            LinuxServiceAuthorizationEvent::Completed(completed)
+                        }
+                        request = password_authorization_requests.recv() => {
+                            LinuxServiceAuthorizationEvent::PasswordRequest(request)
+                        }
+                    }
+                }
+                #[cfg(target_os = "macos")]
+                std::future::pending::<()>().await
+            } => {
+                #[cfg(target_os = "linux")]
+                match authorization_event {
+                    LinuxServiceAuthorizationEvent::Completed(Some(Ok(completed))) => {
+                        completed.finish(&mut transactions, &password_authorizations, false);
+                    }
+                    LinuxServiceAuthorizationEvent::Completed(Some(Err(err))) => {
+                        log::error!("Linux service authorization worker failed: {err}");
+                        crate::server::request_graceful_shutdown_after_authority_failure();
+                    }
+                    LinuxServiceAuthorizationEvent::PasswordRequest(Some(request)) => {
+                        let shutdown = shutdown.clone();
+                        authorization_workers.spawn_blocking(move || {
+                            let LinuxPasswordAuthorizationRequest {
+                                coordinator,
+                                operation_id,
+                                value,
+                                identity,
+                                reply,
+                            } = request;
+                            let cancelled = || shutdown.is_cancelled() || reply.is_closed();
+                            let result = authorize_and_admit_linux_password_request(
+                                &coordinator,
+                                &operation_id,
+                                value.as_str(),
+                                &identity,
+                                &shutdown,
+                                &cancelled,
+                            );
+                            LinuxServiceAuthorizationCompletion::PasswordAdmission { reply, result }
+                        });
+                    }
+                    _ => {}
+                }
+            }
             completed = transactions.join_next(), if !transactions.is_empty() => {
                 if let Some(Err(err)) = completed {
                     log::error!("protected _service IPC transaction failed: {err}");
+                    #[cfg(target_os = "linux")]
+                    crate::server::request_graceful_shutdown_after_authority_failure();
                 }
             }
             result = credential_incoming.next() => {
@@ -3937,20 +4112,22 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                     let Some(permit) = try_acquire_service_credential_ipc_transaction_slot() else {
                         continue;
                     };
-                    let requester = match LinuxServiceOwnedCredentialReplicaRequester::authenticate(
-                        &stream,
-                    ) {
-                        Ok(requester) => requester,
-                        Err(err) => {
-                            log::warn!("Rejected Linux service credential replica requester: {err}");
-                            continue;
-                        }
-                    };
-                    transactions.spawn(handle_linux_service_credential_snapshot_transaction(
-                        stream,
-                        requester,
-                        permit,
-                    ));
+                    let shutdown = shutdown.clone();
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+                    authorization_workers.spawn_blocking(move || {
+                        let requester = if shutdown.is_cancelled() || std::time::Instant::now() >= deadline {
+                            Err(anyhow::anyhow!("Linux credential requester authorization cancelled"))
+                        } else {
+                            LinuxServiceOwnedCredentialReplicaRequester::authenticate(&stream)
+                        };
+                        let requester = requester.and_then(|requester| {
+                            if shutdown.is_cancelled() || std::time::Instant::now() >= deadline {
+                                bail!("Linux credential requester authorization expired");
+                            }
+                            Ok(requester)
+                        });
+                        LinuxServiceAuthorizationCompletion::Credential { stream, permit, requester, deadline }
+                    });
                 }
                 #[cfg(target_os = "macos")]
                 {
@@ -4021,19 +4198,19 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                 };
                 #[cfg(target_os = "linux")]
                 {
-                    let identity =
-                        match authenticate_linux_service_owned_password_requester(&stream) {
-                            Ok(identity) => identity,
-                            Err(err) => {
-                                log::warn!("Rejected Linux service password IPC peer: {err}");
-                                continue;
-                            }
-                        };
-                    transactions.spawn(handle_sensitive_linux_service_ipc_transaction(
-                        stream,
-                        identity,
-                        permit,
-                    ));
+                    let shutdown = shutdown.clone();
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+                    authorization_workers.spawn_blocking(move || {
+                        let cancelled = || shutdown.is_cancelled();
+                        let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(deadline, &cancelled);
+                        let identity = lookup.check_pending().map_err(anyhow::Error::from)
+                            .and_then(|_| authenticate_linux_service_owned_password_requester(&stream, &mut lookup))
+                            .and_then(|identity| {
+                                lookup.check_pending()?;
+                                Ok(identity)
+                            });
+                        LinuxServiceAuthorizationCompletion::Password { stream, permit, identity, deadline }
+                    });
                 }
                 #[cfg(target_os = "macos")]
                 {
@@ -4080,46 +4257,59 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                     continue;
                 };
                 #[cfg(target_os = "linux")]
-                if !authorize_service_scoped_ipc_connection(&stream, postfix) {
-                    continue;
+                {
+                    let shutdown = shutdown.clone();
+                    let postfix = postfix.to_owned();
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+                    authorization_workers.spawn_blocking(move || {
+                        let cancelled = || shutdown.is_cancelled();
+                        let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(deadline, &cancelled);
+                        let authorization = (|| {
+                            lookup.check_pending()?;
+                            if !authorize_service_scoped_ipc_connection(&stream, &postfix, &mut lookup) {
+                                bail!("Linux service requester authority was not proved");
+                            }
+                            lookup.check_pending()?;
+                            Ok(())
+                        })();
+                        LinuxServiceAuthorizationCompletion::Service { stream, permit, postfix, authorization, deadline }
+                    });
                 }
                 #[cfg(target_os = "macos")]
-                let Some(authorization_permit) = try_acquire_macos_service_ipc_authorization_slot() else { continue; };
-                #[cfg(target_os = "macos")]
-                let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(
-                    &stream,
-                    postfix,
-                );
-                #[cfg(target_os = "linux")]
-                let authorization = ();
-                let postfix = postfix.to_owned();
-                transactions.spawn(async move {
-                    let _permit = permit;
-                    #[cfg(target_os = "macos")]
-                    let authorization = {
+                {
+                    let Some(authorization_permit) = try_acquire_macos_service_ipc_authorization_slot() else { continue; };
+                    let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(
+                        &stream,
+                        postfix,
+                    );
+                    let postfix = postfix.to_owned();
+                    transactions.spawn(async move {
+                        let _permit = permit;
                         let deadline = tokio::time::Instant::now()
                             + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-                        let Some(authorization) =
-                            authorize_macos_service_scoped_ipc_connection_for_task(
-                                authorization,
-                                authorization_permit,
-                                deadline,
-                            )
-                            .await
-                        else {
-                            return;
-                        };
-                        authorization
-                    };
-                    handle_service_ipc_transaction(stream, &postfix, authorization).await;
-                });
+                        let Some(authorization) = authorize_macos_service_scoped_ipc_connection_for_task(
+                            authorization, authorization_permit, deadline,
+                        ).await else { return; };
+                        handle_service_ipc_transaction(stream, &postfix, authorization).await;
+                    });
+                }
             }
         }
     }
     #[cfg(target_os = "macos")]
     password_mutations().begin_shutdown();
     #[cfg(target_os = "linux")]
-    linux_password_admissions().begin_shutdown();
+    {
+        linux_password_admissions().begin_shutdown();
+        password_authorization_requests.close();
+        while password_authorization_requests.try_recv().is_ok() {}
+        while let Some(result) = authorization_workers.join_next().await {
+            match result {
+                Ok(completed) => completed.finish(&mut transactions, &password_authorizations, true),
+                Err(err) => log::error!("Linux service authorization worker did not drain cleanly: {err}"),
+            }
+        }
+    }
     while let Some(result) = transactions.join_next().await {
         if let Err(err) = result {
             log::error!("protected _service IPC transaction did not drain cleanly: {err}");
@@ -4141,9 +4331,12 @@ async fn handle_sensitive_linux_service_ipc_transaction(
     mut stream: Conn,
     identity: PeerProcessIdentity,
     _permit: OwnedSemaphorePermit,
+    password_authorizations: mpsc::Sender<LinuxPasswordAuthorizationRequest>,
+    deadline: tokio::time::Instant,
 ) {
-    let deadline = tokio::time::Instant::now()
-        + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+    if tokio::time::Instant::now() >= deadline {
+        return;
+    }
     let request = match password::receive_request_unix(
         &mut stream,
         password::SensitivePayloadKind::Password,
@@ -4169,6 +4362,7 @@ async fn handle_sensitive_linux_service_ipc_transaction(
         operation_id.to_string(),
         value,
         identity,
+        &password_authorizations,
     )
     .await;
     if let Err(err) = password::send_status_unix(&mut stream, operation_id, status, deadline).await
@@ -5767,11 +5961,11 @@ fn linux_polkit_subject_for_identity(identity: &PeerProcessIdentity) -> String {
 }
 
 #[cfg(target_os = "linux")]
-fn terminate_and_reap_linux_pkcheck(child: &mut std::process::Child, reason: &str) {
-    if let Err(err) = child.kill() {
-        log::debug!("pkcheck termination after {reason} returned: {err}");
-    }
-    if let Err(err) = child.wait() {
+fn terminate_and_reap_linux_pkcheck(
+    child: &mut hbb_common::platform::linux::OwnedAuthorizationChild,
+    reason: &str,
+) {
+    if let Err(err) = child.terminate_and_reap() {
         log::error!("Failed to reap pkcheck after {reason}: {err}");
     }
 }
@@ -5815,7 +6009,7 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
         );
         return false;
     }
-    let child = command.spawn();
+    let child = hbb_common::platform::linux::OwnedAuthorizationChild::spawn(&mut command);
     let mut child = match child {
         Ok(child) => child,
         Err(err) => {
@@ -5868,35 +6062,34 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
 }
 
 #[cfg(target_os = "linux")]
-async fn grant_linux_service_owned_password_admission(
+fn authorize_and_admit_linux_password_request(
+    coordinator: &LinuxPasswordAdmissionCoordinator,
+    operation_id: &str,
+    value: &str,
     identity: &PeerProcessIdentity,
-) -> Option<LinuxServiceOwnedPasswordAdmission> {
-    let subject = linux_polkit_subject_for_identity(identity);
-    let shutdown = crate::server::shutdown_token();
-    match tokio::task::spawn_blocking(move || {
-        linux_pkcheck_authorizes_service_owned_password_change(subject, shutdown)
-    })
-    .await
-    {
-        Ok(true) => {
-            if !linux_service_owned_password_requester_is_live(identity) {
-                log::warn!(
-                    "Rejected service-owned unattended password change: requester changed after pkcheck authorization"
-                );
-                return None;
-            }
-            Some(LinuxServiceOwnedPasswordAdmission {
-                requester: identity.clone(),
-            })
-        }
-        Ok(false) => None,
-        Err(err) => {
-            log::warn!(
-                "Rejected service-owned unattended password change: pkcheck task failed: {err}"
-            );
-            None
-        }
+    shutdown: &hbb_common::tokio_util::sync::CancellationToken,
+    cancelled: &dyn Fn() -> bool,
+) -> ResultType<bool> {
+    if cancelled() {
+        return Ok(false);
     }
+    let subject = linux_polkit_subject_for_identity(identity);
+    if !linux_pkcheck_authorizes_service_owned_password_change(subject, shutdown.clone()) {
+        return Ok(false);
+    }
+    let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(
+        std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS),
+        cancelled,
+    );
+    lookup.check_pending()?;
+    if !linux_service_owned_password_requester_is_live(identity, &mut lookup) {
+        log::warn!("Rejected service-owned unattended password change: requester changed after pkcheck authorization");
+        return Ok(false);
+    }
+    LinuxServiceOwnedPasswordAdmission {
+        requester: identity.clone(),
+    }
+    .admit_commit(coordinator, operation_id, value, &mut lookup)
 }
 
 #[cfg(target_os = "linux")]
@@ -5906,30 +6099,25 @@ impl LinuxServiceOwnedPasswordAdmission {
         coordinator: &LinuxPasswordAdmissionCoordinator,
         operation_id: &str,
         value: &str,
+        lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>,
     ) -> ResultType<bool> {
-        let caller = LinuxPasswordCaller::from(&self.requester);
         if !password_mutation_id_is_valid(operation_id)
             || !service_owned_password_value_is_valid("Linux", value)
-            || !linux_service_owned_password_requester_is_live(&self.requester)
+            || !linux_service_owned_password_requester_is_live(&self.requester, lookup)
         {
-            if !coordinator.cancel_authorization(operation_id, value, &caller) {
-                bail!("Linux password denial could not cancel its authorization claim");
-            }
             return Ok(false);
         }
-        if !coordinator.admit_authorized(&self, operation_id, value) {
-            bail!("Linux password admission state changed before commit ownership");
-        }
-        Ok(true)
+        Ok(coordinator.admit_authorized(&self, operation_id, value, lookup)?)
     }
 }
 
 #[cfg(target_os = "linux")]
 async fn execute_linux_service_owned_password_operation<Commit, CommitFuture>(
-    coordinator: &LinuxPasswordAdmissionCoordinator,
+    coordinator: &Arc<LinuxPasswordAdmissionCoordinator>,
     operation_id: &str,
     value: &str,
     identity: &PeerProcessIdentity,
+    password_authorizations: &mpsc::Sender<LinuxPasswordAuthorizationRequest>,
     mut commit: Commit,
 ) -> ResultType<IpcMutationResult>
 where
@@ -5943,14 +6131,34 @@ where
         let changed = coordinator.changed.notified();
         match coordinator.begin(operation_id, kind, value, &caller) {
             LinuxPasswordAdmissionDecision::Authorize => {
-                let Some(admission) = grant_linux_service_owned_password_admission(identity).await
-                else {
+                let (reply, result) = oneshot::channel();
+                let request = LinuxPasswordAuthorizationRequest {
+                    coordinator: coordinator.clone(),
+                    operation_id: operation_id.to_owned(),
+                    value: SensitivePassword::new(value.to_owned()),
+                    identity: identity.clone(),
+                    reply,
+                };
+                let admitted = if password_authorizations.send(request).await.is_ok() {
+                    match result.await {
+                        Ok(Ok(admitted)) => admitted,
+                        Ok(Err(err)) => {
+                            log::warn!("Linux password authorization refused: {err}");
+                            false
+                        }
+                        Err(err) => {
+                            log::warn!("Linux password authorization owner stopped: {err}");
+                            false
+                        }
+                    }
+                } else {
+                    log::warn!("Linux password authorization queue closed before admission");
+                    false
+                };
+                if !admitted {
                     if !coordinator.cancel_authorization(operation_id, value, &caller) {
                         bail!("Linux password denial could not cancel its authorization claim");
                     }
-                    return Ok(IpcMutationResult::Rejected);
-                };
-                if !admission.admit_commit(coordinator, operation_id, value)? {
                     return Ok(IpcMutationResult::Rejected);
                 }
             }
@@ -6083,6 +6291,7 @@ async fn execute_linux_service_owned_unattended_password_request(
     operation_id: String,
     value: SensitivePassword,
     identity: PeerProcessIdentity,
+    password_authorizations: &mpsc::Sender<LinuxPasswordAuthorizationRequest>,
 ) -> PasswordMutationStatus {
     if !password_mutation_id_is_valid(&operation_id)
         || !service_owned_password_value_is_valid("Linux", value.as_str())
@@ -6097,6 +6306,7 @@ async fn execute_linux_service_owned_unattended_password_request(
         &operation_id,
         value.as_str(),
         &identity,
+        password_authorizations,
         || {
             let value = commit_value.take();
             let operation_id = commit_operation_id.clone();
@@ -11705,6 +11915,80 @@ mod test {
     }
 
     #[cfg(target_os = "linux")]
+    fn admit_linux_password_for_test(
+        coordinator: &LinuxPasswordAdmissionCoordinator,
+        admission: &LinuxServiceOwnedPasswordAdmission,
+        operation_id: &str,
+        value: &str,
+    ) -> bool {
+        let lookup = hbb_common::platform::linux::LoginctlLookup::new(
+            std::time::Instant::now() + std::time::Duration::from_secs(1),
+            &|| false,
+        );
+        coordinator
+            .admit_authorized(admission, operation_id, value, &lookup)
+            .unwrap()
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_password_admission_shutdown_refuses_outstanding_authorization() {
+        let coordinator = LinuxPasswordAdmissionCoordinator::new();
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let caller = LinuxPasswordCaller {
+            pid: 100,
+            uid: 1000,
+            start_time: "10".to_owned(),
+        };
+        assert_eq!(
+            coordinator.begin(&operation_id, PasswordMutationKind::ServiceOwned, "secret", &caller),
+            LinuxPasswordAdmissionDecision::Authorize,
+        );
+        coordinator.begin_shutdown();
+        let admission = linux_password_admission_for_test(&caller);
+        assert!(!admit_linux_password_for_test(&coordinator, &admission, &operation_id, "secret"));
+        assert!(coordinator.cancel_authorization(&operation_id, "secret", &caller));
+        coordinator.clear_after_transactions_drain();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_password_admission_rechecks_lookup_deadline_after_waiting_for_lock() {
+        let coordinator = Arc::new(LinuxPasswordAdmissionCoordinator::new());
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let caller = LinuxPasswordCaller {
+            pid: 100,
+            uid: 1000,
+            start_time: "10".to_owned(),
+        };
+        assert_eq!(
+            coordinator.begin(&operation_id, PasswordMutationKind::ServiceOwned, "secret", &caller),
+            LinuxPasswordAdmissionDecision::Authorize,
+        );
+        let owner = Arc::clone(&coordinator);
+        let worker_id = operation_id.clone();
+        let admission = linux_password_admission_for_test(&caller);
+        let (ready, started) = std::sync::mpsc::channel();
+        let result = std::thread::scope(|scope| {
+            let locked = coordinator.ledger.lock().unwrap();
+            let worker = scope.spawn(move || {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+                let lookup = hbb_common::platform::linux::LoginctlLookup::new(deadline, &|| false);
+                lookup.check_pending().unwrap();
+                ready.send(deadline).unwrap();
+                owner.admit_authorized(&admission, &worker_id, "secret", &lookup)
+            });
+            let deadline = started.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+            std::thread::sleep(deadline.saturating_duration_since(std::time::Instant::now()));
+            drop(locked);
+            worker.join().unwrap()
+        });
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::TimedOut);
+        assert!(coordinator.cancel_authorization(&operation_id, "secret", &caller));
+        coordinator.clear_after_transactions_drain();
+    }
+
+    #[cfg(target_os = "linux")]
     #[test]
     fn linux_admitted_replay_after_lost_response_uses_terminal_result() {
         let coordinator = LinuxPasswordAdmissionCoordinator::new();
@@ -11724,7 +12008,7 @@ mod test {
             LinuxPasswordAdmissionDecision::Authorize
         );
         let admission = linux_password_admission_for_test(&caller);
-        assert!(coordinator.admit_authorized(&admission, &operation_id, "new-password"));
+        assert!(admit_linux_password_for_test(&coordinator, &admission, &operation_id, "new-password"));
         assert!(coordinator.complete(&operation_id, &caller, IpcMutationResult::Applied));
         assert_eq!(
             coordinator.begin(
@@ -11784,7 +12068,7 @@ mod test {
                 LinuxPasswordAdmissionDecision::Authorize
             );
             let admission = linux_password_admission_for_test(&caller);
-            assert!(coordinator.admit_authorized(&admission, &operation_id, "secret"));
+            assert!(admit_linux_password_for_test(&coordinator, &admission, &operation_id, "secret"));
             assert!(coordinator.complete(&operation_id, &caller, IpcMutationResult::Applied));
             if index == 0 {
                 std::thread::sleep(std::time::Duration::from_millis(1));
@@ -11852,7 +12136,7 @@ mod test {
             LinuxPasswordAdmissionDecision::Authorize
         );
         let admission = linux_password_admission_for_test(&caller);
-        assert!(coordinator.admit_authorized(&admission, &operation_id, "secret"));
+        assert!(admit_linux_password_for_test(&coordinator, &admission, &operation_id, "secret"));
         assert_eq!(
             coordinator.begin(
                 &operation_id,
@@ -11903,7 +12187,7 @@ mod test {
             LinuxPasswordAdmissionDecision::Authorize
         );
         let admission = linux_password_admission_for_test(&caller);
-        assert!(coordinator.admit_authorized(&admission, &operation_id, "new-password"));
+        assert!(admit_linux_password_for_test(&coordinator, &admission, &operation_id, "new-password"));
         assert!(coordinator.release_failed_commit(&operation_id, &caller));
         assert_eq!(
             coordinator.begin(
@@ -12144,33 +12428,6 @@ mod test {
                 assert!(status.success());
             }
         }
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn linux_password_authorization_is_bounded_reaped_and_capacity_isolated() {
-        let source = include_str!("ipc.rs");
-        let start = source.find("fn terminate_and_reap_linux_pkcheck").unwrap();
-        let end = source[start..]
-            .find("async fn execute_linux_service_owned_password_operation")
-            .map(|offset| start + offset)
-            .unwrap();
-        let authorization = &source[start..end];
-        for required in [
-            "PKCHECK_AUTHORIZATION_TIMEOUT",
-            "let mut command = std::process::Command::new(pkcheck);",
-            "configure_linux_pkcheck_environment(&mut command)",
-            "configure_command_close_nonstdio_on_exec(&mut command)",
-            "let child = command.spawn();",
-            "child.try_wait()",
-            "shutdown.is_cancelled()",
-            "child.kill()",
-            "child.wait()",
-        ] {
-            assert!(authorization.contains(required), "missing {required}");
-        }
-        assert!(source.contains("SERVICE_PASSWORD_IPC_TRANSACTION_SLOTS"));
-        assert!(source.contains("try_acquire_service_password_ipc_transaction_slot"));
     }
 
     #[cfg(target_os = "linux")]

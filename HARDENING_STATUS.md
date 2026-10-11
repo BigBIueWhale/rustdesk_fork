@@ -2068,64 +2068,54 @@ resource retirement, installed artifacts, and independent review remain OPEN.
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**Source implemented; four production-policy tests passed in the named isolated transaction.
-Installed receiver, whole-app integration, and release acceptance remain OPEN.**
+**UID-policy evidence accepted; lookup correction pending native verification.
+Installed receiver, whole-app and release acceptance remain OPEN.**
 
-Both Linux endpoints use the standard-library-only `src/ipc/uid_policy.rs` selector:
-generic `_service` through
-`src/ipc/auth.rs::service_scoped_ipc_authorization_snapshot_from_stream`, and raw
-`_service_password` through `peer_process_identity_is_live`. UID 0 skips both lazy
-providers. A missing/nonmatching cached UID rejects a non-root peer without a fresh
-lookup; a cache match selects fresh authority, never cached authority. The UID gate
-does not replace kernel peer proof, the finite requester role, PID/UID/start/argv/executable
-identity, launch ancestry, or live-generation replay.
+Both Linux endpoints use `src/ipc/uid_policy.rs`: UID 0 bypasses both lazy providers;
+a cached negative rejects without a fresh lookup; a cache match requires fresh authority.
+This does not replace kernel peer proof, finite requester role, PID/UID/start/argv/executable
+identity, launch ancestry or live-generation replay. Selector/wrapper bytes are unchanged.
 
-Password revalidation still applies at initial admission, after fixed-action polkit
-approval, and immediately before commit admission in `run_service_ipc`,
-`grant_linux_service_owned_password_admission`, and
-`LinuxServiceOwnedPasswordAdmission::admit_commit`. Endpoint permits precede identity
-work and remain transaction-owned. No ordinary configuration, user-storage fallback,
-credential ownership, or macOS authority change follows from this selector.
+Pending `hbb_common::platform::linux::LoginctlLookup` shares one deadline and 1 MiB stdout
+budget across queries; overflow prevents later commands and query/parse uncertainty stops
+selection. Fixed paths/environment/arguments/descriptors remain constrained.
+`OwnedAuthorizationChild` retains pidfd/wait ownership through cancellation and unwind;
+incompatible SIGCHLD or failed pidfd acquisition refuses the command. Raw no-seat Type
+now skips TTY/unspecified instead of normalizing to X11; opening/Mir/Web remain recognized.
+Native session selection and application-wide child/resource bounds remain unproved.
 
-**Focused execution.** `scripts/smoke-verifier-vm-authority.sh --linux-service-uid-tests`
-compiles the production module through the checked-in Rust wrapper with pinned Rust
-1.75 / edition 2021, without Cargo, vendor/Pub walks, bridge generation or native app
-dependencies. Its 300-second VM budget, 2 GiB guest, 512 MiB numeric-nonroot container,
-read-only source/inputs, zero-NIC VM, networkless/capability-free container, endpoint-only
-listener audit and joined cleanup remain mandatory. It runs the password source guard
-without its mutation catalog and requires all four exact policy tests: UID allow/deny,
-root lookup bypass, cached-negative fresh-lookup bypass, and fresh authority after a cache
-match. These tests observe the production selector/provider calls; they are not installed
-service or Android-framework tests.
+Linux `run_service_ipc` joins blocking proof workers retaining endpoint permits.
+Proof precedes secret read. `authorize_and_admit_linux_password_request` performs polkit,
+fresh replay and consuming `admit_commit` in one worker; the coordinator checks deadline,
+cancellation and shutdown under its admission lock. Shutdown closes requests and joins
+workers before transactions. The old async grant and wording-only child-cleanup test are
+deleted. Compilation/native verification, installed authority and responsiveness remain open.
 
-The accepted source is `aa437333945074d447150bbe8d9a4ca36c5f1490`, tree
-`b884b1a3863074b6a2507b29be300d919ba452b1`. Four tests passed with zero failed,
-ignored or filtered tests, and the source guard passed. VM elapsed time was **38 seconds**;
-test-artifact SHA-256 was
-`b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
-Retained evidence under `.harness-state/verifier-vm/`:
+**Accepted policy transaction:** `--linux-service-uid-tests`, source
+`aa437333945074d447150bbe8d9a4ca36c5f1490`, tree `b884b1a3863074b6a2507b29be300d919ba452b1`;
+Four selector/provider tests and source guard passed in38s, outer0/joined cleanup.
+Artifact SHA-256 `b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
+Under `.harness-state/verifier-vm/`, `linux-service-uid-tests-run.FQjze4G9se.serial.log`
+(65,958B; SHA-256 `514d43c0aac294aee891a4afa05309dd5ab171c61ab0584325d41d55b83241ad`)
+and `.success.receipt` (1,008B/0400; `25879b12597807c6867f0bf7382d6150099d5735ec082d769ea04721eccb1d32`)
+bind Rust1.75 and the isolated topology/unchanged endpoints. Broad-profile three-provider
+coverage and rejected caller integration receipts remain under R-S11fi.
 
-- `linux-service-uid-tests-run.FQjze4G9se.serial.log`: 65,958 bytes, SHA-256
-  `514d43c0aac294aee891a4afa05309dd5ab171c61ab0584325d41d55b83241ad`.
-- `linux-service-uid-tests-run.FQjze4G9se.success.receipt`: 1,008 bytes, mode 0400,
-  SHA-256 `25879b12597807c6867f0bf7382d6150099d5735ec082d769ea04721eccb1d32`;
-  outer status 0, no added host endpoint, joined children and retired scratch root.
+**Diagnostic old-behavior baseline:** source8167a5e0, `hbb-common-fs-run.cpLHhRm0Wo.serial.log`
+(80,949B; SHA-256 `4412a9a0ab5db0496ff89ef4f3fe65131f7c61c22a5eb5bc53f51ee86497f7f0`).
+Cancellation/deadline each took about10s; capture retained2,097,333B despite a1MiB budget.
+Three probes failed; small success passed. Children eventually reaped; no leak or privilege
+bypass demonstrated. Outer1 rejected a new127.0.0.1:9333 endpoint of unknown owner, untouched.
+No accepted integration. Prepared `--hbb-common-fs` has eight capture cases, four byte-identical
+to8167a5e0; `--linux-password-admission-tests` compiles the actual Linux IPC library and selects
+seven coordinator cases in the existing300s topology without bridge generation. Execution
+pending; coordinator evidence cannot establish installed peer authority.
 
-The selector/wrapper are unchanged. The broad profile runs three named UID-provider cases.
-On `ac51cdcd`, 17 groups/101 guest tests passed; outer count 99 rejected the receipt.
-`eb421119` fixes the count; its VM owner exited 137 before results, cause unproved.
-Exact evidence: R-S11fi. Installed receiver/whole-app acceptance remains OPEN.
-Fresh authorization reaches blocking `run_loginctl`/`Command::output` on the async receiver
-(`src/ipc.rs:4025,4083,5882,5913`; `libs/hbb_common/src/platform/linux.rs:767–785`),
-without an explicit deadline/output cap. Whole-lookup bounds, child cancellation/reaping
-and responsiveness need correction/native evidence; no privilege bypass is demonstrated.
-
-**Still OPEN:** exact-artifact installed Linux receiver behavior on both endpoints with
-root/cache/session changes, capacity contention, authorized/unauthorized principals,
-cancellation/drain, and lookup/transaction resource observations; whole-app integration;
-native macOS authority; current installed/release artifacts, cold R-B2/R-B10 equality,
-independent reproduction and external review. Provider-call tests and source wiring
-cannot close those boundaries or explain the reported Android/Windows display symptoms.
+**Still OPEN:** corrected native capture/coordinator execution; installed Linux both-endpoint
+root/cache/session changes, principal allow/deny, contention, cancellation/drain, receiver
+responsiveness, and lookup/transaction/descendant resources; whole-app integration; native macOS;
+current installed/release artifacts, cold R-B2/R-B10 equality, independent reproduction and
+external review. This work does not explain the reported Android/Windows display symptoms.
 
 ### Flutter result inventory — single model-count source
 

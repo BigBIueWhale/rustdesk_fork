@@ -68,7 +68,7 @@ case "$#:${8:-}" in
         [[ "${13}" = --clipboard || "${13}" = --whiteboard-presentation \
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
             || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release || "${13}" = --input-lifetime \
-            || "${13}" = --installer-package ]] || exit 2
+            || "${13}" = --installer-package || "${13}" = --linux-password-admission ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -2298,6 +2298,10 @@ run_focused_rust_tests() {
             platform::linux::tests::r_s11at_loginctl_output_limit_reaps_writing_child
             platform::linux::tests::r_s11at_loginctl_output_cancellation_reaps_active_child
             platform::linux::tests::r_s11at_loginctl_output_success_preserves_payload_and_reaps_child
+            platform::linux::tests::r_s11at_loginctl_output_budget_is_shared_by_successive_children
+            platform::linux::tests::r_s11at_loginctl_output_expired_lookup_refuses_the_next_spawn
+            platform::linux::tests::r_s11at_loginctl_output_overflow_refuses_later_children
+            platform::linux::tests::r_s11at_loginctl_output_owner_reaps_and_closes_pidfd_on_unwind
             test::direct_address_ipv4
             test::direct_address_ipv6_formatting
             test::direct_address_hostname_port
@@ -2616,6 +2620,18 @@ run_focused_rust_tests() {
                 installer_package::tests::input_refuses_missing_empty_non_msi_and_oversized_files
                 installer_package::tests::input_refuses_symlink_without_reading_target
                 installer_package::tests::compression_and_length_patch_failures_are_returned
+            )
+        elif [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
+            container_name=rustdesk-linux-password-admission-tests
+            source_fingerprints+=(src/platform/linux.rs libs/hbb_common/src/platform/linux.rs)
+            required_tests=(
+                ipc::test::linux_password_admission_shutdown_refuses_outstanding_authorization
+                ipc::test::linux_password_admission_rechecks_lookup_deadline_after_waiting_for_lock
+                ipc::test::linux_password_admission_denials_do_not_consume_replay_capacity
+                ipc::test::linux_password_admission_evicts_only_completed_replay_entries
+                ipc::test::linux_admitted_replay_after_lost_response_uses_terminal_result
+                ipc::test::linux_password_commit_has_one_owner_and_one_recovery_claimant
+                ipc::test::linux_admitted_unresolved_replay_recovers_without_new_authorization
             )
         elif [ "$RUST_TEST_PROFILE" = clipboard ]; then
             clipboard_tests=()
@@ -3187,6 +3203,26 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                         done
                         [ -n "$clipboard_executable" ] || exit 95
                         clipboard_artifact_sha="$(sha256sum "$clipboard_executable" | cut -d " " -f 1)"
+                        if [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
+                            printf "LINUX_PASSWORD_ADMISSION_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            /usr/bin/timeout --signal=TERM --kill-after=5s 15s \
+                                "$clipboard_executable" ipc::test::linux_password_admission_ --color never --test-threads=1
+                            [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                            for admission_case in \
+                                linux_admitted_replay_after_lost_response_uses_terminal_result \
+                                linux_password_commit_has_one_owner_and_one_recovery_claimant \
+                                linux_admitted_unresolved_replay_recovers_without_new_authorization; do
+                                /usr/bin/timeout --signal=TERM --kill-after=5s 10s \
+                                    "$clipboard_executable" "ipc::test::$admission_case" \
+                                    --exact --color never --test-threads=1
+                                [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                            done
+                            python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
+                            printf "LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=%s executable=%s tests=7 groups=4 unchanged=before-between-after\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            exit 0
+                        fi
                         [[ "$clipboard_artifact_sha" =~ ^[0-9a-f]{64}$ ]]
                         if [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
                             printf "INPUT_LIFETIME_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
@@ -3497,7 +3533,9 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'native parent-process lifetime observations differ'
     else
         expected_groups=17
-        if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
+        if [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
+            expected_groups=4
+        elif [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
             expected_groups=4
         elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
             expected_groups=3
@@ -3542,6 +3580,10 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 && [ "$(grep -Fxc 'INPUT_RELEASE_NATIVE=pass cases=16 shared_owners=2 prior_owner_retirement=no-events final_owner_release=exact-key foreign_key=preserved keyboard_state=unavailable ordinary_admission=refused registry=retired descriptors=retired whole_app=false' "$output")" -eq 1 ] \
                 && [ "$(grep -Fxc 'INPUT_RELEASE_X11=pass server=owned network=none endpoint=absent cleanup=joined' "$output")" -eq 1 ] \
                 || fail 'native input-release observations differ'
+        elif [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
+            [ "$(grep -Ec '^LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=7 groups=4 unchanged=before-between-after$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fc 'LINUX_PASSWORD_ADMISSION_ARTIFACT=' "$output")" -eq 1 ] \
+                || fail 'Linux password admission artifact receipt differs'
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
             [ "$(grep -Ec '^WHITEBOARD_CLIENT_STATE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=9 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_CLIENT_STATE_ARTIFACT=' "$output")" -eq 1 ] \
@@ -3658,6 +3700,12 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             grep -E '^WHITEBOARD_LISTENER_CANCEL=' "$output"
             grep -E '^test whiteboard::(event_lifecycle|server|linux)::tests::r_s11hn_.* \.\.\. ok$' "$output"
             printf 'WHITEBOARD_DISPLAY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-whiteboard-lifecycle-listener-and-x11-pixels rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
+            grep -E '^LINUX_PASSWORD_ADMISSION_ARTIFACT(_BEFORE)?=' "$output"
+            grep -E '^test ipc::test::linux_(password|admitted).* \.\.\. ok$' "$output"
+            printf 'LINUX_PASSWORD_ADMISSION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-linux-password-coordinator installed=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then

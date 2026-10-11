@@ -2576,8 +2576,19 @@ pub fn get_active_userid_cached() -> Option<String> {
 
 #[inline]
 /// Returns the active uid from a fresh seat0 lookup, bypassing the service-loop cache.
-pub fn get_active_userid_fresh() -> String {
-    get_values_of_seat0(&[1])[0].clone()
+pub fn get_active_userid_fresh(
+    lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>,
+) -> std::io::Result<String> {
+    lookup
+        .active_session_values(&[1], true)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "active session UID is missing",
+            )
+        })
 }
 
 pub fn is_login_wayland() -> bool {

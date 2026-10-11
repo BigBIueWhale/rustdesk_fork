@@ -897,12 +897,18 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
         )
     )
     service_listener = ipc.function("run_service_ipc")
+    service_finish = ipc.method(
+        ("impl", "LinuxServiceAuthorizationCompletion"),
+        "finish",
+        "joined Linux service authorization completion",
+    )
     service_listener.require_order(
         (
             (("password_incoming", ".", "next", "(", ")"), "raw service accept lane"),
             (("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),
-            (("authenticate_linux_service_owned_password_requester", "(", "&", "stream", ")"), "exact Linux password-requester generation and role proof"),
-            (("transactions", ".", "spawn", "(", "handle_sensitive_linux_service_ipc_transaction"), "raw Linux handler spawn"),
+            (("authorization_workers", ".", "spawn_blocking", "("), "retained blocking proof worker"),
+            (("authenticate_linux_service_owned_password_requester", "(", "&", "stream", ",", "&", "mut", "lookup", ")"), "exact Linux password-requester generation and role proof"),
+            (("LinuxServiceAuthorizationCompletion", "::", "Password", "{"), "owned password proof completion"),
             (("Connection", "::", "new_protected_service", "(", "stream", ")"), "ordinary framed service lane"),
         )
     )
@@ -920,7 +926,15 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
             (("credential_incoming", ".", "next", "(", ")"), "raw credential accept lane"),
             (("try_acquire_service_credential_ipc_transaction_slot", "(", ")"), "credential work admission"),
             (("LinuxServiceOwnedCredentialReplicaRequester", "::", "authenticate", "(", "&", "stream", OPTIONAL_COMMA, ")"), "typed exact-child proof before request read"),
-            (("transactions", ".", "spawn", "(", "handle_linux_service_credential_snapshot_transaction"), "owned credential handler"),
+            (("LinuxServiceAuthorizationCompletion", "::", "Credential", "{"), "owned credential proof completion"),
+        )
+    )
+    service_finish.require_order(
+        (
+            (("identity", ":", "Ok", "(", "identity", ")"), "successful password proof"),
+            (("transactions", ".", "spawn", "(", "handle_sensitive_linux_service_ipc_transaction"), "retained raw password transaction"),
+            (("requester", ":", "Ok", "(", "requester", ")"), "successful exact-child proof"),
+            (("transactions", ".", "spawn", "(", "handle_linux_service_credential_snapshot_transaction"), "retained credential transaction"),
         )
     )
     for listener in (main_prepare, main_listener, service_prepare, service_listener):
@@ -930,8 +944,8 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
         )
     for handler_name, owner in (
         ("handle_sensitive_main_ipc_transaction", main_listener),
-        ("handle_sensitive_linux_service_ipc_transaction", service_listener),
-        ("handle_linux_service_credential_snapshot_transaction", service_listener),
+        ("handle_sensitive_linux_service_ipc_transaction", service_finish),
+        ("handle_linux_service_credential_snapshot_transaction", service_finish),
     ):
         calls = non_definition_calls(ipc, handler_name)
         if len(calls) != 1 or not owner.start <= calls[0] < owner.end:
@@ -1012,14 +1026,14 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     fresh_candidates = [
         function
         for function in auth.functions("active_uid_fresh")
-        if function.positions(("get_active_userid_fresh", "(", ")"))
+        if function.positions(("get_active_userid_fresh", "(", "lookup", ")"))
     ]
     if len(fresh_candidates) != 1:
         raise VerificationError(
             "src/ipc/auth.rs: expected one Linux active_uid_fresh implementation"
         )
     fresh_uid = fresh_candidates[0]
-    fresh_uid.require(("get_active_userid_fresh", "(", ")"), "fresh Linux session owner lookup", unique=True)
+    fresh_uid.require(("get_active_userid_fresh", "(", "lookup", ")"), "fresh Linux session owner lookup", unique=True)
 
     cached_uid = auth.function("active_uid_cached")
     cached_uid.require(
@@ -1044,7 +1058,7 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         (
             (("peer_uid_from_fd", "(", "fd", ")"), "socket peer UID"),
             (("let", "peer_pid", "=", "peer_pid_from_fd", "(", "fd", ")"), "Linux socket peer PID binding"),
-            (("linux_service_peer_active_uid", "(", "peer_uid", ",", "active_uid_cached", ",", "active_uid_fresh", ")"), "shared lazy Linux UID selection"),
+            (("linux_service_peer_active_uid", "(", "peer_uid", ",", "active_uid_cached", ",", "||", "{", "active_uid_fresh", "(", "lookup", ")", "}", ")"), "shared lazy Linux UID selection"),
             (("is_allowed_service_peer_uid", "(", "uid", ",", "active_uid", ")"), "session authority decision"),
         )
     )
@@ -1098,7 +1112,7 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         (
             "let", "active_uid", "=", "linux_service_peer_active_uid", "(",
             "Some", "(", "identity", ".", "uid", ")", ",",
-            "active_uid_cached", ",", "active_uid_fresh", ")", ";",
+            "active_uid_cached", ",", "||", "{", "active_uid_fresh", "(", "lookup", ")", "}", ")", ";",
         ),
         "shared lazy UID selection on every password identity replay",
         unique=True,
@@ -1154,7 +1168,7 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
             (("let", "postfix", "=", "super", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX"), "fixed privileged endpoint"),
             (("peer_process_identity_from_stream", "(", "stream", ",", "postfix", ")"), "SO_PEERCRED/current-executable/full-identity capture"),
             (("if", "!", "linux_service_owned_password_client_argv_is_expected", "(", "&", "identity", ".", "argv", ")"), "finite exact requester role"),
-            (("linux_service_owned_password_requester_is_live", "(", "&", "identity", ")"), "same-generation pre-body finality"),
+            (("linux_service_owned_password_requester_is_live", "(", "&", "identity", ",", "lookup", ")"), "same-generation pre-body finality"),
             (("Ok", "(", "identity", ")"), "admitted exact identity"),
         )
     )
@@ -1164,7 +1178,7 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     password_requester_live.require_order(
         (
             (("linux_service_owned_password_client_argv_is_expected", "(", "&", "identity", ".", "argv", ")"), "exact role recheck"),
-            (("&&", "peer_process_identity_is_live", "(", "identity", ",", "super", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ")"), "full live identity re-read"),
+            (("&&", "peer_process_identity_is_live", "(", "identity", ",", "super", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ",", "lookup", OPTIONAL_COMMA, ")"), "full live identity re-read"),
         ),
         unique=True,
     )
@@ -1382,35 +1396,24 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         "cloneable Linux password admission",
     )
 
-    grant = ipc.function("grant_linux_service_owned_password_admission")
-    ipc.all().require(
-        (
-            "async", "fn", "grant_linux_service_owned_password_admission", "(",
-            "identity", ":", "&", "PeerProcessIdentity", OPTIONAL_COMMA, ")", "->",
-            "Option", "<", "LinuxServiceOwnedPasswordAdmission", ">",
-        ),
-        "typed Linux password admission grant",
-        unique=True,
-    )
+    grant = ipc.function("authorize_and_admit_linux_password_request")
     grant.require_order(
         (
             (("linux_polkit_subject_for_identity", "(", "identity", ")"), "socket-derived polkit subject"),
-            (("linux_pkcheck_authorizes_service_owned_password_change", "(", "subject", ",", "shutdown", ")"), "bounded polkit proof"),
-            (("Ok", "(", "true", ")", "=>", "{"), "successful authorization branch"),
-            (("linux_service_owned_password_requester_is_live", "(", "identity", ")"), "post-authorization full requester replay"),
-            (("Some", "(", "LinuxServiceOwnedPasswordAdmission", "{", "requester", ":", "identity", ".", "clone", "(", ")"), "non-cloneable action admission grant"),
+            (("if", "!", "linux_pkcheck_authorizes_service_owned_password_change", "(", "subject", ",", "shutdown", ".", "clone", "(", ")", ")"), "bounded fail-closed polkit proof"),
+            (("LoginctlLookup", "::", "new", "("), "one post-polkit lookup context"),
+            (("if", "!", "linux_service_owned_password_requester_is_live", "(", "identity", ",", "&", "mut", "lookup", ")"), "post-authorization full requester replay"),
+            (("LinuxServiceOwnedPasswordAdmission", "{", "requester", ":", "identity", ".", "clone", "(", ")"), "non-cloneable action admission"),
+            (("admit_commit", "(", "coordinator", ",", "operation_id", ",", "value", ",", "&", "mut", "lookup", ")"), "immediate admission under the same lookup context"),
         ),
         unique=True,
     )
-    grant.require(
-        ("if", "!", "linux_service_owned_password_requester_is_live", "(", "identity", ")"),
-        "fail-closed post-authorization requester guard",
-        unique=True,
-    )
+    grant.forbid(("spawn_blocking",), "detached authorization worker")
+    grant.forbid(("await",), "fresh authority adoption after asynchronous suspension")
     ipc.all().require(
         (
-            "Some", "(", "LinuxServiceOwnedPasswordAdmission", "{",
-            "requester", ":", "identity", ".", "clone", "(", ")", OPTIONAL_COMMA, "}", ")",
+            "LinuxServiceOwnedPasswordAdmission", "{",
+            "requester", ":", "identity", ".", "clone", "(", ")", OPTIONAL_COMMA, "}",
         ),
         "sole production Linux password admission construction",
         unique=True,
@@ -1421,30 +1424,19 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         "admit_commit",
         "Linux service-owned password admission capability",
     )
-    ipc.all().require(
-        (
-            "fn", "admit_commit", "(", "self", ",", "coordinator", ":", "&",
-            "LinuxPasswordAdmissionCoordinator", ",", "operation_id", ":", "&", "str", ",",
-            "value", ":", "&", "str", OPTIONAL_COMMA, ")", "->", "ResultType", "<", "bool", ">",
-        ),
-        "consuming Linux password admission method",
-        unique=True,
-    )
     admission_commit.require_order(
         (
-            (("LinuxPasswordCaller", "::", "from", "(", "&", "self", ".", "requester", ")"), "capability-derived ledger caller"),
             (("password_mutation_id_is_valid", "(", "operation_id", ")"), "canonical operation identifier"),
             (("service_owned_password_value_is_valid", "(", '"Linux"', ",", "value", ")"), "bounded credential value"),
-            (("linux_service_owned_password_requester_is_live", "(", "&", "self", ".", "requester", ")"), "final full requester replay"),
-            (("cancel_authorization", "(", "operation_id", ",", "value", ",", "&", "caller", ")"), "exact pre-admission cancellation"),
-            (("admit_authorized", "(", "&", "self", ",", "operation_id", ",", "value", ")"), "capability-typed ledger transition"),
+            (("linux_service_owned_password_requester_is_live", "(", "&", "self", ".", "requester", ",", "lookup", ")"), "final full requester replay"),
+            (("admit_authorized", "(", "&", "self", ",", "operation_id", ",", "value", ",", "lookup", ")"), "capability-typed ledger transition"),
         )
     )
     admission_commit.require(
         (
             "if", "!", "password_mutation_id_is_valid", "(", "operation_id", ")",
             "||", "!", "service_owned_password_value_is_valid", "(", '"Linux"', ",", "value", ")",
-            "||", "!", "linux_service_owned_password_requester_is_live", "(", "&", "self", ".", "requester", ")",
+            "||", "!", "linux_service_owned_password_requester_is_live", "(", "&", "self", ".", "requester", ",", "lookup", ")",
         ),
         "conjunctive operation, value, and requester validation",
         unique=True,
@@ -1472,6 +1464,9 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     coordinator_admission.require_order(
         (
             (("LinuxPasswordCaller", "::", "from", "(", "&", "admission", ".", "requester", ")"), "capability-derived caller"),
+            (("ledger", "=", "self", ".", "ledger", ".", "lock", "(", ")", ".", "unwrap", "(", ")"), "admission lock"),
+            (("lookup", ".", "check_pending", "(", ")", "?"), "deadline and cancellation under the admission lock"),
+            (("if", "ledger", ".", "shutting_down", "{", "return", "Ok", "(", "false", ")"), "closed shutdown admission"),
             (("fingerprint", "=", "ledger", ".", "fingerprint", "(", "value", ")"), "exact value fingerprint"),
             (("entry", ".", "kind", "!=", "PasswordMutationKind", "::", "ServiceOwned"), "fixed service-owned kind"),
             (("entry", ".", "fingerprint", "!=", "fingerprint"), "value equality"),
@@ -1505,14 +1500,18 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     )
     production = Region(ipc, 0, test_module, "src/ipc.rs production")
     production.require(
-        ("grant_linux_service_owned_password_admission", "(", "identity", ")", ".", "await"),
-        "sole real Linux admission grant call",
+        ("let", "result", "=", "authorize_and_admit_linux_password_request", "("),
+        "sole production Linux proof and admission call",
         unique=True,
     )
     production.require(
-        ("coordinator", ".", "admit_authorized", "(", "&", "self", ",", "operation_id", ",", "value", ")"),
+        ("coordinator", ".", "admit_authorized", "(", "&", "self", ",", "operation_id", ",", "value", ",", "lookup", ")"),
         "sole capability-owned coordinator admission call",
         unique=True,
+    )
+    production.forbid(
+        ("grant_linux_service_owned_password_admission",),
+        "obsolete asynchronous authority grant",
     )
     production.forbid(
         ("linux_peer_is_authorized_for_service_owned_password_change",),
@@ -3111,27 +3110,16 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
         )
 
     operation = ipc.function("execute_linux_service_owned_password_operation")
-    ipc.all().require(
-        (
-            "async", "fn", "execute_linux_service_owned_password_operation", "<", "Commit", ",",
-            "CommitFuture", ">", "(", "coordinator", ":", "&",
-            "LinuxPasswordAdmissionCoordinator", ",", "operation_id", ":", "&", "str", ",",
-            "value", ":", "&", "str", ",", "identity", ":", "&", "PeerProcessIdentity", ",",
-            "mut", "commit", ":", "Commit", OPTIONAL_COMMA, ")", "->", "ResultType", "<",
-            "IpcMutationResult", ">",
-        ),
-        "noninjectable typed Linux password operation",
-        unique=True,
-    )
     operation.require_order(
         (
             (("kind", "=", "PasswordMutationKind", "::", "ServiceOwned"), "fixed service-owned kind"),
             (("caller", "=", "LinuxPasswordCaller", "::", "from", "(", "identity", ")"), "full-identity-derived ledger caller"),
             (("coordinator", ".", "begin", "(", "operation_id", ",", "kind", ",", "value", ",", "&", "caller", ")"), "bound admission/replay"),
             (("Authorize", "=>", "{"), "new authority branch"),
-            (("grant_linux_service_owned_password_admission", "(", "identity", ")", ".", "await"), "typed interactive authority"),
+            (("LinuxPasswordAuthorizationRequest", "{"), "typed service-owned authorization request"),
+            (("password_authorizations", ".", "send", "(", "request", ")", ".", "await"), "bounded service-owned authorization queue"),
+            (("result", ".", "await"), "joined already-admitted result"),
             (("cancel_authorization", "(", "operation_id", ",", "value", ",", "&", "caller", ")"), "exact denied claim cancellation"),
-            (("admission", ".", "admit_commit", "(", "coordinator", ",", "operation_id", ",", "value", ")"), "consuming typed ledger admission"),
             (("Wait", "=>", "{"), "in-flight replay wait"),
             (("shutdown", ".", "cancelled", "(", ")"), "shutdown-aware wait"),
             (("Recover", "=>", "{"), "recovery ownership"),
@@ -3143,7 +3131,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     )
     operation.forbid(("authorize", "(", ")"), "generic Linux authority callback")
     operation.forbid(("finish_authorization", "("), "Boolean authority finalization")
-    operation.forbid(("admitted",), "detached Linux admission Boolean")
+    operation.forbid(("admit_commit",), "fresh authority admission on the asynchronous transaction")
     commit = ipc.function("commit_service_owned_unattended_password_change")
     commit.require_order(
         (

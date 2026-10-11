@@ -1,13 +1,13 @@
 use crate::ResultType;
 use std::{
     convert::TryInto,
-    io,
+    io::{self, Read},
     os::{
-        fd::RawFd,
+        fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
         unix::{fs::MetadataExt, process::CommandExt},
     },
     path::{Component, Path, PathBuf},
-    process::Command,
+    process::{Child, Command, ExitStatus, Stdio},
 };
 use users::{get_current_uid, get_effective_uid, get_user_by_uid, os::unix::UserExt};
 
@@ -31,6 +31,7 @@ const LOGINCTL_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_s
 pub struct LoginctlLookup<'a> {
     deadline: std::time::Instant,
     remaining_stdout_bytes: usize,
+    stdout_budget_exceeded: bool,
     cancelled: &'a dyn Fn() -> bool,
 }
 
@@ -39,7 +40,237 @@ impl<'a> LoginctlLookup<'a> {
         Self {
             deadline,
             remaining_stdout_bytes: LOGINCTL_STDOUT_MAX_BYTES,
+            stdout_budget_exceeded: false,
             cancelled,
+        }
+    }
+
+    pub fn check_pending(&self) -> io::Result<()> {
+        if (self.cancelled)() {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "loginctl lookup cancelled",
+            ));
+        }
+        if std::time::Instant::now() >= self.deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "loginctl lookup deadline exceeded",
+            ));
+        }
+        if self.stdout_budget_exceeded {
+            return Err(invalid_loginctl_output(
+                "loginctl lookup stdout budget exceeded",
+            ));
+        }
+        Ok(())
+    }
+
+    fn properties(
+        &mut self,
+        session: &str,
+        properties: &[LoginctlProperty],
+    ) -> io::Result<Vec<String>> {
+        if session.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "loginctl session identifier is empty",
+            ));
+        }
+        let output = self.query(LoginctlQuery::SessionProperties {
+            session,
+            properties,
+        })?;
+        parse_loginctl_session_properties(&output.stdout, properties)
+    }
+
+    fn property(&mut self, session: &str, property: LoginctlProperty) -> io::Result<String> {
+        self.properties(session, &[property])?.pop().ok_or_else(|| {
+            invalid_loginctl_output("requested loginctl session property is missing")
+        })
+    }
+
+    fn query(&mut self, query: LoginctlQuery<'_>) -> io::Result<std::process::Output> {
+        self.check_pending()?;
+        let loginctl = trusted_command_path(&LOGINCTL_PATHS).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "loginctl was not found at a trusted fixed path",
+            )
+        })?;
+        let mut command = Command::new(loginctl);
+        configure_loginctl_environment(&mut command);
+        command.args(query.arguments());
+        configure_command_close_nonstdio_on_exec(&mut command)?;
+        let output = capture_loginctl_output(&mut command, self)?;
+        if !output.status.success() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("loginctl query failed with {}", output.status),
+            ));
+        }
+        Ok(output)
+    }
+
+    pub fn active_session_values(
+        &mut self,
+        indices: &[usize],
+        ignore_gdm_wayland: bool,
+    ) -> io::Result<Vec<String>> {
+        let output = self.query(LoginctlQuery::ListSessions)?;
+        let sessions = parse_loginctl_sessions(&output.stdout)?;
+        for seat0_only in [true, false] {
+            for session in &sessions {
+                self.check_pending()?;
+                if seat0_only && session.seat != "seat0" {
+                    continue;
+                }
+                let state = self.property(&session.id, LoginctlProperty::State)?;
+                if !matches!(state.as_str(), "opening" | "active" | "online" | "closing") {
+                    return Err(invalid_loginctl_output("loginctl session state is unknown"));
+                }
+                if state != "active" {
+                    continue;
+                }
+                if !seat0_only || (ignore_gdm_wayland && is_gdm_user(&session.username)) {
+                    let display = self.property(&session.id, LoginctlProperty::Type)?;
+                    if !matches!(
+                        display.as_str(),
+                        "x11" | "wayland" | "mir" | "web" | "tty" | "unspecified"
+                    ) {
+                        return Err(invalid_loginctl_output("loginctl session type is unknown"));
+                    }
+                    if ignore_gdm_wayland
+                        && is_gdm_user(&session.username)
+                        && display == DISPLAY_SERVER_WAYLAND
+                    {
+                        continue;
+                    }
+                    if !seat0_only && (display == "tty" || display == "unspecified") {
+                        continue;
+                    }
+                }
+                self.check_pending()?;
+                return Ok(session_values(indices, Some(session)));
+            }
+        }
+        self.check_pending()?;
+        Ok(session_values(indices, None))
+    }
+}
+
+pub struct OwnedAuthorizationChild {
+    child: Child,
+    pidfd: Option<OwnedFd>,
+    reaped: bool,
+}
+
+impl OwnedAuthorizationChild {
+    pub fn spawn(command: &mut Command) -> io::Result<Self> {
+        let mut disposition = unsafe { std::mem::zeroed::<libc::sigaction>() };
+        if unsafe { libc::sigaction(libc::SIGCHLD, std::ptr::null(), &mut disposition) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if disposition.sa_sigaction == libc::SIG_IGN || disposition.sa_flags & libc::SA_NOCLDWAIT != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "authorization child cannot retain wait ownership",
+            ));
+        }
+        let mut owner = Self {
+            child: command.spawn()?,
+            pidfd: None,
+            reaped: false,
+        };
+        // No other waiter receives this child; its unreaped PID cannot be reused during acquisition.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, owner.child.id(), 0) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        owner.pidfd = Some(unsafe { OwnedFd::from_raw_fd(fd as RawFd) });
+        Ok(owner)
+    }
+
+    pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        let result = self.child.try_wait()?;
+        if result.is_some() {
+            self.reaped = true;
+        }
+        Ok(result)
+    }
+
+    pub fn terminate_and_reap(&mut self) -> io::Result<()> {
+        if self.reaped {
+            return Ok(());
+        }
+        let termination = match &self.pidfd {
+            Some(fd) => {
+                let rc = unsafe {
+                    libc::syscall(
+                        libc::SYS_pidfd_send_signal,
+                        fd.as_raw_fd(),
+                        libc::SIGKILL,
+                        std::ptr::null::<libc::siginfo_t>(),
+                        0,
+                    )
+                };
+                if rc == 0 {
+                    Ok(())
+                } else {
+                    Err(io::Error::last_os_error())
+                }
+            }
+            None => self.child.kill(),
+        };
+        if let Err(err) = termination {
+            log::warn!("Authorization child termination returned: {err}; retaining wait ownership");
+        }
+        loop {
+            match self.child.wait() {
+                Ok(_) => {
+                    self.reaped = true;
+                    return Ok(());
+                }
+                Err(err) if err.raw_os_error() == Some(libc::ECHILD) => {
+                    if let Some(fd) = &self.pidfd {
+                        let mut poll = libc::pollfd {
+                            fd: fd.as_raw_fd(),
+                            events: libc::POLLIN,
+                            revents: 0,
+                        };
+                        loop {
+                            let rc = unsafe { libc::poll(&mut poll, 1, 50) };
+                            if rc > 0 && poll.revents & (libc::POLLIN | libc::POLLHUP) != 0 {
+                                break;
+                            }
+                            if rc < 0 {
+                                let error = io::Error::last_os_error();
+                                if error.kind() != io::ErrorKind::Interrupted {
+                                    log::error!("Authorization child drain poll failed: {error}");
+                                    std::thread::sleep(std::time::Duration::from_millis(50));
+                                }
+                            } else if poll.revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+                                log::error!("Authorization child drain descriptor failed; retaining owner");
+                                std::thread::sleep(std::time::Duration::from_millis(50));
+                            }
+                        }
+                    }
+                    self.reaped = true;
+                    return Err(err);
+                }
+                Err(err) => {
+                    log::error!("Authorization child wait failed: {err}; retaining owner and retrying");
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+            }
+        }
+    }
+}
+
+impl Drop for OwnedAuthorizationChild {
+    fn drop(&mut self) {
+        if let Err(err) = self.terminate_and_reap() {
+            log::error!("Authorization child drain lost exclusive wait ownership: {err}");
         }
     }
 }
@@ -512,38 +743,14 @@ pub fn get_values_of_seat0_with_gdm_wayland(indices: &[usize]) -> Vec<String> {
 }
 
 fn _get_values_of_seat0(indices: &[usize], ignore_gdm_wayland: bool) -> Vec<String> {
-    if let Ok(sessions) = loginctl_sessions() {
-        for session in &sessions {
-            if session.seat == "seat0" && is_active(&session.id) {
-                if ignore_gdm_wayland
-                    && is_gdm_user(&session.username)
-                    && get_display_server_of_session(&session.id) == DISPLAY_SERVER_WAYLAND
-                {
-                    continue;
-                }
-                return session_values(indices, Some(session));
-            }
-        }
-
-        // some case, there is no seat0 https://github.com/rustdesk/rustdesk/issues/73
-        for session in &sessions {
-            if is_active(&session.id) {
-                let display_server = get_display_server_of_session(&session.id);
-                if ignore_gdm_wayland
-                    && is_gdm_user(&session.username)
-                    && display_server == DISPLAY_SERVER_WAYLAND
-                {
-                    continue;
-                }
-                if display_server == "tty" || display_server == "unspecified" {
-                    continue;
-                }
-                return session_values(indices, Some(session));
-            }
+    let mut lookup = LoginctlLookup::new(std::time::Instant::now() + LOGINCTL_LOOKUP_TIMEOUT, &|| false);
+    match lookup.active_session_values(indices, ignore_gdm_wayland) {
+        Ok(values) => values,
+        Err(err) => {
+            log::debug!("Active session lookup refused: {err}");
+            session_values(indices, None)
         }
     }
-
-    session_values(indices, None)
 }
 
 pub fn is_active(sid: &str) -> bool {
@@ -756,11 +963,6 @@ fn parse_loginctl_session_properties(
     Ok(parsed)
 }
 
-fn loginctl_sessions() -> io::Result<Vec<LoginctlSession>> {
-    let output = run_loginctl(LoginctlQuery::ListSessions)?;
-    parse_loginctl_sessions(&output.stdout)
-}
-
 fn loginctl_session_properties(
     session: &str,
     properties: &[LoginctlProperty],
@@ -783,35 +985,72 @@ fn configure_loginctl_environment(command: &mut Command) {
 }
 
 fn run_loginctl(query: LoginctlQuery<'_>) -> std::io::Result<std::process::Output> {
-    let Some(loginctl) = trusted_command_path(&LOGINCTL_PATHS) else {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "loginctl was not found at a trusted fixed path",
-        ));
-    };
-    let mut cmd = std::process::Command::new(loginctl);
-    configure_loginctl_environment(&mut cmd);
-    cmd.args(query.arguments());
-    configure_command_close_nonstdio_on_exec(&mut cmd)?;
     let mut lookup = LoginctlLookup::new(
         std::time::Instant::now() + LOGINCTL_LOOKUP_TIMEOUT,
         &|| false,
     );
-    let output = capture_loginctl_output(&mut cmd, &mut lookup)?;
-    if !output.status.success() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("loginctl query failed with {}", output.status),
-        ));
-    }
-    Ok(output)
+    lookup.query(query)
 }
 
 fn capture_loginctl_output(
     command: &mut Command,
-    _lookup: &mut LoginctlLookup<'_>,
+    lookup: &mut LoginctlLookup<'_>,
 ) -> io::Result<std::process::Output> {
-    command.output()
+    lookup.check_pending()?;
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut owner = OwnedAuthorizationChild::spawn(command)?;
+    let mut stdout = owner.child.stdout.take().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::Other, "loginctl stdout pipe is missing")
+    })?;
+    let flags = unsafe { libc::fcntl(stdout.as_raw_fd(), libc::F_GETFL) };
+    if flags < 0
+        || unsafe { libc::fcntl(stdout.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    let mut bytes = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    let mut eof = false;
+    let mut status = None;
+    loop {
+        lookup.check_pending()?;
+        if !eof {
+            match stdout.read(&mut buffer) {
+                Ok(0) => eof = true,
+                Ok(count) => {
+                    let Some(remaining) = lookup.remaining_stdout_bytes.checked_sub(count) else {
+                        lookup.stdout_budget_exceeded = true;
+                        return Err(invalid_loginctl_output(
+                            "loginctl lookup stdout budget exceeded",
+                        ));
+                    };
+                    lookup.remaining_stdout_bytes = remaining;
+                    bytes.extend_from_slice(&buffer[..count]);
+                    continue;
+                }
+                Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+                Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                Err(err) => return Err(err),
+            }
+        }
+        if status.is_none() {
+            status = owner.try_wait()?;
+        }
+        if eof {
+            if let Some(status) = status {
+                lookup.check_pending()?;
+                return Ok(std::process::Output {
+                    status,
+                    stdout: bytes,
+                    stderr: Vec::new(),
+                });
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -995,6 +1234,7 @@ mod tests {
                     .unwrap();
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
+            "moderate" => std::io::stdout().write_all(&vec![b'X'; 600 * 1024]).unwrap(),
             "success" => std::io::stdout()
                 .write_all(b"loginctl fixture payload\n")
                 .unwrap(),
@@ -1122,6 +1362,100 @@ mod tests {
             .unwrap()
             .contains("loginctl fixture payload\n"));
         assert_loginctl_fixture_reaped(&pid_file);
+    }
+
+    #[test]
+    fn r_s11at_loginctl_output_budget_is_shared_by_successive_children() {
+        let temp = LoginctlFixtureDirectory::new();
+        let first_pid = temp.path().join("first.pid");
+        let second_pid = temp.path().join("second.pid");
+        let mut lookup = LoginctlLookup::new(
+            std::time::Instant::now() + LOGINCTL_LOOKUP_TIMEOUT,
+            &|| false,
+        );
+        let first = capture_loginctl_output(
+            &mut loginctl_fixture_command("moderate", &first_pid), &mut lookup,
+        ).unwrap();
+        assert!(first.status.success());
+        assert!(first.stdout.len() >= 600 * 1024);
+        let second = capture_loginctl_output(
+            &mut loginctl_fixture_command("moderate", &second_pid), &mut lookup,
+        );
+        assert_loginctl_fixture_reaped(&first_pid);
+        assert_loginctl_fixture_reaped(&second_pid);
+        match second {
+            Err(err) => assert_eq!(err.kind(), io::ErrorKind::InvalidData),
+            Ok(output) => panic!("successive children exceeded the shared output budget: {}", first.stdout.len() + output.stdout.len()),
+        }
+    }
+
+    #[test]
+    fn r_s11at_loginctl_output_expired_lookup_refuses_the_next_spawn() {
+        let temp = LoginctlFixtureDirectory::new();
+        let first_pid = temp.path().join("first.pid");
+        let mut lookup = LoginctlLookup::new(
+            std::time::Instant::now() + LOGINCTL_LOOKUP_TIMEOUT,
+            &|| false,
+        );
+        let first = capture_loginctl_output(
+            &mut loginctl_fixture_command("success", &first_pid), &mut lookup,
+        ).unwrap();
+        assert!(first.status.success());
+        assert_loginctl_fixture_reaped(&first_pid);
+        std::thread::sleep(LOGINCTL_LOOKUP_TIMEOUT);
+        let mut absent_program = Command::new(temp.path().join("not-an-executable"));
+        let second = capture_loginctl_output(&mut absent_program, &mut lookup);
+        match second {
+            Err(err) => assert_eq!(err.kind(), io::ErrorKind::TimedOut),
+            Ok(_) => panic!("expired lookup accepted another command"),
+        }
+    }
+
+    #[test]
+    fn r_s11at_loginctl_output_overflow_refuses_later_children() {
+        let directory = LoginctlFixtureDirectory::new();
+        let pid_file = directory.path().join("child.pid");
+        let cancelled = || false;
+        let mut lookup = LoginctlLookup::new(
+            std::time::Instant::now() + std::time::Duration::from_secs(5),
+            &cancelled,
+        );
+        let result = capture_loginctl_output(
+            &mut loginctl_fixture_command("oversized", &pid_file),
+            &mut lookup,
+        );
+        assert_loginctl_fixture_reaped(&pid_file);
+        assert_eq!(result.as_ref().err().map(io::Error::kind), Some(io::ErrorKind::InvalidData));
+        let mut missing = Command::new(directory.path().join("missing-executable"));
+        assert_eq!(
+            capture_loginctl_output(&mut missing, &mut lookup).unwrap_err().kind(),
+            io::ErrorKind::InvalidData,
+        );
+    }
+
+    #[test]
+    fn r_s11at_loginctl_output_owner_reaps_and_closes_pidfd_on_unwind() {
+        use std::sync::atomic::{AtomicI32, Ordering};
+        let temp = LoginctlFixtureDirectory::new();
+        let pid_file = temp.path().join("child.pid");
+        let descriptor = AtomicI32::new(-1);
+        let started = std::time::Instant::now();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut command = loginctl_fixture_command("silent", &pid_file);
+            command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+            let owner = OwnedAuthorizationChild::spawn(&mut command).unwrap();
+            descriptor.store(owner.pidfd.as_ref().unwrap().as_raw_fd(), Ordering::Release);
+            while !pid_file.exists() {
+                assert!(started.elapsed() < std::time::Duration::from_secs(1));
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            panic!("unwind the exact authorization child owner");
+        }));
+        assert!(result.is_err());
+        assert_loginctl_fixture_reaped(&pid_file);
+        assert_eq!(unsafe { libc::fcntl(descriptor.load(Ordering::Acquire), libc::F_GETFD) }, -1);
+        assert_eq!(io::Error::last_os_error().raw_os_error(), Some(libc::EBADF));
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
     }
 
     #[test]

@@ -81,6 +81,13 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=installer-package
         ;;
+    1:--linux-password-admission-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Linux password admission input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=linux-password-admission
+        ;;
     1:--android-rust-lifecycle-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -5044,6 +5051,21 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'native whiteboard display ownership receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'native whiteboard cloud-init completion marker'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
+    mapfile -t linux_admission_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=7 groups=4 unchanged=before-between-after$'
+    )
+    [ "${#linux_admission_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'LINUX_PASSWORD_ADMISSION_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'Linux password admission artifact receipt differs'
+    linux_admission_before=${linux_admission_artifacts[0]/LINUX_PASSWORD_ADMISSION_ARTIFACT=pass /LINUX_PASSWORD_ADMISSION_ARTIFACT_BEFORE=}
+    linux_admission_before=${linux_admission_before% tests=7 groups=4 unchanged=before-between-after}
+    require_exact_fixed_receipt "$linux_admission_before" 'Linux password admission artifact before execution'
+    require_exact_fixed_receipt \
+        "LINUX_PASSWORD_ADMISSION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=7 target=linux-x86_64 scope=production-linux-password-coordinator installed=unexecuted rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'focused Linux password admission receipt'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux password admission completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
     mapfile -t whiteboard_client_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -6007,7 +6029,10 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$UID_POLICY_ARTIFACT_SHA256" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    if [ "$RUST_TEST_PROFILE" = installer-package ]; then
+    if [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
+        printf 'LINUX_PASSWORD_ADMISSION_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-linux-password-coordinator installed=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = installer-package ]; then
         printf 'INSTALLER_PACKAGE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-encoder-decoder windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then

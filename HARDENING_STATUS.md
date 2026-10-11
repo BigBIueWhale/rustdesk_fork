@@ -3283,6 +3283,12 @@ initramfs/module provisioning, zero-NIC guest boot and actual V4L2/nonzero-node 
 followed by the product identity/generation correction and hotplug/overlap replay. No host camera/device
 mount, physical-device acceptance, camera execution, installed kernel or product fix is claimed.
 
+Media boot/fixture source is now prepared in `scripts/smoke-verifier-media.py` and
+`scripts/verifier-media-guest.py`; **native acceptance is pending**. The fixed package/kernel/config
+pins select the authenticated candidate. One zero-NIC guest produces matching initramfs files, and a
+second boot must read real nonzero-node frames as guest UID/GID 4000, reject absent native zero,
+retire/recreate vivid and join cleanup. No product correction or successful boot is claimed here.
+
 **Linux Flutter build/replay separation — CAPSULE/PRODUCER PASS; CURRENT REMOTE CONSUMER ACCEPTED ABOVE.**
 
 `scripts/linux-flutter-artifact.py` seals the complete app bundle and matching readiness helper

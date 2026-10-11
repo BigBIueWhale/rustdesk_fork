@@ -3123,8 +3123,45 @@ owners joined with no owned channel/PID/disposable disk residue. The exact faile
 preserved under `retained-desktop-theme-trigger-TpKiT2Gx3n`. Earlier `2a96e0c1`/`f54fb300` attempts
 failed at named-header selection before any theme action and are invalid comparative evidence;
 their raw logs and exact failed roots are preserved separately. No production ownership change is
-made here. Next: correct the image-ready overlay lifetime and execute this same real UI regression
-against the source-bound corrected app, preserving every existing consumer acceptance criterion.
+made here.
+
+**Current-source baseline — DEPENDENCY PREREQUISITE ACCEPTED; NATIVE REPLAY BLOCKED.**
+`59395c3424e4d1cd5f46a76939ad52861b640d44` changes the existing `fake_async` test constraint to
+`^1.3.1`, corrects the candidate lock's direct-dev metadata and updates its digest. Stable 1.3.1,
+candidate 1.3.3 and all 196 candidate package versions/content hashes remain unchanged. The original
+exact constraint failed actual offline resolution; the subsequent stale discovery lock was refused
+before VM execution. Both failures and their original bytes are retained. The authorized acquisition
+then passed two fresh empty-cache resolutions and two non-root network-none `--enforce-lockfile`
+replays in 301 VM seconds, refreshing only the discovery lock and reusing the unchanged cache.
+Receipt: `.harness-state/verifier-vm/online-fetch-receipts/run.DLXsf19t3f.receipt`; exact input and
+outer observations: `overlay-dependency-acquisition-59395c34-evidence`. The successful acquisition
+launcher retired its raw serial; the receipt records its digest, and retained outer observations
+are not independent attestation.
+
+The current-source Linux producer passed offline resolution, FRB/Rust/Flutter compilation, pinned
+engine/ICU verification and capsule publication in 871 VM seconds. Baseline manifest:
+`101fa39903aa05ab5f392ae99f248e120f305f298f0507119e7cceae9c8bc44f`;
+74 payload files/69,414,534 bytes remain under the original app-artifact path for `59395c34`.
+Complete 306,903-byte serial: `flutter-peer-presentation-run.zr5WQq7Rez.serial.log`, SHA-256
+`3ccf87878f1c2ddecf55fdd4e11c9777de08b12d3966a1e18570ed7cc814d591`.
+Exact records are in `overlay-baseline-59395c34-build-evidence` beneath the verifier root.
+This accepts the producer/dependency prerequisite only.
+
+The unchanged controller's current-source replay is UNACCEPTED, outer exit 1. Actual password entry
+and prompt retirement passed, but authenticated current pixels never became available: the Remote
+input owner refused readiness because the peer topology does not provision the private XDO provider
+at its sole root-owned installation path, `/usr/lib/rustdesk-fork/libxdo.so.3`. No focus, reconnect,
+dialog/theme or corrected-app comparison ran. Complete 196,903-byte serial:
+`flutter-peer-presentation-run.2gSD5I6q43.serial.log`, SHA-256
+`e1dd204b256e89d3f119fab4906546354525f7f4e23f6e8b29ce29dbeee70405`;
+exact records: `overlay-baseline-59395c34-replay-evidence`. The exact failed root is preserved as
+`retained-overlay-baseline-input-2gSD5I6q43`; the earlier `a3755044` capsule is restored unchanged to
+its original path. Within each runtime transaction source/index/control and consumed inputs stayed
+unchanged, host endpoint audits found no additions and owners joined. No run markers remain.
+Next: provision the uninstrumented checked-in provider at the protected guest installation path,
+binding source and bytes without ambient-library fallback; replay this retained baseline, then
+correct overlay ownership and run the same native A/B. Product ownership, ViewCamera and broader
+native/installed/release acceptance remain OPEN.
 
 **Linux Flutter build/replay separation — CAPSULE/PRODUCER NATIVE PASS; DIALOG/COMPLETE CONSUMER OPEN.**
 

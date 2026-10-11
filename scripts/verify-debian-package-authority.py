@@ -1761,9 +1761,10 @@ def build_deb(staging, output, root_owner_group, regenerate_md5=True):
         cmd.append("--root-owner-group")
     cmd.extend(["-b", str(staging), str(output)])
     try:
-        subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as err:
-        raise ValidationError(f"synthetic dpkg-deb build failed with status {err.returncode}") from err
+        diagnostics = err.output.decode("utf-8", errors="replace")[:8192]
+        raise ValidationError(f"synthetic dpkg-deb build failed with status {err.returncode}: {diagnostics}") from err
 
 
 def rewrite_tar_stream(data, transform=None, additions=()):
@@ -2489,6 +2490,7 @@ def run_polkit_dependency_self_test(repo):
         for name, control, allowed in cases:
             tree = scratch / name
             write_file(tree / "DEBIAN/control", control, 0o644)
+            (tree / "DEBIAN").chmod(0o755)
             deb = scratch / f"{name}.deb"
             build_deb(tree, deb, root_owner_group=True, regenerate_md5=False)
             artifacts.append(hashlib.sha256(deb.read_bytes()).hexdigest())

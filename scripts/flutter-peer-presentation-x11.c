@@ -1466,10 +1466,102 @@ static int main_header_luminance(Display *display, Window window, unsigned int *
     return 0;
 }
 
+static int activate_header_control(Display *display, Window window, unsigned int expected_pid,
+                                     const char *tooltip) {
+    XWindowAttributes attributes;
+    Window child;
+    unsigned long pid;
+    int x, y;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (read_window_pid(display, window, &pid) != 0 || pid != expected_pid ||
+        XGetWindowAttributes(display, window, &attributes) == 0 ||
+        attributes.map_state != IsViewable || attributes.width < 320 || attributes.height < 40 ||
+        /* WindowActionPanel: three 27-pixel window buttons follow the 27-pixel tail action. */
+        XTranslateCoordinates(display, window, RootWindow(display, DefaultScreen(display)),
+                              attributes.width - 94, 14, &x, &y, &child) == 0 ||
+        x < 0 || y < 0 || x >= DisplayWidth(display, DefaultScreen(display)) ||
+        y >= DisplayHeight(display, DefaultScreen(display))) return -1;
+    XRaiseWindow(display, window);
+    XSetInputFocus(display, window, RevertToParent, CurrentTime);
+    if (XTestFakeMotionEvent(display, DefaultScreen(display), x, y, CurrentTime) == 0) return -1;
+    XSync(display, False);
+    while (monotonic_millis() < deadline) {
+        AtspiAccessible *label = NULL;
+        if (query_named_accessible(expected_pid, tooltip, deadline, &label, 0) != 0) return -1;
+        if (label != NULL) {
+            g_object_unref(label);
+            if (XTestFakeButtonEvent(display, 1U, True, CurrentTime) == 0 ||
+                XTestFakeButtonEvent(display, 1U, False, CurrentTime) == 0) return -1;
+            XSync(display, False);
+            printf("FLUTTER_PEER_HEADER_ACTIVATION control=\"%s\" visible_tooltip=true "
+                   "native_pointer=true\n", tooltip);
+            fflush(stdout);
+            return monotonic_millis() < deadline ? 0 : -1;
+        }
+        if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;
+    }
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL actual header tooltip unavailable control=\"%s\"\n",
+            tooltip);
+    return -1;
+}
+
+static int activate_dark_theme(Display *display, Window main, unsigned int expected_pid) {
+    XWindowAttributes attributes;
+    Window child;
+    unsigned long pid;
+    int x, y;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (read_window_pid(display, main, &pid) != 0 || pid != expected_pid ||
+        XGetWindowAttributes(display, main, &attributes) == 0 ||
+        attributes.map_state != IsViewable ||
+        XTranslateCoordinates(display, main, RootWindow(display, DefaultScreen(display)),
+                              0, 0, &x, &y, &child) == 0) return -1;
+    while (monotonic_millis() < deadline) {
+        AtspiAccessible *label = NULL;
+        AtspiComponent *component;
+        AtspiRect *rect;
+        GError *error = NULL;
+        int valid;
+        if (query_named_accessible(expected_pid, "Dark", deadline, &label, 0) != 0) return -1;
+        if (label == NULL) {
+            if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;
+            continue;
+        }
+        component = atspi_accessible_get_component_iface(label);
+        g_object_unref(label);
+        if (component == NULL) return -1;
+        rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
+        g_object_unref(component);
+        valid = error == NULL && rect != NULL && rect->width > 0 && rect->height > 0 &&
+                rect->x >= x && rect->y >= y &&
+                (int64_t)rect->x + rect->width <= (int64_t)x + attributes.width &&
+                (int64_t)rect->y + rect->height <= (int64_t)y + attributes.height &&
+                rect->x >= 0 && rect->y >= 0 &&
+                (int64_t)rect->x + rect->width <= DisplayWidth(display, DefaultScreen(display)) &&
+                (int64_t)rect->y + rect->height <= DisplayHeight(display, DefaultScreen(display));
+        if (valid != 0 && monotonic_millis() < deadline) {
+            valid = XTestFakeMotionEvent(display, DefaultScreen(display),
+                                        rect->x + rect->width / 2, rect->y + rect->height / 2,
+                                        CurrentTime) != 0 &&
+                    XTestFakeButtonEvent(display, 1U, True, CurrentTime) != 0 &&
+                    XTestFakeButtonEvent(display, 1U, False, CurrentTime) != 0;
+            XSync(display, False);
+        } else {
+            valid = 0;
+        }
+        if (error != NULL) g_error_free(error);
+        if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);
+        return valid != 0 && monotonic_millis() < deadline ? 0 : -1;
+    }
+    fputs("FLUTTER_PEER_X11_FAIL actual Dark theme label unavailable\n", stderr);
+    return -1;
+}
+
 static int prepare_main_settings(Display *display, const ViewerWindow *viewer, Window *main) {
-    if (activate_named_control((unsigned int)viewer->pid, "New connection") != 0 ||
+    if (activate_header_control(display, viewer->window, (unsigned int)viewer->pid,
+                                "New connection") != 0 ||
         find_main_window(display, viewer->pid, main) != 0 ||
-        activate_named_control((unsigned int)viewer->pid, "Settings") != 0) {
+        activate_header_control(display, *main, (unsigned int)viewer->pid, "Settings") != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual main settings disclosure unavailable\n", stderr);
         return -1;
     }
@@ -1496,7 +1588,7 @@ static int exercise_dialog_theme(Display *display, const ViewerWindow *viewer, W
     }
     puts("FLUTTER_PEER_DIALOG_THEME_BEGIN source=actual_main_settings dialog=trackpad_speed");
     fflush(stdout);
-    if (activate_named_control((unsigned int)viewer->pid, "Dark") != 0) goto out;
+    if (activate_dark_theme(display, main, (unsigned int)viewer->pid) != 0) goto out;
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline) {
         if (main_header_luminance(display, main, &dark) != 0) goto out;

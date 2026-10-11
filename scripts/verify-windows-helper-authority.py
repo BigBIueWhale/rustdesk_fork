@@ -22,6 +22,7 @@ FILES = {
     "test": "scripts/test-windows-helper-vm-runtime.sh",
     "build": "scripts/build-windows-vm.sh",
     "provision": "scripts/provision-windows-vm.sh",
+    "inspector": "scripts/windows-golden-inspect.sh",
     "golden": "scripts/verify-windows-golden.sh",
     "extractor": "scripts/windows-helper-extract-kernel.py",
     "library": "scripts/lib.sh",
@@ -402,6 +403,10 @@ def validate(sources: dict[str, str]) -> None:
     validate_runtime(sources["runtime"])
     validate_callers(sources)
     validate_behavioral_path(sources)
+
+    # Supplementary invariant: unchecked v3 setup must not satisfy current admission.
+    require(sources["inspector"], "rustdesk-windows-golden-v4", "checked golden setup receipt")
+    forbid(sources["inspector"], "rustdesk-windows-golden-v3", "unchecked golden receipt")
 
     extractor = sources["extractor"]
     for token, label in (

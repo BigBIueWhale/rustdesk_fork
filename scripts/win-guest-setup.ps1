@@ -13,6 +13,22 @@ $ProgressPreference = 'SilentlyContinue'
 function Log($m) { Write-Host "[guest-setup] $m" }
 function Die($m) { Write-Error "[guest-setup:FATAL] $m"; exit 1 }
 
+function Invoke-SetupProcess {
+    param(
+        [Parameter(Mandatory=$true)][string]$FilePath,
+        [Parameter(Mandatory=$true)][string[]]$ArgumentList
+    )
+    $process = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList `
+        -Wait -PassThru -NoNewWindow -ErrorAction Stop
+    try {
+        if ($null -eq $process -or $null -eq $process.ExitCode -or $process.ExitCode -ne 0) {
+            throw "[guest-setup:FATAL] $FilePath failed (exit $($process.ExitCode)); this single-pass setup accepts only exit zero"
+        }
+    } finally {
+        if ($null -ne $process) { $process.Dispose() }
+    }
+}
+
 # A reliable transcript -- the FirstLogonCommands Tee to guest-setup-log.txt proved unreadable;
 # read this post-mortem via libguestfs (virt-cat C:\setup-transcript.txt) to see where setup stopped.
 try { Start-Transcript -Path 'C:\setup-transcript.txt' -Force | Out-Null } catch { }
@@ -28,23 +44,24 @@ $win = Join-Path $tc 'win'          # the captured installers (Git, rust-msvc.ms
 
 # --- Git -------------------------------------------------------------------------------------
 Log 'installing Git'
-Start-Process -Wait -FilePath (Join-Path $win 'Git-2.45.2-64-bit.exe') `
+Invoke-SetupProcess -FilePath (Join-Path $win 'Git-2.45.2-64-bit.exe') `
     -ArgumentList '/VERYSILENT','/NORESTART','/SUPPRESSMSGBOXES','/SP-'
 
 # --- Rust 1.75 (x86_64-pc-windows-msvc), offline .msi ----------------------------------------
 Log 'installing Rust 1.75 (MSVC)'
-Start-Process -Wait -FilePath msiexec.exe `
+Invoke-SetupProcess -FilePath 'C:\Windows\System32\msiexec.exe' `
     -ArgumentList '/i',(Join-Path $win 'rust-1.75.0-x86_64-pc-windows-msvc.msi'),'/quiet','/norestart'
 
 # --- VS Build Tools (MSVC + Windows SDK) from the offline layout ------------------------------
 Log 'installing VS Build Tools (MSVC + Windows SDK) from the offline layout'
 $vsdir = 'C:\vslayout'
 New-Item -ItemType Directory -Force -Path $vsdir | Out-Null
-tar -xf (Join-Path $tc 'vs-buildtools.layout.tar') -C $vsdir
-$vsexe = Get-ChildItem -Path $vsdir -Recurse -Filter 'vs_*.exe' | Select-Object -First 1
-if (-not $vsexe) { Die 'vs_buildtools bootstrapper not found in the layout' }
-Start-Process -Wait -FilePath $vsexe.FullName -ArgumentList @(
-    '--quiet','--wait','--norestart','--nocache','--noUpdateInstaller',
+Invoke-SetupProcess -FilePath 'C:\Windows\System32\tar.exe' `
+    -ArgumentList '-xf',(Join-Path $tc 'vs-buildtools.layout.tar'),'-C',$vsdir
+$vsexe = @(Get-ChildItem -Path $vsdir -Recurse -File -Filter 'vs_buildtools.exe')
+if ($vsexe.Count -ne 1) { Die 'the offline layout must contain exactly one vs_buildtools.exe' }
+Invoke-SetupProcess -FilePath $vsexe[0].FullName -ArgumentList @(
+    '--quiet','--wait','--norestart','--nocache','--noUpdateInstaller','--noWeb',
     '--add','Microsoft.VisualStudio.Workload.VCTools',
     '--add','Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
     '--add','Microsoft.VisualStudio.Component.Windows11SDK.22621',
@@ -52,13 +69,12 @@ Start-Process -Wait -FilePath $vsexe.FullName -ArgumentList @(
 
 # --- LLVM/clang 15.0.6 (libclang for FRB/bindgen determinism) --------------------------------
 Log 'installing LLVM 15.0.6'
-Start-Process -Wait -FilePath (Join-Path $tc 'llvm-windows-15.0.6.exe') -ArgumentList '/S'
+Invoke-SetupProcess -FilePath (Join-Path $tc 'llvm-windows-15.0.6.exe') -ArgumentList '/S'
 
 # --- Python 3.11.9 (build.py and PE/MSI canonicalizers) --------------------------------------
 Log 'installing Python 3.11.9'
-$pyExit = (Start-Process -Wait -PassThru -FilePath (Join-Path $tc 'python-windows-3.11.9.exe') `
-    -ArgumentList '/quiet','InstallAllUsers=1','PrependPath=1','Include_test=0','Include_pip=1').ExitCode
-if ($pyExit -ne 0) { Die "Python install failed (exit $pyExit)" }
+Invoke-SetupProcess -FilePath (Join-Path $tc 'python-windows-3.11.9.exe') `
+    -ArgumentList '/quiet','InstallAllUsers=1','PrependPath=1','Include_test=0','Include_pip=1'
 $pyExe = 'C:\Program Files\Python311\python.exe'
 if (-not (Test-Path $pyExe)) { Die 'Python install did not land python.exe at C:\Program Files\Python311' }
 # Canonicalization helpers use python3; Windows Python ships python.exe. Both aliases must
@@ -69,54 +85,28 @@ Copy-Item $pyExe (Join-Path (Split-Path $pyExe) 'python3.exe') -Force
 Log 'extracting Flutter 3.24.5 (windows) -> C:\flutter'
 Expand-Archive -Force -Path (Join-Path $tc 'flutter-windows-3.24.5.zip') -DestinationPath 'C:\'
 
-# Precache the windows ENGINE artifacts NOW, while the provision guest still has network. The
-# per-build VM runs --network=none, so `flutter build windows` would otherwise fetch the engine
-# (flutter_windows.dll, the C++ wrapper, ...) from the network and fail offline. This is the windows
-# analogue of build-debian relying on the linux engine being in the SDK tarball. First-run flutter
-# also resolves its OWN flutter_tools package ONLINE here -> baked into the golden, so the offline
-# per-build skips that networked re-resolution (build-debian pre-resolves flutter_tools per build).
-Log 'precaching the Flutter windows engine (+ warming flutter_tools) -- networked provision step'
-$env:CI = 'true'                               # CRITICAL: fully non-interactive flutter. Without it the
-                                               # FIRST flutter run prints the analytics/first-run banner and
-                                               # BLOCKS on stdin in the headless guest (the prior hang: ~2% CPU
-                                               # / 0 disk forever). FLUTTER_SUPPRESS_ANALYTICS alone does NOT
-                                               # suppress the banner; CI=true makes it non-blocking. A docker
-                                               # test confirmed precache --windows finishes in ~22s with CI=true.
+# Both provisioning and per-build guests have no NIC. Place the captured engine and complete
+# flutter_tools package cache before resolving the lock and reconciling engine stamps offline.
+Log 'preparing the offline Flutter windows engine and flutter_tools'
+$env:CI = 'true'                               # suppress interactive first-run prompts
 $env:FLUTTER_SUPPRESS_ANALYTICS = 'true'
 # git + flutter/dart MUST be on THIS process's PATH now: the persistent machine PATH is set later in
 # this script, and a mid-script install does not retro-add to the running process. flutter precache
 # also shells out to `git` against the SDK checkout, so git must resolve here.
 $env:PATH = "C:\Program Files\Git\cmd;C:\flutter\bin;$env:PATH"
-git config --global --add safe.directory '*'   # avoid git "dubious ownership" on the SDK checkout
-# Pre-place the windows flutter ENGINE from the OFFLINE staged tarball, then let `flutter precache
-# --windows` RECONCILE it. NOTE: the linux-staged engine does NOT fully satisfy the WINDOWS flutter's
-# freshness check -- its stamp logic differs from the linux flutter that produced the staging (which
-# docker-verified the staging as a 0-download), so precache here RE-FETCHES the engine over slirp. We
-# cannot skip this: `flutter build windows` re-runs the very same artifact cache.updateAll, so a
-# placed-but-unreconciled engine would just make the OFFLINE per-build try to download too. The fetch is
-# large for slirp -- it moves in ~15 MB/s bursts with stalls between -- so allow 30min (a 5min bound Died
-# the provision twice; a probe showed it still climbing at 1398 MiB when the 5min fired = slow, not
-# wedged). bsdtar (Windows 10+) auto-detects the gzip.
+Invoke-SetupProcess -FilePath 'C:\Program Files\Git\cmd\git.exe' `
+    -ArgumentList 'config','--global','--add','safe.directory','C:/flutter'
 Log 'placing the offline-staged windows flutter engine, then reconciling via precache'
-tar -xf (Join-Path $tc 'flutter-windows-engine.tar.gz') -C 'C:\flutter'
+Invoke-SetupProcess -FilePath 'C:\Windows\System32\tar.exe' `
+    -ArgumentList '-xf',(Join-Path $tc 'flutter-windows-engine.tar.gz'),'-C','C:\flutter'
 if (-not (Test-Path 'C:\flutter\bin\cache\artifacts\engine\windows-x64')) { Die 'engine extraction failed -- windows-x64 absent after tar (gzip/CD issue)' }
-# * The first-run flutter_tools `pub get` is what STALLED the provision over slirp -- it makes ~98 pub.dev
-# package-METADATA round-trips (NOT the engine: the SDK zip already ships the windows engine + a
-# windows-sdk.stamp matching engine.version, so the engine tarball above is a redundant byte-identical
-# overlay). The zip ALSO bundles the resolved deps in its pub cache, so resolve flutter_tools OFFLINE here
-# -> zero pub.dev traffic -> config + precache run fully offline. CONFIRMED in the rdwinvm SSH VM: with this
-# offline resolve, `flutter precache --windows -v` makes 0 pub.dev calls (vs 98 that wedged >30min before).
-# Pre-place the FULL flutter_tools hosted pub cache (incl. its DEV deps: test 1.25.7, test_core, test_api,
-# fake_async, ...) BEFORE the offline resolve. The SDK zip's BUNDLED cache ships only flutter_tools'
-# RUNTIME deps, so `dart pub get --offline` over it alone fails "Because flutter_tools depends on test
-# 1.25.7 which doesn't match any versions, version solving failed". online-fetch stage_flutter_pub_cache
-# staged the complete closure (hosted/ + hosted-hashes/) deterministically; extract it into the builder's
-# pub cache so the resolve below finds every dep with ZERO pub.dev traffic. (Internal layout begins at
-# hosted/ -> it lands as ...\Pub\Cache\hosted\pub.dev\...; bsdtar on Win10+ auto-detects the gzip.)
+# The SDK's bundled cache lacks flutter_tools development dependencies. The captured complete
+# closure starts at hosted/ and hosted-hashes/ and lands in the builder's Pub cache.
 Log 'pre-placing the staged flutter_tools pub cache (the DEV deps the SDK-bundled cache lacks)'
 $pc = "$env:LOCALAPPDATA\Pub\Cache"
 New-Item -ItemType Directory -Force -Path $pc | Out-Null
-tar -xf (Join-Path $tc 'flutter-pub-cache.tar.gz') -C $pc
+Invoke-SetupProcess -FilePath 'C:\Windows\System32\tar.exe' `
+    -ArgumentList '-xf',(Join-Path $tc 'flutter-pub-cache.tar.gz'),'-C',$pc
 if (-not (Test-Path (Join-Path $pc 'hosted\pub.dev\test-1.25.7'))) { Die 'flutter_tools pub cache extraction failed -- test-1.25.7 absent after tar; the offline resolve would fail "version solving failed"' }
 Log "flutter_tools pub cache extracted to $pc"
 
@@ -131,32 +121,24 @@ if (Test-Path -LiteralPath $metadataCache) { Die 'staged flutter_tools Pub cache
 Log 'verified the staged flutter_tools Pub cache is metadata-free'
 
 Log 'resolving flutter_tools OFFLINE (0 pub.dev traffic: complete staged package closure, no hosted metadata cache)'
-# Run dart via Start-Process: a CHILD process whose stderr goes to the console, never this script's `*>&1 | Tee`
-# pipeline (where, under ErrorActionPreference=Stop, a native stderr line becomes a FATAL NativeCommandError --
-# the original provision killer; a command-level 2>&1 does NOT prevent it, Start-Process does). -Wait is
-# REQUIRED for a reliable .ExitCode (-PassThru+WaitForExit yields $null -> `-ne 0` always true; verified on
-# rdwinvm: -Wait -PassThru -> rc=7). A genuine hang is caught by the 130m provision wait.
-$pg = Start-Process 'C:\flutter\bin\cache\dart-sdk\bin\dart.exe' `
-    -ArgumentList 'pub','get','--offline','--enforce-lockfile','--directory','C:\flutter\packages\flutter_tools' -Wait -PassThru -NoNewWindow
-if ($pg.ExitCode -ne 0) { Die "flutter_tools offline pub get failed (exit $($pg.ExitCode)) -- the staged pub cache is incomplete OR the advisory-cache stamp did not take (dart re-fetched from pub.dev, unreachable on a fresh-Win11 guest)" }
+Invoke-SetupProcess -FilePath 'C:\flutter\bin\cache\dart-sdk\bin\dart.exe' `
+    -ArgumentList 'pub','get','--offline','--enforce-lockfile','--directory','C:\flutter\packages\flutter_tools'
 # config enables the windows desktop; precache reconciles the (already-present, offline-staged) engine.
-$cfg = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'config','--no-analytics','--enable-windows-desktop' -Wait -PassThru -NoNewWindow
-if ($cfg.ExitCode -ne 0) { Die "flutter config failed (exit $($cfg.ExitCode))" }
-$pc = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'precache','--windows' -Wait -PassThru -NoNewWindow
-if ($pc.ExitCode -ne 0) { Die "flutter precache --windows failed (exit $($pc.ExitCode))" }
+Invoke-SetupProcess -FilePath 'C:\flutter\bin\flutter.bat' -ArgumentList 'config','--no-analytics','--enable-windows-desktop'
+Invoke-SetupProcess -FilePath 'C:\flutter\bin\flutter.bat' -ArgumentList 'precache','--windows'
 
 # --- vcpkg @120deac3 -------------------------------------------------------------------------
 Log 'extracting + bootstrapping vcpkg @120deac3 -> C:\vcpkg'
-tar -xf (Join-Path $tc 'vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz') -C 'C:\'
-Rename-Item 'C:\vcpkg-120deac3062162151622ca4860575a33844ba10b' 'C:\vcpkg' -ErrorAction SilentlyContinue
-& 'C:\vcpkg\bootstrap-vcpkg.bat' -disableMetrics
-if ($LASTEXITCODE -ne 0) { Die "vcpkg bootstrap failed (exit $LASTEXITCODE)" }
+Invoke-SetupProcess -FilePath 'C:\Windows\System32\tar.exe' `
+    -ArgumentList '-xf',(Join-Path $tc 'vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz'),'-C','C:\'
+Rename-Item 'C:\vcpkg-120deac3062162151622ca4860575a33844ba10b' 'C:\vcpkg'
+Invoke-SetupProcess -FilePath 'C:\vcpkg\bootstrap-vcpkg.bat' -ArgumentList '-disableMetrics'
 
 # --- verified vcpkg offline inputs ------------------------------------------------------------
 # Custom RustDesk overlay sources and libvpx's Windows helper tools come from the same hash-pinned
-# online capture used by the other target builders. Keep ordinary vcpkg origin access available for
-# baseline ports whose URL + SHA512 are owned by vcpkg, but make both custom codecs consume the exact
-# local capture and pre-seed every libvpx acquisition helper into VCPKG_DOWNLOADS.
+# online capture used by the other target builders. All ports must resolve from staged downloads
+# in the no-NIC guest; both custom codecs consume the exact local capture and every libvpx
+# acquisition helper is pre-seeded into VCPKG_DOWNLOADS.
 $src = (Get-PSDrive -PSProvider FileSystem |
         Where-Object { Test-Path (Join-Path $_.Root 'res\vcpkg') } | Select-Object -First 1).Root
 if (-not $src) { Die 'PROVISION media not found (no drive has res\vcpkg); refusing an incomplete native warm' }
@@ -233,13 +215,7 @@ $cur = [Environment]::GetEnvironmentVariable('Path','Machine')
 
 # --- vcpkg sec3.2 x64-windows natives -- warm them into the golden (the per-build is --network=none) ----
 Log "building the vcpkg x64-windows-static natives (overlay-ports $ports) -- slow (~30-60min)"
-# Start-Process -Wait -PassThru (native-stderr decoupling as the dart resolve above + the -Wait the
-# reliable-ExitCode quirk demands): vcpkg writes progress/warnings to stderr; under autounattend's
-# `*>&1 | Tee` + ErrorActionPreference=Stop a benign warning would be a fatal NativeCommandError. A CHILD
-# process's stderr goes to the console, never this script's pipeline. Judge by ExitCode. A genuine hang is
-# caught by the 130m provision wait.
-$vp = Start-Process 'C:\vcpkg\vcpkg.exe' -ArgumentList 'install',"--overlay-ports=$ports",'--triplet','x64-windows-static','libvpx','libyuv','opus','libjpeg-turbo','cpu-features' -Wait -PassThru -NoNewWindow
-if ($vp.ExitCode -ne 0) { Die "vcpkg install of the x64-windows natives failed (exit $($vp.ExitCode))" }
+Invoke-SetupProcess -FilePath 'C:\vcpkg\vcpkg.exe' -ArgumentList 'install',"--overlay-ports=$ports",'--triplet','x64-windows-static','libvpx','libyuv','opus','libjpeg-turbo','cpu-features'
 # WiX NuGet is intentionally per-build media, not golden-template state:
 # scripts/build-windows.ps1 verifies the signed packages in
 # OFFLINE\wix-nuget-packages and restores them into a fresh writable
@@ -283,7 +259,7 @@ if ($registeredTask.Principal.LogonType -cne 'Interactive' -or
 }
 
 @'
-rustdesk-windows-golden-v3
+rustdesk-windows-golden-v4
 builder-password-never-expires=true
 builder-logon-task=interactive
 setup-complete=true

@@ -110,28 +110,31 @@ sole acquisition authority, immutable host baseline and exact creator-owned reti
 host inventories, direct-host recipes and package/network reversal exceptions are deleted.
 Pinned toolchains, golden identity, offline media, independent passes and artifact integrity remain.
 **Windows provisioning and native acceptance remain OPEN:** both wrappers admit the verifier VM
-before repository helpers (`build-windows-vm.sh:14`, `provision-windows-vm.sh:30`). Golden provisioning
-now launches with `--network none` and its production XML validator rejects every interface
-(`provision-windows-vm.sh:410,664`); loopback VNC, exact disk identity, passthrough refusal and
-creator-owned finality remain. `verify-windows-helper-authority.py` executes that exact parser on
-seven private XML fixtures. Source `85e2ab84` passed them as UID 4000 in the no-NIC authority VM
-in 107 seconds; the existing eight helper runtime decisions also passed, with no host listener
-addition and joined cleanup. Retained `authority-smoke-run.MInjbJ05pW.serial.log` SHA-256
-`28ab1ca709d623e184af0014f56d551b699b5afa6a0d5ec03f957496e9c0bdfd` binds the exact parser
-digest. This is Linux parser behavior, not actual libvirt launch or Windows installation acceptance.
-Installer packaging now uses `libs/portable/build.rs` and `src/installer_package.rs` with the
-workspace's locked Rust Brotli/MD5 dependencies. Unpinned Python Brotli installation, its preflight,
-and the generic Python generator are deleted. Only the fixed, previously validated MSI is encoded;
-`SOURCE_DATE_EPOCH` is required and bounded, generated files live in Cargo `OUT_DIR`, and input,
-compression and output failures refuse the build. Source `25637dc1` passed all six encoder/actual-decoder
-integration tests in the existing no-NIC VM in 113 seconds, using Cargo 1.75 `--offline --locked`
-and the full pinned vendor. The real no-route canary and supplementary Windows source gate passed;
-the executable digest stayed unchanged, no host listener was added, and cleanup joined. Retained
+before repository helpers. Golden provisioning has no NIC; its exact production XML parser rejects
+interfaces and passthrough while retaining loopback VNC, disk identity and creator-owned finality.
+Source `85e2ab84` passed seven parser fixtures plus eight helper runtime decisions as UID 4000 in
+107 seconds with unchanged host listeners and joined cleanup. Retained
+`authority-smoke-run.MInjbJ05pW.serial.log` SHA-256
+`28ab1ca709d623e184af0014f56d551b699b5afa6a0d5ec03f957496e9c0bdfd` binds Linux parser evidence,
+not actual libvirt launch or Windows installation. `win-guest-setup.ps1` now routes all native setup
+commands through `Invoke-SetupProcess`, which waits for the tree and requires a zero exit before
+continuing. Launch failure, missing status and nonzero/reboot-required exits refuse this single-pass
+setup. Fixed OS tool paths, exact unique Build Tools selection and `--noWeb` replace ambient/arbitrary
+execution and VS network fallback; failed vcpkg extraction/rename can no longer be ignored.
+The exact v4 receipt in `windows-golden-inspect.sh` rejects unchecked v3 goldens. The historical v3
+golden hash remains pinned; a v4 image must actually be provisioned and certified before replacement.
+`test-windows-guest-setup.ps1` extracts the production launcher and prepares native exit0/7/3010/1641
+and missing-executable continuation tests; these are UNEXECUTED because Windows inputs/golden are
+absent. Supplementary receipt/source verification is pending; native installer readiness remains OPEN.
+The fixed MSI packager uses Cargo `OUT_DIR`, required bounded `SOURCE_DATE_EPOCH` and locked
+Rust Brotli/MD5; the generic Python generator and unpinned Brotli dependency are deleted. Source
+`25637dc1` passed six actual encoder/decoder integration tests with Cargo 1.75 `--offline --locked`
+and full pinned vendor in 113 seconds; no-route canary/source gate passed, executable digest stayed
+fixed, host listeners were unchanged and cleanup joined. Retained
 `android-rust-lifecycle-tests-run.EGmGTf5yjE.serial.log` SHA-256
-`1e0938684558497e551b77a46f12e7f6cee202411190950a0eda7bbd40ab7791` binds this component execution.
-Native Windows packaging/installation, VS/vcpkg/Flutter acquisition and the complete offline closure
-remain OPEN. With no NIC, missing dependencies fail provisioning; no network fallback is admitted.
-Cold equality, whole-document restoration and the Windows harness replay below remain OPEN.
+`1e0938684558497e551b77a46f12e7f6cee202411190950a0eda7bbd40ab7791` binds this Linux component run.
+Native Windows packaging/installation, VS/vcpkg/Flutter acquisition, complete offline closure,
+cold equality, document-role restoration and the Windows harness replay below remain OPEN.
 
 A source/model check is supplementary unless it executes the behavior it claims to establish. Gates must not treat
 exact requirement, ledger, README, comment, test-name, other-verifier, or historical-receipt wording as product

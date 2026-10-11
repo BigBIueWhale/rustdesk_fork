@@ -906,9 +906,10 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
         (
             (("password_incoming", ".", "next", "(", ")"), "raw service accept lane"),
             (("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),
+            (("let", "deadline", "=", "std", "::", "time", "::", "Instant", "::", "now", "(", ")", "+", "std", "::", "time", "::", "Duration", "::", "from_millis", "(", "SERVICE_IPC_REQUEST_TIMEOUT_MS", ")"), "deadline established before password proof"),
             (("authorization_workers", ".", "spawn_blocking", "("), "retained blocking proof worker"),
             (("authenticate_linux_service_owned_password_requester", "(", "&", "stream", ",", "&", "mut", "lookup", ")"), "exact Linux password-requester generation and role proof"),
-            (("LinuxServiceAuthorizationCompletion", "::", "Password", "{"), "owned password proof completion"),
+            (("LinuxServiceAuthorizationCompletion", "::", "Password", "{", "stream", ",", "permit", ",", "identity", ",", "deadline", OPTIONAL_COMMA, "}"), "password proof completion retains the original deadline"),
             (("Connection", "::", "new_protected_service", "(", "stream", ")"), "ordinary framed service lane"),
         )
     )
@@ -932,7 +933,7 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     service_finish.require_order(
         (
             (("identity", ":", "Ok", "(", "identity", ")"), "successful password proof"),
-            (("transactions", ".", "spawn", "(", "handle_sensitive_linux_service_ipc_transaction"), "retained raw password transaction"),
+            (("transactions", ".", "spawn", "(", "handle_sensitive_linux_service_ipc_transaction", "(", "stream", ",", "identity", ",", "permit", ",", "password_authorizations", ".", "clone", "(", ")", ",", "tokio", "::", "time", "::", "Instant", "::", "from_std", "(", "deadline", ")", OPTIONAL_COMMA, ")"), "retained raw password transaction inherits its proof deadline"),
             (("requester", ":", "Ok", "(", "requester", ")"), "successful exact-child proof"),
             (("transactions", ".", "spawn", "(", "handle_linux_service_credential_snapshot_transaction"), "retained credential transaction"),
         )
@@ -2846,13 +2847,14 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     service_handler = ipc.function("handle_sensitive_linux_service_ipc_transaction")
     service_handler.require_order(
         (
-            (("Instant", "::", "now", "(", ")", "+", "std", "::", "time", "::", "Duration", "::", "from_millis", "(", "SERVICE_IPC_REQUEST_TIMEOUT_MS", ")"), "one absolute service deadline"),
+            (("if", "tokio", "::", "time", "::", "Instant", "::", "now", "(", ")", ">=", "deadline", "{", "return", ";", "}"), "expired proof deadline refuses secret-body read"),
             (("receive_request_unix", "(", "&", "mut", "stream", ",", "password", "::", "SensitivePayloadKind", "::", "Password", ",", "deadline", OPTIONAL_COMMA, ")"), "raw bounded service request"),
             (("operation_id", "=", "request", ".", "operation_id", "(", ")"), "service operation ID"),
-            (("execute_linux_service_owned_unattended_password_request", "(", "operation_id", ".", "to_string", "(", ")", ",", "value", ",", "identity", OPTIONAL_COMMA, ")"), "identity-bound authority/commit"),
+            (("execute_linux_service_owned_unattended_password_request", "(", "operation_id", ".", "to_string", "(", ")", ",", "value", ",", "identity", ",", "&", "password_authorizations", OPTIONAL_COMMA, ")"), "identity-bound retained authority/commit"),
             (("send_status_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "status", ",", "deadline", ")"), "operation-bound status"),
         )
     )
+    service_handler.forbid(("let", "deadline"), "resetting the inherited service deadline")
     credential_handler = ipc.function("handle_linux_service_credential_snapshot_transaction")
     credential_handler.require_order(
         (

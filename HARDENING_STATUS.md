@@ -123,8 +123,12 @@ Installer packaging now uses `libs/portable/build.rs` and `src/installer_package
 workspace's locked Rust Brotli/MD5 dependencies. Unpinned Python Brotli installation, its preflight,
 and the generic Python generator are deleted. Only the fixed, previously validated MSI is encoded;
 `SOURCE_DATE_EPOCH` is required and bounded, generated files live in Cargo `OUT_DIR`, and input,
-compression and output failures refuse the build. The six encoder/actual-decoder integration tests
-are prepared for `smoke-verifier-vm-authority.sh --installer-package-tests`; execution is pending.
+compression and output failures refuse the build. Source `25637dc1` passed all six encoder/actual-decoder
+integration tests in the existing no-NIC VM in 113 seconds, using Cargo 1.75 `--offline --locked`
+and the full pinned vendor. The real no-route canary and supplementary Windows source gate passed;
+the executable digest stayed unchanged, no host listener was added, and cleanup joined. Retained
+`android-rust-lifecycle-tests-run.EGmGTf5yjE.serial.log` SHA-256
+`1e0938684558497e551b77a46f12e7f6cee202411190950a0eda7bbd40ab7791` binds this component execution.
 Native Windows packaging/installation, VS/vcpkg/Flutter acquisition and the complete offline closure
 remain OPEN. With no NIC, missing dependencies fail provisioning; no network fallback is admitted.
 Cold equality, whole-document restoration and the Windows harness replay below remain OPEN.

@@ -1852,41 +1852,44 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   receipts; the keyed test uses an in-memory duplex stream. Neither establishes installed socket/peer
   behavior. Full native typed/generic admission, complete caller error propagation and read/write/digest/
   cancel/error, saturation, interruption, reconnect and resource/latency acceptance remain required and OPEN.
-- **R-S11fi/R-S11e-196 receive-file failure and cleanup finality** — **PARTIAL; NORMAL BLOCK NATIVE IO
-  AND DELAYED-WRITE PUBLICATION CORRECTED; NAMED LINUX LIBRARY ACCEPTED; BROADER NATIVE EXECUTION OPEN.**
-  One fallible operation retires exact current-file state; cleanup uncertainty is visible and preserves
-  identity-mismatched replacements. CM cancellation retains its generation until cleanup finality rather
-  than manufacturing `Done`. Whole-job completion requires the admitted-list end before publication
-  (R-S11c-4d). `DataStream::write_all` now awaits native file write plus flush before receive progress or
-  accepted-operation completion; in-memory buffering is unchanged. Finalization still flushes before
-  sync/publication. [Pinned Tokio 1.44.2](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/fs/file.rs)
-  otherwise returns with queued native IO whose descriptor can outlive drop.
-  Tests-first `deb21f65` reproduced successful retirement with all sidecars absent but one exact staged
-  inode descriptor still live. The same native scenario, apart from two panic-format repairs, passed on
-  **`2d75d1f06061e33625d06ef7889999985c4b8436`**: `bash scripts/smoke-verifier-vm-authority.sh --hbb-common-fs`
-  passed all 107 tests (4 config, 97 filesystem, 5 address, 1 socket), zero ignored, in 158 seconds.
-  Its real receive job waits while the sole test blocking worker is occupied, then writes exact bytes;
-  retirement leaves zero exact native descriptors and no sidecars. The real partial-write child now
-  requires write-phase `EFBIG`, actual `oNE!`/length four, unchanged counters, refused completion,
-  unpublished destination and exact sidecar/lease retirement. Its process limits remain child-only.
-  Current raw `hbb-common-fs-run.qEreQ6kE0T.serial.log` (68,687 bytes), SHA-256
-  `ea3285eb3bf5795f9c119a11d657fa77f2d9a70cf1c81d3f57de17b2b75063c4`, binds source and the
-  stable executable digest. Pinned Rust 1.75/vendor/Debian builder, zero-NIC VM, UID/GID-1000
-  networkless read-only guest container, caps none, no new host endpoint and joined cleanup passed.
-  Next-file setup refusal also passed on `b2c01dba2959cb699a197f13e213d21bd1d0421a`:
-  the same isolated command passed 108 tests (4 config, 98 filesystem, 5 address, 1 socket),
-  zero ignored, in 161s. Its real two-file job commits the predecessor, refuses a foreign next-file
-  digest with `AlreadyExists`, preserves its bytes/inode, retires new staging/lease artifacts,
-  preserves accepted counters and refuses whole-job completion. The guest requires the exact
-  named regression to pass. Raw `hbb-common-fs-run.phatqsH40b.serial.log` (66,852 bytes), SHA-256
-  `19c6f2028f727d1c047c6774cb5eb824533c90c425dfb7805c85c78f91f90cb2`; stable executable SHA-256
+- **R-S11fi/R-S11e-196 receive-file failure and cleanup finality** — **PARTIAL; NORMAL IO/PUBLICATION
+  CORRECTED; LINUX LIBRARY ACCEPTED; CALLER/PEER/INSTALLED/CROSS-OS ACCEPTANCE OPEN.**
+  Exact-file retirement reports uncertainty and preserves replacements; CM cancellation retains its
+  generation through finality, without false Done. Publication requires the admitted-list end.
+  `DataStream::write_all` awaits native write/flush before progress/completion; buffering and final
+  flush/sync/publication order are unchanged. [Tokio 1.44.2](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/fs/file.rs)
+  can leave queued IO/descriptors after drop.
+  On tests-first `deb21f65`, sidecars retired with one exact staged-inode descriptor live.
+  The same case, with two panic-format repairs, passed on `2d75d1f0`:
+  `bash scripts/smoke-verifier-vm-authority.sh --hbb-common-fs`, 107 tests/158s, zero ignored.
+  IO waits behind an occupied blocking worker, then completes; retirement leaves no exact descriptors/sidecars.
+  Child-only partial write proves EFBIG during write, `oNE!`/length4, unchanged counters,
+  refused publication and exact retirement. Raw `hbb-common-fs-run.qEreQ6kE0T.serial.log` (68,687 bytes), SHA-256
+  `ea3285eb3bf5795f9c119a11d657fa77f2d9a70cf1c81d3f57de17b2b75063c4`.
+  `b2c01dba`: 108 tests/161s, zero ignored. Next-file setup returns AlreadyExists after predecessor commit,
+  preserves foreign digest bytes/inode/counters, retires new staging/lease and refuses whole-job Done.
+  Raw `hbb-common-fs-run.phatqsH40b.serial.log` (66,852 bytes), SHA-256
+  `19c6f2028f727d1c047c6774cb5eb824533c90c425dfb7805c85c78f91f90cb2`; stable executable
   `4ae2ad69e3f4478ab2d59a31c9baf333f3e1d2e912dcc7b7b10730d99b0c9f6b`.
-  Earlier outer-rejected and partial-publication failures remain unaccepted; older accepted
-  receipts and failed baselines remain in the audit/Git history.
-  Receipts are assistant-observed, not independent attestation; full test stdout and executables were
-  ephemeral. Direct-viewer/CM peer-visible failure and next-file fault propagation, forced cancellation
-  during an await/owner-loss drain, installed/cross-OS operations, resource/latency soak,
-  final artifacts/reproduction/review and complete receive-error propagation remain OPEN.
+  `c38ef5d1` adds real viewer/CM caller regressions. On `ac51cdcd`,
+  the `--android-rust-lifecycle-tests` profile observed 17 Linux
+  groups/101 tests, zero failed/ignored, fresh bridge and Rust/Flutter compilation. Viewer helper
+  refusal retires only its job, preserves a survivor/predecessor and ignores late blocks; the real peer
+  dispatcher remains round-terminal. CM emits exact conn/token/job/generation/file failure and refuses
+  late Done; both preserve foreign digest bytes/inode. Raw
+  `android-rust-lifecycle-tests-run.N8V2VdtbhS.serial.log` (74,424 bytes), SHA-256
+  `59d8e59ed08bdc5e11f820f090e44847c9fbe268ec328521225946418389a2e1`, retains both caller names and
+  unchanged executable `e6cb6b4beb0558e41753dace334c29e1b86fa151c908140eef62931cacb6d91d`.
+  **Unaccepted:** outer count 99 rejected it. `eb421119` fixes only that count; its rerun's
+  VM owner exited 137 before tests, cause unproved. Raw
+  `android-rust-lifecycle-tests-run.nAdaLM2LVY.serial.log` (55,604 bytes), SHA-256
+  `49e05a2b813b6a8894bd1b411755d698fd89f52db530f4e1958ff281e8642496`.
+  Accepted library runs: pinned offline inputs, zero-NIC VM, UID/GID1000 read-only/networkless
+  guest, caps none/NNP/AppArmor, stable artifact, no added host endpoint, joined cleanup.
+  Receipts are assistant-observed, not independent; named caller pass lines survive, full stdout/binaries
+  were ephemeral. Rejected/partial runs: audit/Git. OPEN: accepted caller integration,
+  peer/UI/installed failure propagation, forced cancellation/owner-loss drain, cross-OS behavior,
+  resource/latency soak, artifacts/reproduction/review and complete receive-error closure.
 - **R-S11fj/R-S11e-197 viewer download digest inspection failure** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION
   PARTIAL, FAILURE PATHS OPEN.** One exact-current headless Linux production-`Session` download completed through
   the ordinary absent-destination digest path and committed exact bytes. A second source-bound Linux replay
@@ -2108,14 +2111,14 @@ Retained evidence under `.harness-state/verifier-vm/`:
   SHA-256 `25879b12597807c6867f0bf7382d6150099d5735ec082d769ea04721eccb1d32`;
   outer status 0, no added host endpoint, joined children and retired scratch root.
 
-The current production module and wrapper are unchanged from that named source.
-This is not a fresh execution of the current whole app. The broad Rust-app integration
-remains **unaccepted**: earlier attempts failed the required-test inventory/host-listener
-checks or ended with VM-owner status 137 before results; that termination cause is
-unproven. The corrected 75-test inventory still lacks accepted execution and is a
-deliberate integration lane, not the default policy inner loop. Detailed failed runs,
-socket-group repair, cleanup identities and receipts remain in Git history, the audit
-journal and retained bounded evidence rather than this current-state ledger.
+The selector/wrapper are unchanged. The broad profile runs three named UID-provider cases.
+On `ac51cdcd`, 17 groups/101 guest tests passed; outer count 99 rejected the receipt.
+`eb421119` fixes the count; its VM owner exited 137 before results, cause unproved.
+Exact evidence: R-S11fi. Installed receiver/whole-app acceptance remains OPEN.
+Fresh authorization reaches blocking `run_loginctl`/`Command::output` on the async receiver
+(`src/ipc.rs:4025,4083,5882,5913`; `libs/hbb_common/src/platform/linux.rs:767–785`),
+without an explicit deadline/output cap. Whole-lookup bounds, child cancellation/reaping
+and responsiveness need correction/native evidence; no privilege bypass is demonstrated.
 
 **Still OPEN:** exact-artifact installed Linux receiver behavior on both endpoints with
 root/cache/session changes, capacity contention, authorized/unauthorized principals,

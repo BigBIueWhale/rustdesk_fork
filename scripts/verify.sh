@@ -2620,9 +2620,9 @@ echo "== (3b-iii-c) dedicated raw password IPC authority and finality (R-S11b/R-
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e97_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e262_ --color never
 r_s11b2=
-if ! python3 scripts/verify-linux-service-password-ipc.py --repo . --self-test >"$VERIFY_TMP/rd_verify_linux_service_password_ipc" 2>&1; then
+if ! python3 scripts/verify-linux-service-password-ipc.py --repo . >"$VERIFY_TMP/rd_verify_linux_service_password_ipc" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_linux_service_password_ipc"
-  r_s11b2="$r_s11b2 linux-raw-password-semantic-verifier-failed"
+  r_s11b2="$r_s11b2 linux-raw-password-source-check-failed"
 fi
 if ! /usr/bin/python3 -I -S scripts/verify-macos-service-credential-ipc.py \
     --repo . --self-test >"$VERIFY_TMP/rd_verify_macos_service_credential_ipc" 2>&1; then

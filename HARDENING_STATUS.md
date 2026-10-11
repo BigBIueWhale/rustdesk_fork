@@ -6173,16 +6173,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   and streaming byte comparison against its open running image; peer authentication then binds the selected child's
   device/inode rather than incorrectly requiring that its pathname equal the primary UI image.
 
-  `scripts/verify-linux-service-password-ipc.py` now parses the codec, config, IPC/auth, server, and Linux launcher
-  sources and binds framing, ordering, budgets, root persistence, child runtime-only application, plaintext
-  absence, fail-stop, pre-listener snapshot, asymmetric direct-parent/generation proof, initial/final nondumpability,
-  execute-only installed metadata, kernel policy, stopped record publication, and
-  release-fixture closure. Its complete self-test deliberately weakens canonical length, capacity, persistence
-  ownership, PRS-vs-plaintext delivery, fail-stop, startup snapshot, dumpability, executable mode, kernel policy,
-  parent/generation,
-  and release gating and rejects every mutation. The meta-verifier binds the new checker invocation and critical
-  handler/capacity/bootstrap checks. Shared verification requires R-S11cb, Appendix C #221, this ledger identity,
-  the 44-byte bound, and the narrow systemd syscall row.
+  `scripts/verify-linux-service-password-ipc.py` retains supplementary token checks for raw framing,
+  endpoint/role separation, credential ownership, bootstrap and source ordering. Its 229-case in-memory
+  source-mutation catalogue is deleted: the altered strings were neither compiled nor executed and did not
+  establish native authority or finality. The checker has one source-check mode; `scripts/verify.sh` invokes
+  it without `--self-test`. The retained source guards are byte-identical. Runtime UID-policy and product
+  password/role/codec tests remain. Focused isolated checker replay is pending; native installed-service
+  principals, OS authorization, races, startup/finality and cleanup remain OPEN.
 
   Confined evidence used only already-present immutable images as numeric UID/GID 1000 with no network, a read-only
   root/source/toolchain, all capabilities dropped, no-new-privileges, bounded PIDs/CPU/memory, and private tmpfs

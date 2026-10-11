@@ -3404,7 +3404,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || { tail -n 200 "$output" >&2; fail 'Linux UID-policy summary count differs'; }
         [ "$(grep -Ec '^test uid_policy::tests::.* \.\.\. ok$' "$output")" -eq "${#required_tests[@]}" ] \
             || fail 'Linux UID-policy named test count differs'
-        grep -Fxq 'verify-linux-service-password-ipc: ok' "$output" \
+        grep -Fxq 'verify-linux-service-password-ipc: source checks passed' "$output" \
             || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
         [ -f "$target_root/uid-policy-tests" ] && [ ! -L "$target_root/uid-policy-tests" ] \
             && [ "$(stat -c '%u:%g:%h' -- "$target_root/uid-policy-tests")" = 1000:1000:1 ] \
@@ -3541,7 +3541,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                     && [ "$(grep -Fc "${label}_DECODE_ARTIFACT=" "$output")" -eq 1 ] \
                     || fail 'compressed-data test artifact receipt is absent, malformed or duplicated'
             done
-            grep -Fxq 'verify-linux-service-password-ipc: ok' "$output" \
+            grep -Fxq 'verify-linux-service-password-ipc: source checks passed' "$output" \
                 || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
         fi
     fi
@@ -3580,9 +3580,9 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
-        grep -E '^test ipc::uid_policy::tests::r_s11e60_.* \.\.\. ok$|^verify-linux-service-password-ipc: ok$' "$output"
+        grep -E '^test ipc::uid_policy::tests::r_s11e60_.* \.\.\. ok$|^verify-linux-service-password-ipc: source checks passed$' "$output"
     elif [ "$MODE" = linux-service-uid-tests ]; then
-        grep -E '^test uid_policy::tests::.* \.\.\. ok$|^verify-linux-service-password-ipc: ok$' "$output"
+        grep -E '^test uid_policy::tests::.* \.\.\. ok$|^verify-linux-service-password-ipc: source checks passed$' "$output"
     fi
     printf '%s\n' "${result_lines[@]}"
     if [ "$MODE" = hbb-common-fs ]; then

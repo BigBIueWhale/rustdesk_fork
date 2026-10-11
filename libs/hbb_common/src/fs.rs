@@ -3531,7 +3531,8 @@ impl TransferJob {
         if block.id != self.id {
             bail!("Wrong id");
         }
-        if matches!(&self.data_source, DataSource::FilePath(_)) {
+        let file_backed = matches!(&self.data_source, DataSource::FilePath(_));
+        if file_backed {
             if block.file_num < 0 {
                 bail!("Wrong file number");
             }
@@ -3551,6 +3552,43 @@ impl TransferJob {
                         block.file_num
                     );
                 }
+            }
+        }
+        let decoded = if block.compressed {
+            Some(try_decompress(&block.data)?)
+        } else {
+            None
+        };
+        let bytes = decoded.as_deref().unwrap_or(block.data.as_ref());
+        let receive_file_offset = if file_backed && block.file_num != self.file_num {
+            0
+        } else {
+            self.receive_file_offset
+        };
+        let receive_file_offset = receive_file_offset
+            .checked_add(bytes.len() as u64)
+            .ok_or_else(|| anyhow!("received file byte counter overflow"))?;
+        if file_backed {
+            let expected_size = self.files[block.file_num as usize].size;
+            if receive_file_offset > expected_size {
+                bail!(
+                    "received file {} exceeds declared size {}",
+                    block.file_num,
+                    expected_size
+                );
+            }
+        }
+        let finished_size = self
+            .finished_size
+            .checked_add(bytes.len() as u64)
+            .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
+        let transferred = self
+            .transferred
+            .checked_add(block.data.len() as u64)
+            .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
+
+        if file_backed {
+            if block.file_num != self.file_num {
                 self.finish_current_write_file().await?;
                 self.file_num = block.file_num;
             }
@@ -3583,34 +3621,6 @@ impl TransferJob {
             };
             self.data_stream = Some(DataStream::BufStream(TokioBufStream::new(cursor)));
         }
-        let decoded = if block.compressed {
-            Some(try_decompress(&block.data)?)
-        } else {
-            None
-        };
-        let bytes = decoded.as_deref().unwrap_or(block.data.as_ref());
-        let receive_file_offset = self
-            .receive_file_offset
-            .checked_add(bytes.len() as u64)
-            .ok_or_else(|| anyhow!("received file byte counter overflow"))?;
-        if matches!(&self.data_source, DataSource::FilePath(_)) {
-            let expected_size = self.files[self.file_num as usize].size;
-            if receive_file_offset > expected_size {
-                bail!(
-                    "received file {} exceeds declared size {}",
-                    self.file_num,
-                    expected_size
-                );
-            }
-        }
-        let finished_size = self
-            .finished_size
-            .checked_add(bytes.len() as u64)
-            .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
-        let transferred = self
-            .transferred
-            .checked_add(block.data.len() as u64)
-            .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
         self.data_stream
             .as_mut()
             .ok_or(anyhow!("data stream is None"))?

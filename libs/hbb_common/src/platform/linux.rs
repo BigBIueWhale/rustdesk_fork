@@ -951,6 +951,32 @@ mod tests {
     const LOGINCTL_FIXTURE_ROLE: &str = "RUSTDESK_TEST_LOGINCTL_FIXTURE_ROLE";
     const LOGINCTL_FIXTURE_PID: &str = "RUSTDESK_TEST_LOGINCTL_FIXTURE_PID";
 
+    struct LoginctlFixtureDirectory(PathBuf);
+
+    impl LoginctlFixtureDirectory {
+        fn new() -> Self {
+            use std::os::unix::fs::DirBuilderExt;
+            let path = std::env::temp_dir().join(format!(
+                "rustdesk-loginctl-fixture-{}",
+                uuid::Uuid::new_v4()
+            ));
+            std::fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for LoginctlFixtureDirectory {
+        fn drop(&mut self) {
+            if let Err(err) = std::fs::remove_dir_all(&self.0) {
+                eprintln!("Failed to retire owned loginctl fixture directory: {err}");
+            }
+        }
+    }
+
     #[test]
     fn loginctl_output_fixture_child() {
         use std::io::Write;
@@ -1005,7 +1031,7 @@ mod tests {
 
     #[test]
     fn r_s11at_loginctl_output_deadline_reaps_silent_child() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = LoginctlFixtureDirectory::new();
         let pid_file = temp.path().join("child.pid");
         let mut command = loginctl_fixture_command("silent", &pid_file);
         let started = std::time::Instant::now();
@@ -1025,7 +1051,7 @@ mod tests {
 
     #[test]
     fn r_s11at_loginctl_output_limit_reaps_writing_child() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = LoginctlFixtureDirectory::new();
         let pid_file = temp.path().join("child.pid");
         let mut command = loginctl_fixture_command("oversized", &pid_file);
         let started = std::time::Instant::now();
@@ -1049,7 +1075,7 @@ mod tests {
             atomic::{AtomicBool, Ordering},
             Arc,
         };
-        let temp = tempfile::tempdir().unwrap();
+        let temp = LoginctlFixtureDirectory::new();
         let pid_file = temp.path().join("child.pid");
         let mut command = loginctl_fixture_command("silent", &pid_file);
         let cancelled = Arc::new(AtomicBool::new(false));
@@ -1083,7 +1109,7 @@ mod tests {
 
     #[test]
     fn r_s11at_loginctl_output_success_preserves_payload_and_reaps_child() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = LoginctlFixtureDirectory::new();
         let pid_file = temp.path().join("child.pid");
         let mut command = loginctl_fixture_command("success", &pid_file);
         let mut lookup = LoginctlLookup::new(

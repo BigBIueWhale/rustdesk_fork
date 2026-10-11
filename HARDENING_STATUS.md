@@ -3213,11 +3213,26 @@ runs remain UNACCEPTED harness failures with full diagnostics preserved under
 before each exact generation retires and verifies all four distinct results plus unchanged sealed
 provider identity; successful product logs are no longer incorrectly sought in container output.
 
-**Reconnect dialog lifetime — NATIVE ACCEPTANCE PENDING.** The controller opens a stable actual
-Trackpad Speed Alert before the third server restart, requires its retirement after current pixels
-on the replacement TCP connection, then compares a new Alert with the retained old accessible
-before the existing resize/theme/Escape checks. The inner stage requires the exact native result;
-the sealed `31f8e5ef` app and all existing lifecycle/resource/cleanup criteria are reused.
+**Reconnect dialog lifetime — LINUX X11 NATIVE ACCEPTED.** Harness
+`8e5f89ed7c94d63c15d79d1a9cc77a98aae85e74` reused the sealed `31f8e5ef` app, manifest and
+patched `63493887` engine above without rebuilding the app. All six lifecycles opened a stable
+actual Trackpad Speed Alert before the third server restart, observed its retirement after current
+pixels on a distinct replacement TCP connection in the same native window, then opened a distinct
+new Alert while retaining the old accessible object. Each new dialog passed the existing three
+resizes, actual Settings theme change and Escape retirement. Eighteen focus recoveries, eighteen
+real reconnects, six resource-bound results, all 24 serving-generation provider mappings and joined
+viewer/server/Xvfb/VM cleanup passed. The inner stage requires exactly one native reconnect-dialog
+result per lifecycle; unavailable or ambiguous observations fail rather than count as absence.
+
+Outer exit 0 after 510 seconds. Complete 522,355-byte serial:
+`.harness-state/verifier-vm/flutter-peer-presentation-run.iAmnJUkdXO.serial.log`, SHA-256
+`2d7bee9f14168ce0ec580d8742c63719300a3dff5c2e8fa767f200b2d1edc037`.
+Exact before/after 7,781-byte source/index/control/app observations agree; four exclusive retained
+records in `dialog-reconnect-8e5f89ed-replay-evidence` distinguish native extraction and complete
+observed outer responses from the full raw serial. The successful run self-retired and the host
+endpoint audit found no additions; it did not inventory foreign processes. This proves scoped
+connection-transition retirement/recreation, not which callback caused it, page disposal/subtree
+replacement, FlView restart, native ViewCamera, an installed authority boundary or release acceptance.
 
 Next: native ViewCamera and disposal/subtree replacement/FlView restart coverage. Wayland, other
 platforms, original display-delay causation, sustained resources, installed-service loader/FFI

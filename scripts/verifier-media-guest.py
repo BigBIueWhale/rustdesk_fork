@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import select
+import shutil
 import stat
 import struct
 import subprocess
@@ -113,7 +114,27 @@ def capture():
 def provision(pins):
     require(os.uname().release == pins['VERIFIER_VM_KERNEL_RELEASE'],
             'provisioning kernel release differs')
-    run(['/usr/bin/dpkg-deb', '--extract', str(MEDIA / PACKAGE), '/'])
+    lib = Path('/lib')
+    require(lib.is_symlink() and os.readlink(lib) == 'usr/lib', 'base library ancestry differs')
+    lib_identity = (lib.lstat().st_dev, lib.lstat().st_ino)
+    stage = Path('/var/lib/rustdesk-media-package')
+    stage.mkdir(mode=0o700)
+    run(['/usr/bin/dpkg-deb', '--extract', str(MEDIA / PACKAGE), str(stage)])
+    os.chmod(stage, 0o700)
+    for prefix in ('vmlinuz-', 'config-', 'System.map-'):
+        target = Path('/boot', prefix + RELEASE)
+        require(not target.exists() and not target.is_symlink(), 'media boot destination occupied')
+        source = stage / 'boot' / (prefix + RELEASE)
+        file_record(source, LIMIT)
+        with source.open('rb') as source_file, target.open('xb') as output:
+            shutil.copyfileobj(source_file, output)
+    target_modules = Path('/usr/lib/modules', RELEASE)
+    require(not target_modules.exists() and not target_modules.is_symlink(),
+            'media module destination occupied')
+    os.rename(stage / 'lib/modules' / RELEASE, target_modules)
+    require(lib.is_symlink() and os.readlink(lib) == 'usr/lib'
+            and (lib.lstat().st_dev, lib.lstat().st_ino) == lib_identity,
+            'provisioning changed base library ancestry')
     require(file_record(Path('/boot/vmlinuz-' + RELEASE), LIMIT)
             == {'bytes': int(pins['SIZE_VERIFIER_MEDIA_KERNEL']),
                 'sha256': pins['SHA256_VERIFIER_MEDIA_KERNEL']}, 'extracted kernel differs')
@@ -137,7 +158,6 @@ def provision(pins):
               'initrd': first, 'kernel_release': RELEASE, 'module_count': len(modules),
               'same_guest_initrd_equality': True,
               'epoch': pins['SOURCE_DATE_EPOCH_PIN']}
-    Path('/boot/rustdesk-media-manifest.json').write_text(json.dumps(result, sort_keys=True) + '\n')
     return result
 
 
@@ -182,6 +202,7 @@ def fixture(pins):
 
 
 def main():
+    os.umask(0o077)
     if sys.argv[1:] == ['--probe']:
         print(json.dumps(capture(), sort_keys=True), flush=True)
         return

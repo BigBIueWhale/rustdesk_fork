@@ -143,9 +143,11 @@ class Transaction:
     def boot(self, phase, base, overlay, kernel, initrd, payload, pins):
         seed = self.path / (phase + '-seed')
         seed.mkdir(mode=0o700)
-        user_data = ('#!/bin/sh\nset -eu\n'
+        user_data = ('#!/bin/sh\nset -eu\nexport PATH=/usr/sbin:/usr/bin:/sbin:/bin\n'
                      'finish() { status=$?; trap - EXIT; echo MEDIA_CLOUD_EXIT=$status; '
-                     'sync; systemctl poweroff --no-block || poweroff -f; exit "$status"; }\n'
+                     'if ! /usr/bin/sync; then echo MEDIA_CLOUD_SYNC=fail; status=1; fi; '
+                     '/usr/bin/systemctl poweroff --no-block '
+                     '|| /usr/sbin/poweroff -f; exit "$status"; }\n'
                      'trap finish EXIT\n'
                      'mkdir -p /mnt/rustdesk-media\n'
                      'mount -L RD_MEDIA -o ro,nodev,nosuid,noexec /mnt/rustdesk-media\n'
@@ -279,6 +281,7 @@ class Transaction:
         raw = (self.path / (phase + '.serial.log')).read_bytes()
         records = re.findall(rb'(?:^|\n)MEDIA_GUEST_RESULT=(\{[^\r\n]+\})\r?\n', raw)
         require(len(records) == 1 and b'MEDIA_CLOUD_EXIT=0' in raw
+                and b'MEDIA_CLOUD_SYNC=fail' not in raw
                 and b'MEDIA_GUEST_FAILURE=' not in raw, 'positive guest receipt absent or ambiguous')
         result = json.loads(records[0])
         require(result['phase'] == phase and result['nonce'] == self.name

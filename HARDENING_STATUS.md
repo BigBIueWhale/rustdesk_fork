@@ -2068,18 +2068,19 @@ resource retirement, installed artifacts, and independent review remain OPEN.
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**Policy/capture/coordinator and seven native logind cases accepted;
-installed receiver, whole-app and release OPEN.**
+**Policy/capture/coordinator/logind accepted; installed receiver, whole-app/release OPEN.**
 
-Both endpoints use unchanged `src/ipc/uid_policy.rs`/wrappers: root bypasses providers,
-cached negatives deny, matches need fresh lookup. Kernel peer/role/PID/UID/start/argv/executable,
-ancestry/generation proof stays separate. Lookup owns one deadline/1 MiB budget/fixed command;
-overflow/query/parse uncertainty denies. List IDs only; named User/Name/Seat/State/Type supply
-authority, including empty seats/name whitespace. Seatless TTY/unspecified stays ineligible.
-Pidfd/wait ownership survives cancellation/unwind; absent pidfd/incompatible SIGCHLD denies.
-IPC joins permit-owning proof workers before transactions and proves before secret read.
-Polkit/replay/consuming admission share the original deadline and worker; ledger-lock checks
-cover expiry/cancellation/shutdown. Async grant and wording-only gates deleted.
+`src/ipc/uid_policy.rs` serves both endpoints: root skips lookup; cache only denies;
+matches need fresh UID. Kernel role/process/ancestry/generation proof stays separate.
+Lookup owns deadline/1 MiB/trusted command; uncertainty denies. Named User/Name/Seat/State/Type
+permit empty seats/name whitespace; seatless TTY/unspecified denies. Pidfd/wait retains
+cancellation/unwind; absent pidfd/bad SIGCHLD denies. IPC joins permit-held proof before secrets.
+Polkit/replay/admission share deadline/worker and locked expiry/cancellation/shutdown checks.
+Async grants/wording gates deleted.
+
+**Debian authorization prerequisite:** `build.py` requires `polkitd`; artifact admission rejects
+missing, optional or library-only substitutes. `--debian-polkit-tests` exercises the production
+generator and seven real Debian archive metadata cases. Focused run pending; receiver unexecuted.
 
 Logs: `.harness-state/verifier-vm/`; all hashes SHA256.
 **UID policy:** `--linux-service-uid-tests`, source aa437333945074d447150bbe8d9a4ca36c5f1490;

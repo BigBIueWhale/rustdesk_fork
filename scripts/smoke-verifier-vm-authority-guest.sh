@@ -29,6 +29,9 @@ case "$#:${8:-}" in
     8:--fixed-archive-tests)
         MODE=fixed-archive-tests
         ;;
+    8:--debian-polkit-tests)
+        MODE=debian-polkit-tests
+        ;;
     8:--linux-flutter-artifact-tests)
         MODE=linux-flutter-artifact-tests
         ;;
@@ -614,6 +617,51 @@ run_linux_flutter_engine_prepare() {
     printf 'FLUTTER_ENGINE_PREPARE_VM=pass commit=%s tree=%s helper_sha256=%s runtime=%s uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined\n' \
         "$ENGINE_PREPARE_COMMIT" "$ENGINE_PREPARE_TREE" "$(sha256sum "$helper" | awk '{print $1}')" \
         "$DEV_CHECK_IMAGE_CONFIG_ID"
+}
+
+run_debian_polkit_tests() {
+    local work work_id source_before status=0
+    local generator=$VERIFY_REPO/build.py
+    local checker=$VERIFY_REPO/scripts/verify-debian-package-authority.py
+    local output=$ROOT/debian-polkit-tests.out
+    local receipt='DEBIAN_POLKIT_DEPENDENCY=pass cases=7 generator=production artifacts=actual-deb policy=standalone-depends receiver=unexecuted'
+    local -a sources=("$generator" "$checker" "$ENTRY_PREFLIGHT")
+
+    source_before="$(sha256sum "${sources[@]}")"
+    setpriv --reuid=4000 --regid=4000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    work="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/mktemp -d /tmp/debian-polkit-tests.XXXXXXXXXX)" \
+        || fail 'cannot create Debian polkit-test scratch'
+    [ "$(stat -c '%u:%g:%a' -- "$work")" = 4000:4000:700 ] \
+        || fail 'Debian polkit-test scratch authority differs'
+    work_id="$(stat -c '%d:%i' -- "$work")"
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+        /usr/bin/python3 -B -I -S "$checker" --repo "$VERIFY_REPO" \
+            --polkit-dependency-self-test >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' -- "$output")" -le 65536 ] \
+        || fail 'Debian polkit-test diagnostics exceeded their bound'
+    [ "$status" -eq 0 ] \
+        || { tail -n 60 "$output" >&2; fail "Debian polkit tests failed with status $status"; }
+    [ "$(grep -Fxc "$receipt" "$output")" -eq 1 ] \
+        && [ "$(grep -Ec '^DEBIAN_POLKIT_ARTIFACTS=sha256 ([0-9a-f]{64} ){6}[0-9a-f]{64}$' "$output")" -eq 1 ] \
+        && [ "$(wc -l <"$output")" -eq 2 ] \
+        || fail 'Debian polkit-test result is missing, duplicated or unexpected'
+    [ "$(sha256sum "${sources[@]}")" = "$source_before" ] \
+        || fail 'Debian polkit-test source changed during execution'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'Debian polkit tests left a container or image'
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/verify-private-tree-closure.py" \
+            --remove-empty-private-root "$work" --expected-identity "$work_id" \
+        || fail 'Debian polkit-test scratch could not be retired'
+    [ ! -e "$work" ] && [ ! -L "$work" ] || fail 'Debian polkit-test scratch remains'
+    stop_docker_authority
+    cat "$output"
+    printf 'DEBIAN_POLKIT_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes generator_sha256=%s checker_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
+        "$(sha256sum "$generator" | awk '{print $1}')" "$(sha256sum "$checker" | awk '{print $1}')"
 }
 
 run_fixed_archive_tests() {
@@ -7816,6 +7864,11 @@ fi
 
 if [ "$MODE" = android-rust-target-check ]; then
     run_android_rust_target_check
+    exit 0
+fi
+
+if [ "$MODE" = debian-polkit-tests ]; then
+    run_debian_polkit_tests
     exit 0
 fi
 

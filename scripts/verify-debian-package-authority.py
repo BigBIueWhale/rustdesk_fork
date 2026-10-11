@@ -16,6 +16,7 @@ import tarfile
 import tempfile
 import types
 import xml.etree.ElementTree as ET
+from email.parser import BytesParser
 from pathlib import Path
 
 
@@ -823,6 +824,14 @@ def validate_md5sums(data_tar, data_members, control_tar, control_members, label
         raise ValidationError(f"{label}: failed to verify md5sums: {err}") from err
 
 
+def validate_polkit_dependency(contents, label):
+    control = BytesParser().parsebytes(contents, headersonly=True)
+    dependencies = control.get_all("Depends", [])
+    if (len(dependencies) != 1
+            or "polkitd" not in {group.strip() for group in dependencies[0].split(",")}):
+        raise ValidationError(f"{label}: required standalone polkitd dependency is absent")
+
+
 def validate_deb(deb, expected_systemd_unit=None, expected_polkit_policy=None):
     data_tar = tar_stream_from_deb(deb, "--fsys-tarfile")
     data_members = tar_members_from_stream(data_tar, f"{deb}:--fsys-tarfile")
@@ -830,6 +839,10 @@ def validate_deb(deb, expected_systemd_unit=None, expected_polkit_policy=None):
     control_members = tar_members_from_stream(control_tar, f"{deb}:--ctrl-tarfile")
     validate_data_members(data_members, f"{deb}:data")
     validate_control_members(control_members, f"{deb}:control")
+    validate_polkit_dependency(
+        archive_member_bytes(control_tar, control_members["./control"], f"{deb}:control:./control"),
+        f"{deb}:control:./control",
+    )
     for path, (kind, mode) in DATA_REQUIRED.items():
         require_member(data_members, path, kind, mode, f"{deb}:data")
     for path, target in DATA_REQUIRED_SYMLINKS.items():
@@ -1645,7 +1658,7 @@ def write_file(path, contents, mode):
 def make_synthetic_tree(root, polkit_policy):
     write_file(
         root / "DEBIAN/control",
-        "Package: rustdesk-authority-test\nVersion: 1.0\nArchitecture: all\nMaintainer: test <test@example.invalid>\nDescription: authority test\n",
+        "Package: rustdesk-authority-test\nVersion: 1.0\nArchitecture: all\nMaintainer: test <test@example.invalid>\nDepends: polkitd\nDescription: authority test\n",
         0o644,
     )
     write_file(
@@ -2448,6 +2461,49 @@ def load_build_module(repo):
     module.__file__ = str(path)
     exec(code, module.__dict__)
     return module
+
+
+def run_polkit_dependency_self_test(repo):
+    status = dict(line.split(":", 1) for line in Path("/proc/self/status").read_text().splitlines())
+    if (os.geteuid() == 0 or os.getegid() == 0 or status.get("NoNewPrivs", "").strip() != "1"
+            or any(int(status.get(name, "1"), 16) for name in
+                   ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"))):
+        raise ValidationError("polkit dependency tests require non-root, no capabilities and no-new-privileges")
+    build_module = load_build_module(repo)
+    with tempfile.TemporaryDirectory(prefix="rustdesk-polkit-dependency.") as scratch:
+        scratch = Path(scratch)
+        generated = scratch / "generated-control"
+        build_module.generate_control_file("1.0", generated)
+        contents = generated.read_text(encoding="utf-8")
+        cases = (
+            ("production", contents, True),
+            ("folded", contents.replace(", polkitd,", ",\n polkitd,"), True),
+            ("missing", contents.replace(", polkitd,", ","), False),
+            ("recommendation", contents.replace(", polkitd,", ",").replace(
+                "Recommends: ", "Recommends: polkitd, "), False),
+            ("library", contents.replace(", polkitd,", ", libpolkit-gobject-1-0,"), False),
+            ("alternative", contents.replace(", polkitd,", ", polkitd | libc6,"), False),
+            ("prefix", contents.replace(", polkitd,", ", polkitd-test,"), False),
+        )
+        artifacts = []
+        for name, control, allowed in cases:
+            tree = scratch / name
+            write_file(tree / "DEBIAN/control", control, 0o644)
+            deb = scratch / f"{name}.deb"
+            build_deb(tree, deb, root_owner_group=True, regenerate_md5=False)
+            artifacts.append(hashlib.sha256(deb.read_bytes()).hexdigest())
+            stream = tar_stream_from_deb(deb, "--ctrl-tarfile")
+            members = tar_members_from_stream(stream, str(deb))
+            actual = archive_member_bytes(stream, members["./control"], str(deb))
+            if allowed:
+                validate_polkit_dependency(actual, str(deb))
+            else:
+                expect_operation_failure(
+                    lambda: validate_polkit_dependency(actual, str(deb)),
+                    "required standalone polkitd dependency is absent",
+                )
+        print("DEBIAN_POLKIT_DEPENDENCY=pass cases=7 generator=production artifacts=actual-deb policy=standalone-depends receiver=unexecuted")
+        print("DEBIAN_POLKIT_ARTIFACTS=sha256 " + " ".join(artifacts))
 
 
 def run_production_finalizer_self_test(repo, tmp, polkit_policy):
@@ -3518,10 +3574,16 @@ def main():
     parser.add_argument("--repo", default=".", help="repository root")
     parser.add_argument("--deb", action="append", default=[], help="built .deb to validate; may be repeated")
     parser.add_argument("--self-test", action="store_true", help="run synthetic positive and negative package checks")
+    parser.add_argument("--polkit-dependency-self-test", action="store_true", help="test production dependency metadata in actual Debian archives")
     args = parser.parse_args()
 
     try:
         repo = Path(args.repo).resolve()
+        if args.polkit_dependency_self_test:
+            if args.self_test or args.deb:
+                raise ValidationError("polkit dependency tests cannot be combined with other modes")
+            run_polkit_dependency_self_test(repo)
+            return
         validate_build_py(repo)
         polkit_policy = load_polkit_policy(repo)
         if args.self_test:

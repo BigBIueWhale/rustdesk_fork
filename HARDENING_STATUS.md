@@ -3243,6 +3243,26 @@ Next: native ViewCamera and disposal/subtree replacement/FlView restart coverage
 platforms, original display-delay causation, sustained resources, installed-service loader/FFI
 authority and broader native/installed/release acceptance remain OPEN.
 
+**ViewCamera native identity and guest media prerequisite — SOURCE FINDING; PRODUCT FIX/NATIVE REPLAY OPEN.**
+`libs/scrap/src/common/camera.rs::all_info` selects an actual native camera index but publishes only
+ordinal `DisplayInfo`; resolution and capturer creation reconstruct `CameraIndex::Index` from that ordinal.
+A nonzero-only Linux node can therefore be advertised at ordinal zero and then opened as native zero.
+The Linux name also comes from the first enumerated info when another index-zero device was selected.
+`src/server/video_service.rs::get_capturer_camera` reads metadata and creates capture separately while
+another ViewCamera login can replace their process-wide catalog. A cache-only index lookup would leave
+that identity/metadata/lifetime ambiguity. The replacement needs one owned native identity, matching
+metadata and a coherent catalog/capture generation; hotplug and overlapping logins require native replay.
+
+Offline inspection authenticated the exact `20260712-2537` base and read its
+`/boot/config-6.1.0-50-cloud-amd64`: **`# CONFIG_MEDIA_SUPPORT is not set`**. Full 123,137-byte config,
+SHA-256 `a45c93c38bf743189078b34efdd52881fb6a12e505a9af13d8e174fa109ad4e3`, and byte-equal source/control
+observations are retained in `.harness-state/verifier-vm/camera-kernel-inspection-61d8cb61-complete`.
+This is authenticated input inspection, not camera execution. Linux's documented
+[vivid driver](https://docs.kernel.org/admin-guide/media/vivid.html) can provide guest-only V4L2 capture
+with a selectable nonzero node; the retained cloud kernel cannot provide that media topology.
+Review and authenticate a media-capable guest kernel/module closure before the exact production replay;
+no host camera/device mount, inferred physical-device acceptance or product fix is claimed here.
+
 **Linux Flutter build/replay separation — CAPSULE/PRODUCER PASS; CURRENT REMOTE CONSUMER ACCEPTED ABOVE.**
 
 `scripts/linux-flutter-artifact.py` seals the complete app bundle and matching readiness helper

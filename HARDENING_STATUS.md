@@ -2068,61 +2068,64 @@ resource retirement, installed artifacts, and independent review remain OPEN.
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**UID policy, native capture and Linux IPC coordinator checks accepted.
-Installed receiver, whole-app and release acceptance remain OPEN.**
+**Policy/capture/coordinator and seven native logind cases accepted;
+installed receiver, whole-app and release OPEN.**
 
-Both endpoints use `src/ipc/uid_policy.rs`: root bypasses both lazy providers;
-cached negatives reject early; cache matches require fresh authority. Selector/wrapper
-bytes are unchanged. Kernel peer, finite role, PID/UID/start/argv/executable identity,
-launch ancestry and live-generation replay remain separate requirements.
+Both endpoints use unchanged `src/ipc/uid_policy.rs`/wrappers: root bypasses providers,
+cached negatives deny, matches need fresh lookup. Kernel peer/role/PID/UID/start/argv/executable,
+ancestry/generation proof stays separate. Lookup owns one deadline/1 MiB budget/fixed command;
+overflow/query/parse uncertainty denies. List IDs only; named User/Name/Seat/State/Type supply
+authority, including empty seats/name whitespace. Seatless TTY/unspecified stays ineligible.
+Pidfd/wait ownership survives cancellation/unwind; absent pidfd/incompatible SIGCHLD denies.
+IPC joins permit-owning proof workers before transactions and proves before secret read.
+Polkit/replay/consuming admission share the original deadline and worker; ledger-lock checks
+cover expiry/cancellation/shutdown. Async grant and wording-only gates deleted.
 
-`LoginctlLookup` shares one deadline and 1 MiB stdout budget; overflow stops later
-commands and query/parse uncertainty stops selection. Fixed command provenance remains.
-`OwnedAuthorizationChild` keeps pidfd/wait ownership through cancellation/unwind;
-incompatible SIGCHLD or missing pidfd rejects authorization. Raw no-seat
-TTY/unspecified now skips instead of normalizing to X11; opening/Mir/Web remain recognized.
-`run_service_ipc` joins blocking proof workers retaining permits, proves before secret read,
-and passes the original proof deadline to the raw handler. Polkit, fresh replay and consuming
-admission share one worker; deadline/cancellation/shutdown are checked under the ledger lock.
-Shutdown joins workers before transactions. Old async grant and wording-only cleanup test deleted.
-
-**Accepted UID policy:** `--linux-service-uid-tests`, source `aa437333945074d447150bbe8d9a4ca36c5f1490`,
-four selector/provider tests plus guard; 38s, outer0. Artifact
+Logs: `.harness-state/verifier-vm/`; all hashes SHA256.
+**UID policy:** `--linux-service-uid-tests`, source aa437333945074d447150bbe8d9a4ca36c5f1490;
+four policy cases plus guard, outer0/38s; artifact
 `b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
-Under `.harness-state/verifier-vm/`, `linux-service-uid-tests-run.FQjze4G9se.serial.log`
-(65,958B/SHA256 `514d43c0aac294aee891a4afa05309dd5ab171c61ab0584325d41d55b83241ad`).
-Matching success receipt: 1,008B/0400.
-Broad three-provider coverage and rejected caller receipts remain under R-S11fi.
+`linux-service-uid-tests-run.FQjze4G9se.serial.log` 65,958B/SHA256
+`514d43c0aac294aee891a4afa05309dd5ab171c61ab0584325d41d55b83241ad`; receipt 1,008B/0400.
+Broader provider/refusal evidence: R-S11fi.
 
-**Diagnostic old capture:** source 8167a5e0, `hbb-common-fs-run.cpLHhRm0Wo.serial.log`
-(80,949B/SHA256 `4412a9a0ab5db0496ff89ef4f3fe65131f7c61c22a5eb5bc53f51ee86497f7f0`).
-Cancellation/deadline took about 10s; capture retained 2,097,333B against 1MiB.
-Three failed, small success passed; children eventually reaped. No leak/privilege bypass proved.
-Outer1 rejected a new 127.0.0.1:9333 endpoint of unknown owner, untouched.
+**Old capture diagnostic:** source 8167a5e0, `hbb-common-fs-run.cpLHhRm0Wo.serial.log`
+80,949B/SHA256 `4412a9a0ab5db0496ff89ef4f3fe65131f7c61c22a5eb5bc53f51ee86497f7f0`.
+Three failed/one passed: about 10s cancellation/deadline; 2,097,333B against 1 MiB.
+Children reaped; no leak/bypass proved. Unknown 127.0.0.1:9333 rejected outer1, untouched.
+**Capture:** source 3eabd727cc93628cb42b7596288b478f1aff6e15,
+`--hbb-common-fs`, 116 cases/five groups; eight capture cases 2.03s, original four unchanged;
+artifact `d6f419bbf26d9411e305ddfd18300bd662db2e69497177438f926ef498e17573`.
+`hbb-common-fs-run.ixZTOykXvs.serial.log` 68,542B/SHA256
+`4fb8de38efc021a46a3ddb7fec8908ecf2243eb3991c4773769fd3c2f82d5fb3`; outer0/168s.
 
-**Accepted capture:** `--hbb-common-fs`, source `3eabd727cc93628cb42b7596288b478f1aff6e15`;
-116 tests/five groups, eight capture cases in 2.03s; original four bodies unchanged.
-Artifact `d6f419bbf26d9411e305ddfd18300bd662db2e69497177438f926ef498e17573`.
-`hbb-common-fs-run.ixZTOykXvs.serial.log` (68,542B/SHA256
-`4fb8de38efc021a46a3ddb7fec8908ecf2243eb3991c4773769fd3c2f82d5fb3`); outer0/168s.
+**Coordinator:** `--linux-password-admission-tests`, source 657e788187df5804bbcd4bdb636c9b20170ccdb6;
+Linux IPC library, seven unit cases/four groups plus guard; shutdown refusal/mutex expiry.
+Artifact
+`fb9adb974a06e69e7b21577769761028337525c5aa2d524b64585f8a76b35052`.
+`android-rust-lifecycle-tests-run.xUMynzFeoP.serial.log` 68,752B/SHA256
+`85b82b69f660c3544989938818a43344824137c0a755133c51f0af533e164e33`; outer0/276s.
+qQbkGLjypv passed seven; stale guard rejected. SHA256
+`3ab352f311ca969fa3ab76ad59ffd36afbb674bbe9d6343a38c4a8355313ca58`; guard-only retry, same artifact.
 
-**Accepted coordinator:** `--linux-password-admission-tests`, source
-`657e788187df5804bbcd4bdb636c9b20170ccdb6`; actual Linux IPC library, seven cases/four groups,
-including shutdown refusal and deadline expiry after mutex contention, plus supplementary guard.
-Artifact `fb9adb974a06e69e7b21577769761028337525c5aa2d524b64585f8a76b35052`.
-`android-rust-lifecycle-tests-run.xUMynzFeoP.serial.log` (68,752B/SHA256
-`85b82b69f660c3544989938818a43344824137c0a755133c51f0af533e164e33`); outer0/276s.
-Initial qQbkGLjypv run passed seven cases but obsolete deadline guard rejected outer1;
-retained raw SHA256 `3ab352f311ca969fa3ab76ad59ffd36afbb674bbe9d6343a38c4a8355313ca58`.
-Repair changed only guard; accepted retry used the same artifact. Both accepted current runs
-bind unchanged before/between/after artifacts, Rust1.75, zero-NIC/no-network, uid1000,
-read-only/caps-none/NNP confinement, no listener additions and joined cleanup.
+**Native logind:** `--linux-logind-tests`, source e251c387b182e66f5f3ccc9f7d70cec5a6acead0;
+eight capture/six parser-query cases plus seven real PAM/logind scenarios; outer0/153s.
+Empty/removed, seatless unspecified/TTY, active X11, user switch and closing X11 matched
+UID/no-user expectations. No X server/installed receiver.
+Artifact `e12dac152e028dab82cc954580f14abb95c6b4419374d1ae3e4171e69b5d6269`.
+`hbb-common-fs-run.fC5nZoJoWL.serial.log` 71,910B/SHA256
+`8e20a94f08232d07773cd31de8f755d8b4563a0a09c7d5422e7fe5c780b34654`.
+PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2. Rejected cf11738d parser run GBIedIhNRI and
+e11cd41d summary/listener run 5WpwxPMq5i remain retained; exact failure/source/raw hashes:
+`/tmp/privilege_securiry_deep_audit.md`.
+Accepted runs: unchanged artifacts/Rust1.75/zero-NIC/no-network/uid1000/read-only/caps-none/NNP,
+no listener additions, joined cleanup.
 
 **Still OPEN:** installed Linux both-endpoint root/cache/session changes, principal allow/deny,
-contention, cancellation/drain, responsiveness; raw session selection, exclusive wait/SIGCHLD
-interop, abrupt-drop and lookup/transaction/descendant resources; whole-app and native macOS;
-current installed/release artifacts, cold R-B2/R-B10 equality, independent reproduction/external
-review. These tests do not explain the Android/Windows display symptoms.
+contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,
+wait/SIGCHLD interop, abrupt-drop and lookup/transaction/descendant resources; whole-app/native
+macOS; current installed/release artifacts, cold R-B2/R-B10, independent reproduction/external
+review. Android/Windows display symptoms remain unexplained.
 
 ### Flutter result inventory — single model-count source
 

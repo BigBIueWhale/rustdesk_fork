@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 # scripts/build-debian.sh — Debian x86_64 .deb build (R-B7/B8/B9, §12.1, §17).
 #
-# Reproduces upstream 1.4.7's OFFICIAL .deb build (R-B7: inherited, not reinvented)
-# inside a digest-pinned ubuntu:18.04 container — upstream's own glibc baseline
-# (run-on-arch-action) — with EXACTLY two deltas and no others: no code-signing,
-# and it runs off GitHub-hosted runners (R-B2). The build is offline
-# (--network=none) against the SHA-verified ./online cache (R-B10).
+# Build is offline (--network=none) against the SHA-verified ./online cache (R-B10).
 #
 # One mode, the good one (R-B9): validate the EXACT pinned env, then abort; fail
 # loud; no fallbacks; pin every version from pins.env; verify the artifact.

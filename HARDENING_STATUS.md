@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-7b0150556ee4ea0779f007b6494c9d7506e668bc1eea423e60943f2f7102b6c4  requirements.html
+72dc2fbf1c6be316b4a9a573ca719bc6d8327f86e0754f2bca9864fa57874f88  requirements.html
 ```
 
 ## Current Verdict
@@ -74,8 +74,16 @@ Docker and host-forwarded-control recipes are deleted. Target/toolchain pins, of
 software-codec features, stable certificate/content verification, independent generated state,
 epoch control and cold artifact equality remain binding. This is specification correction only;
 no compiler, product or VM workload ran. Exact-current builder/artifact, installed/native,
-complete input/signing and independent acceptance remain OPEN. Other inherited upstream-parity
-wording still requires classification; whole-document restoration is not complete.
+complete input/signing and independent acceptance remain OPEN.
+
+R-B7 and §15 require a reproduced pinned upstream comparison for every release target and
+accounting for every fork delta, with FRB 1.80.1, authenticated offline code generation,
+pass-private generated state, VM authority and native/cold acceptance retained. The false
+two-delta/verbatim-build claims are removed from the specification and the three builder
+headers; Windows bridge-generation commentary identifies the verifier VM. Builder command
+bytes are unchanged. This documentation/comment correction supplies no executed upstream
+baseline, compiler, artifact or native result. Baseline reproduction, complete delta accounting
+and whole-document restoration remain OPEN.
 
 Windows §12.2 and R-B8/R-B10/R-B11/R-B11a/§12.3 state the admitted verifier-VM boundary,
 sole acquisition authority, immutable host baseline and exact creator-owned retirement. Historical
@@ -1969,7 +1977,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `7b0150556ee4ea0779f007b6494c9d7506e668bc1eea423e60943f2f7102b6c4  requirements.html`.
+Current normative specification SHA-256: `72dc2fbf1c6be316b4a9a573ca719bc6d8327f86e0754f2bca9864fa57874f88  requirements.html`.
 
 ### Current authority and source closure
 

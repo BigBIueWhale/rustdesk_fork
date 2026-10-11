@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 # scripts/build-android.sh — Android aarch64 .apk build (R-B7/B8/B9, R-B2, §12.1).
 #
-# Reproduces upstream 1.4.7's official Android build (R-B7: cargo-ndk for the
-# aarch64-linux-android lib + `flutter build apk`, verbatim from flutter-build.yml
-# / flutter/ndk_arm64.sh) in a digest-pinned ubuntu:24.04 container — the same
-# environment upstream cross-compiles Android in — with exactly two deltas: signed
-# with a self-generated LOCAL key (no Play Store, R-B2), off GitHub-hosted runners.
 # Build is offline (--network=none) against the SHA-verified ./online cache (R-B10).
 #
 # NOT run as part of "fork creation" — a checked-in build artifact.

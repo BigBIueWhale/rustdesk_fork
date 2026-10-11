@@ -1,13 +1,7 @@
 # scripts/build-windows.ps1 -- Windows x86_64 .exe/.msi build (R-B7/B9, sec12.2).
 #
-# Runs INSIDE the ephemeral KVM Windows 11 guest (provisioned by
-# provision-windows-vm.sh) -- Windows cannot be cross-built from Linux (MSVC + WiX
-# are Windows-only). Reproduces upstream 1.4.7's official Windows build (R-B7:
-# python build.py --flutter; hwcodec/vram dropped -- CPU-only software codec,
-# R-R2b) with these deltas:
-# the artifacts ship UNSIGNED (the pinned SHA-256 is the integrity anchor, R-B2),
-# and the build runs off GitHub-hosted runners. The guest has no network during the
-# build; all inputs were staged offline by provision-windows-vm.sh.
+# Runs inside the nested disposable Windows 11 guest. The guest has no network
+# during compilation; provision-windows-vm.sh stages the complete offline inputs.
 #
 # One mode, the good one (R-B9): assert the EXACT pinned versions, then abort; fail
 # loud; no fallbacks. NOT run as part of "fork creation".
@@ -1126,7 +1120,7 @@ runpy.run_path(script, run_name='__main__')
     # --- the flutter offline shim: build.py runs `flutter build windows --release`, whose IN-PROCESS
     # pub get drives ONLINE; shadow `flutter` earlier on PATH with a shim that appends --no-pub to
     # `build` (the project is already resolved above). FRB is NOT run here -- the bridges are
-    # pre-generated on the host (frb-codegen.sh) + shipped on the BUILD CD into $SRC (R-B7). ---------
+    # generated inside the verifier VM (frb-codegen.sh) and staged on the BUILD CD into $SRC (R-B7).
     $shim = 'C:\flutter-shim'
     New-Item -ItemType Directory -Force -Path $shim | Out-Null
     $env:REAL_FLUTTER = 'C:\flutter\bin\flutter.bat'

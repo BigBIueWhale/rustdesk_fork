@@ -234,6 +234,7 @@ def validate(repo: pathlib.Path) -> None:
         ("listeners=none-added", "added-listener refusal receipt"),
         ("udp=denied", "TCP-only acquisition receipt"),
         ("readonly SERIAL_LIMIT=16777216", "serial-output bound"),
+        ('--archive-output "$SERIAL_ARCHIVE"', "retained bounded serial capture"),
         ("readonly SUCCESS_RECEIPT_LIMIT=65536", "success-receipt bound"),
         ('readonly RECEIPT_ROOT="$INPUT_ROOT/online-fetch-receipts"', "private success-receipt root"),
         ("online-fetch Buildx authority receipt is absent", "required Buildx result receipt"),
@@ -263,13 +264,14 @@ def validate(repo: pathlib.Path) -> None:
     )
     cleanup = extract(outer, "cleanup() {", "\n}\ntrap cleanup EXIT", "outer cleanup")
     for token, label in (
-        ("format=rustdesk-online-fetch-success-v4", "receipt format"),
+        ("format=rustdesk-online-fetch-success-v5", "receipt format"),
         ("source_commit=$SOURCE_COMMIT", "receipt source commit"),
         ("source_tree=$SOURCE_TREE", "receipt source tree"),
         ("source_bundle_sha256=$SOURCE_BUNDLE_SHA256", "receipt source bundle"),
         ("listener_inventory_sha256=$listener_sha", "receipt listener digest"),
         ("listener_inventory_format=protocol-endpoint-v1", "receipt endpoint inventory format"),
         ("listener_additions=none", "receipt added-listener refusal"),
+        ("serial_archive=$SERIAL_ARCHIVE", "receipt retained serial path"),
         ("serial_sha256=$serial_sha", "receipt serial digest"),
         ("transaction_stdout_sha256=$stdout_sha", "receipt stdout digest"),
         ("transaction_stderr_sha256=$stderr_sha", "receipt stderr digest"),

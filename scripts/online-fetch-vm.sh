@@ -421,9 +421,9 @@ prepare_success_receipt() {
     listener_sha="$(/usr/bin/sha256sum "$LISTENERS_BEFORE" | /usr/bin/awk '{print $1}')" \
         || return 1
     listener_bytes="$(/usr/bin/stat -c '%s' -- "$LISTENERS_BEFORE")" || return 1
-    serial_sha="$(/usr/bin/sha256sum "$SERIAL_LOG" | /usr/bin/awk '{print $1}')" \
+    serial_sha="$(/usr/bin/sha256sum "$SERIAL_ARCHIVE" | /usr/bin/awk '{print $1}')" \
         || return 1
-    serial_bytes="$(/usr/bin/stat -c '%s' -- "$SERIAL_LOG")" || return 1
+    serial_bytes="$(/usr/bin/stat -c '%s' -- "$SERIAL_ARCHIVE")" || return 1
     capture_sha="$(/usr/bin/sha256sum "$CAPTURE_RECEIPT" | /usr/bin/awk '{print $1}')" \
         || return 1
     capture_bytes="$(/usr/bin/stat -c '%s' -- "$CAPTURE_RECEIPT")" || return 1
@@ -435,7 +435,7 @@ prepare_success_receipt() {
         || return 1
     stderr_bytes="$(/usr/bin/stat -c '%s' -- "$RESULT_EXPORT/transaction.stderr")" \
         || return 1
-    capture_line="bounded-unix-stream-capture: PASS bytes=$serial_bytes"
+    capture_line="bounded-unix-stream-capture: PASS bytes=$serial_bytes archive_sha256=$serial_sha"
     guest_line="ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd buildkit=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined"
     entry_line="ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix image_store=containerd buildkit=guest-unix git=pinned-deb cache=virtiofs-atomic"
     buildx_line="ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=remote buildkit=$VERIFIER_VM_BUILDKIT_VERSION endpoint=guest-unix network=bridge snapshotter=overlayfs process_sandbox=enabled builder=rustdesk-online-fetch managed_container=absent image_store=separate"
@@ -446,7 +446,7 @@ prepare_success_receipt() {
     outer_line="ONLINE_FETCH_VM_OUTER=pass host_uid=$HOST_UID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied listeners=none-added docker=guest-only buildkit=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=$elapsed_seconds receipt=$SUCCESS_RECEIPT_FINAL"
     {
         /usr/bin/printf '%s\n' \
-            'format=rustdesk-online-fetch-success-v4' \
+            'format=rustdesk-online-fetch-success-v5' \
             "run=$run_name" \
             "run_identity=$RUN_ID" \
             "request=$REQUEST" \
@@ -461,6 +461,7 @@ prepare_success_receipt() {
             "listener_inventory_bytes=$listener_bytes" \
             'listener_inventory_format=protocol-endpoint-v1' \
             'listener_additions=none' \
+            "serial_archive=$SERIAL_ARCHIVE" \
             "serial_sha256=$serial_sha" \
             "serial_bytes=$serial_bytes" \
             "capture_receipt_sha256=$capture_sha" \
@@ -596,7 +597,7 @@ trap 'exit 143' TERM
     || fail 'guest authority environment is reserved for the disposable VM'
 [ "$(/usr/bin/uname -s):$(/usr/bin/uname -m)" = Linux:x86_64 ] \
     || fail 'online acquisition VM requires a Linux x86_64 orchestration host'
-for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/comm /usr/bin/cut /usr/bin/dpkg-deb /usr/bin/find /usr/bin/findmnt /usr/bin/flock /usr/bin/git \
+for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/cut /usr/bin/dpkg-deb /usr/bin/find /usr/bin/findmnt /usr/bin/flock /usr/bin/git \
     /usr/bin/grep /usr/bin/id /usr/bin/install /usr/bin/mkdir /usr/bin/mktemp \
     /usr/bin/mv /usr/bin/python3 /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 \
     /usr/bin/readlink /usr/bin/rm /usr/bin/sed /usr/bin/seq /usr/bin/sha256sum \
@@ -756,6 +757,7 @@ readonly CACHE_VIRTIOFSD_LOG=$RUN/virtiofsd-cache.log
 readonly SYSTEMD_VIRTIOFSD_LOG=$RUN/virtiofsd-systemd.log
 readonly RESULT_VIRTIOFSD_LOG=$RUN/virtiofsd-result.log
 readonly SERIAL_LOG=$RUN/serial.log
+readonly SERIAL_ARCHIVE=$RUN_ROOT/online-fetch-${RUN##*/}.serial.log
 readonly CAPTURE_RECEIPT=$RUN/capture.receipt
 readonly QEMU_PIDFILE=$RUN/qemu.pid
 readonly LISTENERS_BEFORE=$RUN/listeners.before
@@ -1022,6 +1024,7 @@ VM_PID="$(/usr/bin/cat "$QEMU_PIDFILE")"
 VM_START="$(process_start_time "$VM_PID")" || fail 'cannot record the exact QEMU generation'
 /usr/bin/python3 -I -S "$CAPTURE_HELPER" \
     --socket "$SERIAL_SOCKET" --output "$SERIAL_LOG" --max-bytes "$SERIAL_LIMIT" \
+    --archive-output "$SERIAL_ARCHIVE" \
     >"$CAPTURE_RECEIPT" &
 CAPTURE_PID=$!
 CAPTURE_START="$(process_start_time "$CAPTURE_PID")" \
@@ -1030,7 +1033,7 @@ for _ in $(/usr/bin/seq 1 300); do
     [ -r "/proc/$VM_PID/stat" ] || break
     if ! is_exact_process "$CAPTURE_PID" "$CAPTURE_START" "$(/usr/bin/readlink -f /usr/bin/python3)"; then
         [ -f "$CAPTURE_RECEIPT" ] \
-            && /usr/bin/grep -Eq '^bounded-unix-stream-capture: PASS bytes=[0-9]+$' "$CAPTURE_RECEIPT" \
+            && /usr/bin/grep -Eq '^bounded-unix-stream-capture: PASS bytes=[0-9]+ archive_sha256=[0-9a-f]{64}$' "$CAPTURE_RECEIPT" \
             || fail 'bounded serial capture exited without a completion receipt'
         break
     fi
@@ -1073,8 +1076,23 @@ for index in "${!VIRTIOFSD_PIDS[@]}"; do
 done
 VIRTIOFSD_PIDS=()
 VIRTIOFSD_STARTS=()
-/usr/bin/grep -Fxq "bounded-unix-stream-capture: PASS bytes=$(/usr/bin/stat -c '%s' "$SERIAL_LOG")" "$CAPTURE_RECEIPT" \
+serial_bytes=$(/usr/bin/stat -c '%s' -- "$SERIAL_LOG") \
+    || fail 'bounded serial size is unavailable'
+[ "$serial_bytes" -gt 0 ] && [ "$serial_bytes" -le "$SERIAL_LIMIT" ] \
+    || fail 'bounded serial size is outside its limit'
+[ -f "$SERIAL_ARCHIVE" ] && [ ! -L "$SERIAL_ARCHIVE" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$SERIAL_ARCHIVE")" = \
+         "$HOST_UID:$HOST_GID:600:1:$serial_bytes" ] \
+    && /usr/bin/cmp -s -- "$SERIAL_LOG" "$SERIAL_ARCHIVE" \
+    || fail 'retained bounded serial archive differs'
+serial_sha=$(/usr/bin/sha256sum -- "$SERIAL_ARCHIVE" | /usr/bin/awk '{ print $1 }') \
+    || fail 'retained bounded serial digest is unavailable'
+/usr/bin/grep -Fxq \
+    "bounded-unix-stream-capture: PASS bytes=$serial_bytes archive_sha256=$serial_sha" \
+    "$CAPTURE_RECEIPT" \
     || fail 'bounded serial-capture receipt differs'
+/usr/bin/printf 'ONLINE_FETCH_VM_SERIAL_EVIDENCE=retained path=%s bytes=%s sha256=%s\n' \
+    "$SERIAL_ARCHIVE" "$serial_bytes" "$serial_sha"
 if [ -r "/proc/$VM_PID/stat" ] \
    && [ "$(process_start_time "$VM_PID" 2>/dev/null)" = "$VM_START" ]; then
     fail 'exact QEMU process remains after joined acquisition-VM completion'

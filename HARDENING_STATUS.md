@@ -6473,6 +6473,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   owns each acquisition container and only its typed cache outputs. Host Docker, root, a live-source mount,
   host forwarding/TAP/bridge, a published port, and a non-loopback management listener are absent.
 
+  Acquisition serial retention is source-corrected; native replay is pending. The existing bounded
+  archiver now retains `online-fetch-run.<nonce>.serial.log` outside disposable scratch, refuses
+  replacement, and requires exact metadata, byte equality and digest before success. The v5 receipt
+  names that archive; older v4 receipts remain historical hash-only records. No new acquisition,
+  advisory verdict, installed/native product or release acceptance follows from this source change.
+
   Every non-bootstrap `online-fetch.sh` request enters that VM before Docker inspection. The host authenticates
   the Debian qcow2, direct-boot kernel/initramfs, static Docker archive, Debian Git package, and Ubuntu
   virtiofsd package, then transfers one clean committed Git bundle. Git is extracted only in the guest into

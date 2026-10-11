@@ -2500,10 +2500,13 @@ def run_polkit_dependency_self_test(repo):
             if allowed:
                 validate_polkit_dependency(actual, str(deb))
             else:
-                expect_operation_failure(
-                    lambda: validate_polkit_dependency(actual, str(deb)),
-                    "required standalone polkitd dependency is absent",
-                )
+                try:
+                    validate_polkit_dependency(actual, str(deb))
+                except ValidationError as err:
+                    if "required standalone polkitd dependency is absent" not in str(err):
+                        raise
+                else:
+                    raise ValidationError(f"accepted invalid dependency metadata: {name}")
         print("DEBIAN_POLKIT_DEPENDENCY=pass cases=7 generator=production artifacts=actual-deb policy=standalone-depends receiver=unexecuted")
         print("DEBIAN_POLKIT_ARTIFACTS=sha256 " + " ".join(artifacts))
 

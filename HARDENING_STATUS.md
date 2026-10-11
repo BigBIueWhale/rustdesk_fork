@@ -3125,7 +3125,7 @@ failed at named-header selection before any theme action and are invalid compara
 their raw logs and exact failed roots are preserved separately. No production ownership change is
 made here.
 
-**Current-source baseline — DEPENDENCY PREREQUISITE ACCEPTED; NATIVE REPLAY BLOCKED.**
+**Current-source baseline — DEPENDENCY/INPUT PREREQUISITES ACCEPTED; NATIVE THEME NEGATIVE.**
 `59395c3424e4d1cd5f46a76939ad52861b640d44` changes the existing `fake_async` test constraint to
 `^1.3.1`, corrects the candidate lock's direct-dev metadata and updates its digest. Stable 1.3.1,
 candidate 1.3.3 and all 196 candidate package versions/content hashes remain unchanged. The original
@@ -3147,21 +3147,45 @@ Complete 306,903-byte serial: `flutter-peer-presentation-run.zr5WQq7Rez.serial.l
 Exact records are in `overlay-baseline-59395c34-build-evidence` beneath the verifier root.
 This accepts the producer/dependency prerequisite only.
 
-The unchanged controller's current-source replay is UNACCEPTED, outer exit 1. Actual password entry
-and prompt retirement passed, but authenticated current pixels never became available: the Remote
-input owner refused readiness because the peer topology does not provision the private XDO provider
-at its sole root-owned installation path, `/usr/lib/rustdesk-fork/libxdo.so.3`. No focus, reconnect,
-dialog/theme or corrected-app comparison ran. Complete 196,903-byte serial:
+The earlier replay `2gSD5I6q43` is UNACCEPTED, outer exit 1: password entry/prompt retirement passed,
+but the missing private XDO provider prevented authenticated current pixels. It is not a valid
+overlay negative. Complete 196,903-byte serial:
 `flutter-peer-presentation-run.2gSD5I6q43.serial.log`, SHA-256
 `e1dd204b256e89d3f119fab4906546354525f7f4e23f6e8b29ce29dbeee70405`;
 exact records: `overlay-baseline-59395c34-replay-evidence`. The exact failed root is preserved as
 `retained-overlay-baseline-input-2gSD5I6q43`; the earlier `a3755044` capsule is restored unchanged to
-its original path. Within each runtime transaction source/index/control and consumed inputs stayed
-unchanged, host endpoint audits found no additions and owners joined. No run markers remain.
-Next: provision the uninstrumented checked-in provider at the protected guest installation path,
-binding source and bytes without ambient-library fallback; replay this retained baseline, then
-correct overlay ownership and run the same native A/B. Product ownership, ViewCamera and broader
-native/installed/release acceptance remain OPEN.
+its original path.
+
+Harness `2e734ba6235317c51eaf296095ec21af11a1309c` provisions the uninstrumented checked-in provider
+twice in pinned-devcheck, numeric-1000, network-none containers. Exact bytes agree; the root-owned
+0555 directory/0444 library enter both peers through the sole protected read-only installation
+mount. Actual serving-process load and unchanged before/after identities passed. Retained ELF:
+25,576 bytes, SHA-256 `7a0c269da5e9eae802046130ce0b524b012de97008f8d76cbc1ddf84275f3397`.
+Provider source, product loader, controller, app, engine and dependency pins are unchanged.
+
+The same retained `59395c34` app/manifest and `63493887` engine now reached authenticated pixels.
+Three focus cases, three real server reconnects, seven bounded resource samples and three dialog
+resizes passed. Clicking Dark in the actual main Settings changed native luminance 224→92; the
+next valid Alert query found the Trackpad Speed dialog absent while the authenticated connection
+remained live. This is a valid current-product native theme negative. The full replay remains
+UNACCEPTED, outer exit 1, after 137 VM seconds; Escape, the remaining five lifecycles, ViewCamera
+and corrected-app comparison did not run. Complete 558,697-byte serial:
+`flutter-peer-presentation-run.QHUsznahRA.serial.log`, SHA-256
+`dbe6681893400cd15a091f392ec9c02ab76084b381bae8f29ac4bc09c2b2c43c`.
+Exact input/inventory/native and outer observations are in
+`input-provider-current-baseline-2e734ba6-evidence`; its outer terminal response was truncated,
+explicitly distinguished from the complete serial. The exact failed root, all 54 entries and
+93,438,161 regular bytes including the provider ELF are preserved unchanged as
+`retained-desktop-current-theme-QHUsznahRA`. Closure observations and a complete pre-ledger freeze
+are in the matching `-closure-evidence` and `-closure-correction` directories; the correction
+explicitly labels the original truncated supplemental freeze as unusable for an exact-input claim.
+Source/index/control/consumed inputs stayed unchanged through each transaction; host endpoint
+inventories before/during/after agree, addition lists are empty, all owners joined and no run
+markers remain. Both app capsules remain at their original paths.
+
+Next: correct stable overlay ownership, build the corrected app and run the same native A/B.
+The replay input prerequisite is accepted; installed-service loader/FFI authority, overlay product
+ownership, ViewCamera and broader native/installed/release acceptance remain OPEN.
 
 **Linux Flutter build/replay separation — CAPSULE/PRODUCER NATIVE PASS; DIALOG/COMPLETE CONSUMER OPEN.**
 

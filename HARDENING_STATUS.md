@@ -114,8 +114,11 @@ before repository helpers (`build-windows-vm.sh:14`, `provision-windows-vm.sh:30
 now launches with `--network none` and its production XML validator rejects every interface
 (`provision-windows-vm.sh:410,664`); loopback VNC, exact disk identity, passthrough refusal and
 creator-owned finality remain. `verify-windows-helper-authority.py` executes that exact parser on
-seven private XML fixtures as a nonroot principal in the no-NIC verifier VM; execution is pending.
-This component check does not establish actual libvirt launch or Windows installation acceptance.
+seven private XML fixtures. Source `85e2ab84` passed them as UID 4000 in the no-NIC authority VM
+in 107 seconds; the existing eight helper runtime decisions also passed, with no host listener
+addition and joined cleanup. Retained `authority-smoke-run.MInjbJ05pW.serial.log` SHA-256
+`28ab1ca709d623e184af0014f56d551b699b5afa6a0d5ec03f957496e9c0bdfd` binds the exact parser
+digest. This is Linux parser behavior, not actual libvirt launch or Windows installation acceptance.
 `win-guest-setup.ps1:72` still runs `pip install brotli` without a pinned offline input; VS, vcpkg
 and Flutter acquisition paths also need complete offline closure and native acceptance. With no
 NIC, missing dependencies fail provisioning; no network fallback is admitted. Cold equality,

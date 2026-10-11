@@ -544,6 +544,8 @@ PY
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::io_loop::tests::r_s11fi_ -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      ui_cm_interface::tests::r_s11fi_ -- --test-threads=1
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       ui_cm_interface::tests::r_s11c_4d_ -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       ui_cm_interface::tests::r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner -- --test-threads=1

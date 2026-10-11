@@ -6021,6 +6021,129 @@ mod tests {
     }
 
     #[cfg(not(target_os = "ios"))]
+    #[cfg(unix)]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11fi_cm_next_file_setup_failure_emits_exact_failure_and_refuses_done() {
+        use std::os::unix::fs::MetadataExt;
+
+        async fn next_response(rx: &mut CmEgressReceiver) -> ipc::CmFileResponseKind {
+            let item = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+                .await
+                .expect("CM response must be bounded")
+                .expect("CM response must be present");
+            let CmEgressItem::Data(Data::CmFileResponse(response)) = item else {
+                panic!("expected an exact CM file response");
+            };
+            assert_eq!(response.conn_id, 58);
+            assert_eq!(response.cm_auth_token, "token-58");
+            *response.response
+        }
+
+        let temp = CmFileTestDir::new("next_setup_failure");
+        let foreign = temp.join("second.bin.digest");
+        std::fs::write(&foreign, b"foreign digest").expect("stage foreign digest");
+        let metadata = std::fs::metadata(&foreign).expect("inspect foreign digest");
+        let identity = (metadata.dev(), metadata.ino());
+        let (tx, mut rx) = cm_egress_channel();
+        let responder = CmFileResponder {
+            tx: &tx,
+            conn_id: 58,
+            cm_auth_token: "token-58",
+        };
+        let mut write_jobs = Vec::new();
+        let mut read_jobs = Vec::new();
+        handle_fs(
+            ipc::FS::NewWrite {
+                path: temp.path.to_string_lossy().into_owned(),
+                id: 78,
+                file_num: 0,
+                files: ["first.bin", "second.bin"]
+                    .iter()
+                    .map(|name| ipc::CmReceiveFile {
+                        name: (*name).to_owned(),
+                        size: 1,
+                        modified_time: 0,
+                    })
+                    .collect(),
+                overwrite_detection: false,
+                total_size: 2,
+                conn_id: 58,
+                generation: 17,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("admit both CM files");
+        for (file_num, data) in [(0, b"A".as_slice()), (1, b"B".as_slice())] {
+            handle_fs(
+                ipc::FS::WriteBlock {
+                    id: 78,
+                    file_num,
+                    conn_id: 58,
+                    data: bytes::Bytes::copy_from_slice(data),
+                    compressed: false,
+                    generation: 17,
+                },
+                &mut write_jobs,
+                &mut read_jobs,
+                responder,
+                false,
+            )
+            .await
+            .expect("CM must publish a result for refused filesystem work");
+        }
+        assert!(write_jobs.is_empty());
+        match next_response(&mut rx).await {
+            ipc::CmFileResponseKind::WriteFailed {
+                id,
+                generation,
+                file_num,
+                error,
+            } => {
+                assert_eq!((id, generation, file_num), (78, 17, 1));
+                assert!(!error.is_empty());
+            }
+            response => panic!("unexpected next-file response: {:?}", response),
+        }
+        handle_fs(
+            ipc::FS::WriteDone {
+                id: 78,
+                file_num: 2,
+                conn_id: 58,
+                generation: 17,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("late Done must publish refusal");
+        match next_response(&mut rx).await {
+            ipc::CmFileResponseKind::WriteFinalized {
+                id,
+                generation,
+                result,
+            } => {
+                assert_eq!((id, generation), (78, 17));
+                assert!(result.unwrap_err().contains("unknown write job"));
+            }
+            response => panic!("unexpected late Done response: {:?}", response),
+        }
+        assert!(write_jobs.is_empty());
+        assert!(read_jobs.is_empty());
+        assert_eq!(std::fs::read(temp.join("first.bin")).unwrap(), b"A");
+        assert_eq!(std::fs::read(&foreign).unwrap(), b"foreign digest");
+        let metadata = std::fs::metadata(&foreign).expect("inspect preserved digest");
+        assert_eq!((metadata.dev(), metadata.ino()), identity);
+        assert!(!temp.join("second.bin").exists());
+        assert_eq!(std::fs::read_dir(&temp.path).unwrap().count(), 2);
+    }
+
+    #[cfg(not(target_os = "ios"))]
     #[tokio::test(flavor = "current_thread")]
     async fn r_s11c_4d_cm_incomplete_done_fails_explicitly() {
         let temp = CmFileTestDir::new("cleanup");

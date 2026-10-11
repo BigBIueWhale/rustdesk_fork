@@ -4496,6 +4496,130 @@ mod tests {
 
     #[cfg(unix)]
     #[hbb_common::tokio::test]
+    async fn r_s11fi_next_file_setup_failure_retires_only_the_viewer_job() {
+        use std::os::unix::fs::MetadataExt;
+
+        let temp = ViewerFileTestDir::new();
+        let foreign = temp.path.join("second.bin.digest");
+        std::fs::write(&foreign, b"foreign digest").expect("stage foreign digest");
+        let metadata = std::fs::metadata(&foreign).expect("inspect foreign digest");
+        let identity = (metadata.dev(), metadata.ino());
+        let mut entries = Vec::new();
+        for name in ["first.bin", "second.bin"] {
+            let mut entry = FileEntry::new();
+            entry.name = name.to_owned();
+            entry.size = 1;
+            entries.push(entry);
+        }
+        let job = fs::TransferJob::new_write(
+            76,
+            fs::JobType::Generic,
+            "remote".to_owned(),
+            fs::DataSource::FilePath(temp.path.clone()),
+            0,
+            false,
+            true,
+            false,
+        )
+        .with_files(entries)
+        .expect("admit both viewer files");
+        let mut survivor_entry = FileEntry::new();
+        survivor_entry.name = "survivor.bin".to_owned();
+        survivor_entry.size = 2;
+        let survivor = fs::TransferJob::new_write(
+            77,
+            fs::JobType::Generic,
+            "other remote".to_owned(),
+            fs::DataSource::FilePath(temp.path.clone()),
+            0,
+            false,
+            true,
+            false,
+        )
+        .with_files(vec![survivor_entry])
+        .expect("admit an independent viewer job");
+        let mut jobs = vec![job, survivor];
+        write_viewer_file_block(
+            &mut jobs,
+            FileTransferBlock {
+                id: 77,
+                file_num: 0,
+                data: b"D".to_vec().into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("persist the independent job's first block");
+        write_viewer_file_block(
+            &mut jobs,
+            FileTransferBlock {
+                id: 76,
+                file_num: 0,
+                data: b"A".to_vec().into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("persist the first viewer file");
+        let failure = write_viewer_file_block(
+            &mut jobs,
+            FileTransferBlock {
+                id: 76,
+                file_num: 1,
+                data: b"B".to_vec().into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("next-file setup failure must retire the exact viewer job");
+        assert_eq!((failure.id, failure.file_num), (76, 1));
+        assert!(!failure.error.is_empty());
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].id(), 77);
+        assert_eq!(jobs[0].finished_size(), 1);
+        assert_eq!(jobs[0].transferred(), 1);
+        for suffix in [".download", ".digest", ".download.lock"] {
+            assert!(temp.path.join(format!("survivor.bin{suffix}")).exists());
+        }
+        assert_eq!(
+            write_viewer_file_block(
+                &mut jobs,
+                FileTransferBlock {
+                    id: 76,
+                    file_num: 1,
+                    data: b"C".to_vec().into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("late data for the retired job must remain inert"),
+            ViewerFileBlockWrite::NoActiveJob
+        );
+        write_viewer_file_block(
+            &mut jobs,
+            FileTransferBlock {
+                id: 77,
+                file_num: 0,
+                data: b"E".to_vec().into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("independent viewer job must remain writable");
+        let mut survivor = fs::remove_job(77, &mut jobs).expect("take the surviving job");
+        survivor.finalize_write(1).await.expect("commit the surviving job");
+        assert_eq!(std::fs::read(temp.path.join("survivor.bin")).unwrap(), b"DE");
+        assert!(jobs.is_empty());
+        assert_eq!(std::fs::read(temp.path.join("first.bin")).unwrap(), b"A");
+        assert_eq!(std::fs::read(&foreign).unwrap(), b"foreign digest");
+        let metadata = std::fs::metadata(&foreign).expect("inspect preserved digest");
+        assert_eq!((metadata.dev(), metadata.ino()), identity);
+        assert!(!temp.path.join("second.bin").exists());
+        assert_eq!(std::fs::read_dir(&temp.path).unwrap().count(), 3);
+    }
+
+    #[cfg(unix)]
+    #[hbb_common::tokio::test]
     async fn r_s11fi_receive_cleanup_identity_failure_is_terminal_and_visible() {
         let temp = ViewerFileTestDir::new();
         let mut entry = FileEntry::new();

@@ -2526,6 +2526,8 @@ run_focused_rust_tests() {
             client::io_loop::tests::r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts
             client::io_loop::tests::r_s11fi_receive_cleanup_identity_failure_is_terminal_and_visible
             client::io_loop::tests::r_s11fi_incoming_nofollow_open_failure_preserves_older_sidecars
+            client::io_loop::tests::r_s11fi_next_file_setup_failure_retires_only_the_viewer_job
+            ui_cm_interface::tests::r_s11fi_cm_next_file_setup_failure_emits_exact_failure_and_refuses_done
             client::io_loop::tests::r_s11fj_download_digest_metadata_failure_is_explicit
             client::io_loop::tests::r_s11fj_download_digest_requires_the_exact_active_file
             client::io_loop::tests::r_s11fj_download_digest_refuses_size_changed_after_listing
@@ -3249,9 +3251,17 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             ui_cm_interface::tests::r_s11is_ \
                             --color never -- --test-threads=1
-                        cargo test --offline --locked --lib --features linux-pkg-config \
-                            client::io_loop::tests::r_s11fi_ \
-                            --color never -- --test-threads=1
+                        [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                        /usr/bin/timeout --signal=TERM --kill-after=5s 30s \
+                            "$clipboard_executable" client::io_loop::tests::r_s11fi_ \
+                            --color never --test-threads=1
+                        [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                        /usr/bin/timeout --signal=TERM --kill-after=5s 30s \
+                            "$clipboard_executable" ui_cm_interface::tests::r_s11fi_ \
+                            --color never --test-threads=1
+                        [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                        printf "FILE_RECEIVE_CALLER_ARTIFACT=pass sha256=%s executable=%s groups=2 unchanged=before-between-after\n" \
+                            "$clipboard_artifact_sha" "$clipboard_executable"
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             client::io_loop::tests::r_s11fj_ \
                             --color never -- --test-threads=1
@@ -3478,7 +3488,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             && [ "$(grep -Fxc 'WHITEBOARD_HELPER_PARENT=pass owner=normal-exit helper=alive-at-cli-return worker=joined child=adopted-reaped' "$output")" -eq 1 ] \
             || fail 'native parent-process lifetime observations differ'
     else
-        expected_groups=16
+        expected_groups=17
         if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
             expected_groups=4
         elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
@@ -3538,6 +3548,9 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 || fail 'clipboard decode test artifact receipt is absent, malformed or duplicated'
         fi
         if [ "$RUST_TEST_PROFILE" = integration ]; then
+            [ "$(grep -Ec '^FILE_RECEIVE_CALLER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} groups=2 unchanged=before-between-after$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fc 'FILE_RECEIVE_CALLER_ARTIFACT=' "$output")" -eq 1 ] \
+                || fail 'receive-file caller artifact receipt is absent, malformed or duplicated'
             for label in COMPRESS TERMINAL; do
                 [ "$(grep -Ec "^${label}_DECODE_ARTIFACT=observed sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/(compress|librustdesk)-[0-9a-f]{16} status=0 unchanged=before-after$" "$output")" -eq 1 ] \
                     && [ "$(grep -Fc "${label}_DECODE_ARTIFACT=" "$output")" -eq 1 ] \
@@ -3684,6 +3697,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         else
             grep -E '^CLIPBOARD_DECODE_ARTIFACT_BEFORE=sha256=' "$output"
             grep -E '^CLIPBOARD_DECODE_ARTIFACT=pass ' "$output"
+            grep -E '^FILE_RECEIVE_CALLER_ARTIFACT=pass |^test (client::io_loop::tests::r_s11fi_|ui_cm_interface::tests::r_s11fi_)' "$output"
             grep -E '^(COMPRESS|TERMINAL)_DECODE_ARTIFACT(_BEFORE)?=' "$output"
             grep -E '^test (flutter::compressed_ui_handoff_tests::|roundtrip_small_payload|within_cap_payload_survives|r_s7_rejects_a_decompression_bomb|garbage_input_is_an_explicit_error|caller_specific_limit_rejects_before_the_global_ceiling|valid_empty_frame_is_successful_even_at_zero_limit|truncated_frame_is_an_explicit_error)' "$output"
             printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection-terminal-cursor-decode rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \

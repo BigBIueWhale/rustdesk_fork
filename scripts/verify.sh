@@ -10374,6 +10374,7 @@ fi
 "${RUN[@]}" cargo test -p hbb_common --lib fs::tests::r_s11fi_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib fs::tests::r_s11fj_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fi_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter ui_cm_interface::tests::r_s11fi_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter ui_cm_interface::tests::r_s11c_4d_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter ui_cm_interface::tests::r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter server::connection::cm_file_response_authority_tests::r_s11fi_ --color never

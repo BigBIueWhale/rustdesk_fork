@@ -5897,6 +5897,105 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
+    #[test]
+    fn receive_write_owns_native_io_until_retirement_can_close_the_stream() {
+        use std::{future::Future, os::unix::fs::MetadataExt, task::Poll};
+
+        // This synchronous test entry owns its runtime and exactly one blocking worker.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .max_blocking_threads(1)
+            .enable_all()
+            .build()
+            .expect("create the native-write test runtime");
+        runtime.block_on(async {
+            let tmp = TestTempDir::new("rustdesk_receive_native_write_owner");
+            std::fs::create_dir_all(&tmp.path).expect("create private receive directory");
+            let staged_path = tmp.join("incoming.bin.download");
+            let mut job = new_write_job(99, tmp.path.clone(), "incoming.bin")
+                .expect("create a real receive job");
+            job.files[0].size = 2;
+            job.write(FileTransferBlock {
+                id: 99,
+                file_num: 0,
+                data: b"A".to_vec().into(),
+                ..Default::default()
+            })
+            .await
+            .expect("admit the first byte and exact receive claim");
+            match job.data_stream.as_mut() {
+                Some(DataStream::FileStream(file)) => file.flush().await.expect("drain setup IO"),
+                _ => panic!("receive job must own a native stream"),
+            }
+            let staged = std::fs::metadata(&staged_path).expect("identify the staged inode");
+            let open_handles = || {
+                std::fs::read_dir("/proc/self/fd")
+                    .expect("observe this test process's native descriptors")
+                    .filter(|entry| {
+                        let path = entry.as_ref().expect("enumerate native descriptor").path();
+                        match std::fs::metadata(path) {
+                            Ok(metadata) => {
+                                (metadata.dev(), metadata.ino()) == (staged.dev(), staged.ino())
+                            }
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                            Err(error) => panic!("cannot identify native descriptor: {error}"),
+                        }
+                    })
+                    .count()
+            };
+            assert!(open_handles() > 0);
+
+            let (started, ready) = tokio::sync::oneshot::channel();
+            let (release, wait) = std::sync::mpsc::channel();
+            let blocker = tokio::task::spawn_blocking(move || {
+                started.send(()).expect("announce the occupied blocking worker");
+                wait.recv_timeout(Duration::from_secs(10))
+                    .expect("release the exact blocking worker");
+            });
+            ready.await.expect("wait for the occupied blocking worker");
+            let mut write = Box::pin(job.write(FileTransferBlock {
+                id: 99,
+                file_num: 0,
+                data: b"B".to_vec().into(),
+                ..Default::default()
+            }));
+            let first_poll = std::future::poll_fn(|cx| Poll::Ready(write.as_mut().poll(cx))).await;
+            match first_poll {
+                Poll::Ready(result) => {
+                    result.expect("a queued native write was reported as successful");
+                    drop(write);
+                    job.retire_current_file_state().expect("reported cleanup success");
+                    let retained_handles = open_handles();
+                    for suffix in [".download", ".digest", ".download.lock"] {
+                        assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+                    }
+                    eprintln!(
+                        "RECEIVE_NATIVE_WRITE_OWNERSHIP_OBSERVED early_completion=true retired=true retained_handles={retained_handles}"
+                    );
+                    release.send(()).expect("release the worker after observing retirement");
+                    blocker.await.expect("join the exact blocking worker");
+                    panic!("receive operation returned before native IO; cleanup retained {retained_handles} exact file handles");
+                }
+                Poll::Pending => {
+                    assert_eq!(std::fs::read(&staged_path).expect("observe staged bytes"), b"A");
+                    release.send(()).expect("release the worker for the owned native write");
+                    write.await.expect("finish the actual native write");
+                    blocker.await.expect("join the exact blocking worker");
+                }
+            }
+            assert_eq!(std::fs::read(&staged_path).expect("observe completed bytes"), b"AB");
+            assert_eq!(job.receive_file_offset, 2);
+            assert_eq!(job.finished_size, 2);
+            assert_eq!(job.transferred, 2);
+            job.retire_current_file_state().expect("retire the completed exact stream");
+            assert_eq!(open_handles(), 0, "retirement must close every exact native handle");
+            for suffix in [".download", ".digest", ".download.lock"] {
+                assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+            }
+            assert!(!tmp.join("incoming.bin").exists());
+        });
+    }
+
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn receive_finalize_refuses_a_real_partial_write_with_matching_staged_length() {
         const TEST_NAME: &str =

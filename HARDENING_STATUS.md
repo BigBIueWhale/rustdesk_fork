@@ -151,9 +151,12 @@ by their requirements and the STOP-SHIP matrices below.
 
 `scripts/verify-windows-harness.py --self-test` no longer mutates its source inputs and reruns
 its own validator four times. Existing source guards and seven bounded harness/artifact suites
-remain; receipt fixtures establish parser rejection only. The seven-suite isolated replay is
-**OPEN**. The installer-package lane checks source contracts without `--self-test`; that path
-does not establish these suites or native Windows acceptance. Current-source execution is pending.
+remain; their isolated replay is **OPEN**. Source `38d8d005` passed the source contracts and six
+encoder/decoder tests in the unchanged installer-package VM lane in 103 seconds, with fixed
+executable digest, no host listener addition and joined cleanup. Retained
+`android-rust-lifecycle-tests-run.ujjVxCiGBE.serial.log` SHA-256
+`2209adceabf64a953d1a0eb84e6da4fa7f3b8d3f5821f4c8acaeb4e6fedf8819` binds that run.
+The lane omits `--self-test`; it establishes neither the seven suites nor native Windows acceptance.
 
 Further cleanup must classify remaining prose and purported tests by the current requirement or real behavior they
 protect, preserve load-bearing contracts and executable coverage, and delete obsolete history or make-believe proof.

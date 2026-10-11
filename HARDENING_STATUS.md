@@ -3081,19 +3081,19 @@ acceptance is separately retained. Positive serial contains aggregate test accep
 retired native JSON or detailed host snapshots. This closes the shared ownership regression on
 the pinned Linux-host Flutter engine/plugin dispatch, not actual Android hardware back delivery,
 current APK/device or Windows app behavior, the original display hang, sustained resources or LPE.
-**Desktop build-time overlay reset — SOURCE CORRECTED; NATIVE COMPARISON OPEN.** Remote and
+**Desktop build-time overlay reset — LINUX REMOTE NATIVE PASS; OTHER SURFACES OPEN.** Remote and
 ViewCamera retain one final page overlay owner, applied once during initialization, and one
 whole-body host across connection/readiness/theme rebuilds. Build-time dismissal/reallocation,
 the relocating empty-overlay helper and global privacy timestamp are removed; explicit first-image
 and cleanup paths retain dismissal. The existing mobile-action readiness condition is preserved.
-The corrected app must still pass the unchanged native comparison. The Linux peer controller
+The corrected Remote app passed the native comparison below. The Linux peer controller
 requires actual toolbar activation, the same native accessibility object and changed dialog layout
 through three observed window resizes, explicit Escape retirement and an unchanged authenticated
 TCP connection. The retained patched-engine consumer already passed six lifecycles/18 dialog resizes
 at `7f6649f0`; the earlier stock-engine geometry failure below is historical. Resizing alone did not
 establish an image-ready rebuild trigger.
 
-**Actual theme-trigger regression — NATIVE NEGATIVE REPRODUCED; PRODUCT FIX OPEN.** Controller
+**Historical theme-trigger regression — NATIVE NEGATIVE; CORRECTED REMOTE RESULT BELOW.** Controller
 `5e0f033e946ba659fc08569208bc5c13c579547f` replayed retained app
 `a375504416e96b209f507436d8cf65f6f3047c7e` (manifest
 `8f267fe2f5a3d695896a54db307547e0b715a422bd38bb2aae49c30d3722acb9`) with patched engine
@@ -3106,10 +3106,10 @@ focusing Settings. Clicking the unique visible Dark label changed native main-he
 224 to 121; the next valid exact-process Alert query found the remote caption absent while the
 authenticated TCP identity stayed unchanged. This establishes dialog loss through the production
 theme path; it is not an ownership correction, original display-delay causation or an LPE proof.
-The Remote/ViewCamera image-ready reset fragment and theme-navigation source are unchanged between
-the retained app and current source; other production files differ, so this is retained-app evidence,
-not exact-current artifact acceptance. ViewCamera, disposal/subtree replacement, FlView restart,
-Wayland, other platforms and a corrected-app native A/B remain OPEN.
+The comparison at `5e0f033e` found the Remote/ViewCamera image-ready reset and theme-navigation source
+unchanged from the retained app; other production files differed, so that was retained-app evidence.
+That run did not exercise ViewCamera, disposal/subtree replacement, FlView restart, Wayland or other
+platforms. The corrected Remote comparison follows below.
 
 The no-NIC VM compiled three native drivers twice byte-equal without rebuilding the app. Actual
 password/changing pixels, three focus cases, three exact-server reconnects, seven bounded resource
@@ -3125,10 +3125,10 @@ records are unchanged, endpoint inventories are byte-identical with empty additi
 owners joined with no owned channel/PID/disposable disk residue. The exact failed diagnostics are
 preserved under `retained-desktop-theme-trigger-TpKiT2Gx3n`. Earlier `2a96e0c1`/`f54fb300` attempts
 failed at named-header selection before any theme action and are invalid comparative evidence;
-their raw logs and exact failed roots are preserved separately. No production ownership change is
-made here.
+their raw logs and exact failed roots are preserved separately. That baseline transaction made no
+production ownership change.
 
-**Current-source baseline — DEPENDENCY/INPUT PREREQUISITES ACCEPTED; NATIVE THEME NEGATIVE.**
+**Retained source baseline — DEPENDENCY/INPUT PREREQUISITES ACCEPTED; NATIVE THEME NEGATIVE.**
 `59395c3424e4d1cd5f46a76939ad52861b640d44` changes the existing `fake_async` test constraint to
 `^1.3.1`, corrects the candidate lock's direct-dev metadata and updates its digest. Stable 1.3.1,
 candidate 1.3.3 and all 196 candidate package versions/content hashes remain unchanged. The original
@@ -3186,11 +3186,38 @@ Source/index/control/consumed inputs stayed unchanged through each transaction; 
 inventories before/during/after agree, addition lists are empty, all owners joined and no run
 markers remain. Both app capsules remain at their original paths.
 
-Next: build the corrected overlay source and run the same native A/B against this retained baseline.
-The replay input prerequisite is accepted; installed-service loader/FFI authority, overlay product
-ownership, ViewCamera and broader native/installed/release acceptance remain OPEN.
+**Corrected Remote theme regression — LINUX X11 NATIVE COMPARISON ACCEPTED.** Product
+`31f8e5ef8031b1a5ca86bdcf256cdb3d5b5377f4` passed the offline producer in 874 VM seconds;
+manifest `213618ce1972bf9f373446aacbfed2c99985807458328e47f9bf8c9087273465` seals 74 payload
+files/69,414,534 bytes. Compared with the retained `59395c34` baseline, only `bundle/lib/libapp.so`
+changes; engine context and all ten build-input roles agree. Both baseline capsules and the corrected
+capsule remain at their original paths. Producer serial: `flutter-peer-presentation-run.XKRr1d76N8.serial.log`,
+SHA-256 `860349150393c201e382a8559a7bfb01262db962bdad2b2d06585ce9aae3cc27`.
 
-**Linux Flutter build/replay separation — CAPSULE/PRODUCER NATIVE PASS; DIALOG/COMPLETE CONSUMER OPEN.**
+The unchanged native controller, provider and patched engine passed all six corrected peer lifecycles
+under harness `8067a6048e02cfb5de67356df4bf09421482ec91`, outer exit 0 after 494 seconds.
+Each actual main-Settings Dark change preserved the same Trackpad Speed Alert and authenticated TCP,
+three resizes preserved its identity/layout, and Escape retired it. Eighteen focus recoveries,
+eighteen real server reconnects, six resource-bound checks, all 24 exact serving-generation provider
+mappings and joined viewer/server/Xvfb/VM cleanup passed. Complete 512,195-byte serial:
+`flutter-peer-presentation-run.IwEkrMEL1x.serial.log`, SHA-256
+`d111df2b3e1be8775ba10e87993a03e57f3e0560ca39c3f98016316d89faff3e`.
+Four exact input/native/complete outer observation records are in
+`overlay-correction-8067a604-replay-evidence` beneath the verifier root. Before/after 7,781-byte
+source/index/control/app observations agree; host endpoint snapshots showed no additions, and the
+successful run self-retired. These are scoped runtime/tool observations, not independent attestation
+or a host process inventory. The earlier corrected `PhrOPsTVZZ` and observation-repair `3rEjVfPuS7`
+runs remain UNACCEPTED harness failures with full diagnostics preserved under
+`retained-overlay-provider-observation-PhrOPsTVZZ` and
+`retained-overlay-loader-log-observation-3rEjVfPuS7`. The final harness observes live kernel mappings
+before each exact generation retires and verifies all four distinct results plus unchanged sealed
+provider identity; successful product logs are no longer incorrectly sought in container output.
+
+Next: native ViewCamera and disposal/subtree replacement/FlView restart coverage. Wayland, other
+platforms, original display-delay causation, sustained resources, installed-service loader/FFI
+authority and broader native/installed/release acceptance remain OPEN.
+
+**Linux Flutter build/replay separation — CAPSULE/PRODUCER PASS; CURRENT REMOTE CONSUMER ACCEPTED ABOVE.**
 
 `scripts/linux-flutter-artifact.py` seals the complete app bundle and matching readiness helper
 independently of current test drivers. The closed manifest binds every file/directory, source
@@ -3275,10 +3302,11 @@ reconnects before the potentially blocking dialog geometry transaction. All orig
 pixel, connection and resource criteria remain mandatory for full success; resources are checked
 again after dialog/AT-SPI retirement. One AT-SPI initialization remains owned until its sole final
 teardown, including every intervening failure path. Completed ancestry/thread/self-call diagnostics
-are removed. Native execution confirms the independent measurements precede dialog entry; neither
-the complete consumer nor the geometry blocker is resolved.
+are removed. Historical stock-engine execution confirms the independent measurements precede dialog
+entry; that run did not resolve complete consumer or geometry acceptance. Later patched-engine and
+corrected Remote results are recorded above.
 
-**Current consumer result — DISCLOSURE NATIVE A/B PASS; COMPLETE CONSUMER PARTIAL; EXIT 1:** exact
+**Historical stock-engine consumer — DISCLOSURE NATIVE A/B PASS; COMPLETE CONSUMER PARTIAL; EXIT 1:** exact
 harness `eeaaa0ec` replayed the corrected app without rebuilding in 144,570 host BOOTTIME ms.
 All three drivers compiled twice byte-equal; controller bytes equal the valid `e7704032` negative.
 The only product-source difference from the old app is the toolbar semantics correction.

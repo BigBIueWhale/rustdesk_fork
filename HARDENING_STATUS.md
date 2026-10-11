@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-7b1a629e7338f077071a257ddcf9d8b34275e87cc3414f55d6a99d9b54c5bbee  requirements.html
+79df8b3b5885ed0dfa70dca4d669179d0a54c57c3f77ccde522e0aabc4c4a0ec  requirements.html
 ```
 
 ## Current Verdict
@@ -67,6 +67,11 @@ integration/release checkpoint.
 Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
 Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
 model. Whole-document and test classification remains OPEN.
+
+Appendix C #118 describes the Windows terminal principal and lifetime risk without its earlier
+defect/repair narrative. Its complete required disposition, token and lease identities, cancellation,
+pipe rights, output/finality bounds, teardown and referenced contracts are unchanged. This is a
+specification cleanup; installed Windows/native, current artifact and release acceptance remain OPEN.
 
 Appendix C #182/#183 now describe scanner-failure, freshness, mutable-input and verdict-authority
 risks without repair chronology or obsolete advisory-pin dates. Both required dispositions and
@@ -1992,7 +1997,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `7b1a629e7338f077071a257ddcf9d8b34275e87cc3414f55d6a99d9b54c5bbee  requirements.html`.
+Current normative specification SHA-256: `79df8b3b5885ed0dfa70dca4d669179d0a54c57c3f77ccde522e0aabc4c4a0ec  requirements.html`.
 
 ### Current authority and source closure
 

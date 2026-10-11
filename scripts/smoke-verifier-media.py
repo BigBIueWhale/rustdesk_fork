@@ -89,7 +89,10 @@ def directory(path, mode):
     require(stat.S_ISDIR(info.st_mode)
             and (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode))
             == (os.getuid(), os.getgid(), mode), 'private directory authority differs: ' + str(path))
-    return os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    require(metadata(os.fstat(fd))[:5] == metadata(info)[:5]
+            == metadata(path.lstat())[:5], 'private directory identity changed during open')
+    return fd
 
 
 def admit(path, size, digest):
@@ -133,9 +136,11 @@ class Transaction:
         self.disposable[name] = metadata(info)[:2]
 
     def safe_listeners(self):
-        require(metadata(ROOT.lstat())[:2] == metadata(os.fstat(self.parent))[:2]
-                and metadata(self.path.lstat())[:2] == self.identity
-                == metadata(os.fstat(self.fd))[:2], 'retained run/root identity changed')
+        principal = [os.getuid(), os.getgid(), 0o700]
+        require(metadata(ROOT.lstat())[:5] == metadata(os.fstat(self.parent))[:5]
+                and metadata(ROOT.lstat())[2:5] == principal
+                and metadata(self.path.lstat())[:5] == self.identity + principal
+                == metadata(os.fstat(self.fd))[:5], 'retained run/root authority changed')
         current = listeners()
         require(not set(current) - set(self.baseline), 'host listener endpoint added')
         return current
@@ -245,7 +250,7 @@ class Transaction:
                     kind = key.data
                     counts[kind] += len(data)
                     require(counts[kind] <= STREAM_LIMIT, 'guest output exceeded bounded channel')
-                    outputs[kind].write(data)
+                    require(outputs[kind].write(data) == len(data), 'guest capture write was short')
             require(process.wait(timeout=10) == 0, 'QEMU failed')
         finally:
             # This direct child cannot be PID-reused before it is reaped. QEMU's
@@ -261,7 +266,8 @@ class Transaction:
                 if process.stderr is not None:
                     while data := os.read(process.stderr.fileno(), 65536):
                         remaining = max(0, STREAM_LIMIT - counts['stderr'])
-                        outputs['stderr'].write(data[:remaining])
+                        stored = data[:remaining]
+                        require(outputs['stderr'].write(stored) == len(stored), 'stderr capture write was short')
                         counts['stderr'] += len(data)
                     process.stderr.close()
             selector.close()
@@ -282,17 +288,24 @@ class Transaction:
             self.safe_listeners()
         raw = (self.path / (phase + '.serial.log')).read_bytes()
         records = re.findall(rb'(?:^|\n)MEDIA_GUEST_RESULT=(\{[^\r\n]+\})\r?\n', raw)
-        require(len(records) == 1 and b'MEDIA_CLOUD_EXIT=0' in raw
+        require(len(records) == 1 and re.findall(rb'MEDIA_CLOUD_EXIT=([0-9]+)', raw) == [b'0']
                 and b'MEDIA_CLOUD_SYNC=fail' not in raw
                 and b'MEDIA_GUEST_FAILURE=' not in raw, 'positive guest receipt absent or ambiguous')
         result = json.loads(records[0])
         require(result['phase'] == phase and result['nonce'] == self.name
                 and result['source_commit'] == self.commit and result['interfaces'] == ['lo'],
                 'guest source/phase/topology identity differs')
+        result['streams'] = {}
+        for kind in ('serial', 'stderr'):
+            record = observe(self.path / (phase + '.' + kind + '.log'))
+            require(record['metadata'][2:7] == [os.getuid(), os.getgid(), 0o400, 1, counts[kind]],
+                    'retained stream metadata/size differs')
+            result['streams'][kind] = record
         print('media VM: ' + phase + ' passed in ' + str(round(time.monotonic() - started)) + 's', flush=True)
         return result
 
     def finish(self):
+        self.safe_listeners()
         require(metadata(self.path.lstat())[:2] == self.identity
                 == metadata(os.fstat(self.fd))[:2], 'run identity changed')
         for name, identity in self.disposable.items():

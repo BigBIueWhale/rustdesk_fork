@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-72dc2fbf1c6be316b4a9a573ca719bc6d8327f86e0754f2bca9864fa57874f88  requirements.html
+d516294619d4a23c303567827d03e475604418ef07aa22e9622826f3f73a79f4  requirements.html
 ```
 
 ## Current Verdict
@@ -84,6 +84,16 @@ headers; Windows bridge-generation commentary identifies the verifier VM. Builde
 bytes are unchanged. This documentation/comment correction supplies no executed upstream
 baseline, compiler, artifact or native result. Baseline reproduction, complete delta accounting
 and whole-document restoration remain OPEN.
+
+R-A6's UDP/probe clause and R-SV4/R-SV10 now state one both-role, all-target exclusion contract.
+The obsolete linked-UDP/ordinary-IPC narrative, isolated Wake-on-LAN alternative, disabled-WebRTC
+description and every-process TCP-listener claim are removed. First-party actuators and independent
+startup/UI/CLI/FFI/JNI/IPC/Drop routes must remain absent; direct TCP and capture bootstrap stay required.
+Credential park, serving, viewer/helper and iOS socket scopes are distinct, and driven-session native
+connect observation remains required for transitive egress. Current source and deletion history support
+the contract correction only; product and verifier bytes are unchanged and no runtime ran for this slice.
+Per-target native surface/egress, current artifacts, independent acceptance and whole-document restoration
+remain OPEN.
 
 Windows §12.2 and R-B8/R-B10/R-B11/R-B11a/§12.3 state the admitted verifier-VM boundary,
 sole acquisition authority, immutable host baseline and exact creator-owned retirement. Historical
@@ -1977,7 +1987,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `72dc2fbf1c6be316b4a9a573ca719bc6d8327f86e0754f2bca9864fa57874f88  requirements.html`.
+Current normative specification SHA-256: `d516294619d4a23c303567827d03e475604418ef07aa22e9622826f3f73a79f4  requirements.html`.
 
 ### Current authority and source closure
 

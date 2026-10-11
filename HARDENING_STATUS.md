@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-3b28d8a52a8da2fa9da3d2616f4260667c7f02bc3deda00129e416840d820b7b  requirements.html
+7b1a629e7338f077071a257ddcf9d8b34275e87cc3414f55d6a99d9b54c5bbee  requirements.html
 ```
 
 ## Current Verdict
@@ -67,6 +67,11 @@ integration/release checkpoint.
 Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
 Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
 model. Whole-document and test classification remains OPEN.
+
+Appendix C #182/#183 now describe scanner-failure, freshness, mutable-input and verdict-authority
+risks without repair chronology or obsolete advisory-pin dates. Both required dispositions and
+all referenced contracts remain unchanged. This cleanup provides no new scanner, native or release
+evidence; wider document-role restoration remains OPEN.
 
 §12.1 places Debian/Android compilation and separate Android signing inside the admitted no-NIC
 verifier VM, with acquisition solely in R-S11cj. The old per-builder network-fetch/direct-host
@@ -1987,7 +1992,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `3b28d8a52a8da2fa9da3d2616f4260667c7f02bc3deda00129e416840d820b7b  requirements.html`.
+Current normative specification SHA-256: `7b1a629e7338f077071a257ddcf9d8b34275e87cc3414f55d6a99d9b54c5bbee  requirements.html`.
 
 ### Current authority and source closure
 

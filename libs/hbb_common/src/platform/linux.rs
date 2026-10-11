@@ -1736,12 +1736,12 @@ mod tests {
                 assert_eq!(std::env::var("XDG_SESSION_TYPE").as_deref(), Ok("wayland"));
                 let mut worker = Command::new(std::env::current_exe().unwrap());
                 configure_loginctl_environment(&mut worker);
-                let status = worker
+                let output = worker
                     .env(ROLE, "worker")
                     .args(["--exact", TEST_NAME, "--nocapture"])
-                    .status()
+                    .output()
                     .unwrap();
-                assert!(status.success());
+                assert!(output.status.success(), "{:?}", output);
             }
             Ok("worker") => {
                 for variable in [
@@ -1765,15 +1765,15 @@ mod tests {
                 );
             }
             _ => {
-                let status = Command::new(std::env::current_exe().unwrap())
+                let output = Command::new(std::env::current_exe().unwrap())
                     .env(ROLE, "launcher")
                     .env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)
                     .env("SYSTEMD_PAGER", "/bin/sh")
                     .env("XDG_SESSION_TYPE", "wayland")
                     .args(["--exact", TEST_NAME, "--nocapture"])
-                    .status()
+                    .output()
                     .unwrap();
-                assert!(status.success());
+                assert!(output.status.success(), "{:?}", output);
             }
         }
     }

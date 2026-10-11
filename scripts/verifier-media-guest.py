@@ -165,12 +165,20 @@ def fixture(pins):
     require(os.uname().release == RELEASE, 'media boot kernel release differs')
     require(file_record(Path('/boot/config-' + RELEASE), 1048576)['sha256']
             == pins['SHA256_VERIFIER_MEDIA_KERNEL_CONFIG'], 'running media module config differs')
+    probe = Path('/var/lib/rustdesk-media-probe.py')
+    with (MEDIA / 'guest.py').open('rb') as source, probe.open('xb') as output:
+        shutil.copyfileobj(source, output)
+        output.flush()
+        os.fchmod(output.fileno(), 0o444)
+        os.fsync(output.fileno())
+    require(file_record(probe, 1048576) == file_record(MEDIA / 'guest.py', 1048576),
+            'unprivileged probe source copy differs')
     run(['/usr/sbin/groupadd', '--gid', '4000', 'media-fixture'])
     run(['/usr/sbin/useradd', '--uid', '4000', '--gid', '4000', '--no-create-home',
          '--shell', '/usr/sbin/nologin', 'media-fixture'])
     for prefix in ([], ['/usr/bin/setpriv', '--reuid=4001', '--regid=4001', '--clear-groups']):
         refused = subprocess.run(prefix + ['/usr/bin/python3', '-I', '-S',
-                                 str(MEDIA / 'guest.py'), '--probe'], env=ENV, timeout=10,
+                                 str(probe), '--probe'], env=ENV, timeout=10,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         require(refused.returncode == 1 and not refused.stdout
                 and b'capture requires the exact unprivileged fixture principal' in refused.stderr,
@@ -188,7 +196,7 @@ def fixture(pins):
             os.chmod(node, 0o600)
             output = subprocess.check_output([
                 '/usr/bin/setpriv', '--reuid=4000', '--regid=4000', '--clear-groups',
-                '--no-new-privs', '/usr/bin/python3', '-I', '-S', str(MEDIA / 'guest.py'),
+                '--no-new-privs', '/usr/bin/python3', '-I', '-S', str(probe),
                 '--probe'], env=ENV, timeout=10)
             require(len(output) <= 8192, 'capture result exceeds bound')
             captures.append(json.loads(output))
@@ -217,7 +225,7 @@ def main():
     result = provision(pins) if sys.argv[1] == '--provision' else fixture(pins)
     result.update({'source_commit': contract['source_commit'], 'nonce': contract['nonce'],
                    'phase': sys.argv[1][2:], 'interfaces': ['lo']})
-    print('MEDIA_GUEST_RESULT=' + json.dumps(result, sort_keys=True), flush=True)
+    print('\nMEDIA_GUEST_RESULT=' + json.dumps(result, sort_keys=True), flush=True)
 
 
 if __name__ == '__main__':

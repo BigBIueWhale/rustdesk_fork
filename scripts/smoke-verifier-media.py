@@ -151,7 +151,8 @@ class Transaction:
                      'trap finish EXIT\n'
                      'mkdir -p /mnt/rustdesk-media\n'
                      'mount -L RD_MEDIA -o ro,nodev,nosuid,noexec /mnt/rustdesk-media\n'
-                     '/usr/bin/python3 -I -S /mnt/rustdesk-media/guest.py --' + phase + '\n')
+                     '/usr/bin/python3 -I -S /mnt/rustdesk-media/guest.py --' + phase
+                     + ' >/dev/ttyS0 2>&1\n')
         exclusive(seed / 'user-data', user_data.encode())
         exclusive(seed / 'meta-data', ('instance-id: media-' + self.name + '-' + phase
                                       + '\nlocal-hostname: rustdesk-media\n').encode())
@@ -171,6 +172,7 @@ class Transaction:
                 '-append', 'root=UUID=' + pins['VERIFIER_VM_ROOT_FILESYSTEM_UUID']
                 + ' rw rootfstype=ext4 rootwait console=ttyS0,115200n8 rustdesk.media_vm=1'
                 + ' systemd.mask=systemd-networkd-wait-online.service'
+                + ' systemd.mask=serial-getty@ttyS0.service'
                 + ' systemd.mask=ssh.service systemd.mask=ssh.socket',
                 '-sandbox', 'on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny',
                 '-chardev', 'socket,id=serial0,path=' + str(serial) + ',server=on,wait=on',

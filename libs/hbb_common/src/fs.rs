@@ -5718,6 +5718,93 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn receive_next_file_setup_failure_preserves_committed_file_and_foreign_digest() {
+        let tmp = TestTempDir::new("rustdesk_receive_next_setup_failure");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let foreign_path = tmp.join("second.bin.digest");
+        let foreign_bytes = b"foreign resume metadata";
+        std::fs::write(&foreign_path, foreign_bytes).expect("stage foreign digest");
+        #[cfg(unix)]
+        let foreign_identity = {
+            use std::os::unix::fs::MetadataExt;
+            let metadata = std::fs::metadata(&foreign_path).expect("inspect foreign digest");
+            (metadata.dev(), metadata.ino())
+        };
+
+        let mut first = new_file_entry("first.bin");
+        first.size = 1;
+        let mut second = new_file_entry("second.bin");
+        second.size = 1;
+        let mut job = new_write_job(214, tmp.path.clone(), "first.bin")
+            .expect("create receive job")
+            .with_files(vec![first, second])
+            .expect("admit both files");
+        job.write(FileTransferBlock {
+            id: 214,
+            file_num: 0,
+            data: b"A".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("write complete first file");
+        assert!(!tmp.join("first.bin").exists());
+
+        let error = job
+            .write(FileTransferBlock {
+                id: 214,
+                file_num: 1,
+                data: b"B".to_vec().into(),
+                ..Default::default()
+            })
+            .await
+            .expect_err("next-file admission must preserve a foreign digest");
+        assert_eq!(
+            error
+                .downcast_ref::<std::io::Error>()
+                .map(|error| error.kind()),
+            Some(std::io::ErrorKind::AlreadyExists)
+        );
+        assert_eq!(job.file_num(), 1);
+        assert_eq!(job.receive_file_offset, 0);
+        assert_eq!(job.finished_size(), 1);
+        assert_eq!(job.transferred(), 1);
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
+        assert!(!tmp.join("second.bin").exists());
+        for name in ["first.bin", "second.bin"] {
+            assert!(!tmp.join(&format!("{name}.download")).exists());
+            assert!(!tmp.join(&format!("{name}.download.lock")).exists());
+        }
+        assert!(!tmp.join("first.bin.digest").exists());
+
+        job.finalize_write(2)
+            .await
+            .expect_err("a refused next file cannot complete the admitted list");
+        job.retire_current_file_state()
+            .expect("retire the failed job without adopting the foreign digest");
+        assert_eq!(
+            std::fs::read(tmp.join("first.bin")).expect("read committed file"),
+            b"A"
+        );
+        assert_eq!(
+            std::fs::read(&foreign_path).expect("read preserved digest"),
+            foreign_bytes
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let metadata = std::fs::metadata(&foreign_path).expect("inspect preserved digest");
+            assert_eq!((metadata.dev(), metadata.ino()), foreign_identity);
+        }
+        assert_eq!(
+            std::fs::read_dir(&tmp.path)
+                .expect("read final directory")
+                .count(),
+            2
+        );
+    }
+
+    #[tokio::test]
     async fn receive_write_completes_the_full_file_list_with_an_empty_last_file() {
         let tmp = TestTempDir::new("rustdesk_receive_complete_list");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");

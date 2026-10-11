@@ -2336,6 +2336,7 @@ run_focused_rust_tests() {
             fs::tests::receive_write_owns_native_io_until_retirement_can_close_the_stream
             fs::tests::receive_write_refuses_a_real_partial_write_with_matching_staged_length
             fs::tests::receive_write_refuses_done_before_the_admitted_file_list_ends
+            fs::tests::receive_next_file_setup_failure_preserves_committed_file_and_foreign_digest
             fs::tests::receive_write_completes_the_full_file_list_with_an_empty_last_file
             fs::tests::receive_write_completes_empty_and_explicitly_skipped_file_lists
             fs::tests::send_open_failure_keeps_the_failed_file_number

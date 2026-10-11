@@ -103,12 +103,62 @@ def fields(paragraph):
     return result
 
 
-def verify_signature(signature, release):
+def verify_signature(signature, release, keyring=KEYRING):
     return subprocess.run(['/usr/bin/gpgv', '--homedir', '/tmp', '--status-fd=1',
-                           '--keyring', KEYRING, signature, release],
+                           '--keyring', keyring, signature, release],
                           env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'},
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           timeout=20, check=False)
+
+
+def bookworm_signers(result):
+    # GnuPG 2.2 DETAILS defines per-signature NEWSIG/GOODSIG/VALIDSIG and
+    # ERRSIG rc=9 + NO_PUBKEY. APT methods/gpgv.cc likewise admits required
+    # good signers in a multi-signature document containing missing keys.
+    require(result.returncode in (0, 2), 'Debian signature verifier failed')
+    require(len(result.stdout) + len(result.stderr) <= 65536, 'signature status exceeds bound')
+    groups = []
+    for line in result.stdout.decode('utf-8').splitlines():
+        parts = line.split()
+        require(len(parts) >= 2 and parts[0] == '[GNUPG:]', 'signature status format differs')
+        if parts[1] == 'NEWSIG':
+            groups.append([])
+        else:
+            require(groups, 'signature status lacks owning NEWSIG')
+            groups[-1].append(parts)
+    require(0 < len(groups) <= 16, 'signature count differs')
+    signers, missing = set(), 0
+    for group in groups:
+        valid = [parts for parts in group if parts[1] == 'VALIDSIG']
+        good = [parts for parts in group if parts[1] == 'GOODSIG']
+        if valid or good:
+            require(len(valid) == len(good) == 1
+                    and all(parts[1] in ('KEY_CONSIDERED', 'SIG_ID', 'GOODSIG', 'VALIDSIG')
+                            for parts in group), 'signature is bad, expired, revoked or ambiguous')
+            value = valid[0]
+            require(len(value) == 12 and re.fullmatch('[0-9A-F]{40}', value[2])
+                    and re.fullmatch('[0-9A-F]{40}', value[11])
+                    and len(good[0]) >= 3
+                    and good[0][2] in (value[2], value[2][-16:])
+                    and value[9] in ('8', '9', '10') and value[10] in ('00', '01'),
+                    'signature identity/digest/class differs')
+            require(value[4].isdecimal() and value[5].isdecimal()
+                    and int(value[4]) <= time.time() + 86400
+                    and (value[5] == '0' or int(value[5]) >= time.time()),
+                    'signature time differs')
+            signers.add(value[11])
+        else:
+            errors = [parts for parts in group if parts[1] == 'ERRSIG']
+            unknown = [parts for parts in group if parts[1] == 'NO_PUBKEY']
+            require(len(group) == 2 and len(errors) == len(unknown) == 1
+                    and len(errors[0]) == 9 and errors[0][7] == '9'
+                    and len(unknown[0]) == 3 and unknown[0][2] == errors[0][2],
+                    'signature error is not solely a missing additional key')
+            missing += 1
+    require((result.returncode == 0 and missing == 0)
+            or (result.returncode == 2 and missing > 0), 'signature exit/status differs')
+    require(BOOKWORM_KEYS <= signers, 'both exact bookworm signing principals are required')
+    return signers
 
 
 def inspect_package(path):
@@ -178,18 +228,35 @@ def main():
         seal_file(root, 'signature-status.txt',
                   ('exit=' + str(verified.returncode) + '\n').encode()
                   + verified.stdout + verified.stderr)
-        require(verified.returncode == 0, 'Debian archive signature failed; see signature-status.txt')
-        valid = [line.split() for line in verified.stdout.decode('ascii').splitlines()
-                 if line.startswith('[GNUPG:] VALIDSIG ')]
-        signers = {parts[-1] for parts in valid if len(parts) == 12}
-        require(BOOKWORM_KEYS <= signers, 'both exact bookworm signing principals are required')
+        signers = bookworm_signers(verified)
         with open('/output/Release', 'rb') as source:
             release_bytes = source.read(1048577)
         with tempfile.NamedTemporaryFile(dir='/tmp') as tampered:
             tampered.write(bytes([release_bytes[0] ^ 1]) + release_bytes[1:])
             tampered.flush()
             negative = verify_signature('/output/Release.gpg', tampered.name)
-            require(negative.returncode != 0, 'tampered Release unexpectedly authenticated')
+            require(negative.returncode == 1 and b'[GNUPG:] BADSIG ' in negative.stdout,
+                    'tampered Release did not reach actual bad-signature verification')
+            try:
+                bookworm_signers(negative)
+            except ValueError:
+                pass
+            else:
+                raise ValueError('tampered Release unexpectedly authenticated')
+        incomplete = verify_signature('/output/Release.gpg', '/output/Release',
+                                      '/usr/share/keyrings/debian-archive-bookworm-automatic.gpg')
+        require(b'[GNUPG:] GOODSIG ' in incomplete.stdout
+                and b'[GNUPG:] VALIDSIG ' in incomplete.stdout,
+                'one-principal negative did not verify any real signature')
+        try:
+            bookworm_signers(incomplete)
+        except ValueError as error:
+            require(str(error) == 'both exact bookworm signing principals are required',
+                    'one-principal negative failed before its authority decision')
+        else:
+            raise ValueError('one-principal Release unexpectedly authenticated')
+        seal_file(root, 'signature-negatives.txt', b'tampered-release\n' + negative.stdout
+                  + negative.stderr + b'one-required-principal\n' + incomplete.stdout + incomplete.stderr)
         release = fields(release_bytes.decode('ascii'))
         require(release.get('Origin') == 'Debian' and release.get('Codename') == 'bookworm',
                 'signed archive origin/codename differs')
@@ -233,11 +300,13 @@ def main():
                     'archive_signers': sorted(signers), 'keyring_sha256': keyring_sha256,
                     'publisher_metadata_url': 'https://packages.debian.org/bookworm/amd64/' + PACKAGE + '/download',
                     'config_sha256': hashlib.sha256(config).hexdigest(), 'module_count': len(modules),
-                    'tampered_release_refused': True, 'package_installed': False,
+                    'tampered_release_refused': True, 'one_required_principal_refused': True,
+                    'package_installed': False,
                     'kernel_executed': False, 'boot_inputs_promoted': False}
         seal_file(root, 'manifest.json', (json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode())
         require(set(os.listdir(root)) == {'Release', 'Release.gpg', 'Packages.xz',
-                'signature-status.txt', 'kernel.config', 'modules.json', 'manifest.json', records[-1]['file']},
+                'signature-status.txt', 'signature-negatives.txt', 'kernel.config',
+                'modules.json', 'manifest.json', records[-1]['file']},
                 'candidate inventory differs')
         print('VERIFIER_MEDIA_KERNEL_CANDIDATE=pass sha256=' + PACKAGE_SHA256
               + ' signed=bookworm media=v4l2-vivid installed=no executed=no promoted=no')

@@ -809,8 +809,7 @@ struct CmTransferJob {
 #[cfg(not(any(target_os = "ios")))]
 impl Drop for CmTransferJob {
     fn drop(&mut self) {
-        // A peer or CM IPC stream can disappear without sending CancelWrite. Retire the
-        // receive claim even when its owning task is cancelled at an await point.
+        // Retire the exact receive claim when its owning CM connection disappears.
         if let Err(error) = self.job.retire_current_file_state() {
             log::error!(
                 "failed to retire CM transfer job {} generation {}: {}",

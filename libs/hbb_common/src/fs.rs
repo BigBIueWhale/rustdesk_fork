@@ -621,7 +621,11 @@ impl Debug for DataStream {
 impl DataStream {
     async fn write_all(&mut self, buf: &[u8]) -> ResultType<()> {
         match self {
-            DataStream::FileStream(fs) => fs.write_all(buf).await?,
+            DataStream::FileStream(fs) => {
+                fs.write_all(buf).await?;
+                // Native writes must finish within the owning receive operation.
+                fs.flush().await?;
+            }
             DataStream::BufStream(bs) => bs.write_all(buf).await?,
         }
         Ok(())
@@ -5937,7 +5941,7 @@ mod tests {
                                 (metadata.dev(), metadata.ino()) == (staged.dev(), staged.ino())
                             }
                             Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-                            Err(error) => panic!("cannot identify native descriptor: {error}"),
+                            Err(error) => panic!("cannot identify native descriptor: {}", error),
                         }
                     })
                     .count()
@@ -5973,7 +5977,10 @@ mod tests {
                     );
                     release.send(()).expect("release the worker after observing retirement");
                     blocker.await.expect("join the exact blocking worker");
-                    panic!("receive operation returned before native IO; cleanup retained {retained_handles} exact file handles");
+                    panic!(
+                        "receive operation returned before native IO; cleanup retained {} exact file handles",
+                        retained_handles
+                    );
                 }
                 Poll::Pending => {
                     assert_eq!(std::fs::read(&staged_path).expect("observe staged bytes"), b"A");
@@ -5997,12 +6004,12 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[tokio::test]
-    async fn receive_finalize_refuses_a_real_partial_write_with_matching_staged_length() {
+    async fn receive_write_refuses_a_real_partial_write_with_matching_staged_length() {
         const TEST_NAME: &str =
-            "fs::tests::receive_finalize_refuses_a_real_partial_write_with_matching_staged_length";
+            "fs::tests::receive_write_refuses_a_real_partial_write_with_matching_staged_length";
         const CHILD_ENV: &str = "RUSTDESK_TEST_RECEIVE_FSIZE_CHILD";
         const RECEIPT: &str =
-            "RECEIVE_WRITE_FAILURE_NATIVE=pass error=EFBIG partial=oNE! length=4 final=absent sidecars=retired";
+            "RECEIVE_WRITE_FAILURE_NATIVE=pass phase=write error=EFBIG partial=oNE! length=4 counters=unchanged final=absent sidecars=retired";
 
         if std::env::var_os(CHILD_ENV).is_none() {
             let output = tokio::process::Command::new(
@@ -6085,15 +6092,15 @@ mod tests {
             unsafe { crate::libc::setrlimit(crate::libc::RLIMIT_FSIZE, &limit) },
             0
         );
-        job.write(FileTransferBlock {
-            id: 98,
-            file_num: 0,
-            data: b"NEW".to_vec().into(),
-            ..Default::default()
-        })
-        .await
-        .expect("the Tokio stream admits the pending write");
-        let result = job.finalize_write(1).await;
+        let counters = (job.receive_file_offset, job.finished_size, job.transferred);
+        let result = job
+            .write(FileTransferBlock {
+                id: 98,
+                file_num: 0,
+                data: b"NEW".to_vec().into(),
+                ..Default::default()
+            })
+            .await;
         let published = final_path.exists();
         assert_eq!(
             std::fs::read(if published { &final_path } else { &staged_path })
@@ -6105,7 +6112,7 @@ mod tests {
             published,
             result.is_ok()
         );
-        let error = result.expect_err("a real partial write must not publish a matching-length file");
+        let error = result.expect_err("the block write must return its native partial-write error");
         assert_eq!(
             error
                 .downcast_ref::<std::io::Error>()
@@ -6114,8 +6121,17 @@ mod tests {
         );
         assert!(!published);
         assert_eq!(job.file_num(), 0);
-        assert!(job.data_stream.is_none());
+        assert_eq!(
+            (job.receive_file_offset, job.finished_size, job.transferred),
+            counters
+        );
+        assert!(job.data_stream.is_some());
         assert!(job.receive_write_claim.is_some());
+        let completion_error = job
+            .finalize_write(1)
+            .await
+            .expect_err("failed block progress cannot complete the file");
+        assert!(completion_error.to_string().contains("has 1 bytes, expected 4"));
         job.retire_current_file_state()
             .expect("retire the failed exact receive generation");
         for suffix in [".download", ".digest", ".download.lock"] {

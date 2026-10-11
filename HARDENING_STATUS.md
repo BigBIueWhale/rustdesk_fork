@@ -6178,8 +6178,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   source-mutation catalogue is deleted: the altered strings were neither compiled nor executed and did not
   establish native authority or finality. The checker has one source-check mode; `scripts/verify.sh` invokes
   it without `--self-test`. The retained source guards are byte-identical. Runtime UID-policy and product
-  password/role/codec tests remain. Focused isolated checker replay is pending; native installed-service
-  principals, OS authorization, races, startup/finality and cleanup remain OPEN.
+  password/role/codec tests remain. Source `b74dbbca` passed the checker and four compiled UID-policy tests
+  in 35s in the zero-NIC VM, with no added host listener and joined cleanup. Raw log SHA-256:
+  `56c5e063946fa07919fc2ed5f2a0437f3976eaa1afc687e295b1c53516bab56b`; command/artifact bindings remain
+  in the retained catalogue-deletion audit. Native installed-service principals, OS authorization, races,
+  startup/finality and cleanup remain OPEN.
 
   Confined evidence used only already-present immutable images as numeric UID/GID 1000 with no network, a read-only
   root/source/toolchain, all capabilities dropped, no-new-privileges, bounded PIDs/CPU/memory, and private tmpfs

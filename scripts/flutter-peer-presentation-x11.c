@@ -1466,20 +1466,29 @@ static int main_header_luminance(Display *display, Window window, unsigned int *
     return 0;
 }
 
-static int exercise_dialog_theme(Display *display, const ViewerWindow *viewer,
+static int prepare_main_settings(Display *display, const ViewerWindow *viewer, Window *main) {
+    if (activate_named_control((unsigned int)viewer->pid, "New connection") != 0 ||
+        find_main_window(display, viewer->pid, main) != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "Settings") != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL actual main settings disclosure unavailable\n", stderr);
+        return -1;
+    }
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    return 0;
+}
+
+static int exercise_dialog_theme(Display *display, const ViewerWindow *viewer, Window main,
                                   AtspiAccessible *caption, const ConnectionIdentity *connection) {
-    Window main = None;
     ConnectionIdentity after = {{0}, {0}, 0UL};
     unsigned int light = 0U, dark = 0U;
     uint64_t deadline;
     int status = -1;
-    if (activate_named_control((unsigned int)viewer->pid, "New connection") != 0 ||
-        find_main_window(display, viewer->pid, &main) != 0) {
-        fputs("FLUTTER_PEER_X11_FAIL actual main window disclosure unavailable\n", stderr);
-        return -1;
-    }
-    if (activate_named_control((unsigned int)viewer->pid, "Settings") != 0 ||
-        require_same_dialog((unsigned int)viewer->pid, caption) != 0) goto out;
+    XRaiseWindow(display, main);
+    XSetInputFocus(display, main, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (require_same_dialog((unsigned int)viewer->pid, caption) != 0) goto out;
     if (main_header_luminance(display, main, &light) != 0 || light < 160U) {
         fprintf(stderr, "FLUTTER_PEER_X11_FAIL main light-theme baseline unavailable luminance=%u\n",
                 light);
@@ -1514,7 +1523,6 @@ static int exercise_dialog_theme(Display *display, const ViewerWindow *viewer,
          "stable_connection=true");
     status = 0;
 out:
-    if (close_viewer(display, main) != 0) status = -1;
     XRaiseWindow(display, viewer->window);
     XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
     XSync(display, False);
@@ -1525,6 +1533,7 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
                                     const ConnectionIdentity *connection) {
     const unsigned int widths[] = {1100U, 1200U, viewer->width};
     const unsigned int heights[] = {650U, 700U, viewer->height};
+    Window main = None;
     AtspiAccessible *caption = NULL;
     uint64_t deadline;
     uint64_t caption_wait_started;
@@ -1535,6 +1544,8 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
 
     puts("FLUTTER_PEER_DIALOG_RESIZE_BEGIN dialog=trackpad_speed source=actual_toolbar");
     fflush(stdout);
+    /* The real Alert hides preceding semantics, including the remote header controls. */
+    if (prepare_main_settings(display, viewer, &main) != 0) goto out;
     if (activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0 ||
         activate_named_control((unsigned int)viewer->pid, "Keyboard settings") != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual toolbar disclosure\n", stderr);
@@ -1616,7 +1627,7 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
                resize + 1U, widths[resize], heights[resize]);
         fflush(stdout);
     }
-    if (exercise_dialog_theme(display, viewer, caption, connection) != 0 ||
+    if (exercise_dialog_theme(display, viewer, main, caption, connection) != 0 ||
         fake_key(display, XK_Escape) != 0) goto out;
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     unsigned int absent_scans = 0U;
@@ -1636,6 +1647,10 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
          "stable_connection=true");
     status = 0;
 out:
+    if (main != None && close_viewer(display, main) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL main settings window retirement\n", stderr);
+        status = -1;
+    }
     if (caption != NULL) g_object_unref(caption);
     if (status != 0) {
         PasswordPromptScan diagnostic;

@@ -3086,10 +3086,45 @@ allocate a new owner in the image-ready build path behind a global three-second 
 First-image completion already performs its own readiness dismissal. The Linux peer controller
 requires actual toolbar activation, the same native accessibility object and changed dialog layout
 through three observed window resizes, explicit Escape retirement and an unchanged authenticated
-TCP connection. Current native entry succeeds, but geometry blocks this scenario as recorded below.
-Compilation and pixel-oracle tests do not execute the GTK dialog case. Observe an actual production
-image-ready rebuild trigger before changing ownership: window resizing, copied build logic and
-earlier selector failures do not establish the production defect, original display-delay cause or LPE.
+TCP connection. The retained patched-engine consumer already passed six lifecycles/18 dialog resizes
+at `7f6649f0`; the earlier stock-engine geometry failure below is historical. Resizing alone did not
+establish an image-ready rebuild trigger.
+
+**Actual theme-trigger regression — NATIVE NEGATIVE REPRODUCED; PRODUCT FIX OPEN.** Controller
+`5e0f033e946ba659fc08569208bc5c13c579547f` replayed retained app
+`a375504416e96b209f507436d8cf65f6f3047c7e` (manifest
+`8f267fe2f5a3d695896a54db307547e0b715a422bd38bb2aae49c30d3722acb9`) with patched engine
+`63493887d7bf51c9ea7be8b03e7a4641dd40208f` (archive
+`e054196739ae571afafe532268dfffef958c1c69b708a25e09352770744a82d0`, manifest
+`b78c72f5533657e6bce49ac89d289172aafcc925098651dc00e35537c0d30695`). The actual New connection
+and Settings header tooltips were observed before native pointer activation. The real Trackpad speed
+Alert retained its original accessible object through three observed resizes and through raising and
+focusing Settings. Clicking the unique visible Dark label changed native main-header luminance from
+224 to 121; the next valid exact-process Alert query found the remote caption absent while the
+authenticated TCP identity stayed unchanged. This establishes dialog loss through the production
+theme path; it is not an ownership correction, original display-delay causation or an LPE proof.
+The Remote/ViewCamera image-ready reset fragment and theme-navigation source are unchanged between
+the retained app and current source; other production files differ, so this is retained-app evidence,
+not exact-current artifact acceptance. ViewCamera, disposal/subtree replacement, FlView restart,
+Wayland, other platforms and a corrected-app native A/B remain OPEN.
+
+The no-NIC VM compiled three native drivers twice byte-equal without rebuilding the app. Actual
+password/changing pixels, three focus cases, three exact-server reconnects, seven bounded resource
+samples and the three dialog resizes completed before the theme negative; explicit Escape,
+post-dialog checks and the remaining five lifecycles did not run. The complete transaction is
+UNACCEPTED, outer exit 1. Complete 542,808-byte serial is
+`.harness-state/verifier-vm/flutter-peer-presentation-run.TpKiT2Gx3n.serial.log`, SHA-256
+`b4f5a75be10895fa114e26717429d74fec318f4be4d8460c0c1d9708501ee924`.
+Exact before/after input records and observed outer terminal are retained in
+`.harness-state/verifier-vm/desktop-theme-5e0f033e-evidence`; the terminal tool output was truncated,
+while the full serial is preserved separately. Full source/index/app/engine/bootstrap/package/control
+records are unchanged, endpoint inventories are byte-identical with empty addition lists, and VM
+owners joined with no owned channel/PID/disposable disk residue. The exact failed diagnostics are
+preserved under `retained-desktop-theme-trigger-TpKiT2Gx3n`. Earlier `2a96e0c1`/`f54fb300` attempts
+failed at named-header selection before any theme action and are invalid comparative evidence;
+their raw logs and exact failed roots are preserved separately. No production ownership change is
+made here. Next: correct the image-ready overlay lifetime and execute this same real UI regression
+against the source-bound corrected app, preserving every existing consumer acceptance criterion.
 
 **Linux Flutter build/replay separation — CAPSULE/PRODUCER NATIVE PASS; DIALOG/COMPLETE CONSUMER OPEN.**
 

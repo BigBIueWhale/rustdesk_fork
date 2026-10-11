@@ -3213,6 +3213,12 @@ runs remain UNACCEPTED harness failures with full diagnostics preserved under
 before each exact generation retires and verifies all four distinct results plus unchanged sealed
 provider identity; successful product logs are no longer incorrectly sought in container output.
 
+**Reconnect dialog lifetime — NATIVE ACCEPTANCE PENDING.** The controller opens a stable actual
+Trackpad Speed Alert before the third server restart, requires its retirement after current pixels
+on the replacement TCP connection, then compares a new Alert with the retained old accessible
+before the existing resize/theme/Escape checks. The inner stage requires the exact native result;
+the sealed `31f8e5ef` app and all existing lifecycle/resource/cleanup criteria are reused.
+
 Next: native ViewCamera and disposal/subtree replacement/FlView restart coverage. Wayland, other
 platforms, original display-delay causation, sustained resources, installed-service loader/FFI
 authority and broader native/installed/release acceptance remain OPEN.

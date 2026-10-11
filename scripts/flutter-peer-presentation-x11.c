@@ -722,6 +722,68 @@ static int require_same_dialog(unsigned int expected_pid, AtspiAccessible *expec
     return monotonic_millis() < deadline ? 0 : -1;
 }
 
+static int wait_for_dialog_retirement(unsigned int expected_pid) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    unsigned int absent_scans = 0U;
+    while (monotonic_millis() < deadline && absent_scans < DIALOG_STABLE_SCANS) {
+        AtspiAccessible *actual = NULL;
+        int query_status = query_dialog_caption(expected_pid, deadline, &actual);
+        int absent = actual == NULL;
+        if (actual != NULL) g_object_unref(actual);
+        if (query_status != 0) return -1;
+        absent_scans = absent != 0 ? absent_scans + 1U : 0U;
+        if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;
+    }
+    return absent_scans == DIALOG_STABLE_SCANS && monotonic_millis() < deadline ? 0 : -1;
+}
+
+static int open_trackpad_dialog(unsigned int expected_pid, AtspiAccessible **caption) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    AtspiAccessible *show = NULL;
+    AtspiAccessible *hide = NULL;
+    unsigned int attempts = 0U;
+    uint64_t started;
+    int status = -1;
+    *caption = NULL;
+    if (query_named_accessible(expected_pid, "Show toolbar", deadline, &show, 0) != 0 ||
+        query_named_accessible(expected_pid, "Hide toolbar", deadline, &hide, 0) != 0 ||
+        (show == NULL) == (hide == NULL)) {
+        fputs("FLUTTER_PEER_X11_FAIL toolbar expansion state unavailable or ambiguous\n", stderr);
+        goto out;
+    }
+    if (show != NULL && activate_named_control(expected_pid, "Show toolbar") != 0) goto out;
+    if (activate_named_control(expected_pid, "Keyboard settings") != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL actual toolbar disclosure\n", stderr);
+        goto out;
+    }
+    printf("FLUTTER_PEER_TOOLBAR_DISCLOSURE_OK expansion=%s keyboard_settings=activated\n",
+           show != NULL ? "actual_tap" : "already_expanded");
+    fflush(stdout);
+    if (activate_named_control(expected_pid, "Trackpad speed") != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL actual toolbar dialog activation\n", stderr);
+        goto out;
+    }
+    started = monotonic_millis();
+    deadline = started + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline && *caption == NULL) {
+        attempts += 1U;
+        if (query_dialog_caption(expected_pid, deadline, caption) != 0 ||
+            sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
+    }
+    fprintf(stderr, "FLUTTER_PEER_DIALOG_CAPTION found=%d scope=Alert attempts=%u elapsed_ms=%llu\n",
+            *caption != NULL, attempts, (unsigned long long)(monotonic_millis() - started));
+    if (*caption == NULL || require_same_dialog(expected_pid, *caption) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL actual dialog did not become stable\n", stderr);
+        goto out;
+    }
+    status = 0;
+out:
+    if (show != NULL) g_object_unref(show);
+    if (hide != NULL) g_object_unref(hide);
+    if (status != 0) g_clear_object(caption);
+    return status;
+}
+
 static int read_control_position(AtspiAccessible *control, int *x, int *y) {
     AtspiComponent *component = atspi_accessible_get_component_iface(control);
     AtspiRect *rect;
@@ -1622,14 +1684,13 @@ out:
 }
 
 static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
-                                    const ConnectionIdentity *connection) {
+                                    const ConnectionIdentity *connection,
+                                    AtspiAccessible *previous_caption) {
     const unsigned int widths[] = {1100U, 1200U, viewer->width};
     const unsigned int heights[] = {650U, 700U, viewer->height};
     Window main = None;
     AtspiAccessible *caption = NULL;
     uint64_t deadline;
-    uint64_t caption_wait_started;
-    unsigned int caption_attempts = 0U;
     int caption_x, caption_y;
     ConnectionIdentity after = {{0}, {0}, 0UL};
     int status = -1;
@@ -1638,31 +1699,12 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
     fflush(stdout);
     /* The real Alert hides preceding semantics, including the remote header controls. */
     if (prepare_main_settings(display, viewer, &main) != 0) goto out;
-    if (activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0 ||
-        activate_named_control((unsigned int)viewer->pid, "Keyboard settings") != 0) {
-        fputs("FLUTTER_PEER_X11_FAIL actual toolbar disclosure\n", stderr);
+    if (open_trackpad_dialog((unsigned int)viewer->pid, &caption) != 0) goto out;
+    if (previous_caption == NULL || caption == previous_caption) {
+        fputs("FLUTTER_PEER_X11_FAIL reconnect did not allow a distinct new dialog\n", stderr);
         goto out;
     }
-    puts("FLUTTER_PEER_TOOLBAR_DISCLOSURE_OK show_control=actual_tap keyboard_settings=activated");
-    fflush(stdout);
-    if (activate_named_control((unsigned int)viewer->pid, "Trackpad speed") != 0) {
-        fputs("FLUTTER_PEER_X11_FAIL actual toolbar dialog activation\n", stderr);
-        goto out;
-    }
-    caption_wait_started = monotonic_millis();
-    deadline = caption_wait_started + DIALOG_CONTROL_WAIT_MS;
-    while (monotonic_millis() < deadline && caption == NULL) {
-        caption_attempts += 1U;
-        if (query_dialog_caption((unsigned int)viewer->pid, deadline, &caption) != 0 ||
-            sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
-    }
-    fprintf(stderr, "FLUTTER_PEER_DIALOG_CAPTION found=%d scope=Alert attempts=%u elapsed_ms=%llu\n",
-            caption != NULL, caption_attempts,
-            (unsigned long long)(monotonic_millis() - caption_wait_started));
-    if (caption == NULL || require_same_dialog((unsigned int)viewer->pid, caption) != 0) {
-        fputs("FLUTTER_PEER_X11_FAIL actual dialog did not become stable\n", stderr);
-        goto out;
-    }
+    puts("FLUTTER_PEER_DIALOG_RECREATED previous_retained=true distinct_accessible=true");
     if (read_control_position(caption, &caption_x, &caption_y) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual dialog layout unavailable\n", stderr);
         goto out;
@@ -1721,18 +1763,7 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
     }
     if (exercise_dialog_theme(display, viewer, main, caption, connection) != 0 ||
         fake_key(display, XK_Escape) != 0) goto out;
-    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-    unsigned int absent_scans = 0U;
-    while (monotonic_millis() < deadline && absent_scans < DIALOG_STABLE_SCANS) {
-        AtspiAccessible *actual = NULL;
-        int query_status = query_dialog_caption((unsigned int)viewer->pid, deadline, &actual);
-        int absent = actual == NULL;
-        if (actual != NULL) g_object_unref(actual);
-        if (query_status != 0) goto out;
-        absent_scans = absent != 0 ? absent_scans + 1U : 0U;
-        if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
-    }
-    if (absent_scans != DIALOG_STABLE_SCANS || monotonic_millis() >= deadline ||
+    if (wait_for_dialog_retirement((unsigned int)viewer->pid) != 0 ||
         read_connection_identity(&after) != 0 ||
         same_connection(connection, &after) == 0) goto out;
     puts("FLUTTER_PEER_DIALOG_RESIZE_TRANSACTION_OK resizes=3 same_accessible=true explicit_escape=true "
@@ -1774,6 +1805,7 @@ int main(int argc, char **argv) {
     uint64_t initial_max_age;
     ConnectionIdentity current_connection = {{0}, {0}, 0UL};
     PasswordPromptScan prompt_scan = {0};
+    AtspiAccessible *previous_caption = NULL;
 
     if (argc != 4) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID\n",
@@ -2042,38 +2074,34 @@ int main(int argc, char **argv) {
         uint64_t first_fresh_ms;
         uint64_t maximum_age_ms;
 
+        if (sequence == RECONNECT_COUNT) {
+            ConnectionIdentity after = {{0}, {0}, 0UL};
+            if (open_trackpad_dialog((unsigned int)viewer_pid, &previous_caption) != 0 ||
+                read_connection_identity(&after) != 0 ||
+                same_connection(&current_connection, &after) == 0) {
+                fputs("FLUTTER_PEER_X11_FAIL stable dialog before reconnect unavailable\n", stderr);
+                goto reconnect_failure;
+            }
+            puts("FLUTTER_PEER_DIALOG_RECONNECT_BEGIN generation=4 stable_dialog=true stable_connection=true");
+            fflush(stdout);
+        }
         if (request_server_restart(coord, generation) != 0 ||
             wait_for_server_restart(coord, generation) != 0) {
             fprintf(stderr,
                     "FLUTTER_PEER_X11_FAIL server restart transaction generation=%u\n",
                     generation);
-            close(coord);
-            exit_atspi_after_failure();
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
+            goto reconnect_failure;
         }
         if (wait_for_replacement_connection(&current_connection, &replacement) != 0) {
             fprintf(stderr,
                     "FLUTTER_PEER_X11_FAIL viewer did not reconnect generation=%u\n",
                     generation);
-            close(coord);
-            exit_atspi_after_failure();
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
+            goto reconnect_failure;
         }
         if (find_viewer_window(display, viewer_pid, &reconnected_viewer) != 0 ||
             reconnected_viewer.window != viewer.window) {
             fputs("FLUTTER_PEER_X11_FAIL reconnect replaced the exact viewer window\n", stderr);
-            close(coord);
-            exit_atspi_after_failure();
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
+            goto reconnect_failure;
         }
         viewer = reconnected_viewer;
         if (wait_for_current_frames(display, &viewer, &history,
@@ -2083,22 +2111,22 @@ int main(int argc, char **argv) {
                     "FLUTTER_PEER_X11_FAIL current pixels unavailable after reconnect "
                     "generation=%u\n",
                     generation);
-            close(coord);
-            exit_atspi_after_failure();
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
+            goto reconnect_failure;
+        }
+        if (sequence == RECONNECT_COUNT) {
+            ConnectionIdentity after = {{0}, {0}, 0UL};
+            if (wait_for_dialog_retirement((unsigned int)viewer_pid) != 0 ||
+                read_connection_identity(&after) != 0 || same_connection(&replacement, &after) == 0) {
+                fputs("FLUTTER_PEER_X11_FAIL old dialog retirement after reconnect unproved\n", stderr);
+                goto reconnect_failure;
+            }
+            puts("FLUTTER_PEER_DIALOG_RECONNECT_RETIRED generation=4 fresh_pixels=true same_window=true");
+            fflush(stdout);
         }
         if (read_process_resources(viewer_pid, &current_resources) != 0 ||
             resources_are_bounded(&baseline_resources, &current_resources) == 0) {
             fputs("FLUTTER_PEER_X11_FAIL viewer resources exceeded reconnect bounds\n", stderr);
-            close(coord);
-            exit_atspi_after_failure();
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
+            goto reconnect_failure;
         }
         print_resources("reconnect", sequence, &current_resources);
         printf("FLUTTER_PEER_RECONNECT_OK sequence=%u generation=%u old_inode=%lu "
@@ -2110,22 +2138,17 @@ int main(int argc, char **argv) {
         current_connection = replacement;
     }
     if (close(coord) != 0) {
+        coord = -1;
         fputs("FLUTTER_PEER_X11_FAIL coordination authority close\n", stderr);
-        exit_atspi_after_failure();
-        close_viewer(display, viewer.window);
-        XCloseDisplay(display);
-        XCloseDisplay(source);
-        return 1;
+        goto reconnect_failure;
     }
     coord = -1;
     /* Measure connection/display behavior before potentially blocking geometry queries. */
-    if (exercise_dialog_resize(display, &viewer, &current_connection) != 0) {
-        exit_atspi_after_failure();
-        close_viewer(display, viewer.window);
-        XCloseDisplay(display);
-        XCloseDisplay(source);
-        return 1;
-    }
+    if (exercise_dialog_resize(display, &viewer, &current_connection, previous_caption) != 0)
+        goto reconnect_failure;
+    puts("FLUTTER_PEER_DIALOG_RECONNECT_OK generation=4 retired=true recreated=true "
+         "distinct_accessible=true same_window=true fresh_pixels=true");
+    g_clear_object(&previous_caption);
     if (atspi_exit() != 0) {
         fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown\n", stderr);
         close_viewer(display, viewer.window);
@@ -2166,4 +2189,14 @@ int main(int argc, char **argv) {
     XCloseDisplay(display);
     XCloseDisplay(source);
     return 0;
+reconnect_failure:
+    if (coord >= 0 && close(coord) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL coordination authority close after primary failure\n", stderr);
+    }
+    g_clear_object(&previous_caption);
+    exit_atspi_after_failure();
+    close_viewer(display, viewer.window);
+    XCloseDisplay(display);
+    XCloseDisplay(source);
+    return 1;
 }

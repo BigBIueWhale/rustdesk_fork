@@ -1235,6 +1235,9 @@ PY
     [ "$(grep -Ec '^FLUTTER_PEER_RECONNECT_OK sequence=[123] generation=[234] .* same_window=true cached_credential=true$' \
         <<<"$controller_output")" -eq 3 ] \
       || fail 'three exact viewer reconnect results are missing'
+    [ "$(grep -Ec '^FLUTTER_PEER_DIALOG_RECONNECT_OK generation=4 retired=true recreated=true distinct_accessible=true same_window=true fresh_pixels=true$' \
+        <<<"$controller_output")" -eq 1 ] \
+      || fail 'native dialog retirement and recreation across reconnect is missing'
     grep -q '^FLUTTER_PEER_RESOURCE_BOUNDS_OK reconnects=3 focus_cycles=3 threads_growth_max=8 fds_growth_max=16 rss_growth_kib_max=131072$' \
       <<<"$controller_output" || fail 'viewer resource-bound verdict is missing'
     grep -q '^FLUTTER_PEER_PRESENTATION_OK actual_peer=true password_prompt=true capture=true transport=true decode=true flutter_texture=true x11_pixels=true focus_recovery=true background_freshness=true reconnects=3 resources=bounded$' \

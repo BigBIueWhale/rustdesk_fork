@@ -1397,6 +1397,130 @@ static int close_viewer(Display *display, Window window) {
     return 0;
 }
 
+static int find_main_window(Display *display, unsigned long expected_pid, Window *window) {
+    Window root = RootWindow(display, DefaultScreen(display));
+    Atom net_name = XInternAtom(display, "_NET_WM_NAME", False);
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    *window = None;
+    while (monotonic_millis() < deadline) {
+        Window returned_root, returned_parent, *children = NULL;
+        unsigned int count = 0U, matches = 0U;
+        if (XQueryTree(display, root, &returned_root, &returned_parent, &children, &count) == 0) {
+            return -1;
+        }
+        if (count > ACCESSIBLE_CHILD_LIMIT) {
+            if (children != NULL) XFree(children);
+            return -1;
+        }
+        for (unsigned int index = 0U; index < count; ++index) {
+            XWindowAttributes attributes;
+            XClassHint hint = {0};
+            unsigned long pid;
+            char title[512];
+            if (read_window_pid(display, children[index], &pid) != 0 || pid != expected_pid ||
+                XGetWindowAttributes(display, children[index], &attributes) == 0 ||
+                attributes.map_state != IsViewable || attributes.width < 320 ||
+                attributes.height < 40 ||
+                read_text_property(display, children[index], net_name, title, sizeof(title)) != 0 ||
+                strcmp(title, "RustDesk") != 0) continue;
+            if (XGetClassHint(display, children[index], &hint) != 0 &&
+                hint.res_name != NULL && hint.res_class != NULL &&
+                strcmp(hint.res_name, "rustdesk") == 0 && strcmp(hint.res_class, "Rustdesk") == 0) {
+                *window = children[index];
+                matches += 1U;
+            }
+            if (hint.res_name != NULL) XFree(hint.res_name);
+            if (hint.res_class != NULL) XFree(hint.res_class);
+        }
+        if (children != NULL) XFree(children);
+        if (matches > 1U) return -1;
+        if (matches == 1U) return monotonic_millis() < deadline ? 0 : -1;
+        if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) return -1;
+    }
+    return -1;
+}
+
+static int main_header_luminance(Display *display, Window window, unsigned int *luminance) {
+    Window root = RootWindow(display, DefaultScreen(display)), child;
+    XWindowAttributes attributes;
+    XImage *image;
+    int x, y;
+    unsigned int total = 0U;
+    if (XGetWindowAttributes(display, window, &attributes) == 0 ||
+        attributes.map_state != IsViewable || attributes.width < 320 || attributes.height < 40 ||
+        XTranslateCoordinates(display, window, root, 40, 8, &x, &y, &child) == 0 ||
+        x < 0 || y < 0 || x + 128 > DisplayWidth(display, DefaultScreen(display)) ||
+        y + 16 > DisplayHeight(display, DefaultScreen(display))) return -1;
+    image = XGetImage(display, root, x, y, 128U, 16U, AllPlanes, ZPixmap);
+    if (image == NULL) return -1;
+    for (int row = 0; row < 16; ++row) {
+        for (int column = 0; column < 128; ++column) {
+            unsigned long pixel = XGetPixel(image, column, row);
+            total += (55U * x11_frame_component(pixel, image->red_mask) +
+                      182U * x11_frame_component(pixel, image->green_mask) +
+                      19U * x11_frame_component(pixel, image->blue_mask)) / 256U;
+        }
+    }
+    XDestroyImage(image);
+    *luminance = total / (128U * 16U);
+    return 0;
+}
+
+static int exercise_dialog_theme(Display *display, const ViewerWindow *viewer,
+                                  AtspiAccessible *caption, const ConnectionIdentity *connection) {
+    Window main = None;
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    unsigned int light = 0U, dark = 0U;
+    uint64_t deadline;
+    int status = -1;
+    if (activate_named_control((unsigned int)viewer->pid, "New connection") != 0 ||
+        find_main_window(display, viewer->pid, &main) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL actual main window disclosure unavailable\n", stderr);
+        return -1;
+    }
+    if (activate_named_control((unsigned int)viewer->pid, "Settings") != 0 ||
+        require_same_dialog((unsigned int)viewer->pid, caption) != 0) goto out;
+    if (main_header_luminance(display, main, &light) != 0 || light < 160U) {
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL main light-theme baseline unavailable luminance=%u\n",
+                light);
+        goto out;
+    }
+    puts("FLUTTER_PEER_DIALOG_THEME_BEGIN source=actual_main_settings dialog=trackpad_speed");
+    fflush(stdout);
+    if (activate_named_control((unsigned int)viewer->pid, "Dark") != 0) goto out;
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        if (main_header_luminance(display, main, &dark) != 0) goto out;
+        if (dark + 64U <= light) break;
+        if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto out;
+    }
+    if (monotonic_millis() >= deadline || dark + 64U > light) {
+        fputs("FLUTTER_PEER_X11_FAIL actual main theme change was not visible\n", stderr);
+        goto out;
+    }
+    printf("FLUTTER_PEER_THEME_CHANGED source=actual_main_settings light_luminance=%u "
+           "dark_luminance=%u native_pixels=true\n", light, dark);
+    fflush(stdout);
+    if (read_connection_identity(&after) != 0 || same_connection(connection, &after) == 0) {
+        fputs("FLUTTER_PEER_X11_FAIL theme change replaced authenticated TCP connection\n", stderr);
+        goto out;
+    }
+    if (require_same_dialog((unsigned int)viewer->pid, caption) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL actual theme change retired or replaced remote dialog "
+              "stable_connection=true\n", stderr);
+        goto out;
+    }
+    puts("FLUTTER_PEER_DIALOG_THEME_OK source=actual_main_settings same_accessible=true "
+         "stable_connection=true");
+    status = 0;
+out:
+    if (close_viewer(display, main) != 0) status = -1;
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    return status;
+}
+
 static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
                                     const ConnectionIdentity *connection) {
     const unsigned int widths[] = {1100U, 1200U, viewer->width};
@@ -1492,7 +1616,8 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
                resize + 1U, widths[resize], heights[resize]);
         fflush(stdout);
     }
-    if (fake_key(display, XK_Escape) != 0) goto out;
+    if (exercise_dialog_theme(display, viewer, caption, connection) != 0 ||
+        fake_key(display, XK_Escape) != 0) goto out;
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     unsigned int absent_scans = 0U;
     while (monotonic_millis() < deadline && absent_scans < DIALOG_STABLE_SCANS) {

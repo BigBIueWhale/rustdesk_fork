@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-79df8b3b5885ed0dfa70dca4d669179d0a54c57c3f77ccde522e0aabc4c4a0ec  requirements.html
+db3ea67633bba8cc41ca348cd9b86799de8485559541b0d95fe06a607b5d3f09  requirements.html
 ```
 
 ## Current Verdict
@@ -68,42 +68,21 @@ Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed 
 Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
 model. Whole-document and test classification remains OPEN.
 
-Appendix C #118 describes the Windows terminal principal and lifetime risk without its earlier
-defect/repair narrative. Its complete required disposition, token and lease identities, cancellation,
-pipe rights, output/finality bounds, teardown and referenced contracts are unchanged. This is a
-specification cleanup; installed Windows/native, current artifact and release acceptance remain OPEN.
+Current specification/source disposition is recorded below; repair chronology remains in Git.
+These documentation corrections supply no compiler, artifact, scanner or native execution evidence.
 
-Appendix C #182/#183 now describe scanner-failure, freshness, mutable-input and verdict-authority
-risks without repair chronology or obsolete advisory-pin dates. Both required dispositions and
-all referenced contracts remain unchanged. This cleanup provides no new scanner, native or release
-evidence; wider document-role restoration remains OPEN.
+| Scope | Retained contract and current disposition |
+| --- | --- |
+| R-S11b-3q / Appendix C #241 | The typed-PRS availability, sole receiver-derived status, preset/local-surface exclusion and startup-refusal contract is intact. R-S11b-3q's obsolete-API repair narrative is removed; the full normative opening and required suffix and Appendix disposition are unchanged. |
+| Appendix C #118 | Repair narration is removed; the full Windows terminal principal, token/lease identity, cancellation, pipe rights, output/finality bounds, teardown and referenced contract remain. |
+| Appendix C #182/#183 | Scanner-failure, freshness, mutable-input and verdict-authority risks replace chronology and obsolete advisory dates; both required dispositions and references remain. |
+| §12.1 | Debian/Android compilation and separate Android signing require the admitted no-NIC verifier VM and sole R-S11cj acquisition. Direct-host Docker, per-builder fetching and host-forwarded control recipes are deleted. Target/toolchain pins, complete offline closure, software codecs, stable certificate/content verification, independent generated state, epoch and cold equality remain binding. |
+| R-B7 / §15 | Every release target requires a reproduced pinned upstream baseline and complete fork-delta accounting. False two-delta/verbatim-build claims are removed from the specification and three builder headers; Windows bridge commentary names the VM. FRB 1.80.1, authenticated offline code generation, pass-private state, VM authority and native/cold acceptance remain; builder command bytes are unchanged. |
+| R-A6 UDP/probe / R-SV4 / R-SV10 | Both roles and all targets exclude first-party actuators and startup/UI/CLI/FFI/JNI/IPC/Drop routes; direct TCP/capture bootstrap and distinct credential-park, serving, viewer/helper and iOS socket scopes remain. Linked-UDP/ordinary-IPC narration, Wake-on-LAN alternatives, disabled-WebRTC descriptions and every-process TCP-listener claims are removed. Driven-session native connect observation remains required for transitive egress. |
 
-§12.1 places Debian/Android compilation and separate Android signing inside the admitted no-NIC
-verifier VM, with acquisition solely in R-S11cj. The old per-builder network-fetch/direct-host
-Docker and host-forwarded-control recipes are deleted. Target/toolchain pins, offline closure,
-software-codec features, stable certificate/content verification, independent generated state,
-epoch control and cold artifact equality remain binding. This is specification correction only;
-no compiler, product or VM workload ran. Exact-current builder/artifact, installed/native,
-complete input/signing and independent acceptance remain OPEN.
-
-R-B7 and §15 require a reproduced pinned upstream comparison for every release target and
-accounting for every fork delta, with FRB 1.80.1, authenticated offline code generation,
-pass-private generated state, VM authority and native/cold acceptance retained. The false
-two-delta/verbatim-build claims are removed from the specification and the three builder
-headers; Windows bridge-generation commentary identifies the verifier VM. Builder command
-bytes are unchanged. This documentation/comment correction supplies no executed upstream
-baseline, compiler, artifact or native result. Baseline reproduction, complete delta accounting
-and whole-document restoration remain OPEN.
-
-R-A6's UDP/probe clause and R-SV4/R-SV10 now state one both-role, all-target exclusion contract.
-The obsolete linked-UDP/ordinary-IPC narrative, isolated Wake-on-LAN alternative, disabled-WebRTC
-description and every-process TCP-listener claim are removed. First-party actuators and independent
-startup/UI/CLI/FFI/JNI/IPC/Drop routes must remain absent; direct TCP and capture bootstrap stay required.
-Credential park, serving, viewer/helper and iOS socket scopes are distinct, and driven-session native
-connect observation remains required for transitive egress. Current source and deletion history support
-the contract correction only; product and verifier bytes are unchanged and no runtime ran for this slice.
-Per-target native surface/egress, current artifacts, independent acceptance and whole-document restoration
-remain OPEN.
+Whole-document/test classification, exact-current builders/artifacts, installed/native authority,
+scanner acceptance, complete inputs/signing, upstream baseline reproduction, fork-delta accounting,
+per-target surface/egress, cold equality, release acceptance and independent reproduction remain OPEN.
 
 Windows §12.2 and R-B8/R-B10/R-B11/R-B11a/§12.3 state the admitted verifier-VM boundary,
 sole acquisition authority, immutable host baseline and exact creator-owned retirement. Historical
@@ -2027,7 +2006,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `79df8b3b5885ed0dfa70dca4d669179d0a54c57c3f77ccde522e0aabc4c4a0ec  requirements.html`.
+Current normative specification SHA-256: `db3ea67633bba8cc41ca348cd9b86799de8485559541b0d95fe06a607b5d3f09  requirements.html`.
 
 ### Current authority and source closure
 

@@ -2078,9 +2078,12 @@ cancellation/unwind; absent pidfd/bad SIGCHLD denies. IPC joins permit-held proo
 Polkit/replay/admission share deadline/worker and locked expiry/cancellation/shutdown checks.
 Async grants/wording gates deleted.
 
-**Debian authorization prerequisite:** `build.py` requires `polkitd`; artifact admission rejects
-missing, optional or library-only substitutes. `--debian-polkit-tests` exercises the production
-generator and seven real Debian archive metadata cases. Focused run pending; receiver unexecuted.
+**Debian:** `build.py`/artifact gate require standalone `polkitd`.
+`--debian-polkit-tests`, f99f6cc0; seven archive metadata cases, outer0/13s;
+uid4000/caps-none/NNP/read-only/no-network/joined/no listener additions.
+`debian-polkit-tests-run.gX6siRyvuz.serial.log`65,117B/SHA256
+`e4dfcfb934c6cd9086f5d65a7024406f919da933f8f04a7750c9d5cae8198345`.
+Receiver/installation unexecuted; fixture/failure provenance: audit/raw log.
 
 Logs: `.harness-state/verifier-vm/`; all hashes SHA256.
 **UID policy:** `--linux-service-uid-tests`, source aa437333945074d447150bbe8d9a4ca36c5f1490;
@@ -2088,12 +2091,12 @@ four policy cases plus guard, outer0/38s; artifact
 `b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
 `linux-service-uid-tests-run.FQjze4G9se.serial.log` 65,958B/SHA256
 `514d43c0aac294aee891a4afa05309dd5ab171c61ab0584325d41d55b83241ad`; receipt 1,008B/0400.
-Broader provider/refusal evidence: R-S11fi.
+Providers/refusals: R-S11fi.
 
 **Old capture diagnostic:** source 8167a5e0, `hbb-common-fs-run.cpLHhRm0Wo.serial.log`
 80,949B/SHA256 `4412a9a0ab5db0496ff89ef4f3fe65131f7c61c22a5eb5bc53f51ee86497f7f0`.
-Three failed/one passed: about 10s cancellation/deadline; 2,097,333B against 1 MiB.
-Children reaped; no leak/bypass proved. Unknown 127.0.0.1:9333 rejected outer1, untouched.
+3 failed/1 passed: 10s cancellation/deadline; 2,097,333B vs 1 MiB.
+Reaped; no leak/bypass proof. Unknown 127.0.0.1:9333 rejected outer1; untouched.
 **Capture:** source 3eabd727cc93628cb42b7596288b478f1aff6e15,
 `--hbb-common-fs`, 116 cases/five groups; eight capture cases 2.03s, original four unchanged;
 artifact `d6f419bbf26d9411e305ddfd18300bd662db2e69497177438f926ef498e17573`.
@@ -2110,17 +2113,16 @@ qQbkGLjypv passed seven; stale guard rejected. SHA256
 `3ab352f311ca969fa3ab76ad59ffd36afbb674bbe9d6343a38c4a8355313ca58`; guard-only retry, same artifact.
 
 **Native logind:** `--linux-logind-tests`, source e251c387b182e66f5f3ccc9f7d70cec5a6acead0;
-eight capture/six parser-query cases plus seven real PAM/logind scenarios; outer0/153s.
-Empty/removed, seatless unspecified/TTY, active X11, user switch and closing X11 matched
-UID/no-user expectations. No X server/installed receiver.
+14 unit/7 native PAM/logind cases; outer0/153s. Empty/removed, seatless unspecified/TTY,
+active X11, user switch/closing X11: expected UID/no-user. No X server/installed receiver.
 Artifact `e12dac152e028dab82cc954580f14abb95c6b4419374d1ae3e4171e69b5d6269`.
 `hbb-common-fs-run.fC5nZoJoWL.serial.log` 71,910B/SHA256
 `8e20a94f08232d07773cd31de8f755d8b4563a0a09c7d5422e7fe5c780b34654`.
-PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2. Rejected cf11738d parser run GBIedIhNRI and
-e11cd41d summary/listener run 5WpwxPMq5i remain retained; exact failure/source/raw hashes:
+PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2. Failed cf11738d/GBIedIhNRI parser and
+e11cd41d/5WpwxPMq5i summary/listener artifacts retained; failure/source/raw hashes:
 `/tmp/privilege_securiry_deep_audit.md`.
-Accepted runs: unchanged artifacts/Rust1.75/zero-NIC/no-network/uid1000/read-only/caps-none/NNP,
-no listener additions, joined cleanup.
+Rust runs: fixed artifacts/Rust1.75/zero-NIC/no-network/uid1000/read-only/caps-none/NNP,
+no listener additions; joined cleanup.
 
 **Still OPEN:** installed Linux both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-68a0aac765b81a2bc02ebb1e7eb91d4b7256b31107d7bbf8f31ec990a914b2fd  requirements.html
+7f6a64258cc0757dc08c31af9edc3030c8ae0a67e5e88bbd4899b33a08e06cd8  requirements.html
 ```
 
 ## Current Verdict
@@ -75,6 +75,7 @@ These documentation corrections supply no compiler, artifact, scanner or native 
 | --- | --- |
 | R-S11b-3q / Appendix C #241 | The typed-PRS availability, sole receiver-derived status, preset/local-surface exclusion and startup-refusal contract is intact. R-S11b-3q's obsolete-API repair narrative is removed; the full normative opening and required suffix and Appendix disposition are unchanged. |
 | Appendix C #118 | Repair narration is removed; the full Windows terminal principal, token/lease identity, cancellation, pipe rights, output/finality bounds, teardown and referenced contract remain. |
+| Appendix C #354–#356 | Findings retain timeless refresh, native display-owner and cursor-publication risks. Source-repair narration and symptom-causation theories are deleted; all three complete dispositions, requirement bodies, IDs and references are unchanged. |
 | Appendix C #182/#183 | Scanner-failure, freshness, mutable-input and verdict-authority risks replace chronology and obsolete advisory dates; both required dispositions and references remain. |
 | §12.1 | Debian/Android compilation and separate Android signing require the admitted no-NIC verifier VM and sole R-S11cj acquisition. Direct-host Docker, per-builder fetching and host-forwarded control recipes are deleted. Target/toolchain pins, complete offline closure, software codecs, stable certificate/content verification, independent generated state, epoch and cold equality remain binding. |
 | R-B7 / §15 | Every release target requires a reproduced pinned upstream baseline and complete fork-delta accounting. False two-delta/verbatim-build claims are removed from the specification and three builder headers; Windows bridge commentary names the VM. FRB 1.80.1, authenticated offline code generation, pass-private state, VM authority and native/cold acceptance remain; builder command bytes are unchanged. |
@@ -2005,7 +2006,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `68a0aac765b81a2bc02ebb1e7eb91d4b7256b31107d7bbf8f31ec990a914b2fd  requirements.html`.
+Current normative specification SHA-256: `7f6a64258cc0757dc08c31af9edc3030c8ae0a67e5e88bbd4899b33a08e06cd8  requirements.html`.
 
 ### Current authority and source closure
 
@@ -10933,11 +10934,8 @@ retry, reconnect, timer, worker, queue, service transition, or privilege surface
 The executable Rust regression
 `r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays` exercises exact-owner
 and empty-set refusal, invalid owned inventory, and canonical multi-display derivation; the shared
-verifier invokes the `r_s11ff_` family directly. The deleted 1,339-line
-`scripts/verify-viewer-rgba-mailbox.py` only matched source and test names and applied 137 textual
-substitutions while conflating R-S11ew, R-S11fr, R-S11gs, R-S11gt, and R-S11iw. Its 2,028 lines of
-workspace validator, mutations, source binding, dispatch, and documentation/wiring coupling were
-also deleted. No product source or executable regression changed.
+verifier invokes the `r_s11ff_` family directly. The source-only viewer-RGBA checker and its duplicated workspace/mutation/wiring machinery are deleted.
+No product source or executable regression changed.
 
 Fresh generated Rust/Dart bridges and exact-current target execution remain STOP-SHIP. Android
 task-swipe/reopen/Force-Stop, Windows focus/minimize, other-platform and cross-version behavior,
@@ -11006,12 +11004,8 @@ family directly; the generated-bridge verifier invokes both the enclosing lifecy
 family. These are executable Rust state-machine tests, not Dart, generated-bridge, lifecycle, renderer,
 or target-runtime evidence.
 
-The deleted 779-line `scripts/verify-viewer-cursor-mailbox.py` only parsed source strings and applied
-61 textual substitutions. Its 1,276 lines of duplicated workspace validator, source mutations, source
-binding, dispatch, and cross-verifier wiring were also deleted, including the display-selection mutation
-that merely asserted the cursor verifier's position in an arbitrary dispatch sequence. The parser never
-executed Rust or Dart, generated a bridge, drove a cursor event through a target runtime, presented pixels,
-or measured latency/resources. No product source or executable regression changed.
+The source-only cursor checker and its duplicated workspace/mutation/wiring machinery are deleted.
+No product source or executable regression changed.
 
 The bounded-before-port requirement remains grounded in the official Dart contracts: [`SendPort.send`](https://api.dart.dev/dart-isolate/SendPort/send.html)
 is asynchronous and does not wait for receipt, while [`ReceivePort`](https://api.dart.dev/dart-isolate/ReceivePort-class.html)

@@ -2080,7 +2080,7 @@ Async grants/wording gates deleted.
 
 **Debian:** `build.py`/artifact gate require standalone `polkitd`.
 `--maintenance-stage-polkit-runtime-candidate` prepares its signed snapshot dependency
-bundle for native VM authorization; execution pending, release closure OPEN.
+bundle for native VM authorization; retry pending, release closure OPEN.
 `--debian-polkit-tests`, f99f6cc0; seven archive metadata cases, outer0/13s;
 uid4000/caps-none/NNP/read-only/no-network/joined/no listener additions.
 `debian-polkit-tests-run.gX6siRyvuz.serial.log`65,117B/SHA256

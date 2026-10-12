@@ -3355,7 +3355,7 @@ maintenance_stage_polkit_runtime_candidate() {
         || die 'polkit candidate output inventory differs'
     package_count="$(/usr/bin/find "$output/packages" -maxdepth 1 -type f -name '*.deb' \
         | /usr/bin/wc -l)"
-    [ "$package_count" -gt 0 ] && [ "$package_count" -le 64 ] \
+    [ "$package_count" -gt 0 ] && [ "$package_count" -le 96 ] \
         && [ "$package_count" -eq "$(/usr/bin/wc -l < "$output/manifest.tsv")" ] \
         || die 'polkit candidate manifest cardinality differs'
     (

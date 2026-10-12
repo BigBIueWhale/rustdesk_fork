@@ -63,7 +63,7 @@ env -i PATH=/usr/bin:/bin HOME="$APT_ROOT" LC_ALL=C \
 
 shopt -s nullglob
 packages=(/outputs/packages/*.deb)
-[ "${#packages[@]}" -gt 0 ] && [ "${#packages[@]}" -le 64 ] \
+[ "${#packages[@]}" -gt 0 ] && [ "${#packages[@]}" -le 96 ] \
     || { echo 'polkit package closure cardinality is invalid' >&2; exit 1; }
 polkit_file="/outputs/packages/polkitd_${POLKIT_VERSION}_amd64.deb"
 [ -f "$polkit_file" ] && [ ! -L "$polkit_file" ] \

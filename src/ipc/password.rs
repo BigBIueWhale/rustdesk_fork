@@ -855,7 +855,7 @@ mod tests {
         )
         .unwrap()
         .encode();
-        assert_eq!(request[8..12], [1, 0, 3, 0]);
+        assert_eq!(request[8..12], [2, 0, 3, 0]);
         assert!(SensitiveRequestHeader::decode(
             &request,
             SensitivePayloadKind::CredentialSnapshotRequest

@@ -2104,6 +2104,13 @@ binds commands, terminal results, source context, raw logs and measurements. The
 publishes its cache on tmpfs; persistent-cache same-filesystem publication is source-reviewed,
 without changing the canonical cache. `AGENTS.md` requires bounded RAM storage and forbids
 executing other VM launchers until they supply equivalent admission, limits, isolation and joins.
+The standalone `scripts/smoke-verifier-media.py` launcher is removed. It bypassed the shared
+RAM admission/monitor and put its overlay, tools disk, raw conversion and partition extraction
+on repository disk. Its two-phase guest fixture and historical evidence remain retained;
+future media execution must use the shared bounded RAM orchestration. No replacement launcher,
+disk fallback or override is introduced. Direct invocation returns missing-file exit2 with
+unchanged shared/RAM directory inventories and host listeners. This is execution-path removal,
+not new media behavior: media execution/storage acceptance remains OPEN.
 Complete acquisition/bootstrap closure, full-release and other-platform VM storage acceptance
 remain OPEN. Tmpfs is swappable here: no host swap/mount
 change or zero-system-I/O claim is made. Design sources:

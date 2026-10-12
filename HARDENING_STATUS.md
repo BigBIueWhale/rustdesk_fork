@@ -2033,6 +2033,22 @@ Current normative specification SHA-256: `e55e3e21aec7af920735004f42477bae6646bd
 
 ### Current authority and source closure
 
+**VM transient storage (R-S11cj/R-S11dh): runtime validation pending.** Both ordinary-user Linux
+launchers place the disposable qcow2 overlay, input/seed ISOs and source archive/bundle in one
+private workspace on the existing `/dev/shm` tmpfs. Disk-backed scratch fallback is absent.
+Admission requires capacity for 16 GiB scratch, the selected guest RAM, 6 GiB host headroom and
+1 GiB orchestration overhead; a pidfd-bound monitor cancels the exact harness if scratch or
+headroom exceeds its bound. Hard file ceilings are 8 GiB overlay, 5 GiB input ISO, 256 MiB source
+and 8 MiB seed; prepared inputs must leave the full overlay allowance before QEMU starts.
+Canonical disk markers, bounded logs and intentional artifacts retain their existing ownership.
+RAM scratch is retired only after exact process joins, on success and failure; uncertain joins
+retain the workspace and block another run. Per-run storage receipts retain measured peaks and
+observed QEMU block writes. Tmpfs can swap on this host; these checks do not claim to disable
+host swap or prove zero system-wide I/O. Insufficient RAM refuses the run before VM reservation.
+Design sources: [Linux tmpfs](https://docs.kernel.org/filesystems/tmpfs.html) and
+[QEMU disk images](https://www.qemu.org/docs/master/system/images.html).
+Representative native and acquisition runtime acceptance remain pending for this change.
+
 | Surface | Platforms, endpoint/action, boundary, and current closure |
 | --- | --- |
 | Unattended credential ownership | Linux/macOS raw `_password` and `_service_password`, Windows first-instance local-only password pipes, and the read-only runtime-PRS replica channels are typed and bounded. Peer proof precedes secret-body read. The root/LocalSystem/LaunchDaemon receiver performs OS authorization and the final durable commit; ordinary UI/main IPC cannot write or mirror the credential. Operation IDs, bounded values, process-keyed replay fingerprints, explicit final status, wiping, admission closure, and joined drain prevent generic config or detached-work fallbacks. |

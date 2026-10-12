@@ -1,0 +1,83 @@
+# Shared ordinary-user orchestration; the durable run marker is already reserved.
+VM_TRANSIENT=
+VM_TRANSIENT_ID=
+VM_TRANSIENT_ROOT_FD=
+VM_STORAGE_MONITOR_PID=
+readonly VM_STORAGE_SOURCE="$SCRIPT_DIR/vm-transient-storage.py"
+
+vm_storage_preflight() {
+    /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" preflight --memory-mib "$VM_MEMORY" \
+        || fail 'VM RAM admission failed; no disk-backed scratch fallback is permitted'
+}
+
+reserve_vm_storage() {
+    local reserved
+    reserved=$(/usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" reserve --memory-mib "$VM_MEMORY") \
+        || fail 'cannot reserve bounded VM RAM scratch'
+    VM_TRANSIENT=${reserved%%$'\n'*}
+    VM_TRANSIENT_ID=${reserved#*$'\n'}
+    [[ "$VM_TRANSIENT" =~ ^/dev/shm/rustdesk-fork-vm-$HOST_UID/run\.[A-Za-z0-9_]+$ ]] \
+        && [[ "$VM_TRANSIENT_ID" =~ ^[0-9]+:[0-9]+$ ]] \
+        || fail 'RAM scratch reservation receipt differs'
+    exec {VM_TRANSIENT_ROOT_FD}<"/dev/shm/rustdesk-fork-vm-$HOST_UID" \
+        || fail 'cannot retain the RAM scratch parent'
+    /usr/bin/flock --exclusive --nonblock "$VM_TRANSIENT_ROOT_FD" \
+        || fail 'RAM scratch parent is held by another harness'
+    printf '%s\n%s\n' "$VM_TRANSIENT" "$VM_TRANSIENT_ID" >"$RUN/storage.workspace"
+    /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" watch --memory-mib "$VM_MEMORY" \
+        --workspace "$VM_TRANSIENT" --identity "$VM_TRANSIENT_ID" --parent "$$" \
+        --run "$RUN" --ready "$RUN/storage.ready" --stop "$RUN/storage.stop" \
+        --receipt "$RUN_ROOT/$MODE-${RUN##*/}.storage.json" &
+    VM_STORAGE_MONITOR_PID=$!
+    for _ in $(/usr/bin/seq 1 100); do
+        [ -f "$RUN/storage.ready" ] && return 0
+        kill -0 "$VM_STORAGE_MONITOR_PID" 2>/dev/null \
+            || fail 'VM RAM monitor exited before readiness'
+        /usr/bin/sleep 0.05
+    done
+    fail 'VM RAM monitor did not become ready'
+}
+
+vm_storage_check() {
+    /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" check --memory-mib "$VM_MEMORY" \
+        --workspace "$VM_TRANSIENT" --identity "$VM_TRANSIENT_ID" \
+        || fail 'VM RAM storage admission changed before launch'
+}
+
+vm_source_command() (
+    ulimit -f 262144 || exit 1
+    export TMPDIR="$VM_TRANSIENT"
+    "$@"
+)
+
+vm_iso_command() (
+    ulimit -f 5242880 || exit 1
+    export TMPDIR="$VM_TRANSIENT"
+    "$@"
+)
+
+vm_seed_command() (
+    ulimit -f 8192 || exit 1
+    export TMPDIR="$VM_TRANSIENT"
+    "$@"
+)
+
+retire_vm_storage() {
+    local joined=$1 monitor_failed=0
+    if [ -n "$VM_STORAGE_MONITOR_PID" ]; then
+        (set -o noclobber; printf 'stop\n' >"$RUN/storage.stop") || return 1
+        wait "$VM_STORAGE_MONITOR_PID" || monitor_failed=1
+        VM_STORAGE_MONITOR_PID=
+    fi
+    if [ "$joined" -eq 0 ] && [ -n "$VM_TRANSIENT" ]; then
+        /usr/bin/python3 -I -S "$CLEANUP_HELPER" --remove-private-root "$VM_TRANSIENT" \
+            --expected-identity "$VM_TRANSIENT_ID" || return 1
+        VM_TRANSIENT=
+        VM_TRANSIENT_ID=
+    fi
+    if [ -n "$VM_TRANSIENT_ROOT_FD" ]; then
+        exec {VM_TRANSIENT_ROOT_FD}<&- || return 1
+        VM_TRANSIENT_ROOT_FD=
+    fi
+    [ "$monitor_failed" -eq 0 ] && [ "$joined" -eq 0 ]
+}

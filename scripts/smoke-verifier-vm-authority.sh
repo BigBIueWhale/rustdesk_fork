@@ -752,6 +752,8 @@ fail() {
     exit 1
 }
 
+source "$SCRIPT_DIR/vm-transient-storage.sh"
+
 reserve_verifier_run() {
     local descriptor root_id entry allocated acquisition_root shared_descriptor shared_id
     [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \
@@ -1787,17 +1789,6 @@ verify_private_socket() {
     [ $((8#$mode & 077)) -eq 0 ] || return 1
 }
 
-retire_disposable_vm_file() {
-    local path=$1
-    if [ -e "$path" ] || [ -L "$path" ]; then
-        [ -f "$path" ] && [ ! -L "$path" ] \
-            && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$path" 2>/dev/null)" = \
-                 "$HOST_UID:$HOST_GID:1" ] \
-            || return 1
-        /usr/bin/rm -- "$path"
-    fi
-}
-
 cleanup() {
     local status=$? cleanup_failed=0 index pid start socket disposable
     trap - EXIT HUP INT TERM
@@ -1859,6 +1850,7 @@ cleanup() {
         exec {ARTIFACT_OUTPUT_FD}<&- || cleanup_failed=1
         ARTIFACT_OUTPUT_FD=
     fi
+    retire_vm_storage "$cleanup_failed" || cleanup_failed=1
     if [ -n "$RUN" ] && [ -d "$RUN" ] && [ ! -L "$RUN" ] \
        && [ "$(/usr/bin/stat -c '%d:%i' -- "$RUN" 2>/dev/null)" = "$RUN_ID" ]; then
         reconcile_socket "$RUN/serial.sock" || cleanup_failed=1
@@ -1872,9 +1864,6 @@ cleanup() {
                 || cleanup_failed=1
         else
             if [ "$cleanup_failed" -eq 0 ]; then
-                for disposable in "$RUN/overlay.qcow2" "$RUN/payload.iso" "$RUN/seed.iso"; do
-                    retire_disposable_vm_file "$disposable" || cleanup_failed=1
-                done
                 if [ -n "$BASE_READONLY_INPUT_ID" ]; then
                     /usr/bin/python3 -I -S "$CLEANUP_HELPER" --remove-private-root \
                         "$RUN/base-inputs" --expected-identity "$BASE_READONLY_INPUT_ID" \
@@ -1938,7 +1927,7 @@ trap 'exit 143' TERM
 for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/cp /usr/bin/env \
     /usr/bin/find /usr/bin/findmnt /usr/bin/flock /usr/bin/install \
     /usr/bin/dpkg-deb /usr/bin/git /usr/bin/grep /usr/bin/id /usr/bin/mkdir /usr/bin/mktemp /usr/bin/python3 \
-    /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 /usr/bin/readlink /usr/bin/rm \
+    /usr/bin/prlimit /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 /usr/bin/readlink /usr/bin/rm \
     /usr/bin/seq /usr/bin/sha256sum /usr/bin/sha512sum /usr/bin/sleep /usr/bin/sort \
     /usr/bin/ss /usr/bin/stat /usr/bin/tail /usr/bin/timeout /usr/bin/uname /usr/bin/wc \
     /usr/bin/xorriso /usr/bin/jq /usr/bin/tar /usr/bin/head; do
@@ -2038,6 +2027,7 @@ if [ "$MODE" = fixed-archive-tests ]; then
         "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
         "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE")"
 fi
+vm_storage_preflight
 reserve_verifier_run
 base_derivation_root=$INPUT_ROOT
 canonical_base_before=
@@ -3215,9 +3205,10 @@ if [ "$MODE" = linux-service-receiver-tests ]; then
         || fail 'cannot capture installed Linux receiver inputs'
 fi
 
-readonly OVERLAY=$RUN/overlay.qcow2
-readonly PAYLOAD=$RUN/payload.iso
-readonly SEED=$RUN/seed.iso
+reserve_vm_storage
+readonly OVERLAY=$VM_TRANSIENT/overlay.qcow2
+readonly PAYLOAD=$VM_TRANSIENT/payload.iso
+readonly SEED=$VM_TRANSIENT/seed.iso
 readonly SERIAL_SOCKET=$RUN/serial.sock
 readonly SERIAL_LOG=$RUN/serial.log
 readonly SERIAL_ARCHIVE=$RUN_ROOT/$MODE-${RUN##*/}.serial.log
@@ -3229,14 +3220,14 @@ readonly LISTENERS_DURING=$RUN/listeners.during
 readonly LISTENERS_AFTER=$RUN/listeners.after
 readonly NEW_DURING=$RUN/listeners.new-during
 readonly NEW_AFTER=$RUN/listeners.new-after
-readonly RUST_TEST_SOURCE_ARCHIVE=$RUN/source.tar
-readonly APPLE_SOURCE_ARCHIVE=$RUN/apple-source.tar
-readonly FLUTTER_SOURCE_ARCHIVE=$RUN/flutter-source.tar
-readonly ANDROID_OWNER_SOURCE_ARCHIVE=$RUN/android-owner-source.tar
-readonly ANDROID_EMULATOR_SOURCE_ARCHIVE=$RUN/android-emulator-source.tar
-readonly FLUTTER_PEER_SOURCE_ARCHIVE=$RUN/flutter-peer-source.tar
-readonly DART_SOURCE_ARCHIVE=$RUN/dart-source.tar
-readonly RUST_AUDIT_SOURCE_ARCHIVE=$RUN/rust-audit-source.tar
+readonly RUST_TEST_SOURCE_ARCHIVE=$VM_TRANSIENT/source.tar
+readonly APPLE_SOURCE_ARCHIVE=$VM_TRANSIENT/apple-source.tar
+readonly FLUTTER_SOURCE_ARCHIVE=$VM_TRANSIENT/flutter-source.tar
+readonly ANDROID_OWNER_SOURCE_ARCHIVE=$VM_TRANSIENT/android-owner-source.tar
+readonly ANDROID_EMULATOR_SOURCE_ARCHIVE=$VM_TRANSIENT/android-emulator-source.tar
+readonly FLUTTER_PEER_SOURCE_ARCHIVE=$VM_TRANSIENT/flutter-peer-source.tar
+readonly DART_SOURCE_ARCHIVE=$VM_TRANSIENT/dart-source.tar
+readonly RUST_AUDIT_SOURCE_ARCHIVE=$VM_TRANSIENT/rust-audit-source.tar
 readonly VIRTIOFS_SOCKET=$RUN/vfs-input.sock
 readonly VIRTIOFSD_LOG=$RUN/virtiofsd-input.log
 readonly FLUTTER_CANDIDATE_VIRTIOFS_SOCKET=$RUN/vfs-flutter-candidate.sock
@@ -3310,7 +3301,7 @@ git_package_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$GIT_PACKAGE")
 boot_root_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$BOOT_ROOT")"
 kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
-sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$RUN_ADMISSION_TEST" "$ANDROID_PEER_ARTIFACT_SOURCE" "$ANDROID_PEER_ARTIFACT_TEST" "$ANDROID_RUNTIME_PROGRESS_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "${AUTHORITY_GATE_SOURCES[@]}" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_RECENTS_DRIVER_SOURCE" "$ANDROID_EMULATOR_OBSERVER_DEPENDENCIES" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")"
+sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$RUN_ADMISSION_TEST" "$ANDROID_PEER_ARTIFACT_SOURCE" "$ANDROID_PEER_ARTIFACT_TEST" "$ANDROID_RUNTIME_PROGRESS_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "${AUTHORITY_GATE_SOURCES[@]}" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_RECENTS_DRIVER_SOURCE" "$ANDROID_EMULATOR_OBSERVER_DEPENDENCIES" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")"
 focused_inputs_before=
 if [ "$MODE" = linux-service-uid-tests ]; then
     focused_inputs_before="$(linux_service_uid_input_inventory)" \
@@ -3400,7 +3391,7 @@ elif [ "$MODE" = rust-audit ]; then
     )"
 fi
 capture_listeners >"$LISTENERS_BEFORE"
-/usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" "$OVERLAY_SIZE"
+vm_source_command /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" "$OVERLAY_SIZE"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private overlay metadata differs'
 
@@ -3438,7 +3429,7 @@ elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = linux-service-uid-tests ] \
    || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ]; then
-    git_closed -C "$REPO_ROOT" archive --format=tar "$RUST_TEST_SOURCE_COMMIT" \
+    vm_source_command git_closed -C "$REPO_ROOT" archive --format=tar "$RUST_TEST_SOURCE_COMMIT" \
         >"$RUST_TEST_SOURCE_ARCHIVE" \
         || fail 'cannot create the exact focused Rust-workload source archive'
     /usr/bin/chmod 0400 "$RUST_TEST_SOURCE_ARCHIVE"
@@ -3459,7 +3450,7 @@ elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
     /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
     verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
 elif [ "$MODE" = apple-conform ]; then
-    git_closed -C "$REPO_ROOT" archive --format=tar "$APPLE_SOURCE_COMMIT" \
+    vm_source_command git_closed -C "$REPO_ROOT" archive --format=tar "$APPLE_SOURCE_COMMIT" \
         >"$APPLE_SOURCE_ARCHIVE" \
         || fail 'cannot create the exact Apple-conformance source archive'
     /usr/bin/chmod 0400 "$APPLE_SOURCE_ARCHIVE"
@@ -3480,7 +3471,7 @@ elif [ "$MODE" = apple-conform ]; then
     /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
     verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
 elif [ "$MODE" = flutter-model-tests ]; then
-    git_closed -C "$REPO_ROOT" archive --format=tar "$FLUTTER_SOURCE_COMMIT" \
+    vm_source_command git_closed -C "$REPO_ROOT" archive --format=tar "$FLUTTER_SOURCE_COMMIT" \
         >"$FLUTTER_SOURCE_ARCHIVE" \
         || fail 'cannot create the exact focused Flutter-test source archive'
     /usr/bin/chmod 0400 "$FLUTTER_SOURCE_ARCHIVE"
@@ -3501,7 +3492,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
     /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
     verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
 elif [ "$MODE" = android-owner-tests ]; then
-    git_closed -C "$REPO_ROOT" archive --format=tar "$ANDROID_OWNER_SOURCE_COMMIT" \
+    vm_source_command git_closed -C "$REPO_ROOT" archive --format=tar "$ANDROID_OWNER_SOURCE_COMMIT" \
         >"$ANDROID_OWNER_SOURCE_ARCHIVE" \
         || fail 'cannot create the exact focused Android owner-state source archive'
     /usr/bin/chmod 0400 "$ANDROID_OWNER_SOURCE_ARCHIVE"
@@ -3524,7 +3515,7 @@ elif [ "$MODE" = android-owner-tests ]; then
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-peer-build ] \
    || [ "$MODE" = cm-file-replay ]; then
-    git_closed -C "$REPO_ROOT" archive --format=tar "$ANDROID_EMULATOR_SOURCE_COMMIT" \
+    vm_source_command git_closed -C "$REPO_ROOT" archive --format=tar "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         >"$ANDROID_EMULATOR_SOURCE_ARCHIVE" \
         || fail 'cannot create the exact Android emulator harness source archive'
     /usr/bin/chmod 0400 "$ANDROID_EMULATOR_SOURCE_ARCHIVE"
@@ -3545,7 +3536,7 @@ elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
     /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
     verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
 elif [ "$MODE" = flutter-peer-presentation ]; then
-    git_closed -C "$REPO_ROOT" archive --format=tar "$FLUTTER_PEER_SOURCE_COMMIT" \
+    vm_source_command git_closed -C "$REPO_ROOT" archive --format=tar "$FLUTTER_PEER_SOURCE_COMMIT" \
         >"$FLUTTER_PEER_SOURCE_ARCHIVE" \
         || fail 'cannot create the exact focused Flutter-peer source archive'
     /usr/bin/chmod 0400 "$FLUTTER_PEER_SOURCE_ARCHIVE"
@@ -3566,7 +3557,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
     verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
 elif [ "$MODE" = dart-audit ]; then
-    git_closed -C "$REPO_ROOT" archive --format=tar "$DART_SOURCE_COMMIT" \
+    vm_source_command git_closed -C "$REPO_ROOT" archive --format=tar "$DART_SOURCE_COMMIT" \
         >"$DART_SOURCE_ARCHIVE" \
         || fail 'cannot create the exact focused Dart-audit source archive'
     /usr/bin/chmod 0400 "$DART_SOURCE_ARCHIVE"
@@ -3577,7 +3568,7 @@ elif [ "$MODE" = dart-audit ]; then
         /usr/bin/sha256sum "$DART_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
     )"
 elif [ "$MODE" = rust-audit ]; then
-    git_closed -C "$REPO_ROOT" archive --format=tar "$RUST_AUDIT_SOURCE_COMMIT" \
+    vm_source_command git_closed -C "$REPO_ROOT" archive --format=tar "$RUST_AUDIT_SOURCE_COMMIT" \
         >"$RUST_AUDIT_SOURCE_ARCHIVE" \
         || fail 'cannot create the exact focused Rust-audit source archive'
     /usr/bin/chmod 0400 "$RUST_AUDIT_SOURCE_ARCHIVE"
@@ -3831,7 +3822,7 @@ elif [ "$MODE" = rust-audit ]; then
         "rust-audit.docker.tar.gz=$RUST_AUDIT_IMAGE_ARCHIVE"
     )
 fi
-/usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFIER_INPUTS \
+vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFIER_INPUTS \
     -joliet -rock "${payload_identity[@]}" -graft-points -output "$PAYLOAD" \
     "guest.sh=$GUEST_SCRIPT" \
     "repo/scripts/verify.sh=$VERIFY_SCRIPT" \
@@ -4045,7 +4036,7 @@ printf '%s\n' \
 printf '%s\n' 'version: 2' 'ethernets: {}' >"$RUN/seed/network-config"
 (
     cd "$RUN/seed"
-    /usr/bin/xorriso -as mkisofs -quiet -volid CIDATA -joliet -rock \
+    vm_seed_command /usr/bin/xorriso -as mkisofs -quiet -volid CIDATA -joliet -rock \
         -output "$SEED" user-data meta-data network-config
 )
 /usr/bin/chmod 0400 "$SEED"
@@ -4204,7 +4195,9 @@ if [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-runtime-log-tes
     fi
 fi
 vm_started_seconds=$SECONDS
-/usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
+vm_storage_check
+/usr/bin/prlimit --fsize=8589934592:8589934592 -- \
+    /usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
     /usr/bin/qemu-system-x86_64 \
         -name rustdesk-verifier-authority \
         -machine q35 \
@@ -5931,7 +5924,7 @@ fi
     || fail 'direct-boot kernel changed during execution'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'direct-boot initramfs changed during execution'
-[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$RUN_ADMISSION_TEST" "$ANDROID_PEER_ARTIFACT_SOURCE" "$ANDROID_PEER_ARTIFACT_TEST" "$ANDROID_RUNTIME_PROGRESS_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "${AUTHORITY_GATE_SOURCES[@]}" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_RECENTS_DRIVER_SOURCE" "$ANDROID_EMULATOR_OBSERVER_DEPENDENCIES" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
+[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$RUN_ADMISSION_TEST" "$ANDROID_PEER_ARTIFACT_SOURCE" "$ANDROID_PEER_ARTIFACT_TEST" "$ANDROID_RUNTIME_PROGRESS_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "${AUTHORITY_GATE_SOURCES[@]}" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_RECENTS_DRIVER_SOURCE" "$ANDROID_EMULATOR_OBSERVER_DEPENDENCIES" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
 if [ "$MODE" = linux-service-uid-tests ]; then
     focused_inputs_after="$(linux_service_uid_input_inventory)" \

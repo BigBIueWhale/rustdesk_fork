@@ -171,6 +171,8 @@ fail() {
     exit 1
 }
 
+source "$SCRIPT_DIR/vm-transient-storage.sh"
+
 reserve_verifier_run() {
     local descriptor root_id entry allocated parent_descriptor parent_id
     [ -d "$INPUT_ROOT" ] && [ ! -L "$INPUT_ROOT" ] \
@@ -381,16 +383,6 @@ start_virtiofsd() {
         || fail "$authority virtiofsd Landlock enforcement receipt differs"
 }
 
-remove_owned_large_file() {
-    local path=$1
-    if [ -e "$path" ] || [ -L "$path" ]; then
-        [ -f "$path" ] && [ ! -L "$path" ] \
-            && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$path" 2>/dev/null)" = "$HOST_UID:$HOST_GID:1" ] \
-            || return 1
-        /usr/bin/rm --force -- "$path"
-    fi
-}
-
 remove_success_receipt_temporary() {
     if [ -n "$SUCCESS_RECEIPT_TMP" ] \
        && { [ -e "$SUCCESS_RECEIPT_TMP" ] || [ -L "$SUCCESS_RECEIPT_TMP" ]; }; then
@@ -554,6 +546,7 @@ cleanup() {
     if [ -n "$CACHE_FD" ]; then exec {CACHE_FD}<&- || cleanup_failed=1; CACHE_FD=; fi
     if [ -n "$SYSTEMD_FD" ]; then exec {SYSTEMD_FD}<&- || cleanup_failed=1; SYSTEMD_FD=; fi
     if [ -n "$RESULT_FD" ]; then exec {RESULT_FD}<&- || cleanup_failed=1; RESULT_FD=; fi
+    retire_vm_storage "$cleanup_failed" || cleanup_failed=1
     if [ -n "$RUN" ] && [ -d "$RUN" ] && [ ! -L "$RUN" ] \
        && [ "$(/usr/bin/stat -c '%d:%i' -- "$RUN" 2>/dev/null)" = "$RUN_ID" ]; then
         for socket in "$RUN/serial.sock" "$RUN/vfs-c.sock" \
@@ -570,10 +563,6 @@ cleanup() {
                 cleanup_failed=1
             fi
         else
-            for large in "$RUN/overlay.qcow2" "$RUN/payload.iso" "$RUN/seed.iso" \
-                "$RUN/source.bundle"; do
-                remove_owned_large_file "$large" || cleanup_failed=1
-            done
             printf 'online-fetch VM: retained bounded failure evidence at %s; this blocks new runs until its owned processes have exited and it is explicitly reconciled\n' "$RUN" >&2
         fi
     elif [ -n "$RUN" ]; then
@@ -607,7 +596,7 @@ trap 'exit 143' TERM
     || fail 'online acquisition VM requires a Linux x86_64 orchestration host'
 for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/cut /usr/bin/dpkg-deb /usr/bin/find /usr/bin/findmnt /usr/bin/flock /usr/bin/git \
     /usr/bin/grep /usr/bin/id /usr/bin/install /usr/bin/mkdir /usr/bin/mktemp \
-    /usr/bin/mv /usr/bin/python3 /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 \
+    /usr/bin/mv /usr/bin/python3 /usr/bin/prlimit /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 \
     /usr/bin/readlink /usr/bin/rm /usr/bin/sed /usr/bin/seq /usr/bin/sha256sum \
     /usr/bin/sha512sum /usr/bin/sleep /usr/bin/sort /usr/bin/ss /usr/bin/stat \
     /usr/bin/tail /usr/bin/timeout /usr/bin/tr /usr/bin/uname /usr/bin/xorriso; do
@@ -687,6 +676,7 @@ if [ -e "$RUN_ROOT" ] || [ -L "$RUN_ROOT" ]; then
 else
     /usr/bin/install -d -m 0700 -- "$RUN_ROOT"
 fi
+vm_storage_preflight
 reserve_verifier_run
 for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \
     "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC" \
@@ -763,10 +753,11 @@ else
 fi
 RECEIPT_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$RECEIPT_ROOT")"
 
-readonly OVERLAY=$RUN/overlay.qcow2
-readonly PAYLOAD=$RUN/payload.iso
-readonly SEED=$RUN/seed.iso
-readonly SOURCE_BUNDLE=$RUN/source.bundle
+reserve_vm_storage
+readonly OVERLAY=$VM_TRANSIENT/overlay.qcow2
+readonly PAYLOAD=$VM_TRANSIENT/payload.iso
+readonly SEED=$VM_TRANSIENT/seed.iso
+readonly SOURCE_BUNDLE=$VM_TRANSIENT/source.bundle
 readonly REQUEST_FILE=$RUN/request
 readonly SOURCE_TREE_FILE=$RUN/source.tree
 readonly SOURCE_BUNDLE_SHA_FILE=$RUN/source.bundle.sha256
@@ -886,7 +877,7 @@ ONLINE_EXPORT_ID="$(/usr/bin/stat -c '%d:%i' -- "$CACHE_EXPORT/inputs")"
 SYSTEMD_EXPORT_ID="$(/usr/bin/stat -c '%d:%i' -- "$SYSTEMD_EXPORT")"
 RESULT_EXPORT_ID="$(/usr/bin/stat -c '%d:%i' -- "$RESULT_EXPORT")"
 
-git_closed -C "$REPO_ROOT" bundle create "$SOURCE_BUNDLE" refs/heads/master \
+vm_source_command git_closed -C "$REPO_ROOT" bundle create "$SOURCE_BUNDLE" refs/heads/master \
     || fail 'cannot create the exact committed acquisition source bundle'
 git_closed -C "$REPO_ROOT" bundle verify "$SOURCE_BUNDLE" >/dev/null \
     || fail 'acquisition source bundle verification failed'
@@ -896,7 +887,7 @@ SOURCE_BUNDLE_SHA256="$(/usr/bin/sha256sum "$SOURCE_BUNDLE" | /usr/bin/awk '{pri
 /usr/bin/printf '%s\n' "$SOURCE_TREE" >"$SOURCE_TREE_FILE"
 /usr/bin/printf '%s\n' "$SOURCE_BUNDLE_SHA256" >"$SOURCE_BUNDLE_SHA_FILE"
 /usr/bin/chmod 0400 "$REQUEST_FILE" "$SOURCE_TREE_FILE" "$SOURCE_BUNDLE_SHA_FILE"
-/usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" "$OVERLAY_SIZE"
+vm_source_command /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" "$OVERLAY_SIZE"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private acquisition overlay metadata differs'
 /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
@@ -920,10 +911,10 @@ kernel_before="$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/sha256sum "$INITRD")"
 media_kernel_before="$(/usr/bin/sha256sum "$SCRIPT_DIR/acquire-verifier-media-kernel.sh" "$SCRIPT_DIR/acquire-verifier-media-kernel.py")"
 polkit_stage_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' "$SCRIPT_DIR/stage-polkit-runtime-candidate.sh"):$(/usr/bin/sha256sum "$SCRIPT_DIR/stage-polkit-runtime-candidate.sh")"
-source_before="$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")"
+source_before="$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")"
 capture_listeners >"$LISTENERS_BEFORE"
 
-/usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_ONLINE_FETCH \
+vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_ONLINE_FETCH \
     -joliet -rock -graft-points -output "$PAYLOAD" \
     "guest.sh=$GUEST_SCRIPT" "docker.tgz=$DOCKER_BUNDLE" \
     "docker-buildx=$BUILDX_BINARY" "buildkit.tgz=$BUILDKIT_BUNDLE" \
@@ -962,7 +953,7 @@ guest_invocation="bash /mnt/rustdesk-online-fetch-inputs/guest.sh /mnt/rustdesk-
 /usr/bin/printf '%s\n' 'version: 2' 'ethernets: {}' >"$RUN/seed/network-config"
 (
     cd "$RUN/seed"
-    /usr/bin/xorriso -as mkisofs -quiet -volid CIDATA -joliet -rock \
+    vm_seed_command /usr/bin/xorriso -as mkisofs -quiet -volid CIDATA -joliet -rock \
         -output "$SEED" user-data meta-data network-config
 )
 /usr/bin/chmod 0400 "$SEED"
@@ -994,7 +985,9 @@ if [ -s "$NEW_DURING" ]; then
 fi
 
 vm_started_seconds=$SECONDS
-/usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
+vm_storage_check
+/usr/bin/prlimit --fsize=8589934592:8589934592 -- \
+    /usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
     /usr/bin/qemu-system-x86_64 \
         -name rustdesk-online-fetch-acquisition \
         -machine q35 \
@@ -1211,7 +1204,7 @@ fi
     || fail 'media kernel acquisition source changed during acquisition'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' "$SCRIPT_DIR/stage-polkit-runtime-candidate.sh"):$(/usr/bin/sha256sum "$SCRIPT_DIR/stage-polkit-runtime-candidate.sh")" = "$polkit_stage_before" ] \
     || fail 'polkit runtime acquisition source changed during acquisition'
-[ "$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")" = "$source_before" ] \
+[ "$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")" = "$source_before" ] \
     || fail 'live orchestration source changed during acquisition'
 [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" = "$SOURCE_COMMIT" ] \
     && [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" = "$SOURCE_TREE" ] \

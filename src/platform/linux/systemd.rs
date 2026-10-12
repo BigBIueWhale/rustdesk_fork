@@ -37,17 +37,13 @@ impl ServiceNotification {
         let Some(socket) = self.socket.as_ref() else {
             return Ok(());
         };
-        let result = socket.send(message).and_then(|sent| {
+        socket.send(message).and_then(|sent| {
             if sent == message.len() {
                 Ok(())
             } else {
                 Err(io::Error::new(io::ErrorKind::WriteZero, "Incomplete systemd notification"))
             }
-        });
-        if result.is_err() {
-            self.socket.take();
-        }
-        result
+        })
     }
 
     pub(super) fn ready(&mut self) -> io::Result<()> {

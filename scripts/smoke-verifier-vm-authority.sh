@@ -1211,11 +1211,102 @@ capture_listeners() {
 }
 
 report_listener_delta() {
-    # The offline host process tree cannot create IP sockets. Snapshot changes
-    # remain evidence about the host without assigning process ownership.
     [ "$#" -eq 2 ] || fail 'listener observation argument count differs'
+    local phase=$1 snapshot
+    case "$phase" in
+        before) snapshot=$LISTENERS_BEFORE ;;
+        during) snapshot=$LISTENERS_DURING ;;
+        after) snapshot=$LISTENERS_AFTER ;;
+        *) fail 'listener observation phase differs' ;;
+    esac
+    LISTENER_OBSERVATION_NUMBER=$((LISTENER_OBSERVATION_NUMBER + 1))
+    /usr/bin/python3 -I -S - "$RUN_ROOT" "$RUN" "$RUN_ID" "$MODE" \
+        "$LISTENER_OBSERVATION_NUMBER" "$phase" "$LISTENERS_BEFORE" "$snapshot" "$2" "$OUTER_SOURCE" <<'PY'
+import base64, hashlib, json, os, re, stat, sys
+from pathlib import Path
+
+root, run, identity, mode, number, phase, baseline, snapshot, delta, source = sys.argv[1:]
+assert os.geteuid() != 0 and os.getegid() != 0
+assert re.fullmatch(r'[a-z0-9-]+', mode) and number.isdecimal() and 1 <= int(number) <= 8
+assert phase in ('before', 'during', 'after') and Path(run).parent == Path(root)
+assert re.fullmatch(r'run\.[A-Za-z0-9]{10}', Path(run).name)
+flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+parent = os.open(root, flags | os.O_DIRECTORY)
+workspace = os.open(Path(run).name, flags | os.O_DIRECTORY, dir_fd=parent)
+try:
+    for descriptor in (parent, workspace):
+        metadata = os.fstat(descriptor)
+        assert (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode)) == (os.geteuid(), os.getegid(), 0o700)
+    metadata = os.fstat(workspace)
+    assert identity == f'{metadata.st_dev}:{metadata.st_ino}'
+
+    def read(path):
+        assert Path(path).parent == Path(run)
+        descriptor = os.open(Path(path).name, flags, dir_fd=workspace)
+        try:
+            before = os.fstat(descriptor)
+            assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+            assert (before.st_uid, before.st_gid, stat.S_IMODE(before.st_mode)) == (os.geteuid(), os.getegid(), 0o600)
+            assert before.st_size <= 1048576
+            with os.fdopen(os.dup(descriptor), 'rb') as stream:
+                data = stream.read(1048577)
+            after = os.fstat(descriptor)
+            assert (before.st_dev, before.st_ino, before.st_mode, before.st_uid, before.st_gid,
+                    before.st_nlink, before.st_size, before.st_mtime_ns, before.st_ctime_ns) == (
+                    after.st_dev, after.st_ino, after.st_mode, after.st_uid, after.st_gid,
+                    after.st_nlink, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+            assert len(data) == before.st_size
+            lines = data.splitlines(keepends=True)
+            assert lines == sorted(set(lines))
+            assert all(line.endswith(b'\n') and len(parts := line.split()) == 2 and parts[0] in (b'tcp', b'udp') for line in lines)
+            return data, lines
+        finally:
+            os.close(descriptor)
+
+    before, old = read(baseline)
+    current, observed = (before, old) if baseline == snapshot else read(snapshot)
+    added = b''.join(sorted(set(observed) - set(old)))
+    removed = b''.join(sorted(set(old) - set(observed)))
+    assert (phase == 'before' and not delta and not added) or (phase != 'before' and read(delta)[0] == added)
+    descriptor = os.open(source, flags)
+    with os.fdopen(descriptor, 'rb') as stream:
+        metadata = os.fstat(stream.fileno())
+        assert stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
+        assert metadata.st_uid == os.geteuid() and not metadata.st_mode & 0o022 and metadata.st_size <= 1048576
+        source_bytes = stream.read(1048577)
+        assert len(source_bytes) == metadata.st_size
+        source_sha = hashlib.sha256(source_bytes).hexdigest()
+    def record(data):
+        return dict(bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), base64=base64.b64encode(data).decode('ascii'))
+    document = dict(version=1, phase=phase, sequence=int(number), run=Path(run).name,
+                    run_identity=identity, entry_sha256=source_sha, ownership='unattributed',
+                    inventory='protocol-endpoint-only', baseline=record(before), snapshot=record(current),
+                    added=record(added), removed=record(removed))
+    data = (json.dumps(document, sort_keys=True) + '\n').encode()
+    assert len(data) <= 8388608
+    name = f'{mode}-{Path(run).name}.listeners.{number}-{phase}.json'
+    descriptor = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o400, dir_fd=parent)
+    try:
+        with os.fdopen(os.dup(descriptor), 'wb') as stream:
+            stream.write(data)
+            stream.flush()
+        os.fsync(descriptor)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        with os.fdopen(os.dup(descriptor), 'rb') as stream:
+            assert stream.read(8388609) == data
+        metadata = os.fstat(descriptor)
+        assert metadata.st_nlink == 1 and stat.S_IMODE(metadata.st_mode) == 0o400 and metadata.st_size == len(data)
+        os.fsync(parent)
+    finally:
+        os.close(descriptor)
+    print(f'VERIFIER_VM_HOST_LISTENER_EVIDENCE=retained phase={phase} path={Path(root) / name} bytes={len(data)} sha256={hashlib.sha256(data).hexdigest()} added={len(added.splitlines())} removed={len(removed.splitlines())}')
+finally:
+    os.close(workspace)
+    os.close(parent)
+PY
+    if [ "$phase" = before ]; then return; fi
     printf 'VERIFIER_VM_HOST_ENDPOINT_DELTA=unattributed phase=%s added=%s\n' \
-        "$1" "$(/usr/bin/wc -l <"$2")"
+        "$phase" "$(/usr/bin/wc -l <"$2")"
 }
 
 flutter_peer_input_inventory() {
@@ -3282,6 +3373,7 @@ readonly LISTENERS_DURING=$RUN/listeners.during
 readonly LISTENERS_AFTER=$RUN/listeners.after
 readonly NEW_DURING=$RUN/listeners.new-during
 readonly NEW_AFTER=$RUN/listeners.new-after
+LISTENER_OBSERVATION_NUMBER=0
 readonly RUST_TEST_SOURCE_ARCHIVE=$VM_TRANSIENT/source.tar
 readonly FUSE_BEFORE_SOURCE=$VM_TRANSIENT/fuse-before.rs
 readonly APPLE_SOURCE_ARCHIVE=$VM_TRANSIENT/apple-source.tar
@@ -3454,6 +3546,7 @@ elif [ "$MODE" = rust-audit ]; then
     )"
 fi
 capture_listeners >"$LISTENERS_BEFORE"
+report_listener_delta before ''
 vm_source_command /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" "$OVERLAY_SIZE"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private overlay metadata differs'

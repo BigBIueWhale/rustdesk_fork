@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Guest-only native tests of the verifier's host socket restriction."""
 import ctypes
+import base64
 import errno
 import hashlib
 import importlib.util
@@ -169,25 +170,90 @@ def main():
         baseline = subprocess.run(['/bin/bash', '-s'], input=baseline_command,
                                   env=environment, capture_output=True, timeout=5)
         assert baseline.returncode == 0 and not baseline.stderr
-        (Path(root) / 'before.listeners').write_bytes(baseline.stdout)
+        run = Path(root) / 'run.native1234'
+        run.mkdir(mode=0o700)
+        (run / 'listeners.before').write_bytes(baseline.stdout)
+        (run / 'listeners.before').chmod(0o600)
         entry.chmod(0o600)
         entry.write_bytes(policy.ENTRY_PREFIX + policy.BODY_MARKER +
                           b'set -euo pipefail\n' + observation_functions +
-                          b'capture_listeners >"$1/during.listeners"\n'
-                          b'/usr/bin/comm -13 "$1/before.listeners" "$1/during.listeners" >"$1/added.listeners"\n'
-                          b'report_listener_delta during "$1/added.listeners"\n')
+                          b'RUN_ROOT=$1; RUN="$1/run.native1234"; MODE=host-network-tests\n'
+                          b'RUN_ID=$(/usr/bin/stat -c "%d:%i" "$RUN"); OUTER_SOURCE=$2\n'
+                          b'LISTENER_OBSERVATION_NUMBER=0\n'
+                          b'LISTENERS_BEFORE="$RUN/listeners.before"\n'
+                          b'LISTENERS_DURING="$RUN/listeners.during"\n'
+                          b'LISTENERS_AFTER="$RUN/listeners.after"\n'
+                          b'umask 077\n'
+                          b'report_listener_delta before ""\n'
+                          b'capture_listeners >"$LISTENERS_DURING"\n'
+                          b'/usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$RUN/added.listeners"\n'
+                          b'report_listener_delta during "$RUN/added.listeners"\n'
+                          b'capture_listeners >"$LISTENERS_AFTER"\n'
+                          b'/usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_AFTER" >"$RUN/after-added.listeners"\n'
+                          b'report_listener_delta after "$RUN/after-added.listeners"\n')
         entry.chmod(0o400)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as external:
             external.bind(('127.0.0.1', 0))
             endpoint = f'udp 127.0.0.1:{external.getsockname()[1]}\n'.encode()
-            child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper)],
+            child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper), str(OBSERVER)],
                                    env=environment, capture_output=True, text=True, timeout=10)
             assert child.returncode == 0 and not child.stderr, (child.returncode, child.stdout, child.stderr)
-            assert child.stdout.splitlines()[1:] == [
-                'VERIFIER_VM_HOST_ENDPOINT_DELTA=unattributed phase=during added=1']
-            assert (Path(root) / 'added.listeners').read_bytes() == endpoint
+            lines = child.stdout.splitlines()
+            assert len(lines) == 6 and sum(line.startswith('VERIFIER_VM_HOST_LISTENER_EVIDENCE=retained ') for line in lines) == 3
+            assert lines[3] == 'VERIFIER_VM_HOST_ENDPOINT_DELTA=unattributed phase=during added=1'
+            assert lines[5] == 'VERIFIER_VM_HOST_ENDPOINT_DELTA=unattributed phase=after added=1'
+            assert (run / 'added.listeners').read_bytes() == endpoint
             assert set(baseline.stdout.splitlines()) <= set(
-                (Path(root) / 'during.listeners').read_bytes().splitlines())
+                (run / 'listeners.during').read_bytes().splitlines())
+            evidence = sorted(Path(root).glob('host-network-tests-run.native1234.listeners.*.json'))
+            assert len(evidence) == 3
+            pinned = {path.name: path.read_bytes() for path in evidence}
+            # Occupied outputs refuse without changing existing evidence.
+            repeated = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper), str(OBSERVER)],
+                                      env=environment, capture_output=True, text=True, timeout=10)
+            assert repeated.returncode != 0 and 'FileExistsError' in repeated.stderr
+            assert all(path.read_bytes() == pinned[path.name] for path in evidence)
+            for path in run.iterdir():
+                path.unlink()
+            run.rmdir()
+            for path in evidence:
+                data = path.read_bytes()
+                document = json.loads(data)
+                assert document['entry_sha256'] == hashlib.sha256(observer).hexdigest()
+                assert document['ownership'] == 'unattributed'
+                assert base64.b64decode(document['baseline']['base64'], validate=True) == baseline.stdout
+                added = base64.b64decode(document['added']['base64'], validate=True)
+                assert added == (b'' if document['phase'] == 'before' else endpoint)
+                assert base64.b64decode(document['removed']['base64'], validate=True) == b''
+                for value in (document[key] for key in ('baseline', 'snapshot', 'added', 'removed')):
+                    raw = base64.b64decode(value['base64'], validate=True)
+                    assert value['bytes'] == len(raw) and value['sha256'] == hashlib.sha256(raw).hexdigest()
+                assert path.stat().st_mode & 0o777 == 0o400 and path.stat().st_nlink == 1
+            run.mkdir(mode=0o700)
+            before_file = run / 'listeners.before'
+            before_file.write_bytes(baseline.stdout)
+            before_file.chmod(0o600)
+            sentinel = Path(root) / 'sentinel'
+            sentinel.write_bytes(b'preserve-owned-sentinel')
+            evidence[0].unlink()
+            evidence[0].symlink_to(sentinel)
+            rejected = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper), str(OBSERVER)],
+                                      env=environment, capture_output=True, text=True, timeout=10)
+            assert rejected.returncode != 0 and 'FileExistsError' in rejected.stderr
+            assert evidence[0].is_symlink() and sentinel.read_bytes() == b'preserve-owned-sentinel'
+            before_file.unlink()
+            before_file.symlink_to(sentinel)
+            rejected = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper), str(OBSERVER)],
+                                      env=environment, capture_output=True, text=True, timeout=10)
+            assert rejected.returncode != 0 and 'Too many levels of symbolic links' in rejected.stderr
+            assert sentinel.read_bytes() == b'preserve-owned-sentinel'
+            before_file.unlink()
+            before_file.write_bytes(b'x' * 1048577)
+            before_file.chmod(0o600)
+            rejected = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper), str(OBSERVER)],
+                                      env=environment, capture_output=True, text=True, timeout=10)
+            assert rejected.returncode != 0 and 'AssertionError' in rejected.stderr
+            assert evidence[0].is_symlink() and sentinel.read_bytes() == b'preserve-owned-sentinel'
         retired = subprocess.run(['/bin/bash', '-s'], input=baseline_command,
                                  env=environment, capture_output=True, timeout=5)
         assert retired.returncode == 0 and not retired.stderr and retired.stdout == baseline.stdout
@@ -203,6 +269,10 @@ def main():
         'closed_stdin': 'sealed-body-executed',
         'bash_env': 'ignored',
         'external_listener_delta': 'retained-unattributed', 'external_listener_additions': 1,
+        'listener_evidence': 'exact-bytes-retained-after-run-retirement',
+        'listener_evidence_phases': 3, 'listener_evidence_occupied': 'preserved-refused',
+        'listener_evidence_output_symlink': 'preserved-refused',
+        'listener_evidence_input_symlink': 'refused', 'listener_evidence_oversize': 'refused',
         'observer_sha256': hashlib.sha256(observer).hexdigest(),
         'source_sha256': before, 'source_unchanged': True,
     }, sort_keys=True))

@@ -2444,6 +2444,30 @@ audit and retained diagnostics. This is one debug/headless installed-layout seat
 schedule, not whole-app/release acceptance. Notification failure, ordinary network
 drain, new-unit 600-second failure/recovery and other init systems remain OPEN.
 
+**Notification endpoint lifetime: native component A/B accepted; installed failure acceptance OPEN.**
+Product `a84a4b78`, `src/platform/linux/systemd.rs:36`, retains the exact connected
+Unix datagram after a send error. Later attempts return their actual kernel result;
+only an absent manager at construction takes the optional-success path. Temporary
+backpressure can recover on the same endpoint, and a closed/rebound address is not
+adopted. The supervisor still retains its first notification error while draining.
+Tests-first `9c7ae5ff` produces three passes and two real false-success failures;
+the corrected exact module passes all five cases in 31 VM seconds. Actual kernel
+queue saturation, repeated WouldBlock, same-descriptor recovery and received
+STOPPING/EXTEND bytes pass, as do persistent closed-peer errors, replacement-peer
+silence, fresh-connection delivery, pathname messages and absent/invalid controls.
+The zero-NIC VM uses authenticated Rust 1.75 in a 512-MiB nonroot, capability-free,
+read-only container. RAM scratch peaks at 3,470,057,472 bytes, disk diagnostics/helper
+extraction at 3,297,280, observed QEMU writes at 4,096; exact joins/RAM retirement
+and frozen source/index/audit/ledger/spec/instruction comparisons pass. Four complete
+endpoint records retain two unattributed removals without owner inspection.
+Immutable `.harness-state/verifier-vm/linux-notification-errors-accepted-a84a4b78.json`
+(23,933 bytes; SHA-256 `f50d1853e73e415918bf8218d560a320c3713b077216788651076ea19fcec859`)
+binds both native runs, identical test bodies, module/artifact hashes, raw logs,
+storage and complete endpoint records. The reused `ef3f51b7` whole binary predates
+this correction. Current installed/whole-binary evidence, manager acknowledgement,
+permanent channel loss against the 30-second kill backstop, ordinary network drain
+and broader shutdown/platform/release/resource/reproduction/review remain OPEN.
+
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

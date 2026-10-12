@@ -2121,6 +2121,11 @@ then root's fresh check refuses (CLI1/durable unchanged/helper reaped). Old acto
 runtime retire; c2/new PID/start keeps supervisor/generation. Current-password CPace, new admin Applied
 and fresh no-agent denial pass. No product change; lingering-runtime recovery OPEN; failures retained.
 
+**Incorrect administrator password: native acceptance OPEN.** The installed fixture submits an
+incorrect password to the real administrator PAM challenge and requires failed authentication,
+exact root `pkcheck` exit1/reap, unchanged durable state/child/listener, CPace recovery and a subsequent
+fresh administrator Applied result. This scenario has not yet executed; prior acceptance is unchanged.
+
 Evidence: `linux-wire-v2-accepted-e69129bc.json`,
 `linux-receiver-requester-exit-accepted-bb5a78b2.json`,
 `linux-receiver-session-revocation-accepted-15ea97aa.json`,

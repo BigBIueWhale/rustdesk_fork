@@ -33,6 +33,7 @@ CHILD = PRIMARY.with_name("rustdesk-service-child")
 PROBE = WORK / "probe_client"
 ENV = {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"}
 ADMIN_PASSWORD = "Receiver-admin-PAM-2026!"
+INVALID_ADMIN_PASSWORD = "Receiver-invalid-PAM-2026!"
 
 
 def guard():
@@ -372,7 +373,7 @@ def close_admin_requester_session(client, agent, start, record, actor):
 
 
 def admin_change(value, record, phase="apply", actor=None):
-    if phase not in ("apply", "requester-exit", "session-close") or (phase == "session-close" and actor is None):
+    if phase not in ("apply", "requester-exit", "session-close", "bad-password") or (phase == "session-close" and actor is None):
         raise RuntimeError("unknown administrator fixture phase")
     listener = direct_listener(record)
     if listener is None:
@@ -403,7 +404,8 @@ def admin_change(value, record, phase="apply", actor=None):
     master = slave = notify_read = notify_write = None
     terminal = bytearray()
     password_sent = identity_chosen = False
-    closing = None
+    denial = None
+    denial_pidfd = None
     try:
         proc = Path("/proc") / str(client.pid)
         deadline = time.monotonic() + 3
@@ -444,8 +446,9 @@ def admin_change(value, record, phase="apply", actor=None):
         client.stdin.close()
         client.stdin = None
         deadline = time.monotonic() + 20
-        while b"AUTHENTICATION COMPLETE" not in terminal:
-            expected_exits = (None, 0, 1) if phase == "session-close" else (None, 0)
+        completion = b"AUTHENTICATION FAILED" if phase == "bad-password" else b"AUTHENTICATION COMPLETE"
+        while completion not in terminal:
+            expected_exits = (None, 0, 1) if phase in ("session-close", "bad-password") else (None, 0)
             if agent.poll() is not None or client.poll() not in expected_exits or time.monotonic() >= deadline:
                 raise RuntimeError(f"administrator challenge did not complete: {terminal[-4096:]!r}")
             readable, _, _ = select.select([master], [], [], min(0.2, max(0, deadline - time.monotonic())))
@@ -470,42 +473,75 @@ def admin_change(value, record, phase="apply", actor=None):
                                                     record, before, listener)
                         break
                     if phase == "session-close":
-                        closing = close_admin_requester_session(client, agent, start, record, actor)
-                    os.write(master, (ADMIN_PASSWORD + "\n").encode())
+                        denial = close_admin_requester_session(client, agent, start, record, actor)
+                    if phase == "bad-password":
+                        helper, helper_start = pending_admin_helper(client, start, record)
+                        denial_pidfd = os.pidfd_open(int(helper.name))
+                        fields = (helper / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                        if (int(fields[19]) != helper_start or fields[0] in (b"Z", b"X")
+                                or select.select([denial_pidfd], [], [], 0)[0]):
+                            raise RuntimeError("authorization helper changed before incorrect password submission")
+                        invocation = run(["/usr/bin/systemctl", "show", "rustdesk.service",
+                                          "--property=InvocationID", "--value"]).stdout.strip()
+                        if re.fullmatch(r"[0-9a-f]{32}", invocation) is None:
+                            raise RuntimeError("incorrect-password request has no service invocation")
+                        run(["/usr/bin/journalctl", "--sync"], timeout=5)
+                        journal = run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager",
+                                       "--output=json", "-n", "1"]).stdout
+                        denial = {"helper_pid": int(helper.name), "helper_start": helper_start,
+                                  "requester_pid": client.pid, "requester_start": start,
+                                  "journal_cursor": json.loads(journal)["__CURSOR"],
+                                  "invocation": invocation}
+                    password = INVALID_ADMIN_PASSWORD if phase == "bad-password" else ADMIN_PASSWORD
+                    os.write(master, (password + "\n").encode())
                     password_sent = True
         if phase != "requester-exit":
             stdout, stderr = client.communicate(timeout=5)
-        if phase == "session-close":
+        if phase in ("session-close", "bad-password"):
             run(["/usr/bin/journalctl", "--sync"], timeout=5)
             messages = [json.loads(line) for line in run(
                 ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "--output=json",
-                 "--after-cursor=" + closing["journal_cursor"]]).stdout.splitlines()]
+                 "--after-cursor=" + denial["journal_cursor"]]).stdout.splitlines()]
             expected = {"_PID": str(record["supervisor"]), "_UID": "0", "_TRANSPORT": "stdout",
-                        "_SYSTEMD_UNIT": "rustdesk.service", "_SYSTEMD_INVOCATION_ID": closing["invocation"],
+                        "_SYSTEMD_UNIT": "rustdesk.service", "_SYSTEMD_INVOCATION_ID": denial["invocation"],
                         "_BOOT_ID": Path("/proc/sys/kernel/random/boot_id").read_text().strip().replace("-", "")}
+            refusal = ("requester changed after pkcheck authorization" if phase == "session-close" else
+                       "polkit denied action=com.carriez.RustDesk.set-unattended-password, "
+                       f"subject={client.pid},{start},4001, status=exit status: 1")
             refusals = [item for item in messages if all(item.get(key) == value for key, value in expected.items())
-                        and "requester changed after pkcheck authorization" in item.get("MESSAGE", "")]
-            helper = Path("/proc") / str(closing["helper_pid"])
+                        and refusal in item.get("MESSAGE", "")]
+            helper = Path("/proc") / str(denial["helper_pid"])
             try:
                 fields = (helper / "stat").read_bytes().rsplit(b") ", 1)[1].split()
-                reaped = int(fields[19]) != closing["helper_start"]
+                reaped = int(fields[19]) != denial["helper_start"]
             except (FileNotFoundError, ProcessLookupError):
                 reaped = True
             main = int(run(["/usr/bin/systemctl", "show", "rustdesk.service",
                             "--property=MainPID", "--value"]).stdout.strip())
             unchanged = credential() == before
             alive = agent.poll() is None
-            closing.update({"agent_terminal": terminal.decode(errors="replace"),
-                            "administrator_uid": 4003, "cli_exit": client.returncode,
-                            "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:],
-                            "durable_unchanged": unchanged, "helper_reaped": reaped,
-                            "agent_alive_before_cleanup": alive, "supervisor_after": main,
-                            "fresh_refusals": refusals})
-            print("LINUX_RECEIVER_SESSION_REVOKED_OBSERVED=" + json.dumps(closing, sort_keys=True), flush=True)
+            denial.update({"agent_terminal": terminal.decode(errors="replace"),
+                           "administrator_uid": 4003, "cli_exit": client.returncode,
+                           "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:],
+                           "durable_unchanged": unchanged, "helper_reaped": reaped,
+                           "agent_alive_before_cleanup": alive, "supervisor_after": main,
+                           "fresh_refusals": refusals})
+            if phase == "bad-password":
+                exited = bool(select.select([denial_pidfd], [], [], 0)[0])
+                denial.update({**record, "agent_pid": agent.pid, "listener_inode": listener,
+                               "helper_exited": exited, "administrator_password_correct": False,
+                               "listener_unchanged": direct_listener(record) == listener})
+            observed = "LINUX_RECEIVER_ADMIN_DENIED_OBSERVED=" if phase == "bad-password" else "LINUX_RECEIVER_SESSION_REVOKED_OBSERVED="
+            print(observed + json.dumps(denial, sort_keys=True), flush=True)
             if (not password_sent or client.returncode != 1 or stdout.strip() == "Done!"
                     or not unchanged or not reaped or not alive or main != record["supervisor"]
                     or len(refusals) != 1 or ADMIN_PASSWORD.encode() in terminal):
-                raise RuntimeError("administrator grant survived requester session revocation")
+                raise RuntimeError("denied administrator request changed authority or lacked exact rejection proof")
+            if phase == "bad-password" and (not exited or terminal.count(b"Password:") != 1
+                    or terminal.count(b"AUTHENTICATION FAILED") != 1 or b"AUTHENTICATION COMPLETE" in terminal
+                    or INVALID_ADMIN_PASSWORD.encode() in terminal
+                    or "Changing service-owned unattended password was rejected by service" not in stderr):
+                raise RuntimeError("incorrect administrator password did not produce actual authentication failure and helper exit")
     finally:
         try:
             if agent is not None:
@@ -532,7 +568,7 @@ def admin_change(value, record, phase="apply", actor=None):
             for pipe in (client.stdin, client.stdout, client.stderr):
                 if pipe is not None:
                     pipe.close()
-            for descriptor in (master, slave, notify_read, notify_write):
+            for descriptor in (master, slave, notify_read, notify_write, denial_pidfd):
                 if descriptor is not None:
                     os.close(descriptor)
     changed = credential() != before
@@ -544,6 +580,13 @@ def admin_change(value, record, phase="apply", actor=None):
               "supervisor=retained helper=reaped cleanup=agent-client-joined", flush=True)
         return
     retained = direct_listener(record) == listener
+    if phase == "bad-password":
+        if changed or not retained:
+            raise RuntimeError("incorrect administrator password changed serving authority during cleanup")
+        print("LINUX_RECEIVER_ADMIN_DENIED=pass uid=4001 administrator_uid=4003 password=incorrect "
+              "authentication=failed pkcheck=exit1 helper=reaped agent=alive-before-cleanup "
+              "durable=unchanged listener=owned cleanup=agent-client-joined", flush=True)
+        return
     if phase == "requester-exit":
         if password_sent or changed or not retained:
             raise RuntimeError("abandoned administrator request changed serving authority")
@@ -1012,6 +1055,8 @@ def tests(args):
             {"previous": second, "recovered": recovered, "session": session}, sort_keys=True), flush=True)
         second = recovered
         keyed("Receiver-fixture-fourth-2026!", "session-close-recovery", second, probe_spec["sha256"])
+        admin_change("Receiver-invalid-admin-2026!", second, "bad-password")
+        keyed("Receiver-fixture-fourth-2026!", "admin-denied-recovery", second, probe_spec["sha256"])
         admin_change("Receiver-fixture-admin-2026!", second)
         keyed("Receiver-fixture-admin-2026!", "admin-applied", second, probe_spec["sha256"])
         before = credential()
@@ -1043,7 +1088,7 @@ def tests(args):
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=12 cpace=10 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 fresh_refusals=1 requester_exits=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=13 cpace=11 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 

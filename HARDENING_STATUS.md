@@ -27,10 +27,25 @@ capabilities, with no-new-privileges, in the authenticated zero-NIC VM. The firs
 14-second transaction added no host listener and joined scratch/Docker/VM cleanup.
 Whole-document role classification and compression of redundant history remain **OPEN**.
 
+**Appendix C disposition cleanup:** findings #2, #14, #15, #23, #83, #84, #86,
+#121, #127, #173, #219–#221, #223, #224 and #247 now state required security
+behavior and acceptance instead of completed repairs, gate passes or platform status.
+The 16 edited rows retain all prior requirement references; all other specification
+bytes, HTML anchors, links and table-row identities are unchanged. The specification
+shrinks from 1,830,993 to 1,823,342 bytes. The review retains typed PRS state, secret
+provisioning, exact helper/credential generations, nondumpability, pidfd-only recovery,
+package ownership, voice/FUSE confinement, tunnel limits and guest acquisition authority.
+It also removes stale global voice-reset and two-profile acquisition reports. Classification
+and comparison are retained in `appendix-disposition-classification-a22e5d80-v2.json`
+under `.harness-state/verifier-vm` (9,981 bytes; SHA-256
+`2b644aa35d7b5dcc35d0e57deb52c4bda383c7f2f9b8ecc7b4f025e4c54fd960`).
+Git history preserves removed reports. This is document/source review, with no new
+product or native behavior acceptance; existing status and all broader OPEN obligations remain.
+
 Current normative specification identity:
 
 ```text
-e55e3e21aec7af920735004f42477bae6646bd628db6aec86a9ad9a5e8b5990b  requirements.html
+a5b704d9bf700d44ee677850feb33df7f647bc484c08f03c647cce537b341da6  requirements.html
 ```
 
 ## Current Verdict
@@ -1219,8 +1234,10 @@ connection, capture source, and display; viewer clipboard application is limited
 session; Android MediaProjection demand comes from the typed Remote owner set; and Windows CLIPRDR forwarding
 requires the confined file/clipboard authority. Voice-call accept, close, and teardown admit only an owning
 `Remote`/`ViewCamera` connection with pending or active call state. On Linux, each FUSE file-content read uses
-a fresh bounded `(connection_id, stream_id)` route and rejects wrong-connection, wrong-stream, stale, or
-duplicate responses.
+a fresh `(connection_id, stream_id)` route with an eight-response nonblocking queue.
+Wrong-connection, wrong-stream and stale responses cannot reach another read; duplicate active-key
+registration is refused without replacing its owner. This does not establish duplicate-response
+rejection or a process-wide active-route capacity bound; native concurrency/resources remain OPEN.
 
 Focused source gates in `scripts/verify.sh` bind derivation-before-options, dispatcher and sink allowlists,
 exact screenshot ownership, viewer/mobile confinement, voice-call ownership, and the Linux response router;
@@ -2029,7 +2046,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `e55e3e21aec7af920735004f42477bae6646bd628db6aec86a9ad9a5e8b5990b  requirements.html`.
+Current normative specification SHA-256: `a5b704d9bf700d44ee677850feb33df7f647bc484c08f03c647cce537b341da6  requirements.html`.
 
 ### Current authority and source closure
 

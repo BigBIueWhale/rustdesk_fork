@@ -2081,12 +2081,12 @@ Async grants/wording gates deleted.
 **Debian:** `build.py`/artifact gate require standalone `polkitd`.
 `--maintenance-stage-polkit-runtime-candidate`, source aa956518: outer0/59s,
 82 signed-snapshot packages/31,596,230B; archive/manifest pins in `scripts/pins.env`.
-Acquisition only; polkit installation/authorization and release closure OPEN.
+Release closure OPEN; actual installation: installed fixture below.
 Receipt `online-fetch-receipts/run.63EwFoon0W.receipt`; raw/failure identities: audit.
 `--debian-polkit-tests`, f99f6cc0; seven archive metadata cases, outer0/13s;
 uid4000/caps-none/NNP/read-only/no-network/joined/no listener additions.
 Raw `debian-polkit-tests-run.gX6siRyvuz.serial.log`65,117B; SHA256: audit.
-Receiver/installation unexecuted; fixture/failure provenance: audit/raw log.
+Metadata only; failure provenance: audit/raw log.
 
 Logs: `.harness-state/verifier-vm/`; all hashes SHA256.
 **UID policy:** `--linux-service-uid-tests`, source aa437333;
@@ -2123,7 +2123,8 @@ no listener additions; joined cleanup.
 **Installed fixture:** `--linux-service-receiver-tests` reuses d2f309ef's exact headless
 binary. Actual polkit, PAM/logind/Xvfb, shipped unit and mode-0711 child drive eight
 principal/commit/restart cases. Fork XDO builds in a pinned ordinary container.
-Execution PENDING; no installed/release acceptance.
+5efc853f: root Applied/selected UID denied; unrelated CLI >20s.
+Raw o1lxdsFs0w: audit; receiver/release acceptance OPEN.
 
 **Still OPEN:** installed Linux both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

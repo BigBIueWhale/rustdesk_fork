@@ -228,7 +228,19 @@ def change(uid, value, admitted):
     if uid:
         argv = ["/usr/bin/setpriv", f"--reuid={uid}", f"--regid={uid}", "--clear-groups",
                 "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs", *argv]
-    result = run(argv, input=value + "\n", timeout=20, allowed=(0, 1))
+    try:
+        result = run(argv, input=value + "\n", timeout=20, allowed=(0, 1))
+    except subprocess.TimeoutExpired as error:
+        evidence = {"uid": uid, "timeout_seconds": error.timeout,
+                    "outcome": "unknown", "cli": "killed-and-reaped"}
+        for name in ("stdout", "stderr"):
+            output = getattr(error, name) or b""
+            evidence[name] = output[-4096:].decode("utf-8", errors="replace")
+        print("LINUX_RECEIVER_TIMEOUT=" + json.dumps(evidence, sort_keys=True), flush=True)
+        journal = run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager",
+                       "-n", "40"], timeout=5).stdout
+        print("LINUX_RECEIVER_SERVICE_JOURNAL=" + json.dumps(journal[-8192:]), flush=True)
+        raise RuntimeError(f"UID {uid} password CLI had no final outcome within 20 seconds") from error
     if admitted != (result.returncode == 0 and result.stdout.strip() == "Done!"):
         raise RuntimeError(f"password result differs for UID {uid}: exit {result.returncode}")
     if not admitted and result.returncode != 1:

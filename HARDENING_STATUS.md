@@ -2109,21 +2109,21 @@ Two wording cases are supplementary.
 Empty/removed, seatless unspecified/TTY, active X11, switch/closing X11 select expected UID/no-user.
 PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed receiver here.
 
-**Installed v2 accepted:** bb5a78b2/peer3b537c76, binary5c06bdcf/manifest436b6677;
-shipped unit/0711 child, 82-package polkit/PAM/logind/Xvfb; cases11/78s, build261s.
-Root Applied; UID4001/4002 exit1≤20s preserve state/generation; both wrong images denied.
-Restart changes generation without durable mutation. CPace9/probe eb9dd801 includes recovery;
-stale2 refuse change/restart. Races2: old PAKE confirms without keyed stream;
-keyed old login gets decrypted generation error/EOF; same child/listener and drained errors.
-Admin PAM Applied; fresh no-agent denied. Requester exit reaps helper19ms before agent cleanup,
-durable unchanged. Unit/cgroup/PAM/X11/Docker/VM joined; raw d7QYtcQ8qd.
+**Installed v2 accepted:** 15ea97aa/peer3b537c76, binary5c06bdcf/manifest436b6677;
+shipped unit/0711 child, 82-package polkit/PAM/logind/Xvfb; cases12/73s, reused build261s;
+CPace10/probe eb9dd801, stale2, races2/control, admin/fresh/requester-exit/session-close.
+Root Applied; UID4001/4002 and wrong images refuse. Restart preserves durable state;
+credential races refuse keyed authority and drain errors. Requester exit reaps helper19ms.
+Unit/cgroup/PAM/X11/Docker/VM joined; raw ACpyDzYZSR; full observations in bundle.
 
-**Session revocation during admin prompt: PENDING.** Close real PAM session while requester,
-agent and desktop remain live; complete admin authentication and require fresh-principal refusal,
-unchanged root credential, then same-supervisor/new-child recovery. No product change or pass claimed.
+**Session-closing prompt accepted:** requester/agent/Xvfb stay live; admin4003 PAM completes,
+then root's fresh check refuses (CLI1/durable unchanged/helper reaped). Old actor/session/child/user
+runtime retire; c2/new PID/start keeps supervisor/generation. Current-password CPace, new admin Applied
+and fresh no-agent denial pass. No product change; lingering-runtime recovery OPEN; failures retained.
 
 Evidence: `linux-wire-v2-accepted-e69129bc.json`,
 `linux-receiver-requester-exit-accepted-bb5a78b2.json`,
+`linux-receiver-session-revocation-accepted-15ea97aa.json`,
 `/tmp/privilege_securiry_deep_audit.md`. Rust1.75/zero-NIC/no-network,
 uid1000/read-only/caps-none/NNP; no new host listeners.
 

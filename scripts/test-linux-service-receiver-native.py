@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 """Installed-layout Linux receiver behavior in the owned zero-NIC systemd VM."""
 
+import fcntl
+import grp
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import pwd
+import pty
 import re
+import select
 import shutil
+import signal
 import socket
 import stat
 import struct
 import subprocess
 import sys
 import tarfile
+import termios
 import time
 import tomllib
 import uuid
@@ -26,6 +32,7 @@ PRIMARY = Path("/usr/share/rustdesk/rustdesk")
 CHILD = PRIMARY.with_name("rustdesk-service-child")
 PROBE = WORK / "probe_client"
 ENV = {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"}
+ADMIN_PASSWORD = "Receiver-admin-PAM-2026!"
 
 
 def guard():
@@ -246,6 +253,140 @@ def change(uid, value, admitted):
         raise RuntimeError(f"password result differs for UID {uid}: exit {result.returncode}")
     if not admitted and result.returncode != 1:
         raise RuntimeError("denied password operation did not report failure")
+
+
+def admin_change(value, record):
+    listener = direct_listener(record)
+    if listener is None:
+        raise RuntimeError("administrator test has no serving listener")
+    before = credential()
+    authorities = (("/usr/bin/pkttyagent", 0o755,
+                    "820110471dd023bf8272a05dd0910d876c0d2c54f3c91ed49d6cc93598f7f814"),
+                   ("/usr/lib/polkit-1/polkit-agent-helper-1", 0o4755,
+                    "8eb4c2d5f21698a41a0d6cdafb49c889c4ace55cada690c2cea118073fe05bab"))
+    for name, mode, sha in authorities:
+        path = Path(name)
+        metadata = path.lstat()
+        if (not stat.S_ISREG(metadata.st_mode)
+                or (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode)) != (0, 0, mode)
+                or digest(path) != sha):
+            raise RuntimeError("packaged authentication agent authority differs")
+    policy = Path("/usr/share/polkit-1/actions/com.carriez.RustDesk.policy")
+    if digest(policy) != digest(MEDIA / "repo/res/com.carriez.RustDesk.policy"):
+        raise RuntimeError("installed administrator policy differs from shipped policy")
+    if "rdreceiver4003" not in grp.getgrnam("sudo").gr_mem:
+        raise RuntimeError("fixture administrator lacks the packaged admin-group identity")
+    client = subprocess.Popen(
+        ["/usr/bin/setpriv", "--reuid=4001", "--regid=4001", "--clear-groups",
+         "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+         str(PRIMARY), "--password-stdin"], env=ENV,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    agent = None
+    master = slave = notify_read = notify_write = None
+    terminal = bytearray()
+    password_sent = identity_chosen = False
+    try:
+        proc = Path("/proc") / str(client.pid)
+        deadline = time.monotonic() + 3
+        while (proc / "cmdline").read_bytes().split(b"\0") != [os.fsencode(PRIMARY), b"--password-stdin", b""]:
+            if client.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError("ordinary password requester did not reach its exact image/role")
+            time.sleep(0.01)
+        status = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
+        if (not (proc / "exe").samefile(PRIMARY)
+                or status["Uid"].split() != ["4001"] * 4 or status["NoNewPrivs"].strip() != "1"
+                or any(int(status[k], 16) for k in ("CapInh", "CapPrm", "CapEff", "CapAmb"))):
+            raise RuntimeError("administrator requester has elevated process authority")
+        start = int((proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19])
+        master, slave = pty.openpty()
+        os.fchown(slave, 4001, 4001)
+        os.fchmod(slave, 0o600)
+        notify_read, notify_write = os.pipe()
+        agent = subprocess.Popen(
+            ["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)), "--polkit-agent",
+             f"{client.pid},{start}", str(notify_write)], env=ENV, pass_fds=(notify_write,),
+            stdin=slave, stdout=slave, stderr=slave)
+        os.close(slave)
+        slave = None
+        os.close(notify_write)
+        notify_write = None
+        deadline = time.monotonic() + 5
+        readable, _, _ = select.select([notify_read], [], [], max(0, deadline - time.monotonic()))
+        if not readable or os.read(notify_read, 1) or agent.poll() is not None:
+            raise RuntimeError("real polkit agent did not acknowledge registration")
+        agent_proc = Path("/proc") / str(agent.pid)
+        agent_status = dict(line.split(":", 1) for line in (agent_proc / "status").read_text().splitlines() if ":" in line)
+        if (not (agent_proc / "exe").samefile("/usr/bin/pkttyagent")
+                or agent_status["Uid"].split() != ["4001"] * 4
+                or agent_status["NoNewPrivs"].strip() != "0"
+                or any(int(agent_status[k], 16) for k in ("CapInh", "CapPrm", "CapEff", "CapAmb"))):
+            raise RuntimeError("registered authentication agent principal or image differs")
+        client.stdin.write(value + "\n")
+        client.stdin.close()
+        client.stdin = None
+        deadline = time.monotonic() + 20
+        while b"AUTHENTICATION COMPLETE" not in terminal:
+            if agent.poll() is not None or client.poll() not in (None, 0) or time.monotonic() >= deadline:
+                raise RuntimeError(f"administrator challenge did not complete: {terminal[-4096:]!r}")
+            readable, _, _ = select.select([master], [], [], min(0.2, max(0, deadline - time.monotonic())))
+            if readable:
+                data = os.read(master, 4096)
+                if not data or len(terminal) + len(data) > 32768:
+                    raise RuntimeError("authentication terminal closed or exceeded its bound")
+                terminal.extend(data)
+            if not identity_chosen and b"Choose identity to authenticate as" in terminal:
+                matches = re.findall(rb"(?m)^\s*([1-9][0-9]*)\.\s+[^\r\n]*\brdreceiver4003\b[^\r\n]*", terminal)
+                if len(matches) != 1:
+                    raise RuntimeError("administrator identity menu is missing or ambiguous")
+                os.write(master, matches[0] + b"\n")
+                identity_chosen = True
+            if not password_sent and b"Password:" in terminal:
+                if (b"com.carriez.RustDesk.set-unattended-password" not in terminal
+                        or b"rdreceiver4003" not in terminal):
+                    raise RuntimeError("authentication challenge has the wrong action or administrator")
+                if not termios.tcgetattr(master)[3] & termios.ECHO:
+                    os.write(master, (ADMIN_PASSWORD + "\n").encode())
+                    password_sent = True
+        stdout, stderr = client.communicate(timeout=5)
+    finally:
+        try:
+            if agent is not None:
+                if agent.poll() is None:
+                    os.killpg(agent.pid, signal.SIGTERM)
+                    try:
+                        agent.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(agent.pid, signal.SIGKILL)
+                        agent.wait(timeout=5)
+                try:
+                    os.killpg(agent.pid, 0)
+                except ProcessLookupError:
+                    pass
+                else:
+                    raise RuntimeError("owned authentication-agent process group remains")
+        finally:
+            if client.poll() is None:
+                client.kill()
+                client.communicate(timeout=5)
+            for pipe in (client.stdin, client.stdout, client.stderr):
+                if pipe is not None:
+                    pipe.close()
+            for descriptor in (master, slave, notify_read, notify_write):
+                if descriptor is not None:
+                    os.close(descriptor)
+    changed = credential() != before
+    retained = direct_listener(record) == listener
+    print("LINUX_RECEIVER_ADMIN_OBSERVED=" + json.dumps(
+        {**record, "listener_inode": listener, "requester_pid": client.pid, "requester_start": start,
+         "agent_pid": agent.pid, "requester_uid": 4001, "administrator_uid": 4003,
+         "agent_terminal": terminal.decode(errors="replace"), "cli_exit": client.returncode,
+         "durable_changed": changed, "listener_unchanged": retained,
+         "policy_sha256": digest(policy)}, sort_keys=True), flush=True)
+    if (not password_sent or client.returncode != 0 or stdout.strip() != "Done!" or stderr
+            or not changed or not retained):
+        raise RuntimeError("authenticated administrator change did not converge on the serving child")
+    print("LINUX_RECEIVER_ADMIN=pass uid=4001 administrator_uid=4003 subject=pid-start-bound "
+          "authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined", flush=True)
 
 
 def direct_listener(record):
@@ -563,15 +704,17 @@ def tests(args):
     users = []
     started = False
     try:
-        for uid in (4001, 4002):
+        for uid in (4001, 4002, 4003):
             try:
                 pwd.getpwuid(uid)
             except KeyError:
+                groups = ["--groups", "sudo"] if uid == 4003 else []
                 run(["/usr/sbin/useradd", "--uid", str(uid), "--user-group", "--create-home",
-                     "--shell", "/usr/sbin/nologin", f"rdreceiver{uid}"])
+                     "--shell", "/usr/sbin/nologin", *groups, f"rdreceiver{uid}"])
                 users.append(uid)
             else:
                 raise RuntimeError("receiver fixture UID already exists")
+        run(["/usr/sbin/chpasswd"], input=f"rdreceiver4003:{ADMIN_PASSWORD}\n")
         actor = subprocess.Popen(["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)), "--pam-actor"],
                                  env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         opened = pam.reply(actor)
@@ -642,6 +785,15 @@ def tests(args):
         credential_race("Receiver-fixture-third-2026!", "Receiver-fixture-fourth-2026!",
                         "before-login", second, probe_spec["sha256"])
         keyed("Receiver-fixture-fourth-2026!", "race-before-login-recovery", second, probe_spec["sha256"])
+        admin_change("Receiver-fixture-admin-2026!", second)
+        keyed("Receiver-fixture-admin-2026!", "admin-applied", second, probe_spec["sha256"])
+        before = credential()
+        listener = direct_listener(second)
+        change(4001, "Receiver-admin-not-cached-2026!", False)
+        if credential() != before or direct_listener(second) != listener:
+            raise RuntimeError("fresh unauthenticated request reused administrator authority")
+        print("LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied "
+              "durable=unchanged listener=owned", flush=True)
     finally:
         try:
             if started:
@@ -664,7 +816,7 @@ def tests(args):
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=8 cpace=7 stale_refusals=2 races=2 proxy_control=1 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=10 cpace=8 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 fresh_refusals=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 
@@ -694,6 +846,18 @@ def desktop():
               "-screen", "0", "640x480x24", "-xkbdir", str(WORK / "xkb"), "-fp", "built-ins"], ENV)
 
 
+def polkit_agent(subject, notify):
+    guard()
+    if re.fullmatch(r"[1-9][0-9]*,[1-9][0-9]*", subject) is None or not notify.isdecimal():
+        raise RuntimeError("closed authentication-agent arguments required")
+    os.setsid()
+    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+    # The ordinary agent uses the packaged setuid PAM helper inside this disposable VM.
+    os.execve("/usr/bin/setpriv", ["/usr/bin/setpriv", "--reuid=4001", "--regid=4001", "--clear-groups",
+              "--inh-caps=-all", "--ambient-caps=-all", "/usr/bin/pkttyagent",
+              "--process", subject, "--notify-fd", notify], ENV)
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--prepare-container"]:
         prepare_container()
@@ -704,6 +868,8 @@ if __name__ == "__main__":
         actor()
     elif sys.argv[1:] == ["--desktop"]:
         desktop()
+    elif len(sys.argv) == 4 and sys.argv[1] == "--polkit-agent":
+        polkit_agent(*sys.argv[2:])
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

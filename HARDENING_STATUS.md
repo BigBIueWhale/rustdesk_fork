@@ -2111,13 +2111,14 @@ PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed recei
 
 **Installed v2:** harness/peer28f7fcda, binarya5c3ebc4/manifest14137030;
 82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child; eight cases/112s.
-Root Applied/same child; UID4001/4002 exit1≤20s, state/generation unchanged;
-wrong-image denied both endpoints; restart fresh generation/durable unchanged.
+Root Applied/same child; UID4001/4002 exit1≤20s preserve state/generation;
+Wrong-image denied both; restart new generation/durable unchanged.
 Docker/unit/cgroup/PAM/X11 joined; raw HJH2W7Fv7A; build263s.
-Seven CPace positives: UID4002/probe eb9dd801, mutations/restart/refusal/race recovery.
+CPace7: UID4002/probe eb9dd801, mutations/restart/refusal/race recovery.
 Old password after replacement/restart: child/invocation/cursor tag mismatch.
 Two races: old PAKE confirms/no keyed stream; keyed old login gets decrypted generation error/EOF.
-Child/listener retained; durable changed. Errors check enqueue and bounded drain before teardown.
+Child/listener retained; durable changed. Errors check enqueue/drain before teardown.
+Admin PAM fixture PENDING native.
 
 Sources/commands/hashes: `linux-wire-v2-accepted-e69129bc.json`,
 `linux-receiver-races-accepted-28f7fcda.json`,

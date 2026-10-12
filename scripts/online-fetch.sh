@@ -3309,7 +3309,7 @@ maintenance_discover_devcheck_image() {
 }
 
 maintenance_stage_ledger_tokenizer() {
-    require_devcheck_image_pins
+    require_android_builder_image_pins
     require_image_pin LEDGER_TOKENIZER_WHEEL_URL
     require_image_pin SHA256_LEDGER_TOKENIZER_WHEEL
     require_image_pin LEDGER_TOKENIZER_RANKS_URL
@@ -3332,7 +3332,7 @@ maintenance_stage_ledger_tokenizer() {
         && [ ! -e "$part" ] && [ ! -L "$part" ] \
         || die 'ledger tokenizer candidate or staging already exists'
     /usr/bin/install -d -m 0700 -- "$output"
-    verify_or_load_devcheck_image
+    verify_or_load_android_builder_image
     online_docker_run_archive_acquisition \
         --mount "type=bind,source=$SCRIPT_DIR/stage-ledger-tokenizer.sh,target=/stage-ledger-tokenizer.sh,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$output,target=/outputs,bind-recursive=disabled" \
@@ -3342,7 +3342,7 @@ maintenance_stage_ledger_tokenizer() {
         --env "TOKENIZER_WHEEL_SHA256=$SHA256_LEDGER_TOKENIZER_WHEEL" \
         --env "TOKENIZER_RANKS_URL=$LEDGER_TOKENIZER_RANKS_URL" \
         --env "TOKENIZER_RANKS_SHA256=$SHA256_LEDGER_TOKENIZER_RANKS" \
-        "$DEV_CHECK_IMAGE_ID" \
+        "$ANDROID_BUILDER_IMAGE_ID" \
         /bin/bash --noprofile --norc /stage-ledger-tokenizer.sh /outputs \
         || die 'ledger tokenizer candidate acquisition failed'
     [ "$(/usr/bin/find "$output" -mindepth 1 -maxdepth 1 -printf x)" = xx ] \

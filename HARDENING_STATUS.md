@@ -2298,7 +2298,7 @@ Immutable `.harness-state/verifier-vm/linux-receiver-admitted-shutdown-accepted-
 (22,743 bytes; SHA-256 `3db13b7cc04a19caa8cc46c996bbb641796dcd80027abdd139250dd5da816b44`)
 binds the barrier, process/journal/unit observations, recovery, artifacts, raw log, storage and
 freezes. This is one admitted-write schedule in debug/headless seatless-X11 installed layout;
-standard unit-stop, failed convergence, delay/contention/capacity/GUI cancellation and wider
+standard unit-stop, other convergence-failure schedules, delay/contention/capacity/GUI cancellation and wider
 acceptance remain OPEN. No product code or artifact changed.
 
 **Terminal child-convergence failure during supervisor shutdown: exact installed Linux case accepted.**

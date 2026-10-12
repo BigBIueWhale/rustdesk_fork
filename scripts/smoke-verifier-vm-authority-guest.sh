@@ -740,11 +740,22 @@ run_linux_service_receiver_tests() {
 }
 
 run_ledger_token_count() {
-    local work work_id source_before status=0
+    local work work_id source_before status=0 operation
+    local storage_helper=$VERIFY_REPO/scripts/vm-transient-storage.py
     local helper=$VERIFY_REPO/scripts/count-ledger-tokens.py
     local input=$VERIFY_REPO/HARDENING_STATUS.md
     local archive=/mnt/rustdesk-verifier-inputs/ledger-tokenizer-inputs.tar.gz
     local output=$ROOT/ledger-token-count.out
+    for operation in preflight reserve check watch run; do
+        status=0
+        /usr/bin/python3 -B -I -S "$storage_helper" "$operation" --memory-mib 2048 \
+            >"$ROOT/storage-root-$operation.out" 2>&1 || status=$?
+        [ "$status" -eq 1 ] \
+            && [ "$(stat -c '%s' "$ROOT/storage-root-$operation.out")" -le 4096 ] \
+            && grep -Fxq 'ValueError: host root is forbidden' "$ROOT/storage-root-$operation.out" \
+            || fail "VM storage helper did not refuse root for $operation"
+    done
+    printf 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started\n'
     source_before="$(sha256sum "$helper" "$input" "$archive" "$VERIFY_REPO/scripts/pins.env")"
     [ "$(sha256sum "$helper" | awk '{print $1}')" = "$LEDGER_RECIPE_SHA256" ] \
         && [ "$(sha256sum "$input" | awk '{print $1}')" = "$LEDGER_INPUT_SHA256" ] \

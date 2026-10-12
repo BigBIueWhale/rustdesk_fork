@@ -3905,6 +3905,7 @@ vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFI
     "repo/scripts/verify-vm-entry-preflight.sh=$ENTRY_PREFLIGHT" \
     "repo/scripts/verify-scan.sh=$VERIFY_SCAN_SOURCE" \
     "repo/scripts/verify-private-tree-closure.py=$CLEANUP_HELPER" \
+    "repo/scripts/vm-transient-storage.py=$VM_STORAGE_SOURCE" \
     "repo/scripts/smoke-verifier-vm-authority.sh=$OUTER_SOURCE" \
     "repo/scripts/test-verifier-vm-run-admission.sh=$RUN_ADMISSION_TEST" \
     "repo/scripts/android-peer-artifact.py=$ANDROID_PEER_ARTIFACT_SOURCE" \
@@ -4509,6 +4510,8 @@ elif [ "$MODE" = debian-polkit-tests ]; then
     printf '%s\n' "$debian_polkit_receipt" "$debian_polkit_vm_receipt"
 elif [ "$MODE" = ledger-token-count ]; then
     ledger_vm_receipt="LEDGER_TOKEN_COUNT_VM=pass uid=4000 gid=4000 caps=none nnp=yes input_sha256=$ledger_input_sha recipe_sha256=$ledger_recipe_sha source=readonly network=none docker=retired scratch=retired cleanup=joined"
+    /usr/bin/grep -Fxq 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' "$SERIAL_LOG" \
+        || fail 'VM storage helper root-refusal runtime receipt is absent'
     require_exact_fixed_receipt "$ledger_vm_receipt" 'actual ledger token count execution and finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'ledger token-count guest completion'
     /usr/bin/python3 -B -I -S - "$SERIAL_LOG" "$ledger_input_sha" "$ledger_recipe_sha" \

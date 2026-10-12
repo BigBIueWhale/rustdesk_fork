@@ -309,6 +309,7 @@ def watch(args):
 
 
 def main():
+    require(os.geteuid() != 0 and os.getegid() != 0, 'host root is forbidden')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation', choices=('preflight', 'reserve', 'check', 'watch', 'run'))
     parser.add_argument('--memory-mib', type=int, required=True)

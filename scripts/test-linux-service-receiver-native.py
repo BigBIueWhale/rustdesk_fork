@@ -842,6 +842,8 @@ def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=
             run(["/usr/bin/journalctl", "--sync"], timeout=5)
             messages = [json.loads(line) for line in run(
                 ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "--output=json",
+                 "--output-fields=__CURSOR,__MONOTONIC_TIMESTAMP,_BOOT_ID,_PID,_UID,_TRANSPORT,"
+                 "_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,INVOCATION_ID,UNIT,MESSAGE",
                  "--after-cursor=" + cursor, "-n", "100"], timeout=5).stdout.splitlines()]
             root_messages = [item for item in messages if all(item.get(k) == v for k, v in expected.items())]
             errors = [item for item in root_messages if "systemd stop extension" in item.get("MESSAGE", "")
@@ -857,7 +859,9 @@ def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=
                         "listener_absent": listener_absent, "cgroup_absent": not Path("/sys/fs/cgroup" + cgroup).exists(),
                         "durable_retained": credential() == changed, "fixture_resumed_child": False,
                         "requester_pid": client.pid, "requester_start": requester_start,
-                        "root_messages": root_messages, "manager_timeouts": manager_timeouts}
+                        "root_error_count": len(errors), "root_messages": errors[:1] + errors[-1:],
+                        "root_normal_exit": any(item.get("MESSAGE", "").endswith("librustdesk::platform::linux] Exit")
+                                                for item in root_messages), "manager_timeouts": manager_timeouts}
             print("LINUX_RECEIVER_NOTIFICATION_TIMEOUT_OBSERVED=" + json.dumps(observed, sort_keys=True), flush=True)
             if (not 29 <= failure_seconds <= 45 or outcome != {
                     "ActiveState": "failed", "SubState": "failed", "Result": "timeout", "MainPID": "0",
@@ -868,18 +872,29 @@ def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=
                     or any(item.get("MESSAGE", "").endswith("librustdesk::platform::linux] Exit") for item in root_messages)):
                 raise RuntimeError("actual manager timeout did not prove retained notification errors and uncertain finality")
             progress_at = 60
-            while client.poll() is None:
+            while True:
                 elapsed = time.monotonic() - began
                 if elapsed > 625 or credential() != changed:
                     raise RuntimeError("uncertain requester exceeded its recovery bound or changed durable state")
+                try:
+                    stdout, stderr = client.communicate(timeout=0.1)
+                except subprocess.TimeoutExpired as pending:
+                    if len(pending.output or b"") + len(pending.stderr or b"") > 2 * 1024 * 1024:
+                        raise RuntimeError("uncertain requester output exceeded its capture bound")
+                else:
+                    if len(stdout.encode()) + len(stderr.encode()) > 2 * 1024 * 1024:
+                        raise RuntimeError("uncertain requester output exceeded its capture bound")
+                    break
                 if elapsed >= progress_at:
                     print(f"LINUX_RECEIVER_NOTIFICATION_WAIT seconds={elapsed:.1f} unit=failed requester=unknown durable=retained", flush=True)
                     progress_at += 30
                 time.sleep(0.05)
-            stdout, stderr = client.communicate(timeout=5)
             print("LINUX_RECEIVER_NOTIFICATION_CLIENT_OBSERVED=" + json.dumps(
                 {"requester_pid": client.pid, "requester_start": requester_start, "seconds": time.monotonic() - began,
                  "cli_exit": client.returncode, "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:],
+                 "stdout_bytes": len(stdout.encode()), "stderr_bytes": len(stderr.encode()),
+                 "stdout_sha256": hashlib.sha256(stdout.encode()).hexdigest(),
+                 "stderr_sha256": hashlib.sha256(stderr.encode()).hexdigest(),
                  "durable_retained": credential() == changed}, sort_keys=True), flush=True)
             if (client.returncode != 1 or "Done!" in stdout or not 590 <= time.monotonic() - began <= 625
                     or "service-owned password mutation outcome remains unknown after bounded recovery" not in stderr

@@ -565,7 +565,7 @@ def observe_admin_supervisor_shutdown(client, agent, terminal, start, record, be
             os.close(fd)
 
 
-def admitted_password_shutdown(value, record):
+def admitted_password_shutdown(value, record, fail_convergence=False):
     listener = direct_listener(record)
     if listener is None:
         raise RuntimeError("admitted shutdown has no retained serving listener")
@@ -588,7 +588,7 @@ def admitted_password_shutdown(value, record):
         status = dict(line.split(":", 1) for line in (supervisor / "status").read_text().splitlines() if ":" in line)
         properties = dict(line.split("=", 1) for line in run(
             ["/usr/bin/systemctl", "show", "rustdesk.service",
-             "--property=MainPID,InvocationID,ControlGroup,ActiveState"]).stdout.splitlines())
+             "--property=MainPID,InvocationID,ControlGroup,ActiveState,NRestarts"]).stdout.splitlines())
         invocation = properties.get("InvocationID", "")
         cgroup = "/system.slice/rustdesk.service"
         if (properties.get("MainPID") != str(record["supervisor"]) or properties.get("ActiveState") != "active"
@@ -654,11 +654,126 @@ def admitted_password_shutdown(value, record):
                 or any(select.select([fd], [], [], 0)[0] for fd in pidfds.values())):
             raise RuntimeError("shutdown cancelled admitted work or completed before child convergence")
         held_seconds = time.monotonic() - began
-        print("LINUX_RECEIVER_ADMITTED_BARRIER_OBSERVED=" + json.dumps(
+        barrier_name = "CONVERGENCE" if fail_convergence else "ADMITTED"
+        print(f"LINUX_RECEIVER_{barrier_name}_BARRIER_OBSERVED=" + json.dumps(
             {**record, "requester_pid": client.pid, "requester_start": requester_start,
              "durable_changed": True, "requester_alive": True, "child_state": "T",
              "supervisor_alive": True, "held_seconds": held_seconds, "shutdown_journal": shutdowns[0]},
             sort_keys=True), flush=True)
+        if fail_convergence:
+            progress_at = 0
+            while not select.select([pidfds["supervisor"]], [], [], 0)[0]:
+                elapsed = time.monotonic() - began
+                if elapsed >= 625:
+                    raise RuntimeError("unresolved authority did not fail-stop after its full recovery window")
+                if client.poll() is not None and (client.returncode != 1 or elapsed < 590):
+                    raise RuntimeError("unconverged credential requester reported a premature terminal result")
+                try:
+                    fields = (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                    still_stopped = int(fields[19]) == record["start"] and fields[0] == b"T"
+                except (FileNotFoundError, ProcessLookupError):
+                    still_stopped = False
+                if not still_stopped:
+                    if select.select([pidfds["supervisor"]], [], [], 0)[0]:
+                        break
+                    raise RuntimeError("convergence-failure child escaped its retained kernel stop barrier")
+                if elapsed >= progress_at:
+                    print(f"LINUX_RECEIVER_CONVERGENCE_WAIT seconds={elapsed:.1f} child=kernel-stopped "
+                          "durable=changed requester=not-Applied supervisor=draining", flush=True)
+                    progress_at += 30
+                select.select([pidfds["supervisor"]], [], [], 0.02)
+            failure_seconds = time.monotonic() - began
+            deadline = time.monotonic() + 1
+            while True:
+                outcome = dict(line.split("=", 1) for line in run(
+                    ["/usr/bin/systemctl", "show", "rustdesk.service",
+                     "--property=ActiveState,SubState,Result,MainPID,ExecMainPID,ExecMainCode,ExecMainStatus,InvocationID"]
+                ).stdout.splitlines())
+                if (outcome.get("MainPID") == "0"
+                        and outcome.get("ExecMainPID") == str(record["supervisor"])
+                        and outcome.get("ExecMainStatus") == str(signal.SIGABRT)):
+                    break
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.01)
+            print("LINUX_RECEIVER_CONVERGENCE_EXIT_OBSERVED=" + json.dumps(
+                {**record, "supervisor_start": supervisor_start, "seconds": failure_seconds,
+                 "unit_outcome": outcome, "unit_reference_held_at_outcome": True,
+                 "fixture_resumed_child": False, "requester_exit_at_failure": client.poll()}, sort_keys=True), flush=True)
+            if (not 590 <= failure_seconds <= 625 or outcome.get("MainPID") != "0"
+                    or outcome.get("ExecMainPID") != str(record["supervisor"])
+                    or outcome.get("ExecMainStatus") != str(signal.SIGABRT)
+                    or (outcome.get("ExecMainCode"), outcome.get("Result")) not in
+                    (("2", "signal"), ("3", "core-dump"))
+                    or outcome.get("InvocationID") != invocation
+                    or outcome.get("ActiveState") not in ("deactivating", "activating")):
+                raise RuntimeError("unresolved supervisor authority was not an exact SIGABRT unit failure")
+            unit_reference.close()
+            stdout, stderr = client.communicate(timeout=5)
+            if (client.returncode != 1 or "Done!" in stdout
+                    or "service-owned password mutation outcome remains unknown after bounded recovery" not in stderr):
+                raise RuntimeError("unconverged root request did not retain an explicit uncertain outcome")
+            run(["/usr/bin/journalctl", "--sync"], timeout=5)
+            messages = [json.loads(line) for line in run(
+                ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "--output=json",
+                 "--after-cursor=" + cursor, "_SYSTEMD_INVOCATION_ID=" + invocation, "-n", "40"],
+                timeout=5).stdout.splitlines()]
+            root_messages = [item for item in messages if all(item.get(k) == v for k, v in expected.items())]
+            if (not any("Linux durable credential changed but its runtime replica did not converge" in
+                        item.get("MESSAGE", "") for item in root_messages)
+                    or not any("Linux password admission transactions drained with unresolved authority; terminating"
+                               in item.get("MESSAGE", "") for item in root_messages)
+                    or any(item.get("MESSAGE", "").endswith("librustdesk::platform::linux] Exit")
+                           for item in root_messages)):
+                raise RuntimeError("exact root journal did not prove unresolved-replica fail-stop")
+            recovered = ready(record)
+            deadline = time.monotonic() + 10
+            while (recovered_listener := direct_listener(recovered)) is None:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("automatically recovered child has no serving listener")
+                time.sleep(0.05)
+            recovered_unit = dict(line.split("=", 1) for line in run(
+                ["/usr/bin/systemctl", "show", "rustdesk.service",
+                 "--property=ActiveState,SubState,Result,MainPID,InvocationID,NRestarts"]).stdout.splitlines())
+            retired = {}
+            for role, (proc, expected_start) in identities.items():
+                exited = bool(select.select([pidfds[role]], [], [], 0)[0])
+                try:
+                    reaped = int((proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19]) != expected_start
+                except (FileNotFoundError, ProcessLookupError):
+                    reaped = True
+                retired[role] = {"exited": exited, "reaped": reaped}
+            listener_absent = not any(len(fields := line.split()) >= 10 and fields[3] == "0A"
+                                      and fields[9] == str(listener)
+                                      for line in Path("/proc/net/tcp").read_text().splitlines()[1:])
+            durable_retained = credential() == changed
+            observed = {**record, "supervisor_start": supervisor_start, "listener_inode": listener,
+                        "requester_pid": client.pid, "requester_start": requester_start, "requester_uid": 0,
+                        "child_barrier": "pidfd-SIGSTOP/kernel-T", "fixture_resumed_child": False,
+                        "shutdown_signal": "supervisor-pidfd-SIGTERM", "durable_changed_before_shutdown": True,
+                        "held_after_shutdown_seconds": held_seconds, "failure_seconds": failure_seconds,
+                        "elapsed_seconds": time.monotonic() - began, "unit_outcome": outcome,
+                        "unit_reference_held_at_outcome": True, "cli_exit": client.returncode,
+                        "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:], "retired": retired,
+                        "listener_absent": listener_absent, "durable_retained": durable_retained,
+                        "root_journal": root_messages, "recovered": recovered,
+                        "recovered_unit": recovered_unit, "recovered_listener_inode": recovered_listener,
+                        "restarts_before": properties["NRestarts"]}
+            print("LINUX_RECEIVER_CONVERGENCE_FAILURE_OBSERVED=" + json.dumps(observed, sort_keys=True), flush=True)
+            if (not all(item["exited"] and item["reaped"] for item in retired.values())
+                    or not listener_absent or recovered_listener == listener or not durable_retained
+                    or recovered_unit.get("ActiveState") != "active" or recovered_unit.get("SubState") != "running"
+                    or recovered_unit.get("Result") != "success"
+                    or recovered_unit.get("MainPID") != str(recovered["supervisor"])
+                    or recovered_unit.get("InvocationID") == invocation
+                    or not re.fullmatch(r"[0-9a-f]{32}", recovered_unit.get("InvocationID", ""))
+                    or int(recovered_unit["NRestarts"]) != int(properties["NRestarts"]) + 1):
+                raise RuntimeError("failed service generation did not retire into exactly one automatic recovery")
+            print("LINUX_RECEIVER_CONVERGENCE_FAILURE=pass uid=0 durable=changed-before-stop "
+                  "child=kernel-stopped shutdown=supervisor-only recovery_window=600 "
+                  "cli=explicit-uncertainty supervisor=SIGABRT old_child=reaped old_listener=absent "
+                  "restart=automatic-once durable=retained cleanup=client-joined", flush=True)
+            return recovered
         signal.pidfd_send_signal(pidfds["child"], signal.SIGCONT)
         child_stopped = False
         stdout, stderr = client.communicate(timeout=5)
@@ -1342,7 +1457,7 @@ def credential_race(old, new, phase, record, probe_sha):
               f"cleanup=joined probe_sha256={probe_sha}", flush=True)
 
 
-def tests(args):
+def tests(args, convergence_failure=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -1416,109 +1531,114 @@ def tests(args):
             raise RuntimeError("root mutation did not converge on the original child")
         print("LINUX_RECEIVER_CASE=root-applied durable=root convergence=Applied", flush=True)
         keyed("Receiver-fixture-first-2026!", "root-applied", first, probe_spec["sha256"])
-        for uid in (4001, 4002):
-            change(uid, f"Receiver-refused-{uid}-2026!", False)
-            if credential() != before or child_record() != first:
-                raise RuntimeError("unauthorized caller changed credential or service generation")
-            print(f"LINUX_RECEIVER_CASE=principal-denied uid={uid} durable=unchanged", flush=True)
-        for endpoint in ("_service", "_service_password"):
-            peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            try:
-                peer.settimeout(5)
-                peer.connect(f"/tmp/RustDesk-service/ipc{endpoint}")
+        if convergence_failure:
+            second = admitted_password_shutdown("Receiver-fixture-convergence-2026!", first, fail_convergence=True)
+            keyed("Receiver-fixture-convergence-2026!", "convergence-failure-recovery", second, probe_spec["sha256"])
+            stale_refused("Receiver-fixture-first-2026!", "convergence-failure-recovery", second, probe_spec["sha256"])
+        else:
+            for uid in (4001, 4002):
+                change(uid, f"Receiver-refused-{uid}-2026!", False)
+                if credential() != before or child_record() != first:
+                    raise RuntimeError("unauthorized caller changed credential or service generation")
+                print(f"LINUX_RECEIVER_CASE=principal-denied uid={uid} durable=unchanged", flush=True)
+            for endpoint in ("_service", "_service_password"):
+                peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 try:
-                    data = peer.recv(1)
-                except ConnectionResetError:
-                    data = b""
-                if data:
-                    raise RuntimeError("arbitrary-image peer received a service response")
-            finally:
-                peer.close()
-            if credential() != before or child_record() != first:
-                raise RuntimeError("arbitrary-image peer affected service state")
-            print(f"LINUX_RECEIVER_CASE=wrong-image endpoint={endpoint} prebody=refused", flush=True)
-        change(0, "Receiver-fixture-second-2026!", True)
-        after = credential()
-        if after == before or child_record() != first:
-            raise RuntimeError("second root credential change did not converge")
-        print("LINUX_RECEIVER_CASE=root-reapplied durable=changed convergence=Applied", flush=True)
-        keyed("Receiver-fixture-second-2026!", "root-reapplied", first, probe_spec["sha256"])
-        stale_refused("Receiver-fixture-first-2026!", "root-reapplied", first, probe_spec["sha256"])
-        keyed("Receiver-fixture-second-2026!", "root-reapplied-after-refusal", first, probe_spec["sha256"])
-        run(["/usr/bin/systemctl", "restart", "rustdesk.service"], timeout=40)
-        second = ready(first)
-        if second["supervisor"] == first["supervisor"]:
-            raise RuntimeError("service restart retained the old supervisor")
-        if credential() != after:
-            raise RuntimeError("restart changed durable root credential")
-        print(f"LINUX_RECEIVER_CASE=restart observed={json.dumps(second, sort_keys=True)} durable=unchanged", flush=True)
-        keyed("Receiver-fixture-second-2026!", "restart", second, probe_spec["sha256"])
-        stale_refused("Receiver-fixture-first-2026!", "restart", second, probe_spec["sha256"])
-        keyed("Receiver-fixture-second-2026!", "restart-after-refusal", second, probe_spec["sha256"])
-        credential_race("Receiver-fixture-second-2026!", None, "control", second, probe_spec["sha256"])
-        credential_race("Receiver-fixture-second-2026!", "Receiver-fixture-third-2026!",
-                        "before-keys", second, probe_spec["sha256"])
-        keyed("Receiver-fixture-third-2026!", "race-before-keys-recovery", second, probe_spec["sha256"])
-        credential_race("Receiver-fixture-third-2026!", "Receiver-fixture-fourth-2026!",
-                        "before-login", second, probe_spec["sha256"])
-        keyed("Receiver-fixture-fourth-2026!", "race-before-login-recovery", second, probe_spec["sha256"])
-        admin_change("Receiver-abandoned-admin-2026!", second, "requester-exit")
-        keyed("Receiver-fixture-fourth-2026!", "requester-exit-recovery", second, probe_spec["sha256"])
-        admin_change("Receiver-revoked-admin-2026!", second, "session-close",
-                     {"process": actor, "session": session, "uid": 4001, "type": "x11"})
-        actor.stdin.write(b"quit\n")
-        actor.stdin.flush()
-        if actor.wait(timeout=10) != 0:
-            raise RuntimeError("closed PAM/desktop actor failed to retire")
-        actor.stdin.close()
-        actor.stdout.close()
-        deadline = time.monotonic() + 5
-        while session in pam.sessions() or Path("/tmp/.X11-unix/X77").exists():
-            if time.monotonic() >= deadline:
-                raise RuntimeError("closed session or desktop survived actor retirement")
-            time.sleep(0.05)
-        deadline = time.monotonic() + 10
-        while True:
-            try:
-                fields = Path(f"/proc/{second['pid']}/stat").read_bytes().rsplit(b") ", 1)[1].split()
-                retired = int(fields[19]) != second["start"]
-            except (FileNotFoundError, ProcessLookupError):
-                retired = True
-            if retired and not Path("/run/rustdesk/service-child.record").exists():
-                break
-            if time.monotonic() >= deadline:
-                raise RuntimeError("closed desktop retained its old service-child identity")
-            time.sleep(0.05)
-        run(["/usr/bin/systemctl", "stop", "user@4001.service", "user-runtime-dir@4001.service"])
-        if Path("/run/user/4001").exists():
-            raise RuntimeError("closed user's runtime survived fixture retirement")
-        actor = subprocess.Popen(["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)), "--pam-actor"],
-                                 env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        opened = pam.reply(actor)
-        session = opened["session"]
-        pam.properties({"process": actor, "session": session, "uid": 4001, "type": "x11"}, "active")
-        recovered = ready(second, child_replacement=True)
-        if recovered["supervisor"] != second["supervisor"]:
-            raise RuntimeError("session recovery replaced the stable supervisor")
-        print("LINUX_RECEIVER_SESSION_RECOVERY_OBSERVED=" + json.dumps(
-            {"previous": second, "recovered": recovered, "session": session}, sort_keys=True), flush=True)
-        second = recovered
-        keyed("Receiver-fixture-fourth-2026!", "session-close-recovery", second, probe_spec["sha256"])
-        admin_change("Receiver-invalid-admin-2026!", second, "bad-password")
-        keyed("Receiver-fixture-fourth-2026!", "admin-denied-recovery", second, probe_spec["sha256"])
-        admin_change("Receiver-agent-lost-2026!", second, "agent-exit")
-        keyed("Receiver-fixture-fourth-2026!", "agent-exit-recovery", second, probe_spec["sha256"])
-        admin_change("Receiver-shutdown-admin-2026!", second, "supervisor-shutdown")
-        run(["/usr/bin/systemctl", "start", "rustdesk.service"])
-        second = ready(second)
-        print("LINUX_RECEIVER_SHUTDOWN_RECOVERY_OBSERVED=" + json.dumps(second, sort_keys=True), flush=True)
-        keyed("Receiver-fixture-fourth-2026!", "supervisor-shutdown-recovery", second, probe_spec["sha256"])
-        admitted_password_shutdown("Receiver-fixture-shutdown-2026!", second)
-        run(["/usr/bin/systemctl", "start", "rustdesk.service"])
-        second = ready(second)
-        print("LINUX_RECEIVER_ADMITTED_RECOVERY_OBSERVED=" + json.dumps(second, sort_keys=True), flush=True)
-        keyed("Receiver-fixture-shutdown-2026!", "admitted-shutdown-recovery", second, probe_spec["sha256"])
-        stale_refused("Receiver-fixture-fourth-2026!", "admitted-shutdown-recovery", second, probe_spec["sha256"])
+                    peer.settimeout(5)
+                    peer.connect(f"/tmp/RustDesk-service/ipc{endpoint}")
+                    try:
+                        data = peer.recv(1)
+                    except ConnectionResetError:
+                        data = b""
+                    if data:
+                        raise RuntimeError("arbitrary-image peer received a service response")
+                finally:
+                    peer.close()
+                if credential() != before or child_record() != first:
+                    raise RuntimeError("arbitrary-image peer affected service state")
+                print(f"LINUX_RECEIVER_CASE=wrong-image endpoint={endpoint} prebody=refused", flush=True)
+            change(0, "Receiver-fixture-second-2026!", True)
+            after = credential()
+            if after == before or child_record() != first:
+                raise RuntimeError("second root credential change did not converge")
+            print("LINUX_RECEIVER_CASE=root-reapplied durable=changed convergence=Applied", flush=True)
+            keyed("Receiver-fixture-second-2026!", "root-reapplied", first, probe_spec["sha256"])
+            stale_refused("Receiver-fixture-first-2026!", "root-reapplied", first, probe_spec["sha256"])
+            keyed("Receiver-fixture-second-2026!", "root-reapplied-after-refusal", first, probe_spec["sha256"])
+            run(["/usr/bin/systemctl", "restart", "rustdesk.service"], timeout=40)
+            second = ready(first)
+            if second["supervisor"] == first["supervisor"]:
+                raise RuntimeError("service restart retained the old supervisor")
+            if credential() != after:
+                raise RuntimeError("restart changed durable root credential")
+            print(f"LINUX_RECEIVER_CASE=restart observed={json.dumps(second, sort_keys=True)} durable=unchanged", flush=True)
+            keyed("Receiver-fixture-second-2026!", "restart", second, probe_spec["sha256"])
+            stale_refused("Receiver-fixture-first-2026!", "restart", second, probe_spec["sha256"])
+            keyed("Receiver-fixture-second-2026!", "restart-after-refusal", second, probe_spec["sha256"])
+            credential_race("Receiver-fixture-second-2026!", None, "control", second, probe_spec["sha256"])
+            credential_race("Receiver-fixture-second-2026!", "Receiver-fixture-third-2026!",
+                            "before-keys", second, probe_spec["sha256"])
+            keyed("Receiver-fixture-third-2026!", "race-before-keys-recovery", second, probe_spec["sha256"])
+            credential_race("Receiver-fixture-third-2026!", "Receiver-fixture-fourth-2026!",
+                            "before-login", second, probe_spec["sha256"])
+            keyed("Receiver-fixture-fourth-2026!", "race-before-login-recovery", second, probe_spec["sha256"])
+            admin_change("Receiver-abandoned-admin-2026!", second, "requester-exit")
+            keyed("Receiver-fixture-fourth-2026!", "requester-exit-recovery", second, probe_spec["sha256"])
+            admin_change("Receiver-revoked-admin-2026!", second, "session-close",
+                         {"process": actor, "session": session, "uid": 4001, "type": "x11"})
+            actor.stdin.write(b"quit\n")
+            actor.stdin.flush()
+            if actor.wait(timeout=10) != 0:
+                raise RuntimeError("closed PAM/desktop actor failed to retire")
+            actor.stdin.close()
+            actor.stdout.close()
+            deadline = time.monotonic() + 5
+            while session in pam.sessions() or Path("/tmp/.X11-unix/X77").exists():
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("closed session or desktop survived actor retirement")
+                time.sleep(0.05)
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    fields = Path(f"/proc/{second['pid']}/stat").read_bytes().rsplit(b") ", 1)[1].split()
+                    retired = int(fields[19]) != second["start"]
+                except (FileNotFoundError, ProcessLookupError):
+                    retired = True
+                if retired and not Path("/run/rustdesk/service-child.record").exists():
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("closed desktop retained its old service-child identity")
+                time.sleep(0.05)
+            run(["/usr/bin/systemctl", "stop", "user@4001.service", "user-runtime-dir@4001.service"])
+            if Path("/run/user/4001").exists():
+                raise RuntimeError("closed user's runtime survived fixture retirement")
+            actor = subprocess.Popen(["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)), "--pam-actor"],
+                                     env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            opened = pam.reply(actor)
+            session = opened["session"]
+            pam.properties({"process": actor, "session": session, "uid": 4001, "type": "x11"}, "active")
+            recovered = ready(second, child_replacement=True)
+            if recovered["supervisor"] != second["supervisor"]:
+                raise RuntimeError("session recovery replaced the stable supervisor")
+            print("LINUX_RECEIVER_SESSION_RECOVERY_OBSERVED=" + json.dumps(
+                {"previous": second, "recovered": recovered, "session": session}, sort_keys=True), flush=True)
+            second = recovered
+            keyed("Receiver-fixture-fourth-2026!", "session-close-recovery", second, probe_spec["sha256"])
+            admin_change("Receiver-invalid-admin-2026!", second, "bad-password")
+            keyed("Receiver-fixture-fourth-2026!", "admin-denied-recovery", second, probe_spec["sha256"])
+            admin_change("Receiver-agent-lost-2026!", second, "agent-exit")
+            keyed("Receiver-fixture-fourth-2026!", "agent-exit-recovery", second, probe_spec["sha256"])
+            admin_change("Receiver-shutdown-admin-2026!", second, "supervisor-shutdown")
+            run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+            second = ready(second)
+            print("LINUX_RECEIVER_SHUTDOWN_RECOVERY_OBSERVED=" + json.dumps(second, sort_keys=True), flush=True)
+            keyed("Receiver-fixture-fourth-2026!", "supervisor-shutdown-recovery", second, probe_spec["sha256"])
+            admitted_password_shutdown("Receiver-fixture-shutdown-2026!", second)
+            run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+            second = ready(second)
+            print("LINUX_RECEIVER_ADMITTED_RECOVERY_OBSERVED=" + json.dumps(second, sort_keys=True), flush=True)
+            keyed("Receiver-fixture-shutdown-2026!", "admitted-shutdown-recovery", second, probe_spec["sha256"])
+            stale_refused("Receiver-fixture-fourth-2026!", "admitted-shutdown-recovery", second, probe_spec["sha256"])
         admin_change("Receiver-fixture-admin-2026!", second)
         keyed("Receiver-fixture-admin-2026!", "admin-applied", second, probe_spec["sha256"])
         before = credential()
@@ -1550,6 +1670,12 @@ def tests(args):
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
+    if convergence_failure:
+        print(f"LINUX_SERVICE_CONVERGENCE_NATIVE=pass cases=4 cpace=3 stale_refusals=1 convergence_failures=1 "
+              f"admin_grants=1 fresh_refusals=1 source={commit} binary_sha256={spec['sha256']} "
+              f"probe_sha256={probe_spec['sha256']} fixture=installed-layout polkit=actual logind=actual "
+              "child=supervised cleanup=joined", flush=True)
+        return
     print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=16 cpace=14 stale_refusals=3 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
@@ -1604,6 +1730,8 @@ if __name__ == "__main__":
         desktop()
     elif len(sys.argv) == 4 and sys.argv[1] == "--polkit-agent":
         polkit_agent(*sys.argv[2:])
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--convergence-failure":
+        tests(sys.argv[1:6], convergence_failure=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

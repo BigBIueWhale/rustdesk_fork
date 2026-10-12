@@ -16,6 +16,7 @@ RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
 APPLE_CURSOR_ONLY=0
 X11_KEY_INPUT_ONLY=0
+LINUX_RECEIVER_PROFILE=focused
 case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
@@ -38,8 +39,11 @@ case "$#:${8:-}" in
         LEDGER_INPUT_SHA256=${9}
         LEDGER_RECIPE_SHA256=${10}
         ;;
-    12:--linux-service-receiver-tests)
+    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests)
         MODE=linux-service-receiver-tests
+        if [ "${8}" = --linux-service-convergence-failure-tests ]; then
+            LINUX_RECEIVER_PROFILE=convergence-failure
+        fi
         [[ "${9}" =~ ^[0-9a-f]{40}$ ]] && [[ "${10}" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "${11}" =~ ^[0-9a-f]{64}$ ]] && [[ "${12}" =~ ^[0-9a-f]{40}$ ]] || exit 2
         ;;
@@ -634,6 +638,7 @@ run_linux_flutter_engine_prepare() {
 
 run_linux_service_receiver_tests() {
     local work=/var/tmp/rustdesk-linux-service-receiver inspect load_output status=0
+    local -a native_args=()
     local helper=$VERIFY_REPO/scripts/test-linux-service-receiver-native.py
     local native=$VERIFY_REPO/libs/libxdo-sys-stub/native
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
@@ -727,9 +732,12 @@ run_linux_service_receiver_tests() {
     chown -R root:root "$work/xkb"
     printf '%s\n' "$runtime" > /etc/ld.so.conf.d/rustdesk-receiver-fixture.conf
     /usr/sbin/ldconfig
+    if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
+        native_args+=(--convergence-failure)
+    fi
     /usr/bin/python3 -B -I -S "$helper" "$LINUX_RECEIVER_COMMIT" "$LINUX_RECEIVER_TREE" \
         "$LINUX_RECEIVER_MANIFEST_SHA256" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \
-        "$POLKIT_RUNTIME_CANDIDATE_MANIFEST_SHA256" || fail 'installed Linux receiver native scenario failed'
+        "$POLKIT_RUNTIME_CANDIDATE_MANIFEST_SHA256" "${native_args[@]}" || fail 'installed Linux receiver native scenario failed'
     [ "$(sha256sum "$helper" "$VERIFY_REPO/scripts/test-linux-logind-session-selection.py" \
         "$VERIFY_REPO/scripts/verify-linux-service-password-ipc.py" \
         "$VERIFY_REPO/res/rustdesk.service" "$VERIFY_REPO/res/com.carriez.RustDesk.policy" \

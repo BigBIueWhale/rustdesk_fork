@@ -22,6 +22,7 @@ HBB_LOGIND_NATIVE=0
 APPLE_CURSOR_ONLY=0
 X11_CLIPBOARD_ONLY=0
 X11_KEY_INPUT_ONLY=0
+LINUX_RECEIVER_PROFILE=focused
 LIFECYCLE_ARTIFACT=
 LIFECYCLE_ARTIFACT_SHA256=
 LIFECYCLE_COMMIT=
@@ -161,12 +162,15 @@ case "$#:${1:-}" in
             || { echo 'ledger token-count input/run overrides are forbidden' >&2; exit 2; }
         MODE=ledger-token-count
         ;;
-    5:--linux-service-receiver-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Linux receiver artifact arguments or overrides differ' >&2; exit 2; }
         MODE=linux-service-receiver-tests
+        if [ "$1" = --linux-service-convergence-failure-tests ]; then
+            LINUX_RECEIVER_PROFILE=convergence-failure
+        fi
         ANDROID_RUNTIME_PEER_COMMIT=$3
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=$5
         ;;
@@ -622,7 +626,11 @@ elif [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    readonly VM_TIMEOUT_SECONDS=300
+    if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
+        readonly VM_TIMEOUT_SECONDS=780
+    else
+        readonly VM_TIMEOUT_SECONDS=300
+    fi
     readonly OVERLAY_SIZE=12G
     readonly VM_MEMORY=4096
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
@@ -3963,7 +3971,11 @@ elif [ "$MODE" = debian-polkit-tests ]; then
 elif [ "$MODE" = ledger-token-count ]; then
     guest_invocation+=" --ledger-token-count $ledger_input_sha $ledger_recipe_sha"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    guest_invocation+=" --linux-service-receiver-tests $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256 $FOCUSED_TEST_COMMIT"
+    linux_receiver_guest_flag=--linux-service-receiver-tests
+    if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
+        linux_receiver_guest_flag=--linux-service-convergence-failure-tests
+    fi
+    guest_invocation+=" $linux_receiver_guest_flag $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256 $FOCUSED_TEST_COMMIT"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     guest_invocation+=' --linux-flutter-artifact-tests'
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
@@ -4501,24 +4513,35 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
     require_exact_fixed_receipt 'verify-linux-service-password-ipc: source checks passed' 'supplementary password IPC source checks'
-    for phase in root-applied root-reapplied root-reapplied-after-refusal restart restart-after-refusal race-before-keys-recovery race-before-login-recovery requester-exit-recovery session-close-recovery admin-denied-recovery agent-exit-recovery supervisor-shutdown-recovery admitted-shutdown-recovery admin-applied; do
-        require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver CPace credential use'
-    done
-    for phase in root-reapplied restart admitted-shutdown-recovery; do
-        require_exact_fixed_receipt "LINUX_RECEIVER_STALE=pass phase=$phase uid=4002 server=supervised-child listener=owned rejection=confirmation-mismatch journal=invocation-cursor-bound probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver obsolete credential refusal'
-    done
-    require_exact_fixed_receipt "LINUX_RECEIVER_PROXY_CONTROL=pass uid=4002 server=supervised-child transcript=unmodified postkey=decrypted-test-delay cleanup=joined probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver transparent-proxy control'
-    require_exact_fixed_receipt "LINUX_RECEIVER_RACE=pass phase=before-keys uid=4002 server=supervised-child transcript=old-confirmed durable=changed listener=owned rejection=no-keyed-stream cleanup=joined probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver credential race before key installation'
-    require_exact_fixed_receipt "LINUX_RECEIVER_RACE=pass phase=before-login uid=4002 server=supervised-child transcript=old-confirmed durable=changed listener=owned rejection=generation-login-error cleanup=joined probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver credential race before login authority'
-    require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN=pass uid=4001 administrator_uid=4003 subject=pid-start-bound authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined' 'installed Linux receiver real administrator authentication'
-    require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_DENIED=pass uid=4001 administrator_uid=4003 password=incorrect authentication=failed pkcheck=exit1 helper=reaped agent=alive-before-cleanup durable=unchanged listener=owned cleanup=agent-client-joined' 'installed Linux receiver incorrect administrator password'
-    require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied durable=unchanged listener=owned' 'installed Linux receiver administrator authorization is not cached'
-    require_exact_fixed_receipt 'LINUX_RECEIVER_REQUESTER_EXIT=pass uid=4001 prompt=actual password=withheld helper=service-reaped agent=alive-before-cleanup durable=unchanged listener=owned cleanup=agent-client-joined' 'installed Linux receiver abandoned administrator authorization'
-    require_exact_fixed_receipt 'LINUX_RECEIVER_AGENT_EXIT=pass uid=4001 prompt=actual password=withheld agent=group-killed requester=alive-before-loss cli=explicit-denial pkcheck=exit1 helper=service-reaped durable=unchanged listener=owned cleanup=agent-client-joined' 'installed Linux receiver lost authentication agent'
-    require_exact_fixed_receipt 'LINUX_RECEIVER_SUPERVISOR_SHUTDOWN=pass uid=4001 prompt=actual password=withheld signal=supervisor-only cli=explicit-denial helper=reaped child=reaped supervisor=clean-exit unit=inactive cgroup=absent durable=unchanged cleanup=agent-client-joined' 'installed Linux receiver pending authorization during supervisor shutdown'
-    require_exact_fixed_receipt 'LINUX_RECEIVER_ADMITTED_SHUTDOWN=pass uid=0 durable=changed-before-stop child=kernel-stopped shutdown=supervisor-only admitted=retained resume=pidfd cli=Applied supervisor=clean-exit unit=inactive cgroup=absent durable=retained cleanup=client-joined' 'installed Linux receiver admitted credential convergence during supervisor shutdown'
-    require_exact_fixed_receipt 'LINUX_RECEIVER_SESSION_REVOKED=pass uid=4001 session=closing requester=alive authentication=polkit-pam authorization=fresh-denied durable=unchanged supervisor=retained helper=reaped cleanup=agent-client-joined' 'installed Linux receiver administrator grant after session revocation'
-    require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_NATIVE=pass cases=16 cpace=14 stale_refusals=3 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 session_revocations=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux receiver behavior'
+    if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
+        for phase in root-applied convergence-failure-recovery admin-applied; do
+            require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux convergence-failure credential use'
+        done
+        require_exact_fixed_receipt "LINUX_RECEIVER_STALE=pass phase=convergence-failure-recovery uid=4002 server=supervised-child listener=owned rejection=confirmation-mismatch journal=invocation-cursor-bound probe_sha256=$linux_receiver_probe_sha" 'installed Linux convergence-failure obsolete credential refusal'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_CONVERGENCE_FAILURE=pass uid=0 durable=changed-before-stop child=kernel-stopped shutdown=supervisor-only recovery_window=600 cli=explicit-uncertainty supervisor=SIGABRT old_child=reaped old_listener=absent restart=automatic-once durable=retained cleanup=client-joined' 'installed Linux unresolved credential authority failure and automatic recovery'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN=pass uid=4001 administrator_uid=4003 subject=pid-start-bound authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined' 'installed Linux administrator authentication after failed convergence'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied durable=unchanged listener=owned' 'installed Linux fresh administrator refusal after failed convergence'
+        require_exact_fixed_receipt "LINUX_SERVICE_CONVERGENCE_NATIVE=pass cases=4 cpace=3 stale_refusals=1 convergence_failures=1 admin_grants=1 fresh_refusals=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux convergence-failure integration profile'
+    else
+        for phase in root-applied root-reapplied root-reapplied-after-refusal restart restart-after-refusal race-before-keys-recovery race-before-login-recovery requester-exit-recovery session-close-recovery admin-denied-recovery agent-exit-recovery supervisor-shutdown-recovery admitted-shutdown-recovery admin-applied; do
+            require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver CPace credential use'
+        done
+        for phase in root-reapplied restart admitted-shutdown-recovery; do
+            require_exact_fixed_receipt "LINUX_RECEIVER_STALE=pass phase=$phase uid=4002 server=supervised-child listener=owned rejection=confirmation-mismatch journal=invocation-cursor-bound probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver obsolete credential refusal'
+        done
+        require_exact_fixed_receipt "LINUX_RECEIVER_PROXY_CONTROL=pass uid=4002 server=supervised-child transcript=unmodified postkey=decrypted-test-delay cleanup=joined probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver transparent-proxy control'
+        require_exact_fixed_receipt "LINUX_RECEIVER_RACE=pass phase=before-keys uid=4002 server=supervised-child transcript=old-confirmed durable=changed listener=owned rejection=no-keyed-stream cleanup=joined probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver credential race before key installation'
+        require_exact_fixed_receipt "LINUX_RECEIVER_RACE=pass phase=before-login uid=4002 server=supervised-child transcript=old-confirmed durable=changed listener=owned rejection=generation-login-error cleanup=joined probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver credential race before login authority'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN=pass uid=4001 administrator_uid=4003 subject=pid-start-bound authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined' 'installed Linux receiver real administrator authentication'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_DENIED=pass uid=4001 administrator_uid=4003 password=incorrect authentication=failed pkcheck=exit1 helper=reaped agent=alive-before-cleanup durable=unchanged listener=owned cleanup=agent-client-joined' 'installed Linux receiver incorrect administrator password'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied durable=unchanged listener=owned' 'installed Linux receiver administrator authorization is not cached'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_REQUESTER_EXIT=pass uid=4001 prompt=actual password=withheld helper=service-reaped agent=alive-before-cleanup durable=unchanged listener=owned cleanup=agent-client-joined' 'installed Linux receiver abandoned administrator authorization'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_AGENT_EXIT=pass uid=4001 prompt=actual password=withheld agent=group-killed requester=alive-before-loss cli=explicit-denial pkcheck=exit1 helper=service-reaped durable=unchanged listener=owned cleanup=agent-client-joined' 'installed Linux receiver lost authentication agent'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_SUPERVISOR_SHUTDOWN=pass uid=4001 prompt=actual password=withheld signal=supervisor-only cli=explicit-denial helper=reaped child=reaped supervisor=clean-exit unit=inactive cgroup=absent durable=unchanged cleanup=agent-client-joined' 'installed Linux receiver pending authorization during supervisor shutdown'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMITTED_SHUTDOWN=pass uid=0 durable=changed-before-stop child=kernel-stopped shutdown=supervisor-only admitted=retained resume=pidfd cli=Applied supervisor=clean-exit unit=inactive cgroup=absent durable=retained cleanup=client-joined' 'installed Linux receiver admitted credential convergence during supervisor shutdown'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_SESSION_REVOKED=pass uid=4001 session=closing requester=alive authentication=polkit-pam authorization=fresh-denied durable=unchanged supervisor=retained helper=reaped cleanup=agent-client-joined' 'installed Linux receiver administrator grant after session revocation'
+        require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_NATIVE=pass cases=16 cpace=14 stale_refusals=3 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 session_revocations=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux receiver behavior'
+    fi
     require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_VM=pass harness=$FOCUSED_TEST_COMMIT manifest=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 source=readonly network=none docker=retired cleanup=joined" 'installed Linux receiver fixture finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed Linux receiver guest completion'
 elif [ "$MODE" = debian-polkit-tests ]; then
@@ -6275,10 +6298,17 @@ elif [ "$MODE" = ledger-token-count ]; then
     printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    printf 'LINUX_SERVICE_RECEIVER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=16 cpace=14 stale_refusals=3 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 session_revocations=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
-        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
-        "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
-        "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"
+    if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
+        printf 'LINUX_SERVICE_CONVERGENCE_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=4 cpace=3 stale_refusals=1 convergence_failures=1 admin_grants=1 fresh_refusals=1 recovery_window=600 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"
+    else
+        printf 'LINUX_SERVICE_RECEIVER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=16 cpace=14 stale_refusals=3 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 session_revocations=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"
+    fi
 elif [ "$MODE" = x11-display-tests ]; then
     if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
         printf 'CLIPBOARD_LISTENER_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=linux-clipboard-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \

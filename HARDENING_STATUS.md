@@ -2301,6 +2301,22 @@ freezes. This is one admitted-write schedule in debug/headless seatless-X11 inst
 standard unit-stop, failed convergence, delay/contention/capacity/GUI cancellation and wider
 acceptance remain OPEN. No product code or artifact changed.
 
+**Pending native acceptance: terminal child-convergence failure during supervisor shutdown.**
+The separate `--linux-service-convergence-failure-tests` integration profile reuses the
+sealed `924b5aed` binary/probe and runs only a root baseline, full failure/recovery schedule,
+fresh actual administrator grant and no-agent refusal. Its 780-second VM budget accommodates
+the real 600-second admitted-operation recovery window; the ordinary receiver profile keeps
+its 300-second budget and existing scenarios. `src/ipc.rs:8307` sets the complete recovery
+deadline, while `:8314` starts each one-second transport attempt; `:6363` retains uncertainty,
+and `:1642` aborts unresolved authority after drain. The fixture holds the exact child stopped
+through that full window after observing a real durable root CLI write and supervisor-only
+SIGTERM. It requires explicit CLI uncertainty without `Done!`, exact old supervisor SIGABRT/
+unit failure, invocation-bound unresolved-replica journal, old process/listener retirement and
+exactly one automatic restart into a fresh generation honoring the durable value. Systemd
+may resume the old child during its own failure cleanup; the fixture never resumes it before
+supervisor exit. New-password CPace, obsolete-password refusal and fresh OS authorization are
+mandatory. Product, shipped unit and artifact are unchanged; this schedule remains pending.
+
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

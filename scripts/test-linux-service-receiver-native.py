@@ -508,12 +508,15 @@ def admin_change(value, record, phase="apply", actor=None):
                     except subprocess.TimeoutExpired:
                         os.killpg(agent.pid, signal.SIGKILL)
                         agent.wait(timeout=5)
-                try:
-                    os.killpg(agent.pid, 0)
-                except ProcessLookupError:
-                    pass
-                else:
-                    raise RuntimeError("owned authentication-agent process group remains")
+                deadline = time.monotonic() + 5
+                while True:
+                    try:
+                        os.killpg(agent.pid, 0)
+                    except ProcessLookupError:
+                        break
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("owned authentication-agent process group remains after drain")
+                    time.sleep(0.02)
         finally:
             if client.poll() is None:
                 client.kill()

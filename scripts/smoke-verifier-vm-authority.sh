@@ -1230,7 +1230,7 @@ assert os.geteuid() != 0 and os.getegid() != 0
 assert re.fullmatch(r'[a-z0-9-]+', mode) and number.isdecimal() and 1 <= int(number) <= 8
 assert phase in ('before', 'during', 'after') and Path(run).parent == Path(root)
 assert re.fullmatch(r'run\.[A-Za-z0-9]{10}', Path(run).name)
-flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
 parent = os.open(root, flags | os.O_DIRECTORY)
 workspace = os.open(Path(run).name, flags | os.O_DIRECTORY, dir_fd=parent)
 try:

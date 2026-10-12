@@ -248,6 +248,12 @@ def main():
             assert rejected.returncode != 0 and 'Too many levels of symbolic links' in rejected.stderr
             assert sentinel.read_bytes() == b'preserve-owned-sentinel'
             before_file.unlink()
+            os.mkfifo(before_file, mode=0o600)
+            rejected = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper), str(OBSERVER)],
+                                      env=environment, capture_output=True, text=True, timeout=10)
+            assert rejected.returncode != 0 and 'AssertionError' in rejected.stderr
+            assert sentinel.read_bytes() == b'preserve-owned-sentinel'
+            before_file.unlink()
             before_file.write_bytes(b'x' * 1048577)
             before_file.chmod(0o600)
             rejected = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper), str(OBSERVER)],
@@ -273,6 +279,7 @@ def main():
         'listener_evidence_phases': 3, 'listener_evidence_occupied': 'preserved-refused',
         'listener_evidence_output_symlink': 'preserved-refused',
         'listener_evidence_input_symlink': 'refused', 'listener_evidence_oversize': 'refused',
+        'listener_evidence_fifo': 'refused-without-writer',
         'observer_sha256': hashlib.sha256(observer).hexdigest(),
         'source_sha256': before, 'source_unchanged': True,
     }, sort_keys=True))

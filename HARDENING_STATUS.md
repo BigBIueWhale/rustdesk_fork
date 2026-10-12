@@ -2275,6 +2275,18 @@ This is one unadmitted-request schedule in debug/headless seatless-X11 installed
 standard unit-stop/admitted-commit/contention/delay/GUI cancellation and wider acceptance
 remain OPEN. No product code changed.
 
+**Pending native acceptance: admitted Linux credential mutation during supervisor shutdown.**
+The fixture stops only the retained child with pidfd SIGSTOP/kernel-state proof, submits an
+actual exact-image root CLI password request and observes the durable credential change.
+It then signals only the retained supervisor, requires the admitted request and stopped child
+to remain live, resumes that child before convergence timeout, and requires actual Applied,
+retained durable state and clean joined unit/cgroup/listener retirement. Fresh-generation
+CPace must use the new password and reject the obsolete password. The existing guest D-Bus
+result reference is shared by both shutdown observers. `src/ipc.rs:1635,6220,6248` closes
+admission while awaiting admitted persistence/convergence; unresolved authority aborts at
+`:1642` rather than dropping replay ownership. `src/platform/linux.rs:2528` joins IPC before
+retiring the child. Product/artifact unchanged; this schedule remains pending.
+
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

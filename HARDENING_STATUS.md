@@ -2234,9 +2234,23 @@ Evidence: `linux-wire-v2-accepted-e69129bc.json`,
 `/tmp/privilege_securiry_deep_audit.md`. Rust1.75/zero-NIC/no-network,
 Build/source checks: uid1000/read-only/caps-none/NNP; installed root fixture is VM-only; no new host listeners.
 
-**Authentication-agent loss: native acceptance pending.** The new fixture reaches the actual
-password prompt with the requester alive, then requires exact root-helper/journal denial,
-retirement and unchanged credential/serving-child authority. Graphical dialog dismissal is separate.
+**Abrupt authentication-agent group loss: exact installed Linux case accepted.** Harness
+`12323c4d` reuses the unchanged `924b5aed` binary/probe capsule. At the actual packaged
+`pkttyagent` password prompt, the ordinary requester and exact root `pkcheck` remain alive;
+the fixture proves a distinct owned agent session/group before terminating that group.
+No administrator password is sent. The exact root service invocation records `pkcheck` exit1;
+the CLI exits1 with explicit service rejection, and pidfd exit plus process reaping complete
+in 10.5 ms. Durable credential, supervisor/child generation and listener remain unchanged.
+Current-password CPace, a newly registered agent's actual administrator grant, and fresh
+no-agent refusal pass afterward. The zero-NIC installed-layout transaction passes 14 cases/
+12 CPace exchanges in 82 seconds with unchanged host listeners and exact joined cleanup.
+RAM scratch peaks at 5,675,659,264 bytes; the disk run peaks at 147,456 bytes (144 KiB).
+Immutable `linux-receiver-agent-exit-accepted-12323c4d.json` under the verifier root
+(11,897 bytes; SHA-256 `0509310495ad759f2386820c77e59023605692cb933b374d39a0857b0cae5641`)
+binds source/artifact identities, root journal, process observations, raw log, storage and freezes.
+This is debug/headless seatless-X11 evidence for one abrupt group-loss schedule. Graphical
+dialog dismissal, other cancellation/delay/contention/shutdown schedules and wider acceptance
+remain OPEN; no product code changed.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

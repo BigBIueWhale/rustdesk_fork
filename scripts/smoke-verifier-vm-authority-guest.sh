@@ -692,7 +692,19 @@ run_linux_service_receiver_tests() {
         /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" /usr/share/rustdesk/rustdesk \
             /usr/lib/rustdesk-fork/libxdo.so.3 "$work/libraries" \
         || fail 'production receiver runtime library staging failed'
-    install -m 0644 "$work/libraries/"* "$runtime/"
+    stop_docker_authority
+    /usr/bin/python3 -B -I -S "$helper" --install-polkit \
+        "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" "$POLKIT_RUNTIME_CANDIDATE_MANIFEST_SHA256" \
+        || fail 'signed native authorization runtime installation failed'
+    # The signed package closure owns libc and its matching ELF interpreter.
+    # Only product dependencies absent from the base need this extra directory.
+    local library
+    for library in "$work/libraries/"*; do
+        case "${library##*/}" in
+            ld-linux*|libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|libutil.so.*|libanl.so.*|libresolv.so.*) continue ;;
+        esac
+        install -m 0644 "$library" "$runtime/"
+    done
     find "$ROOT/engine-xvfb/root/usr/lib" -type f -name '*.so*' \
         -exec install -m 0644 {} "$runtime/" \;
     install -m 0755 "$ROOT/engine-xvfb/root/usr/bin/Xvfb" "$work/Xvfb"
@@ -701,7 +713,6 @@ run_linux_service_receiver_tests() {
     chown -R root:root "$work/xkb"
     printf '%s\n' "$runtime" > /etc/ld.so.conf.d/rustdesk-receiver-fixture.conf
     /usr/sbin/ldconfig
-    stop_docker_authority
     /usr/bin/python3 -B -I -S "$helper" "$LINUX_RECEIVER_COMMIT" "$LINUX_RECEIVER_TREE" \
         "$LINUX_RECEIVER_MANIFEST_SHA256" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \
         "$POLKIT_RUNTIME_CANDIDATE_MANIFEST_SHA256" || fail 'installed Linux receiver native scenario failed'

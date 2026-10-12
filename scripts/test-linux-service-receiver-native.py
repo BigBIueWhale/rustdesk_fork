@@ -37,8 +37,8 @@ def guard():
         raise RuntimeError("native receiver fixture requires the owned zero-NIC systemd VM")
 
 
-def run(argv, timeout=15, input=None, allowed=(0,)):
-    result = subprocess.run(argv, env=ENV, input=input, capture_output=True,
+def run(argv, timeout=15, input=None, allowed=(0,), env=ENV):
+    result = subprocess.run(argv, env=env, input=input, capture_output=True,
                             text=True, timeout=timeout)
     if len(result.stdout) + len(result.stderr) > 131072:
         raise RuntimeError("native fixture output exceeded its bound")
@@ -109,7 +109,8 @@ def install_polkit(archive_sha, manifest_sha):
         if len(packages) != 82 or set(names) != {"contract", "manifest.tsv", *["packages/" + r[3] for r in rows]}:
             raise RuntimeError("polkit package closure differs")
     # All installation and maintainer scripts run only in this disposable guest.
-    run(["/usr/bin/dpkg", "--install", *packages], timeout=90)
+    run(["/usr/bin/dpkg", "--install", *packages], timeout=90,
+        env={**ENV, "PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "DEBIAN_FRONTEND": "noninteractive"})
     run(["/usr/bin/systemctl", "start", "systemd-logind.service", "polkit.service"])
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
     shutil.copyfile(MEDIA / "repo/res/com.carriez.RustDesk.policy",
@@ -217,7 +218,7 @@ def tests(args):
     spec = description["files"]["rustdesk"]
     if PRIMARY.stat().st_size != spec["bytes"] or digest(PRIMARY) != spec["sha256"] or digest(CHILD) != spec["sha256"]:
         raise RuntimeError("installed primary/child bytes differ")
-    install_polkit(archive_sha, package_manifest_sha)
+    run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
     pam = pam_module()
     confdir = WORK / "pam"
     confdir.mkdir(mode=0o700)
@@ -345,6 +346,9 @@ def desktop():
 if __name__ == "__main__":
     if sys.argv[1:] == ["--prepare-container"]:
         prepare_container()
+    elif len(sys.argv) == 4 and sys.argv[1] == "--install-polkit":
+        guard()
+        install_polkit(*sys.argv[2:])
     elif sys.argv[1:] == ["--pam-actor"]:
         actor()
     elif sys.argv[1:] == ["--desktop"]:

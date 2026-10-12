@@ -2109,36 +2109,37 @@ Two wording cases are supplementary.
 Empty/removed, seatless unspecified/TTY, active X11, switch/closing X11 select expected UID/no-user.
 PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed receiver here.
 
-**Installed v2 accepted:** 15ea97aa/peer3b537c76, binary5c06bdcf/manifest436b6677;
-shipped unit/0711 child, 82-package polkit/PAM/logind/Xvfb; cases12/73s, reused build261s;
-CPace10/probe eb9dd801, stale2, races2/control, admin/fresh/requester-exit/session-close.
+**Installed v2 accepted:** 924b5aed/peer924b5aed, binary7941d43b/manifest63c87c00;
+shipped unit/0711 child, 82-package polkit/PAM/logind/Xvfb; cases13/86s, isolated build264s;
+CPace11/probe eb9dd801, stale2, races2/control, admin/failure/fresh/requester-exit/session-close.
 Root Applied; UID4001/4002 and wrong images refuse. Restart preserves durable state;
-credential races refuse keyed authority and drain errors. Requester exit reaps helper19ms.
-Unit/cgroup/PAM/X11/Docker/VM joined; raw ACpyDzYZSR; full observations in bundle.
+credential races refuse keyed authority and drain errors. Requester exit reaps helper18ms.
+Unit/cgroup/PAM/X11/Docker/VM joined; raw 1DRsUcLWNL; full observations in bundle.
 
 **Session-closing prompt accepted:** requester/agent/Xvfb stay live; admin4003 PAM completes,
 then root's fresh check refuses (CLI1/durable unchanged/helper reaped). Old actor/session/child/user
 runtime retire; c2/new PID/start keeps supervisor/generation. Current-password CPace, new admin Applied
-and fresh no-agent denial pass. No product change; lingering-runtime recovery OPEN; failures retained.
+and fresh no-agent denial pass. Principal guard unchanged; lingering-runtime recovery OPEN; failures retained.
 
-**Incorrect administrator password: correction prepared; native acceptance OPEN.** Two unchanged
-peer3b runs failed CLI finality. The diagnostic replay observed real PAM failure, root `pkcheck`
-exit1 and exact helper reap, unchanged durable credential/listener, and another prompt for the same
-live CLI. The client reused its one-second request deadline across root authorization (bounded at
-120 seconds); timeout entered same-operation recovery, while denial removed the unadmitted claim.
-`src/ipc.rs` now retains that short proof/body deadline, awaits Linux status within the existing
-600-second operation/recovery lifetime, and starts a fresh one-second receiver status-send deadline
-after authorization/commit. macOS status timing and authorization/admission rules are unchanged.
-The native fixture and five-second post-failure finality check are unchanged. A new source-bound
-artifact must prove one failed challenge, root denial/helper reap, CLI1, unchanged credential/child/
-listener, current-password CPace, subsequent fresh administrator Applied and no-agent denial.
-Raw failures `97LVckTCqO`/`N4gM3dtGCg` and full diagnostic observations are retained in the audit.
+**Incorrect administrator password: exact installed Linux case accepted.** Unchanged peer3b failed
+CLI finality twice; diagnostic replay proved PAM failure/root `pkcheck` exit1/helper reap, then another
+prompt for the same live CLI. `src/ipc.rs` separates proof/body and status deadlines: Linux waits
+within the existing 600-second operation/recovery lifetime, and root starts a fresh one-second status
+send after authorization/commit. The same native fixture and five-second post-failure finality check
+passed on peer924b5aed: one failed challenge, exact root denial/helper reap while agent alive, CLI1
+explicit rejection, unchanged durable credential/child/listener, current-password CPace, subsequent
+actual administrator Applied/new-password CPace and fresh no-agent denial. Authorization/admission
+rules and macOS timing are unchanged. Raw `1DRsUcLWNL`98,664B; immutable bundle below binds full
+observations, freezes, artifacts, old failures and cleanup. This is debug/headless installed-layout
+seatless-X11 evidence; whole-app/release, cancellation/delay/contention/shutdown, other desktops/
+principals/session races and broader platform/resource/reproduction/review acceptance remain OPEN.
 
 Evidence: `linux-wire-v2-accepted-e69129bc.json`,
 `linux-receiver-requester-exit-accepted-bb5a78b2.json`,
 `linux-receiver-session-revocation-accepted-15ea97aa.json`,
+`linux-receiver-admin-denial-accepted-924b5aed.json`,
 `/tmp/privilege_securiry_deep_audit.md`. Rust1.75/zero-NIC/no-network,
-uid1000/read-only/caps-none/NNP; no new host listeners.
+Build/source checks: uid1000/read-only/caps-none/NNP; installed root fixture is VM-only; no new host listeners.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

@@ -2078,7 +2078,7 @@ Current normative specification SHA-256: `6128acd48ad9ad7ccf1f0fc32abe51f3d6d6d2
 
 ### Current authority and source closure
 
-**Offline verifier host sockets (R-S11dh): Linux socket restriction accepted; observation retention OPEN.**
+**Offline verifier host sockets (R-S11dh): Linux socket restriction and observation retention accepted; wider coverage OPEN.**
 `vm-host-network.py` closes extra inherited descriptors, refuses IP stdout/stderr and
 installs an ordinary-user, capabilities-free, inherited seccomp restriction before
 executing the fixed Bash body from sealed RAM. IP/packet/vsock socket creation,
@@ -2101,10 +2101,31 @@ at 110,592 bytes; QEMU's observed block writes are 4,096 bytes. Immutable
 SHA-256 `8d00995466a857e0bb33df382840e06cbd7868ede2b1ace5488f9fba721b6f3b`)
 binds source, native outcomes, raw serial, storage, freezes and retained failures.
 A later independent host snapshot adds unknown UDP60041; it remains unattributed
-and untouched. Successful launchers retain delta counts but remove their exact
-per-phase snapshot/delta files during cleanup; durable complete endpoint evidence
-needs correction. This does not weaken the demonstrated inherited socket denial.
-The acquisition launcher and wider platform/release/storage obligations remain OPEN.
+and untouched. Offline observer `b5afbc7f` now publishes the exact baseline,
+snapshot, additions and removals outside its temporary run before cleanup. Each
+private, exclusive, mode-0400 JSON preserves base64 bytes, lengths, digests,
+source digest and run identity; bounded no-follow/nonblocking reads reject
+nonregular inputs, and file/directory fsync plus exact readback precede its receipt.
+The kernel socket restriction and protocol/endpoint-only inventory are unchanged.
+
+The final focused native run passes in 15 VM seconds. Its actual separate guest
+UDP endpoint's exact addition survives in the during/after records, with the
+baseline also retained after run-directory removal. Occupied outputs,
+input/output symlinks, oversized input and a writerless
+FIFO refuse while preserving owned sentinels. Existing native socket, inheritance,
+descriptor and bootstrap controls also pass. Three actual host observations retain
+4,983 bytes after cleanup, including the exact unattributed UDP35974 removal;
+no foreign ownership is inferred or investigated. RAM scratch peaks at 399,724,544
+bytes, disk run diagnostics at 114,688, and observed QEMU block writes at 4,096;
+exact joins, RAM retirement and source/index/audit/ledger/specification/instruction
+freeze comparisons pass. The intermediate comparison was after terminal completion,
+so it is not claimed as a live-VM observation. Immutable
+`.harness-state/verifier-vm/verifier-listener-retention-accepted-b5afbc7f.json`
+(13,179 bytes; SHA-256 `e9faad36bc7f682a2f117e73b6a8be7a9c091c66c44e6f09967008a1f53e455a`)
+binds the complete observations, native outcomes, raw serial, source and storage.
+Historical count-only observations are not reconstructed. Acquisition/other
+launchers, continuous global inventory and wider platform/release/storage coverage
+remain OPEN; this acceptance covers new runs of the offline Linux verifier.
 
 **VM transient storage (R-S11cj/R-S11dh): the observed Linux VM disk-churn path is corrected.**
 The ordinary-user verification and acquisition launchers use one private existing-`/dev/shm` workspace for disposable
@@ -2412,8 +2433,9 @@ shipped unit/0711 child. Build RAM scratch peaks at 6,240,382,976 bytes, disk
 diagnostics at 3,555,328; installed-test peaks are 4,564,721,664 RAM and 212,992 disk
 bytes. Both observe QEMU block writes of 4,096 bytes and exact joined RAM/owner
 retirement, with matching source/index/audit/ledger/specification/instruction freezes.
-The build's unattributed endpoint delta is retained only as a count; durable complete
-per-phase snapshot/delta retention remains OPEN, alongside the proved socket restriction.
+The build's unattributed endpoint delta is retained only as a count and is not
+reconstructed. Subsequent observer `b5afbc7f` accepts durable complete per-phase
+retention for new offline verifier runs, alongside the proved socket restriction.
 Immutable `.harness-state/verifier-vm/linux-receiver-unit-stop-accepted-ef3f51b7.json`
 (20,192 bytes; SHA-256 `ce09e89cab609f901435e9a046897905371016bbb10804a8352e058423535128`)
 binds artifacts, actual manager/process/CLI/journal/recovery observations, full raw

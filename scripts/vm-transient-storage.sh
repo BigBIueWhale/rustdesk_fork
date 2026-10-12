@@ -24,6 +24,7 @@ reserve_vm_storage() {
     /usr/bin/flock --exclusive --nonblock "$VM_TRANSIENT_ROOT_FD" \
         || fail 'RAM scratch parent is held by another harness'
     printf '%s\n%s\n' "$VM_TRANSIENT" "$VM_TRANSIENT_ID" >"$RUN/storage.workspace"
+    export TMPDIR="$VM_TRANSIENT"
     /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" watch --memory-mib "$VM_MEMORY" \
         --workspace "$VM_TRANSIENT" --identity "$VM_TRANSIENT_ID" --parent "$$" \
         --run "$RUN" --ready "$RUN/storage.ready" --stop "$RUN/storage.stop" \

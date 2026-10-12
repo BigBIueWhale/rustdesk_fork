@@ -232,6 +232,7 @@ reserve_verifier_run() {
 
 git_closed() {
     /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        TMPDIR="${VM_TRANSIENT:-/nonexistent}" \
         GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
         GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0 \
         GIT_NO_REPLACE_OBJECTS=1 \

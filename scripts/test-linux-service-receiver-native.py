@@ -304,6 +304,85 @@ def keyed(value, phase, record, probe_sha):
           f"listener=owned key_confirmation=mutual probe_sha256={probe_sha}", flush=True)
 
 
+def rejection_journal(record, invocation, cursor=None):
+    run(["/usr/bin/journalctl", "--sync"], timeout=5)
+    argv = ["/usr/bin/journalctl", "--boot", "--quiet", "--no-pager", "--output=json",
+            "--output-fields=__CURSOR,__MONOTONIC_TIMESTAMP,_BOOT_ID,_PID,_UID,_TRANSPORT,"
+            "_STREAM_ID,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,MESSAGE", "--lines=100",
+            "_SYSTEMD_UNIT=rustdesk.service", "_SYSTEMD_INVOCATION_ID=" + invocation]
+    if cursor is not None:
+        argv.append("--after-cursor=" + cursor)
+    entries = [json.loads(line) for line in run(argv, timeout=5).stdout.splitlines()]
+    boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip().replace("-", "")
+    # Inherited stderr carries the supervisor's journal credentials. The child
+    # record and listener proof independently identify the serving process.
+    expected = {"_BOOT_ID": boot, "_PID": str(record["supervisor"]), "_UID": "0",
+                "_TRANSPORT": "stdout", "_SYSTEMD_UNIT": "rustdesk.service",
+                "_SYSTEMD_INVOCATION_ID": invocation}
+    if len(entries) > 100:
+        raise RuntimeError("service journal entry count differs")
+    for entry in entries:
+        if (any(entry.get(key) != value for key, value in expected.items())
+                or not isinstance(entry.get("MESSAGE"), str)
+                or not isinstance(entry.get("__CURSOR"), str)
+                or not 0 < len(entry["__CURSOR"]) <= 1024
+                or re.fullmatch(r"[0-9a-f]{32}", entry.get("_STREAM_ID", "")) is None):
+            observed = {key: entry.get(key) for key in expected}
+            raise RuntimeError("service journal metadata is absent or ambiguous: "
+                               + json.dumps(observed, sort_keys=True))
+    return entries
+
+
+def stale_refused(value, phase, record, probe_sha):
+    listener = direct_listener(record)
+    if listener is None:
+        raise RuntimeError("obsolete-credential test has no serving listener")
+    invocation = run(["/usr/bin/systemctl", "show", "rustdesk.service",
+                      "--property=InvocationID", "--value"]).stdout.strip()
+    if re.fullmatch(r"[0-9a-f]{32}", invocation) is None:
+        raise RuntimeError("installed service invocation identity is absent")
+    child_stderr = Path(f"/proc/{record['pid']}/fd/2")
+    parent_stderr = Path(f"/proc/{record['supervisor']}/fd/2")
+    stream = os.readlink(child_stderr)
+    if re.fullmatch(r"socket:\[[1-9][0-9]*\]", stream) is None or os.readlink(parent_stderr) != stream:
+        raise RuntimeError("child stderr is not the inherited supervisor journal stream")
+    baseline = rejection_journal(record, invocation)
+    summary = "R-S10/R-T12 security summary"
+    if not baseline or any(summary in entry["MESSAGE"] for entry in baseline):
+        raise RuntimeError("obsolete-credential test lacks a clean journal baseline")
+    previous = baseline[-1]
+    before = credential()
+    result = run(["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                  "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                  str(PROBE), "127.0.0.1:21118", "--password-stdin", "fail"],
+                 input=value + "\n", timeout=45)
+    if result.stdout.splitlines() != ["probe_client: keying ok=false (expected=fail)",
+                                      "probe_client: PASS"] or result.stderr:
+        raise RuntimeError("obsolete root credential completed network keying")
+    entries = rejection_journal(record, invocation, previous["__CURSOR"])
+    # Client failure counts only when the receiver records a tag mismatch.
+    rejected = [entry for entry in entries if summary in entry["MESSAGE"]]
+    if (len(rejected) != 1
+            or re.search(r"R-S10/R-T12 security summary \(last 10s\): shed=0 rate_limited=0 "
+                         r"key_confirmation_failures=1 recent_src=Some\(127\.0\.0\.1\)$",
+                         rejected[0]["MESSAGE"]) is None
+            or rejected[0]["_STREAM_ID"] != previous["_STREAM_ID"]
+            or int(rejected[0]["__MONOTONIC_TIMESTAMP"]) <= int(previous["__MONOTONIC_TIMESTAMP"])):
+        print("LINUX_RECEIVER_STALE_DIAGNOSTIC=" + json.dumps(
+            {"phase": phase, "invocation": invocation, "summaries": rejected}, sort_keys=True), flush=True)
+        raise RuntimeError("receiver did not record exactly one new confirmation mismatch")
+    if (credential() != before or direct_listener(record) != listener
+            or os.readlink(child_stderr) != stream or os.readlink(parent_stderr) != stream):
+        raise RuntimeError("obsolete credential affected serving identity or durable state")
+    print("LINUX_RECEIVER_STALE_OBSERVED=" + json.dumps(
+        {"phase": phase, **record, "listener_inode": listener, "stderr_socket": stream,
+         "invocation": invocation, "baseline_cursor": previous["__CURSOR"],
+         "rejection": rejected[0]}, sort_keys=True), flush=True)
+    print(f"LINUX_RECEIVER_STALE=pass phase={phase} uid=4002 server=supervised-child "
+          f"listener=owned rejection=confirmation-mismatch journal=invocation-cursor-bound "
+          f"probe_sha256={probe_sha}", flush=True)
+
+
 def tests(args):
     guard()
     commit, tree, manifest_sha, archive_sha, package_manifest_sha = args
@@ -395,12 +474,16 @@ def tests(args):
             raise RuntimeError("second root credential change did not converge")
         print("LINUX_RECEIVER_CASE=root-reapplied durable=changed convergence=Applied", flush=True)
         keyed("Receiver-fixture-second-2026!", "root-reapplied", first, probe_spec["sha256"])
+        stale_refused("Receiver-fixture-first-2026!", "root-reapplied", first, probe_spec["sha256"])
+        keyed("Receiver-fixture-second-2026!", "root-reapplied-after-refusal", first, probe_spec["sha256"])
         run(["/usr/bin/systemctl", "restart", "rustdesk.service"], timeout=40)
         second = ready(first)
         if credential() != after:
             raise RuntimeError("restart changed durable root credential")
         print(f"LINUX_RECEIVER_CASE=restart observed={json.dumps(second, sort_keys=True)} durable=unchanged", flush=True)
         keyed("Receiver-fixture-second-2026!", "restart", second, probe_spec["sha256"])
+        stale_refused("Receiver-fixture-first-2026!", "restart", second, probe_spec["sha256"])
+        keyed("Receiver-fixture-second-2026!", "restart-after-refusal", second, probe_spec["sha256"])
     finally:
         try:
             if started:
@@ -423,7 +506,7 @@ def tests(args):
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=8 cpace=3 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=8 cpace=5 stale_refusals=2 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 

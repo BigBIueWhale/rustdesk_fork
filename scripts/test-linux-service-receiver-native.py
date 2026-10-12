@@ -384,6 +384,154 @@ def stale_refused(value, phase, record, probe_sha):
           f"probe_sha256={probe_sha}", flush=True)
 
 
+def wire_frame(peer, allow_eof=False):
+    deadline = time.monotonic() + 5
+
+    def read(size, eof=False):
+        data = b""
+        while len(data) < size:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("native proxy frame deadline expired")
+            peer.settimeout(remaining)
+            part = peer.recv(size - len(data))
+            if not part:
+                if eof and not data:
+                    return b""
+                raise RuntimeError("native proxy received a truncated frame")
+            data += part
+        return data
+
+    first = read(1, allow_eof)
+    if not first:
+        return None
+    header_size = (first[0] & 3) + 1
+    header = first + read(header_size - 1)
+    size = int.from_bytes(header, "little") >> 2
+    if not 0 < size <= 4096 or header_size != (1 if size < 64 else 2):
+        raise RuntimeError("native proxy frame is noncanonical or too large")
+    return header + read(size)
+
+
+def credential_race(old, new, phase, record, probe_sha):
+    if phase not in ("control", "before-keys", "before-login"):
+        raise RuntimeError("unknown native credential-race phase")
+    listener = direct_listener(record)
+    if listener is None:
+        raise RuntimeError("credential-race test has no serving listener")
+    before = credential()
+    frames = []
+    server_eof = False
+    postkey_frames = 0
+
+    def note(frame, direction, step):
+        frames.append({"direction": direction, "step": step, "bytes": len(frame),
+                       "sha256": hashlib.sha256(frame).hexdigest()})
+
+    def replace():
+        change(0, new, True)
+        if credential() == before or direct_listener(record) != listener:
+            raise RuntimeError("raced root mutation did not converge on the retained child")
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as proxy:
+        proxy.bind(("127.0.0.1", 0))
+        proxy.listen(1)
+        proxy.settimeout(5)
+        port = proxy.getsockname()[1]
+        mode = "login" if phase == "before-login" else "read"
+        probe = subprocess.Popen(
+            ["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+             "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+             str(PROBE), f"127.0.0.1:{port}", "--password-stdin", "ok", mode],
+            env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            probe.stdin.write(old + "\n")
+            probe.stdin.close()
+            probe.stdin = None
+            downstream, _ = proxy.accept()
+            with downstream, socket.create_connection(("127.0.0.1", 21118), timeout=5) as upstream:
+                for step, source, destination in (("step1", downstream, upstream),
+                                                   ("step2", upstream, downstream)):
+                    frame = wire_frame(source)
+                    destination.sendall(frame)
+                    note(frame, "c2s" if step == "step1" else "s2c", step)
+                step3 = wire_frame(downstream)
+                if phase == "before-keys":
+                    # The real responder already snapshotted the old PRS for step2.
+                    replace()
+                upstream.sendall(step3)
+                note(step3, "c2s", "step3")
+                step4 = wire_frame(upstream)
+                downstream.sendall(step4)
+                note(step4, "s2c", "step4")
+                if phase == "before-keys":
+                    # Keep both directions open: only receiver-originated EOF counts.
+                    if wire_frame(upstream, allow_eof=True) is not None:
+                        raise RuntimeError("old transcript acquired a keyed application stream")
+                    server_eof = True
+                else:
+                    login = wire_frame(downstream) if phase == "before-login" else None
+                    # A server-sealed frame proves key installation before replacement.
+                    barrier = wire_frame(upstream)
+                    downstream.sendall(barrier)
+                    note(barrier, "s2c", "postkey-barrier")
+                    postkey_frames += 1
+                    if phase == "before-login":
+                        replace()
+                        upstream.sendall(login)
+                        note(login, "c2s", "held-login")
+                        for _ in range(6):
+                            frame = wire_frame(upstream, allow_eof=True)
+                            if frame is None:
+                                server_eof = True
+                                break
+                            downstream.sendall(frame)
+                            note(frame, "s2c", "login-response")
+                            postkey_frames += 1
+                        else:
+                            raise RuntimeError("raced login did not reach receiver EOF")
+            stdout, stderr = probe.communicate(timeout=10)
+        finally:
+            if probe.poll() is None:
+                probe.kill()
+                probe.communicate(timeout=10)
+            for pipe in (probe.stdin, probe.stdout, probe.stderr):
+                if pipe is not None:
+                    pipe.close()
+    lines = stdout.splitlines()
+    expected_exit = 1 if phase == "before-login" else 0
+    if (probe.returncode != expected_exit or stderr or len(lines) != 3
+            or lines[0] != "probe_client: keying ok=true (expected=ok)"
+            or lines[-1] != ("probe_client: FAIL" if expected_exit else "probe_client: PASS")
+            or not lines[1].startswith("probe_client: post-key = ")):
+        raise RuntimeError(f"credential-race probe outcome differs: {stdout[-4096:]} {stderr[-4096:]}")
+    postkey = lines[1].removeprefix("probe_client: post-key = ")
+    if phase == "before-keys":
+        valid = server_eof and postkey == "[0=TIMEOUT] " and postkey_frames == 0
+    elif phase == "before-login":
+        valid = (server_eof and "Some(TestDelay(" in postkey
+                 and '[REMOTE-LOGIN-REJECTED Error("Permanent password changed during authorization")]' in postkey
+                 and "REMOTE-LOGIN-ADMITTED" not in postkey and "PeerInfo" not in postkey)
+    else:
+        valid = "Some(TestDelay(" in postkey and "READ_ERR" not in postkey
+    after = credential()
+    if (not valid or direct_listener(record) != listener
+            or (after != before) != (phase != "control")):
+        raise RuntimeError(f"credential-race receiver outcome differs for {phase}: {postkey}")
+    print("LINUX_RECEIVER_RACE_OBSERVED=" + json.dumps(
+        {"phase": phase, **record, "listener_inode": listener, "proxy_port": port,
+         "transcript": frames, "server_eof": server_eof, "postkey_frames": postkey_frames,
+         "probe_exit": probe.returncode, "postkey": postkey}, sort_keys=True), flush=True)
+    if phase == "control":
+        print(f"LINUX_RECEIVER_PROXY_CONTROL=pass uid=4002 server=supervised-child "
+              f"transcript=unmodified postkey=decrypted-test-delay cleanup=joined probe_sha256={probe_sha}", flush=True)
+    else:
+        rejection = "no-keyed-stream" if phase == "before-keys" else "generation-login-error"
+        print(f"LINUX_RECEIVER_RACE=pass phase={phase} uid=4002 server=supervised-child "
+              f"transcript=old-confirmed durable=changed listener=owned rejection={rejection} "
+              f"cleanup=joined probe_sha256={probe_sha}", flush=True)
+
+
 def tests(args):
     guard()
     commit, tree, manifest_sha, archive_sha, package_manifest_sha = args
@@ -485,6 +633,13 @@ def tests(args):
         keyed("Receiver-fixture-second-2026!", "restart", second, probe_spec["sha256"])
         stale_refused("Receiver-fixture-first-2026!", "restart", second, probe_spec["sha256"])
         keyed("Receiver-fixture-second-2026!", "restart-after-refusal", second, probe_spec["sha256"])
+        credential_race("Receiver-fixture-second-2026!", None, "control", second, probe_spec["sha256"])
+        credential_race("Receiver-fixture-second-2026!", "Receiver-fixture-third-2026!",
+                        "before-keys", second, probe_spec["sha256"])
+        keyed("Receiver-fixture-third-2026!", "race-before-keys-recovery", second, probe_spec["sha256"])
+        credential_race("Receiver-fixture-third-2026!", "Receiver-fixture-fourth-2026!",
+                        "before-login", second, probe_spec["sha256"])
+        keyed("Receiver-fixture-fourth-2026!", "race-before-login-recovery", second, probe_spec["sha256"])
     finally:
         try:
             if started:
@@ -507,7 +662,7 @@ def tests(args):
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=8 cpace=5 stale_refusals=2 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=8 cpace=7 stale_refusals=2 races=2 proxy_control=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 

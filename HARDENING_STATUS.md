@@ -2252,20 +2252,28 @@ This is debug/headless seatless-X11 evidence for one abrupt group-loss schedule.
 dialog dismissal, other cancellation/delay/contention/shutdown schedules and wider acceptance
 remain OPEN; no product code changed.
 
-**Pending native acceptance: Linux supervisor shutdown at an actual administrator prompt.**
-The fixture retains supervisor/helper/child pidfds and sends SIGTERM only to the exact root
-supervisor. The ordinary requester and registered agent are outside its service cgroup;
-no administrator password is sent. Acceptance requires explicit CLI rejection, all three
-process identities exited/reaped, clean inactive unit/cgroup/listener retirement, unchanged
-durable credential, and CPace plus actual administrator authorization after a fresh start.
-This distinguishes product cancellation/drain from systemd's initial control-group signaling.
-`src/platform/linux.rs:2418,2528` initiates shutdown and joins protected IPC before retiring
-the child; `src/ipc.rs:4077,4304,6047` cancels authorization, joins workers/transactions and
-reaps the owned helper. The first run failed the observer's exit-code assertion after
-systemd unloaded the inactive unit, and separately failed the host-listener baseline.
-Its bounded evidence is retained. A guest D-Bus unit reference now preserves the actual
-exit result until observation, then closes before cgroup-retirement proof. Product/artifact
-unchanged; accepted runtime result remains pending.
+**Pending administrator request during supervisor shutdown: exact installed Linux case accepted.**
+Harness `02685194` reuses the unchanged `924b5aed` binary/probe. At the actual packaged
+`pkttyagent`/PAM password prompt, requester and agent remain outside the service cgroup;
+only the retained root supervisor pidfd receives SIGTERM, with no administrator password sent.
+The CLI reports explicit service rejection in 22.7 ms while the supervisor remains alive.
+Helper, child and supervisor pidfds exit and their kernel identities are reaped; cgroup
+and listener retire in 434 ms. A guest D-Bus unit reference preserves the actual exit result:
+inactive/dead/success, normal exit0; it closes before cgroup-absence proof. Root invocation/
+boot/PID-bound journal records graceful shutdown, child exit0 and final Exit. Durable
+credential remains unchanged. A fresh supervisor/generation/child uses it in actual CPace;
+fresh real administrator Applied and subsequent no-agent denial also pass.
+`src/platform/linux.rs:2418,2528` initiates shutdown and joins IPC before child retirement;
+`src/ipc.rs:4077,4304,6047` cancels and drains authorization/transactions and reaps the helper.
+The zero-NIC transaction passes 15 cases/13 CPace exchanges in 62 seconds, with no added
+host listener, unchanged source/index/audit/specification/ledger/instructions and exact joined
+cleanup. RAM scratch peaks at 5,608,632,320 bytes; disk diagnostics at 155,648 bytes (152 KiB).
+Immutable `.harness-state/verifier-vm/linux-receiver-supervisor-shutdown-accepted-02685194.json`
+(13,323 bytes; SHA-256 `c02a93918ec35feb8dd3264f05be844560d5523ba83d97d1675ce54aab36e1c3`)
+binds artifacts, observations, raw log, storage, freezes and the retained unaccepted first run.
+This is one unadmitted-request schedule in debug/headless seatless-X11 installed layout;
+standard unit-stop/admitted-commit/contention/delay/GUI cancellation and wider acceptance
+remain OPEN. No product code changed.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

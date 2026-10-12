@@ -2034,7 +2034,7 @@ Current normative specification SHA-256: `e55e3e21aec7af920735004f42477bae6646bd
 ### Current authority and source closure
 
 **VM transient storage (R-S11cj/R-S11dh): the observed Linux VM disk-churn path is corrected.**
-Both ordinary-user Linux launchers use one private existing-`/dev/shm` workspace for disposable
+The ordinary-user verification and acquisition launchers use one private existing-`/dev/shm` workspace for disposable
 overlays, input/seed ISOs, source archives/bundles and tool temporary files. Admission budgets
 16 GiB scratch, the selected guest RAM, 6 GiB host headroom and 1 GiB orchestration overhead;
 insufficient RAM refuses before VM reservation, without a disk-scratch fallback. Hard file
@@ -2057,8 +2057,26 @@ in a 15-second zero-NIC count transaction. Failed listener/gate attempts remain 
 retained. Source/index/audit/ledger/specification/instruction freezes held during every run.
 The immutable acceptance bundle is `.harness-state/verifier-vm/vm-transient-storage-accepted-c1833c5e.json`
 (16,619 bytes; SHA-256 `df7e6091d2cd8214d2c53f94822c78af18a6dc914cc5107a6d1980bd8c9bd75b`).
-These runs use existing authenticated direct-boot assets; cold bootstrap, full-release and
-other-platform VM storage acceptance remain OPEN. Tmpfs is swappable here: no host swap/mount
+Cold boot-asset preparation is also corrected at `b23935f6`: RAM is reserved before derivation;
+the 3 GiB raw conversion and exact root-partition extraction use that authenticated workspace
+with hard per-file ceilings. Only the two size/digest-pinned boot assets are staged on the cache's
+filesystem for no-clobber rename. The read-only-base fixture keeps its private base copy in RAM,
+derives assets without copying an existing cache, and boots from the newly derived assets.
+The actual fixture passed three missing/disk/wrong-identity scratch refusals, five guest-root
+storage refusals, native tokenizer controls, zero-NIC boot, listener invariance and joined retirement.
+Guest execution took 14 seconds; the storage observer covered 21.961 seconds including preparation:
+RAM peak **2,417,123,328 bytes**, disk run peak **126,976 bytes**, QEMU block writes **4,096 bytes**.
+The updated acquisition transaction also passed in 23 seconds, with RAM peak **901,087,232 bytes**,
+disk run peak **3,338,240 bytes**, no listener additions and complete joined retirement.
+Source/index/audit/ledger/specification/instruction freezes held during both transactions.
+Immutable bundle `.harness-state/verifier-vm/vm-cold-storage-accepted-b23935f6.json`
+(9,871 bytes; SHA-256 `da4ab96c5096b76474508ee9b08ba036d574071884355ae7988b162659052b9d`)
+binds commands, terminal results, source context, raw logs and measurements. The cold fixture
+publishes its cache on tmpfs; persistent-cache same-filesystem publication is source-reviewed,
+without changing the canonical cache. `AGENTS.md` requires bounded RAM storage and forbids
+executing other VM launchers until they supply equivalent admission, limits, isolation and joins.
+Complete acquisition/bootstrap closure, full-release and other-platform VM storage acceptance
+remain OPEN. Tmpfs is swappable here: no host swap/mount
 change or zero-system-I/O claim is made. Design sources:
 [Linux tmpfs](https://docs.kernel.org/filesystems/tmpfs.html),
 [QEMU disk images](https://www.qemu.org/docs/master/system/images.html), and

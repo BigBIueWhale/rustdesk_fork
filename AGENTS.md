@@ -61,6 +61,16 @@
 * Do not make formatting-only changes.
 * Keep naming/style consistent with nearby code.
 
+## Disposable VM Storage
+
+* Use the shared `scripts/vm-transient-storage.py` and `.sh` orchestration for disposable Linux VMs.
+* Keep writable overlays, provisioning raw/partition images, input/seed media, source archives/bundles, and tool temporary files in the bounded, identity-checked RAM workspace. Never fall back to `/tmp` or repository disk scratch.
+* Admit guest RAM, scratch capacity, and host headroom before creating bulk files. Keep hard file-size ceilings and the live memory/storage monitor enabled; refuse when resources are insufficient.
+* Hold the shared run lock through exact process joins and workspace retirement. An uncertain owner or cleanup retains its marker and blocks another run.
+* Do not execute another VM launcher until it provides equivalent storage admission, limits, isolation, and joined cleanup. This includes the separate media and Windows VM paths, whose storage acceptance remains open.
+* Keep only bounded evidence and intentional authenticated caches/artifacts on disk. Preserve source, canonical offline inputs, and unrelated host data during cleanup.
+* Reuse source-bound artifacts and run focused checks. Repeat a passed check only for a relevant change, failure, or unresolved concern.
+
 ## Localization (`src/lang/*.rs`)
 
 Each file is a `HashMap<key, translation>`. Layout:

@@ -657,11 +657,12 @@ elif [ "$MODE" = linux-flutter-engine-build ]; then
     readonly OVERLAY_SIZE=32G
     readonly VM_MEMORY=16384
 elif [ "$MODE" = android-peer-build ]; then
-    readonly VM_TIMEOUT_SECONDS=2400
     readonly OVERLAY_SIZE=40G
     if [ "$PEER_BUILD_PROFILE" = bounded ]; then
+        readonly VM_TIMEOUT_SECONDS=600
         readonly VM_MEMORY=8192
     else
+        readonly VM_TIMEOUT_SECONDS=2400
         readonly VM_MEMORY=16384
     fi
 elif [ "$MODE" = cm-file-replay ]; then

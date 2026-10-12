@@ -7,22 +7,25 @@ notes, and — as of 2026-06-28 — the reverted native-worker-sandbox slices) i
 removed from this live ledger because it is misleading as current status. Git
 history remains the traceability record for that intermediate work.
 
-The approximate 400,000-token ledger budget remains **OPEN**. Actual token counts
-and compliance are unverified. A reproducible count must record the tokenizer
-version, encoding-data identity, exact input SHA-256, and text/special-token
-handling. Byte and word counts do not establish token-budget compliance.
-The selected method is fixed `tiktoken 0.12.0` / `cl100k_base` ordinary-text encoding
-of the complete strict UTF-8 file, preserving line endings and treating special-token
-spellings literally. Its publisher-pinned wheel/rank acquisition and isolated count
-use the reproducible command
+The reproducible ledger metric is fixed `tiktoken 0.12.0` / `cl100k_base` /
+`encode_ordinary` over the complete strict UTF-8 file, preserving line endings and
+treating special-token spellings literally. It is a named document metric, not a
+universal model count. Reproduce it with
 `/bin/bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count`.
-The two-file acquisition passed on source `6b6328bd` in 41 seconds, with publisher
-SHA-256 verification, no host listener addition and joined cleanup. Archive identity
-is pinned in `scripts/pins.env`; acquisition receipt is
+The first admitted count at source `6b331fd1` was **272,407 tokens** / 1,202,445 bytes,
+within the approximate 400,000-token budget. Exact input identity, method, environment,
+controls and raw evidence are in `.harness-state/verifier-vm/ledger-token-count-6b331fd1.json`.
+Every ledger edit requires a fresh count; subsequent results are retained in the
+`ledger-token-count-run.*.serial.log` artifacts and the audit journal, bound to their
+exact input SHA-256. Byte and word estimates do not establish compliance.
+The two-file publisher-pinned acquisition receipt is
 `.harness-state/verifier-vm/online-fetch-receipts/run.ydTt91eQHk.receipt`.
-Actual counting is still pending. The recipe checks literal-special controls and a
-whole-input byte round trip; its result binds input, recipe, wheel, rank and native
-extension digests. It executes only as UID/GID 4000 in the authenticated zero-NIC VM.
+Archive identity is pinned in `scripts/pins.env`. The executed recipe passed seven
+actual-token controls and the whole-input byte round trip; its result binds input,
+recipe, wheel, rank and native extension digests. It runs as UID/GID 4000 without
+capabilities, with no-new-privileges, in the authenticated zero-NIC VM. The first
+14-second transaction added no host listener and joined scratch/Docker/VM cleanup.
+Whole-document role classification and compression of redundant history remain **OPEN**.
 
 Current normative specification identity:
 

@@ -421,6 +421,108 @@ def observe_admin_agent_exit(client, agent, terminal, start, record, before, lis
         os.close(pidfd)
 
 
+def observe_admin_supervisor_shutdown(client, agent, terminal, start, record, before, listener):
+    helper, helper_start = pending_admin_helper(client, start, record)
+    supervisor = Path("/proc") / str(record["supervisor"])
+    supervisor_start = int((supervisor / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19])
+    identities = {"supervisor": (supervisor, supervisor_start),
+                  "helper": (helper, helper_start),
+                  "child": (Path("/proc") / str(record["pid"]), record["start"])}
+    pidfds = {}
+    try:
+        for role, (proc, expected_start) in identities.items():
+            pidfds[role] = os.pidfd_open(int(proc.name))
+            fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+            if (int(fields[19]) != expected_start or fields[0] in (b"Z", b"X")
+                    or select.select([pidfds[role]], [], [], 0)[0]):
+                raise RuntimeError(f"shutdown fixture lost its retained {role} identity")
+        status = dict(line.split(":", 1) for line in (supervisor / "status").read_text().splitlines() if ":" in line)
+        cgroup = "/system.slice/rustdesk.service"
+        properties = dict(line.split("=", 1) for line in run(
+            ["/usr/bin/systemctl", "show", "rustdesk.service",
+             "--property=MainPID,InvocationID,ControlGroup,KillMode,Restart"]).stdout.splitlines())
+        invocation = properties.get("InvocationID", "")
+        if (status["Uid"].split() != ["0"] * 4 or not (supervisor / "exe").samefile(PRIMARY)
+                or (supervisor / "cmdline").read_bytes().split(b"\0")[1:] != [b"--service", b""]
+                or properties.get("MainPID") != str(record["supervisor"])
+                or properties.get("ControlGroup") != cgroup or properties.get("KillMode") != "control-group"
+                or properties.get("Restart") != "on-failure" or re.fullmatch(r"[0-9a-f]{32}", invocation) is None
+                or (supervisor / "cgroup").read_text() != "0::" + cgroup + "\n"
+                or (helper / "cgroup").read_text() != (supervisor / "cgroup").read_text()
+                or Path(f"/proc/{client.pid}/cgroup").read_text() == (supervisor / "cgroup").read_text()
+                or Path(f"/proc/{agent.pid}/cgroup").read_text() == (supervisor / "cgroup").read_text()
+                or client.poll() is not None or agent.poll() is not None or direct_listener(record) != listener):
+            raise RuntimeError("shutdown fixture lacks the exact installed service and independent live requester/agent")
+        run(["/usr/bin/journalctl", "--sync"], timeout=5)
+        cursor = json.loads(run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager",
+                                "--output=json", "-n", "1"]).stdout)["__CURSOR"]
+        requester_fields = Path(f"/proc/{client.pid}/stat").read_bytes().rsplit(b") ", 1)[1].split()
+        if (int(requester_fields[19]) != start or requester_fields[0] in (b"Z", b"X")
+                or client.poll() is not None or agent.poll() is not None
+                or any(select.select([fd], [], [], 0)[0] for fd in pidfds.values())):
+            raise RuntimeError("shutdown identities changed before the supervisor-only signal")
+        began = time.monotonic()
+        # Signal only the retained supervisor; systemd does not initiate this cancellation.
+        signal.pidfd_send_signal(pidfds["supervisor"], signal.SIGTERM)
+        stdout, stderr = client.communicate(timeout=5)
+        reply_seconds = time.monotonic() - began
+        supervisor_alive_at_reply = not select.select([pidfds["supervisor"]], [], [], 0)[0]
+        retired = {}
+        while time.monotonic() - began < 20:
+            for role, (proc, expected_start) in identities.items():
+                exited = bool(select.select([pidfds[role]], [], [], 0)[0])
+                try:
+                    fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                    reaped = int(fields[19]) != expected_start
+                except (FileNotFoundError, ProcessLookupError):
+                    reaped = True
+                retired[role] = {"exited": exited, "reaped": reaped}
+            if all(item["exited"] and item["reaped"] for item in retired.values()) and not Path("/sys/fs/cgroup" + cgroup).exists():
+                break
+            time.sleep(0.02)
+        elapsed = time.monotonic() - began
+        outcome = dict(line.split("=", 1) for line in run(
+            ["/usr/bin/systemctl", "show", "rustdesk.service",
+             "--property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus"]).stdout.splitlines())
+        run(["/usr/bin/journalctl", "--sync"], timeout=5)
+        messages = [json.loads(line) for line in run(
+            ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "--output=json",
+             "--after-cursor=" + cursor, "-n", "100"]).stdout.splitlines()]
+        expected = {"_PID": str(record["supervisor"]), "_UID": "0", "_TRANSPORT": "stdout",
+                    "_SYSTEMD_UNIT": "rustdesk.service", "_SYSTEMD_INVOCATION_ID": invocation,
+                    "_BOOT_ID": Path("/proc/sys/kernel/random/boot_id").read_text().strip().replace("-", "")}
+        root_messages = [item for item in messages if all(item.get(k) == v for k, v in expected.items())]
+        exits = [item for item in root_messages if item.get("MESSAGE", "").endswith("librustdesk::platform::linux] Exit")]
+        listener_absent = not any(len(fields := line.split()) >= 10 and fields[3] == "0A" and fields[9] == str(listener)
+                                  for line in Path("/proc/net/tcp").read_text().splitlines()[1:])
+        unchanged = credential() == before
+        agent_alive = agent.poll() is None
+        print("LINUX_RECEIVER_SUPERVISOR_SHUTDOWN_OBSERVED=" + json.dumps(
+            {**record, "supervisor_start": supervisor_start, "listener_inode": listener,
+             "requester_pid": client.pid, "requester_start": start, "agent_pid": agent.pid,
+             "helper_pid": int(helper.name), "helper_start": helper_start,
+             "signal": "SIGTERM", "signal_target": "supervisor-pidfd-only", "retired": retired,
+             "reply_seconds": reply_seconds, "elapsed_seconds": elapsed,
+             "supervisor_alive_at_reply": supervisor_alive_at_reply, "agent_alive_before_cleanup": agent_alive,
+             "administrator_password_sent": False, "agent_terminal": terminal.decode(errors="replace"),
+             "cli_exit": client.returncode, "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:],
+             "unit_outcome": outcome, "cgroup_absent": not Path("/sys/fs/cgroup" + cgroup).exists(),
+             "listener_absent": listener_absent, "durable_unchanged": unchanged,
+             "root_journal": root_messages}, sort_keys=True), flush=True)
+        if (client.returncode != 1 or "Changing service-owned unattended password was rejected by service" not in stderr
+                or stdout.strip() == "Done!" or reply_seconds > 5 or elapsed >= 20
+                or not all(item["exited"] and item["reaped"] for item in retired.values())
+                or outcome != {"ActiveState": "inactive", "SubState": "dead", "Result": "success",
+                               "MainPID": "0", "ExecMainCode": "1", "ExecMainStatus": "0"}
+                or Path("/sys/fs/cgroup" + cgroup).exists() or not listener_absent or not unchanged or not agent_alive
+                or len(exits) != 1 or any(" ERROR " in item.get("MESSAGE", "") for item in root_messages)
+                or terminal.count(b"Password:") != 1 or b"AUTHENTICATION COMPLETE" in terminal):
+            raise RuntimeError("pending authorization did not reject and drain through a clean supervisor shutdown")
+    finally:
+        for fd in pidfds.values():
+            os.close(fd)
+
+
 def close_admin_requester_session(client, agent, start, record, actor):
     pam = pam_module()
     pam.properties(actor, "active")
@@ -459,7 +561,7 @@ def close_admin_requester_session(client, agent, start, record, actor):
 
 
 def admin_change(value, record, phase="apply", actor=None):
-    if phase not in ("apply", "requester-exit", "agent-exit", "session-close", "bad-password") or (phase == "session-close" and actor is None):
+    if phase not in ("apply", "requester-exit", "agent-exit", "supervisor-shutdown", "session-close", "bad-password") or (phase == "session-close" and actor is None):
         raise RuntimeError("unknown administrator fixture phase")
     listener = direct_listener(record)
     if listener is None:
@@ -562,6 +664,10 @@ def admin_change(value, record, phase="apply", actor=None):
                         observe_admin_agent_exit(client, agent, terminal, start,
                                                  record, before, listener)
                         break
+                    if phase == "supervisor-shutdown":
+                        observe_admin_supervisor_shutdown(client, agent, terminal, start,
+                                                          record, before, listener)
+                        break
                     if phase == "session-close":
                         denial = close_admin_requester_session(client, agent, start, record, actor)
                     if phase == "bad-password":
@@ -585,7 +691,7 @@ def admin_change(value, record, phase="apply", actor=None):
                     password = INVALID_ADMIN_PASSWORD if phase == "bad-password" else ADMIN_PASSWORD
                     os.write(master, (password + "\n").encode())
                     password_sent = True
-        if phase not in ("requester-exit", "agent-exit"):
+        if phase not in ("requester-exit", "agent-exit", "supervisor-shutdown"):
             try:
                 stdout, stderr = client.communicate(timeout=5)
             except subprocess.TimeoutExpired:
@@ -698,6 +804,13 @@ def admin_change(value, record, phase="apply", actor=None):
         print("LINUX_RECEIVER_SESSION_REVOKED=pass uid=4001 session=closing requester=alive "
               "authentication=polkit-pam authorization=fresh-denied durable=unchanged "
               "supervisor=retained helper=reaped cleanup=agent-client-joined", flush=True)
+        return
+    if phase == "supervisor-shutdown":
+        if password_sent or changed:
+            raise RuntimeError("service shutdown admitted a pending administrator request")
+        print("LINUX_RECEIVER_SUPERVISOR_SHUTDOWN=pass uid=4001 prompt=actual password=withheld "
+              "signal=supervisor-only cli=explicit-denial helper=reaped child=reaped supervisor=clean-exit "
+              "unit=inactive cgroup=absent durable=unchanged cleanup=agent-client-joined", flush=True)
         return
     retained = direct_listener(record) == listener
     if phase == "agent-exit":
@@ -1186,6 +1299,11 @@ def tests(args):
         keyed("Receiver-fixture-fourth-2026!", "admin-denied-recovery", second, probe_spec["sha256"])
         admin_change("Receiver-agent-lost-2026!", second, "agent-exit")
         keyed("Receiver-fixture-fourth-2026!", "agent-exit-recovery", second, probe_spec["sha256"])
+        admin_change("Receiver-shutdown-admin-2026!", second, "supervisor-shutdown")
+        run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+        second = ready(second)
+        print("LINUX_RECEIVER_SHUTDOWN_RECOVERY_OBSERVED=" + json.dumps(second, sort_keys=True), flush=True)
+        keyed("Receiver-fixture-fourth-2026!", "supervisor-shutdown-recovery", second, probe_spec["sha256"])
         admin_change("Receiver-fixture-admin-2026!", second)
         keyed("Receiver-fixture-admin-2026!", "admin-applied", second, probe_spec["sha256"])
         before = credential()
@@ -1217,7 +1335,7 @@ def tests(args):
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=14 cpace=12 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=15 cpace=13 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 

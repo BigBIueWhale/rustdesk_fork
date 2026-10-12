@@ -2252,6 +2252,17 @@ This is debug/headless seatless-X11 evidence for one abrupt group-loss schedule.
 dialog dismissal, other cancellation/delay/contention/shutdown schedules and wider acceptance
 remain OPEN; no product code changed.
 
+**Pending native acceptance: Linux supervisor shutdown at an actual administrator prompt.**
+The fixture retains supervisor/helper/child pidfds and sends SIGTERM only to the exact root
+supervisor. The ordinary requester and registered agent are outside its service cgroup;
+no administrator password is sent. Acceptance requires explicit CLI rejection, all three
+process identities exited/reaped, clean inactive unit/cgroup/listener retirement, unchanged
+durable credential, and CPace plus actual administrator authorization after a fresh start.
+This distinguishes product cancellation/drain from systemd's initial control-group signaling.
+`src/platform/linux.rs:2418,2528` initiates shutdown and joins protected IPC before retiring
+the child; `src/ipc.rs:4077,4304,6047` cancels authorization, joins workers/transactions and
+reaps the owned helper. Product/artifact unchanged; runtime result remains pending.
+
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

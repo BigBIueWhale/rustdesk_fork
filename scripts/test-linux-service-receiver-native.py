@@ -309,14 +309,15 @@ def rejection_journal(record, invocation, cursor=None):
     argv = ["/usr/bin/journalctl", "--boot", "--quiet", "--no-pager", "--output=json",
             "--output-fields=__CURSOR,__MONOTONIC_TIMESTAMP,_BOOT_ID,_PID,_UID,_TRANSPORT,"
             "_STREAM_ID,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,MESSAGE", "--lines=100",
-            "_SYSTEMD_UNIT=rustdesk.service", "_SYSTEMD_INVOCATION_ID=" + invocation]
+            "_SYSTEMD_UNIT=rustdesk.service", "_SYSTEMD_INVOCATION_ID=" + invocation,
+            "_PID=" + str(record["pid"]), "_UID=4001"]
     if cursor is not None:
         argv.append("--after-cursor=" + cursor)
     entries = [json.loads(line) for line in run(argv, timeout=5).stdout.splitlines()]
     boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip().replace("-", "")
-    # Inherited stderr carries the supervisor's journal credentials. The child
-    # record and listener proof independently identify the serving process.
-    expected = {"_BOOT_ID": boot, "_PID": str(record["supervisor"]), "_UID": "0",
+    # Journald refreshes inherited-stream credentials from the actual sender.
+    # Only the retained child can supply this receiver's rejection evidence.
+    expected = {"_BOOT_ID": boot, "_PID": str(record["pid"]), "_UID": "4001",
                 "_TRANSPORT": "stdout", "_SYSTEMD_UNIT": "rustdesk.service",
                 "_SYSTEMD_INVOCATION_ID": invocation}
     if len(entries) > 100:

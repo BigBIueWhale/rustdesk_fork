@@ -2116,7 +2116,7 @@ wrong-image denied both endpoints; restart fresh generation/durable unchanged.
 Docker/unit/cgroup/PAM/X11 joined; correct outer/raw OG4oMrnm7I. Build261s.
 Three positive CPace checks: UID4002/probe eb9dd801 after both changes/restart;
 same child/listener across changes, fresh generation on restart; mutual confirmation.
-Added stale-refusal checks, unexecuted: invocation/cursor-bound tag mismatch plus valid recovery.
+Stale-refusal fixture failed on journal attribution; exact-child correction awaits execution.
 
 Sources/commands/hashes: `linux-wire-v2-accepted-e69129bc.json`,
 `linux-receiver-cpace-accepted-678569d2.json`,

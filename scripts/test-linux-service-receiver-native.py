@@ -71,7 +71,28 @@ def prepare_container():
     if not source.is_dir() or source.is_symlink():
         raise RuntimeError("pinned verifier image lacks XKB runtime data")
     shutil.copytree(source, "/out/xkb", symlinks=True)
-    print("LINUX_RECEIVER_PREPARE=pass xdo=checked-in xkb=pinned-image", flush=True)
+    libraries = Path("/out/x11-libraries")
+    libraries.mkdir(mode=0o700)
+    for name in ("Xvfb", "xkbcomp"):
+        listing = run(["/usr/bin/ldd", "/xvfb-root/usr/bin/" + name],
+                      env={**ENV, "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}).stdout
+        if "not found" in listing:
+            raise RuntimeError(f"X11 runtime dependency is missing: {listing}")
+        for line in listing.splitlines():
+            match = re.search(r"(?:=>\s+|^\s*)(/\S+)\s+\(", line)
+            if match is None:
+                continue
+            source = Path(match[1])
+            destination = libraries / source.name
+            if destination.exists():
+                if digest(destination) != digest(source):
+                    raise RuntimeError("X11 dependency basename collision")
+            else:
+                shutil.copyfile(source, destination)
+    count = len(list(libraries.iterdir()))
+    if not 5 <= count <= 64:
+        raise RuntimeError("X11 dependency closure count differs")
+    print(f"LINUX_RECEIVER_PREPARE=pass xdo=checked-in xkb=pinned-image x11_libraries={count}", flush=True)
 
 
 def install_polkit(archive_sha, manifest_sha):

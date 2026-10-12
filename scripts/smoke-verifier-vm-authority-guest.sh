@@ -663,6 +663,7 @@ run_linux_service_receiver_tests() {
         --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=700,uid=1000,gid=1000 \
         --mount "type=bind,source=$native,target=/native,readonly" \
         --mount "type=bind,source=$helper,target=/fixture.py,readonly" \
+        --mount "type=bind,source=$ROOT/engine-xvfb/root,target=/xvfb-root,readonly" \
         --mount "type=bind,source=$work/prepared,target=/out,bind-recursive=disabled" \
         --workdir /tmp "$DEV_CHECK_IMAGE_CONFIG_ID" /usr/bin/python3 -B -I -S /fixture.py --prepare-container)" \
         || fail 'cannot create the confined native receiver preparer'
@@ -674,7 +675,8 @@ run_linux_service_receiver_tests() {
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
     [ "$inspect" = "$(printf '%s\n' "bind|$native|/native|false" \
-        "bind|$helper|/fixture.py|false" "bind|$work/prepared|/out|true" | LC_ALL=C sort)" ] \
+        "bind|$helper|/fixture.py|false" "bind|$ROOT/engine-xvfb/root|/xvfb-root|false" \
+        "bind|$work/prepared|/out|true" | LC_ALL=C sort)" ] \
         || fail 'native receiver preparer mount envelope differs'
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" || status=$?
     [ "$status" -eq 0 ] \
@@ -699,11 +701,15 @@ run_linux_service_receiver_tests() {
     # The signed package closure owns libc and its matching ELF interpreter.
     # Only product dependencies absent from the base need this extra directory.
     local library
-    for library in "$work/libraries/"*; do
+    for library in "$work/libraries/"* "$work/prepared/x11-libraries/"*; do
         case "${library##*/}" in
             ld-linux*|libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|libutil.so.*|libanl.so.*|libresolv.so.*) continue ;;
         esac
-        install -m 0644 "$library" "$runtime/"
+        if [ -e "$runtime/${library##*/}" ]; then
+            cmp -s "$library" "$runtime/${library##*/}" || fail 'receiver library basename collision'
+        else
+            install -m 0644 "$library" "$runtime/"
+        fi
     done
     find "$ROOT/engine-xvfb/root/usr/lib" -type f -name '*.so*' \
         -exec install -m 0644 {} "$runtime/" \;

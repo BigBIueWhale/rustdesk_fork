@@ -93,6 +93,9 @@ case "$#:${8:-}" in
     12:--linux-service-uid-tests)
         MODE=linux-service-uid-tests
         ;;
+    12:--linux-systemd-notification-tests)
+        MODE=linux-systemd-notification-tests
+        ;;
     12:--android-rust-lifecycle-tests)
         MODE=android-rust-lifecycle-tests
         ;;
@@ -2752,6 +2755,25 @@ run_focused_rust_tests() {
             ipc::pulse_audio::tests::real_monitor_capture_revokes_after_audio_stops
             ipc::pulse_audio::tests::real_kernel_pa_admission_refuses_same_uid_child_with_token
         )
+    elif [ "$MODE" = linux-systemd-notification-tests ]; then
+        container_name=rustdesk-linux-systemd-notification-tests
+        memory=512m
+        memory_bytes=536870912
+        tmpfs_size=64m
+        image_archive=$inputs/verifier-images/devcheck.docker.tar.gz
+        image_config=$DEV_CHECK_IMAGE_CONFIG_ID
+        image_index=$DEV_CHECK_IMAGE_ID
+        toolchain_mode=devcheck-image
+        toolchain_mount=()
+        bridge_mounts=()
+        source_fingerprints=(src/platform/linux/systemd.rs scripts/test-linux-systemd-notifications.rs)
+        required_tests=(
+            systemd::tests::absent_manager_is_optional
+            systemd::tests::malformed_addresses_refuse
+            systemd::tests::pathname_notifications_preserve_exact_datagrams
+            systemd::tests::queue_pressure_retains_endpoint_and_recovers
+            systemd::tests::closed_peer_errors_persist_without_redirecting_to_replacement
+        )
     elif [ "$MODE" = linux-service-uid-tests ]; then
         container_name=rustdesk-linux-service-uid-tests
         memory=512m
@@ -3153,7 +3175,7 @@ run_focused_rust_tests() {
         )
     fi
 
-    if [ "$MODE" != linux-service-uid-tests ]; then
+    if [[ "$MODE" != linux-service-uid-tests && "$MODE" != linux-systemd-notification-tests ]]; then
         dependency_mounts=(
             --mount "type=bind,source=$vendor,target=/vendor,readonly"
             --mount "type=bind,source=$vendor_config,target=/inputs/config.toml,readonly"
@@ -3392,7 +3414,7 @@ run_focused_rust_tests() {
                 IFS= read -r apparmor </proc/self/attr/current
                 case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
                 mkdir /tmp/home /tmp/cargo-home
-                if [ "$RUST_TEST_MODE" != linux-service-uid-tests ]; then
+                if [[ "$RUST_TEST_MODE" != linux-service-uid-tests && "$RUST_TEST_MODE" != linux-systemd-notification-tests ]]; then
                     sed "s#^directory = \"/online/cargo-vendor\"#directory = \"/vendor\"#" \
                         /inputs/config.toml >/tmp/cargo-home/config.toml
                     [ "$(grep -Fc '\''directory = "/vendor"'\'' /tmp/cargo-home/config.toml)" -eq 1 ]
@@ -3468,6 +3490,11 @@ run_focused_rust_tests() {
                         ;;
                     linux-pa-authority-tests)
                         /bin/bash /source/scripts/run-pa-runtime-tests.sh /inputs/pa-runtime.tar.gz
+                        ;;
+                    linux-systemd-notification-tests)
+                        rustc --edition=2021 --test /source/scripts/test-linux-systemd-notifications.rs \
+                            -o /cargo-target/notification-tests
+                        /cargo-target/notification-tests --test-threads=1 --color never
                         ;;
                     linux-service-uid-tests)
                         python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
@@ -3849,6 +3876,15 @@ PY
             || { tail -n 200 "$output" >&2; fail 'native PulseAudio monitor probe receipt is absent'; }
         grep -Fxq 'PA_RUNTIME_NATIVE=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 revocation=after-unload same_uid_stolen_token=refused network=none uid=1000 cleanup=joined' "$output" \
             || { tail -n 200 "$output" >&2; fail 'native PulseAudio capture receipt is absent'; }
+    elif [ "$MODE" = linux-systemd-notification-tests ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'Linux notification summary count differs'
+        [ "$(grep -Ec '^test systemd::tests::.* \.\.\. ok$' "$output")" -eq "${#required_tests[@]}" ] \
+            || fail 'Linux notification named test count differs'
+        [ -f "$target_root/notification-tests" ] && [ ! -L "$target_root/notification-tests" ] \
+            && [ "$(stat -c '%u:%g:%h' -- "$target_root/notification-tests")" = 1000:1000:1 ] \
+            || fail 'Linux notification artifact metadata differs'
+        notification_artifact_sha="$(sha256sum "$target_root/notification-tests" | awk '{ print $1 }')"
+        [[ "$notification_artifact_sha" =~ ^[0-9a-f]{64}$ ]] || fail 'notification artifact digest malformed'
     elif [ "$MODE" = linux-service-uid-tests ]; then
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'Linux UID-policy summary count differs'; }
@@ -4062,6 +4098,8 @@ PY
     SEALED_INPUTS_MOUNTED=0
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
         grep -E '^test ipc::uid_policy::tests::r_s11e60_.* \.\.\. ok$|^verify-linux-service-password-ipc: source checks passed$' "$output"
+    elif [ "$MODE" = linux-systemd-notification-tests ]; then
+        grep -E '^test systemd::tests::.* \.\.\. ok$' "$output"
     elif [ "$MODE" = linux-service-uid-tests ]; then
         grep -E '^test uid_policy::tests::.* \.\.\. ok$|^verify-linux-service-password-ipc: source checks passed$' "$output"
     fi
@@ -4100,6 +4138,11 @@ PY
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config" \
             "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+    elif [ "$MODE" = linux-systemd-notification-tests ]; then
+        [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'Linux notification test total differs'
+        printf 'LINUX_NOTIFICATION_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s target=linux-x86_64 scope=production-notification-kernel-datagrams rust=1.75.0 edition=2021 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+            "$notification_artifact_sha" "$image_index" "$image_config"
     elif [ "$MODE" = linux-service-uid-tests ]; then
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Linux UID-policy test count differs: $tests_passed"
@@ -7993,6 +8036,7 @@ docker_socket_gid=4000
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = linux-pa-authority-tests ] \
    || [ "$MODE" = linux-service-uid-tests ] \
+   || [ "$MODE" = linux-systemd-notification-tests ] \
    || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = flutter-model-tests ] \
@@ -8188,7 +8232,7 @@ if [ "$MODE" = linux-pa-authority-tests ]; then
     exit 0
 fi
 
-if [ "$MODE" = linux-service-uid-tests ]; then
+if [[ "$MODE" = linux-service-uid-tests || "$MODE" = linux-systemd-notification-tests ]]; then
     run_focused_rust_tests
     exit 0
 fi

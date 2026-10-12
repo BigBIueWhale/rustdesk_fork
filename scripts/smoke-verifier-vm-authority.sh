@@ -88,6 +88,11 @@ case "$#:${1:-}" in
             || { echo 'focused Linux UID-policy input/run overrides are forbidden' >&2; exit 2; }
         MODE=linux-service-uid-tests
         ;;
+    1:--linux-systemd-notification-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'notification-test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=linux-systemd-notification-tests
+        ;;
     1:--installer-package-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -601,7 +606,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     fi
     readonly OVERLAY_SIZE=40G
     readonly VM_MEMORY=16384
-elif [ "$MODE" = linux-service-uid-tests ]; then
+elif [[ "$MODE" = linux-service-uid-tests || "$MODE" = linux-systemd-notification-tests ]]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
@@ -2250,7 +2255,8 @@ verify_sha256 "$GIT_PACKAGE" "$SHA256_VERIFIER_VM_GIT_PACKAGE"
     || fail 'authenticated verifier-VM Git package identity differs'
 /usr/bin/qemu-img check -q "$BASE" || fail 'Debian verifier-VM base failed qcow2 validation'
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
-   || [ "$MODE" = linux-pa-authority-tests ] || [ "$MODE" = linux-service-uid-tests ]; then
+   || [ "$MODE" = linux-pa-authority-tests ] || [ "$MODE" = linux-service-uid-tests ] \
+   || [ "$MODE" = linux-systemd-notification-tests ]; then
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
@@ -2262,7 +2268,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
             "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
             "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
         )
-    elif [ "$MODE" = linux-service-uid-tests ]; then
+    elif [[ "$MODE" = linux-service-uid-tests || "$MODE" = linux-systemd-notification-tests ]]; then
         focused_input_files=(
             "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
             "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
@@ -2299,7 +2305,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
              "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
         && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
         || fail 'authenticated virtiofsd package identity differs'
-    if [ "$MODE" != linux-service-uid-tests ]; then
+    if [[ "$MODE" != linux-service-uid-tests && "$MODE" != linux-systemd-notification-tests ]]; then
         [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
                  "$HOST_UID:$HOST_GID:500" ] \
@@ -2934,6 +2940,7 @@ RUST_TEST_SOURCE_ARCHIVE_SHA256=
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = linux-pa-authority-tests ] \
    || [ "$MODE" = linux-service-uid-tests ] \
+   || [ "$MODE" = linux-systemd-notification-tests ] \
    || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ]; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
@@ -3458,7 +3465,7 @@ kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bi
 initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
 sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$RUN_ADMISSION_TEST" "$ANDROID_PEER_ARTIFACT_SOURCE" "$ANDROID_PEER_ARTIFACT_TEST" "$ANDROID_RUNTIME_PROGRESS_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "${AUTHORITY_GATE_SOURCES[@]}" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_RECENTS_DRIVER_SOURCE" "$ANDROID_EMULATOR_OBSERVER_DEPENDENCIES" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")"
 focused_inputs_before=
-if [ "$MODE" = linux-service-uid-tests ]; then
+if [[ "$MODE" = linux-service-uid-tests || "$MODE" = linux-systemd-notification-tests ]]; then
     focused_inputs_before="$(linux_service_uid_input_inventory)" \
         || fail 'cannot inventory sealed Linux UID-policy inputs'
 elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
@@ -3583,6 +3590,7 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
 elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = linux-pa-authority-tests ] \
    || [ "$MODE" = linux-service-uid-tests ] \
+   || [ "$MODE" = linux-systemd-notification-tests ] \
    || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ]; then
     vm_source_command git_closed -C "$REPO_ROOT" archive --format=tar "$RUST_TEST_SOURCE_COMMIT" \
@@ -3783,6 +3791,7 @@ elif [ "$MODE" = debian-systemd-lifecycle ]; then
 elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = linux-pa-authority-tests ] \
    || [ "$MODE" = linux-service-uid-tests ] \
+   || [ "$MODE" = linux-systemd-notification-tests ] \
    || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ]; then
     payload_identity=(-uid 4000 -gid 4000)
@@ -4149,6 +4158,8 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
     guest_invocation+=" --linux-pa-authority-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = linux-service-uid-tests ]; then
     guest_invocation+=" --linux-service-uid-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
+elif [ "$MODE" = linux-systemd-notification-tests ]; then
+    guest_invocation+=" --linux-systemd-notification-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     guest_invocation+=" --android-rust-lifecycle-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
     if [ "$RUST_TEST_PROFILE" != integration ]; then
@@ -4272,6 +4283,7 @@ fi
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = linux-pa-authority-tests ] \
    || [ "$MODE" = linux-service-uid-tests ] \
+   || [ "$MODE" = linux-systemd-notification-tests ] \
    || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = apple-conform ] \
@@ -5301,6 +5313,20 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Linux PulseAudio authority cloud-init completion marker'
+elif [ "$MODE" = linux-systemd-notification-tests ]; then
+    mapfile -t notification_artifacts < <(
+        /usr/bin/grep -Eo \
+            "LINUX_NOTIFICATION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=5 artifact_sha256=[0-9a-f]{64}" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#notification_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fo 'LINUX_NOTIFICATION_VM=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
+        || fail 'Linux notification artifact receipt differs'
+    NOTIFICATION_ARTIFACT_SHA256=${notification_artifacts[0]##*=}
+    require_exact_fixed_receipt \
+        "${notification_artifacts[0]} target=linux-x86_64 scope=production-notification-kernel-datagrams rust=1.75.0 edition=2021 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'focused Linux notification receipt'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'notification cloud-init completion'
 elif [ "$MODE" = linux-service-uid-tests ]; then
     mapfile -t uid_policy_artifacts < <(
         /usr/bin/grep -Eo \
@@ -6127,7 +6153,7 @@ fi
     || fail 'direct-boot initramfs changed during execution'
 [ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$RUN_ADMISSION_TEST" "$ANDROID_PEER_ARTIFACT_SOURCE" "$ANDROID_PEER_ARTIFACT_TEST" "$ANDROID_RUNTIME_PROGRESS_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "${AUTHORITY_GATE_SOURCES[@]}" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_RECENTS_DRIVER_SOURCE" "$ANDROID_EMULATOR_OBSERVER_DEPENDENCIES" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
-if [ "$MODE" = linux-service-uid-tests ]; then
+if [[ "$MODE" = linux-service-uid-tests || "$MODE" = linux-systemd-notification-tests ]]; then
     focused_inputs_after="$(linux_service_uid_input_inventory)" \
         || fail 'cannot inventory sealed Linux UID-policy input postconditions'
     [ "$focused_inputs_after" = "$focused_inputs_before" ] \
@@ -6522,6 +6548,10 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
 elif [ "$MODE" = linux-pa-authority-tests ]; then
     printf 'LINUX_PA_AUTHORITY_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=pa-admission-wire-native-capture network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = linux-systemd-notification-tests ]; then
+    printf 'LINUX_NOTIFICATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s scope=production-notification-kernel-datagrams network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+        "$NOTIFICATION_ARTIFACT_SHA256" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-uid-tests ]; then
     printf 'LINUX_SERVICE_UID_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s target=linux-x86_64 scope=production-uid-policy-and-source-wiring network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \

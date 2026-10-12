@@ -2374,7 +2374,15 @@ The corrected profile compiled in 257 Cargo seconds and shut down cleanly with n
 I/O error; RAM scratch peaked at 6,190,272,512 bytes, overlay at 6,031,544,320 bytes.
 Two attempts were refused for unknown new host UDP endpoints; only the owned VM was
 stopped, diagnostics retained and all RAM/run owners retired. No candidate was published
-or installed-service case executed. Exact native normal stop, notification failure,
+or installed-service case executed. Current-source build `24c35dfb` adds a 600-second
+integration ceiling and compiles in 255 Cargo seconds, with clean guest shutdown;
+the final listener guard again refuses publication for unknown UDP additions.
+RAM scratch peaks at 6,222,364,672 bytes, overlay at 6,063,591,424 bytes; bounded disk
+diagnostics peak at 3,555,328 bytes. All exact owners/RAM retire, and 34 diagnostic entries
+remain in `retained-peer-build-host-endpoints-3T8Tmhs71I`, bound by
+`peer-build-failed-retention-3T8Tmhs71I.json`. No host process ownership is inferred and
+no host service/network state is changed. Do not repeat this expensive build solely
+for unchanged endpoint churn. Exact native normal stop, notification failure,
 ordinary network drain, new-unit 600-second failure/recovery and other init systems remain OPEN.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux

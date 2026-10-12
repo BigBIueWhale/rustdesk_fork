@@ -679,6 +679,7 @@ else
 fi
 vm_storage_preflight
 reserve_verifier_run
+reserve_vm_storage
 for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \
     "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC" \
     "$BUILDX_BINARY:$SIZE_VERIFIER_VM_BUILDX" \
@@ -732,7 +733,9 @@ done
     && [ -x "$VIRTIOFSD_LAUNCHER" ] \
     && [ -x "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py" ] \
     || fail 'VM entry scripts must be executable'
-VERIFIER_VM_INPUT_ROOT="$INPUT_ROOT" "$BOOT_DERIVER"
+VERIFIER_VM_INPUT_ROOT="$INPUT_ROOT" \
+    VERIFIER_VM_TRANSIENT_ROOT="$VM_TRANSIENT" VERIFIER_VM_TRANSIENT_ID="$VM_TRANSIENT_ID" \
+    VERIFIER_VM_MEMORY_MIB="$VM_MEMORY" "$BOOT_DERIVER"
 for input in "$KERNEL:$SIZE_VERIFIER_VM_KERNEL" "$INITRD:$SIZE_VERIFIER_VM_INITRD"; do
     path=${input%:*}
     size=${input##*:}
@@ -754,7 +757,6 @@ else
 fi
 RECEIPT_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$RECEIPT_ROOT")"
 
-reserve_vm_storage
 readonly OVERLAY=$VM_TRANSIENT/overlay.qcow2
 readonly PAYLOAD=$VM_TRANSIENT/payload.iso
 readonly SEED=$VM_TRANSIENT/seed.iso

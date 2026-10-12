@@ -105,7 +105,12 @@ def allocation(path):
         for name in children + files:
             entries += 1
             require(entries <= 256, 'RAM scratch inventory exceeds its bound')
-            metadata = (Path(directory) / name).lstat()
+            try:
+                metadata = (Path(directory) / name).lstat()
+            except FileNotFoundError:
+                # Boot preparation retires its exact raw/partition files while
+                # this observer samples the live workspace.
+                continue
             require(metadata.st_dev == Path(path).stat().st_dev
                     and metadata.st_uid == os.geteuid()
                     and metadata.st_gid == os.getegid()

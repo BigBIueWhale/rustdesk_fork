@@ -22,12 +22,15 @@ readonly LIB_SOURCE="$SCRIPT_DIR/lib.sh"
 readonly PIN_SOURCE="$SCRIPT_DIR/pins.env"
 readonly CLEANUP_HELPER="$SCRIPT_DIR/verify-private-tree-closure.py"
 readonly BASE_METADATA_SOURCE="$SCRIPT_DIR/verifier-vm-base-metadata.sh"
+readonly VM_STORAGE_SOURCE="$SCRIPT_DIR/vm-transient-storage.py"
 readonly DISK_SIZE=$((3 * 1024 * 1024 * 1024))
 readonly SECTOR_SIZE=512
 readonly PARTITION_BYTES=$((VERIFIER_VM_ROOT_PARTITION_SECTORS * SECTOR_SIZE))
 
 TRANSACTION=
 TRANSACTION_ID=
+RAM_TRANSACTION=
+RAM_TRANSACTION_ID=
 
 fail() {
     printf 'verifier-VM boot derivation: %s\n' "$*" >&2
@@ -42,6 +45,13 @@ verify_digest() {
     [ "${observed%% *}" = "$expected" ] \
         || fail "boot asset digest differs: $path"
 }
+
+bounded_derivation_command() (
+    local limit=$1
+    shift
+    ulimit -f "$(((limit + 1023) / 1024))" || exit 1
+    exec "$@"
+)
 
 verify_boot_cache() {
     local inventory path size digest
@@ -71,6 +81,11 @@ verify_boot_cache() {
 cleanup() {
     local status=$? cleanup_status=0
     trap - EXIT HUP INT TERM
+    if [ -n "$RAM_TRANSACTION" ]; then
+        /usr/bin/python3 -I -S "$CLEANUP_HELPER" \
+            --remove-private-root "$RAM_TRANSACTION" \
+            --expected-identity "$RAM_TRANSACTION_ID" || cleanup_status=1
+    fi
     if [ -n "$TRANSACTION" ]; then
         if [ -d "$TRANSACTION" ] && [ ! -L "$TRANSACTION" ] \
            && [ "$(/usr/bin/stat -c '%d:%i' -- "$TRANSACTION" 2>/dev/null)" = \
@@ -126,13 +141,13 @@ for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/dd /usr/bin/dirname \
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$resolved")" = 0:0:755:1 ] \
         || fail "fixed derivation tool metadata changed: $tool"
 done
-for source in "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE"; do
+for source in "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE" "$VM_STORAGE_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "boot-derivation source is absent or ambiguous: $source"
 done
 [ -x "$DERIVER_SOURCE" ] && [ -x "$CLEANUP_HELPER" ] \
     || fail 'boot-derivation executable source is not executable'
-sources_before="$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE")"
+sources_before="$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE" "$VM_STORAGE_SOURCE")"
 source "$BASE_METADATA_SOURCE"
 
 [ -d "$STATE_ROOT" ] && [ ! -L "$STATE_ROOT" ] \
@@ -166,25 +181,42 @@ if [ -e "$BOOT_ROOT" ] || [ -L "$BOOT_ROOT" ]; then
     verify_boot_cache
     [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$BASE"):$(/usr/bin/sha512sum "$BASE")" = \
       "$base_before" ] || fail 'authenticated base changed during cache validation'
-    [ "$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE")" = \
+    [ "$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE" "$VM_STORAGE_SOURCE")" = \
       "$sources_before" ] || fail 'boot-derivation source changed during cache validation'
     printf 'VERIFIER_VM_BOOT_ASSETS=pass source=authenticated-qcow2 cache=existing kernel=%s\n' \
         "$VERIFIER_VM_KERNEL_RELEASE"
     exit 0
 fi
 
+readonly RAM_ROOT="${VERIFIER_VM_TRANSIENT_ROOT:-}"
+readonly RAM_ROOT_ID="${VERIFIER_VM_TRANSIENT_ID:-}"
+readonly MEMORY_MIB="${VERIFIER_VM_MEMORY_MIB:-}"
+[[ "$RAM_ROOT" =~ ^/dev/shm/rustdesk-fork-vm-$UID_NOW/run\.[A-Za-z0-9_]+$ ]] \
+    && [[ "$RAM_ROOT_ID" =~ ^[0-9]+:[0-9]+$ ]] \
+    && [[ "$MEMORY_MIB" =~ ^[0-9]+$ ]] \
+    || fail 'cold boot derivation requires the owned VM RAM workspace; disk fallback is forbidden'
+/usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" check --memory-mib "$MEMORY_MIB" \
+    --workspace "$RAM_ROOT" --identity "$RAM_ROOT_ID" \
+    || fail 'cold boot derivation RAM admission differs'
+export TMPDIR="$RAM_ROOT"
+RAM_TRANSACTION="$(/usr/bin/mktemp -d "$RAM_ROOT/derive-boot.XXXXXXXXXX")" \
+    || fail 'cannot create the RAM boot-derivation transaction'
+RAM_TRANSACTION_ID="$(/usr/bin/stat -c '%d:%i' -- "$RAM_TRANSACTION")"
+
+# Only the two pinned boot assets are staged on the cache's filesystem, so its
+# no-clobber publication remains a same-filesystem rename.
 TRANSACTION="$(/usr/bin/mktemp -d "$STATE_ROOT/derive-boot.XXXXXXXXXX")" \
     || fail 'cannot create the private boot-derivation transaction'
 TRANSACTION_ID="$(/usr/bin/stat -c '%d:%i' -- "$TRANSACTION")"
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$TRANSACTION")" = "$UID_NOW:$GID_NOW:700" ] \
     || fail 'boot-derivation transaction metadata differs'
-readonly RAW="$TRANSACTION/base.raw"
-readonly PARTITION="$TRANSACTION/root.ext4"
-readonly GPT_INFO="$TRANSACTION/partition.info"
-readonly FS_INFO="$TRANSACTION/filesystem.info"
+readonly RAW="$RAM_TRANSACTION/base.raw"
+readonly PARTITION="$RAM_TRANSACTION/root.ext4"
+readonly GPT_INFO="$RAM_TRANSACTION/partition.info"
+readonly FS_INFO="$RAM_TRANSACTION/filesystem.info"
 readonly STAGING="$TRANSACTION/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
 
-/usr/bin/qemu-img convert -f qcow2 -O raw -- "$BASE" "$RAW" \
+bounded_derivation_command "$DISK_SIZE" /usr/bin/qemu-img convert -f qcow2 -O raw -- "$BASE" "$RAW" \
     || fail 'cannot convert the authenticated base to a sparse raw image'
 [ -f "$RAW" ] && [ ! -L "$RAW" ] \
     || fail 'derived raw image is absent or symlinked'
@@ -221,7 +253,7 @@ partition_sectors="$(/usr/bin/awk '/^Partition size:/ { print $3 }' "$GPT_INFO")
   "$((VERIFIER_VM_ROOT_PARTITION_FIRST_SECTOR + VERIFIER_VM_ROOT_PARTITION_SECTORS - 1))" ] \
     || fail 'root-partition final sector differs'
 
-/usr/bin/dd if="$RAW" of="$PARTITION" bs="$SECTOR_SIZE" \
+bounded_derivation_command "$PARTITION_BYTES" /usr/bin/dd if="$RAW" of="$PARTITION" bs="$SECTOR_SIZE" \
     skip="$VERIFIER_VM_ROOT_PARTITION_FIRST_SECTOR" \
     count="$VERIFIER_VM_ROOT_PARTITION_SECTORS" conv=sparse status=none \
     || fail 'cannot extract the exact root partition'
@@ -231,7 +263,8 @@ partition_sectors="$(/usr/bin/awk '/^Partition size:/ { print $3 }' "$GPT_INFO")
   "$UID_NOW:$GID_NOW:600:1:$PARTITION_BYTES" ] \
     || fail 'derived root-partition metadata differs'
 
-/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C DEBUGFS_PAGER=/usr/bin/cat \
+bounded_derivation_command 1048576 /usr/bin/env -i \
+    PATH=/usr/bin:/bin LC_ALL=C TMPDIR="$RAM_ROOT" DEBUGFS_PAGER=/usr/bin/cat \
     /usr/sbin/debugfs -R stats "$PARTITION" >"$FS_INFO" 2>&1 \
     || fail 'cannot inspect the derived root filesystem'
 /usr/bin/grep -Fxq "Filesystem UUID:          $VERIFIER_VM_ROOT_FILESYSTEM_UUID" "$FS_INFO" \
@@ -244,12 +277,14 @@ partition_sectors="$(/usr/bin/awk '/^Partition size:/ { print $3 }' "$GPT_INFO")
 /usr/bin/mkdir -- "$STAGING"
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$STAGING")" = "$UID_NOW:$GID_NOW:700" ] \
     || fail 'boot-asset staging directory metadata differs'
-/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C DEBUGFS_PAGER=/usr/bin/cat \
+bounded_derivation_command "$SIZE_VERIFIER_VM_KERNEL" /usr/bin/env -i \
+    PATH=/usr/bin:/bin LC_ALL=C TMPDIR="$RAM_ROOT" DEBUGFS_PAGER=/usr/bin/cat \
     /usr/sbin/debugfs -R \
         "dump /boot/vmlinuz-$VERIFIER_VM_KERNEL_RELEASE $STAGING/vmlinuz" \
         "$PARTITION" >/dev/null 2>&1 \
     || fail 'cannot extract the pinned verifier-VM kernel'
-/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C DEBUGFS_PAGER=/usr/bin/cat \
+bounded_derivation_command "$SIZE_VERIFIER_VM_INITRD" /usr/bin/env -i \
+    PATH=/usr/bin:/bin LC_ALL=C TMPDIR="$RAM_ROOT" DEBUGFS_PAGER=/usr/bin/cat \
     /usr/sbin/debugfs -R \
         "dump /boot/initrd.img-$VERIFIER_VM_KERNEL_RELEASE $STAGING/initrd.img" \
         "$PARTITION" >/dev/null 2>&1 \
@@ -287,7 +322,7 @@ fi
 
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$BASE"):$(/usr/bin/sha512sum "$BASE")" = \
   "$base_before" ] || fail 'authenticated base changed during boot-asset derivation'
-[ "$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE")" = \
+[ "$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE" "$VM_STORAGE_SOURCE")" = \
   "$sources_before" ] || fail 'boot-derivation source changed during execution'
 printf 'VERIFIER_VM_BOOT_ASSETS=pass source=authenticated-qcow2 cache=published kernel=%s\n' \
     "$VERIFIER_VM_KERNEL_RELEASE"

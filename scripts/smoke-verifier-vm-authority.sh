@@ -45,6 +45,7 @@ case "$#:${1:-}" in
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'base read-only test input/run overrides are forbidden' >&2; exit 2; }
         BASE_READONLY_TEST=1
+        MODE=ledger-token-count
         ;;
     0:)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -371,9 +372,6 @@ readonly RUN_ROOT="${VERIFIER_VM_RUN_ROOT:-$INPUT_ROOT}"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
 readonly DOCKER_BUNDLE="$INPUT_ROOT/docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
 readonly GIT_PACKAGE="$INPUT_ROOT/git_${VERIFIER_VM_GIT_PACKAGE_FILENAME_VERSION}_amd64.deb"
-readonly BOOT_ROOT="$INPUT_ROOT/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
-readonly KERNEL="$BOOT_ROOT/vmlinuz"
-readonly INITRD="$BOOT_ROOT/initrd.img"
 readonly VIRTIOFSD_PACKAGE="$INPUT_ROOT/virtiofsd_${VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION}_amd64.deb"
 readonly VIRTIOFSD_LAUNCHER="$SCRIPT_DIR/launch-landlocked-virtiofsd.py"
 readonly ONLINE_INPUTS="$REPO_ROOT/online/inputs"
@@ -693,7 +691,6 @@ fi
 
 RUN=
 RUN_ID=
-BASE_READONLY_INPUT_ID=
 RUN_MARKER=
 RUN_MARKER_ID=
 RUN_ADMISSION_FD=
@@ -1864,13 +1861,6 @@ cleanup() {
                 --remove-private-root "$RUN" --expected-identity "$RUN_ID" \
                 || cleanup_failed=1
         else
-            if [ "$cleanup_failed" -eq 0 ]; then
-                if [ -n "$BASE_READONLY_INPUT_ID" ]; then
-                    /usr/bin/python3 -I -S "$CLEANUP_HELPER" --remove-private-root \
-                        "$RUN/base-inputs" --expected-identity "$BASE_READONLY_INPUT_ID" \
-                        || cleanup_failed=1
-                fi
-            fi
             printf 'verifier-VM authority smoke: retaining failed private diagnostics at %s; shared run marker: %s; disposable VM disks are retired only after joined cleanup, and new runs are blocked until retained state is explicitly reconciled\n' \
                 "$RUN" "${RUN_MARKER:-none}" >&2
         fi
@@ -2030,21 +2020,47 @@ if [ "$MODE" = fixed-archive-tests ]; then
 fi
 vm_storage_preflight
 reserve_verifier_run
+reserve_vm_storage
 base_derivation_root=$INPUT_ROOT
 canonical_base_before=
 if [ "$BASE_READONLY_TEST" -eq 1 ]; then
     verify_debian_vm_base_metadata "$INPUT_ROOT/$IMAGE_NAME" "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"
     verify_sha512 "$INPUT_ROOT/$IMAGE_NAME" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"
     canonical_base_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INPUT_ROOT/$IMAGE_NAME"):$(/usr/bin/sha512sum "$INPUT_ROOT/$IMAGE_NAME")"
-    base_derivation_root=$RUN/base-inputs
+    base_derivation_root=$VM_TRANSIENT/base-inputs
     /usr/bin/mkdir -m 0700 -- "$base_derivation_root"
-    BASE_READONLY_INPUT_ID="$(/usr/bin/stat -c '%d:%i' -- "$base_derivation_root")"
     /usr/bin/cp --reflink=auto --sparse=always -- "$INPUT_ROOT/$IMAGE_NAME" "$base_derivation_root/$IMAGE_NAME"
-    /usr/bin/cp -R --reflink=auto --sparse=always -- "$BOOT_ROOT" "$base_derivation_root/"
     /usr/bin/chmod 0444 -- "$base_derivation_root/$IMAGE_NAME"
     readonly BASE="$base_derivation_root/$IMAGE_NAME"
 else
     readonly BASE="$INPUT_ROOT/$IMAGE_NAME"
+fi
+readonly BOOT_ROOT="$base_derivation_root/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
+readonly KERNEL="$BOOT_ROOT/vmlinuz"
+readonly INITRD="$BOOT_ROOT/initrd.img"
+if [ "$BASE_READONLY_TEST" -eq 1 ]; then
+    for fixture in missing disk identity; do
+        scratch=$VM_TRANSIENT
+        scratch_id=$VM_TRANSIENT_ID
+        expected='cold boot derivation RAM admission differs'
+        case "$fixture" in
+            missing) scratch=; expected='cold boot derivation requires the owned VM RAM workspace; disk fallback is forbidden' ;;
+            disk) scratch=$RUN; expected='cold boot derivation requires the owned VM RAM workspace; disk fallback is forbidden' ;;
+            identity) scratch_id=0:0 ;;
+        esac
+        status=0
+        (
+            ulimit -f 8
+            VERIFIER_VM_INPUT_ROOT="$base_derivation_root" \
+                VERIFIER_VM_TRANSIENT_ROOT="$scratch" VERIFIER_VM_TRANSIENT_ID="$scratch_id" \
+                VERIFIER_VM_MEMORY_MIB="$VM_MEMORY" "$BOOT_DERIVER"
+        ) >"$RUN/boot-storage-$fixture.log" 2>&1 || status=$?
+        [ "$status" -eq 1 ] \
+            && /usr/bin/grep -Fxq "verifier-VM boot derivation: $expected" "$RUN/boot-storage-$fixture.log" \
+            && [ ! -e "$BOOT_ROOT" ] && [ ! -L "$BOOT_ROOT" ] \
+            || fail "cold boot storage refusal failed: $fixture"
+    done
+    printf 'VERIFIER_VM_BOOT_STORAGE_REFUSAL=pass cases=3 missing=refused disk=refused identity=refused\n'
 fi
 engine_prepare_inputs_before=
 engine_prepare_source_before=
@@ -2756,7 +2772,9 @@ readonly ANDROID_EMULATOR_OBSERVER_DEPENDENCIES_SHA256
 [ "$MODE" = authority-smoke ] || [ "$MODE" = debian-systemd-lifecycle ] \
     || [ -x "$VIRTIOFSD_LAUNCHER" ] \
     || fail 'sealed-input virtiofsd launcher must be executable'
-VERIFIER_VM_INPUT_ROOT="$base_derivation_root" "$BOOT_DERIVER"
+VERIFIER_VM_INPUT_ROOT="$base_derivation_root" \
+    VERIFIER_VM_TRANSIENT_ROOT="$VM_TRANSIENT" VERIFIER_VM_TRANSIENT_ID="$VM_TRANSIENT_ID" \
+    VERIFIER_VM_MEMORY_MIB="$VM_MEMORY" "$BOOT_DERIVER"
 [ -d "$BOOT_ROOT" ] && [ ! -L "$BOOT_ROOT" ] \
     || fail 'direct-boot cache is absent or ambiguous'
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BOOT_ROOT")" = "$HOST_UID:$HOST_GID:500" ] \
@@ -3206,7 +3224,6 @@ if [ "$MODE" = linux-service-receiver-tests ]; then
         || fail 'cannot capture installed Linux receiver inputs'
 fi
 
-reserve_vm_storage
 readonly OVERLAY=$VM_TRANSIENT/overlay.qcow2
 readonly PAYLOAD=$VM_TRANSIENT/payload.iso
 readonly SEED=$VM_TRANSIENT/seed.iso
@@ -6225,7 +6242,7 @@ if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engin
 fi
 RUN_COMPLETE=1
 if [ "$BASE_READONLY_TEST" -eq 1 ]; then
-    printf 'VERIFIER_VM_BASE_READONLY=pass host_uid=%s commit=%s tree=%s profile=444 source=private-copy boot=actual canonical=unchanged overrides=forbidden network=none cleanup=joined elapsed_seconds=%s\n' \
+    printf 'VERIFIER_VM_BASE_READONLY=pass host_uid=%s commit=%s tree=%s profile=444 source=private-copy boot=actual assets=cold-derived scratch=ram canonical=unchanged overrides=forbidden network=none cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 fi
 if [ "$MODE" = authority-smoke ]; then

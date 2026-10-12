@@ -7,10 +7,10 @@ notes, and — as of 2026-06-28 — the reverted native-worker-sandbox slices) i
 removed from this live ledger because it is misleading as current status. Git
 history remains the traceability record for that intermediate work.
 
-The approximate 400,000-token size budget is measured reproducibly by
-`scripts/hardening-status-size.sh` as `ceil(UTF-8 bytes / 3)`, alongside exact
-byte and word counts. This intentionally conservative, tokenizer-independent
-estimate is the project metric; `--check` fails while the ledger exceeds it.
+The approximate 400,000-token ledger budget remains **OPEN**. Actual token counts
+and compliance are unverified. A reproducible count must record the tokenizer
+version, encoding-data identity, exact input SHA-256, and text/special-token
+handling. Byte and word counts do not establish token-budget compliance.
 
 Current normative specification identity:
 

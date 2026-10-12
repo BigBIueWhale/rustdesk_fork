@@ -2068,7 +2068,7 @@ resource retirement, installed artifacts, and independent review remain OPEN.
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**Policy/capture/coordinator/logind and installed eight-case fixture accepted;
+**Policy/capture/coordinator/logind, installed eight-case fixture and positive CPace accepted;
 full installed/whole-app/release OPEN.**
 
 Both endpoints use `src/ipc/uid_policy.rs`: root skips lookup; cache denies only; matches need fresh UID.
@@ -2078,15 +2078,13 @@ seatless TTY/unspecified denies. Pidfd/wait retains cancellation/unwind; absent 
 IPC joins permit-held proof before secrets. Polkit/replay/admission share deadline/worker and locked
 expiry/cancellation/shutdown checks. Async grants/wording gates deleted.
 
-**Debian:** `build.py`/artifact gate require standalone `polkitd`.
-`--maintenance-stage-polkit-runtime-candidate`, source aa956518: outer0/59s,
-82 signed-snapshot packages/31,596,230B; archive/manifest pins in `scripts/pins.env`.
-Release closure OPEN; actual installation: installed fixture below.
-Receipt `online-fetch-receipts/run.63EwFoon0W.receipt`; raw/failure identities: audit.
-`--debian-polkit-tests`, f99f6cc0; seven archive metadata cases, outer0/13s;
+**Debian:** `build.py`/artifact gate require standalone `polkitd`; release closure OPEN.
+`--maintenance-stage-polkit-runtime-candidate`, aa956518, outer0/59s:
+82 signed-snapshot packages/31,596,230B; pins: `scripts/pins.env`;
+receipt `online-fetch-receipts/run.63EwFoon0W.receipt`; raw/failures: audit.
+`--debian-polkit-tests`, f99f6cc0, seven metadata cases/outer0/13s;
 uid4000/caps-none/NNP/read-only/no-network/joined/no listener additions.
-Raw `debian-polkit-tests-run.gX6siRyvuz.serial.log`65,117B; SHA256: audit.
-Metadata only; failure provenance: audit/raw log.
+Raw gX6siRyvuz.serial.log65,117B; hashes/failures: audit. Installation: fixture below.
 
 Logs: `.harness-state/verifier-vm/`; all hashes SHA256.
 **UID policy:** `--linux-service-uid-tests`, source aa437333;
@@ -2111,20 +2109,21 @@ Two wording cases are supplementary.
 Empty/removed, seatless unspecified/TTY, active X11, switch/closing X11 select expected UID/no-user.
 PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed receiver here.
 
-**Installed v2:** harness68e596b3/peer e69129bc, binary22f08d26/manifest2e71a178;
-82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child; eight cases/78s.
+**Installed v2:** harness678569d2/peer e69129bc, binary22f08d26/manifest2e71a178;
+82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child; eight cases/72s.
 Root Applied twice/same child; genuine UID4001/4002 exit1≤20s, durable/generation unchanged;
 wrong-image denied both endpoints; restart fresh generation/durable unchanged.
-Docker/unit/cgroup/PAM/X11 joined; correct outer/raw ly6RUDLY8k. Build261s.
+Docker/unit/cgroup/PAM/X11 joined; correct outer/raw OG4oMrnm7I. Build261s.
 v1 reset/recovery >20s: d2f309ef/3uOQDd8XTZ archive/audit; v2 refusal passes.
-Added CPace fixture, unexecuted: UID4002/source-bound probe after both changes/restart;
-child/socket-inode proof, exact positive confirmation.
+Three positive CPace checks: UID4002/probe eb9dd801 after both changes/restart;
+same child/listener across changes, fresh generation on restart; mutual confirmation.
 
-Commands/sources/hashes/raw receipts: `linux-wire-v2-accepted-e69129bc.json`,
+Sources/commands/hashes: `linux-wire-v2-accepted-e69129bc.json`,
+`linux-receiver-cpace-accepted-678569d2.json`,
 `/tmp/privilege_securiry_deep_audit.md`. Rust tests/builds: Rust1.75/zero-NIC/no-network,
 uid1000/read-only/caps-none/NNP; no host listener additions/joined cleanup.
 
-**Still OPEN:** CPace after change/restart, interactive admin grant; installed Linux
+**Still OPEN:** stale-credential refusal/change races, interactive admin grant; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,
 wait/SIGCHLD interop, abrupt-drop and lookup/transaction/descendant resources; whole-app/native

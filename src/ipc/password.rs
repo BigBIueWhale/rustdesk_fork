@@ -1467,9 +1467,9 @@ mod tests {
             });
             let password = SensitivePassword::new("secret".to_owned());
             let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
-            send_request_unix(&mut sender, UUID, &password, None, deadline)
+            assert!(send_request_unix(&mut sender, UUID, &password, None, deadline)
                 .await
-                .unwrap();
+                .is_ok());
             peer.await.unwrap();
         }
     }
@@ -1513,9 +1513,9 @@ mod tests {
                 request.into_password().unwrap()
             });
             let password = SensitivePassword::new(value);
-            send_request_unix(&mut sender, UUID, &password, authorization.as_ref(), deadline)
+            assert!(send_request_unix(&mut sender, UUID, &password, authorization.as_ref(), deadline)
                 .await
-                .unwrap();
+                .is_ok());
             assert_eq!(
                 receive_status_unix(&mut sender, UUID, deadline).await.unwrap(),
                 PasswordMutationStatus::Complete(IpcMutationResult::Applied)

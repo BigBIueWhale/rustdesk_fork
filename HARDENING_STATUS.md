@@ -1254,13 +1254,23 @@ request; a later read creates fresh ownership. Invalid result flags and data lar
 requested range are rejected. The existing server mutex serializes production reads, so the old
 map was not evidence of unbounded active-read growth. The focused `--linux-fuse-read-tests` VM
 fixture builds the complete production clipboard library twice with one identical adversarial
-case: current behavior must pass and the earlier same-stream retry must fail. Execution is pending;
-mounted FUSE, kernel/VFS behavior, concurrency/resources and cross-platform acceptance remain OPEN.
+case: current behavior must pass and the earlier same-stream retry must fail. At source `6ab1d650`,
+the complete production-library component passed all18 cases and seven artifact-selection cases;
+the earlier implementation failed the identical regression with exit101 on its reused stream ID.
+Both artifacts and the unchanged source/fixture are hash-bound in the retained A/B output.
+The zero-NIC, ordinary-user/caps-none/NNP transaction completed outer0 in258 VM seconds, with
+joined cleanup and no additions in its three internal host listener snapshots. Immutable receipt:
+`.harness-state/verifier-vm/fuse-read-component-accepted-6ab1d650.json` (8,542 bytes;
+SHA-256 `3eefece25f3019bd3b9370b8274558ae81b8ab1bfe3a0e0ca67609597359f6d3`).
+It records a separate transient unknown UDP endpoint in the external during snapshot; no continuous
+listener-invariance claim or host mutation. Mounted FUSE, kernel/VFS behavior, concurrency/resources,
+cross-platform, whole-app and release acceptance remain OPEN.
 
 Focused source gates in `scripts/verify.sh` bind derivation-before-options, dispatcher and sink allowlists,
 exact screenshot ownership, viewer/mobile confinement, voice-call ownership, and the Linux response router;
-`libs/clipboard` tests exercise the route state machine and request/response behavior. Those checks establish
-source/model disposition only. The global OPEN tables remain authoritative for exact-current native packages,
+`libs/clipboard` tests exercise the route state machine and request/response behavior. Source gates are
+supplementary; the native FUSE component above executes production-library code without mounting it.
+The global OPEN tables remain authoritative for exact-current native packages,
 cross-platform peer behavior, focus/background freshness, latency, reconnect, concurrency, soak, resource
 bounds, cleanup, cold artifacts, independent reproduction, and external review.
 

@@ -2071,13 +2071,12 @@ resource retirement, installed artifacts, and independent review remain OPEN.
 **Policy/capture/coordinator/logind and installed eight-case fixture accepted;
 full installed/whole-app/release OPEN.**
 
-`src/ipc/uid_policy.rs` serves both endpoints: root skips lookup; cache only denies;
-matches need fresh UID. Kernel role/process/ancestry/generation proof stays separate.
-Lookup owns deadline/1 MiB/trusted command; uncertainty denies. Named User/Name/Seat/State/Type
-permit empty seats/name whitespace; seatless TTY/unspecified denies. Pidfd/wait retains
-cancellation/unwind; absent pidfd/bad SIGCHLD denies. IPC joins permit-held proof before secrets.
-Polkit/replay/admission share deadline/worker and locked expiry/cancellation/shutdown checks.
-Async grants/wording gates deleted.
+Both endpoints use `src/ipc/uid_policy.rs`: root skips lookup; cache denies only; matches need fresh UID.
+Kernel role/process/ancestry/generation is separate. Lookup owns deadline/1MiB/trusted command;
+uncertainty denies. Named User/Name/Seat/State/Type allow empty seats/name whitespace;
+seatless TTY/unspecified denies. Pidfd/wait retains cancellation/unwind; absent pidfd/bad SIGCHLD denies.
+IPC joins permit-held proof before secrets. Polkit/replay/admission share deadline/worker and locked
+expiry/cancellation/shutdown checks. Async grants/wording gates deleted.
 
 **Debian:** `build.py`/artifact gate require standalone `polkitd`.
 `--maintenance-stage-polkit-runtime-candidate`, source aa956518: outer0/59s,
@@ -2112,13 +2111,14 @@ Two wording cases are supplementary.
 Empty/removed, seatless unspecified/TTY, active X11, switch/closing X11 select expected UID/no-user.
 PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed receiver here.
 
-**Installed v2:** `--linux-service-receiver-tests`, harness 68e596b3/peer e69129bc,
-binary 22f08d26/manifest 2e71a178; actual 82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child.
-Eight cases, outer0/78s: root Applied twice/same child; UID4001/4002 genuine CLIs exit 1 within 20s,
-durable/generation unchanged; wrong-image denied on both endpoints; restart fresh generation/durable unchanged.
-Docker/unit/cgroup/PAM/X11 joined; correct outer source/artifact receipt. Raw ly6RUDLY8k.
-Headless build outer0/261s; whole-app/release OPEN.
-v1 d2f309ef/3uOQDd8XTZ reset/recovery >20s: archive/audit; v2 refusal passes.
+**Installed v2:** harness68e596b3/peer e69129bc, binary22f08d26/manifest2e71a178;
+82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child; eight cases/78s.
+Root Applied twice/same child; genuine UID4001/4002 exit1≤20s, durable/generation unchanged;
+wrong-image denied both endpoints; restart fresh generation/durable unchanged.
+Docker/unit/cgroup/PAM/X11 joined; correct outer/raw ly6RUDLY8k. Build261s.
+v1 reset/recovery >20s: d2f309ef/3uOQDd8XTZ archive/audit; v2 refusal passes.
+Added CPace fixture, unexecuted: UID4002/source-bound probe after both changes/restart;
+child/socket-inode proof, exact positive confirmation.
 
 Commands/sources/hashes/raw receipts: `linux-wire-v2-accepted-e69129bc.json`,
 `/tmp/privilege_securiry_deep_audit.md`. Rust tests/builds: Rust1.75/zero-NIC/no-network,

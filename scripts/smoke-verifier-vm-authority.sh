@@ -941,6 +941,7 @@ linux_receiver_input_inventory() {
     verify_sha256 "${files[1]}" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
     for file in "$SCRIPT_DIR/test-linux-service-receiver-native.py" \
         "$SCRIPT_DIR/test-linux-logind-session-selection.py" \
+        "$REPO_ROOT/examples/probe_client.rs" \
         "$REPO_ROOT/res/com.carriez.RustDesk.policy" "$REPO_ROOT/res/rustdesk.service" \
         "$REPO_ROOT/libs/libxdo-sys-stub/native/"{build.py,xdo.c,xdo.h,xdo_version.h,COPYRIGHT,SOURCE.txt}; do
         [ -f "$file" ] && [ ! -L "$file" ] || fail 'Linux receiver source is absent or ambiguous'
@@ -948,7 +949,8 @@ linux_receiver_input_inventory() {
         files+=("$file")
     done
     git_closed -C "$REPO_ROOT" diff --quiet "$ANDROID_RUNTIME_PEER_COMMIT" HEAD -- \
-        src libs res/rustdesk.service res/com.carriez.RustDesk.policy \
+        src libs Cargo.toml Cargo.lock build.rs .cargo examples/probe_client.rs \
+        res/rustdesk.service res/com.carriez.RustDesk.policy \
         || fail 'Linux receiver production sources differ from the retained binary source'
     /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "${files[@]}"
     /usr/bin/sha256sum -- "${files[@]}"
@@ -3624,6 +3626,7 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         "devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
         "polkit-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/polkit-runtime/polkit-runtime-candidate.tar.gz"
         "receiver/rustdesk=$ANDROID_PEER_INPUT_ROOT/rustdesk"
+        "receiver/probe_client=$ANDROID_PEER_INPUT_ROOT/probe_client"
         "receiver/peer-manifest.json=$ANDROID_PEER_INPUT_ROOT/peer-manifest.json"
         "repo/scripts/test-linux-service-receiver-native.py=$SCRIPT_DIR/test-linux-service-receiver-native.py"
         "repo/scripts/test-linux-logind-session-selection.py=$SCRIPT_DIR/test-linux-logind-session-selection.py"
@@ -4436,7 +4439,11 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
     printf '%s\n' "$engine_prepare_receipt" "$engine_prepare_vm_receipt"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
-    require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_NATIVE=pass cases=8 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux receiver behavior'
+    linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
+    for phase in root-applied root-reapplied restart; do
+        require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver CPace credential use'
+    done
+    require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_NATIVE=pass cases=8 cpace=3 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux receiver behavior'
     require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_VM=pass harness=$FOCUSED_TEST_COMMIT manifest=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 source=readonly network=none docker=retired cleanup=joined" 'installed Linux receiver fixture finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed Linux receiver guest completion'
 elif [ "$MODE" = debian-polkit-tests ]; then
@@ -6151,10 +6158,10 @@ elif [ "$MODE" = debian-polkit-tests ]; then
     printf 'DEBIAN_POLKIT_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only receiver=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    printf 'LINUX_SERVICE_RECEIVER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s cases=8 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+    printf 'LINUX_SERVICE_RECEIVER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=8 cpace=3 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
         "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
-        "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$vm_elapsed_seconds"
+        "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = x11-display-tests ]; then
     if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
         printf 'CLIPBOARD_LISTENER_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=linux-clipboard-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \

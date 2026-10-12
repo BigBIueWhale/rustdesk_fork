@@ -687,6 +687,7 @@ run_linux_service_receiver_tests() {
     install -d -m 0755 /usr/share/rustdesk /usr/lib/rustdesk-fork "$runtime"
     install -m 0755 /mnt/rustdesk-verifier-inputs/receiver/rustdesk /usr/share/rustdesk/rustdesk
     install -m 0711 /mnt/rustdesk-verifier-inputs/receiver/rustdesk /usr/share/rustdesk/rustdesk-service-child
+    install -m 0755 /mnt/rustdesk-verifier-inputs/receiver/probe_client "$work/probe_client"
     ln -s ../share/rustdesk/rustdesk /usr/bin/rustdesk
     install -m 0644 "$work/prepared/libxdo.so.3" /usr/lib/rustdesk-fork/libxdo.so.3
     setpriv --reuid=1000 --regid=1000 --clear-groups \

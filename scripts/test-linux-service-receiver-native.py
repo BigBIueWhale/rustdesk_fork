@@ -24,6 +24,7 @@ MEDIA = Path("/mnt/rustdesk-verifier-inputs")
 WORK = Path("/var/tmp/rustdesk-linux-service-receiver")
 PRIMARY = Path("/usr/share/rustdesk/rustdesk")
 CHILD = PRIMARY.with_name("rustdesk-service-child")
+PROBE = WORK / "probe_client"
 ENV = {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"}
 
 
@@ -247,6 +248,62 @@ def change(uid, value, admitted):
         raise RuntimeError("denied password operation did not report failure")
 
 
+def direct_listener(record):
+    if child_record() != record:
+        raise RuntimeError("serving child changed before listener proof")
+    proc = Path("/proc") / str(record["pid"])
+    listeners = []
+    for line in (proc / "net/tcp").read_text().splitlines()[1:]:
+        fields = line.split()
+        if len(fields) < 10:
+            raise RuntimeError("kernel TCP socket row is incomplete")
+        if fields[1].endswith(":527E") and fields[3] == "0A":
+            if fields[1] != "00000000:527E" or fields[7] != "4001":
+                raise RuntimeError("direct listener address or principal differs")
+            listeners.append(int(fields[9]))
+    if not listeners:
+        return None
+    if len(listeners) != 1 or listeners[0] <= 0:
+        raise RuntimeError("direct listener is absent or ambiguous")
+    sockets = set()
+    for descriptor in (proc / "fd").iterdir():
+        try:
+            target = os.readlink(descriptor)
+        except FileNotFoundError:
+            # An unrelated connection descriptor may close during inspection.
+            continue
+        match = re.fullmatch(r"socket:\[([1-9][0-9]*)\]", target)
+        if match is not None:
+            sockets.add(int(match[1]))
+    if listeners[0] not in sockets or child_record() != record:
+        raise RuntimeError("direct listener is not owned by the retained child")
+    return listeners[0]
+
+
+def keyed(value, phase, record, probe_sha):
+    deadline = time.monotonic() + 10
+    listener = direct_listener(record)
+    while listener is None and time.monotonic() < deadline:
+        time.sleep(0.1)
+        listener = direct_listener(record)
+    if listener is None:
+        raise RuntimeError("retained child did not open its public listener")
+    before = credential()
+    result = run(["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                  "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                  str(PROBE), "127.0.0.1:21118", "--password-stdin", "ok"],
+                 input=value + "\n", timeout=45)
+    if result.stdout.splitlines() != ["probe_client: keying ok=true (expected=ok)",
+                                      "probe_client: PASS"] or result.stderr:
+        raise RuntimeError("network peer did not prove CPace responder confirmation")
+    if credential() != before or direct_listener(record) != listener:
+        raise RuntimeError("network proof changed durable state or serving listener")
+    print("LINUX_RECEIVER_CPACE_OBSERVED=" + json.dumps(
+        {"phase": phase, **record, "listener_inode": listener}, sort_keys=True), flush=True)
+    print(f"LINUX_RECEIVER_CPACE=pass phase={phase} uid=4002 server=supervised-child "
+          f"listener=owned key_confirmation=mutual probe_sha256={probe_sha}", flush=True)
+
+
 def tests(args):
     guard()
     commit, tree, manifest_sha, archive_sha, package_manifest_sha = args
@@ -259,6 +316,14 @@ def tests(args):
     spec = description["files"]["rustdesk"]
     if PRIMARY.stat().st_size != spec["bytes"] or digest(PRIMARY) != spec["sha256"] or digest(CHILD) != spec["sha256"]:
         raise RuntimeError("installed primary/child bytes differ")
+    probe_spec = description["files"]["probe_client"]
+    metadata = PROBE.lstat()
+    if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+            or (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode)) != (0, 0, 0o755)
+            or metadata.st_size != probe_spec["bytes"] or digest(PROBE) != probe_spec["sha256"]):
+        raise RuntimeError("installed network probe authority or bytes differ")
+    if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
+        raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
     pam = pam_module()
     confdir = WORK / "pam"
@@ -302,6 +367,7 @@ def tests(args):
         if child_record() != first:
             raise RuntimeError("root mutation did not converge on the original child")
         print("LINUX_RECEIVER_CASE=root-applied durable=root convergence=Applied", flush=True)
+        keyed("Receiver-fixture-first-2026!", "root-applied", first, probe_spec["sha256"])
         for uid in (4001, 4002):
             change(uid, f"Receiver-refused-{uid}-2026!", False)
             if credential() != before or child_record() != first:
@@ -328,11 +394,13 @@ def tests(args):
         if after == before or child_record() != first:
             raise RuntimeError("second root credential change did not converge")
         print("LINUX_RECEIVER_CASE=root-reapplied durable=changed convergence=Applied", flush=True)
+        keyed("Receiver-fixture-second-2026!", "root-reapplied", first, probe_spec["sha256"])
         run(["/usr/bin/systemctl", "restart", "rustdesk.service"], timeout=40)
         second = ready(first)
         if credential() != after:
             raise RuntimeError("restart changed durable root credential")
         print(f"LINUX_RECEIVER_CASE=restart observed={json.dumps(second, sort_keys=True)} durable=unchanged", flush=True)
+        keyed("Receiver-fixture-second-2026!", "restart", second, probe_spec["sha256"])
     finally:
         try:
             if started:
@@ -355,7 +423,8 @@ def tests(args):
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=8 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=8 cpace=3 source={commit} binary_sha256={spec['sha256']} "
+          f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 
 

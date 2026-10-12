@@ -2068,7 +2068,8 @@ resource retirement, installed artifacts, and independent review remain OPEN.
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**Policy/capture/coordinator/logind accepted; installed receiver, whole-app/release OPEN.**
+**Policy/capture/coordinator/logind and installed eight-case fixture accepted;
+full installed/whole-app/release OPEN.**
 
 `src/ipc/uid_policy.rs` serves both endpoints: root skips lookup; cache only denies;
 matches need fresh UID. Kernel role/process/ancestry/generation proof stays separate.
@@ -2094,42 +2095,40 @@ four policy cases plus guard, outer0/38s; artifact
 `b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
 Raw receipt: audit; providers/refusals: R-S11fi.
 
-**Old capture diagnostic:** 3 failed/1 passed; 10s timeout, 2,097,333B vs 1 MiB, reaped.
-Unknown127.0.0.1:9333 refused/untouched; no leak/bypass proof. Identities: audit.
+**Capture diagnostic (unknown 127.0.0.1:9333 untouched):** audit; no leak/bypass proof.
 **Capture:** source 3eabd727,
 `--hbb-common-fs`, 116 cases/five groups; eight capture cases 2.03s, original four unchanged;
 artifact `d6f419bbf26d9411e305ddfd18300bd662db2e69497177438f926ef498e17573`.
 Outer0/168s; raw receipt: audit.
 
-**Coordinator:** `--linux-password-admission-tests`, source 657e7881;
-Linux IPC library, seven unit cases/four groups plus guard; shutdown refusal/mutex expiry.
-Artifact
-`fb9adb974a06e69e7b21577769761028337525c5aa2d524b64585f8a76b35052`.
-Outer0/276s; raw receipt: audit.
-qQbkGLjypv passed seven; stale guard rejected. Guard-only retry/same artifact; full identities: audit.
+**Coordinator/raw v2:** `--linux-password-admission-tests`, source e69129bc;
+seven coordinator/23 raw-module cases, five groups, outer0/221s, artifact 72ad80c1.
+Four AF_UNIX cases cover pre-header readiness, bad/truncated/expired frames, fragments, empty/max/auth bodies.
+Early refusal=NotSent; started write=uncertain. Half-close/wiping/replay/expiry/shutdown pass.
+Two wording cases are supplementary.
 
-**Native logind:** `--linux-logind-tests`, source e251c387b182e66f5f3ccc9f7d70cec5a6acead0;
-14 unit/7 native PAM/logind cases; outer0/153s. Empty/removed, seatless unspecified/TTY,
-active X11, user switch/closing X11: expected UID/no-user. No X server/installed receiver.
-Artifact `e12dac152e028dab82cc954580f14abb95c6b4419374d1ae3e4171e69b5d6269`.
-Raw `hbb-common-fs-run.fC5nZoJoWL.serial.log`71,910B; SHA256: audit.
-PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2. Failed cf11738d/GBIedIhNRI parser and
-e11cd41d/5WpwxPMq5i summary/listener artifacts retained; failure/source/raw hashes:
-`/tmp/privilege_securiry_deep_audit.md`.
-Rust runs: fixed artifacts/Rust1.75/zero-NIC/no-network/uid1000/read-only/caps-none/NNP,
-no listener additions; joined cleanup.
+**Native logind:** `--linux-logind-tests`, source 68e596b3, artifact e12dac15;
+14 unit/seven PAM/logind cases, outer0/131s; PAM defaults passed.
+Empty/removed, seatless unspecified/TTY, active X11, switch/closing X11 select expected UID/no-user.
+PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed receiver here.
 
-**Installed fixture:** `--linux-service-receiver-tests`: exact headless binary,
-actual polkit/PAM/logind/Xvfb, shipped unit/mode-0711 child; eight cases, ordinary XDO build.
-7df7b607/d2f309ef binary: root Applied/selected UID denied; unrelated reset recovery >20s.
-Raw 3uOQDd8XTZ: audit; receiver/release acceptance OPEN.
-**Wire v2:** `src/ipc/password.rs`: Unix mutation waits for 12B pre-header readiness;
-early refusal=NotSent, started transmission=uncertain. Unit/native/build PENDING.
+**Installed v2:** `--linux-service-receiver-tests`, harness 68e596b3/peer e69129bc,
+binary 22f08d26/manifest 2e71a178; actual 82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child.
+Eight cases, outer0/78s: root Applied twice/same child; UID4001/4002 genuine CLIs exit 1 within 20s,
+durable/generation unchanged; wrong-image denied on both endpoints; restart fresh generation/durable unchanged.
+Docker/unit/cgroup/PAM/X11 joined; correct outer source/artifact receipt. Raw ly6RUDLY8k.
+Headless build outer0/261s; whole-app/release OPEN.
+v1 d2f309ef/3uOQDd8XTZ reset/recovery >20s: archive/audit; v2 refusal passes.
 
-**Still OPEN:** installed Linux both-endpoint root/cache/session changes, principal allow/deny,
+Commands/sources/hashes/raw receipts: `linux-wire-v2-accepted-e69129bc.json`,
+`/tmp/privilege_securiry_deep_audit.md`. Rust tests/builds: Rust1.75/zero-NIC/no-network,
+uid1000/read-only/caps-none/NNP; no host listener additions/joined cleanup.
+
+**Still OPEN:** CPace after change/restart, interactive admin grant; installed Linux
+both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,
 wait/SIGCHLD interop, abrupt-drop and lookup/transaction/descendant resources; whole-app/native
-macOS; current installed/release artifacts, cold R-B2/R-B10, independent reproduction/external
+Windows/macOS; current installed/release artifacts, cold R-B2/R-B10, independent reproduction/external
 review. Android/Windows display symptoms remain unexplained.
 
 ### Flutter result inventory — single model-count source

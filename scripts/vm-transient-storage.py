@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import select
 import signal
+import resource
+import socket
 import stat
 import subprocess
 import tempfile
@@ -121,6 +123,103 @@ def publish(path, value):
         output.write('\n')
 
 
+def run_qemu(args):
+    require(args.qemu and args.qemu[0] == '/usr/bin/qemu-system-x86_64',
+            'storage supervisor requires the fixed QEMU executable')
+    require(Path(args.qmp) == Path(args.run) / 'qmp.sock', 'QMP path differs')
+    # The shared guest RAM memfd must be sized before lowering RLIMIT_FSIZE.
+    # -S prevents guest disk writes until the final hard limit is installed.
+    initial_limit = max(8 * GIB, args.memory_mib * 1024 ** 2)
+    resource.setrlimit(resource.RLIMIT_FSIZE, (initial_limit, initial_limit))
+    child = subprocess.Popen(args.qemu + ['-S'], close_fds=False)
+    try:
+        child_identity = os.pidfd_open(child.pid)
+    except BaseException:
+        child.kill()
+        child.wait()
+        raise
+    cancelled = False
+
+    def cancel(signum, frame):
+        nonlocal cancelled
+        cancelled = True
+        try:
+            signal.pidfd_send_signal(child_identity, signum)
+        except ProcessLookupError:
+            pass
+
+    handlers = {s: signal.signal(s, cancel) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+    try:
+        deadline = time.monotonic() + 15
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
+            channel.settimeout(10)
+            while True:
+                require(not cancelled, 'QEMU startup cancelled')
+                try:
+                    metadata = Path(args.qmp).lstat()
+                    require(stat.S_ISSOCK(metadata.st_mode) and metadata.st_uid == os.geteuid()
+                            and metadata.st_gid == os.getegid()
+                            and stat.S_IMODE(metadata.st_mode) & 0o077 == 0,
+                            'QMP is not the owned private socket')
+                    channel.connect(args.qmp)
+                    break
+                except (FileNotFoundError, ConnectionRefusedError):
+                    require(time.monotonic() < deadline, 'paused QEMU QMP startup timed out')
+                    time.sleep(0.05)
+            with channel.makefile('rb') as incoming:
+                def receive():
+                    line = incoming.readline(65537)
+                    require(line.endswith(b'\n') and len(line) <= 65536, 'QMP frame differs')
+                    value = json.loads(line)
+                    require(isinstance(value, dict), 'QMP response is not an object')
+                    return value
+
+                def execute(name):
+                    channel.sendall(json.dumps({'execute': name, 'id': name}).encode() + b'\n')
+                    for _ in range(16):
+                        value = receive()
+                        if value.get('id') == name:
+                            require('return' in value and 'error' not in value, 'QMP command failed')
+                            return value['return']
+                        require('event' in value, 'unexpected QMP response')
+                    raise ValueError('QMP event budget exceeded')
+
+                require('QMP' in receive(), 'QMP greeting is absent')
+                execute('qmp_capabilities')
+                require(execute('query-status').get('status') in ('prelaunch', 'paused'),
+                        'guest ran before its storage limit was installed')
+                require(not cancelled, 'QEMU storage admission cancelled')
+                # This remains our unreaped direct child: its PID cannot be
+                # recycled between the process proof and prlimit syscall.
+                resource.prlimit(child.pid, resource.RLIMIT_FSIZE, (8 * GIB, 8 * GIB))
+                require(resource.prlimit(child.pid, resource.RLIMIT_FSIZE) == (8 * GIB, 8 * GIB),
+                        'QEMU hard file limit differs')
+                publish(Path(args.run) / 'storage.limit', {
+                    'qemu_pid': child.pid, 'hard_file_limit_bytes': 8 * GIB,
+                    'guest_memory_mib': args.memory_mib, 'guest_started_paused': True,
+                    'limit_installed_before_guest_execution': True,
+                })
+                execute('cont')
+        return child.wait()
+    finally:
+        if child.returncode is None:
+            try:
+                signal.pidfd_send_signal(child_identity, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                child.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                try:
+                    signal.pidfd_send_signal(child_identity, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                child.wait()
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
+        os.close(child_identity)
+
+
 def watch(args):
     tmpfs_root()
     descriptor = private_directory(args.workspace, args.identity)
@@ -135,6 +234,7 @@ def watch(args):
     samples = 0
     qemu_identity = None
     qemu_write_bytes = 0
+    durable_peak = 0
     reason = 'completed'
     try:
         publish(args.ready, {'workspace': args.workspace, 'identity': args.identity})
@@ -148,6 +248,12 @@ def watch(args):
             if overlay.exists():
                 overlay_peak = max(overlay_peak, overlay.stat().st_blocks * 512)
             minimum_memory = min(minimum_memory, available_memory())
+            durable = 0
+            for entry in Path(args.run).rglob('*'):
+                metadata = entry.lstat()
+                if stat.S_ISREG(metadata.st_mode):
+                    durable += metadata.st_blocks * 512
+            durable_peak = max(durable_peak, durable)
             samples += 1
             pidfile = Path(args.run) / 'qemu.pid'
             if pidfile.exists():
@@ -193,6 +299,7 @@ def watch(args):
             'peak_allocated_bytes': peak, 'overlay_peak_allocated_bytes': overlay_peak,
             'minimum_mem_available_bytes': minimum_memory, 'samples': samples,
             'observed_qemu_block_write_bytes': qemu_write_bytes,
+            'durable_run_peak_allocated_bytes': durable_peak,
             'elapsed_seconds': round(time.monotonic() - began, 3), 'reason': reason,
             'tmpfs_swap_disabled': False,
         })
@@ -203,7 +310,7 @@ def watch(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=('preflight', 'reserve', 'check', 'watch'))
+    parser.add_argument('operation', choices=('preflight', 'reserve', 'check', 'watch', 'run'))
     parser.add_argument('--memory-mib', type=int, required=True)
     parser.add_argument('--workspace')
     parser.add_argument('--identity')
@@ -212,6 +319,8 @@ def main():
     parser.add_argument('--ready')
     parser.add_argument('--stop')
     parser.add_argument('--receipt')
+    parser.add_argument('--qmp')
+    parser.add_argument('--qemu', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     require(2048 <= args.memory_mib <= 24576, 'guest memory is outside the fixed profile bounds')
     if args.operation == 'preflight':
@@ -229,8 +338,11 @@ def main():
                     'RAM headroom changed before QEMU launch')
         finally:
             os.close(descriptor)
-    else:
+    elif args.operation == 'watch':
         watch(args)
+    else:
+        result = run_qemu(args)
+        raise SystemExit(result if result >= 0 else 128 - result)
 
 
 if __name__ == '__main__':

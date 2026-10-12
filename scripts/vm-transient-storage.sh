@@ -65,6 +65,9 @@ vm_seed_command() (
 retire_vm_storage() {
     local joined=$1 monitor_failed=0
     if [ -n "$VM_STORAGE_MONITOR_PID" ]; then
+        [ -d "$RUN" ] && [ ! -L "$RUN" ] \
+            && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$RUN")" = \
+                 "$RUN_ID:$HOST_UID:$HOST_GID:700" ] || return 1
         (set -o noclobber; printf 'stop\n' >"$RUN/storage.stop") || return 1
         wait "$VM_STORAGE_MONITOR_PID" || monitor_failed=1
         VM_STORAGE_MONITOR_PID=

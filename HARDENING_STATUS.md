@@ -2048,6 +2048,12 @@ host swap or prove zero system-wide I/O. Insufficient RAM refuses the run before
 Design sources: [Linux tmpfs](https://docs.kernel.org/filesystems/tmpfs.html) and
 [QEMU disk images](https://www.qemu.org/docs/master/system/images.html).
 Representative native and acquisition runtime acceptance remain pending for this change.
+QEMU starts paused under a direct-child supervisor. The supervisor permits the selected shared
+RAM memfd to be created, then installs and reads back the hard 8 GiB file limit before issuing
+QMP `cont` on the private Unix socket; no guest code runs before that bound. The direct child
+remains unreaped during `prlimit`, preventing PID reuse from targeting another host process.
+This keeps the disk ceiling independent of the selected guest RAM size. QMP startup is bounded,
+signals use the retained child pidfd, and the supervisor joins its exact QEMU child on failure.
 
 | Surface | Platforms, endpoint/action, boundary, and current closure |
 | --- | --- |

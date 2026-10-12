@@ -549,7 +549,7 @@ cleanup() {
     retire_vm_storage "$cleanup_failed" || cleanup_failed=1
     if [ -n "$RUN" ] && [ -d "$RUN" ] && [ ! -L "$RUN" ] \
        && [ "$(/usr/bin/stat -c '%d:%i' -- "$RUN" 2>/dev/null)" = "$RUN_ID" ]; then
-        for socket in "$RUN/serial.sock" "$RUN/vfs-c.sock" \
+        for socket in "$RUN/serial.sock" "$RUN/qmp.sock" "$RUN/vfs-c.sock" \
             "$RUN/vfs-s.sock" "$RUN/vfs-r.sock"; do
             retire_private_socket_path "$socket" || cleanup_failed=1
         done
@@ -596,7 +596,7 @@ trap 'exit 143' TERM
     || fail 'online acquisition VM requires a Linux x86_64 orchestration host'
 for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/cut /usr/bin/dpkg-deb /usr/bin/find /usr/bin/findmnt /usr/bin/flock /usr/bin/git \
     /usr/bin/grep /usr/bin/id /usr/bin/install /usr/bin/mkdir /usr/bin/mktemp \
-    /usr/bin/mv /usr/bin/python3 /usr/bin/prlimit /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 \
+    /usr/bin/mv /usr/bin/python3 /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 \
     /usr/bin/readlink /usr/bin/rm /usr/bin/sed /usr/bin/seq /usr/bin/sha256sum \
     /usr/bin/sha512sum /usr/bin/sleep /usr/bin/sort /usr/bin/ss /usr/bin/stat \
     /usr/bin/tail /usr/bin/timeout /usr/bin/tr /usr/bin/uname /usr/bin/xorriso; do
@@ -762,6 +762,7 @@ readonly REQUEST_FILE=$RUN/request
 readonly SOURCE_TREE_FILE=$RUN/source.tree
 readonly SOURCE_BUNDLE_SHA_FILE=$RUN/source.bundle.sha256
 readonly SERIAL_SOCKET=$RUN/serial.sock
+readonly QMP_SOCKET=$RUN/qmp.sock
 readonly CACHE_VIRTIOFS_SOCKET=$RUN/vfs-c.sock
 readonly SYSTEMD_VIRTIOFS_SOCKET=$RUN/vfs-s.sock
 readonly RESULT_VIRTIOFS_SOCKET=$RUN/vfs-r.sock
@@ -986,8 +987,9 @@ fi
 
 vm_started_seconds=$SECONDS
 vm_storage_check
-/usr/bin/prlimit --fsize=8589934592:8589934592 -- \
-    /usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
+/usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
+    /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" run --memory-mib "$VM_MEMORY" \
+    --run "$RUN" --qmp "$QMP_SOCKET" --qemu \
     /usr/bin/qemu-system-x86_64 \
         -name rustdesk-online-fetch-acquisition \
         -machine q35 \
@@ -1007,6 +1009,7 @@ vm_storage_check
         -append "root=UUID=$VERIFIER_VM_ROOT_FILESYSTEM_UUID rw rootfstype=ext4 rootwait console=ttyS0,115200n8 rustdesk.online_fetch_vm=1 systemd.mask=systemd-networkd-wait-online.service systemd.mask=systemd-timesyncd.service systemd.mask=systemd-resolved.service systemd.mask=apt-daily.service systemd.mask=apt-daily.timer systemd.mask=apt-daily-upgrade.service systemd.mask=apt-daily-upgrade.timer systemd.mask=unattended-upgrades.service systemd.mask=ssh.service systemd.mask=ssh.socket" \
         -sandbox on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny \
         -pidfile "$QEMU_PIDFILE" \
+        -qmp "unix:$QMP_SOCKET,server=on,wait=off" \
         -chardev "socket,id=serial0,path=$SERIAL_SOCKET,server=on,wait=on" \
         -device isa-serial,chardev=serial0 \
         -netdev user,id=acquisition,ipv4=on,ipv6=off,net=10.0.2.0/24,host=10.0.2.2,dns=10.0.2.3,dhcpstart=10.0.2.15,restrict=off \

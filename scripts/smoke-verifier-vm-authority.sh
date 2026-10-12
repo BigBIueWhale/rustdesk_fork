@@ -1927,7 +1927,7 @@ trap 'exit 143' TERM
 for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/cp /usr/bin/env \
     /usr/bin/find /usr/bin/findmnt /usr/bin/flock /usr/bin/install \
     /usr/bin/dpkg-deb /usr/bin/git /usr/bin/grep /usr/bin/id /usr/bin/mkdir /usr/bin/mktemp /usr/bin/python3 \
-    /usr/bin/prlimit /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 /usr/bin/readlink /usr/bin/rm \
+    /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 /usr/bin/readlink /usr/bin/rm \
     /usr/bin/seq /usr/bin/sha256sum /usr/bin/sha512sum /usr/bin/sleep /usr/bin/sort \
     /usr/bin/ss /usr/bin/stat /usr/bin/tail /usr/bin/timeout /usr/bin/uname /usr/bin/wc \
     /usr/bin/xorriso /usr/bin/jq /usr/bin/tar /usr/bin/head; do
@@ -4196,8 +4196,9 @@ if [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-runtime-log-tes
 fi
 vm_started_seconds=$SECONDS
 vm_storage_check
-/usr/bin/prlimit --fsize=8589934592:8589934592 -- \
-    /usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
+/usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
+    /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" run --memory-mib "$VM_MEMORY" \
+    --run "$RUN" --qmp "$QMP_SOCKET" --qemu \
     /usr/bin/qemu-system-x86_64 \
         -name rustdesk-verifier-authority \
         -machine q35 \

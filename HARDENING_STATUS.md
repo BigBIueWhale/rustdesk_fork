@@ -2068,7 +2068,7 @@ resource retirement, installed artifacts, and independent review remain OPEN.
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**Policy/capture/coordinator/logind and installed CPace/races/admin accepted;
+**Policy/capture/coordinator/logind and installed CPace/races/admin/exit accepted;
 full installed/whole-app/release OPEN.**
 
 Both endpoints use `src/ipc/uid_policy.rs`: root skips lookup; cache denies only; matches need fresh UID.
@@ -2109,23 +2109,24 @@ Two wording cases are supplementary.
 Empty/removed, seatless unspecified/TTY, active X11, switch/closing X11 select expected UID/no-user.
 PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed receiver here.
 
-**Installed v2:** harnessc62dae20/peer28f7fcda, binarya5c3ebc4/manifest14137030;
-82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child; ten cases/89s.
-Root Applied; UID4001/4002 exit1≤20s preserve state/generation;
+**Installed v2:** bb5a78b2/peer3b537c76, binary5c06bdcf/manifest436b6677;
+82-package polkit/PAM/logind/Xvfb; shipped unit/0711 child; cases11/78s.
+Root Applied; UID4001/4002 exit1≤20s retain state/generation;
 Wrong-image denied both; restart new generation/durable unchanged.
-Docker/unit/cgroup/PAM/X11 joined; raw JiqWwudyuq; build263s.
-CPace8: UID4002/probe eb9dd801, changes/restart/refusal/race/admin recovery.
-Stale2 after change/restart: child/invocation/cursor tag mismatch.
-Two races: old PAKE confirms/no keyed stream; keyed old login gets decrypted generation error/EOF.
-Child/listener retained; durable changed. Errors drain before teardown.
+Unit/cgroup/PAM/X11/Docker/VM joined; raw d7QYtcQ8qd; build261s.
+CPace9: UID4002/probe eb9dd801, changes/restart/refusal/race/admin/exit recovery.
+Stale2: change/restart child/invocation/cursor mismatch.
+Races2: old PAKE confirms/no keyed stream; keyed old login gets decrypted generation error/EOF.
+Same child/listener; durable changed; login errors drain.
 Admin PAM Applied; fresh no-agent denied; same child/listener.
+Prompt requester exit: helper reaped19ms before agent cleanup; durable unchanged.
 
 Evidence: `linux-wire-v2-accepted-e69129bc.json`,
-`linux-receiver-admin-accepted-c62dae20.json`,
-`/tmp/privilege_securiry_deep_audit.md`. Rust tests/builds: Rust1.75/zero-NIC/no-network,
-uid1000/read-only/caps-none/NNP; no host listener additions/joined cleanup.
+`linux-receiver-requester-exit-accepted-bb5a78b2.json`,
+`/tmp/privilege_securiry_deep_audit.md`. Rust1.75/zero-NIC/no-network,
+uid1000/read-only/caps-none/NNP; no new host listeners.
 
-**Still OPEN:** other credential races, admin failure/cancel/delay (exit fix pending); installed Linux
+**Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,
 wait/SIGCHLD interop, abrupt-drop and lookup/transaction/descendant resources; whole-app/native

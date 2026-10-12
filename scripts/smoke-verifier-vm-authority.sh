@@ -180,7 +180,7 @@ case "$#:${1:-}" in
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
         MODE=host-network-tests
         ;;
-    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -188,6 +188,8 @@ case "$#:${1:-}" in
         MODE=linux-service-receiver-tests
         if [ "$1" = --linux-service-convergence-failure-tests ]; then
             LINUX_RECEIVER_PROFILE=convergence-failure
+        elif [ "$1" = --linux-service-notification-failure-tests ]; then
+            LINUX_RECEIVER_PROFILE=notification-failure
         fi
         ANDROID_RUNTIME_PEER_COMMIT=$3
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=$5
@@ -649,7 +651,7 @@ elif [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ] || [ "$LINUX_RECEIVER_PROFILE" = notification-failure ]; then
         readonly VM_TIMEOUT_SECONDS=780
     else
         readonly VM_TIMEOUT_SECONDS=300
@@ -4134,6 +4136,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_guest_flag=--linux-service-receiver-tests
     if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
         linux_receiver_guest_flag=--linux-service-convergence-failure-tests
+    elif [ "$LINUX_RECEIVER_PROFILE" = notification-failure ]; then
+        linux_receiver_guest_flag=--linux-service-notification-failure-tests
     fi
     guest_invocation+=" $linux_receiver_guest_flag $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256 $FOCUSED_TEST_COMMIT"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
@@ -4675,6 +4679,15 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN=pass uid=4001 administrator_uid=4003 subject=pid-start-bound authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined' 'installed Linux administrator authentication after failed convergence'
         require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied durable=unchanged listener=owned' 'installed Linux fresh administrator refusal after failed convergence'
         require_exact_fixed_receipt "LINUX_SERVICE_CONVERGENCE_NATIVE=pass cases=4 cpace=3 stale_refusals=1 convergence_failures=1 admin_grants=1 fresh_refusals=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux convergence-failure integration profile'
+    elif [ "$LINUX_RECEIVER_PROFILE" = notification-failure ]; then
+        for phase in root-applied notification-failure-recovery admin-applied; do
+            require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux notification-failure credential use'
+        done
+        require_exact_fixed_receipt "LINUX_RECEIVER_STALE=pass phase=notification-failure-recovery uid=4002 server=supervised-child listener=owned rejection=confirmation-mismatch journal=invocation-cursor-bound probe_sha256=$linux_receiver_probe_sha" 'installed Linux notification-failure obsolete credential refusal'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_NOTIFICATION_FAILURE=pass uid=0 fault=same-socket-SHUT_WR errno=EPIPE durable=changed-before-stop child=ptrace-held shutdown=systemctl timeout=30 cli=explicit-uncertainty supervisor=SIGKILL old_child=reaped old_listener=absent unit=timeout cgroup=absent durable=retained cleanup=client-joined' 'installed Linux notification channel failure and manager timeout'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN=pass uid=4001 administrator_uid=4003 subject=pid-start-bound authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined' 'installed Linux administrator authentication after manager timeout'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied durable=unchanged listener=owned' 'installed Linux fresh administrator refusal after manager timeout'
+        require_exact_fixed_receipt "LINUX_SERVICE_NOTIFICATION_NATIVE=pass cases=4 cpace=3 stale_refusals=1 notification_failures=1 admin_grants=1 fresh_refusals=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux notification-failure integration profile'
     else
         for phase in root-applied root-reapplied root-reapplied-after-refusal restart restart-after-refusal race-before-keys-recovery race-before-login-recovery requester-exit-recovery session-close-recovery admin-denied-recovery agent-exit-recovery supervisor-shutdown-recovery admitted-shutdown-recovery unit-stop-recovery admin-applied; do
             require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver CPace credential use'
@@ -6498,6 +6511,11 @@ elif [ "$MODE" = ledger-token-count ]; then
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
         printf 'LINUX_SERVICE_CONVERGENCE_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=4 cpace=3 stale_refusals=1 convergence_failures=1 admin_grants=1 fresh_refusals=1 recovery_window=600 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"
+    elif [ "$LINUX_RECEIVER_PROFILE" = notification-failure ]; then
+        printf 'LINUX_SERVICE_NOTIFICATION_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=4 cpace=3 stale_refusals=1 notification_failures=1 admin_grants=1 fresh_refusals=1 recovery_window=600 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
             "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"

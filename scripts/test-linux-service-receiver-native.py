@@ -2,6 +2,7 @@
 """Installed-layout Linux receiver behavior in the owned zero-NIC systemd VM."""
 
 import ctypes
+import errno
 import fcntl
 import grp
 import hashlib
@@ -614,8 +615,92 @@ class TracedChildStop:
             self.call(17, tid)  # PTRACE_DETACH each exact retained tracee.
             self.attached.remove(tid)
 
+    def reap_killed(self):
+        observed = []
+        deadline = time.monotonic() + 5
+        for tid in sorted(self.attached, reverse=True):
+            while True:
+                waited, status = os.waitpid(tid, os.WNOHANG | 0x40000000)
+                if waited == tid:
+                    if not os.WIFSIGNALED(status) or os.WTERMSIG(status) != signal.SIGKILL:
+                        raise RuntimeError("retained child tracee did not die from the manager's SIGKILL")
+                    observed.append({"tid": tid, "signal": os.WTERMSIG(status)})
+                    self.attached.remove(tid)
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("manager-killed tracee was not reaped within its bound")
+                time.sleep(0.005)
+        return observed
 
-def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=False):
+
+def fail_supervisor_notification(supervisor, start, pidfd):
+    guard()
+    if os.uname().machine != "x86_64":
+        raise RuntimeError("notification fault requires the pinned Linux x86_64 syscall ABI")
+    addresses = [entry.removeprefix(b"NOTIFY_SOCKET=") for entry in
+                 (supervisor / "environ").read_bytes().split(b"\0") if entry.startswith(b"NOTIFY_SOCKET=")]
+    if len(addresses) != 1 or not addresses[0].startswith((b"/", b"@")):
+        raise RuntimeError("owned supervisor lacks one canonical manager notification address")
+    address = addresses[0]
+    peer = b"\0" + address[1:] if address.startswith(b"@") else address
+    descriptors = sorted(int(entry.name) for entry in (supervisor / "fd").iterdir())
+    if not descriptors or len(descriptors) > 8192:
+        raise RuntimeError("owned supervisor descriptor inventory exceeded its bound")
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    matches = []
+    try:
+        for fd in descriptors:
+            duplicate = libc.syscall(ctypes.c_long(438), ctypes.c_int(pidfd), ctypes.c_int(fd), ctypes.c_uint(0))
+            if duplicate == -1:
+                error = ctypes.get_errno()
+                if error == errno.EBADF:
+                    continue  # An unrelated descriptor may close during this bounded inventory.
+                raise OSError(error, "owned supervisor pidfd_getfd failed")
+            if not stat.S_ISSOCK(os.fstat(duplicate).st_mode):
+                os.close(duplicate)
+                continue
+            owned = socket.socket(fileno=duplicate)
+            try:
+                if owned.family != socket.AF_UNIX or owned.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_DGRAM:
+                    continue
+                try:
+                    connected = os.fsencode(owned.getpeername())
+                except OSError as error:
+                    if error.errno == errno.ENOTCONN:
+                        continue
+                    raise
+                if connected == peer:
+                    matches.append((fd, owned, os.fstat(duplicate).st_ino))
+                    owned = None
+            finally:
+                if owned is not None:
+                    owned.close()
+        if (len(matches) != 1 or select.select([pidfd], [], [], 0)[0]
+                or int((supervisor / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19]) != start):
+            raise RuntimeError("notification fault lost its unique retained supervisor socket")
+        fd, owned, inode = matches[0]
+        if (supervisor / "fd" / str(fd)).readlink() != Path(f"socket:[{inode}]"):
+            raise RuntimeError("owned supervisor notification descriptor identity changed")
+        owned.shutdown(socket.SHUT_WR)
+        try:
+            owned.send(b"EXTEND_TIMEOUT_USEC=30000000")
+        except OSError as error:
+            if error.errno != errno.EPIPE:
+                raise
+        else:
+            raise RuntimeError("actual notification socket did not fail after SHUT_WR")
+        observed = {"supervisor_pid": int(supervisor.name), "supervisor_start": start,
+                    "fd": fd, "socket_inode": inode, "notify_address": os.fsdecode(address),
+                    "fault": "pidfd_getfd-same-socket-SHUT_WR", "send_errno": errno.EPIPE}
+        print("LINUX_RECEIVER_NOTIFICATION_FAULT_OBSERVED=" + json.dumps(observed, sort_keys=True), flush=True)
+        return observed
+    finally:
+        for _, owned, _ in matches:
+            owned.close()
+
+
+def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=False, notification_failure=False):
     listener = direct_listener(record)
     if listener is None:
         raise RuntimeError("admitted shutdown has no retained serving listener")
@@ -691,6 +776,7 @@ def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=
                 or (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()[0] != stopped_state
                 or any(select.select([fd], [], [], 0)[0] for fd in pidfds.values())):
             raise RuntimeError("durable change lost its pending requester or stopped-child barrier")
+        fault = fail_supervisor_notification(supervisor, supervisor_start, pidfds["supervisor"]) if notification_failure else None
         began = time.monotonic()
         if unit_stop:
             run(["/usr/bin/systemctl", "stop", "--no-block", "rustdesk.service"], timeout=5)
@@ -714,6 +800,97 @@ def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=
                 or fields[0] != stopped_state or len(shutdowns) != 1
                 or any(select.select([fd], [], [], 0)[0] for fd in pidfds.values())):
             raise RuntimeError("shutdown cancelled admitted work or completed before child convergence")
+        if notification_failure:
+            if trace_stop is None or not unit_stop:
+                raise RuntimeError("notification failure requires the installed unit's retained tracing barrier")
+            print("LINUX_RECEIVER_NOTIFICATION_BARRIER_OBSERVED=" + json.dumps(
+                {**record, "requester_pid": client.pid, "requester_start": requester_start,
+                 "durable_changed": True, "requester_alive": True, "child_state": "t",
+                 "child_threads": sorted(trace_stop.attached), "supervisor_alive": True,
+                 "shutdown_journal": shutdowns[0], "fault": fault}, sort_keys=True), flush=True)
+            while not select.select([pidfds["supervisor"]], [], [], 0.05)[0]:
+                elapsed = time.monotonic() - began
+                if elapsed >= 45 or client.poll() is not None or credential() != changed:
+                    raise RuntimeError("notification loss escaped its pending mutation/manager-timeout boundary")
+                if elapsed < 29:
+                    fields = (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                    if fields[0] != b"t" or int(fields[19]) != record["start"]:
+                        raise RuntimeError("notification-failure child escaped its held tracing barrier")
+            failure_seconds = time.monotonic() - began
+            trace_deaths = trace_stop.reap_killed()
+            child_stopped = False
+            deadline = time.monotonic() + 10
+            retired = {}
+            while True:
+                outcome = dict(line.split("=", 1) for line in run(
+                    ["/usr/bin/systemctl", "show", "rustdesk.service",
+                     "--property=ActiveState,SubState,Result,MainPID,ExecMainPID,ExecMainCode,ExecMainStatus,"
+                     "InvocationID,NRestarts,TimeoutStopUSec"]).stdout.splitlines())
+                for role, (proc, expected_start) in identities.items():
+                    exited = bool(select.select([pidfds[role]], [], [], 0)[0])
+                    try:
+                        reaped = int((proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19]) != expected_start
+                    except (FileNotFoundError, ProcessLookupError):
+                        reaped = True
+                    retired[role] = {"exited": exited, "reaped": reaped}
+                if (outcome.get("ActiveState") == "failed" and all(item["exited"] and item["reaped"] for item in retired.values())
+                        and not Path("/sys/fs/cgroup" + cgroup).exists()):
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("manager-killed service generation did not retire within its bound")
+                time.sleep(0.02)
+            run(["/usr/bin/journalctl", "--sync"], timeout=5)
+            messages = [json.loads(line) for line in run(
+                ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "--output=json",
+                 "--after-cursor=" + cursor, "-n", "100"], timeout=5).stdout.splitlines()]
+            root_messages = [item for item in messages if all(item.get(k) == v for k, v in expected.items())]
+            errors = [item for item in root_messages if "systemd stop extension" in item.get("MESSAGE", "")
+                      and "Broken pipe (os error 32)" in item.get("MESSAGE", "")]
+            manager_timeouts = [item for item in messages if item.get("_PID") == "1" and item.get("_UID") == "0"
+                               and item.get("_BOOT_ID") == expected["_BOOT_ID"] and item.get("UNIT") == "rustdesk.service"
+                               and "stop-sigterm" in item.get("MESSAGE", "") and "timed out" in item.get("MESSAGE", "")]
+            listener_absent = not any(len(fields := line.split()) >= 10 and fields[3] == "0A" and fields[9] == str(listener)
+                                      for line in Path("/proc/net/tcp").read_text().splitlines()[1:])
+            observed = {**record, "supervisor_start": supervisor_start, "seconds": failure_seconds,
+                        "fault": fault, "unit_outcome": outcome, "unit_reference_held_at_outcome": True,
+                        "trace_deaths": trace_deaths, "retired": retired, "listener_inode": listener,
+                        "listener_absent": listener_absent, "cgroup_absent": not Path("/sys/fs/cgroup" + cgroup).exists(),
+                        "durable_retained": credential() == changed, "fixture_resumed_child": False,
+                        "requester_pid": client.pid, "requester_start": requester_start,
+                        "root_messages": root_messages, "manager_timeouts": manager_timeouts}
+            print("LINUX_RECEIVER_NOTIFICATION_TIMEOUT_OBSERVED=" + json.dumps(observed, sort_keys=True), flush=True)
+            if (not 29 <= failure_seconds <= 45 or outcome != {
+                    "ActiveState": "failed", "SubState": "failed", "Result": "timeout", "MainPID": "0",
+                    "ExecMainPID": str(record["supervisor"]), "ExecMainCode": "2", "ExecMainStatus": "9",
+                    "InvocationID": invocation, "NRestarts": properties["NRestarts"], "TimeoutStopUSec": "30s"}
+                    or len(errors) < 2 or len(manager_timeouts) != 1 or not listener_absent
+                    or credential() != changed or client.poll() is not None
+                    or any(item.get("MESSAGE", "").endswith("librustdesk::platform::linux] Exit") for item in root_messages)):
+                raise RuntimeError("actual manager timeout did not prove retained notification errors and uncertain finality")
+            progress_at = 60
+            while client.poll() is None:
+                elapsed = time.monotonic() - began
+                if elapsed > 625 or credential() != changed:
+                    raise RuntimeError("uncertain requester exceeded its recovery bound or changed durable state")
+                if elapsed >= progress_at:
+                    print(f"LINUX_RECEIVER_NOTIFICATION_WAIT seconds={elapsed:.1f} unit=failed requester=unknown durable=retained", flush=True)
+                    progress_at += 30
+                time.sleep(0.05)
+            stdout, stderr = client.communicate(timeout=5)
+            print("LINUX_RECEIVER_NOTIFICATION_CLIENT_OBSERVED=" + json.dumps(
+                {"requester_pid": client.pid, "requester_start": requester_start, "seconds": time.monotonic() - began,
+                 "cli_exit": client.returncode, "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:],
+                 "durable_retained": credential() == changed}, sort_keys=True), flush=True)
+            if (client.returncode != 1 or "Done!" in stdout or not 590 <= time.monotonic() - began <= 625
+                    or "service-owned password mutation outcome remains unknown after bounded recovery" not in stderr
+                    or credential() != changed):
+                raise RuntimeError("manager-killed mutation did not retain an explicit unknown client outcome")
+            unit_reference.close()
+            print("LINUX_RECEIVER_NOTIFICATION_FAILURE=pass uid=0 fault=same-socket-SHUT_WR errno=EPIPE "
+                  "durable=changed-before-stop child=ptrace-held shutdown=systemctl timeout=30 "
+                  "cli=explicit-uncertainty supervisor=SIGKILL old_child=reaped old_listener=absent "
+                  "unit=timeout cgroup=absent durable=retained cleanup=client-joined", flush=True)
+            return
         if unit_stop:
             while time.monotonic() - began < 40:
                 fields = (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()
@@ -1596,7 +1773,7 @@ def credential_race(old, new, phase, record, probe_sha):
               f"cleanup=joined probe_sha256={probe_sha}", flush=True)
 
 
-def tests(args, convergence_failure=False):
+def tests(args, convergence_failure=False, notification_failure=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -1674,6 +1851,21 @@ def tests(args, convergence_failure=False):
             second = admitted_password_shutdown("Receiver-fixture-convergence-2026!", first, fail_convergence=True)
             keyed("Receiver-fixture-convergence-2026!", "convergence-failure-recovery", second, probe_spec["sha256"])
             stale_refused("Receiver-fixture-first-2026!", "convergence-failure-recovery", second, probe_spec["sha256"])
+        elif notification_failure:
+            admitted_password_shutdown("Receiver-fixture-notification-2026!", first, unit_stop=True, notification_failure=True)
+            run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+            second = ready(first)
+            recovered_unit = dict(line.split("=", 1) for line in run(
+                ["/usr/bin/systemctl", "show", "rustdesk.service",
+                 "--property=ActiveState,SubState,Result,MainPID,InvocationID,NRestarts"]).stdout.splitlines())
+            if (second["supervisor"] == first["supervisor"] or recovered_unit.get("MainPID") != str(second["supervisor"])
+                    or recovered_unit.get("ActiveState") != "active" or recovered_unit.get("Result") != "success"
+                    or recovered_unit.get("SubState") != "running"):
+                raise RuntimeError("manager-timeout recovery did not establish a fresh installed generation")
+            print("LINUX_RECEIVER_NOTIFICATION_RECOVERY_OBSERVED=" + json.dumps(
+                {"previous": first, "recovered": second, "unit": recovered_unit}, sort_keys=True), flush=True)
+            keyed("Receiver-fixture-notification-2026!", "notification-failure-recovery", second, probe_spec["sha256"])
+            stale_refused("Receiver-fixture-first-2026!", "notification-failure-recovery", second, probe_spec["sha256"])
         else:
             for uid in (4001, 4002):
                 change(uid, f"Receiver-refused-{uid}-2026!", False)
@@ -1821,6 +2013,12 @@ def tests(args, convergence_failure=False):
               f"probe_sha256={probe_spec['sha256']} fixture=installed-layout polkit=actual logind=actual "
               "child=supervised cleanup=joined", flush=True)
         return
+    if notification_failure:
+        print(f"LINUX_SERVICE_NOTIFICATION_NATIVE=pass cases=4 cpace=3 stale_refusals=1 notification_failures=1 "
+              f"admin_grants=1 fresh_refusals=1 source={commit} binary_sha256={spec['sha256']} "
+              f"probe_sha256={probe_spec['sha256']} fixture=installed-layout polkit=actual logind=actual "
+              "child=supervised cleanup=joined", flush=True)
+        return
     print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=17 cpace=15 stale_refusals=4 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 unit_stops=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
@@ -1877,6 +2075,8 @@ if __name__ == "__main__":
         polkit_agent(*sys.argv[2:])
     elif len(sys.argv) == 7 and sys.argv[-1] == "--convergence-failure":
         tests(sys.argv[1:6], convergence_failure=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--notification-failure":
+        tests(sys.argv[1:6], notification_failure=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

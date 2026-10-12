@@ -298,10 +298,11 @@ def observe_admin_requester_exit(client, agent, terminal, start, record, before,
                 try:
                     fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
                     reaped = int(fields[19]) != helper_start
-                except FileNotFoundError:
+                except (FileNotFoundError, ProcessLookupError):
                     reaped = True
             if reaped:
                 break
+        retirement_seconds = time.monotonic() - began
         unchanged = credential() == before
         retained = direct_listener(record) == listener
         agent_alive = agent.poll() is None
@@ -310,6 +311,7 @@ def observe_admin_requester_exit(client, agent, terminal, start, record, before,
              "requester_start": start, "requester_exit": client.returncode,
              "helper_pid": int(proc.name), "helper_start": helper_start,
              "helper_exited": exited, "helper_reaped": reaped,
+             "retirement_seconds": retirement_seconds,
              "elapsed_seconds": time.monotonic() - began, "agent_pid": agent.pid,
              "agent_alive_before_cleanup": agent_alive, "administrator_password_sent": False,
              "agent_terminal": terminal.decode(errors="replace"),

@@ -2275,17 +2275,31 @@ This is one unadmitted-request schedule in debug/headless seatless-X11 installed
 standard unit-stop/admitted-commit/contention/delay/GUI cancellation and wider acceptance
 remain OPEN. No product code changed.
 
-**Pending native acceptance: admitted Linux credential mutation during supervisor shutdown.**
-The fixture stops only the retained child with pidfd SIGSTOP/kernel-state proof, submits an
-actual exact-image root CLI password request and observes the durable credential change.
-It then signals only the retained supervisor, requires the admitted request and stopped child
-to remain live, resumes that child before convergence timeout, and requires actual Applied,
-retained durable state and clean joined unit/cgroup/listener retirement. Fresh-generation
-CPace must use the new password and reject the obsolete password. The existing guest D-Bus
-result reference is shared by both shutdown observers. `src/ipc.rs:1635,6220,6248` closes
-admission while awaiting admitted persistence/convergence; unresolved authority aborts at
-`:1642` rather than dropping replay ownership. `src/platform/linux.rs:2528` joins IPC before
-retiring the child. Product/artifact unchanged; this schedule remains pending.
+**Admitted credential mutation during supervisor shutdown: exact installed Linux case accepted.**
+Harness `cef74964` reuses the unchanged `924b5aed` binary/probe capsule. The retained child
+receives pidfd SIGSTOP and has kernel state T; an actual exact-image root CLI request changes
+the durable credential while its reply remains pending. Only the retained supervisor receives
+pidfd SIGTERM. Its fresh root invocation/boot/PID-bound journal proves graceful shutdown began
+while the requester remains alive and child remains stopped, held for 54.3 ms. Exact child
+pidfd SIGCONT permits convergence; actual CLI0 `Done!` arrives 121 ms after SIGTERM. The accepted
+credential remains durable. Supervisor and child pidfds exit and their kernel identities are
+reaped; listener and cgroup retire in 572 ms. The held guest D-Bus unit reference proves
+inactive/dead/success and normal exit0 before release. Root journal records child exit0 and
+final Exit without errors. A fresh supervisor/child/generation uses the new password in actual
+mutual CPace and rejects the obsolete password; subsequent actual administrator Applied and
+fresh no-agent refusal pass. `src/ipc.rs:1635,6220,6248` closes admission while awaiting
+admitted persistence/convergence; unresolved authority aborts at `:1642` rather than dropping
+replay ownership. `src/platform/linux.rs:2528` joins IPC before retiring the child.
+The zero-NIC installed-layout transaction passes 16 cases/14 CPace exchanges/3 stale refusals
+in 85 seconds, with unchanged host listeners and source/index/audit/specification/ledger/
+instruction freezes, plus exact joined cleanup. RAM scratch peaks at 4,998,963,200 bytes;
+disk diagnostics at 167,936 bytes (164 KiB); observed QEMU block writes are 4,096 bytes.
+Immutable `.harness-state/verifier-vm/linux-receiver-admitted-shutdown-accepted-cef74964.json`
+(22,743 bytes; SHA-256 `3db13b7cc04a19caa8cc46c996bbb641796dcd80027abdd139250dd5da816b44`)
+binds the barrier, process/journal/unit observations, recovery, artifacts, raw log, storage and
+freezes. This is one admitted-write schedule in debug/headless seatless-X11 installed layout;
+standard unit-stop, failed convergence, delay/contention/capacity/GUI cancellation and wider
+acceptance remain OPEN. No product code or artifact changed.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

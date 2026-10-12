@@ -2068,7 +2068,7 @@ resource retirement, installed artifacts, and independent review remain OPEN.
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**Policy/capture/coordinator/logind, installed fixture, CPace and obsolete-password refusal accepted;
+**Policy/capture/coordinator/logind, installed fixture, CPace/two races accepted;
 full installed/whole-app/release OPEN.**
 
 Both endpoints use `src/ipc/uid_policy.rs`: root skips lookup; cache denies only; matches need fresh UID.
@@ -2109,22 +2109,22 @@ Two wording cases are supplementary.
 Empty/removed, seatless unspecified/TTY, active X11, switch/closing X11 select expected UID/no-user.
 PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed receiver here.
 
-**Installed v2:** harness1653f4dd/peer e69129bc, binary22f08d26/manifest2e71a178;
-82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child; eight cases/77s.
-Root Applied twice/same child; genuine UID4001/4002 exit1≤20s, durable/generation unchanged;
+**Installed v2:** harness/peer28f7fcda, binarya5c3ebc4/manifest14137030;
+82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child; eight cases/112s.
+Root Applied/same child; UID4001/4002 exit1≤20s, state/generation unchanged;
 wrong-image denied both endpoints; restart fresh generation/durable unchanged.
-Docker/unit/cgroup/PAM/X11 joined; correct outer/raw 5Gyo4Rioza. Build261s.
-Five positive CPace checks: UID4002/probe eb9dd801, both changes/restart/refusal recovery.
-Old password refused after replacement/restart: exact-child/invocation/cursor tag mismatch.
-Refusals preserve child/listener and durable state.
-In-flight PAKE passed; login-error drain fix PENDING native.
+Docker/unit/cgroup/PAM/X11 joined; raw HJH2W7Fv7A; build263s.
+Seven CPace positives: UID4002/probe eb9dd801, mutations/restart/refusal/race recovery.
+Old password after replacement/restart: child/invocation/cursor tag mismatch.
+Two races: old PAKE confirms/no keyed stream; keyed old login gets decrypted generation error/EOF.
+Child/listener retained; durable changed. Errors check enqueue and bounded drain before teardown.
 
 Sources/commands/hashes: `linux-wire-v2-accepted-e69129bc.json`,
-`linux-receiver-stale-accepted-1653f4dd.json`,
+`linux-receiver-races-accepted-28f7fcda.json`,
 `/tmp/privilege_securiry_deep_audit.md`. Rust tests/builds: Rust1.75/zero-NIC/no-network,
 uid1000/read-only/caps-none/NNP; no host listener additions/joined cleanup.
 
-**Still OPEN:** credential-change races, interactive admin grant; installed Linux
+**Still OPEN:** other credential-change races, interactive admin grant; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,
 wait/SIGCHLD interop, abrupt-drop and lookup/transaction/descendant resources; whole-app/native

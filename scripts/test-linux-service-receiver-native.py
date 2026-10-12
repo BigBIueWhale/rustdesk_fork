@@ -117,6 +117,14 @@ def install_polkit(archive_sha, manifest_sha):
                     "/usr/share/polkit-1/actions/com.carriez.RustDesk.policy")
     os.chmod("/usr/share/polkit-1/actions/com.carriez.RustDesk.policy", 0o644)
     run(["/usr/bin/systemctl", "restart", "polkit.service"])
+    versions = run(["/usr/bin/dpkg-query", "--show", "--showformat=${Package}\t${Version}\n",
+                    "polkitd", "libc6", "libpam-systemd"]).stdout
+    expected = {"polkitd": "122-3", "libc6": "2.36-9+deb12u14",
+                "libpam-systemd": "252.39-1~deb12u2"}
+    if dict(line.split("\t", 1) for line in versions.splitlines()) != expected:
+        raise RuntimeError("installed OS authorization runtime versions differ")
+    print("LINUX_RECEIVER_OS_RUNTIME=installed polkitd=122-3 libc6=2.36-9+deb12u14 "
+          "libpam-systemd=252.39-1~deb12u2 packages=82", flush=True)
 
 
 def child_record():
@@ -242,7 +250,7 @@ def tests(args):
         session = opened["session"]
         expected = {"User": "4001", "Type": "x11", "State": "active", "Display": ":77", "Seat": ""}
         properties = run(["/usr/bin/loginctl", "show-session", "--no-pager",
-                          "--property=User,Type,State,Display,Seat", "--", session]).stdout
+                          *["--property=" + key for key in expected], "--", session]).stdout
         if dict(line.split("=", 1) for line in properties.splitlines()) != expected:
             raise RuntimeError(f"real logind desktop differs: {properties}")
         deadline = time.monotonic() + 5

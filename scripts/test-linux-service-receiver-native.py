@@ -496,7 +496,37 @@ def admin_change(value, record, phase="apply", actor=None):
                     os.write(master, (password + "\n").encode())
                     password_sent = True
         if phase != "requester-exit":
-            stdout, stderr = client.communicate(timeout=5)
+            try:
+                stdout, stderr = client.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                if phase == "bad-password":
+                    while select.select([master], [], [], 0)[0]:
+                        data = os.read(master, 4096)
+                        if not data or len(terminal) + len(data) > 32768:
+                            raise RuntimeError("failed authentication diagnostic exceeded its terminal bound")
+                        terminal.extend(data)
+                    helper = Path("/proc") / str(denial["helper_pid"])
+                    try:
+                        fields = (helper / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                        reaped = int(fields[19]) != denial["helper_start"]
+                        helper_state = fields[0].decode()
+                    except (FileNotFoundError, ProcessLookupError):
+                        reaped = True
+                        helper_state = "absent"
+                    run(["/usr/bin/journalctl", "--sync"], timeout=5)
+                    messages = [json.loads(line) for line in run(
+                        ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "--output=json",
+                         "--after-cursor=" + denial["journal_cursor"], "-n", "20"]).stdout.splitlines()]
+                    print("LINUX_RECEIVER_ADMIN_DENIED_TIMEOUT=" + json.dumps(
+                        {**denial, **record, "agent_pid": agent.pid,
+                         "agent_terminal": terminal.decode(errors="replace"),
+                         "helper_exited": bool(select.select([denial_pidfd], [], [], 0)[0]),
+                         "helper_reaped": reaped, "helper_state": helper_state,
+                         "durable_unchanged": credential() == before,
+                         "listener_unchanged": direct_listener(record) == listener,
+                         "client_exit": client.poll(), "agent_exit": agent.poll(),
+                         "service_journal": messages}, sort_keys=True), flush=True)
+                raise
         if phase in ("session-close", "bad-password"):
             run(["/usr/bin/journalctl", "--sync"], timeout=5)
             messages = [json.loads(line) for line in run(

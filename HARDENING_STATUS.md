@@ -2124,7 +2124,9 @@ and fresh no-agent denial pass. No product change; lingering-runtime recovery OP
 **Incorrect administrator password: native acceptance OPEN.** The installed fixture submits an
 incorrect password to the real administrator PAM challenge and requires failed authentication,
 exact root `pkcheck` exit1/reap, unchanged durable state/child/listener, CPace recovery and a subsequent
-fresh administrator Applied result. This scenario has not yet executed; prior acceptance is unchanged.
+fresh administrator Applied result. The first transaction failed waiting for CLI finality after the
+agent's failure response; helper outcome/cause were unobserved. Diagnostics are retained; prior
+acceptance is unchanged, and a focused replay must distinguish a further prompt from receiver drain.
 
 Evidence: `linux-wire-v2-accepted-e69129bc.json`,
 `linux-receiver-requester-exit-accepted-bb5a78b2.json`,

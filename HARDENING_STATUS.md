@@ -2441,10 +2441,10 @@ Immutable `.harness-state/verifier-vm/linux-receiver-unit-stop-accepted-ef3f51b7
 binds artifacts, actual manager/process/CLI/journal/recovery observations, full raw
 logs, storage and freezes. Earlier failed build evidence remains unaccepted in the
 audit and retained diagnostics. This is one debug/headless installed-layout seatless-X11
-schedule, not whole-app/release acceptance. Notification failure, ordinary network
+schedule, not whole-app/release acceptance. Other notification failures, ordinary network
 drain, new-unit 600-second failure/recovery and other init systems remain OPEN.
 
-**Notification endpoint lifetime: native component A/B accepted; installed failure acceptance OPEN.**
+**Notification endpoint lifetime: component A/B and one installed channel-loss schedule accepted; wider failures OPEN.**
 Product `a84a4b78`, `src/platform/linux/systemd.rs:36`, retains the exact connected
 Unix datagram after a send error. Later attempts return their actual kernel result;
 only an absent manager at construction takes the optional-success path. Temporary
@@ -2463,10 +2463,39 @@ endpoint records retain two unattributed removals without owner inspection.
 Immutable `.harness-state/verifier-vm/linux-notification-errors-accepted-a84a4b78.json`
 (23,933 bytes; SHA-256 `f50d1853e73e415918bf8218d560a320c3713b077216788651076ea19fcec859`)
 binds both native runs, identical test bodies, module/artifact hashes, raw logs,
-storage and complete endpoint records. The reused `ef3f51b7` whole binary predates
-this correction. Current installed/whole-binary evidence, manager acknowledgement,
-permanent channel loss against the 30-second kill backstop, ordinary network drain
-and broader shutdown/platform/release/resource/reproduction/review remain OPEN.
+storage and complete endpoint records. The `ef3f51b7` whole binary predates this
+correction; its intact capsule is retained at
+`.harness-state/retained-peer-artifact-ef3f51b7/linux-x86_64-peer`.
+
+Current binary `bf2ef7fd` (`51eb6e87`, manifest `9ed447c2`) and harness `e34bbb42`
+pass a real installed notification-channel fault in 660 VM seconds. Guest root
+uses the retained supervisor pidfd to duplicate its sole connected notification
+socket and applies SHUT_WR to that same kernel object; actual EPIPE persists.
+With a pending durable credential change and all 15 child threads ptrace-held,
+systemd kills the exact old tree after 30.047 seconds and reports timeout/SIGKILL,
+without an automatic restart. The fixture reaps every traced death; supervisor and
+child pidfds exit, identities/listener/cgroup retire, and the durable credential remains.
+CLI1 returns explicit unknown after 599.960 seconds, with no Done. Manual start
+establishes a fresh supervisor/child/generation; retained-password mutual CPace,
+obsolete-password refusal, real polkit/PAM administrator Applied and fresh denial
+pass: four cases/three CPace exchanges/one stale refusal. This is the R-T9 external
+last resort, not a clean stop or completed-mutation result.
+
+The source-bound build passes in 352 VM seconds within its 600-second integration
+ceiling and is reused unchanged. Build/test RAM scratch peaks are 6,206,951,424 /
+4,544,503,808 bytes; retained run-disk peaks are 3,555,328 / 143,360 bytes, with
+observed QEMU block writes of 4,096 each. Exact joins/RAM retirement and frozen
+source/index/audit/ledger/spec/instructions pass. All ten complete build/failed-test/
+accepted-test endpoint observations are retained as unattributed. The first unread-pipe
+observer attempt stays unaccepted; corrected bounded capture drains 825,614 stderr bytes.
+Immutable `.harness-state/verifier-vm/linux-receiver-notification-loss-accepted-e34bbb42.json`
+(55,532 bytes; SHA-256 `89aa9fb0302bef0080ef545a76de930ec6e8976efc90a9e156dd1b04e1b549d6`)
+binds the capsule, five actual fault/barrier/timeout/client/recovery records, native
+receipts, full raw logs, storage, endpoint records and freezes. Interleaved first-run
+diagnostics remain raw without reconstruction. This is one debug/headless installed-layout
+seatless-X11 schedule. Manager crash/acknowledgement, installed temporary backpressure,
+startup failure, new-unit 600-second failure/recovery, ordinary network drain and broader
+shutdown/platform/whole-app/release/resource/reproduction/review remain OPEN.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

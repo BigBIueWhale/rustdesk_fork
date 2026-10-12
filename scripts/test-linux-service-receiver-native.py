@@ -335,6 +335,92 @@ def observe_admin_requester_exit(client, agent, terminal, start, record, before,
         os.close(pidfd)
 
 
+def observe_admin_agent_exit(client, agent, terminal, start, record, before, listener):
+    helper, helper_start = pending_admin_helper(client, start, record)
+    pidfd = os.pidfd_open(int(helper.name))
+    try:
+        fields = (helper / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+        agent_proc = Path("/proc") / str(agent.pid)
+        agent_fields = (agent_proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+        requester = Path("/proc") / str(client.pid)
+        requester_fields = (requester / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+        if (int(fields[19]) != helper_start or fields[0] in (b"Z", b"X")
+                or select.select([pidfd], [], [], 0)[0]
+                or client.poll() is not None or agent.poll() is not None
+                or int(requester_fields[19]) != start or requester_fields[0] in (b"Z", b"X")
+                or not (requester / "exe").samefile(PRIMARY)
+                or not (agent_proc / "exe").samefile("/usr/bin/pkttyagent")
+                or agent_fields[0] in (b"Z", b"X")
+                or int(agent_fields[2]) != agent.pid or int(agent_fields[3]) != agent.pid):
+            raise RuntimeError("agent-loss fixture lost its live requester, helper or owned agent group")
+        invocation = run(["/usr/bin/systemctl", "show", "rustdesk.service",
+                          "--property=InvocationID", "--value"]).stdout.strip()
+        if re.fullmatch(r"[0-9a-f]{32}", invocation) is None:
+            raise RuntimeError("agent-loss request has no service invocation")
+        run(["/usr/bin/journalctl", "--sync"], timeout=5)
+        cursor = json.loads(run(["/usr/bin/journalctl", "--unit=rustdesk.service",
+                                 "--no-pager", "--output=json", "-n", "1"]).stdout)["__CURSOR"]
+        if client.poll() is not None or agent.poll() is not None or select.select([pidfd], [], [], 0)[0]:
+            raise RuntimeError("requester, agent or pending authorization ended before agent loss")
+        requester_fields = (requester / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+        current_agent = (agent_proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+        if (int(requester_fields[19]) != start or requester_fields[0] in (b"Z", b"X")
+                or int(requester_fields[2]) == agent.pid
+                or int(current_agent[19]) != int(agent_fields[19]) or current_agent[0] in (b"Z", b"X")
+                or int(current_agent[2]) != agent.pid or int(current_agent[3]) != agent.pid):
+            raise RuntimeError("agent-loss process/group identity changed before the signal")
+        began = time.monotonic()
+        # The retained, unreaped direct child owns this private session/process group.
+        os.killpg(agent.pid, signal.SIGKILL)
+        if agent.wait(timeout=5) != -signal.SIGKILL:
+            raise RuntimeError("owned authentication agent was not killed and joined")
+        stdout, stderr = client.communicate(timeout=5)
+        exited = reaped = False
+        while time.monotonic() - began < 5:
+            exited = bool(select.select([pidfd], [], [], 0.02)[0])
+            if exited:
+                try:
+                    fields = (helper / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                    reaped = int(fields[19]) != helper_start
+                except (FileNotFoundError, ProcessLookupError):
+                    reaped = True
+            if reaped:
+                break
+        elapsed = time.monotonic() - began
+        run(["/usr/bin/journalctl", "--sync"], timeout=5)
+        messages = [json.loads(line) for line in run(
+            ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager",
+             "--output=json", "--after-cursor=" + cursor, "-n", "40"]).stdout.splitlines()]
+        expected = {"_PID": str(record["supervisor"]), "_UID": "0", "_TRANSPORT": "stdout",
+                    "_SYSTEMD_UNIT": "rustdesk.service", "_SYSTEMD_INVOCATION_ID": invocation,
+                    "_BOOT_ID": Path("/proc/sys/kernel/random/boot_id").read_text().strip().replace("-", "")}
+        refusal = ("polkit denied action=com.carriez.RustDesk.set-unattended-password, "
+                   f"subject={client.pid},{start},4001, status=exit status: 1")
+        refusals = [item for item in messages if all(item.get(k) == v for k, v in expected.items())
+                    and refusal in item.get("MESSAGE", "")]
+        unchanged = credential() == before
+        retained = direct_listener(record) == listener
+        print("LINUX_RECEIVER_AGENT_EXIT_OBSERVED=" + json.dumps(
+            {**record, "listener_inode": listener, "requester_pid": client.pid,
+             "requester_start": start, "requester_alive_before_agent_loss": True,
+             "agent_pid": agent.pid, "agent_start": int(agent_fields[19]),
+             "agent_exit": agent.returncode, "signal": "SIGKILL", "agent_group": "owned",
+             "helper_pid": int(helper.name), "helper_start": helper_start,
+             "helper_exited": exited, "helper_reaped": reaped, "elapsed_seconds": elapsed,
+             "administrator_password_sent": False, "agent_terminal": terminal.decode(errors="replace"),
+             "cli_exit": client.returncode, "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:],
+             "durable_unchanged": unchanged, "listener_unchanged": retained,
+             "fresh_refusals": refusals}, sort_keys=True), flush=True)
+        if (client.returncode != 1 or stdout.strip() == "Done!"
+                or "Changing service-owned unattended password was rejected by service" not in stderr
+                or not exited or not reaped or elapsed > 5 or not unchanged or not retained or len(refusals) != 1
+                or terminal.count(b"Password:") != 1 or b"AUTHENTICATION COMPLETE" in terminal
+                or ADMIN_PASSWORD.encode() in terminal):
+            raise RuntimeError("agent loss lacked exact receiver denial, helper retirement or unchanged authority")
+    finally:
+        os.close(pidfd)
+
+
 def close_admin_requester_session(client, agent, start, record, actor):
     pam = pam_module()
     pam.properties(actor, "active")
@@ -373,7 +459,7 @@ def close_admin_requester_session(client, agent, start, record, actor):
 
 
 def admin_change(value, record, phase="apply", actor=None):
-    if phase not in ("apply", "requester-exit", "session-close", "bad-password") or (phase == "session-close" and actor is None):
+    if phase not in ("apply", "requester-exit", "agent-exit", "session-close", "bad-password") or (phase == "session-close" and actor is None):
         raise RuntimeError("unknown administrator fixture phase")
     listener = direct_listener(record)
     if listener is None:
@@ -472,6 +558,10 @@ def admin_change(value, record, phase="apply", actor=None):
                         observe_admin_requester_exit(client, agent, terminal, start,
                                                     record, before, listener)
                         break
+                    if phase == "agent-exit":
+                        observe_admin_agent_exit(client, agent, terminal, start,
+                                                 record, before, listener)
+                        break
                     if phase == "session-close":
                         denial = close_admin_requester_session(client, agent, start, record, actor)
                     if phase == "bad-password":
@@ -495,7 +585,7 @@ def admin_change(value, record, phase="apply", actor=None):
                     password = INVALID_ADMIN_PASSWORD if phase == "bad-password" else ADMIN_PASSWORD
                     os.write(master, (password + "\n").encode())
                     password_sent = True
-        if phase != "requester-exit":
+        if phase not in ("requester-exit", "agent-exit"):
             try:
                 stdout, stderr = client.communicate(timeout=5)
             except subprocess.TimeoutExpired:
@@ -610,6 +700,13 @@ def admin_change(value, record, phase="apply", actor=None):
               "supervisor=retained helper=reaped cleanup=agent-client-joined", flush=True)
         return
     retained = direct_listener(record) == listener
+    if phase == "agent-exit":
+        if password_sent or changed or not retained:
+            raise RuntimeError("lost authentication agent changed serving authority")
+        print("LINUX_RECEIVER_AGENT_EXIT=pass uid=4001 prompt=actual password=withheld "
+              "agent=group-killed requester=alive-before-loss cli=explicit-denial pkcheck=exit1 "
+              "helper=service-reaped durable=unchanged listener=owned cleanup=agent-client-joined", flush=True)
+        return
     if phase == "bad-password":
         if changed or not retained:
             raise RuntimeError("incorrect administrator password changed serving authority during cleanup")
@@ -1087,6 +1184,8 @@ def tests(args):
         keyed("Receiver-fixture-fourth-2026!", "session-close-recovery", second, probe_spec["sha256"])
         admin_change("Receiver-invalid-admin-2026!", second, "bad-password")
         keyed("Receiver-fixture-fourth-2026!", "admin-denied-recovery", second, probe_spec["sha256"])
+        admin_change("Receiver-agent-lost-2026!", second, "agent-exit")
+        keyed("Receiver-fixture-fourth-2026!", "agent-exit-recovery", second, probe_spec["sha256"])
         admin_change("Receiver-fixture-admin-2026!", second)
         keyed("Receiver-fixture-admin-2026!", "admin-applied", second, probe_spec["sha256"])
         before = credential()
@@ -1118,7 +1217,7 @@ def tests(args):
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=13 cpace=11 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=14 cpace=12 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 

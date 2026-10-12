@@ -2234,6 +2234,10 @@ Evidence: `linux-wire-v2-accepted-e69129bc.json`,
 `/tmp/privilege_securiry_deep_audit.md`. Rust1.75/zero-NIC/no-network,
 Build/source checks: uid1000/read-only/caps-none/NNP; installed root fixture is VM-only; no new host listeners.
 
+**Authentication-agent loss: native acceptance pending.** The new fixture reaches the actual
+password prompt with the requester alive, then requires exact root-helper/journal denial,
+retirement and unchanged credential/serving-child authority. Graphical dialog dismissal is separate.
+
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

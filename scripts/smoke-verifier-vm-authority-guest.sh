@@ -2449,19 +2449,8 @@ generate_focused_rust_flutter_bridge() {
         "$CONTAINER_ID")"
     [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
         || fail "focused Rust bridge container namespace/device/port authority differs: $namespace_inspect"
-    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
-        local -a fuse_start_status
-        if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 | tee "$output"; then
-            fuse_start_status=("${PIPESTATUS[@]}")
-        else
-            fuse_start_status=("${PIPESTATUS[@]}")
-        fi
-        [ "${fuse_start_status[1]}" -eq 0 ] || fail 'cannot retain the live FUSE test output'
-        container_status=${fuse_start_status[0]}
-    else
-        "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
-            >"$output" 2>&1 || container_status=$?
-    fi
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
+        >"$output" 2>&1 || container_status=$?
     [ "$container_status" -eq 0 ] \
         || { tail -n 200 "$output" >&2; fail "focused Rust bridge generation exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
@@ -3743,8 +3732,19 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
-    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
-        >"$output" 2>&1 || container_status=$?
+    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+        local -a fuse_start_status
+        if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 | tee "$output"; then
+            fuse_start_status=("${PIPESTATUS[@]}")
+        else
+            fuse_start_status=("${PIPESTATUS[@]}")
+        fi
+        [ "${fuse_start_status[1]}" -eq 0 ] || fail 'cannot retain the live FUSE test output'
+        container_status=${fuse_start_status[0]}
+    else
+        "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
+            >"$output" 2>&1 || container_status=$?
+    fi
     if [ "$container_status" -ne 0 ]; then
         if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
             awk '/^WHITEBOARD_HELPER_(BUILD|ARTIFACT_BEFORE)=/ { print }' "$output" >&2 \

@@ -2125,7 +2125,7 @@ Evidence: `linux-wire-v2-accepted-e69129bc.json`,
 `/tmp/privilege_securiry_deep_audit.md`. Rust tests/builds: Rust1.75/zero-NIC/no-network,
 uid1000/read-only/caps-none/NNP; no host listener additions/joined cleanup.
 
-**Still OPEN:** other credential races, admin failure/cancel/delay (exit fixture pending); installed Linux
+**Still OPEN:** other credential races, admin failure/cancel/delay (exit fix pending); installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,
 wait/SIGCHLD interop, abrupt-drop and lookup/transaction/descendant resources; whole-app/native

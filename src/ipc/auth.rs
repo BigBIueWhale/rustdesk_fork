@@ -24,6 +24,8 @@ use serde_derive::{Deserialize, Serialize};
 use std::ffi::{c_void, CString};
 #[cfg(target_os = "linux")]
 use std::fmt;
+#[cfg(target_os = "linux")]
+use std::os::fd::{FromRawFd, OwnedFd};
 #[cfg(target_os = "macos")]
 use std::io::{BufReader, Read};
 #[cfg(target_os = "macos")]
@@ -2609,6 +2611,20 @@ impl PeerProcessIdentity {
 
     pub(crate) fn start_time(&self) -> &str {
         &self.start_time
+    }
+
+    pub(crate) fn retain_process(&self) -> ResultType<OwnedFd> {
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, self.pid, 0) };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        let process = unsafe { OwnedFd::from_raw_fd(fd as RawFd) };
+        if linux_process_identity_by_pid(self.pid, super::password::SERVICE_PASSWORD_IPC_POSTFIX)?
+            != *self
+        {
+            bail!("Linux password requester changed while retaining its process");
+        }
+        Ok(process)
     }
 
     #[cfg(test)]

@@ -4078,7 +4078,6 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                                 &operation_id,
                                 value.as_str(),
                                 &identity,
-                                &shutdown,
                                 &cancelled,
                             );
                             LinuxServiceAuthorizationCompletion::PasswordAdmission { reply, result }
@@ -5977,9 +5976,11 @@ fn configure_linux_pkcheck_environment(command: &mut std::process::Command) {
 
 #[cfg(target_os = "linux")]
 fn linux_pkcheck_authorizes_service_owned_password_change(
-    subject: String,
-    shutdown: hbb_common::tokio_util::sync::CancellationToken,
+    identity: &PeerProcessIdentity,
+    cancelled: &dyn Fn() -> bool,
 ) -> bool {
+    use std::os::fd::AsRawFd;
+
     let Some(pkcheck) = trusted_linux_pkcheck_path() else {
         log::warn!(
             "Rejected service-owned unattended password change: no trusted pkcheck executable at {}",
@@ -5987,6 +5988,19 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
         );
         return false;
     };
+    let requester = match identity.retain_process() {
+        Ok(requester) => requester,
+        Err(err) => {
+            log::warn!(
+                "Rejected service-owned unattended password change: failed to retain requester: {err}"
+            );
+            return false;
+        }
+    };
+    if cancelled() {
+        return false;
+    }
+    let subject = linux_polkit_subject_for_identity(identity);
     let mut command = std::process::Command::new(pkcheck);
     configure_linux_pkcheck_environment(&mut command);
     command
@@ -6024,6 +6038,31 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
     };
     let deadline = std::time::Instant::now() + PKCHECK_AUTHORIZATION_TIMEOUT;
     loop {
+        if cancelled() {
+            terminate_and_reap_linux_pkcheck(&mut child, "authorization cancellation");
+            return false;
+        }
+        let mut process = libc::pollfd {
+            fd: requester.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let rc = unsafe { libc::poll(&mut process, 1, 0) };
+        if rc != 0 {
+            if rc < 0 {
+                log::warn!(
+                    "Rejected service-owned unattended password change: requester lifetime poll failed: {}",
+                    std::io::Error::last_os_error()
+                );
+            } else {
+                log::debug!(
+                    "Rejected service-owned unattended password change: requester lifetime became unavailable, events={}",
+                    process.revents
+                );
+            }
+            terminate_and_reap_linux_pkcheck(&mut child, "requester lifetime ended or uncertain");
+            return false;
+        }
         match child.try_wait() {
             Ok(Some(status)) if status.success() => return true,
             Ok(Some(status)) => {
@@ -6033,10 +6072,6 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
                     subject,
                     status
                 );
-                return false;
-            }
-            Ok(None) if shutdown.is_cancelled() => {
-                terminate_and_reap_linux_pkcheck(&mut child, "service shutdown");
                 return false;
             }
             Ok(None) if std::time::Instant::now() >= deadline => {
@@ -6067,14 +6102,12 @@ fn authorize_and_admit_linux_password_request(
     operation_id: &str,
     value: &str,
     identity: &PeerProcessIdentity,
-    shutdown: &hbb_common::tokio_util::sync::CancellationToken,
     cancelled: &dyn Fn() -> bool,
 ) -> ResultType<bool> {
     if cancelled() {
         return Ok(false);
     }
-    let subject = linux_polkit_subject_for_identity(identity);
-    if !linux_pkcheck_authorizes_service_owned_password_change(subject, shutdown.clone()) {
+    if !linux_pkcheck_authorizes_service_owned_password_change(identity, cancelled) {
         return Ok(false);
     }
     let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(

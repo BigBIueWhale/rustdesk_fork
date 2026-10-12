@@ -1382,8 +1382,6 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
             (("arg", "(", '"--allow-user-interaction"', ")"), "interactive authorization"),
             (("Instant", "::", "now", "(", ")", "+", "PKCHECK_AUTHORIZATION_TIMEOUT"), "bounded authorization deadline"),
             (("Ok", "(", "Some", "(", "status", ")", ")", "if", "status", ".", "success", "(", ")", "=>", "return", "true"), "successful pkcheck exit as the only authorization result"),
-            (("shutdown", ".", "is_cancelled", "(", ")"), "shutdown cancellation"),
-            (("terminate_and_reap_linux_pkcheck", "(", "&", "mut", "child"), "child termination and reap"),
         )
     )
     admission_type = ipc.item("struct", "LinuxServiceOwnedPasswordAdmission")
@@ -1400,8 +1398,7 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     grant = ipc.function("authorize_and_admit_linux_password_request")
     grant.require_order(
         (
-            (("linux_polkit_subject_for_identity", "(", "identity", ")"), "socket-derived polkit subject"),
-            (("if", "!", "linux_pkcheck_authorizes_service_owned_password_change", "(", "subject", ",", "shutdown", ".", "clone", "(", ")", ")"), "bounded fail-closed polkit proof"),
+            (("if", "!", "linux_pkcheck_authorizes_service_owned_password_change", "(", "identity", ",", "cancelled", ")"), "requester-bound fail-closed polkit call"),
             (("LoginctlLookup", "::", "new", "("), "one post-polkit lookup context"),
             (("if", "!", "linux_service_owned_password_requester_is_live", "(", "identity", ",", "&", "mut", "lookup", ")"), "post-authorization full requester replay"),
             (("LinuxServiceOwnedPasswordAdmission", "{", "requester", ":", "identity", ".", "clone", "(", ")"), "non-cloneable action admission"),

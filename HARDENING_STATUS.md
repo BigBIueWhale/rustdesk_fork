@@ -2319,14 +2319,16 @@ parent-death SIGKILL is tied to the creating thread, before whole-supervisor pid
 The observer records that transition and still requires exact supervisor SIGABRT failure.
 New-password CPace, obsolete-password refusal and fresh OS authorization are
 mandatory. Product, shipped unit and artifact are unchanged; this schedule remains pending.
-Three full-window attempts are unaccepted. The corrected observer recorded the exact old
+Four full-window attempts are unaccepted. The corrected observer recorded the exact old
 supervisor SIGABRT/failed-unit outcome after 600.9 seconds and CLI1 explicit uncertainty,
-then stopped at missing required terminal journal evidence. The diagnostic attempt proves
-the bounded after-cursor query returned the first entries of the hold, before the terminal
-messages. The query now selects decisive terminal messages before its output bound; all
-authority predicates remain required. Recovery and fresh credential/authorization checks
-were not reached. Each outer audit also found unexplained new host UDP endpoints; no
-ownership is inferred. Failed diagnostics remain retained after joined RAM retirement.
+then stopped at terminal journal selection. Diagnostics prove both required messages carry
+the exact old root/boot/invocation authority. The first query capped earliest after-cursor
+entries; the grep repair searched backwards under installed systemd 252.39. The fixture
+now queries the bounded old-invocation tail and requires boot-bound monotonic freshness
+after the actual shutdown barrier, retaining every authority/failure predicate. Recovery
+and fresh credential/authorization checks were not reached. The latest host endpoint audit
+is unchanged; three earlier audits found unexplained UDP additions without ownership
+inference. Failed diagnostics remain retained after joined RAM retirement.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

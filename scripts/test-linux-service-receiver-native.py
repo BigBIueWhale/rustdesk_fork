@@ -732,17 +732,17 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
                     or "service-owned password mutation outcome remains unknown after bounded recovery" not in stderr):
                 raise RuntimeError("unconverged root request did not retain an explicit uncertain outcome")
             run(["/usr/bin/journalctl", "--sync"], timeout=5)
-            terminal_pattern = (
-                "Linux durable credential changed but its runtime replica did not converge|"
-                "Linux password admission transactions drained with unresolved authority; terminating|"
-                r"librustdesk::platform::linux\] Exit$"
-            )
+            barrier_timestamp = int(shutdowns[0]["__MONOTONIC_TIMESTAMP"])
             terminal_query = run(
                 ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "--output=json",
-                 "--after-cursor=" + cursor, "_SYSTEMD_INVOCATION_ID=" + invocation,
-                 "--grep=" + terminal_pattern, "-n", "40"], timeout=5, allowed=(0, 1))
+                 "--output-fields=__CURSOR,__MONOTONIC_TIMESTAMP,_BOOT_ID,_PID,_UID,_TRANSPORT,"
+                 "_STREAM_ID,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,MESSAGE",
+                 "_SYSTEMD_INVOCATION_ID=" + invocation, "-n", "40"], timeout=5)
             messages = [json.loads(line) for line in terminal_query.stdout.splitlines()]
-            root_messages = [item for item in messages if all(item.get(k) == v for k, v in expected.items())]
+            root_messages = [item for item in messages if all(item.get(k) == v for k, v in expected.items())
+                             and isinstance(item.get("__MONOTONIC_TIMESTAMP"), str)
+                             and item["__MONOTONIC_TIMESTAMP"].isdecimal()
+                             and int(item["__MONOTONIC_TIMESTAMP"]) > barrier_timestamp]
             terminal_journal = {
                 "replica_failed": any("Linux durable credential changed but its runtime replica did not converge"
                                       in item.get("MESSAGE", "") for item in root_messages),
@@ -753,8 +753,8 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
                                    for item in root_messages),
             }
             print("LINUX_RECEIVER_CONVERGENCE_JOURNAL_OBSERVED=" + json.dumps(
-                {"expected_authority": expected, "after_cursor": cursor, "unit_outcome": outcome,
-                 "query_grep": terminal_pattern, "query_exit": terminal_query.returncode,
+                {"expected_authority": expected, "baseline_cursor": cursor, "unit_outcome": outcome,
+                 "after_monotonic_usec": barrier_timestamp, "query_exit": terminal_query.returncode,
                  "cli_exit": client.returncode, "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:],
                  "checks": terminal_journal, "queried_messages": messages, "root_messages": root_messages},
                 sort_keys=True), flush=True)

@@ -2079,6 +2079,8 @@ Polkit/replay/admission share deadline/worker and locked expiry/cancellation/shu
 Async grants/wording gates deleted.
 
 **Debian:** `build.py`/artifact gate require standalone `polkitd`.
+`--maintenance-stage-polkit-runtime-candidate` prepares its signed snapshot dependency
+bundle for native VM authorization; execution is pending, canonical release closure OPEN.
 `--debian-polkit-tests`, f99f6cc0; seven archive metadata cases, outer0/13s;
 uid4000/caps-none/NNP/read-only/no-network/joined/no listener additions.
 `debian-polkit-tests-run.gX6siRyvuz.serial.log`65,117B/SHA256
@@ -2086,7 +2088,7 @@ uid4000/caps-none/NNP/read-only/no-network/joined/no listener additions.
 Receiver/installation unexecuted; fixture/failure provenance: audit/raw log.
 
 Logs: `.harness-state/verifier-vm/`; all hashes SHA256.
-**UID policy:** `--linux-service-uid-tests`, source aa437333945074d447150bbe8d9a4ca36c5f1490;
+**UID policy:** `--linux-service-uid-tests`, source aa437333;
 four policy cases plus guard, outer0/38s; artifact
 `b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
 `linux-service-uid-tests-run.FQjze4G9se.serial.log` 65,958B/SHA256
@@ -2097,20 +2099,19 @@ Providers/refusals: R-S11fi.
 80,949B/SHA256 `4412a9a0ab5db0496ff89ef4f3fe65131f7c61c22a5eb5bc53f51ee86497f7f0`.
 3 failed/1 passed: 10s cancellation/deadline; 2,097,333B vs 1 MiB.
 Reaped; no leak/bypass proof. Unknown 127.0.0.1:9333 rejected outer1; untouched.
-**Capture:** source 3eabd727cc93628cb42b7596288b478f1aff6e15,
+**Capture:** source 3eabd727,
 `--hbb-common-fs`, 116 cases/five groups; eight capture cases 2.03s, original four unchanged;
 artifact `d6f419bbf26d9411e305ddfd18300bd662db2e69497177438f926ef498e17573`.
 `hbb-common-fs-run.ixZTOykXvs.serial.log` 68,542B/SHA256
 `4fb8de38efc021a46a3ddb7fec8908ecf2243eb3991c4773769fd3c2f82d5fb3`; outer0/168s.
 
-**Coordinator:** `--linux-password-admission-tests`, source 657e788187df5804bbcd4bdb636c9b20170ccdb6;
+**Coordinator:** `--linux-password-admission-tests`, source 657e7881;
 Linux IPC library, seven unit cases/four groups plus guard; shutdown refusal/mutex expiry.
 Artifact
 `fb9adb974a06e69e7b21577769761028337525c5aa2d524b64585f8a76b35052`.
 `android-rust-lifecycle-tests-run.xUMynzFeoP.serial.log` 68,752B/SHA256
 `85b82b69f660c3544989938818a43344824137c0a755133c51f0af533e164e33`; outer0/276s.
-qQbkGLjypv passed seven; stale guard rejected. SHA256
-`3ab352f311ca969fa3ab76ad59ffd36afbb674bbe9d6343a38c4a8355313ca58`; guard-only retry, same artifact.
+qQbkGLjypv passed seven; stale guard rejected. Guard-only retry/same artifact; full identities: audit.
 
 **Native logind:** `--linux-logind-tests`, source e251c387b182e66f5f3ccc9f7d70cec5a6acead0;
 14 unit/7 native PAM/logind cases; outer0/153s. Empty/removed, seatless unspecified/TTY,

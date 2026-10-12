@@ -3308,6 +3308,76 @@ maintenance_discover_devcheck_image() {
     printf 'discovery_image_id=%s\n' "$image_id"
 }
 
+maintenance_stage_polkit_runtime_candidate() {
+    require_devcheck_image_pins
+    require_image_pin POLKIT_RUNTIME_VERSION
+    require_image_pin POLKIT_RUNTIME_SIZE
+    require_image_pin POLKIT_RUNTIME_SHA256
+    local output="$ONLINE_FETCH_TMP/polkit-runtime-output"
+    local parent="$ONLINE_CANDIDATE_ROOT/polkit-runtime"
+    local part="$parent/.polkit-runtime-candidate.tar.gz.part"
+    local candidate="$parent/polkit-runtime-candidate.tar.gz"
+    local archive_size archive_sha package_count
+    [ "$POLKIT_RUNTIME_SIZE" = 112024 ] \
+        && [[ "$POLKIT_RUNTIME_VERSION" =~ ^[0-9A-Za-z.+:~\-]+$ ]] \
+        || die 'polkit package version or size pin differs from publisher discovery'
+    for directory in "$ONLINE_CANDIDATE_ROOT" "$parent"; do
+        if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
+            /usr/bin/install -d -m 0700 -- "$directory"
+        fi
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' "$directory")" \
+                = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "polkit candidate directory authority differs: $directory"
+    done
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        && [ ! -e "$part" ] && [ ! -L "$part" ] \
+        || die 'polkit candidate or staging already exists; inspect it before another acquisition'
+    /usr/bin/install -d -m 0700 -- "$output"
+    verify_or_load_devcheck_image
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$SCRIPT_DIR/stage-polkit-runtime-candidate.sh,target=/stage-polkit-runtime-candidate.sh,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$output,target=/outputs,bind-recursive=disabled" \
+        --env "POLKIT_RUNTIME_UID=$ONLINE_FETCH_UID" \
+        --env "POLKIT_RUNTIME_GID=$ONLINE_FETCH_GID" \
+        --env "POLKIT_DEV_CHECK_IMAGE_ID=$DEV_CHECK_IMAGE_ID" \
+        --env "POLKIT_DEBIAN_SNAPSHOT=$DEV_CHECK_DEBIAN_SNAPSHOT" \
+        --env "POLKIT_SECURITY_SNAPSHOT=$DEV_CHECK_SECURITY_SNAPSHOT" \
+        --env "POLKIT_VERSION=$POLKIT_RUNTIME_VERSION" \
+        --env "POLKIT_SIZE=$POLKIT_RUNTIME_SIZE" \
+        --env "POLKIT_SHA256=$POLKIT_RUNTIME_SHA256" \
+        "$DEV_CHECK_IMAGE_ID" \
+        /bin/bash --noprofile --norc /stage-polkit-runtime-candidate.sh /outputs \
+        || die 'signed polkit package candidate acquisition failed'
+    [ -f "$output/manifest.tsv" ] && [ ! -L "$output/manifest.tsv" ] \
+        && [ -f "$output/contract" ] && [ ! -L "$output/contract" ] \
+        && [ -d "$output/packages" ] && [ ! -L "$output/packages" ] \
+        || die 'polkit candidate output inventory differs'
+    package_count="$(/usr/bin/find "$output/packages" -maxdepth 1 -type f -name '*.deb' \
+        | /usr/bin/wc -l)"
+    [ "$package_count" -gt 0 ] && [ "$package_count" -le 64 ] \
+        && [ "$package_count" -eq "$(/usr/bin/wc -l < "$output/manifest.tsv")" ] \
+        || die 'polkit candidate manifest cardinality differs'
+    (
+        cd "$output"
+        /usr/bin/tar --sort=name --format=gnu \
+            --mtime="@$DEV_CHECK_SOURCE_DATE_EPOCH" \
+            --owner=0 --group=0 --numeric-owner \
+            -cf - contract manifest.tsv packages/*.deb
+    ) | /usr/bin/gzip -n >"$part" \
+        || die 'polkit candidate archive creation failed'
+    archive_size="$(/usr/bin/stat -c '%s' "$part")"
+    [ "$archive_size" -gt 0 ] && [ "$archive_size" -le 134217728 ] \
+        || die 'polkit candidate archive size is outside its bound'
+    archive_sha="$(/usr/bin/sha256sum "$part" | /usr/bin/cut -d' ' -f1)"
+    /usr/bin/chmod 0400 -- "$part"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$part" --destination "$candidate" \
+        || die 'polkit candidate publication failed'
+    /usr/bin/printf 'POLKIT_RUNTIME_CANDIDATE=staged base=%s packages=%s bytes=%s sha256=%s path=%s\n' \
+        "$DEV_CHECK_IMAGE_ID" "$package_count" "$archive_size" "$archive_sha" "$candidate"
+}
+
 maintenance_stage_pa_runtime_candidate() {
     require_devcheck_image_pins
     require_image_pin PA_RUNTIME_PULSEAUDIO_VERSION
@@ -8365,6 +8435,11 @@ main() {
         --maintenance-stage-pa-runtime-candidate)
             [ "$#" -eq 1 ] || die "--maintenance-stage-pa-runtime-candidate takes no arguments"
             maintenance_stage_pa_runtime_candidate
+            return 0
+            ;;
+        --maintenance-stage-polkit-runtime-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-stage-polkit-runtime-candidate takes no arguments"
+            maintenance_stage_polkit_runtime_candidate
             return 0
             ;;
         --maintenance-discover-osv-pub-database)

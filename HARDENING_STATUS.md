@@ -2068,7 +2068,7 @@ resource retirement, installed artifacts, and independent review remain OPEN.
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**Policy/capture/coordinator/logind, installed fixture, CPace/two races accepted;
+**Policy/capture/coordinator/logind and installed CPace/races/admin accepted;
 full installed/whole-app/release OPEN.**
 
 Both endpoints use `src/ipc/uid_policy.rs`: root skips lookup; cache denies only; matches need fresh UID.
@@ -2109,23 +2109,23 @@ Two wording cases are supplementary.
 Empty/removed, seatless unspecified/TTY, active X11, switch/closing X11 select expected UID/no-user.
 PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed receiver here.
 
-**Installed v2:** harness/peer28f7fcda, binarya5c3ebc4/manifest14137030;
-82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child; eight cases/112s.
-Root Applied/same child; UID4001/4002 exit1≤20s preserve state/generation;
+**Installed v2:** harnessc62dae20/peer28f7fcda, binarya5c3ebc4/manifest14137030;
+82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child; ten cases/89s.
+Root Applied; UID4001/4002 exit1≤20s preserve state/generation;
 Wrong-image denied both; restart new generation/durable unchanged.
-Docker/unit/cgroup/PAM/X11 joined; raw HJH2W7Fv7A; build263s.
-CPace7: UID4002/probe eb9dd801, mutations/restart/refusal/race recovery.
-Old password after replacement/restart: child/invocation/cursor tag mismatch.
+Docker/unit/cgroup/PAM/X11 joined; raw JiqWwudyuq; reused build263s.
+CPace8: UID4002/probe eb9dd801, changes/restart/refusal/race/admin recovery.
+Stale2 after change/restart: child/invocation/cursor tag mismatch.
 Two races: old PAKE confirms/no keyed stream; keyed old login gets decrypted generation error/EOF.
-Child/listener retained; durable changed. Errors check enqueue/drain before teardown.
-Admin PAM fixture PENDING native.
+Child/listener retained; durable changed. Errors drain before teardown.
+Admin PAM Applied; fresh no-agent denied; same child/listener.
 
 Sources/commands/hashes: `linux-wire-v2-accepted-e69129bc.json`,
-`linux-receiver-races-accepted-28f7fcda.json`,
+`linux-receiver-admin-accepted-c62dae20.json`,
 `/tmp/privilege_securiry_deep_audit.md`. Rust tests/builds: Rust1.75/zero-NIC/no-network,
 uid1000/read-only/caps-none/NNP; no host listener additions/joined cleanup.
 
-**Still OPEN:** other credential-change races, interactive admin grant; installed Linux
+**Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,
 wait/SIGCHLD interop, abrupt-drop and lookup/transaction/descendant resources; whole-app/native

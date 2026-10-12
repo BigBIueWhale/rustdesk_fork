@@ -202,13 +202,21 @@ def child_record():
     return {"supervisor": main, "pid": int(pid), "start": int(start), "generation": generation}
 
 
-def ready(previous=None):
+def ready(previous=None, child_replacement=False):
     deadline = time.monotonic() + 25
     last = ""
     while time.monotonic() < deadline:
         try:
             record = child_record()
-            if previous is None or record["generation"] != previous["generation"]:
+            changed = previous is None
+            if previous is not None and child_replacement:
+                changed = (record["supervisor"] == previous["supervisor"]
+                           and record["generation"] == previous["generation"]
+                           and (record["pid"], record["start"]) != (previous["pid"], previous["start"]))
+            elif previous is not None:
+                changed = (record["supervisor"] != previous["supervisor"]
+                           and record["generation"] != previous["generation"])
+            if changed:
                 return record
         except (OSError, ValueError, KeyError, RuntimeError) as error:
             last = str(error)
@@ -997,7 +1005,7 @@ def tests(args):
         opened = pam.reply(actor)
         session = opened["session"]
         pam.properties({"process": actor, "session": session, "uid": 4001, "type": "x11"}, "active")
-        recovered = ready(second)
+        recovered = ready(second, child_replacement=True)
         if recovered["supervisor"] != second["supervisor"]:
             raise RuntimeError("session recovery replaced the stable supervisor")
         print("LINUX_RECEIVER_SESSION_RECOVERY_OBSERVED=" + json.dumps(

@@ -14284,73 +14284,18 @@ if [ -n "$r_fuse_mount" ]; then
 else
   echo "  ok  R-S11a/R-S8 Linux FUSE clipboard mount-point setup is fail-closed, no-follow, current-euid-owned, and non-world-writable"
 fi
+# Supplementary invariants; the focused VM executes both production read implementations.
 r_fuse_response_queue=
-grep -qF 'pub(crate) const FUSE_RESPONSE_QUEUE_CAPACITY: usize = 8;' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue capacity"
-grep -qF 'std::sync::mpsc::sync_channel(FUSE_RESPONSE_QUEUE_CAPACITY)' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue sync-channel"
-grep -qF 'pub(crate) struct FuseFileContentResponse' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-provenance-response-type"
-grep -qF 'pub conn_id: i32' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-response-conn-id"
-grep -qF 'struct FuseFileContentResponseKey' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-response-route-key"
-grep -qF 'stream_id: i32' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-response-stream-id"
-grep -qF 'pub(crate) struct FuseFileContentResponseRouter' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-response-router"
-grep -qF 'routes: HashMap<FuseFileContentResponseKey, FuseFileContentResponseRoute>' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue response-router-not-keyed"
-grep -qF 'response_router: FuseFileContentResponseRouter' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue server-missing-response-router"
-grep -qF 'response_router: FuseFileContentResponseRouter' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue context-missing-response-router"
-grep -qF 'fn register(' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-response-route-register"
-grep -qF 'pub(crate) fn dispatch(&self, response: FuseFileContentResponse)' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-response-route-dispatch"
-grep -qF 'pub fn handle_file_content_response(' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-response-handler"
-handler_sig=$(awk '/pub fn handle_file_content_response\(/,/-> Result/ {print}' libs/clipboard/src/platform/unix/fuse/mod.rs)
-printf '%s\n' "$handler_sig" | grep -qF 'conn_id: i32' ||
-  r_fuse_response_queue="$r_fuse_response_queue handler-signature-drops-conn-id"
-grep -qF '.dispatch(FuseFileContentResponse { conn_id, clip })' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue handler-bypasses-router"
-grep -qF 'let stream_id: i32 = rand::random();' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-fresh-read-stream-id"
-grep -qF '.register(node.conn_id, stream_id)' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue read-node-not-key-routed"
-grep -qF '.try_send(response.clip)' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue nonblocking-admission"
-grep -qF 'FUSE file-content response queue is full; dropping peer response' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue full-shed-log"
-grep -qF 'fuse_response_queue_is_bounded' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue bounded-queue-test"
-grep -qF 'file_content_response_requires_matching_connection_id' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-conn-id-regression-test"
-grep -qF 'read_node_routes_response_after_request' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue no-read-node-route-test"
-grep -A4 'fuse::handle_file_content_response(' src/clipboard_file.rs | grep -qF 'conn_id' ||
-  r_fuse_response_queue="$r_fuse_response_queue response-call-drops-conn-id"
-if grep -qF 'rx: Receiver<FuseFileContentResponse>' libs/clipboard/src/platform/unix/fuse/cs.rs; then
-  r_fuse_response_queue="$r_fuse_response_queue global-response-receiver"
-fi
-if grep -qF 'SyncSender<FuseFileContentResponse>' libs/clipboard/src/platform/unix/fuse/cs.rs libs/clipboard/src/platform/unix/fuse/mod.rs; then
-  r_fuse_response_queue="$r_fuse_response_queue global-response-sender"
-fi
-if grep -qF 'node.stream_id' libs/clipboard/src/platform/unix/fuse/cs.rs; then
-  r_fuse_response_queue="$r_fuse_response_queue node-scoped-stream-id"
-fi
-if grep -qF 'std::sync::mpsc::channel()' libs/clipboard/src/platform/unix/fuse/cs.rs; then
-  r_fuse_response_queue="$r_fuse_response_queue unbounded-channel"
-fi
-if grep -qF '.send(clip)' libs/clipboard/src/platform/unix/fuse/cs.rs libs/clipboard/src/platform/unix/fuse/mod.rs; then
-  r_fuse_response_queue="$r_fuse_response_queue blocking-send"
-fi
+for invariant in 'route: Arc<Mutex<Option<FuseFileContentResponseRoute>>>' \
+    'std::sync::mpsc::sync_channel(1)' 'id.checked_add(1)' \
+    'Some(route) if route.key == key => active.take()' '.register(node.conn_id)'; do
+  grep -qF "$invariant" libs/clipboard/src/platform/unix/fuse/cs.rs ||
+    r_fuse_response_queue="$r_fuse_response_queue $invariant"
+done
 if [ -n "$r_fuse_response_queue" ]; then
-  echo "  FAIL R-T0/R-S7: Linux FUSE file-content response queue bound regressed:$r_fuse_response_queue"; rc=1
+  echo "  FAIL R-T0/R-S7/R-S19: Linux FUSE single-response ownership regressed:$r_fuse_response_queue"; rc=1
 else
-  echo "  ok  R-T0/R-S7/R-S19 Linux FUSE file-content responses use bounded active routes keyed by connection and stream"
+  echo "  ok  R-T0/R-S7/R-S19 Linux FUSE read-response ownership source invariants"
 fi
 # R-R2a (§12 / sovereignty): the .deb is the SOLE Linux package/update artifact. Systemd is the
 # primary hardened deployment; package-owned non-systemd init integration does not create another

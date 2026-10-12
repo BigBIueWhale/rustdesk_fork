@@ -19,6 +19,7 @@ BASE_READONLY_TEST=0
 FLUTTER_TEST_PROFILE=models
 RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
+HBB_FUSE_READ_TESTS=0
 APPLE_CURSOR_ONLY=0
 X11_CLIPBOARD_ONLY=0
 X11_KEY_INPUT_ONLY=0
@@ -54,13 +55,15 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'verifier-VM input/run overrides are lifecycle-internal' >&2; exit 2; }
         ;;
-    1:--hbb-common-fs|1:--linux-logind-tests)
+    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Rust-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=hbb-common-fs
         if [ "$1" = --linux-logind-tests ]; then
             HBB_LOGIND_NATIVE=1
+        elif [ "$1" = --linux-fuse-read-tests ]; then
+            HBB_FUSE_READ_TESTS=1
         fi
         ;;
     1:--cpace-recovery-tests)
@@ -596,7 +599,7 @@ elif [ "$MODE" = android-rust-target-check ]; then
     readonly OVERLAY_SIZE=40G
     readonly VM_MEMORY=16384
 elif [ "$MODE" = hbb-common-fs ]; then
-    if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+    if [ "$HBB_LOGIND_NATIVE" -eq 1 ] || [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
         readonly VM_TIMEOUT_SECONDS=300
     else
         readonly VM_TIMEOUT_SECONDS=1800
@@ -3255,6 +3258,7 @@ readonly LISTENERS_AFTER=$RUN/listeners.after
 readonly NEW_DURING=$RUN/listeners.new-during
 readonly NEW_AFTER=$RUN/listeners.new-after
 readonly RUST_TEST_SOURCE_ARCHIVE=$VM_TRANSIENT/source.tar
+readonly FUSE_BEFORE_SOURCE=$VM_TRANSIENT/fuse-before.rs
 readonly APPLE_SOURCE_ARCHIVE=$VM_TRANSIENT/apple-source.tar
 readonly FLUTTER_SOURCE_ARCHIVE=$VM_TRANSIENT/flutter-source.tar
 readonly ANDROID_OWNER_SOURCE_ARCHIVE=$VM_TRANSIENT/android-owner-source.tar
@@ -3473,6 +3477,16 @@ elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
     RUST_TEST_SOURCE_ARCHIVE_SHA256="$(
         /usr/bin/sha256sum "$RUST_TEST_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
     )"
+    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+        git_closed -C "$REPO_ROOT" merge-base --is-ancestor \
+            70104b58483ab48d14ea337f662650b87c31d8f7 "$RUST_TEST_SOURCE_COMMIT" \
+            || fail 'FUSE comparison source is not on the reviewed source history'
+        vm_source_command git_closed -C "$REPO_ROOT" show \
+            70104b58483ab48d14ea337f662650b87c31d8f7:libs/clipboard/src/platform/unix/fuse/cs.rs \
+            >"$FUSE_BEFORE_SOURCE" || fail 'cannot stage exact earlier FUSE source in RAM'
+        /usr/bin/chmod 0400 "$FUSE_BEFORE_SOURCE"
+        verify_sha256 "$FUSE_BEFORE_SOURCE" 3c7fad9d747cec3489ca6d4f09f41a81c59d1ae66d72b20c9f122d1c7cff6154
+    fi
     /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
     /usr/bin/dpkg-deb --extract "$VIRTIOFSD_PACKAGE" "$RUN/virtiofsd-package" \
         || fail 'cannot extract the authenticated virtiofsd package privately'
@@ -3655,6 +3669,9 @@ elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = android-rust-target-check ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$RUST_TEST_SOURCE_ARCHIVE")
+    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+        lifecycle_payload_grafts+=("fuse-before.rs=$FUSE_BEFORE_SOURCE")
+    fi
     if [ "$MODE" = linux-pa-authority-tests ]; then
         lifecycle_payload_grafts+=("pa-runtime-candidate.tar.gz=$PA_RUNTIME_CANDIDATE")
     fi
@@ -3997,6 +4014,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
     if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         guest_invocation+=' --native-logind'
+    elif [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+        guest_invocation+=' --fuse-reads'
     fi
 elif [ "$MODE" = cpace-recovery-tests ]; then
     guest_invocation+=" --cpace-recovery-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
@@ -5121,17 +5140,23 @@ printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
 elif [ "$MODE" = hbb-common-fs ]; then
     hbb_image_index=$DEB_BUILDER_IMAGE_ID
     hbb_image_config=$DEB_BUILDER_CONFIG_ID
+    hbb_receipt_kind=HBB_COMMON_FS_VM
+    hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined'
+    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+        hbb_receipt_kind=FUSE_READ_COMPONENT_VM
+        hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default snapshot=readonly mounted_fuse=unexecuted cleanup=joined'
+    fi
     if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         hbb_image_index=$DEV_CHECK_IMAGE_ID
         hbb_image_config=$DEV_CHECK_IMAGE_CONFIG_ID
     fi
     mapfile -t hbb_common_fs_receipts < <(
         /usr/bin/grep -Eo \
-            "HBB_COMMON_FS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=[1-9][0-9]* artifact_sha256=[0-9a-f]{64} rust=1\\.75\\.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$hbb_image_index builder_runtime=$hbb_image_config uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+            "$hbb_receipt_kind=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=[1-9][0-9]* artifact_sha256=[0-9a-f]{64} rust=1\\.75\\.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$hbb_image_index builder_runtime=$hbb_image_config uid=1000 gid=1000 vm_network=none container_network=none $hbb_receipt_scope" \
             "$SERIAL_LOG" || true
     )
     [ "${#hbb_common_fs_receipts[@]}" -eq 1 ] \
-        && [ "$(/usr/bin/grep -Fo 'HBB_COMMON_FS_VM=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fo "$hbb_receipt_kind=" "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'focused hbb_common filesystem test receipt is absent, malformed or duplicated'; }
     HBB_COMMON_FS_ARTIFACT_SHA256=${hbb_common_fs_receipts[0]#*artifact_sha256=}
     HBB_COMMON_FS_ARTIFACT_SHA256=${HBB_COMMON_FS_ARTIFACT_SHA256%% *}
@@ -6025,6 +6050,12 @@ elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
         && [ "$(/usr/bin/sha256sum "$RUST_TEST_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
              "$RUST_TEST_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Rust-test source archive changed during execution'
+    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+        [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$FUSE_BEFORE_SOURCE")" = \
+          "$HOST_UID:$HOST_GID:400:1" ] \
+            || fail 'earlier FUSE source ownership changed during execution'
+        verify_sha256 "$FUSE_BEFORE_SOURCE" 3c7fad9d747cec3489ca6d4f09f41a81c59d1ae66d72b20c9f122d1c7cff6154
+    fi
 elif [ "$MODE" = apple-conform ]; then
     focused_inputs_after="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
@@ -6346,6 +6377,11 @@ elif [ "$MODE" = debian-systemd-lifecycle ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 mode=debian-systemd-lifecycle output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
 elif [ "$MODE" = hbb-common-fs ]; then
+    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+        printf 'FUSE_READ_COMPONENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s scope=production-library-read-path mounted_fuse=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+            "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
+    else
     printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
@@ -6353,6 +6389,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
         printf 'LINUX_LOGINCTL_NATIVE_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s scope=logind-session-selection installed=unexecuted network=none listeners=no-harness-addition docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
+    fi
     fi
 elif [ "$MODE" = cpace-recovery-tests ]; then
     printf 'CPACE_RECOVERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

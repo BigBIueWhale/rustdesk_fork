@@ -67,6 +67,24 @@ class ArtifactSelectionTests(unittest.TestCase):
             with self.subTest(size=len(output)), self.assertRaises(ValueError):
                 select_artifact(output)
 
+    def test_clipboard_package_and_private_source_are_exact(self):
+        root = "/cargo-target/fuse-test-source"
+        artifact = copy.deepcopy(ARTIFACT)
+        artifact["manifest_path"] = root + "/libs/clipboard/Cargo.toml"
+        artifact["target"]["name"] = "clipboard"
+        artifact["target"]["src_path"] = root + "/libs/clipboard/src/lib.rs"
+        artifact["executable"] = "/cargo-target/debug/deps/clipboard-0123456789abcdef"
+        self.assertEqual(select_artifact(encode(artifact, FINISHED), "clipboard", root),
+                         artifact["executable"])
+        for output, package, source in [
+                (encode(ARTIFACT, FINISHED), "clipboard", root),
+                (encode(artifact, FINISHED), "hbb_common", root),
+                (encode(artifact, FINISHED), "clipboard", "/source"),
+                (encode(artifact, FINISHED), "other", root),
+                (encode(artifact, FINISHED), "clipboard", "/tmp/source")]:
+            with self.subTest(package=package, source=source), self.assertRaises(ValueError):
+                select_artifact(output, package, source)
+
 
 if __name__ == "__main__":
     unittest.main()

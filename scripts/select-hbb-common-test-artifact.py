@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select the sole hbb_common libtest artifact from the isolated Cargo build."""
+"""Select the exact shared-library libtest artifact from an isolated Cargo build."""
 
 import json
 import re
@@ -9,7 +9,10 @@ import sys
 MAX_OUTPUT = 4 * 1024 * 1024
 
 
-def select_artifact(output):
+def select_artifact(output, package="hbb_common", source_root="/source"):
+    if package not in ("hbb_common", "clipboard") or source_root not in (
+            "/source", "/cargo-target/fuse-test-source"):
+        raise ValueError("Unexpected library-test identity")
     if len(output) > MAX_OUTPUT:
         raise ValueError("Cargo artifact output exceeds 4 MiB")
     artifacts = []
@@ -27,20 +30,20 @@ def select_artifact(output):
             continue
         target = message.get("target")
         profile = message.get("profile")
-        if (message.get("manifest_path") == "/source/libs/hbb_common/Cargo.toml"
+        if (message.get("manifest_path") == f"{source_root}/libs/{package}/Cargo.toml"
                 and isinstance(target, dict) and isinstance(profile, dict)
-                and target.get("name") == "hbb_common"
+                and target.get("name") == package
                 and target.get("kind") == ["lib"]
-                and target.get("src_path") == "/source/libs/hbb_common/src/lib.rs"
+                and target.get("src_path") == f"{source_root}/libs/{package}/src/lib.rs"
                 and profile.get("test") is True):
             artifacts.append(message.get("executable"))
     if len(finished) != 1 or finished[0] is not True:
         raise ValueError("Cargo build lacks one successful completion")
     if len(artifacts) != 1 or not isinstance(artifacts[0], str):
-        raise ValueError("Cargo build lacks one exact hbb_common libtest artifact")
+        raise ValueError(f"Cargo build lacks one exact {package} libtest artifact")
     executable = artifacts[0]
-    if not re.fullmatch(r"/cargo-target/debug/deps/hbb_common-[0-9a-f]{16}", executable):
-        raise ValueError("hbb_common executable is outside the private test target")
+    if not re.fullmatch(rf"/cargo-target/debug/deps/{package}-[0-9a-f]{{16}}", executable):
+        raise ValueError(f"{package} executable is outside the private test target")
     return executable
 
 

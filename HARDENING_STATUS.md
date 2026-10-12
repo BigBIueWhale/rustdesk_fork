@@ -1245,11 +1245,17 @@ Exact-owner adjuncts keep authority from crossing otherwise valid sessions: scre
 connection, capture source, and display; viewer clipboard application is limited to the default remote-control
 session; Android MediaProjection demand comes from the typed Remote owner set; and Windows CLIPRDR forwarding
 requires the confined file/clipboard authority. Voice-call accept, close, and teardown admit only an owning
-`Remote`/`ViewCamera` connection with pending or active call state. On Linux, each FUSE file-content read uses
-a fresh `(connection_id, stream_id)` route with an eight-response nonblocking queue.
-Wrong-connection, wrong-stream and stale responses cannot reach another read; duplicate active-key
-registration is refused without replacing its owner. This does not establish duplicate-response
-rejection or a process-wide active-route capacity bound; native concurrency/resources remain OPEN.
+`Remote`/`ViewCamera` connection with pending or active call state. Linux FUSE reads now own one
+pending response slot per context, keyed by connection and a process-wide stream ID that never
+wraps or repeats, including after context replacement. The first matching response consumes the
+slot; wrong-connection, wrong-stream, stale and duplicate responses cannot complete another read.
+An overlapping pending request is refused. Failure terminates the read rather than reissuing its
+request; a later read creates fresh ownership. Invalid result flags and data larger than the
+requested range are rejected. The existing server mutex serializes production reads, so the old
+map was not evidence of unbounded active-read growth. The focused `--linux-fuse-read-tests` VM
+fixture builds the complete production clipboard library twice with one identical adversarial
+case: current behavior must pass and the earlier same-stream retry must fail. Execution is pending;
+mounted FUSE, kernel/VFS behavior, concurrency/resources and cross-platform acceptance remain OPEN.
 
 Focused source gates in `scripts/verify.sh` bind derivation-before-options, dispatcher and sink allowlists,
 exact screenshot ownership, viewer/mobile confinement, voice-call ownership, and the Linux response router;

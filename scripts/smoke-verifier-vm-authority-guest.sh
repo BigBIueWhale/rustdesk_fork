@@ -14,6 +14,7 @@ FLUTTER_APP_ENGINE_CONTEXT=
 FLUTTER_TEST_PROFILE=models
 RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
+HBB_FUSE_READ_TESTS=0
 APPLE_CURSOR_ONLY=0
 X11_KEY_INPUT_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
@@ -73,9 +74,12 @@ case "$#:${8:-}" in
         MODE=hbb-common-fs
         ;;
     13:--hbb-common-fs)
-        [ "${13}" = --native-logind ] || exit 2
         MODE=hbb-common-fs
-        HBB_LOGIND_NATIVE=1
+        case "${13}" in
+            --native-logind) HBB_LOGIND_NATIVE=1 ;;
+            --fuse-reads) HBB_FUSE_READ_TESTS=1 ;;
+            *) exit 2 ;;
+        esac
         ;;
     12:--cpace-recovery-tests)
         MODE=cpace-recovery-tests
@@ -2633,6 +2637,35 @@ run_focused_rust_tests() {
             )
             source_fingerprints+=(scripts/test-linux-logind-session-selection.py)
         fi
+        if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+            source_fingerprints+=(
+                libs/clipboard/Cargo.toml
+                libs/clipboard/src/lib.rs
+                libs/clipboard/src/platform/unix/fuse/cs.rs
+                libs/clipboard/src/platform/unix/fuse/mod.rs
+                scripts/run-linux-fuse-read-test.py
+            )
+            required_tests=(
+                platform::unix::fuse::cs::fuse_test::fuse_request_accepts_only_one_response
+                platform::unix::fuse::cs::fuse_test::overlapping_file_content_read_is_rejected
+                platform::unix::fuse::cs::fuse_test::file_content_response_requires_matching_connection_id
+                platform::unix::fuse::cs::fuse_test::read_node_routes_response_after_request
+                platform::unix::fuse::cs::fuse_test::read_node_keeps_failed_request_and_next_read_responses_separate
+                platform::unix::fuse::cs::fuse_test::read_node_refuses_invalid_flags_and_oversized_response
+                platform::unix::fuse::cs::fuse_test::fuse_stream_ids_preserve_unsigned_bits_and_refuse_exhaustion
+                platform::unix::fuse::cs::fuse_test::old_route_guard_does_not_remove_new_request
+            )
+            local fuse_before_source=$ROOT/fuse-before.rs
+            cp /mnt/rustdesk-verifier-inputs/fuse-before.rs "$fuse_before_source"
+            chown 1000:1000 "$fuse_before_source"
+            chmod 0400 "$fuse_before_source"
+            [ "$(sha256sum "$fuse_before_source" | cut -d ' ' -f 1)" = \
+              3c7fad9d747cec3489ca6d4f09f41a81c59d1ae66d72b20c9f122d1c7cff6154 ] \
+                || fail 'earlier FUSE source digest differs'
+            bridge_mounts=(
+                --mount "type=bind,source=$fuse_before_source,target=/inputs/fuse-before.rs,readonly"
+            )
+        fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
         container_name=rustdesk-cpace-recovery-tests
         memory=8g
@@ -3299,6 +3332,7 @@ run_focused_rust_tests() {
             --env "RUST_TEST_MODE=$MODE" \
             --env "RUST_TEST_PROFILE=$RUST_TEST_PROFILE" \
             --env "HBB_LOGIND_NATIVE=$HBB_LOGIND_NATIVE" \
+            --env "HBB_FUSE_READ_TESTS=$HBB_FUSE_READ_TESTS" \
             --env "RUST_TOOLCHAIN_MODE=$toolchain_mode" \
             --env RUSTDESK_CANARY_OFFLINE=1 \
             --mount "type=bind,source=$source_root,target=/source,readonly" \
@@ -3363,6 +3397,9 @@ run_focused_rust_tests() {
                 case "$RUST_TEST_MODE" in
                     hbb-common-fs)
                         python3 -I -S /source/scripts/test-hbb-common-test-artifact.py
+                        if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+                            python3 -I -S /source/scripts/run-linux-fuse-read-test.py
+                        else
                         cargo test --offline --locked -p hbb_common --lib --no-run \
                             --message-format=json-render-diagnostics --color never \
                             >/cargo-target/hbb-common-build.json
@@ -3398,6 +3435,7 @@ run_focused_rust_tests() {
                         fi
                         printf "HBB_COMMON_FS_ARTIFACT=pass sha256=%s executable=%s unchanged=before-between-after\n" \
                             "$artifact_sha" "$test_executable"
+                        fi
                         ;;
                     cpace-recovery-tests)
                         cargo test --offline --locked -p cpace_it --test handshake \
@@ -3717,9 +3755,30 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=5
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
+        if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=1; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
             || { tail -n 200 "$output" >&2; fail 'focused shared-library test summary count differs'; }
         local -a hbb_artifact_receipts
+        if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+            hbb_test_artifact_sha="$(python3 -I -S - "$output" \
+                "$(sha256sum "$source_root/libs/clipboard/src/platform/unix/fuse/cs.rs" | cut -d ' ' -f 1)" <<'PY'
+import json, re, sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+records = [json.loads(line.split("=pass ", 1)[1]) for line in lines if line.startswith("FUSE_READ_COMPONENT_ARTIFACT=pass ")]
+assert len(records) == 1
+record = records[0]
+assert record["source_sha256"] == sys.argv[2]
+assert record["before_source_sha256"] == "3c7fad9d747cec3489ca6d4f09f41a81c59d1ae66d72b20c9f122d1c7cff6154"
+assert record["old_exit"] == 101 and record["new_exit"] == 0 and record["mounted_fuse"] is False
+assert record["execution"] == "production-library-read-path"
+summaries = [line for line in lines if line.startswith("test result: ok.")]
+assert len(summaries) == 1 and int(summaries[0].split()[3]) == record["tests"]
+for key in ("new_artifact_sha256", "old_artifact_sha256", "before_with_fixture_sha256", "fixture_sha256"):
+    assert re.fullmatch("[0-9a-f]{64}", record[key])
+print(record["new_artifact_sha256"])
+PY
+            )" || fail 'FUSE production read artifact receipt differs'
+        else
         mapfile -t hbb_artifact_receipts < <(
             grep -E '^HBB_COMMON_FS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} unchanged=before-between-after$' "$output"
         )
@@ -3728,6 +3787,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'filesystem test artifact receipt is absent, malformed or duplicated'
         hbb_test_artifact_sha=${hbb_artifact_receipts[0]#*sha256=}
         hbb_test_artifact_sha=${hbb_test_artifact_sha%% *}
+        fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
@@ -3963,8 +4023,14 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = linux-service-uid-tests ]; then
         grep -E '^test uid_policy::tests::.* \.\.\. ok$|^verify-linux-service-password-ipc: source checks passed$' "$output"
     fi
-    printf '%s\n' "${result_lines[@]}"
+    if [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then printf '%s\n' "${result_lines[@]}"; fi
     if [ "$MODE" = hbb-common-fs ]; then
+        if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+            cat "$output"
+            printf 'FUSE_READ_COMPONENT_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default snapshot=readonly mounted_fuse=unexecuted cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         printf '%s\n' "${hbb_artifact_receipts[@]}"
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
@@ -3976,6 +4042,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             "$hbb_test_artifact_sha" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" \
             "$image_config"
+        fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "$tests_passed" -eq 20 ] \
             || fail "CPace recovery test count differs: $tests_passed"

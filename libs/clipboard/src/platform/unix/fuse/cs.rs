@@ -23,7 +23,7 @@ use std::{
     ffi::OsString,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         mpsc::{Receiver, SyncSender, TrySendError},
         Arc,
     },
@@ -42,9 +42,15 @@ use crate::{
     send_data, ClipboardFile, CliprdrError,
 };
 
-/// fuse server ready retry max times
-const READ_RETRY: i32 = 3;
-pub(crate) const FUSE_RESPONSE_QUEUE_CAPACITY: usize = 8;
+// A stream ID is never reused, including across reads and FUSE context replacement.
+static FUSE_STREAM_ID: AtomicU32 = AtomicU32::new(0);
+
+fn allocate_fuse_stream_id(counter: &AtomicU32) -> Result<i32, CliprdrError> {
+    counter
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .map(|id| (id + 1) as i32)
+        .map_err(|_| CliprdrError::ClipboardInternalError)
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct FuseFileContentResponse {
@@ -58,28 +64,21 @@ struct FuseFileContentResponseKey {
     stream_id: i32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct FuseFileContentResponseRoute {
-    id: u64,
+    key: FuseFileContentResponseKey,
     tx: SyncSender<ClipboardFile>,
-}
-
-#[derive(Debug, Default)]
-struct FuseFileContentResponseRoutes {
-    next_id: u64,
-    routes: HashMap<FuseFileContentResponseKey, FuseFileContentResponseRoute>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FuseFileContentResponseRouter {
-    routes: Arc<Mutex<FuseFileContentResponseRoutes>>,
+    route: Arc<Mutex<Option<FuseFileContentResponseRoute>>>,
 }
 
 #[derive(Debug)]
 struct FuseFileContentResponseGuard {
     router: FuseFileContentResponseRouter,
     key: FuseFileContentResponseKey,
-    id: u64,
 }
 
 impl FuseFileContentResponse {
@@ -102,34 +101,34 @@ impl FuseFileContentResponseRouter {
     fn register(
         &self,
         conn_id: i32,
-        stream_id: i32,
-    ) -> Result<(Receiver<ClipboardFile>, FuseFileContentResponseGuard), CliprdrError> {
-        let key = FuseFileContentResponseKey { conn_id, stream_id };
-        let (tx, rx) = std::sync::mpsc::sync_channel(FUSE_RESPONSE_QUEUE_CAPACITY);
-        let mut routes = self.routes.lock();
-        if routes.routes.contains_key(&key) {
+    ) -> Result<(i32, Receiver<ClipboardFile>, FuseFileContentResponseGuard), CliprdrError> {
+        let mut route = self.route.lock();
+        if route.is_some() {
             return Err(CliprdrError::ClipboardOccupied);
         }
-        let Some(id) = routes.next_id.checked_add(1) else {
-            return Err(CliprdrError::ClipboardInternalError);
-        };
-        routes.next_id = id;
-        routes
-            .routes
-            .insert(key, FuseFileContentResponseRoute { id, tx });
+        let stream_id = allocate_fuse_stream_id(&FUSE_STREAM_ID)?;
+        let key = FuseFileContentResponseKey { conn_id, stream_id };
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        *route = Some(FuseFileContentResponseRoute { key, tx });
         Ok((
+            stream_id,
             rx,
             FuseFileContentResponseGuard {
                 router: self.clone(),
                 key,
-                id,
             },
         ))
     }
 
     pub(crate) fn dispatch(&self, response: FuseFileContentResponse) -> Result<(), CliprdrError> {
         let key = response.key()?;
-        let route = self.routes.lock().routes.get(&key).cloned();
+        let route = {
+            let mut active = self.route.lock();
+            match active.as_ref() {
+                Some(route) if route.key == key => active.take(),
+                _ => None,
+            }
+        };
         let Some(route) = route else {
             log::debug!("dropping FUSE file-content response without an active read route");
             return Ok(());
@@ -147,25 +146,22 @@ impl FuseFileContentResponseRouter {
         })
     }
 
-    fn unregister(&self, key: FuseFileContentResponseKey, id: u64) {
-        let mut routes = self.routes.lock();
-        let Some(route) = routes.routes.get(&key) else {
-            return;
-        };
-        if route.id == id {
-            routes.routes.remove(&key);
+    fn unregister(&self, key: FuseFileContentResponseKey) {
+        let mut route = self.route.lock();
+        if route.as_ref().map(|route| route.key) == Some(key) {
+            route.take();
         }
     }
 
     #[cfg(test)]
     fn active_route_count(&self) -> usize {
-        self.routes.lock().routes.len()
+        self.route.lock().is_some() as usize
     }
 }
 
 impl Drop for FuseFileContentResponseGuard {
     fn drop(&mut self) {
-        self.router.unregister(self.key, self.id);
+        self.router.unregister(self.key);
     }
 }
 
@@ -533,7 +529,6 @@ impl fuser::Filesystem for FuseServer {
         reply.opened(fh, 0);
     }
 
-    // todo: implement retry
     fn read(
         &mut self,
         _req: &fuser::Request<'_>,
@@ -657,83 +652,64 @@ impl FuseServer {
         offset: i64,
         size: u32,
     ) -> Result<Vec<u8>, std::io::Error> {
-        let stream_id: i32 = rand::random();
-        let cb_requested = unsafe {
-            // convert `size` from u32 to i32
-            // yet with same bit representation
-            std::mem::transmute::<u32, i32>(size)
-        };
-
         let (n_position_high, n_position_low) =
             ((offset >> 32) as i32, (offset & (u32::MAX as i64)) as i32);
+        let (stream_id, rx, _response_route) = self
+            .response_router
+            .register(node.conn_id)
+            .map_err(|e| {
+                log::error!("failed to register file-content response route: {:?}", e);
+                std::io::Error::new(std::io::ErrorKind::Other, e)
+            })?;
         let request = ClipboardFile::FileContentsRequest {
             stream_id,
             list_index: node.index as i32,
             dw_flags: 2,
             n_position_low,
             n_position_high,
-            cb_requested,
+            cb_requested: size as i32,
             have_clip_data_id: false,
             clip_data_id: 0,
         };
-
-        let (rx, _response_route) = self
-            .response_router
-            .register(node.conn_id, stream_id)
-            .map_err(|e| {
-                log::error!("failed to register file-content response route: {:?}", e);
-                std::io::Error::new(std::io::ErrorKind::Other, e)
-            })?;
-
-        send_data(node.conn_id, request.clone()).map_err(|e| {
-            log::error!("failed to send file list to channel: {:?}", e);
+        send_data(node.conn_id, request).map_err(|e| {
+            log::error!("failed to send file-content request: {:?}", e);
             std::io::Error::new(std::io::ErrorKind::Other, e)
         })?;
+        let reply = rx.recv_timeout(self.timeout).map_err(|e| {
+            log::error!("failed to receive file-content response: {:?}", e);
+            std::io::Error::new(std::io::ErrorKind::TimedOut, e)
+        })?;
 
-        let mut retry_times = 0;
-
-        // to-do: more tests needed
-        loop {
-            let reply = rx.recv_timeout(self.timeout).map_err(|e| {
-                log::error!("failed to receive file list from channel: {:?}", e);
-                std::io::Error::new(std::io::ErrorKind::TimedOut, e)
-            })?;
-
-            match reply {
-                ClipboardFile::FileContentsResponse {
-                    msg_flags,
-                    stream_id: response_stream_id,
-                    requested_data,
-                } => {
-                    if response_stream_id != stream_id {
-                        log::debug!("stream id mismatch, ignore");
-                        continue;
-                    }
-
-                    if msg_flags & 1 == 0 {
-                        retry_times += 1;
-                        if retry_times > READ_RETRY {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                "failure request",
-                            ));
-                        }
-
-                        send_data(node.conn_id, request.clone()).map_err(|e| {
-                            log::error!("failed to send file list to channel: {:?}", e);
-                            std::io::Error::new(std::io::ErrorKind::Other, e)
-                        })?;
-                        continue;
-                    }
-                    return Ok(requested_data);
+        match reply {
+            ClipboardFile::FileContentsResponse {
+                msg_flags,
+                stream_id: response_stream_id,
+                requested_data,
+            } => {
+                if response_stream_id != stream_id || !matches!(msg_flags, 1 | 2) {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "invalid file-content response",
+                    ));
                 }
-                _ => {
+                if msg_flags == 2 {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::Other,
-                        "invalid reply",
-                    ))
+                        "file-content request failed",
+                    ));
                 }
+                if requested_data.len() > size as usize {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "file-content response exceeds requested size",
+                    ));
+                }
+                Ok(requested_data)
             }
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "invalid reply",
+            )),
         }
     }
 }
@@ -1138,35 +1114,37 @@ mod fuse_test {
     }
 
     #[test]
-    fn fuse_response_queue_is_bounded() {
+    fn fuse_request_accepts_only_one_response() {
         let (_server, router) = FuseServer::new(Duration::from_secs(1));
-        let (_rx, _response_route) = router.register(11, 7).unwrap();
+        let (stream_id, rx, _response_route) = router.register(11).unwrap();
         let response = FuseFileContentResponse {
             conn_id: 11,
             clip: ClipboardFile::FileContentsResponse {
                 msg_flags: 1,
-                stream_id: 7,
+                stream_id,
                 requested_data: vec![1, 2, 3],
             },
         };
 
-        for _ in 0..FUSE_RESPONSE_QUEUE_CAPACITY {
+        for _ in 0..64 {
             router.dispatch(response.clone()).unwrap();
         }
-
         assert!(matches!(
-            router.dispatch(response),
-            Err(CliprdrError::ClipboardOccupied)
+            rx.try_recv(),
+            Ok(ClipboardFile::FileContentsResponse { .. })
         ));
+        assert!(matches!(
+            rx.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Disconnected)
+        ));
+        assert_eq!(router.active_route_count(), 0);
     }
 
     #[test]
     fn file_content_response_requires_matching_connection_id() {
         let conn_id = 31337;
-        let stream_id = 17;
-
         let (_server, router) = FuseServer::new(Duration::from_millis(50));
-        let (rx, _response_route) = router.register(conn_id, stream_id).unwrap();
+        let (stream_id, rx, _response_route) = router.register(conn_id).unwrap();
 
         router
             .dispatch(FuseFileContentResponse {
@@ -1220,25 +1198,23 @@ mod fuse_test {
     #[test]
     fn file_content_response_route_is_removed_after_read() {
         let conn_id = 31337;
-        let stream_id = 17;
-
         let (_server, router) = FuseServer::new(Duration::from_millis(50));
-        {
-            let (_rx, _response_route) = router.register(conn_id, stream_id).unwrap();
-        }
+        let (old_stream_id, _old_rx, old_route) = router.register(conn_id).unwrap();
+        drop(old_route);
 
         router
             .dispatch(FuseFileContentResponse {
                 conn_id,
                 clip: ClipboardFile::FileContentsResponse {
                     msg_flags: 1,
-                    stream_id,
+                    stream_id: old_stream_id,
                     requested_data: b"stale".to_vec(),
                 },
             })
             .unwrap();
 
-        let (rx, _response_route) = router.register(conn_id, stream_id).unwrap();
+        let (stream_id, rx, _response_route) = router.register(conn_id).unwrap();
+        assert_ne!(stream_id, old_stream_id);
         router
             .dispatch(FuseFileContentResponse {
                 conn_id,
@@ -1259,12 +1235,16 @@ mod fuse_test {
     }
 
     #[test]
-    fn duplicate_file_content_response_route_is_rejected() {
+    fn overlapping_file_content_read_is_rejected() {
         let (_server, router) = FuseServer::new(Duration::from_millis(50));
-        let (_rx, _response_route) = router.register(1, 2).unwrap();
+        let (_stream_id, _rx, _response_route) = router.register(1).unwrap();
 
         assert!(matches!(
-            router.register(1, 2),
+            router.register(1),
+            Err(CliprdrError::ClipboardOccupied)
+        ));
+        assert!(matches!(
+            router.register(2),
             Err(CliprdrError::ClipboardOccupied)
         ));
     }
@@ -1349,6 +1329,145 @@ mod fuse_test {
         assert_eq!(data, b"right");
     }
 
+    fn next_read_stream_id(rx: &mut crate::ClipboardFileEgressReceiver) -> i32 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            if let Some(item) = rx.take_next().unwrap() {
+                let crate::ClipboardFileEgressItem::Message(ClipboardFile::FileContentsRequest {
+                    stream_id,
+                    ..
+                }) = item
+                else {
+                    panic!("unexpected file-content request");
+                };
+                return stream_id;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "file-content request timed out"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn read_node_keeps_failed_request_and_next_read_responses_separate() {
+        let conn_id = 31340;
+        let (mut rx, _route) = crate::register_cliprdr_controlled(conn_id).unwrap();
+        let (mut server, router) = FuseServer::new(Duration::from_secs(2));
+        server
+            .load_file_list(vec![desc_gen_for_conn(
+                conn_id,
+                "payload.txt",
+                FileType::File,
+            )])
+            .unwrap();
+        let peer_router = router.clone();
+        let peer = std::thread::spawn(move || {
+            let old_stream_id = next_read_stream_id(&mut rx);
+            peer_router
+                .dispatch(FuseFileContentResponse {
+                    conn_id,
+                    clip: ClipboardFile::FileContentsResponse {
+                        msg_flags: 2,
+                        stream_id: old_stream_id,
+                        requested_data: Vec::new(),
+                    },
+                })
+                .unwrap();
+            peer_router
+                .dispatch(FuseFileContentResponse {
+                    conn_id,
+                    clip: ClipboardFile::FileContentsResponse {
+                        msg_flags: 1,
+                        stream_id: old_stream_id,
+                        requested_data: b"stale".to_vec(),
+                    },
+                })
+                .unwrap();
+            let stream_id = next_read_stream_id(&mut rx);
+            assert_ne!(
+                stream_id, old_stream_id,
+                "completed failed read was retried"
+            );
+            for _ in 0..64 {
+                peer_router
+                    .dispatch(FuseFileContentResponse {
+                        conn_id,
+                        clip: ClipboardFile::FileContentsResponse {
+                            msg_flags: 1,
+                            stream_id: old_stream_id,
+                            requested_data: b"stale".to_vec(),
+                        },
+                    })
+                    .unwrap();
+            }
+            peer_router
+                .dispatch(FuseFileContentResponse {
+                    conn_id,
+                    clip: ClipboardFile::FileContentsResponse {
+                        msg_flags: 1,
+                        stream_id,
+                        requested_data: b"fresh".to_vec(),
+                    },
+                })
+                .unwrap();
+        });
+        let failed = server.read_node(&server.files[1], 0, 5);
+        let result = server.read_node(&server.files[1], 5, 5);
+        peer.join().unwrap();
+        assert_eq!(failed.unwrap_err().kind(), std::io::ErrorKind::Other);
+        assert_eq!(result.unwrap(), b"fresh");
+        assert_eq!(router.active_route_count(), 0);
+    }
+
+    #[test]
+    fn read_node_refuses_invalid_flags_and_oversized_response() {
+        let conn_id = 31341;
+        let (mut rx, _route) = crate::register_cliprdr_controlled(conn_id).unwrap();
+        let (mut server, router) = FuseServer::new(Duration::from_secs(2));
+        server
+            .load_file_list(vec![desc_gen_for_conn(
+                conn_id,
+                "payload.txt",
+                FileType::File,
+            )])
+            .unwrap();
+        for (msg_flags, requested_data) in [(3, b"right".to_vec()), (1, b"too-long".to_vec())] {
+            let peer_router = router.clone();
+            let mut peer_rx = rx;
+            let peer = std::thread::spawn(move || {
+                let stream_id = next_read_stream_id(&mut peer_rx);
+                peer_router
+                    .dispatch(FuseFileContentResponse {
+                        conn_id,
+                        clip: ClipboardFile::FileContentsResponse {
+                            msg_flags,
+                            stream_id,
+                            requested_data,
+                        },
+                    })
+                    .unwrap();
+                peer_rx
+            });
+            let result = server.read_node(&server.files[1], 0, 5);
+            rx = peer.join().unwrap();
+            assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+            assert_eq!(router.active_route_count(), 0);
+        }
+    }
+
+    #[test]
+    fn fuse_stream_ids_preserve_unsigned_bits_and_refuse_exhaustion() {
+        let counter = AtomicU32::new(i32::MAX as u32);
+        assert_eq!(allocate_fuse_stream_id(&counter).unwrap(), i32::MIN);
+        let counter = AtomicU32::new(u32::MAX - 1);
+        assert_eq!(allocate_fuse_stream_id(&counter).unwrap(), -1);
+        assert!(allocate_fuse_stream_id(&counter).is_err());
+        assert!(allocate_fuse_stream_id(&counter).is_err());
+        assert_eq!(counter.load(Ordering::Relaxed), u32::MAX);
+    }
+
     #[test]
     fn read_node_drops_route_when_send_fails() {
         let conn_id = 31338;
@@ -1406,7 +1525,7 @@ mod fuse_test {
     #[test]
     fn router_dispatch_to_disconnected_route_fails_closed() {
         let (_server, router) = FuseServer::new(Duration::from_millis(50));
-        let (rx, _response_route) = router.register(1, 2).unwrap();
+        let (stream_id, rx, _response_route) = router.register(1).unwrap();
         drop(rx);
 
         assert!(matches!(
@@ -1414,7 +1533,7 @@ mod fuse_test {
                 conn_id: 1,
                 clip: ClipboardFile::FileContentsResponse {
                     msg_flags: 1,
-                    stream_id: 2,
+                    stream_id,
                     requested_data: b"stale".to_vec(),
                 },
             }),
@@ -1423,30 +1542,30 @@ mod fuse_test {
     }
 
     #[test]
-    fn route_guard_does_not_remove_new_route_for_same_key() {
+    fn old_route_guard_does_not_remove_new_request() {
         let (_server, router) = FuseServer::new(Duration::from_millis(50));
-        let (rx1, route1) = router.register(1, 2).unwrap();
+        let (stream_id1, rx1, route1) = router.register(1).unwrap();
         drop(rx1);
         assert!(matches!(
             router.dispatch(FuseFileContentResponse {
                 conn_id: 1,
                 clip: ClipboardFile::FileContentsResponse {
                     msg_flags: 1,
-                    stream_id: 2,
+                    stream_id: stream_id1,
                     requested_data: b"closed".to_vec(),
                 },
             }),
             Err(CliprdrError::ClipboardInternalError)
         ));
+        let (stream_id2, rx2, _route2) = router.register(1).unwrap();
+        assert_ne!(stream_id1, stream_id2);
         drop(route1);
-
-        let (rx2, _route2) = router.register(1, 2).unwrap();
         router
             .dispatch(FuseFileContentResponse {
                 conn_id: 1,
                 clip: ClipboardFile::FileContentsResponse {
                     msg_flags: 1,
-                    stream_id: 2,
+                    stream_id: stream_id2,
                     requested_data: b"fresh".to_vec(),
                 },
             })

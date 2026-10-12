@@ -2449,8 +2449,19 @@ generate_focused_rust_flutter_bridge() {
         "$CONTAINER_ID")"
     [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
         || fail "focused Rust bridge container namespace/device/port authority differs: $namespace_inspect"
-    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
-        >"$output" 2>&1 || container_status=$?
+    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+        local -a fuse_start_status
+        if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 | tee "$output"; then
+            fuse_start_status=("${PIPESTATUS[@]}")
+        else
+            fuse_start_status=("${PIPESTATUS[@]}")
+        fi
+        [ "${fuse_start_status[1]}" -eq 0 ] || fail 'cannot retain the live FUSE test output'
+        container_status=${fuse_start_status[0]}
+    else
+        "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
+            >"$output" 2>&1 || container_status=$?
+    fi
     [ "$container_status" -eq 0 ] \
         || { tail -n 200 "$output" >&2; fail "focused Rust bridge generation exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
@@ -4032,7 +4043,6 @@ PY
     if [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then printf '%s\n' "${result_lines[@]}"; fi
     if [ "$MODE" = hbb-common-fs ]; then
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
-            cat "$output"
             printf 'FUSE_READ_COMPONENT_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default snapshot=readonly mounted_fuse=unexecuted cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

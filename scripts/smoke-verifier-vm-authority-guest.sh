@@ -41,6 +41,9 @@ case "$#:${8:-}" in
         LEDGER_INPUT_SHA256=${9}
         LEDGER_RECIPE_SHA256=${10}
         ;;
+    8:--host-network-tests)
+        MODE=host-network-tests
+        ;;
     12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests)
         MODE=linux-service-receiver-tests
         if [ "${8}" = --linux-service-convergence-failure-tests ]; then
@@ -755,6 +758,28 @@ run_linux_service_receiver_tests() {
         || fail 'native Linux receiver fixture source changed'
     printf 'LINUX_SERVICE_RECEIVER_VM=pass harness=%s manifest=%s source=readonly network=none docker=retired cleanup=joined\n' \
         "$LINUX_RECEIVER_HARNESS_COMMIT" "$LINUX_RECEIVER_MANIFEST_SHA256"
+}
+
+run_host_network_tests() {
+    local helper=$VERIFY_REPO/scripts/vm-host-network.py
+    local fixture=$VERIFY_REPO/scripts/test-vm-host-network.py
+    local output=$ROOT/host-network-tests.out
+    local before status=0 root_status=0
+    before="$(sha256sum "$helper" "$fixture")"
+    /usr/bin/python3 -B -I -S "$helper" >"$ROOT/host-network-root.out" 2>&1 || root_status=$?
+    [ "$root_status" -eq 1 ] && grep -Fxq 'ValueError: host root is forbidden' "$ROOT/host-network-root.out" \
+        || fail 'host network bootstrap did not refuse guest root'
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        /usr/bin/prlimit --as=536870912 --cpu=30 --nofile=64 --core=0 \
+        /usr/bin/python3 -B -I -S "$fixture" >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' "$output")" -le 65536 ] || fail 'host network diagnostics exceed their bound'
+    [ "$status" -eq 0 ] || { cat "$output" >&2; fail "host network native tests failed: $status"; }
+    [ "$(sha256sum "$helper" "$fixture")" = "$before" ] || fail 'host network test source changed'
+    stop_docker_authority
+    cat "$output"
+    printf 'VM_HOST_NETWORK_VM=pass uid=4000 caps=none source=readonly network=none cleanup=joined\n'
 }
 
 run_ledger_token_count() {
@@ -8178,6 +8203,10 @@ if [ "$MODE" = android-rust-target-check ]; then
     exit 0
 fi
 
+if [ "$MODE" = host-network-tests ]; then
+    run_host_network_tests
+    exit 0
+fi
 if [ "$MODE" = ledger-token-count ]; then
     run_ledger_token_count
     exit 0

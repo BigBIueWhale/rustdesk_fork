@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Guest-only native tests of the verifier's host socket restriction."""
+import ctypes
+import errno
+import hashlib
+import importlib.util
+import json
+import mmap
+import os
+from pathlib import Path
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+
+
+SOURCE = Path(__file__).with_name('vm-host-network.py')
+spec = importlib.util.spec_from_file_location('vm_host_network', SOURCE)
+policy = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(policy)
+LIBC = policy.LIBC
+
+
+def denied(number, *arguments):
+    ctypes.set_errno(0)
+    result = LIBC.syscall(number, *arguments)
+    if result >= 0:
+        if number in (41, 425, 438):
+            os.close(result)
+        raise AssertionError(f'syscall {number} escaped the policy')
+    assert ctypes.get_errno() == errno.EPERM, (number, ctypes.get_errno())
+
+
+def restriction_cases():
+    status = Path('/proc/self/status').read_text()
+    assert 'NoNewPrivs:\t1\n' in status and 'Seccomp:\t2\n' in status
+    for family in range(49):
+        if family in (socket.AF_UNIX, socket.AF_NETLINK):
+            continue
+        for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM, socket.SOCK_RAW):
+            denied(41, family, kind, 0)
+        pair = (ctypes.c_int * 2)()
+        denied(53, family, socket.SOCK_STREAM, 0, ctypes.byref(pair))
+    for protocol in range(33):
+        if protocol != 4:
+            denied(41, socket.AF_NETLINK, socket.SOCK_RAW, protocol)
+    # Socket arguments are kernel ints; nonzero upper words cannot select IP.
+    denied(41, ctypes.c_ulonglong((1 << 32) | socket.AF_INET), socket.SOCK_DGRAM, 0)
+    for number in policy.DENY_SYSCALLS:
+        denied(number, -1, -1, 0, 0, 0, 0)
+    with socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 4) as diag:
+        assert diag.family == socket.AF_NETLINK
+    with tempfile.TemporaryDirectory() as root:
+        name = root + '/control.sock'
+        with socket.socket(socket.AF_UNIX) as listener, socket.socket(socket.AF_UNIX) as client:
+            listener.bind(name)
+            listener.listen(1)
+            client.connect(name)
+            with listener.accept()[0] as accepted:
+                client.sendall(b'owned-unix-control')
+                assert accepted.recv(64) == b'owned-unix-control'
+                accepted.sendall(b'reply')
+                assert client.recv(64) == b'reply'
+    left, right = socket.socketpair()
+    with left, right:
+        left.sendall(b'pair')
+        assert right.recv(4) == b'pair'
+    result = subprocess.run(['/usr/bin/ss', '-H', '-lntu'], capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0, result.stderr
+    assert not result.stderr, result.stderr
+    assert all(len(fields := line.split()) == 6 and fields[0] in ('tcp', 'udp')
+               for line in result.stdout.splitlines())
+
+
+def worker():
+    policy.install_network_policy()
+    restriction_cases()
+    child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(Path(__file__)), '--inherited'],
+                           capture_output=True, text=True, timeout=5)
+    assert (child.returncode, child.stdout, child.stderr) == (0, 'inherited restrictions passed\n', '')
+    child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(Path(__file__)), '--x32'],
+                           capture_output=True, text=True, timeout=5)
+    assert child.returncode == -signal.SIGSYS, (child.returncode, child.stdout, child.stderr)
+    child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(Path(__file__)), '--i386'],
+                           capture_output=True, text=True, timeout=5)
+    assert child.returncode == -signal.SIGSYS, (child.returncode, child.stdout, child.stderr)
+    print('native restrictions and fork-exec inheritance passed')
+
+
+def main():
+    assert 'rustdesk.verifier_vm=1' in Path('/proc/cmdline').read_text().split()
+    assert os.geteuid() != 0 and os.getegid() != 0
+    assert 'Seccomp:\t0\n' in Path('/proc/self/status').read_text()
+    before = hashlib.sha256(SOURCE.read_bytes()).hexdigest()
+    # This exact guest kernel/principal can bind IP before the production filter.
+    for family, address in ((socket.AF_INET, '127.0.0.1'), (socket.AF_INET6, '::1')):
+        for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+            with socket.socket(family, kind) as control:
+                control.bind((address, 0))
+                assert control.getsockname()[1] > 0
+                if kind == socket.SOCK_STREAM:
+                    control.listen(1)
+    child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(Path(__file__)), '--worker'],
+                           capture_output=True, text=True, timeout=15)
+    assert (child.returncode, child.stdout, child.stderr) == (
+        0, 'native restrictions and fork-exec inheritance passed\n', '')
+    # Exercise the actual bootstrap, source bound and argument preserving, inside
+    # guest scratch. An ambient environment variable cannot skip its filter.
+    with tempfile.TemporaryDirectory() as root:
+        helper = Path(root) / SOURCE.name
+        helper.write_bytes(SOURCE.read_bytes())
+        helper.chmod(0o400)
+        entry = Path(root) / 'smoke-verifier-vm-authority.sh'
+        entry.write_bytes(policy.ENTRY_PREFIX + policy.BODY_MARKER +
+                          b'exec /usr/bin/python3 -B -I -S "$1/test-vm-host-network.py" --inherited "$2"\n')
+        entry.chmod(0o400)
+        test = Path(root) / Path(__file__).name
+        test.write_bytes(Path(__file__).read_bytes())
+        test.chmod(0o400)
+        environment = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': '/nonexistent',
+                       'VERIFIER_VM_HOST_NETWORK_CONFINE': 'forged'}
+        child = subprocess.run(['/bin/bash', str(entry), 'argument with spaces'], env=environment,
+                               capture_output=True, text=True, timeout=10)
+        assert child.returncode == 0 and not child.stderr, (child.returncode, child.stdout, child.stderr)
+        lines = child.stdout.splitlines()
+        assert len(lines) == 2 and lines[0].startswith('VERIFIER_VM_HOST_NETWORK=pass ')
+        assert lines[1] == 'inherited restrictions passed'
+        assert os.environ.get('VERIFIER_VM_HOST_NETWORK_CONFINE') is None
+        # Inherited IP stdout must be refused before any harness body can run.
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as inherited:
+            child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper)],
+                                   stdout=inherited, stderr=subprocess.PIPE, text=True, timeout=5)
+        assert child.returncode == 1 and 'IP standard-output descriptor is forbidden' in child.stderr
+        # Every extra inherited descriptor is closed, even an unbound IP socket.
+        with socket.socket(socket.AF_INET) as inherited:
+            child = subprocess.run(['/bin/bash', str(entry), 'argument with spaces'], env=environment,
+                                   pass_fds=(inherited.fileno(),), capture_output=True, text=True, timeout=10)
+        assert child.returncode == 0 and not child.stderr
+        child = subprocess.run(['/bin/bash', str(entry), 'argument with spaces'], env=environment,
+                               preexec_fn=lambda: os.close(0), capture_output=True, text=True, timeout=10)
+        assert child.returncode == 0 and not child.stderr
+    assert hashlib.sha256(SOURCE.read_bytes()).hexdigest() == before
+    print('VM_HOST_NETWORK_NATIVE=' + json.dumps({
+        'ip_controls': 4, 'socket_denials': 141, 'socketpair_denials': 47,
+        'netlink_protocol_denials': 32, 'upper_word_denials': 1,
+        'blocked_syscalls': len(policy.DENY_SYSCALLS), 'inherited_worker': True,
+        'x32': 'SIGSYS', 'i386': 'SIGSYS', 'unix_control': 'roundtrip', 'unix_socketpair': 'roundtrip',
+        'ss': 'protocol-endpoint-only', 'bootstrap': 'sealed-body-executed',
+        'extra_inherited_ip_fd': 'closed', 'ip_stdout': 'refused',
+        'closed_stdin': 'sealed-body-executed',
+        'source_sha256': before, 'source_unchanged': True,
+    }, sort_keys=True))
+    print('VM_HOST_NETWORK_TESTS=pass controls=4 restrictions=native inheritance=fork-exec '
+          'unix=roundtrip netlink=socket-diag ip=denied x32=SIGSYS descriptors=closed-or-refused')
+
+
+if __name__ == '__main__':
+    if sys.argv[1:] == ['--worker']:
+        worker()
+    elif sys.argv[1:] == ['--x32']:
+        LIBC.syscall(0x40000000 | 41, socket.AF_INET, socket.SOCK_DGRAM, 0)
+        raise AssertionError('x32 syscall was not killed')
+    elif sys.argv[1:] == ['--i386']:
+        # int 0x80 socketcall(1, NULL): the compat ABI must die before argument lookup.
+        with mmap.mmap(-1, mmap.PAGESIZE, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC) as code:
+            code.write(bytes.fromhex('b866000000bb0100000031c9cd80c3'))
+            address = ctypes.addressof(ctypes.c_char.from_buffer(code))
+            ctypes.CFUNCTYPE(ctypes.c_long)(address)()
+        raise AssertionError('i386 socketcall was not killed')
+    elif sys.argv[1:] in (['--inherited'], ['--inherited', 'argument with spaces']):
+        restriction_cases()
+        print('inherited restrictions passed')
+    else:
+        main()

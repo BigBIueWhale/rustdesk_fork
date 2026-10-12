@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+exec /usr/bin/python3 -I -S "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")/vm-host-network.py" "$@"
+
+# VM_HOST_NETWORK_BODY
 set -euo pipefail
 umask 077
 export PATH=/usr/bin:/bin
@@ -9,7 +12,8 @@ readonly HOST_GID="$(/usr/bin/id -g)"
     || { echo 'verifier-VM authority smoke: host or container-root execution is forbidden' >&2; exit 1; }
 [ "$HOST_GID" -ne 0 ] \
     || { echo 'verifier-VM authority smoke: a root primary group is forbidden' >&2; exit 1; }
-readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+readonly SCRIPT_DIR="$1"
+shift
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
@@ -165,6 +169,11 @@ case "$#:${1:-}" in
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'ledger token-count input/run overrides are forbidden' >&2; exit 2; }
         MODE=ledger-token-count
+        ;;
+    1:--host-network-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=host-network-tests
         ;;
     5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
@@ -439,7 +448,7 @@ fi
 readonly FLUTTER_PEER_FLUTTER_VERSION FLUTTER_PEER_FLUTTER_ARCHIVE \
     FLUTTER_PEER_FLUTTER_SHA256 FLUTTER_PEER_FLUTTER_SIZE \
     FLUTTER_PEER_TOOLS_MODE FLUTTER_PEER_PUB_CACHE_ROOT SEALED_INPUT_ROOT
-readonly OUTER_SOURCE="${BASH_SOURCE[0]}"
+readonly OUTER_SOURCE="$SCRIPT_DIR/smoke-verifier-vm-authority.sh"
 readonly GUEST_SCRIPT="$SCRIPT_DIR/smoke-verifier-vm-authority-guest.sh"
 readonly DEBIAN_CONTROL_SOURCE="$REPO_ROOT/build.py"
 readonly ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-vm-entry-preflight.sh"
@@ -558,6 +567,8 @@ readonly DART_AUDIT_CHECKER="$SCRIPT_DIR/verify-dart-audit-authority.py"
 readonly REQUIREMENTS_SOURCE="$REPO_ROOT/requirements.html"
 readonly HARDENING_SOURCE="$REPO_ROOT/HARDENING_STATUS.md"
 readonly LEDGER_TOKEN_COUNT_SOURCE="$SCRIPT_DIR/count-ledger-tokens.py"
+readonly VM_HOST_NETWORK_SOURCE="$SCRIPT_DIR/vm-host-network.py"
+readonly VM_HOST_NETWORK_TEST="$SCRIPT_DIR/test-vm-host-network.py"
 readonly LEDGER_TOKENIZER_ARCHIVE="$REPO_ROOT/online/candidates/ledger-tokenizer/ledger-tokenizer-inputs.tar.gz"
 readonly BOOT_DERIVER="$SCRIPT_DIR/derive-verifier-vm-boot-assets.sh"
 readonly CAPTURE_HELPER="$SCRIPT_DIR/bounded-unix-stream-capture.py"
@@ -628,7 +639,7 @@ elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
-elif [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = ledger-token-count ]; then
+elif [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ]; then
     readonly VM_TIMEOUT_SECONDS=150
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
@@ -1988,7 +1999,7 @@ frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-   || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = ledger-token-count ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+   || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
         && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime ]]; }; then
@@ -2007,6 +2018,11 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$M
 fi
 debian_polkit_sources_before=
 ledger_token_inputs_before=
+for source in "$VM_HOST_NETWORK_SOURCE" "$VM_HOST_NETWORK_TEST"; do
+    [ -f "$source" ] && [ ! -L "$source" ] || fail 'host network source is absent or ambiguous'
+    verify_committed_test_source "$source"
+done
+host_network_sources_before="$(/usr/bin/sha256sum "$VM_HOST_NETWORK_SOURCE" "$VM_HOST_NETWORK_TEST")"
 if [ "$MODE" = ledger-token-count ]; then
     for source in "$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE"; do
         [ -f "$source" ] && [ ! -L "$source" ] || fail 'ledger token-count source is absent or ambiguous'
@@ -3694,6 +3710,11 @@ elif [ "$MODE" = ledger-token-count ]; then
         "ledger-tokenizer-inputs.tar.gz=$LEDGER_TOKENIZER_ARCHIVE"
         "repo/scripts/count-ledger-tokens.py=$LEDGER_TOKEN_COUNT_SOURCE"
     )
+elif [ "$MODE" = host-network-tests ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=(
+        "repo/scripts/test-vm-host-network.py=$VM_HOST_NETWORK_TEST"
+    )
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     payload_identity=(-uid 1000 -gid 1000)
     lifecycle_payload_grafts=(
@@ -3957,6 +3978,7 @@ vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFI
     "repo/scripts/verify-scan.sh=$VERIFY_SCAN_SOURCE" \
     "repo/scripts/verify-private-tree-closure.py=$CLEANUP_HELPER" \
     "repo/scripts/vm-transient-storage.py=$VM_STORAGE_SOURCE" \
+    "repo/scripts/vm-host-network.py=$VM_HOST_NETWORK_SOURCE" \
     "repo/scripts/smoke-verifier-vm-authority.sh=$OUTER_SOURCE" \
     "repo/scripts/test-verifier-vm-run-admission.sh=$RUN_ADMISSION_TEST" \
     "repo/scripts/android-peer-artifact.py=$ANDROID_PEER_ARTIFACT_SOURCE" \
@@ -3996,6 +4018,8 @@ elif [ "$MODE" = debian-polkit-tests ]; then
     guest_invocation+=' --debian-polkit-tests'
 elif [ "$MODE" = ledger-token-count ]; then
     guest_invocation+=" --ledger-token-count $ledger_input_sha $ledger_recipe_sha"
+elif [ "$MODE" = host-network-tests ]; then
+    guest_invocation+=" --host-network-tests"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_guest_flag=--linux-service-receiver-tests
     if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
@@ -4583,6 +4607,13 @@ elif [ "$MODE" = debian-polkit-tests ]; then
     require_exact_fixed_receipt "$debian_polkit_vm_receipt" 'Debian authorization dependency execution and finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Debian authorization dependency guest completion'
     printf '%s\n' "$debian_polkit_receipt" "$debian_polkit_vm_receipt"
+elif [ "$MODE" = host-network-tests ]; then
+    require_exact_fixed_receipt \
+        'VM_HOST_NETWORK_TESTS=pass controls=4 restrictions=native inheritance=fork-exec unix=roundtrip netlink=socket-diag ip=denied x32=SIGSYS descriptors=closed-or-refused' \
+        'actual native host network restriction'
+    require_exact_fixed_receipt 'VM_HOST_NETWORK_VM=pass uid=4000 caps=none source=readonly network=none cleanup=joined' \
+        'host network test guest cleanup'
+    /usr/bin/grep -Eo 'VM_HOST_NETWORK_NATIVE=\{.*\}' "$SERIAL_LOG"
 elif [ "$MODE" = ledger-token-count ]; then
     ledger_vm_receipt="LEDGER_TOKEN_COUNT_VM=pass uid=4000 gid=4000 caps=none nnp=yes input_sha256=$ledger_input_sha recipe_sha256=$ledger_recipe_sha source=readonly network=none docker=retired scratch=retired cleanup=joined"
     require_exact_fixed_receipt "$ledger_vm_receipt" 'actual ledger token count execution and finality'
@@ -6252,6 +6283,8 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
 fi
 [ "$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" "$LINUX_FLUTTER_ARTIFACT_TEST")" = "$linux_flutter_sources_before" ] \
     || fail 'Linux app-capsule source changed during execution'
+[ "$(/usr/bin/sha256sum "$VM_HOST_NETWORK_SOURCE" "$VM_HOST_NETWORK_TEST")" = "$host_network_sources_before" ] \
+    || fail 'host network policy or fixture source changed'
 if [ "$MODE" = ledger-token-count ]; then
     [ "$(/usr/bin/sha256sum "$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE" "$LEDGER_TOKENIZER_ARCHIVE")" = "$ledger_token_inputs_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
@@ -6342,6 +6375,11 @@ elif [ "$MODE" = fixed-archive-tests ]; then
 elif [ "$MODE" = debian-polkit-tests ]; then
     printf 'DEBIAN_POLKIT_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only receiver=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = host-network-tests ]; then
+    printf 'VM_HOST_NETWORK_OUTER=pass host_uid=%s commit=%s tree=%s helper_sha256=%s fixture_sha256=%s network=none cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+        "$(/usr/bin/sha256sum "$VM_HOST_NETWORK_SOURCE" | /usr/bin/awk '{print $1}')" \
+        "$(/usr/bin/sha256sum "$VM_HOST_NETWORK_TEST" | /usr/bin/awk '{print $1}')" "$vm_elapsed_seconds"
 elif [ "$MODE" = ledger-token-count ]; then
     printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"

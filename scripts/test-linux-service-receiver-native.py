@@ -515,13 +515,15 @@ def credential_race(old, new, phase, record, probe_sha):
     else:
         valid = "Some(TestDelay(" in postkey and "READ_ERR" not in postkey
     after = credential()
-    if (not valid or direct_listener(record) != listener
-            or (after != before) != (phase != "control")):
-        raise RuntimeError(f"credential-race receiver outcome differs for {phase}: {postkey}")
+    listener_unchanged = direct_listener(record) == listener
+    durable_changed = after != before
     print("LINUX_RECEIVER_RACE_OBSERVED=" + json.dumps(
         {"phase": phase, **record, "listener_inode": listener, "proxy_port": port,
          "transcript": frames, "server_eof": server_eof, "postkey_frames": postkey_frames,
+         "listener_unchanged": listener_unchanged, "durable_changed": durable_changed,
          "probe_exit": probe.returncode, "postkey": postkey}, sort_keys=True), flush=True)
+    if not valid or not listener_unchanged or durable_changed != (phase != "control"):
+        raise RuntimeError(f"credential-race receiver outcome differs for {phase}: {postkey}")
     if phase == "control":
         print(f"LINUX_RECEIVER_PROXY_CONTROL=pass uid=4002 server=supervised-child "
               f"transcript=unmodified postkey=decrypted-test-delay cleanup=joined probe_sha256={probe_sha}", flush=True)

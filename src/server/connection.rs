@@ -7900,7 +7900,21 @@ impl Connection {
         let mut res = LoginResponse::new();
         res.set_error(err.to_string());
         msg_out.set_login_response(res);
-        self.send(msg_out).await;
+        if let Err(err) = self.send_checked(msg_out).await {
+            log::warn!(
+                "#{}: failed to queue login error response: {}",
+                self.inner.id(),
+                err
+            );
+            return;
+        }
+        if let Err(err) = self.stream.flush_writer().await {
+            log::warn!(
+                "#{}: failed to flush login error response: {}",
+                self.inner.id(),
+                err
+            );
+        }
     }
 
     #[inline]

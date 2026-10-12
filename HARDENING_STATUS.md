@@ -2117,7 +2117,7 @@ Docker/unit/cgroup/PAM/X11 joined; correct outer/raw 5Gyo4Rioza. Build261s.
 Five positive CPace checks: UID4002/probe eb9dd801, both changes/restart/refusal recovery.
 Old password refused after replacement/restart: exact-child/invocation/cursor tag mismatch.
 Refusals preserve child/listener and durable state.
-In-flight PAKE/login replacement tests PENDING.
+In-flight PAKE passed; login-error drain fix PENDING native.
 
 Sources/commands/hashes: `linux-wire-v2-accepted-e69129bc.json`,
 `linux-receiver-stale-accepted-1653f4dd.json`,

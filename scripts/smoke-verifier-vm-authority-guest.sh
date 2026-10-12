@@ -636,7 +636,7 @@ run_linux_service_receiver_tests() {
         "$VERIFY_REPO/res/rustdesk.service" "$VERIFY_REPO/res/com.carriez.RustDesk.policy" \
         "$native/build.py" "$native/xdo.c" "$native/xdo.h" "$native/xdo_version.h" "$native/COPYRIGHT" "$native/SOURCE.txt")"
     load_output="$(
-        setpriv --reuid=4000 --regid=4000 --clear-groups \
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
             DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
             python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
@@ -655,7 +655,7 @@ run_linux_service_receiver_tests() {
     chmod 0711 "$ROOT"
     install -d -m 0711 "$work"
     install -d -o 1000 -g 1000 -m 0700 "$work/prepared"
-    install -d -o 4000 -g 4000 -m 0700 "$work/libraries"
+    install -d -o 1000 -g 1000 -m 0700 "$work/libraries"
     CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
         --name rustdesk-linux-receiver-prepare --pull=never --network=none --read-only --user 1000:1000 \
         --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
@@ -688,7 +688,7 @@ run_linux_service_receiver_tests() {
     install -m 0711 /mnt/rustdesk-verifier-inputs/receiver/rustdesk /usr/share/rustdesk/rustdesk-service-child
     ln -s ../share/rustdesk/rustdesk /usr/bin/rustdesk
     install -m 0644 "$work/prepared/libxdo.so.3" /usr/lib/rustdesk-fork/libxdo.so.3
-    setpriv --reuid=4000 --regid=4000 --clear-groups \
+    setpriv --reuid=1000 --regid=1000 --clear-groups \
         --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
         /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" /usr/share/rustdesk/rustdesk \
             /usr/lib/rustdesk-fork/libxdo.so.3 "$work/libraries" \
@@ -7763,7 +7763,8 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = android-emulator-runtime ] \
    || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ] \
-   || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
+   || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
+   || [ "$MODE" = linux-service-receiver-tests ]; then
     docker_socket_gid=1000
 fi
 chown "0:$docker_socket_gid" "$SOCK"

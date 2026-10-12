@@ -2033,27 +2033,36 @@ Current normative specification SHA-256: `e55e3e21aec7af920735004f42477bae6646bd
 
 ### Current authority and source closure
 
-**VM transient storage (R-S11cj/R-S11dh): runtime validation pending.** Both ordinary-user Linux
-launchers place the disposable qcow2 overlay, input/seed ISOs and source archive/bundle in one
-private workspace on the existing `/dev/shm` tmpfs. Disk-backed scratch fallback is absent.
-Admission requires capacity for 16 GiB scratch, the selected guest RAM, 6 GiB host headroom and
-1 GiB orchestration overhead; a pidfd-bound monitor cancels the exact harness if scratch or
-headroom exceeds its bound. Hard file ceilings are 8 GiB overlay, 5 GiB input ISO, 256 MiB source
-and 8 MiB seed; prepared inputs must leave the full overlay allowance before QEMU starts.
-Canonical disk markers, bounded logs and intentional artifacts retain their existing ownership.
-RAM scratch is retired only after exact process joins, on success and failure; uncertain joins
-retain the workspace and block another run. Per-run storage receipts retain measured peaks and
-observed QEMU block writes. Tmpfs can swap on this host; these checks do not claim to disable
-host swap or prove zero system-wide I/O. Insufficient RAM refuses the run before VM reservation.
-Design sources: [Linux tmpfs](https://docs.kernel.org/filesystems/tmpfs.html) and
-[QEMU disk images](https://www.qemu.org/docs/master/system/images.html).
-Representative native and acquisition runtime acceptance remain pending for this change.
-QEMU starts paused under a direct-child supervisor. The supervisor permits the selected shared
-RAM memfd to be created, then installs and reads back the hard 8 GiB file limit before issuing
-QMP `cont` on the private Unix socket; no guest code runs before that bound. The direct child
-remains unreaped during `prlimit`, preventing PID reuse from targeting another host process.
-This keeps the disk ceiling independent of the selected guest RAM size. QMP startup is bounded,
-signals use the retained child pidfd, and the supervisor joins its exact QEMU child on failure.
+**VM transient storage (R-S11cj/R-S11dh): the observed Linux VM disk-churn path is corrected.**
+Both ordinary-user Linux launchers use one private existing-`/dev/shm` workspace for disposable
+overlays, input/seed ISOs, source archives/bundles and tool temporary files. Admission budgets
+16 GiB scratch, the selected guest RAM, 6 GiB host headroom and 1 GiB orchestration overhead;
+insufficient RAM refuses before VM reservation, without a disk-scratch fallback. Hard file
+ceilings are 8 GiB overlay, 5 GiB input ISO, 256 MiB source and 8 MiB seed. QEMU initializes
+shared RAM while paused, then its direct supervisor installs/read-backs the hard overlay ceiling
+before private-QMP `cont`; the unreaped child prevents PID reuse during `prlimit`. A pidfd-bound
+monitor aborts only the owned harness on scratch/headroom exhaustion. Canonical disk markers,
+bounded diagnostics and intentional artifacts retain their ownership. Transients retire only
+after exact joins; uncertain cleanup blocks another run. All helper entry points refuse root.
+
+At storage core `ec79c77f`, the actual installed-layout Linux receiver passed 13 cases/11 CPace
+exchanges in 94 seconds, with zero NIC, unchanged host listeners and joined cleanup. Sampled
+RAM scratch peaked at 5,479,960,576 bytes, including a 4,245,884,928-byte overlay; the disk run
+peaked at **147,456 bytes**, and QEMU's observed block writes were **4,096 bytes**. The acquisition
+authority transaction passed in 24 seconds: 896,585,728 bytes RAM scratch, 3,338,240 bytes disk
+diagnostics/helper extraction, 4,096 bytes observed QEMU block writes, no added listener and joined
+cleanup. A real insufficient-RAM profile created no run/workspace; a forced interruption joined
+and retired its RAM scratch. Final helper `c1833c5e` also passed five actual guest-root refusals
+in a 15-second zero-NIC count transaction. Failed listener/gate attempts remain unaccepted and
+retained. Source/index/audit/ledger/specification/instruction freezes held during every run.
+The immutable acceptance bundle is `.harness-state/verifier-vm/vm-transient-storage-accepted-c1833c5e.json`
+(16,619 bytes; SHA-256 `df7e6091d2cd8214d2c53f94822c78af18a6dc914cc5107a6d1980bd8c9bd75b`).
+These runs use existing authenticated direct-boot assets; cold bootstrap, full-release and
+other-platform VM storage acceptance remain OPEN. Tmpfs is swappable here: no host swap/mount
+change or zero-system-I/O claim is made. Design sources:
+[Linux tmpfs](https://docs.kernel.org/filesystems/tmpfs.html),
+[QEMU disk images](https://www.qemu.org/docs/master/system/images.html), and
+[QMP](https://www.qemu.org/docs/master/interop/qmp-spec.html).
 
 | Surface | Platforms, endpoint/action, boundary, and current closure |
 | --- | --- |

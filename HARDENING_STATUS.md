@@ -2078,7 +2078,7 @@ Current normative specification SHA-256: `6128acd48ad9ad7ccf1f0fc32abe51f3d6d6d2
 
 ### Current authority and source closure
 
-**Offline verifier host sockets (R-S11dh): exact Linux boundary accepted.**
+**Offline verifier host sockets (R-S11dh): Linux socket restriction accepted; observation retention OPEN.**
 `vm-host-network.py` closes extra inherited descriptors, refuses IP stdout/stderr and
 installs an ordinary-user, capabilities-free, inherited seccomp restriction before
 executing the fixed Bash body from sealed RAM. IP/packet/vsock socket creation,
@@ -2101,8 +2101,10 @@ at 110,592 bytes; QEMU's observed block writes are 4,096 bytes. Immutable
 SHA-256 `8d00995466a857e0bb33df382840e06cbd7868ede2b1ace5488f9fba721b6f3b`)
 binds source, native outcomes, raw serial, storage, freezes and retained failures.
 A later independent host snapshot adds unknown UDP60041; it remains unattributed
-and untouched. The acquisition launcher is unchanged. Normal installed-service
-stop and the wider platform/release/storage obligations remain OPEN.
+and untouched. Successful launchers retain delta counts but remove their exact
+per-phase snapshot/delta files during cleanup; durable complete endpoint evidence
+needs correction. This does not weaken the demonstrated inherited socket denial.
+The acquisition launcher and wider platform/release/storage obligations remain OPEN.
 
 **VM transient storage (R-S11cj/R-S11dh): the observed Linux VM disk-churn path is corrected.**
 The ordinary-user verification and acquisition launchers use one private existing-`/dev/shm` workspace for disposable
@@ -2386,30 +2388,39 @@ unit and artifact. It did not exercise standard unit-stop: that checkpoint's
 Type=simple/control-group/30-second stop budget did not establish the admitted 600-second drain. Other schedules,
 desktops, platform/whole-app/release/resource/reproduction/review acceptance remain OPEN.
 
-**Normal systemd stop: source correction; native acceptance OPEN.** Product `68496b64` uses
+**Normal systemd stop: exact installed Linux schedule accepted; wider shutdown acceptance OPEN.**
+Product `68496b64` uses
 Type=notify/NotifyAccess=main/KillMode=mixed with the existing 30-second kill backstop.
 The root supervisor reports IPC readiness, closes admission, extends the stop timeout
-while joining owned IPC, then retires its child. Notification failures remain errors.
-The installed fixture adds real systemctl stop with a 40-second ptrace-held child,
-pending durable mutation, release/finality/retirement and fresh-generation CPace/refusal.
-An explicit 8-GiB guest/6-GiB container/two-job source-bound build profile retains all
-storage admission/monitor ceilings. The first compile reached the hard overlay limit
-during cleanup; its outer success is unaccepted. Follow-up `607daa8d` omits debug symbols
-with debug assertions retained, and guest block/filesystem errors refuse publication.
-The corrected profile compiled in 257 Cargo seconds and shut down cleanly with no guest
-I/O error; RAM scratch peaked at 6,190,272,512 bytes, overlay at 6,031,544,320 bytes.
-Two attempts were refused for unknown new host UDP endpoints; only the owned VM was
-stopped, diagnostics retained and all RAM/run owners retired. No candidate was published
-or installed-service case executed. Current-source build `24c35dfb` adds a 600-second
-integration ceiling and compiles in 255 Cargo seconds, with clean guest shutdown;
-the final listener guard again refuses publication for unknown UDP additions.
-RAM scratch peaks at 6,222,364,672 bytes, overlay at 6,063,591,424 bytes; bounded disk
-diagnostics peak at 3,555,328 bytes. All exact owners/RAM retire, and 34 diagnostic entries
-remain in `retained-peer-build-host-endpoints-3T8Tmhs71I`, bound by
-`peer-build-failed-retention-3T8Tmhs71I.json`. No host process ownership is inferred and
-no host service/network state is changed. Do not repeat this expensive build solely
-for unchanged endpoint churn. Exact native normal stop, notification failure,
-ordinary network drain, new-unit 600-second failure/recovery and other init systems remain OPEN.
+while joining owned IPC, then retires its child. Native artifact/harness `ef3f51b7`
+(binary `77b83bf0`, manifest `17b59862`) passes actual systemctl stop with an exact
+all-thread ptrace-held child and pending durable credential change. The supervisor,
+requester and child remain alive for 40.029 seconds; manager properties still show
+the same main PID, deactivating/stop-sigterm, notify/main/mixed, original 30-second
+timeout and no restart. After detach, CLI0 `Done!` arrives in 191.5 ms; supervisor
+and child pidfds exit and identities are reaped, listener/cgroup retire, durable
+credential remains, and the referenced unit reports inactive/dead/success, normal
+exit0. Total stop is 40.570 seconds. A fresh supervisor/child/generation proves
+retained-password mutual CPace and obsolete-password refusal; real administrator
+Applied and fresh unauthenticated denial also pass.
+
+The current-source build passes in 255 Cargo/367 VM seconds within its 600-second
+integration ceiling (8-GiB guest/6-GiB container/two jobs/no debug symbols/assertions
+retained). Its immutable seven-file capsule is reused for the 116-second installed
+fixture: 17 cases/15 CPace exchanges/four stale refusals, actual polkit/PAM/logind and
+shipped unit/0711 child. Build RAM scratch peaks at 6,240,382,976 bytes, disk
+diagnostics at 3,555,328; installed-test peaks are 4,564,721,664 RAM and 212,992 disk
+bytes. Both observe QEMU block writes of 4,096 bytes and exact joined RAM/owner
+retirement, with matching source/index/audit/ledger/specification/instruction freezes.
+The build's unattributed endpoint delta is retained only as a count; durable complete
+per-phase snapshot/delta retention remains OPEN, alongside the proved socket restriction.
+Immutable `.harness-state/verifier-vm/linux-receiver-unit-stop-accepted-ef3f51b7.json`
+(20,192 bytes; SHA-256 `ce09e89cab609f901435e9a046897905371016bbb10804a8352e058423535128`)
+binds artifacts, actual manager/process/CLI/journal/recovery observations, full raw
+logs, storage and freezes. Earlier failed build evidence remains unaccepted in the
+audit and retained diagnostics. This is one debug/headless installed-layout seatless-X11
+schedule, not whole-app/release acceptance. Notification failure, ordinary network
+drain, new-unit 600-second failure/recovery and other init systems remain OPEN.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

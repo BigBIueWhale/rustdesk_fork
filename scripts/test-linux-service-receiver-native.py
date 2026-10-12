@@ -20,9 +20,8 @@ import tomllib
 import uuid
 
 
-ROOT = Path("/var/tmp/rustdesk-verifier-authority")
 MEDIA = Path("/mnt/rustdesk-verifier-inputs")
-WORK = ROOT / "linux-service-receiver"
+WORK = Path("/var/tmp/rustdesk-linux-service-receiver")
 PRIMARY = Path("/usr/share/rustdesk/rustdesk")
 CHILD = PRIMARY.with_name("rustdesk-service-child")
 ENV = {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"}

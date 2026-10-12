@@ -627,7 +627,7 @@ run_linux_flutter_engine_prepare() {
 }
 
 run_linux_service_receiver_tests() {
-    local work=$ROOT/linux-service-receiver inspect load_output status=0
+    local work=/var/tmp/rustdesk-linux-service-receiver inspect load_output status=0
     local helper=$VERIFY_REPO/scripts/test-linux-service-receiver-native.py
     local native=$VERIFY_REPO/libs/libxdo-sys-stub/native
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
@@ -652,7 +652,6 @@ run_linux_service_receiver_tests() {
     [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail 'Linux receiver image load receipt differs'
     prepare_engine_xvfb
-    chmod 0711 "$ROOT"
     install -d -m 0711 "$work"
     install -d -o 1000 -g 1000 -m 0700 "$work/prepared"
     install -d -o 1000 -g 1000 -m 0700 "$work/libraries"

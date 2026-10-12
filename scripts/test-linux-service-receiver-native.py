@@ -662,6 +662,7 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
             sort_keys=True), flush=True)
         if fail_convergence:
             progress_at = 0
+            child_exit_observed = None
             while not select.select([pidfds["supervisor"]], [], [], 0)[0]:
                 elapsed = time.monotonic() - began
                 if elapsed >= 625:
@@ -674,11 +675,28 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
                 except (FileNotFoundError, ProcessLookupError):
                     still_stopped = False
                 if not still_stopped:
-                    if select.select([pidfds["supervisor"]], [], [], 0)[0]:
-                        break
-                    raise RuntimeError("convergence-failure child escaped its retained kernel stop barrier")
+                    if elapsed < 590 or not select.select([pidfds["child"]], [], [], 0.2)[0]:
+                        raise RuntimeError("convergence-failure child escaped its retained kernel stop barrier")
+                    if child_exit_observed is None:
+                        supervisor_exited = bool(select.select([pidfds["supervisor"]], [], [], 0)[0])
+                        core_dumping = None
+                        if not supervisor_exited:
+                            try:
+                                parent_fields = (supervisor / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                                if int(parent_fields[19]) == supervisor_start:
+                                    status = dict(line.split(":", 1) for line in (supervisor / "status").read_text().splitlines() if ":" in line)
+                                    core_dumping = status.get("CoreDumping", "").strip()
+                            except (FileNotFoundError, ProcessLookupError):
+                                pass
+                        child_exit_observed = {"seconds": elapsed, "child_exited": True,
+                                               "supervisor_exited": supervisor_exited,
+                                               "supervisor_core_dumping": core_dumping,
+                                               "fixture_resumed_child": False}
+                        print("LINUX_RECEIVER_CONVERGENCE_CHILD_EXIT_OBSERVED=" +
+                              json.dumps(child_exit_observed, sort_keys=True), flush=True)
                 if elapsed >= progress_at:
-                    print(f"LINUX_RECEIVER_CONVERGENCE_WAIT seconds={elapsed:.1f} child=kernel-stopped "
+                    child_state_note = "kernel-exited" if child_exit_observed else "kernel-stopped"
+                    print(f"LINUX_RECEIVER_CONVERGENCE_WAIT seconds={elapsed:.1f} child={child_state_note} "
                           "durable=changed requester=not-Applied supervisor=draining", flush=True)
                     progress_at += 30
                 select.select([pidfds["supervisor"]], [], [], 0.02)
@@ -757,6 +775,7 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
                         "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:], "retired": retired,
                         "listener_absent": listener_absent, "durable_retained": durable_retained,
                         "root_journal": root_messages, "recovered": recovered,
+                        "child_exit_observed": child_exit_observed,
                         "recovered_unit": recovered_unit, "recovered_listener_inode": recovered_listener,
                         "restarts_before": properties["NRestarts"]}
             print("LINUX_RECEIVER_CONVERGENCE_FAILURE_OBSERVED=" + json.dumps(observed, sort_keys=True), flush=True)

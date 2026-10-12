@@ -2314,7 +2314,10 @@ SIGTERM. It requires explicit CLI uncertainty without `Done!`, exact old supervi
 unit failure, invocation-bound unresolved-replica journal, old process/listener retirement and
 exactly one automatic restart into a fresh generation honoring the durable value. Systemd
 may resume the old child during its own failure cleanup; the fixture never resumes it before
-supervisor exit. New-password CPace, obsolete-password refusal and fresh OS authorization are
+supervisor exit. Exact child pidfd exit is also permitted at the recovery deadline: its
+parent-death SIGKILL is tied to the creating thread, before whole-supervisor pidfd finality.
+The observer records that transition and still requires exact supervisor SIGABRT failure.
+New-password CPace, obsolete-password refusal and fresh OS authorization are
 mandatory. Product, shipped unit and artifact are unchanged; this schedule remains pending.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux

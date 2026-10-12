@@ -737,12 +737,30 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
                  "--after-cursor=" + cursor, "_SYSTEMD_INVOCATION_ID=" + invocation, "-n", "40"],
                 timeout=5).stdout.splitlines()]
             root_messages = [item for item in messages if all(item.get(k) == v for k, v in expected.items())]
-            if (not any("Linux durable credential changed but its runtime replica did not converge" in
-                        item.get("MESSAGE", "") for item in root_messages)
-                    or not any("Linux password admission transactions drained with unresolved authority; terminating"
-                               in item.get("MESSAGE", "") for item in root_messages)
-                    or any(item.get("MESSAGE", "").endswith("librustdesk::platform::linux] Exit")
-                           for item in root_messages)):
+            terminal_journal = {
+                "replica_failed": any("Linux durable credential changed but its runtime replica did not converge"
+                                      in item.get("MESSAGE", "") for item in root_messages),
+                "authority_aborted": any(
+                    "Linux password admission transactions drained with unresolved authority; terminating"
+                    in item.get("MESSAGE", "") for item in root_messages),
+                "normal_exit": any(item.get("MESSAGE", "").endswith("librustdesk::platform::linux] Exit")
+                                   for item in root_messages),
+            }
+            print("LINUX_RECEIVER_CONVERGENCE_JOURNAL_OBSERVED=" + json.dumps(
+                {"expected_authority": expected, "after_cursor": cursor, "unit_outcome": outcome,
+                 "cli_exit": client.returncode, "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:],
+                 "checks": terminal_journal, "queried_messages": messages, "root_messages": root_messages},
+                sort_keys=True), flush=True)
+            if (not terminal_journal["replica_failed"] or not terminal_journal["authority_aborted"]
+                    or terminal_journal["normal_exit"]):
+                diagnostic = run(
+                    ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "--output=json",
+                     "--output-fields=__CURSOR,__MONOTONIC_TIMESTAMP,_BOOT_ID,_PID,_UID,_TRANSPORT,"
+                     "_STREAM_ID,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,_EXE,_COMM,MESSAGE",
+                     "--after-cursor=" + cursor, "-n", "60"], timeout=5)
+                for line in diagnostic.stdout.splitlines():
+                    print("LINUX_RECEIVER_CONVERGENCE_JOURNAL_DIAGNOSTIC=" +
+                          json.dumps(json.loads(line), sort_keys=True), flush=True)
                 raise RuntimeError("exact root journal did not prove unresolved-replica fail-stop")
             recovered = ready(record)
             deadline = time.monotonic() + 10

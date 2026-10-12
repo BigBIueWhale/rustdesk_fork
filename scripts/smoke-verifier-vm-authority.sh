@@ -941,6 +941,9 @@ linux_receiver_input_inventory() {
     verify_sha256 "${files[1]}" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
     for file in "$SCRIPT_DIR/test-linux-service-receiver-native.py" \
         "$SCRIPT_DIR/test-linux-logind-session-selection.py" \
+        "$SCRIPT_DIR/verify-linux-service-password-ipc.py" \
+        "$REPO_ROOT/src/"{ipc.rs,ipc/password.rs,ipc/auth.rs,ipc/uid_policy.rs,ipc/fs.rs,core_main.rs,ui_interface.rs,flutter_ffi.rs,common.rs,platform/linux.rs,platform/windows.rs,server.rs} \
+        "$REPO_ROOT/libs/hbb_common/src/config.rs" \
         "$REPO_ROOT/examples/probe_client.rs" \
         "$REPO_ROOT/res/com.carriez.RustDesk.policy" "$REPO_ROOT/res/rustdesk.service" \
         "$REPO_ROOT/libs/libxdo-sys-stub/native/"{build.py,xdo.c,xdo.h,xdo_version.h,COPYRIGHT,SOURCE.txt}; do
@@ -3630,6 +3633,20 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         "receiver/peer-manifest.json=$ANDROID_PEER_INPUT_ROOT/peer-manifest.json"
         "repo/scripts/test-linux-service-receiver-native.py=$SCRIPT_DIR/test-linux-service-receiver-native.py"
         "repo/scripts/test-linux-logind-session-selection.py=$SCRIPT_DIR/test-linux-logind-session-selection.py"
+        "repo/scripts/verify-linux-service-password-ipc.py=$SCRIPT_DIR/verify-linux-service-password-ipc.py"
+        "repo/src/ipc.rs=$REPO_ROOT/src/ipc.rs"
+        "repo/src/ipc/password.rs=$REPO_ROOT/src/ipc/password.rs"
+        "repo/src/ipc/auth.rs=$REPO_ROOT/src/ipc/auth.rs"
+        "repo/src/ipc/uid_policy.rs=$REPO_ROOT/src/ipc/uid_policy.rs"
+        "repo/src/ipc/fs.rs=$REPO_ROOT/src/ipc/fs.rs"
+        "repo/src/core_main.rs=$REPO_ROOT/src/core_main.rs"
+        "repo/src/ui_interface.rs=$REPO_ROOT/src/ui_interface.rs"
+        "repo/src/flutter_ffi.rs=$REPO_ROOT/src/flutter_ffi.rs"
+        "repo/src/common.rs=$REPO_ROOT/src/common.rs"
+        "repo/src/platform/linux.rs=$REPO_ROOT/src/platform/linux.rs"
+        "repo/src/platform/windows.rs=$REPO_ROOT/src/platform/windows.rs"
+        "repo/src/server.rs=$REPO_ROOT/src/server.rs"
+        "repo/libs/hbb_common/src/config.rs=$REPO_ROOT/libs/hbb_common/src/config.rs"
         "repo/libs/libxdo-sys-stub/native=$REPO_ROOT/libs/libxdo-sys-stub/native"
         "repo/res/com.carriez.RustDesk.policy=$REPO_ROOT/res/com.carriez.RustDesk.policy"
         "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"

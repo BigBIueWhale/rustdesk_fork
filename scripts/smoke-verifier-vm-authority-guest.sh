@@ -633,6 +633,7 @@ run_linux_service_receiver_tests() {
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local runtime=/usr/local/lib/rustdesk-receiver-fixture source_before
     source_before="$(sha256sum "$helper" "$VERIFY_REPO/scripts/test-linux-logind-session-selection.py" \
+        "$VERIFY_REPO/scripts/verify-linux-service-password-ipc.py" \
         "$VERIFY_REPO/res/rustdesk.service" "$VERIFY_REPO/res/com.carriez.RustDesk.policy" \
         "$native/build.py" "$native/xdo.c" "$native/xdo.h" "$native/xdo_version.h" "$native/COPYRIGHT" "$native/SOURCE.txt")"
     load_output="$(
@@ -724,6 +725,7 @@ run_linux_service_receiver_tests() {
         "$LINUX_RECEIVER_MANIFEST_SHA256" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \
         "$POLKIT_RUNTIME_CANDIDATE_MANIFEST_SHA256" || fail 'installed Linux receiver native scenario failed'
     [ "$(sha256sum "$helper" "$VERIFY_REPO/scripts/test-linux-logind-session-selection.py" \
+        "$VERIFY_REPO/scripts/verify-linux-service-password-ipc.py" \
         "$VERIFY_REPO/res/rustdesk.service" "$VERIFY_REPO/res/com.carriez.RustDesk.policy" \
         "$native/build.py" "$native/xdo.c" "$native/xdo.h" "$native/xdo_version.h" "$native/COPYRIGHT" "$native/SOURCE.txt")" = "$source_before" ] \
         || fail 'native Linux receiver fixture source changed'

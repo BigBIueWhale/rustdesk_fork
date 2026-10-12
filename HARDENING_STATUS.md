@@ -2123,8 +2123,8 @@ no listener additions; joined cleanup.
 **Installed fixture:** `--linux-service-receiver-tests` reuses d2f309ef's exact headless
 binary. Actual polkit, PAM/logind/Xvfb, shipped unit and mode-0711 child drive eight
 principal/commit/restart cases. Fork XDO builds in a pinned ordinary container.
-5efc853f: root Applied/selected UID denied; unrelated CLI >20s.
-Raw o1lxdsFs0w: audit; receiver/release acceptance OPEN.
+7df7b607: root Applied/selected UID denied; unrelated CLI reset recovery >20s.
+Raw 3uOQDd8XTZ: audit; receiver/release acceptance OPEN.
 
 **Still OPEN:** installed Linux both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

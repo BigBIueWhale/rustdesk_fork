@@ -989,6 +989,9 @@ def tests(args):
             if time.monotonic() >= deadline:
                 raise RuntimeError("closed desktop retained its old service-child identity")
             time.sleep(0.05)
+        run(["/usr/bin/systemctl", "stop", "user@4001.service", "user-runtime-dir@4001.service"])
+        if Path("/run/user/4001").exists():
+            raise RuntimeError("closed user's runtime survived fixture retirement")
         actor = subprocess.Popen(["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)), "--pam-actor"],
                                  env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         opened = pam.reply(actor)

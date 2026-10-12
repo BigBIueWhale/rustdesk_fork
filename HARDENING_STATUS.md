@@ -2425,7 +2425,7 @@ exit0. Total stop is 40.570 seconds. A fresh supervisor/child/generation proves
 retained-password mutual CPace and obsolete-password refusal; real administrator
 Applied and fresh unauthenticated denial also pass.
 
-The current-source build passes in 255 Cargo/367 VM seconds within its 600-second
+The `ef3f51b7` build passes in 255 Cargo/367 VM seconds within its 600-second
 integration ceiling (8-GiB guest/6-GiB container/two jobs/no debug symbols/assertions
 retained). Its immutable seven-file capsule is reused for the 116-second installed
 fixture: 17 cases/15 CPace exchanges/four stale refusals, actual polkit/PAM/logind and

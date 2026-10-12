@@ -2113,19 +2113,19 @@ PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed recei
 82-package polkit/PAM/logind/Xvfb, shipped unit/0711 child; ten cases/89s.
 Root Applied; UID4001/4002 exit1≤20s preserve state/generation;
 Wrong-image denied both; restart new generation/durable unchanged.
-Docker/unit/cgroup/PAM/X11 joined; raw JiqWwudyuq; reused build263s.
+Docker/unit/cgroup/PAM/X11 joined; raw JiqWwudyuq; build263s.
 CPace8: UID4002/probe eb9dd801, changes/restart/refusal/race/admin recovery.
 Stale2 after change/restart: child/invocation/cursor tag mismatch.
 Two races: old PAKE confirms/no keyed stream; keyed old login gets decrypted generation error/EOF.
 Child/listener retained; durable changed. Errors drain before teardown.
 Admin PAM Applied; fresh no-agent denied; same child/listener.
 
-Sources/commands/hashes: `linux-wire-v2-accepted-e69129bc.json`,
+Evidence: `linux-wire-v2-accepted-e69129bc.json`,
 `linux-receiver-admin-accepted-c62dae20.json`,
 `/tmp/privilege_securiry_deep_audit.md`. Rust tests/builds: Rust1.75/zero-NIC/no-network,
 uid1000/read-only/caps-none/NNP; no host listener additions/joined cleanup.
 
-**Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
+**Still OPEN:** other credential races, admin failure/cancel/delay (exit fixture pending); installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,
 wait/SIGCHLD interop, abrupt-drop and lookup/transaction/descendant resources; whole-app/native

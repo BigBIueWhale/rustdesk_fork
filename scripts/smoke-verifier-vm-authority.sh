@@ -4440,7 +4440,7 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
-    for phase in root-applied root-reapplied root-reapplied-after-refusal restart restart-after-refusal race-before-keys-recovery race-before-login-recovery admin-applied; do
+    for phase in root-applied root-reapplied root-reapplied-after-refusal restart restart-after-refusal race-before-keys-recovery race-before-login-recovery requester-exit-recovery admin-applied; do
         require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver CPace credential use'
     done
     for phase in root-reapplied restart; do
@@ -4451,7 +4451,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     require_exact_fixed_receipt "LINUX_RECEIVER_RACE=pass phase=before-login uid=4002 server=supervised-child transcript=old-confirmed durable=changed listener=owned rejection=generation-login-error cleanup=joined probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver credential race before login authority'
     require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN=pass uid=4001 administrator_uid=4003 subject=pid-start-bound authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined' 'installed Linux receiver real administrator authentication'
     require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied durable=unchanged listener=owned' 'installed Linux receiver administrator authorization is not cached'
-    require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_NATIVE=pass cases=10 cpace=8 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 fresh_refusals=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux receiver behavior'
+    require_exact_fixed_receipt 'LINUX_RECEIVER_REQUESTER_EXIT=pass uid=4001 prompt=actual password=withheld helper=service-reaped agent=alive-before-cleanup durable=unchanged listener=owned cleanup=agent-client-joined' 'installed Linux receiver abandoned administrator authorization'
+    require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_NATIVE=pass cases=11 cpace=9 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 fresh_refusals=1 requester_exits=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux receiver behavior'
     require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_VM=pass harness=$FOCUSED_TEST_COMMIT manifest=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 source=readonly network=none docker=retired cleanup=joined" 'installed Linux receiver fixture finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed Linux receiver guest completion'
 elif [ "$MODE" = debian-polkit-tests ]; then
@@ -6166,7 +6167,7 @@ elif [ "$MODE" = debian-polkit-tests ]; then
     printf 'DEBIAN_POLKIT_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only receiver=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    printf 'LINUX_SERVICE_RECEIVER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=10 cpace=8 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 fresh_refusals=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+    printf 'LINUX_SERVICE_RECEIVER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=11 cpace=9 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 fresh_refusals=1 requester_exits=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
         "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
         "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"

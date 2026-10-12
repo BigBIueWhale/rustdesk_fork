@@ -255,7 +255,74 @@ def change(uid, value, admitted):
         raise RuntimeError("denied password operation did not report failure")
 
 
-def admin_change(value, record):
+def observe_admin_requester_exit(client, agent, terminal, start, record, before, listener):
+    expected = [b"/usr/bin/pkcheck", b"--action-id",
+                b"com.carriez.RustDesk.set-unattended-password", b"--process",
+                f"{client.pid},{start},4001".encode(), b"--allow-user-interaction", b""]
+    helpers = []
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdecimal():
+            continue
+        try:
+            fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+            if int(fields[1]) != record["supervisor"]:
+                continue
+            if (proc / "cmdline").read_bytes().split(b"\0") == expected:
+                helpers.append((proc, int(fields[19])))
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+    if len(helpers) != 1:
+        raise RuntimeError("pending administrator request has no unique service-owned pkcheck")
+    proc, helper_start = helpers[0]
+    status = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
+    if (status["Uid"].split() != ["0"] * 4
+            or not (proc / "exe").samefile("/usr/bin/pkcheck")):
+        raise RuntimeError("pending pkcheck has the wrong principal or image")
+    pidfd = os.pidfd_open(int(proc.name))
+    try:
+        fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+        if (int(fields[19]) != helper_start or fields[0] in (b"Z", b"X")
+                or select.select([pidfd], [], [], 0)[0]):
+            raise RuntimeError("pkcheck identity changed before requester exit")
+        began = time.monotonic()
+        client.kill()
+        client.communicate(timeout=5)
+        if client.returncode != -signal.SIGKILL:
+            raise RuntimeError("owned administrator requester was not killed and joined")
+        exited = reaped = False
+        while time.monotonic() - began < 5:
+            if agent.poll() is not None:
+                raise RuntimeError("authentication agent exited before helper retirement proof")
+            exited = bool(select.select([pidfd], [], [], 0.05)[0])
+            if exited:
+                try:
+                    fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                    reaped = int(fields[19]) != helper_start
+                except FileNotFoundError:
+                    reaped = True
+            if reaped:
+                break
+        unchanged = credential() == before
+        retained = direct_listener(record) == listener
+        agent_alive = agent.poll() is None
+        print("LINUX_RECEIVER_REQUESTER_EXIT_OBSERVED=" + json.dumps(
+            {**record, "listener_inode": listener, "requester_pid": client.pid,
+             "requester_start": start, "requester_exit": client.returncode,
+             "helper_pid": int(proc.name), "helper_start": helper_start,
+             "helper_exited": exited, "helper_reaped": reaped,
+             "elapsed_seconds": time.monotonic() - began, "agent_pid": agent.pid,
+             "agent_alive_before_cleanup": agent_alive, "administrator_password_sent": False,
+             "agent_terminal": terminal.decode(errors="replace"),
+             "durable_unchanged": unchanged, "listener_unchanged": retained}, sort_keys=True), flush=True)
+        if not exited or not reaped or not unchanged or not retained or not agent_alive:
+            raise RuntimeError("requester exit did not promptly retire pending authorization without mutation")
+    finally:
+        os.close(pidfd)
+
+
+def admin_change(value, record, phase="apply"):
+    if phase not in ("apply", "requester-exit"):
+        raise RuntimeError("unknown administrator fixture phase")
     listener = direct_listener(record)
     if listener is None:
         raise RuntimeError("administrator test has no serving listener")
@@ -345,9 +412,14 @@ def admin_change(value, record):
                         or b"rdreceiver4003" not in terminal):
                     raise RuntimeError("authentication challenge has the wrong action or administrator")
                 if not termios.tcgetattr(master)[3] & termios.ECHO:
+                    if phase == "requester-exit":
+                        observe_admin_requester_exit(client, agent, terminal, start,
+                                                    record, before, listener)
+                        break
                     os.write(master, (ADMIN_PASSWORD + "\n").encode())
                     password_sent = True
-        stdout, stderr = client.communicate(timeout=5)
+        if phase == "apply":
+            stdout, stderr = client.communicate(timeout=5)
     finally:
         try:
             if agent is not None:
@@ -376,6 +448,13 @@ def admin_change(value, record):
                     os.close(descriptor)
     changed = credential() != before
     retained = direct_listener(record) == listener
+    if phase == "requester-exit":
+        if password_sent or changed or not retained:
+            raise RuntimeError("abandoned administrator request changed serving authority")
+        print("LINUX_RECEIVER_REQUESTER_EXIT=pass uid=4001 prompt=actual password=withheld "
+              "helper=service-reaped agent=alive-before-cleanup durable=unchanged listener=owned "
+              "cleanup=agent-client-joined", flush=True)
+        return
     print("LINUX_RECEIVER_ADMIN_OBSERVED=" + json.dumps(
         {**record, "listener_inode": listener, "requester_pid": client.pid, "requester_start": start,
          "agent_pid": agent.pid, "requester_uid": 4001, "administrator_uid": 4003,
@@ -785,6 +864,8 @@ def tests(args):
         credential_race("Receiver-fixture-third-2026!", "Receiver-fixture-fourth-2026!",
                         "before-login", second, probe_spec["sha256"])
         keyed("Receiver-fixture-fourth-2026!", "race-before-login-recovery", second, probe_spec["sha256"])
+        admin_change("Receiver-abandoned-admin-2026!", second, "requester-exit")
+        keyed("Receiver-fixture-fourth-2026!", "requester-exit-recovery", second, probe_spec["sha256"])
         admin_change("Receiver-fixture-admin-2026!", second)
         keyed("Receiver-fixture-admin-2026!", "admin-applied", second, probe_spec["sha256"])
         before = credential()
@@ -816,7 +897,7 @@ def tests(args):
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=10 cpace=8 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 fresh_refusals=1 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=11 cpace=9 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 fresh_refusals=1 requester_exits=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 

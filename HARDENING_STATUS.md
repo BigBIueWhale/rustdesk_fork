@@ -2339,22 +2339,27 @@ binds structured barrier/failure/recovery/authentication observations, artifacts
 storage and freezes. Interleaved serial records remain raw and are not reconstructed.
 Four failed observer/query attempts remain unaccepted in retained diagnostics and the audit;
 three also had unexplained host UDP additions, with no ownership inference or host changes.
-This is one debug/headless installed-layout seatless-X11 schedule. Product, shipped unit and
-artifact are unchanged. Standard unit-stop remains OPEN: the shipped Type=simple/control-group/
-30-second stop budget does not establish the admitted 600-second drain. Other schedules,
+This is one debug/headless installed-layout seatless-X11 schedule at the named unchanged product,
+unit and artifact. It did not exercise standard unit-stop: that checkpoint's
+Type=simple/control-group/30-second stop budget did not establish the admitted 600-second drain. Other schedules,
 desktops, platform/whole-app/release/resource/reproduction/review acceptance remain OPEN.
 
-**Normal systemd stop: candidate correction; native acceptance OPEN.** The unit uses
+**Normal systemd stop: source correction; native acceptance OPEN.** Product `68496b64` uses
 Type=notify/NotifyAccess=main/KillMode=mixed with the existing 30-second kill backstop.
 The root supervisor reports IPC readiness, closes admission, extends the stop timeout
 while joining owned IPC, then retires its child. Notification failures remain errors.
 The installed fixture adds real systemctl stop with a 40-second ptrace-held child,
 pending durable mutation, release/finality/retirement and fresh-generation CPace/refusal.
 An explicit 8-GiB guest/6-GiB container/two-job source-bound build profile retains all
-storage admission/monitor ceilings. Its first compile completed but reached the hard
-overlay limit during cleanup; the outer success is unaccepted. The bounded profile now
-omits debug symbols, and guest block/filesystem errors refuse artifact publication.
-The corrected build's storage viability and installed stop outcome remain pending.
+storage admission/monitor ceilings. The first compile reached the hard overlay limit
+during cleanup; its outer success is unaccepted. Follow-up `607daa8d` omits debug symbols
+with debug assertions retained, and guest block/filesystem errors refuse publication.
+The corrected profile compiled in 257 Cargo seconds and shut down cleanly with no guest
+I/O error; RAM scratch peaked at 6,190,272,512 bytes, overlay at 6,031,544,320 bytes.
+Two attempts were refused for unknown new host UDP endpoints; only the owned VM was
+stopped, diagnostics retained and all RAM/run owners retired. No candidate was published
+or installed-service case executed. Exact native normal stop, notification failure,
+ordinary network drain, new-unit 600-second failure/recovery and other init systems remain OPEN.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

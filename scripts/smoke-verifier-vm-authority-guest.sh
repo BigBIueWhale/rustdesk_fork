@@ -2815,6 +2815,29 @@ run_focused_rust_tests() {
                 ipc::test::linux_admitted_replay_after_lost_response_uses_terminal_result
                 ipc::test::linux_password_commit_has_one_owner_and_one_recovery_claimant
                 ipc::test::linux_admitted_unresolved_replay_recovers_without_new_authorization
+                ipc::password::tests::request_wire_golden_values
+                ipc::password::tests::request_header_rejects_every_noncanonical_field
+                ipc::password::tests::credential_replica_headers_are_kind_bound_and_exact_length
+                ipc::password::tests::credential_snapshot_transport_is_operation_bound_and_half_closed
+                ipc::password::tests::credential_snapshot_rejects_the_wrong_operation
+                ipc::password::tests::request_rejects_invalid_utf8_missing_and_trailing_data
+                ipc::password::tests::inbound_password_keeps_one_fixed_allocation
+                ipc::password::tests::sensitive_password_retries_share_the_originating_allocation
+                ipc::password::tests::sensitive_password_constant_time_comparison_matches_equal_bytes_only
+                ipc::password::tests::explicit_erasure_overwrites_origin_and_inbound_storage
+                ipc::password::tests::status_wire_is_fixed_canonical_and_operation_bound
+                ipc::password::tests::acknowledgement_wire_is_fixed_canonical_and_operation_bound
+                ipc::password::tests::password_types_have_no_serde_or_generic_framing_surface
+                ipc::password::tests::windows_sensitive_facade_retains_raw_pipe_and_cancellation_invariants
+                ipc::password::tests::unix_request_parser_accepts_every_fragmentation_boundary
+                ipc::password::tests::unix_request_parser_rejects_eof_at_every_offset
+                ipc::password::tests::unix_request_parser_times_out_without_abandoning_partial_input
+                ipc::password::tests::unix_send_classifies_preflight_and_started_write_failures
+                ipc::password::tests::unix_mutation_never_sends_a_header_before_readiness
+                ipc::password::tests::unix_mutation_readiness_rejects_invalid_and_truncated_frames
+                ipc::password::tests::unix_mutation_readiness_handles_every_fragmentation_boundary
+                ipc::password::tests::unix_mutation_round_trip_preserves_empty_maximum_and_authorization
+                ipc::password::tests::unix_status_parser_handles_fragmentation_eof_and_timeout
             )
         elif [ "$RUST_TEST_PROFILE" = clipboard ]; then
             clipboard_tests=()
@@ -3409,8 +3432,11 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                                     --exact --color never --test-threads=1
                                 [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
                             done
+                            /usr/bin/timeout --signal=TERM --kill-after=5s 15s \
+                                "$clipboard_executable" ipc::password::tests:: --color never --test-threads=1
+                            [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
                             python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
-                            printf "LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=%s executable=%s tests=7 groups=4 unchanged=before-between-after\n" \
+                            printf "LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=%s executable=%s tests=30 groups=5 unchanged=before-between-after\n" \
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             exit 0
                         fi
@@ -3727,7 +3753,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     else
         expected_groups=17
         if [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
-            expected_groups=4
+            expected_groups=5
         elif [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
             expected_groups=4
         elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
@@ -3774,7 +3800,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 && [ "$(grep -Fxc 'INPUT_RELEASE_X11=pass server=owned network=none endpoint=absent cleanup=joined' "$output")" -eq 1 ] \
                 || fail 'native input-release observations differ'
         elif [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
-            [ "$(grep -Ec '^LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=7 groups=4 unchanged=before-between-after$' "$output")" -eq 1 ] \
+            [ "$(grep -Ec '^LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=30 groups=5 unchanged=before-between-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'LINUX_PASSWORD_ADMISSION_ARTIFACT=' "$output")" -eq 1 ] \
                 || fail 'Linux password admission artifact receipt differs'
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
@@ -3918,7 +3944,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         elif [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
             grep -E '^LINUX_PASSWORD_ADMISSION_ARTIFACT(_BEFORE)?=' "$output"
             grep -E '^test ipc::test::linux_(password|admitted).* \.\.\. ok$' "$output"
-            printf 'LINUX_PASSWORD_ADMISSION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-linux-password-coordinator installed=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^test ipc::password::tests::.* \.\.\. ok$' "$output"
+            printf 'LINUX_PASSWORD_ADMISSION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-linux-password-coordinator-and-raw-transport installed=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then

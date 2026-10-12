@@ -11,7 +11,11 @@ pub(crate) const MACOS_AUTHORIZATION_MAX_BYTES: usize = 1024;
 const REQUEST_MAGIC: [u8; 8] = *b"RDPWREQ\0";
 const STATUS_MAGIC: [u8; 8] = *b"RDPWSTS\0";
 const ACK_MAGIC: [u8; 8] = *b"RDPWACK\0";
-const PROTOCOL_VERSION: u8 = 1;
+const PROTOCOL_VERSION: u8 = 2;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const REQUEST_READY_MAGIC: [u8; 8] = *b"RDPWRDY\0";
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const REQUEST_READY_FRAME_BYTES: usize = 12;
 pub(crate) const REQUEST_HEADER_BYTES: usize = 36;
 pub(crate) const STATUS_FRAME_BYTES: usize = 32;
 pub(crate) const ACK_FRAME_BYTES: usize = 28;
@@ -489,6 +493,32 @@ pub(crate) enum UnixSensitivePasswordSendError {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
+fn request_readiness_frame() -> [u8; REQUEST_READY_FRAME_BYTES] {
+    let mut bytes = [0u8; REQUEST_READY_FRAME_BYTES];
+    bytes[..8].copy_from_slice(&REQUEST_READY_MAGIC);
+    bytes[8] = PROTOCOL_VERSION;
+    bytes
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn receive_request_readiness_unix<T>(
+    stream: &mut T,
+    deadline: hbb_common::tokio::time::Instant,
+) -> ResultType<()>
+where
+    T: hbb_common::tokio::io::AsyncRead + Unpin,
+{
+    use hbb_common::tokio::io::AsyncReadExt as _;
+
+    let mut bytes = SensitiveStackBytes::<REQUEST_READY_FRAME_BYTES>::zeroed();
+    with_deadline(deadline, stream.read_exact(&mut bytes.0)).await?;
+    if bytes.0 != request_readiness_frame() {
+        bail!("invalid sensitive password request readiness frame");
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) async fn send_request_unix<T>(
     stream: &mut T,
     operation_id: hbb_common::uuid::Uuid,
@@ -497,7 +527,7 @@ pub(crate) async fn send_request_unix<T>(
     deadline: hbb_common::tokio::time::Instant,
 ) -> std::result::Result<(), UnixSensitivePasswordSendError>
 where
-    T: hbb_common::tokio::io::AsyncWrite + Unpin,
+    T: hbb_common::tokio::io::AsyncRead + hbb_common::tokio::io::AsyncWrite + Unpin,
 {
     use hbb_common::tokio::io::AsyncWriteExt as _;
 
@@ -517,6 +547,9 @@ where
     .map_err(UnixSensitivePasswordSendError::NotSent)?
     .encode();
     remaining_millis(deadline).map_err(UnixSensitivePasswordSendError::NotSent)?;
+    receive_request_readiness_unix(stream, deadline)
+        .await
+        .map_err(UnixSensitivePasswordSendError::NotSent)?;
     with_deadline(deadline, stream.write_all(&header))
         .await
         .map_err(UnixSensitivePasswordSendError::Uncertain)?;
@@ -588,10 +621,17 @@ pub(crate) async fn receive_request_unix<T>(
     deadline: hbb_common::tokio::time::Instant,
 ) -> ResultType<InboundSensitiveRequest>
 where
-    T: hbb_common::tokio::io::AsyncRead + Unpin,
+    T: hbb_common::tokio::io::AsyncRead + hbb_common::tokio::io::AsyncWrite + Unpin,
 {
-    use hbb_common::tokio::io::AsyncReadExt as _;
+    use hbb_common::tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
+    if matches!(
+        expected_kind,
+        SensitivePayloadKind::Password | SensitivePayloadKind::PasswordWithAuthorization
+    ) {
+        let ready = request_readiness_frame();
+        with_deadline(deadline, stream.write_all(&ready)).await?;
+    }
     let mut header_bytes = SensitiveStackBytes::<REQUEST_HEADER_BYTES>::zeroed();
     with_deadline(deadline, stream.read_exact(&mut header_bytes.0)).await?;
     let header = SensitiveRequestHeader::decode(&header_bytes.0, expected_kind)?;
@@ -612,7 +652,7 @@ pub(crate) async fn receive_credential_snapshot_request_unix<T>(
     deadline: hbb_common::tokio::time::Instant,
 ) -> ResultType<hbb_common::uuid::Uuid>
 where
-    T: hbb_common::tokio::io::AsyncRead + Unpin,
+    T: hbb_common::tokio::io::AsyncRead + hbb_common::tokio::io::AsyncWrite + Unpin,
 {
     let request = receive_request_unix(
         stream,
@@ -630,7 +670,7 @@ pub(crate) async fn receive_credential_replica_unix<T>(
     deadline: hbb_common::tokio::time::Instant,
 ) -> ResultType<SensitivePassword>
 where
-    T: hbb_common::tokio::io::AsyncRead + Unpin,
+    T: hbb_common::tokio::io::AsyncRead + hbb_common::tokio::io::AsyncWrite + Unpin,
 {
     let request =
         receive_request_unix(stream, SensitivePayloadKind::CredentialReplica, deadline).await?;
@@ -728,7 +768,7 @@ mod tests {
         for value in cases {
             let bytes = encoded_request(value.as_bytes(), None);
             assert_eq!(&bytes[..8], b"RDPWREQ\0");
-            assert_eq!(bytes[8..12], [1, 0, 1, 0]);
+            assert_eq!(bytes[8..12], [2, 0, 1, 0]);
             assert_eq!(&bytes[12..28], UUID.as_bytes());
             assert_eq!(
                 u32::from_be_bytes(bytes[28..32].try_into().unwrap()) as usize,
@@ -780,7 +820,7 @@ mod tests {
                 SensitiveRequestHeader::decode(&bytes, SensitivePayloadKind::Password).is_err()
             );
         }
-        for (index, value) in [(8, 2), (9, 1), (10, 9), (11, 1)] {
+        for (index, value) in [(8, 3), (9, 1), (10, 9), (11, 1)] {
             let mut bytes = valid;
             bytes[index] = value;
             assert!(
@@ -1319,6 +1359,8 @@ mod tests {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[tokio::test(flavor = "current_thread")]
     async fn unix_send_classifies_preflight_and_started_write_failures() {
+        use tokio::io::AsyncWriteExt as _;
+
         let oversized = SensitivePassword::new("x".repeat(UNATTENDED_PASSWORD_MAX_BYTES + 1));
         let (mut sender, _receiver) = tokio::io::duplex(REQUEST_HEADER_BYTES * 2);
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
@@ -1328,12 +1370,158 @@ mod tests {
         ));
 
         let password = SensitivePassword::new("x".repeat(UNATTENDED_PASSWORD_MAX_BYTES));
-        let (mut sender, _receiver) = tokio::io::duplex(1);
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(1);
+        let (mut sender, mut receiver) = tokio::io::duplex(REQUEST_READY_FRAME_BYTES);
+        receiver.write_all(&request_readiness_frame()).await.unwrap();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(20);
         assert!(matches!(
             send_request_unix(&mut sender, UUID, &password, None, deadline).await,
             Err(UnixSensitivePasswordSendError::Uncertain(_))
         ));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn unix_mutation_never_sends_a_header_before_readiness() {
+        use tokio::io::AsyncReadExt as _;
+
+        for value in [String::new(), "x".repeat(UNATTENDED_PASSWORD_MAX_BYTES)] {
+            let (mut sender, mut receiver) = tokio::net::UnixStream::pair().unwrap();
+            let peer = tokio::spawn(async move {
+                let mut byte = [0u8; 1];
+                assert!(tokio::time::timeout(
+                    std::time::Duration::from_millis(5),
+                    receiver.read(&mut byte),
+                )
+                .await
+                .is_err());
+            });
+            let password = SensitivePassword::new(value);
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+            assert!(matches!(
+                send_request_unix(&mut sender, UUID, &password, None, deadline).await,
+                Err(UnixSensitivePasswordSendError::NotSent(_))
+            ));
+            peer.await.unwrap();
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn unix_mutation_readiness_rejects_invalid_and_truncated_frames() {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let valid = *b"RDPWRDY\0\x02\0\0\0";
+        let mut frames = Vec::new();
+        for index in 0..valid.len() {
+            let mut frame = valid;
+            frame[index] ^= 1;
+            frames.push(frame.to_vec());
+        }
+        for cutoff in 0..valid.len() {
+            frames.push(valid[..cutoff].to_vec());
+        }
+        for frame in frames {
+            let (mut sender, mut receiver) = tokio::net::UnixStream::pair().unwrap();
+            let peer = tokio::spawn(async move {
+                receiver.write_all(&frame).await.unwrap();
+                receiver.shutdown().await.unwrap();
+                let mut byte = [0u8; 1];
+                assert_eq!(receiver.read(&mut byte).await.unwrap(), 0);
+            });
+            let password = SensitivePassword::new("must-not-be-sent".to_owned());
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+            assert!(matches!(
+                send_request_unix(&mut sender, UUID, &password, None, deadline).await,
+                Err(UnixSensitivePasswordSendError::NotSent(_))
+            ));
+            drop(sender);
+            peer.await.unwrap();
+        }
+        let (mut sender, mut receiver) = tokio::net::UnixStream::pair().unwrap();
+        let password = SensitivePassword::new(String::new());
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(1);
+        assert!(matches!(
+            send_request_unix(&mut sender, UUID, &password, None, deadline).await,
+            Err(UnixSensitivePasswordSendError::NotSent(_))
+        ));
+        drop(sender);
+        let mut byte = [0u8; 1];
+        assert_eq!(receiver.read(&mut byte).await.unwrap(), 0);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn unix_mutation_readiness_handles_every_fragmentation_boundary() {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let ready = *b"RDPWRDY\0\x02\0\0\0";
+        for chunk_size in 1..=ready.len() {
+            let (mut sender, mut receiver) = tokio::net::UnixStream::pair().unwrap();
+            let peer = tokio::spawn(async move {
+                for chunk in ready.chunks(chunk_size) {
+                    receiver.write_all(chunk).await.unwrap();
+                }
+                let mut wire = Vec::new();
+                receiver.read_to_end(&mut wire).await.unwrap();
+                assert_eq!(wire, encoded_request(b"secret", None));
+            });
+            let password = SensitivePassword::new("secret".to_owned());
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+            send_request_unix(&mut sender, UUID, &password, None, deadline)
+                .await
+                .unwrap();
+            peer.await.unwrap();
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn unix_mutation_round_trip_preserves_empty_maximum_and_authorization() {
+        for (value, authorization) in [
+            (String::new(), None),
+            ("x".repeat(UNATTENDED_PASSWORD_MAX_BYTES), None),
+            (
+                "secret".to_owned(),
+                Some(SensitiveAuthorization::new(vec![0xa5; MACOS_AUTHORIZATION_MAX_BYTES]).unwrap()),
+            ),
+        ] {
+            let (mut sender, mut receiver) = tokio::net::UnixStream::pair().unwrap();
+            let expected_kind = if authorization.is_some() {
+                SensitivePayloadKind::PasswordWithAuthorization
+            } else {
+                SensitivePayloadKind::Password
+            };
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+            let peer = tokio::spawn(async move {
+                let request = receive_request_unix(&mut receiver, expected_kind, deadline)
+                    .await
+                    .unwrap();
+                assert_eq!(request.operation_id(), UUID);
+                if expected_kind == SensitivePayloadKind::PasswordWithAuthorization {
+                    assert_eq!(request.authorization(), vec![0xa5; MACOS_AUTHORIZATION_MAX_BYTES]);
+                } else {
+                    assert!(request.authorization().is_empty());
+                }
+                send_status_unix(
+                    &mut receiver,
+                    UUID,
+                    PasswordMutationStatus::Complete(IpcMutationResult::Applied),
+                    deadline,
+                )
+                .await
+                .unwrap();
+                request.into_password().unwrap()
+            });
+            let password = SensitivePassword::new(value);
+            send_request_unix(&mut sender, UUID, &password, authorization.as_ref(), deadline)
+                .await
+                .unwrap();
+            assert_eq!(
+                receive_status_unix(&mut sender, UUID, deadline).await.unwrap(),
+                PasswordMutationStatus::Complete(IpcMutationResult::Applied)
+            );
+            assert_eq!(peer.await.unwrap().as_str(), password.as_str());
+        }
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]

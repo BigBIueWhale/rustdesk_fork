@@ -2014,7 +2014,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `434c0eaaae139429ce769e01d419b699c4c7b435181e7c21b5ff63d5be1108f9  requirements.html`.
+Current normative specification SHA-256: `e55e3e21aec7af920735004f42477bae6646bd628db6aec86a9ad9a5e8b5990b  requirements.html`.
 
 ### Current authority and source closure
 
@@ -2094,9 +2094,8 @@ four policy cases plus guard, outer0/38s; artifact
 `b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
 Raw receipt: audit; providers/refusals: R-S11fi.
 
-**Old capture diagnostic:** 8167a5e0/cpLHhRm0Wo, 3 failed/1 passed;
-10s cancellation/deadline, 2,097,333B vs 1 MiB, reaped; no leak/bypass proof.
-Unknown127.0.0.1:9333 refused/untouched. Raw identity/hash: audit.
+**Old capture diagnostic:** 3 failed/1 passed; 10s timeout, 2,097,333B vs 1 MiB, reaped.
+Unknown127.0.0.1:9333 refused/untouched; no leak/bypass proof. Identities: audit.
 **Capture:** source 3eabd727,
 `--hbb-common-fs`, 116 cases/five groups; eight capture cases 2.03s, original four unchanged;
 artifact `d6f419bbf26d9411e305ddfd18300bd662db2e69497177438f926ef498e17573`.
@@ -2120,11 +2119,12 @@ e11cd41d/5WpwxPMq5i summary/listener artifacts retained; failure/source/raw hash
 Rust runs: fixed artifacts/Rust1.75/zero-NIC/no-network/uid1000/read-only/caps-none/NNP,
 no listener additions; joined cleanup.
 
-**Installed fixture:** `--linux-service-receiver-tests` reuses d2f309ef's exact headless
-binary. Actual polkit, PAM/logind/Xvfb, shipped unit and mode-0711 child drive eight
-principal/commit/restart cases. Fork XDO builds in a pinned ordinary container.
-7df7b607: root Applied/selected UID denied; unrelated CLI reset recovery >20s.
+**Installed fixture:** `--linux-service-receiver-tests`: exact headless binary,
+actual polkit/PAM/logind/Xvfb, shipped unit/mode-0711 child; eight cases, ordinary XDO build.
+7df7b607/d2f309ef binary: root Applied/selected UID denied; unrelated reset recovery >20s.
 Raw 3uOQDd8XTZ: audit; receiver/release acceptance OPEN.
+**Wire v2:** `src/ipc/password.rs`: Unix mutation waits for 12B pre-header readiness;
+early refusal=NotSent, started transmission=uncertain. Unit/native/build PENDING.
 
 **Still OPEN:** installed Linux both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

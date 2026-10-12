@@ -3308,6 +3308,66 @@ maintenance_discover_devcheck_image() {
     printf 'discovery_image_id=%s\n' "$image_id"
 }
 
+maintenance_stage_ledger_tokenizer() {
+    require_devcheck_image_pins
+    require_image_pin LEDGER_TOKENIZER_WHEEL_URL
+    require_image_pin SHA256_LEDGER_TOKENIZER_WHEEL
+    require_image_pin LEDGER_TOKENIZER_RANKS_URL
+    require_image_pin SHA256_LEDGER_TOKENIZER_RANKS
+    local output="$ONLINE_FETCH_TMP/ledger-tokenizer-output"
+    local parent="$ONLINE_CANDIDATE_ROOT/ledger-tokenizer"
+    local part="$parent/.ledger-tokenizer-inputs.tar.gz.part"
+    local candidate="$parent/ledger-tokenizer-inputs.tar.gz"
+    local archive_size archive_sha
+    for directory in "$ONLINE_CANDIDATE_ROOT" "$parent"; do
+        if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
+            /usr/bin/install -d -m 0700 -- "$directory"
+        fi
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' "$directory")" \
+                = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "ledger tokenizer directory authority differs: $directory"
+    done
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        && [ ! -e "$part" ] && [ ! -L "$part" ] \
+        || die 'ledger tokenizer candidate or staging already exists'
+    /usr/bin/install -d -m 0700 -- "$output"
+    verify_or_load_devcheck_image
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$SCRIPT_DIR/stage-ledger-tokenizer.sh,target=/stage-ledger-tokenizer.sh,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$output,target=/outputs,bind-recursive=disabled" \
+        --env "TOKENIZER_UID=$ONLINE_FETCH_UID" \
+        --env "TOKENIZER_GID=$ONLINE_FETCH_GID" \
+        --env "TOKENIZER_WHEEL_URL=$LEDGER_TOKENIZER_WHEEL_URL" \
+        --env "TOKENIZER_WHEEL_SHA256=$SHA256_LEDGER_TOKENIZER_WHEEL" \
+        --env "TOKENIZER_RANKS_URL=$LEDGER_TOKENIZER_RANKS_URL" \
+        --env "TOKENIZER_RANKS_SHA256=$SHA256_LEDGER_TOKENIZER_RANKS" \
+        "$DEV_CHECK_IMAGE_ID" \
+        /bin/bash --noprofile --norc /stage-ledger-tokenizer.sh /outputs \
+        || die 'ledger tokenizer candidate acquisition failed'
+    [ "$(/usr/bin/find "$output" -mindepth 1 -maxdepth 1 -printf x)" = xx ] \
+        && [ -z "$(/usr/bin/find "$output" -mindepth 1 ! -type f -print -quit)" ] \
+        || die 'ledger tokenizer output inventory differs'
+    (
+        cd "$output"
+        /usr/bin/tar --sort=name --format=gnu \
+            --mtime="@$DEV_CHECK_SOURCE_DATE_EPOCH" \
+            --owner=0 --group=0 --numeric-owner \
+            -cf - tiktoken-0.12.0-cp311-cp311-manylinux_2_28_x86_64.whl cl100k_base.tiktoken
+    ) | /usr/bin/gzip -n >"$part" \
+        || die 'ledger tokenizer candidate archive creation failed'
+    archive_size="$(/usr/bin/stat -c '%s' "$part")"
+    [ "$archive_size" -gt 0 ] && [ "$archive_size" -le 8388608 ] \
+        || die 'ledger tokenizer archive exceeds its bound'
+    archive_sha="$(/usr/bin/sha256sum "$part" | /usr/bin/cut -d' ' -f1)"
+    /usr/bin/chmod 0400 -- "$part"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$part" --destination "$candidate" \
+        || die 'ledger tokenizer candidate publication failed'
+    printf 'LEDGER_TOKENIZER_CANDIDATE=staged files=2 bytes=%s sha256=%s execution=absent path=%s\n' \
+        "$archive_size" "$archive_sha" "$candidate"
+}
+
 maintenance_stage_polkit_runtime_candidate() {
     require_devcheck_image_pins
     require_image_pin POLKIT_RUNTIME_VERSION
@@ -8440,6 +8500,11 @@ main() {
         --maintenance-stage-polkit-runtime-candidate)
             [ "$#" -eq 1 ] || die "--maintenance-stage-polkit-runtime-candidate takes no arguments"
             maintenance_stage_polkit_runtime_candidate
+            return 0
+            ;;
+        --maintenance-stage-ledger-tokenizer)
+            [ "$#" -eq 1 ] || die "--maintenance-stage-ledger-tokenizer takes no arguments"
+            maintenance_stage_ledger_tokenizer
             return 0
             ;;
         --maintenance-discover-osv-pub-database)

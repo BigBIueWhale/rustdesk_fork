@@ -299,7 +299,7 @@ case "$REQUEST" in
     --maintenance-build-win-helper-certified-candidate|\
     --maintenance-promote-win-helper-certified-candidate|\
     --maintenance-discover-devcheck-image|--maintenance-stage-pa-runtime-candidate|\
-    --maintenance-stage-polkit-runtime-candidate|\
+    --maintenance-stage-polkit-runtime-candidate|--maintenance-stage-ledger-tokenizer|\
     --maintenance-build-devcheck-image-candidate|\
     --maintenance-promote-devcheck-image-candidate|\
     --maintenance-build-apple-check-image-candidate|\

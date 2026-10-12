@@ -11,11 +11,15 @@ The approximate 400,000-token ledger budget remains **OPEN**. Actual token count
 and compliance are unverified. A reproducible count must record the tokenizer
 version, encoding-data identity, exact input SHA-256, and text/special-token
 handling. Byte and word counts do not establish token-budget compliance.
+The selected method is fixed `tiktoken 0.12.0` / `cl100k_base` ordinary-text encoding
+of the complete strict UTF-8 file, preserving line endings and treating special-token
+spellings literally. Its publisher-pinned wheel/rank acquisition and isolated count
+are pending; this selection supplies no count or compliance evidence.
 
 Current normative specification identity:
 
 ```text
-ff51cecc78492ecc39d91c20500b746155107e19cb5bb011a921dc811e7dd124  requirements.html
+e55e3e21aec7af920735004f42477bae6646bd628db6aec86a9ad9a5e8b5990b  requirements.html
 ```
 
 ## Current Verdict

@@ -49,7 +49,7 @@ case "$#:${1:-}" in
     1:--maintenance-build-win-helper-certified-candidate|\
     1:--maintenance-promote-win-helper-certified-candidate|\
     1:--maintenance-discover-devcheck-image|1:--maintenance-stage-pa-runtime-candidate|\
-    1:--maintenance-stage-polkit-runtime-candidate|\
+    1:--maintenance-stage-polkit-runtime-candidate|1:--maintenance-stage-ledger-tokenizer|\
     1:--maintenance-build-devcheck-image-candidate|\
     1:--maintenance-promote-devcheck-image-candidate|\
     1:--maintenance-build-apple-check-image-candidate|\
@@ -113,7 +113,8 @@ elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=4096
-elif [ "$REQUEST" = --maintenance-stage-polkit-runtime-candidate ]; then
+elif [ "$REQUEST" = --maintenance-stage-polkit-runtime-candidate ] \
+     || [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=4096
@@ -651,6 +652,11 @@ if [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ]; then
     [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
         || fail 'engine source/package graph already exists; review or explicitly reconcile it before another acquisition'
 fi
+if [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ]; then
+    candidate="$REPO_ROOT/online/candidates/ledger-tokenizer"
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || fail 'ledger tokenizer candidate is occupied; inspect it before another acquisition'
+fi
 if [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ] \
    || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-sysroots ]; then
     candidate="$REPO_ROOT/online/candidates/flutter-linux-engine-${REQUEST##*engine-}"
@@ -833,6 +839,7 @@ if [ "$MODE" != authority-smoke ]; then
        || [ "$REQUEST" = --maintenance-acquire-verifier-media-kernel ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ] \
+       || [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-sysroots ] \
        || [ -e "$cache_child" ] || [ -L "$cache_child" ]; then

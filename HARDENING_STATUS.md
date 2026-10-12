@@ -14,7 +14,15 @@ handling. Byte and word counts do not establish token-budget compliance.
 The selected method is fixed `tiktoken 0.12.0` / `cl100k_base` ordinary-text encoding
 of the complete strict UTF-8 file, preserving line endings and treating special-token
 spellings literally. Its publisher-pinned wheel/rank acquisition and isolated count
-are pending; this selection supplies no count or compliance evidence.
+use the reproducible command
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count`.
+The two-file acquisition passed on source `6b6328bd` in 41 seconds, with publisher
+SHA-256 verification, no host listener addition and joined cleanup. Archive identity
+is pinned in `scripts/pins.env`; acquisition receipt is
+`.harness-state/verifier-vm/online-fetch-receipts/run.ydTt91eQHk.receipt`.
+Actual counting is still pending. The recipe checks literal-special controls and a
+whole-input byte round trip; its result binds input, recipe, wheel, rank and native
+extension digests. It executes only as UID/GID 4000 in the authenticated zero-NIC VM.
 
 Current normative specification identity:
 

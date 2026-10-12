@@ -32,6 +32,12 @@ case "$#:${8:-}" in
     8:--debian-polkit-tests)
         MODE=debian-polkit-tests
         ;;
+    10:--ledger-token-count)
+        MODE=ledger-token-count
+        [[ "${9}" =~ ^[0-9a-f]{64}$ ]] && [[ "${10}" =~ ^[0-9a-f]{64}$ ]] || exit 2
+        LEDGER_INPUT_SHA256=${9}
+        LEDGER_RECIPE_SHA256=${10}
+        ;;
     12:--linux-service-receiver-tests)
         MODE=linux-service-receiver-tests
         [[ "${9}" =~ ^[0-9a-f]{40}$ ]] && [[ "${10}" =~ ^[0-9a-f]{40}$ ]] \
@@ -731,6 +737,51 @@ run_linux_service_receiver_tests() {
         || fail 'native Linux receiver fixture source changed'
     printf 'LINUX_SERVICE_RECEIVER_VM=pass harness=%s manifest=%s source=readonly network=none docker=retired cleanup=joined\n' \
         "$LINUX_RECEIVER_HARNESS_COMMIT" "$LINUX_RECEIVER_MANIFEST_SHA256"
+}
+
+run_ledger_token_count() {
+    local work work_id source_before status=0
+    local helper=$VERIFY_REPO/scripts/count-ledger-tokens.py
+    local input=$VERIFY_REPO/HARDENING_STATUS.md
+    local archive=/mnt/rustdesk-verifier-inputs/ledger-tokenizer-inputs.tar.gz
+    local output=$ROOT/ledger-token-count.out
+    source_before="$(sha256sum "$helper" "$input" "$archive" "$VERIFY_REPO/scripts/pins.env")"
+    [ "$(sha256sum "$helper" | awk '{print $1}')" = "$LEDGER_RECIPE_SHA256" ] \
+        && [ "$(sha256sum "$input" | awk '{print $1}')" = "$LEDGER_INPUT_SHA256" ] \
+        || fail 'ledger token-count admitted source differs'
+    setpriv --reuid=4000 --regid=4000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    work="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/mktemp -d /tmp/ledger-token-count.XXXXXXXXXX)" \
+        || fail 'cannot create ledger token-count scratch'
+    [ "$(stat -c '%u:%g:%a' "$work")" = 4000:4000:700 ] \
+        || fail 'ledger token-count scratch authority differs'
+    work_id="$(stat -c '%d:%i' "$work")"
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+        /usr/bin/prlimit --as=1073741824 --cpu=60 --nofile=64 \
+        /usr/bin/python3 -B -I -S "$helper" \
+        --input "$input" --input-sha256 "$LEDGER_INPUT_SHA256" \
+        --archive "$archive" --archive-sha256 "$SHA256_LEDGER_TOKENIZER_ARCHIVE" \
+        --wheel-sha256 "$SHA256_LEDGER_TOKENIZER_WHEEL" \
+        --ranks-sha256 "$SHA256_LEDGER_TOKENIZER_RANKS" >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' "$output")" -le 65536 ] || fail 'ledger token-count diagnostics exceed their bound'
+    [ "$status" -eq 0 ] || { cat "$output" >&2; fail "ledger token count failed with status $status"; }
+    [ "$(wc -l <"$output")" -eq 1 ] && [ "$(grep -c '^LEDGER_TOKEN_COUNT={' "$output")" -eq 1 ] \
+        || fail 'actual ledger token count is absent or unexpected'
+    [ "$(sha256sum "$helper" "$input" "$archive" "$VERIFY_REPO/scripts/pins.env")" = "$source_before" ] \
+        || fail 'ledger token-count source or inputs changed'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'ledger token count left a container or image'
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/verify-private-tree-closure.py" \
+        --remove-empty-private-root "$work" --expected-identity "$work_id" \
+        || fail 'ledger token-count scratch did not retire'
+    stop_docker_authority
+    cat "$output"
+    printf 'LEDGER_TOKEN_COUNT_VM=pass uid=4000 gid=4000 caps=none nnp=yes input_sha256=%s recipe_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
+        "$LEDGER_INPUT_SHA256" "$LEDGER_RECIPE_SHA256"
 }
 
 run_debian_polkit_tests() {
@@ -8009,6 +8060,10 @@ if [ "$MODE" = android-rust-target-check ]; then
     exit 0
 fi
 
+if [ "$MODE" = ledger-token-count ]; then
+    run_ledger_token_count
+    exit 0
+fi
 if [ "$MODE" = debian-polkit-tests ]; then
     run_debian_polkit_tests
     exit 0

@@ -155,6 +155,11 @@ case "$#:${1:-}" in
             || { echo 'Debian polkit-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=debian-polkit-tests
         ;;
+    1:--ledger-token-count)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'ledger token-count input/run overrides are forbidden' >&2; exit 2; }
+        MODE=ledger-token-count
+        ;;
     5:--linux-service-receiver-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
@@ -543,6 +548,8 @@ readonly DART_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-dart-verifier-authority.py"
 readonly DART_AUDIT_CHECKER="$SCRIPT_DIR/verify-dart-audit-authority.py"
 readonly REQUIREMENTS_SOURCE="$REPO_ROOT/requirements.html"
 readonly HARDENING_SOURCE="$REPO_ROOT/HARDENING_STATUS.md"
+readonly LEDGER_TOKEN_COUNT_SOURCE="$SCRIPT_DIR/count-ledger-tokens.py"
+readonly LEDGER_TOKENIZER_ARCHIVE="$REPO_ROOT/online/candidates/ledger-tokenizer/ledger-tokenizer-inputs.tar.gz"
 readonly BOOT_DERIVER="$SCRIPT_DIR/derive-verifier-vm-boot-assets.sh"
 readonly CAPTURE_HELPER="$SCRIPT_DIR/bounded-unix-stream-capture.py"
 readonly CLEANUP_HELPER="$SCRIPT_DIR/verify-private-tree-closure.py"
@@ -612,7 +619,7 @@ elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
-elif [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ]; then
+elif [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = ledger-token-count ]; then
     readonly VM_TIMEOUT_SECONDS=150
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
@@ -1981,7 +1988,7 @@ frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-   || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+   || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = ledger-token-count ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
         && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime ]]; }; then
@@ -1999,6 +2006,21 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$M
     fi
 fi
 debian_polkit_sources_before=
+ledger_token_inputs_before=
+if [ "$MODE" = ledger-token-count ]; then
+    for source in "$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE"; do
+        [ -f "$source" ] && [ ! -L "$source" ] || fail 'ledger token-count source is absent or ambiguous'
+        verify_committed_test_source "$source"
+    done
+    [ -f "$LEDGER_TOKENIZER_ARCHIVE" ] && [ ! -L "$LEDGER_TOKENIZER_ARCHIVE" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' "$LEDGER_TOKENIZER_ARCHIVE")" = \
+            "$HOST_UID:$HOST_GID:400:1:$LEDGER_TOKENIZER_ARCHIVE_SIZE" ] \
+        || fail 'ledger tokenizer candidate authority differs'
+    verify_sha256 "$LEDGER_TOKENIZER_ARCHIVE" "$SHA256_LEDGER_TOKENIZER_ARCHIVE"
+    ledger_token_inputs_before="$(/usr/bin/sha256sum "$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE" "$LEDGER_TOKENIZER_ARCHIVE")"
+    ledger_input_sha=$(/usr/bin/sha256sum "$HARDENING_SOURCE" | /usr/bin/awk '{print $1}')
+    ledger_recipe_sha=$(/usr/bin/sha256sum "$LEDGER_TOKEN_COUNT_SOURCE" | /usr/bin/awk '{print $1}')
+fi
 if [ "$MODE" = debian-polkit-tests ]; then
     for source in "$DEBIAN_CONTROL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE"; do
         [ -f "$source" ] && [ ! -L "$source" ] || fail 'Debian polkit-test source is absent or ambiguous'
@@ -2703,7 +2725,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
     if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-       || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+       || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = ledger-token-count ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
     fi
@@ -3623,6 +3645,12 @@ elif [ "$MODE" = android-owner-tests ]; then
 elif [ "$MODE" = debian-polkit-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("repo/build.py=$DEBIAN_CONTROL_SOURCE")
+elif [ "$MODE" = ledger-token-count ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=(
+        "ledger-tokenizer-inputs.tar.gz=$LEDGER_TOKENIZER_ARCHIVE"
+        "repo/scripts/count-ledger-tokens.py=$LEDGER_TOKEN_COUNT_SOURCE"
+    )
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     payload_identity=(-uid 1000 -gid 1000)
     lifecycle_payload_grafts=(
@@ -3922,6 +3950,8 @@ elif [ "$MODE" = fixed-archive-tests ]; then
     guest_invocation+=' --fixed-archive-tests'
 elif [ "$MODE" = debian-polkit-tests ]; then
     guest_invocation+=' --debian-polkit-tests'
+elif [ "$MODE" = ledger-token-count ]; then
+    guest_invocation+=" --ledger-token-count $ledger_input_sha $ledger_recipe_sha"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     guest_invocation+=" --linux-service-receiver-tests $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256 $FOCUSED_TEST_COMMIT"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
@@ -4482,6 +4512,38 @@ elif [ "$MODE" = debian-polkit-tests ]; then
     require_exact_fixed_receipt "$debian_polkit_vm_receipt" 'Debian authorization dependency execution and finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Debian authorization dependency guest completion'
     printf '%s\n' "$debian_polkit_receipt" "$debian_polkit_vm_receipt"
+elif [ "$MODE" = ledger-token-count ]; then
+    ledger_vm_receipt="LEDGER_TOKEN_COUNT_VM=pass uid=4000 gid=4000 caps=none nnp=yes input_sha256=$ledger_input_sha recipe_sha256=$ledger_recipe_sha source=readonly network=none docker=retired scratch=retired cleanup=joined"
+    require_exact_fixed_receipt "$ledger_vm_receipt" 'actual ledger token count execution and finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'ledger token-count guest completion'
+    /usr/bin/python3 -B -I -S - "$SERIAL_LOG" "$ledger_input_sha" "$ledger_recipe_sha" \
+        "$SHA256_LEDGER_TOKENIZER_ARCHIVE" "$SHA256_LEDGER_TOKENIZER_WHEEL" \
+        "$SHA256_LEDGER_TOKENIZER_RANKS" "$(/usr/bin/stat -c '%s' "$HARDENING_SOURCE")" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+raw = Path(sys.argv[1]).read_bytes()
+records = re.findall(rb'LEDGER_TOKEN_COUNT=(\{[^\r\n]*\})\r?(?:\n|$)', raw)
+if len(records) != 1 or raw.count(b'LEDGER_TOKEN_COUNT=') != 1:
+    raise SystemExit("Actual ledger count is missing or duplicated")
+result = json.loads(records[0])
+expected = dict(zip(("input_sha256", "recipe_sha256", "archive_sha256",
+                     "wheel_sha256", "ranks_sha256"), sys.argv[2:7]))
+expected.update(method="tiktoken-0.12.0/cl100k_base/encode_ordinary",
+                text_handling="whole-file-strict-UTF8-no-normalization-literal-specials",
+                input_bytes=int(sys.argv[7]), round_trip=True, known_controls=7)
+if any(result.get(key) != value for key, value in expected.items()):
+    raise SystemExit("Actual ledger count context differs")
+if type(result.get("tokens")) is not int or not 0 < result["tokens"] <= result["input_bytes"]:
+    raise SystemExit("Actual ledger token count is invalid")
+if not re.fullmatch(r"3\.11\.[0-9]+", result.get("python", "")):
+    raise SystemExit("Tokenizer Python runtime differs")
+if not re.fullmatch(r"[0-9a-f]{64}", result.get("native_sha256", "")):
+    raise SystemExit("Executed tokenizer identity is absent")
+print("LEDGER_TOKEN_COUNT=" + json.dumps(result, sort_keys=True, separators=(",", ":")))
+PY
+    printf '%s\n' "$ledger_vm_receipt"
 elif [ "$MODE" = fixed-archive-tests ]; then
     fixed_archive_vm_receipt="FIXED_ARCHIVE_TESTS_VM=pass uid=4000 gid=4000 helper_sha256=$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" | /usr/bin/awk '{print $1}') checker_sha256=$(/usr/bin/sha256sum "$FIXED_ARCHIVE_CHECKER" | /usr/bin/awk '{print $1}') source=readonly responses=injected filesystem=actual network=none docker=retired scratch=retired cleanup=joined"
     require_exact_fixed_receipt 'fixed archive transaction self-test: PASS' 'adversarial archive transaction result'
@@ -6103,6 +6165,13 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
 fi
 [ "$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" "$LINUX_FLUTTER_ARTIFACT_TEST")" = "$linux_flutter_sources_before" ] \
     || fail 'Linux app-capsule source changed during execution'
+if [ "$MODE" = ledger-token-count ]; then
+    [ "$(/usr/bin/sha256sum "$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE" "$LEDGER_TOKENIZER_ARCHIVE")" = "$ledger_token_inputs_before" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'ledger token-count source or inputs changed during execution'
+fi
 if [ "$MODE" = debian-polkit-tests ]; then
     [ "$(/usr/bin/sha256sum "$DEBIAN_CONTROL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE")" = "$debian_polkit_sources_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
@@ -6186,6 +6255,9 @@ elif [ "$MODE" = fixed-archive-tests ]; then
 elif [ "$MODE" = debian-polkit-tests ]; then
     printf 'DEBIAN_POLKIT_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only receiver=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = ledger-token-count ]; then
+    printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     printf 'LINUX_SERVICE_RECEIVER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=13 cpace=11 stale_refusals=2 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 session_revocations=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \

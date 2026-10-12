@@ -98,6 +98,8 @@ def close_inherited_descriptors():
 
 def main():
     require(os.geteuid() != 0 and os.getegid() != 0, 'host root is forbidden')
+    require(os.getresuid() == (os.geteuid(),) * 3 and os.getresgid() == (os.getegid(),) * 3,
+            'verifier entry has a different real or saved principal')
     root = Path(__file__).resolve().parent
     entry = root / 'smoke-verifier-vm-authority.sh'
     descriptor = os.open(entry, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
@@ -128,7 +130,9 @@ def main():
     print('VERIFIER_VM_HOST_NETWORK=pass ip_sockets=denied unix=allowed netlink=route-and-socket-diag '
           'io_uring=denied foreign_process_access=denied inheritance=fork-exec '
           'entry=sealed-ram body_sha256=' + hashlib.sha256(body).hexdigest(), flush=True)
-    os.execv('/bin/bash', ['/bin/bash', '--noprofile', '--norc', '-s', '--', str(root), *sys.argv[1:]])
+    # Privileged shell mode keeps BASH_ENV and inherited functions/options out;
+    # the principal stays the same already-proved ordinary user.
+    os.execv('/bin/bash', ['/bin/bash', '--noprofile', '--norc', '-p', '-s', '--', str(root), *sys.argv[1:]])
 
 
 if __name__ == '__main__':

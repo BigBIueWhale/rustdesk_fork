@@ -16,6 +16,7 @@ import tempfile
 
 
 SOURCE = Path(__file__).with_name('vm-host-network.py')
+OBSERVER = SOURCE.with_name('smoke-verifier-vm-authority.sh')
 spec = importlib.util.spec_from_file_location('vm_host_network', SOURCE)
 policy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(policy)
@@ -36,10 +37,11 @@ def restriction_cases():
     status = Path('/proc/self/status').read_text()
     assert 'NoNewPrivs:\t1\n' in status and 'Seccomp:\t2\n' in status
     for family in range(49):
-        if family in (socket.AF_UNIX, socket.AF_NETLINK):
+        if family not in (socket.AF_UNIX, socket.AF_NETLINK):
+            for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM, socket.SOCK_RAW):
+                denied(41, family, kind, 0)
+        if family == socket.AF_UNIX:
             continue
-        for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM, socket.SOCK_RAW):
-            denied(41, family, kind, 0)
         pair = (ctypes.c_int * 2)()
         denied(53, family, socket.SOCK_STREAM, 0, ctypes.byref(pair))
     for protocol in range(33):
@@ -94,6 +96,14 @@ def main():
     assert os.geteuid() != 0 and os.getegid() != 0
     assert 'Seccomp:\t0\n' in Path('/proc/self/status').read_text()
     before = hashlib.sha256(SOURCE.read_bytes()).hexdigest()
+    observer = OBSERVER.read_bytes()
+    observation_functions = b''
+    for name in (b'capture_listeners', b'report_listener_delta'):
+        opening = b'\n' + name + b'() {\n'
+        assert observer.count(opening) == 1, name
+        body = observer.split(opening, 1)[1].split(b'\n}\n', 1)
+        assert len(body) == 2, name
+        observation_functions += name + b'() {\n' + body[0] + b'\n}\n'
     # This exact guest kernel/principal can bind IP before the production filter.
     for family, address in ((socket.AF_INET, '127.0.0.1'), (socket.AF_INET6, '::1')):
         for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
@@ -115,13 +125,21 @@ def main():
         helper.chmod(0o400)
         entry = Path(root) / 'smoke-verifier-vm-authority.sh'
         entry.write_bytes(policy.ENTRY_PREFIX + policy.BODY_MARKER +
-                          b'exec /usr/bin/python3 -B -I -S "$1/test-vm-host-network.py" --inherited "$2"\n')
+                          b'exec /usr/bin/python3 -B -I -S "$1/test-vm-host-network.py" --inherited "${@:2}"\n')
         entry.chmod(0o400)
         test = Path(root) / Path(__file__).name
         test.write_bytes(Path(__file__).read_bytes())
         test.chmod(0o400)
         environment = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': '/nonexistent',
                        'VERIFIER_VM_HOST_NETWORK_CONFINE': 'forged'}
+        startup = Path(root) / 'untrusted-bash-env'
+        startup.write_text('echo untrusted-startup-ran\n')
+        # The sealed-body shell must ignore startup files, too.
+        environment['BASH_ENV'] = str(startup)
+        child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper), 'argument with spaces'],
+                               env=environment, capture_output=True, text=True, timeout=10)
+        assert child.returncode == 0 and not child.stderr and 'untrusted-startup-ran' not in child.stdout
+        del environment['BASH_ENV']
         child = subprocess.run(['/bin/bash', str(entry), 'argument with spaces'], env=environment,
                                capture_output=True, text=True, timeout=10)
         assert child.returncode == 0 and not child.stderr, (child.returncode, child.stdout, child.stderr)
@@ -134,23 +152,58 @@ def main():
             child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper)],
                                    stdout=inherited, stderr=subprocess.PIPE, text=True, timeout=5)
         assert child.returncode == 1 and 'IP standard-output descriptor is forbidden' in child.stderr
-        # Every extra inherited descriptor is closed, even an unbound IP socket.
-        with socket.socket(socket.AF_INET) as inherited:
-            child = subprocess.run(['/bin/bash', str(entry), 'argument with spaces'], env=environment,
+        # A bound inherited IP socket is absent at the exact child descriptor.
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as inherited:
+            inherited.bind(('127.0.0.1', 0))
+            child = subprocess.run(['/bin/bash', str(entry), 'argument with spaces',
+                                    '--closed-fd', str(inherited.fileno())], env=environment,
                                    pass_fds=(inherited.fileno(),), capture_output=True, text=True, timeout=10)
         assert child.returncode == 0 and not child.stderr
         child = subprocess.run(['/bin/bash', str(entry), 'argument with spaces'], env=environment,
                                preexec_fn=lambda: os.close(0), capture_output=True, text=True, timeout=10)
         assert child.returncode == 0 and not child.stderr
+        # A separate, unfiltered guest process creates an actual new endpoint.
+        # The exact observer runs inside the confined bootstrap and retains that
+        # delta without assigning ownership or vetoing an otherwise safe run.
+        baseline_command = observation_functions + b'capture_listeners\n'
+        baseline = subprocess.run(['/bin/bash', '-s'], input=baseline_command,
+                                  env=environment, capture_output=True, timeout=5)
+        assert baseline.returncode == 0 and not baseline.stderr
+        (Path(root) / 'before.listeners').write_bytes(baseline.stdout)
+        entry.chmod(0o600)
+        entry.write_bytes(policy.ENTRY_PREFIX + policy.BODY_MARKER +
+                          b'set -euo pipefail\n' + observation_functions +
+                          b'capture_listeners >"$1/during.listeners"\n'
+                          b'/usr/bin/comm -13 "$1/before.listeners" "$1/during.listeners" >"$1/added.listeners"\n'
+                          b'report_listener_delta during "$1/added.listeners"\n')
+        entry.chmod(0o400)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as external:
+            external.bind(('127.0.0.1', 0))
+            endpoint = f'udp 127.0.0.1:{external.getsockname()[1]}\n'.encode()
+            child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(helper)],
+                                   env=environment, capture_output=True, text=True, timeout=10)
+            assert child.returncode == 0 and not child.stderr, (child.returncode, child.stdout, child.stderr)
+            assert child.stdout.splitlines()[1:] == [
+                'VERIFIER_VM_HOST_ENDPOINT_DELTA=unattributed phase=during added=1']
+            assert (Path(root) / 'added.listeners').read_bytes() == endpoint
+            assert set(baseline.stdout.splitlines()) <= set(
+                (Path(root) / 'during.listeners').read_bytes().splitlines())
+        retired = subprocess.run(['/bin/bash', '-s'], input=baseline_command,
+                                 env=environment, capture_output=True, timeout=5)
+        assert retired.returncode == 0 and not retired.stderr and retired.stdout == baseline.stdout
     assert hashlib.sha256(SOURCE.read_bytes()).hexdigest() == before
+    assert OBSERVER.read_bytes() == observer
     print('VM_HOST_NETWORK_NATIVE=' + json.dumps({
-        'ip_controls': 4, 'socket_denials': 141, 'socketpair_denials': 47,
+        'ip_controls': 4, 'socket_denials': 141, 'socketpair_denials': 48,
         'netlink_protocol_denials': 31, 'upper_word_denials': 1,
         'blocked_syscalls': len(policy.DENY_SYSCALLS), 'inherited_worker': True,
         'x32': 'SIGSYS', 'i386': 'SIGSYS', 'unix_control': 'roundtrip', 'unix_socketpair': 'roundtrip',
         'ss': 'protocol-endpoint-only', 'bootstrap': 'sealed-body-executed',
         'extra_inherited_ip_fd': 'closed', 'ip_stdout': 'refused',
         'closed_stdin': 'sealed-body-executed',
+        'bash_env': 'ignored',
+        'external_listener_delta': 'retained-unattributed', 'external_listener_additions': 1,
+        'observer_sha256': hashlib.sha256(observer).hexdigest(),
         'source_sha256': before, 'source_unchanged': True,
     }, sort_keys=True))
     print('VM_HOST_NETWORK_TESTS=pass controls=4 restrictions=native inheritance=fork-exec '
@@ -170,7 +223,16 @@ if __name__ == '__main__':
             address = ctypes.addressof(ctypes.c_char.from_buffer(code))
             ctypes.CFUNCTYPE(ctypes.c_long)(address)()
         raise AssertionError('i386 socketcall was not killed')
-    elif sys.argv[1:] in (['--inherited'], ['--inherited', 'argument with spaces']):
+    elif len(sys.argv) >= 2 and sys.argv[1] == '--inherited':
+        assert sys.argv[2:] in ([], ['argument with spaces']) or (
+            len(sys.argv) == 5 and sys.argv[2:4] == ['argument with spaces', '--closed-fd'])
+        if len(sys.argv) == 5:
+            try:
+                os.fstat(int(sys.argv[4]))
+            except OSError as error:
+                assert error.errno == errno.EBADF
+            else:
+                raise AssertionError('extra inherited socket descriptor remained open')
         restriction_cases()
         print('inherited restrictions passed')
     else:

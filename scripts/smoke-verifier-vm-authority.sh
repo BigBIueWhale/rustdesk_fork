@@ -1210,6 +1210,14 @@ capture_listeners() {
         | LC_ALL=C /usr/bin/sort -u
 }
 
+report_listener_delta() {
+    # The offline host process tree cannot create IP sockets. Snapshot changes
+    # remain evidence about the host without assigning process ownership.
+    [ "$#" -eq 2 ] || fail 'listener observation argument count differs'
+    printf 'VERIFIER_VM_HOST_ENDPOINT_DELTA=unattributed phase=%s added=%s\n' \
+        "$1" "$(/usr/bin/wc -l <"$2")"
+}
+
 flutter_peer_input_inventory() {
     local -a directories=(
         "$ONLINE_INPUTS"
@@ -4166,10 +4174,7 @@ if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engin
     memory_args=(-m "$VM_MEMORY" -object "memory-backend-memfd,id=mem,size=${VM_MEMORY}M,share=on" -numa node,memdev=mem)
     capture_listeners >"$LISTENERS_DURING"
     /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
-    if [ -s "$NEW_DURING" ]; then
-        /usr/bin/cat "$NEW_DURING" >&2
-        fail 'host listener endpoint added during VM startup'
-    fi
+    report_listener_delta during "$NEW_DURING"
 fi
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = linux-pa-authority-tests ] \
@@ -4259,10 +4264,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
     )
     capture_listeners >"$LISTENERS_DURING"
     /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
-    if [ -s "$NEW_DURING" ]; then
-        /usr/bin/cat "$NEW_DURING" >&2
-        fail 'host listener endpoint added during VM startup'
-    fi
+    report_listener_delta during "$NEW_DURING"
 fi
 if [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-runtime-log-tests ]; then
     start_virtiofsd bounded-result "$ANDROID_FAILURE_ROOT" \
@@ -4275,10 +4277,7 @@ if [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-runtime-log-tes
     memory_args=(-m "$VM_MEMORY" -object "memory-backend-memfd,id=mem,size=${VM_MEMORY}M,share=on" -numa node,memdev=mem)
     capture_listeners >"$LISTENERS_DURING"
     /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
-    if [ -s "$NEW_DURING" ]; then
-        /usr/bin/cat "$NEW_DURING" >&2
-        fail 'host listener endpoint added during VM startup'
-    fi
+    report_listener_delta during "$NEW_DURING"
 fi
 vm_started_seconds=$SECONDS
 vm_storage_check
@@ -4371,10 +4370,7 @@ verify_private_socket "$QMP_SOCKET" \
     || fail 'QEMU control channel is not one current-user-private Unix socket'
 capture_listeners >"$LISTENERS_DURING"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
-if [ -s "$NEW_DURING" ]; then
-    /usr/bin/cat "$NEW_DURING" >&2
-    fail 'host listener endpoint added during VM startup'
-fi
+report_listener_delta during "$NEW_DURING"
 vm_status=0
 wait "$VM_OWNER_PID" || vm_status=$?
 VM_OWNER_PID=
@@ -4431,10 +4427,7 @@ if [ -r "/proc/$VM_PID/stat" ] && [ "$(process_start_time "$VM_PID" 2>/dev/null)
 fi
 capture_listeners >"$LISTENERS_AFTER"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_AFTER" >"$NEW_AFTER"
-if [ -s "$NEW_AFTER" ]; then
-    /usr/bin/cat "$NEW_AFTER" >&2
-    fail 'host listener endpoint added after VM completion'
-fi
+report_listener_delta after "$NEW_AFTER"
 [ "$(/usr/bin/grep -Ec 'VERIFIER_VM_CLOUD_INIT=fail status=[1-9][0-9]*' "$SERIAL_LOG")" -eq 0 ] \
     || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest workload reported failure'; }
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
@@ -6264,7 +6257,7 @@ if [ "$MODE" = android-emulator-app ]; then
 elif [ "$MODE" = android-peer-build ]; then
     publish_android_peer_artifact
 fi
-/usr/bin/printf 'VERIFIER_VM_HOST_LISTENER_AUDIT=pass complete_snapshots=before,during,after additions=none inventory=protocol-endpoint-only process_inventory=absent\n'
+/usr/bin/printf 'VERIFIER_VM_HOST_LISTENER_AUDIT=pass complete_snapshots=before,during,after owned_ip_sockets=kernel-denied external_delta=unattributed inventory=protocol-endpoint-only process_inventory=absent\n'
 if [ "$MODE" = linux-service-receiver-tests ]; then
     [ "$(linux_receiver_input_inventory)" = "$linux_receiver_inputs_before" ] \
         && [ "$(android_peer_runtime_inventory)" = "$ANDROID_PEER_INPUT_INVENTORY" ] \

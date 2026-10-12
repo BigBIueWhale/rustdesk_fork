@@ -2074,9 +2074,24 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `41d224bbab0cdb260c22a5d01d41491bc80d032554ebd8b3127c221ed0948530  requirements.html`.
+Current normative specification SHA-256: `6128acd48ad9ad7ccf1f0fc32abe51f3d6d6d27e947b923493a4a28d1a4e8586  requirements.html`.
 
 ### Current authority and source closure
+
+**Offline verifier host sockets (R-S11dh): source corrected; final integration pending.**
+`vm-host-network.py` closes extra inherited descriptors, refuses IP stdout/stderr and
+installs an ordinary-user, capabilities-free, inherited seccomp restriction before
+executing the fixed Bash body from sealed RAM. IP/packet/vsock socket creation,
+io_uring and foreign process/descriptor acquisition are denied; Unix controls and
+the two netlink protocols required by the read-only ss inventory remain available.
+The fixed shell ignores startup files; no environment marker selects confinement.
+Complete listener snapshots/deltas remain evidence without ownership inference.
+Global changes alone no longer veto a run whose owned process tree cannot create IP
+sockets. Native `4cb935cb` passed four real TCP/UDP controls, kernel socket/ABI
+refusals, Unix roundtrips, ss and bootstrap checks in 14 seconds; the final shell
+startup/descriptor assertions and changed observation handling still need integration.
+The acquisition launcher is unchanged. Normal installed-service stop and the wider
+platform/release/storage obligations remain OPEN.
 
 **VM transient storage (R-S11cj/R-S11dh): the observed Linux VM disk-churn path is corrected.**
 The ordinary-user verification and acquisition launchers use one private existing-`/dev/shm` workspace for disposable

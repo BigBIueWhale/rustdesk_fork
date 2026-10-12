@@ -42,10 +42,22 @@ under `.harness-state/verifier-vm` (9,981 bytes; SHA-256
 Git history preserves removed reports. This is document/source review, with no new
 product or native behavior acceptance; existing status and all broader OPEN obligations remain.
 
+**Acquisition document-role correction:** R-S11cs/R-S11ct/R-S11cu and Appendix C
+#246/#248 now scope admission to each exact pinned profile and name R-S11cj's
+acquisition-VM coordinator as the independent verifier/publisher. Universal two/three-profile
+enumerations, supersession history, implementation/gate narration and incident disclaimers
+are removed. Profile-specific names, pins, namespaces, response bounds, producer confinement,
+consumer hashes, metadata, no-clobber publication and recovery remain required. Current
+R-S11ct/R-S11cu status separates historical host-container evidence from current VM acceptance
+and incorporates the already accepted cold 0444 consumption. Classification/comparison is
+retained in `acquisition-document-roles-951a4a8e.json` under the verifier root; Git preserves
+the deleted history. This slice changes documentation only. All broader OPEN/STOP-SHIP
+obligations and remaining document-role cleanup stay open.
+
 Current normative specification identity:
 
 ```text
-a5b704d9bf700d44ee677850feb33df7f647bc484c08f03c647cce537b341da6  requirements.html
+41d224bbab0cdb260c22a5d01d41491bc80d032554ebd8b3127c221ed0948530  requirements.html
 ```
 
 ## Current Verdict
@@ -2046,7 +2058,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `a5b704d9bf700d44ee677850feb33df7f647bc484c08f03c647cce537b341da6  requirements.html`.
+Current normative specification SHA-256: `41d224bbab0cdb260c22a5d01d41491bc80d032554ebd8b3127c221ed0948530  requirements.html`.
 
 ### Current authority and source closure
 
@@ -7900,160 +7912,72 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   native/device/product behavior, independent reproduction and R-V3 review remain open.
   This acquisition is not a product correction, display-delay fix, installed-service proof
   or release build.
-- **R-S11ct/R-S11e-112 — fixed libvpx source and Windows-tool archive acquisition authority —
-  SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE DISPOSABLE
-  33-ARCHIVE LIVE ACQUISITION EVIDENCE RECORDED.** Platform: the unprivileged Linux acquisition host and
-  immutable Android-builder container. Endpoint/action: the former `fetch_verify_sha512` path for the
-  libvpx source archive and the 32 archives in `res/vcpkg/libvpx/windows-tools.sha512`. Boundary: remote
-  HTTPS response/redirect behavior and network-client execution ↔ the durable `online/vcpkg-distfiles`
-  namespace consumed by the native codec and Windows release pipelines.
+- **R-S11ct/R-S11e-112 — fixed libvpx and Windows-tool acquisition — SOURCE IMPLEMENTED;
+  CURRENT ACQUISITION-VM COLD ACCEPTANCE OPEN.** The guest entry selects one source-defined
+  profile; `load_vcpkg_fixed_archive_manifest` authenticates the tracked acquisition manifest
+  before and after parsing, requires exactly one source plus 32 unique canonical tool names,
+  and cross-checks the independently pinned SHA-512 consumer manifest before network use.
+  The 33-record acquisition manifest remains SHA-256
+  `c90310083a22b9da7cebb9412275f3a551dd03f146fcf7f25fed84ab633b5a8f`;
+  MSYS2 uses the direct `repo.msys2.org` endpoint. The shared transaction preserves exact
+  manifest/helper/image identity, private same-filesystem state/output, immutable numeric-nonroot
+  three-mount producer, bounded HTTPS delivery, independent coordinator verdict, 0400 sealing,
+  descriptor-relative no-clobber publication, recovery and exact retirement. Current execution
+  is guest-only under R-S11cj. Other named profiles have their own source-selected pinned inputs;
+  the parser's supported cardinality/path grammar is not independent acquisition authority.
 
-  Before this slice, host `curl -L` wrote predictable `<final>.part` names directly below that durable
-  namespace and an overwrite-capable `mv` installed each final. A final SHA-512 caught wrong completed
-  bytes, but delivery had no exact length, response ceiling, content-encoding, reviewed final-host,
-  private-output, independent-verdict, durable-state, or no-clobber contract. The MSYS2 branch began at
-  `mirror.msys2.org`, which currently redirects to a geographically selected third-party mirror. This
-  was build-host network-execution, acquisition-output/publication, stale-state, and denial-of-service
-  authority debt—not evidence that a cached input changed, host root was acquired, a container escaped,
-  a port/listener was exposed, host RustDesk/service/configuration/firewall/network state changed,
-  exploitation occurred, or the host was compromised.
+  Historical disposable evidence downloaded all 33 records (181,392,489 bytes), independently
+  verified/published them and matched every downstream SHA-512. That host-container topology
+  predates R-S11cj and is not current acquisition-VM acceptance. Historical cache inspections,
+  transaction fixtures, mutation checks, the refused `~`-name attempt and their provenance remain
+  in Git/audit; no input was changed by this documentation slice.
+  **OPEN:** current cold 33-record acquisition and redirect/response coverage in the required VM,
+  complete canonical inputs/provenance, committed patch/native-key, Cargo vendoring, Windows
+  Flutter/Pub/WiX and maintenance-producer acceptance,
+  stable signing/golden/operator assets, exact R-B2/R-B10 artifacts, native/device/performance/
+  resource/soak behavior, independent reproduction and R-V3 external review.
+- **R-S11cu/R-S11e-113 — Debian VM base — ACQUISITION SOURCE IMPLEMENTED;
+  CURRENT COLD ACQUISITION AND COMPLETE INSTALLED ACCEPTANCE OPEN.** The closed
+  `--debian-systemd-smoke-image` profile selects build `20260712-2537`, length 346,882,048
+  and acquisition SHA-256 `b49303d83f5f69ff55fdf8c16b883b5714bc5332d37a6f6b8a94da42ad5b0999`,
+  bound to bytes matching Debian's independent dated publisher SHA-512. Only the exact
+  `cloud.debian.org` origin and reviewed `laotzu.ftp.acc.umu.se` redirect are admitted;
+  the image I/O timeout is 300 seconds. Acquisition executes only in R-S11cj's VM and locks
+  its private systemd-image root without preparing the unrelated online root. The transaction
+  retains exact manifest/helper/image and inode identities, durable same-filesystem state,
+  immutable numeric-nonroot three-mount producer, bounded delivery, independent coordinator
+  metadata/byte verdict, 0400 sealing, no-clobber publication, recovery and retirement.
+  Wrong occupied output is not normalized or replaced. This is one exact named profile;
+  additional named profiles require their own pinned inputs and authority contract.
 
-  Source closure: `fetch_verify_sha512` and the per-tool URL/download loop are absent. The tracked
-  `res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt`, pinned by SHA-256
-  `c90310083a22b9da7cebb9412275f3a551dd03f146fcf7f25fed84ab633b5a8f`, contains exactly 33 sorted
-  five-field records totaling 181,392,489 bytes. It binds one libvpx source and the exact 32 downstream
-  Windows-tool names to fixed credential-free HTTPS URLs, byte lengths, acquisition SHA-256 values, and
-  reviewed redirect-host sets. MSYS2 inputs use the stable direct `repo.msys2.org` repository rather than
-  the moving mirror redirector. The shell loader checks the acquisition-manifest pin before and after
-  parsing, requires one source plus the complete unique canonical tool-name set, and cross-checks that set
-  against the independently SHA-512-pinned consumer manifest before network use.
+  Both networkless consumers use `verifier-vm-base-metadata.sh`: it derives and rejects zero
+  UID/primary GID, requires the retained owner, regular non-symlink exact-length single-link file
+  and mode 0400/0444. Publisher SHA-512, `qemu-img check`, standalone QCOW2/no backing file,
+  authenticated boot assets and the zero-NIC throwaway overlay remain separate checks.
+  This metadata helper is not descriptor-pinned replacement/race proof; the outbound VM has
+  its own base guard. Actual unchanged-fixture A/B at `4c6572ad` refused 0444, then `88fcbcef`
+  passed 22 filesystem cases including both admitted modes and actual foreign UID/GID.
+  Raw failure `fixed-archive-tests-run.CO1zQN00q0.serial.log` and success
+  `fixed-archive-tests-run.1iFxxJYnlL.serial.log` remain in the verifier root; hashes and
+  source/fixture identities are in the audit. Injected responses and source mutations do not
+  establish live network or installed-service behavior.
 
-  The existing R-S11cs transaction engine is shared rather than copied. At this slice it had two closed profiles:
-  exactly 14 toolchain/installer entries with only optional `win/` nesting, or exactly 33 vcpkg entries
-  comprising one `vcpkg-distfiles/libvpx-*.tar.gz` child and 32
-  `vcpkg-distfiles/windows-tools/*` children. Its candidate-inventory and recovery checks derive the
-  complete ancestor-directory set, so the deeper profile cannot smuggle an adjacent entry. Both profiles
-  retain the current-user-private online-root lock, stable no-follow existing-output verdict, recorded
-  manifest/helper/image identities, same-filesystem private state/output, exact three-mount immutable
-  numeric-nonroot acquisition container, disabled proxy discovery, bounded HTTPS redirect/status/
-  encoding/framing/length processing, exclusive no-follow creation, independent host byte/metadata
-  verification, mode-0400 sealing, descriptor-relative `RENAME_NOREPLACE`, per-file state/fsync,
-  restart reconciliation, and exact-identity retirement. R-S11cu subsequently adds one exact Debian-image
-  profile without admitting arbitrary one-entry input. The producer receives no online root, final
-  destination, live repository, Docker socket, device, port, host namespace, or other writable host path.
-  Existing historical current-user mode-0664 files remain reusable only after their exact size and
-  acquisition SHA-256 pass; downstream `require_libvpx_distfiles` and Windows build gates still enforce
-  every established SHA-512 independently.
-
-  Verification recorded so far: the shared executable self-test passes as numeric UID:GID 1000 with no
-  network, read-only source/root, all capabilities dropped, no-new-privileges, and bounded resources. It
-  now exercises a complete 33-entry three-level prepare/download/independent-verify/no-clobber-publish
-  lifecycle and rejects an unsafe nested `windows-tools` parent. The focused authority verifier binds the
-  exact acquisition-manifest bytes/pin/shape, SHA-512 consumer-name equality, shell loader, legacy path
-  absence, dual closed profiles, narrow producer, response/file/publication/recovery rules, R-S11ct,
-  Appendix C #247, and this ledger through 44 deliberate mutations. Bash/Python parsing, the normal
-  independent workspace verifier, its complete semantic source-mutation matrix, and the native-codec
-  normal/mutation gates are green.
-
-  Complete live acquisition proof: one disposable immutable Android-builder container ran as numeric
-  UID:GID 1000:1000 with `--pull=never`, isolated bridge egress, read-only root, all capabilities dropped,
-  no-new-privileges, fixed PID/2-GiB-memory/no-swap/two-CPU ceilings, and bounded non-executable `/tmp` and
-  `/proof` tmpfs. Its only host mounts were the exact helper, acquisition manifest, and SHA-512 consumer
-  manifest, all read-only. It received no source tree, online cache, final host name, writable host path,
-  Docker socket, device, port, or host namespace. The transaction downloaded all 33 exact responses
-  totaling 181,392,489 bytes, checked HTTPS status/host/encoding/framing/length and acquisition SHA-256,
-  independently verified the complete three-level candidate, passed durable no-clobber publication and
-  reconciliation, then rechecked the libvpx source and all 32 tools against their established downstream
-  SHA-512 pins. It exited green with `vcpkg fixed archive live lifecycle: PASS`; its tmpfs and every
-  downloaded byte then vanished. The first disposable attempt failed before network use because the
-  shared path grammar omitted the `~` present in the canonical MinGW pkgconf name. The grammar and
-  behavioral/mutation fixtures were corrected before the successful attempt; the failed attempt
-  downloaded and published nothing.
-
-  Evidence boundary: the current live cache was also inspected read-only inside a numeric-nonroot,
-  networkless, capability-free container: all 32 tool files and the libvpx source matched their
-  established SHA-512 pins, and their measured acquisition SHA-256/length values produced the tracked
-  manifest. No live cache byte or metadata was changed. This live proof is a disposable cold acquisition
-  transaction, not a release build or a mutation of the persistent online closure. R-S11cu separately closes
-  Debian systemd-image acquisition. Committed local security-patch/native-key publication, host Cargo
-  vendoring, Windows Flutter engine/Pub-cache/WiX
-  producers, maintenance-image acquisition/publication, exact cold R-B2/R-B10 artifacts, native/device
-  behavior, and R-V3 external review remain open. No root command/container, image pull/build/tag,
-  release build, host RustDesk process/service/configuration/listener/firewall/network operation, or live
-  online-cache mutation was performed.
-- **R-S11cu/R-S11e-113 — Debian systemd VM image acquisition authority —
-  ACQUISITION SOURCE IMPLEMENTED; HISTORICAL DISPOSABLE COLD EVIDENCE RECORDED;
-  NETWORKLESS CONSUMER 0400/0444 ADMISSION AND PRIVATE-0444 BOOT VERIFIED.**
-  Boundary: the closed `scripts/online-fetch.sh --debian-systemd-smoke-image` acquisition
-  publishes one pinned dated QCOW2 below the private `.harness-state/debian-systemd-smoke`
-  root; the R-S11dh networkless launcher independently authenticates its own retained VM base.
-  Current acquisition executes only inside R-S11cj's outbound-only VM, not through host Docker.
-  The former predictable host `curl -L`/`.part`/chmod/overwrite-publication route is absent.
-
-  Acquisition source fixes build `20260712-2537`, exact length 346,882,048 and SHA-256
-  `b49303d83f5f69ff55fdf8c16b883b5714bc5332d37a6f6b8a94da42ad5b0999` independently of
-  Debian's publisher SHA-512. The manifest admits only the fixed credential-free dated
-  `cloud.debian.org` URL and reviewed `laotzu.ftp.acc.umu.se` redirect host; no ambient mirror
-  allowlist exists. Only this large-image profile has a 300-second I/O wait (others: 120).
-  The shared archive engine admits exactly this one-entry shape, the fourteen-toolchain
-  shape, or one libvpx source plus 32 tools. Systemd-image publication does not prepare or
-  lock unrelated `online`. Current-owner/current-primary-GID private roots, exclusive lock,
-  same-filesystem durable state, exact immutable nonroot three-mount producer, bounded
-  HTTPS/framing/length/digest, independent stable no-follow metadata/byte verdict,
-  descriptor-relative no-clobber publication, synchronization, recovery and exact retirement
-  remain mandatory. Existing output accepts only 0400 or historical 0444, one link, no
-  xattrs, same mount and exact bytes; occupied wrong output is not normalized or replaced.
-  New output is 0400. The producer receives no final/publication root, live repository,
-  host Docker socket/device, published port, host namespace or other writable host path.
-
-  **Consumer correction:** `scripts/verifier-vm-base-metadata.sh` is now the one production
-  metadata API shared by `smoke-verifier-vm-authority.sh` and
-  `derive-verifier-vm-boot-assets.sh`. It derives current UID/primary GID itself, refuses
-  either zero identity, and admits only a regular non-symlink exact-length single-link file
-  owned by that identity with exact mode 0400 or 0444. `88fcbcef` changes the shared allowlist,
-  not the publisher/format or VM-authority checks. Docker/Git inputs remain 0400-only;
-  the distinct outbound acquisition VM's base guard is not changed by this slice.
-  Both networkless consumers still require independent publisher SHA-512 and `qemu-img check`;
-  standalone QCOW2/no backing file, authenticated boot assets and throwaway zero-NIC overlay
-  remain required. This helper is metadata admission, not descriptor-pinned race proof.
-
-  **Actual A/B:** at `4c6572ad`, unchanged fixtures directly sourcing the production helper
-  accepted 0400 then refused 0444 (session 84922/exit 1). Raw
-  `.harness-state/verifier-vm/fixed-archive-tests-run.CO1zQN00q0.serial.log` is 65,811 bytes /
-  SHA-256 `a94000cae9ba67a7fbc9b9763d292ab812e98669a5b23c5e8a7b4118527d672d`.
-  The corrected 18-second shard at `88fcbcef` passed 22 actual filesystem cases as 4000:4000:
-  both admitted modes; twelve wrong modes; wrong length, hardlink, symlink, missing file,
-  directory, FIFO, actual foreign UID and actual foreign GID. Read-only source, unchanged
-  test/guest bytes across A/B and finality are required; raw success is under R-S11cs above.
-  An earlier fixture's readonly-variable collision failed before the regression and is not
-  counted. The 61 source mutations and injected-response archive fixtures are supplementary.
-
-  **Real consumption:** `a007baa0`, tree `ca7a324e1579e85c909571dccf1879e65a59c5d1`, passed
-  `/usr/bin/bash scripts/smoke-verifier-vm-authority.sh --base-readonly-test` as
-  session 24016/exit 0 in 85 VM seconds. The closed selector keeps normal authority-smoke
-  workload/receipts and refuses external input/run overrides. One publisher-authenticated
-  private copy inside the already reserved run is 0444; the canonical base is not chmodded
-  or replaced. Both consumers, existing authenticated boot-cache validation and actual QEMU
-  overlay boot ran. Canonical inode/metadata/digest and admitted source stayed unchanged;
-  complete host endpoint snapshots had no additions; QEMU/capture and guest Docker joined;
-  the owned clone, overlay, media and run root retired. Raw
-  `.harness-state/verifier-vm/authority-smoke-run.m4NKEp3O2H.serial.log` is 83,219 bytes /
-  SHA-256 `9f42872d460c0c99ab8e5c933e81953e5f2d0df939d9c6a6f564eba003519fc5`.
-  Its `evidence/base-readonly-run.m4NKEp3O2H.outer.receipt` is an assistant-captured final-poll
-  excerpt, not independent attestation. No RustDesk product, release or installed service ran.
-
-  Historical cold acquisition downloaded all 346,882,048 bytes into a private disposable
-  tree, independently verified and no-clobber-published them, matched publisher SHA-512,
-  revalidated complete reuse and retired the tree. Earlier timeouts, a wrongly invoked final
-  validator and unsuitable broader fixture environments are not green evidence. Their
-  detailed provenance remains in Git/audit; that historical proof is not current R-S11cj
-  acquisition or current installed-systemd acceptance.
-  **OPEN:** cold boot-asset derivation from a 0444 base (this run reused the verified cache),
-  replacement/race and full stable-consumption schedules, current cold-acquisition acceptance,
-  the actual installed-systemd/RustDesk lifecycle, complete canonical inputs and exact clean
-  R-B2/R-B10 artifacts, committed patch/native-key and dependency producers, Windows
-  Flutter/Pub/WiX, maintenance-image distribution, stable signing/golden/operator assets,
-  native/device/performance/resource/soak evidence, independent reproduction and R-V3 review.
+  Current cold 0444 consumption is accepted at `b23935f6`: the private base copy, raw conversion
+  and partition extraction stayed in bounded RAM; fresh boot assets were derived and actually
+  booted. Three scratch-admission refusals, five guest-root refusals, zero-NIC execution,
+  unchanged host listeners and exact joined cleanup passed in the 14-second guest transaction.
+  Immutable `vm-cold-storage-accepted-b23935f6.json` (SHA-256
+  `da4ab96c5096b76474508ee9b08ba036d574071884355ae7988b162659052b9d`) binds the source,
+  command, raw evidence and measured 124-KiB disk-run peak. The canonical base/cache was unchanged;
+  this fixture published its boot cache on tmpfs. Earlier cached-asset consumption and historical
+  full-image cold acquisition remain in Git/audit; the historical acquisition topology is not
+  current R-S11cj acceptance.
+  **OPEN:** current full-image cold acquisition, replacement/race and stable-consumption schedules,
+  persistent-cache publication runtime evidence, complete canonical inputs/provenance, full
+  installed-systemd/RustDesk lifecycle, committed patch/native-key, Cargo vendoring, Windows
+  Flutter/Pub/WiX and maintenance producers,
+  stable signing/golden/operator assets, exact R-B2/R-B10 artifacts, native/device/performance/
+  resource/soak behavior, independent reproduction and R-V3 external review.
 - **R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority —
   SOURCE/GATES COMPLETE 2026-07-24; EXACT CLEAN RELEASE EVIDENCE REMAINS OPEN.** Platform: the unprivileged Linux
   acquisition host. Endpoint/action: `scripts/online-fetch.sh::stage_libvpx_distfiles`, which

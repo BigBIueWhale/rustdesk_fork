@@ -155,6 +155,15 @@ case "$#:${1:-}" in
             || { echo 'Debian polkit-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=debian-polkit-tests
         ;;
+    5:--linux-service-receiver-tests)
+        [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
+            && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
+            && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Linux receiver artifact arguments or overrides differ' >&2; exit 2; }
+        MODE=linux-service-receiver-tests
+        ANDROID_RUNTIME_PEER_COMMIT=$3
+        ANDROID_RUNTIME_PEER_MANIFEST_SHA256=$5
+        ;;
     1:--linux-flutter-artifact-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Linux Flutter artifact-test input/run overrides are forbidden' >&2; exit 2; }
@@ -607,6 +616,10 @@ elif [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ]; the
     readonly VM_TIMEOUT_SECONDS=150
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
+elif [ "$MODE" = linux-service-receiver-tests ]; then
+    readonly VM_TIMEOUT_SECONDS=300
+    readonly OVERLAY_SIZE=12G
+    readonly VM_MEMORY=4096
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
         readonly VM_TIMEOUT_SECONDS=300
@@ -910,6 +923,36 @@ engine_xvfb_input_inventory() {
     /usr/bin/stat -c '%n:%d:%i:%u:%g:%a' -- "$root"
     /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "${files[@]}"
     /usr/bin/sha256sum -- "${files[@]}"
+}
+
+linux_receiver_input_inventory() {
+    local file root
+    local -a files=("$DEV_CHECK_IMAGE_ARCHIVE" "$REPO_ROOT/online/candidates/polkit-runtime/polkit-runtime-candidate.tar.gz")
+    for root in "$REPO_ROOT/online/candidates" "$REPO_ROOT/online/candidates/polkit-runtime"; do
+        [ -d "$root" ] && [ ! -L "$root" ] \
+            && [ "$(/usr/bin/readlink -f -- "$root")" = "$root" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$root")" = "$HOST_UID:$HOST_GID:700" ] \
+            || fail 'Linux receiver candidate parent authority differs'
+    done
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "${files[0]}")" = "$HOST_UID:$HOST_GID:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "${files[1]}")" = "$HOST_UID:$HOST_GID:400:1:$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
+        || fail 'Linux receiver immutable runtime input authority differs'
+    verify_sha256 "${files[0]}" "$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
+    verify_sha256 "${files[1]}" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+    for file in "$SCRIPT_DIR/test-linux-service-receiver-native.py" \
+        "$SCRIPT_DIR/test-linux-logind-session-selection.py" \
+        "$REPO_ROOT/res/com.carriez.RustDesk.policy" "$REPO_ROOT/res/rustdesk.service" \
+        "$REPO_ROOT/libs/libxdo-sys-stub/native/"{build.py,xdo.c,xdo.h,xdo_version.h,COPYRIGHT,SOURCE.txt}; do
+        [ -f "$file" ] && [ ! -L "$file" ] || fail 'Linux receiver source is absent or ambiguous'
+        verify_committed_test_source "$file"
+        files+=("$file")
+    done
+    git_closed -C "$REPO_ROOT" diff --quiet "$ANDROID_RUNTIME_PEER_COMMIT" HEAD -- \
+        src libs res/rustdesk.service res/com.carriez.RustDesk.policy \
+        || fail 'Linux receiver production sources differ from the retained binary source'
+    /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "${files[@]}"
+    /usr/bin/sha256sum -- "${files[@]}"
+    engine_xvfb_input_inventory
 }
 
 ANDROID_OWNER_KOTLIN_JARS=()
@@ -1933,7 +1976,7 @@ frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-   || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+   || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
         && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime ]]; }; then
@@ -2655,7 +2698,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
     if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-       || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+       || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
     fi
@@ -3096,9 +3139,10 @@ if [ "$MODE" = android-emulator-runtime ]; then
         || fail 'retained Android runtime artifact root identity differs'
 fi
 
-if [ "$MODE" = android-emulator-runtime ] \
-   && { [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
-        || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; }; then
+if [ "$MODE" = linux-service-receiver-tests ] \
+   || { [ "$MODE" = android-emulator-runtime ] \
+        && { [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
+             || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; }; }; then
     [[ "$ANDROID_RUNTIME_PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         && [[ "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'Android peer artifact identity is malformed'
@@ -3137,6 +3181,11 @@ if [ "$MODE" = android-emulator-runtime ] \
         || fail 'cannot retain the Android peer capsule'
     [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ANDROID_PEER_INPUT_FD")" = "$ANDROID_PEER_INPUT_ID" ] \
         || fail 'retained Android peer capsule identity differs'
+fi
+linux_receiver_inputs_before=
+if [ "$MODE" = linux-service-receiver-tests ]; then
+    linux_receiver_inputs_before="$(linux_receiver_input_inventory)" \
+        || fail 'cannot capture installed Linux receiver inputs'
 fi
 
 readonly OVERLAY=$RUN/overlay.qcow2
@@ -3569,6 +3618,22 @@ elif [ "$MODE" = android-owner-tests ]; then
 elif [ "$MODE" = debian-polkit-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("repo/build.py=$DEBIAN_CONTROL_SOURCE")
+elif [ "$MODE" = linux-service-receiver-tests ]; then
+    payload_identity=(-uid 1000 -gid 1000)
+    lifecycle_payload_grafts=(
+        "devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
+        "polkit-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/polkit-runtime/polkit-runtime-candidate.tar.gz"
+        "receiver/rustdesk=$ANDROID_PEER_INPUT_ROOT/rustdesk"
+        "receiver/peer-manifest.json=$ANDROID_PEER_INPUT_ROOT/peer-manifest.json"
+        "repo/scripts/test-linux-service-receiver-native.py=$SCRIPT_DIR/test-linux-service-receiver-native.py"
+        "repo/scripts/test-linux-logind-session-selection.py=$SCRIPT_DIR/test-linux-logind-session-selection.py"
+        "repo/libs/libxdo-sys-stub/native=$REPO_ROOT/libs/libxdo-sys-stub/native"
+        "repo/res/com.carriez.RustDesk.policy=$REPO_ROOT/res/com.carriez.RustDesk.policy"
+        "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
+        "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
+        "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
+        "repo/scripts/smoke-xvfb-files.tsv=$SCRIPT_DIR/smoke-xvfb-files.tsv"
+    )
 elif [ "$MODE" = fixed-archive-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -3837,6 +3902,8 @@ elif [ "$MODE" = fixed-archive-tests ]; then
     guest_invocation+=' --fixed-archive-tests'
 elif [ "$MODE" = debian-polkit-tests ]; then
     guest_invocation+=' --debian-polkit-tests'
+elif [ "$MODE" = linux-service-receiver-tests ]; then
+    guest_invocation+=" --linux-service-receiver-tests $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256 $FOCUSED_TEST_COMMIT"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     guest_invocation+=' --linux-flutter-artifact-tests'
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
@@ -4367,6 +4434,11 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
         printf '%s\n' "${engine_artifacts[0]}"
     fi
     printf '%s\n' "$engine_prepare_receipt" "$engine_prepare_vm_receipt"
+elif [ "$MODE" = linux-service-receiver-tests ]; then
+    linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
+    require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_NATIVE=pass cases=8 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux receiver behavior'
+    require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_VM=pass harness=$FOCUSED_TEST_COMMIT manifest=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 source=readonly network=none docker=retired cleanup=joined" 'installed Linux receiver fixture finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed Linux receiver guest completion'
 elif [ "$MODE" = debian-polkit-tests ]; then
     debian_polkit_receipt='DEBIAN_POLKIT_DEPENDENCY=pass cases=7 generator=production artifacts=actual-deb policy=standalone-depends receiver=unexecuted'
     debian_polkit_vm_receipt="DEBIAN_POLKIT_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes generator_sha256=$(/usr/bin/sha256sum "$DEBIAN_CONTROL_SOURCE" | /usr/bin/awk '{print $1}') checker_sha256=$(/usr/bin/sha256sum "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" | /usr/bin/awk '{print $1}') source=readonly network=none docker=retired scratch=retired cleanup=joined"
@@ -5977,6 +6049,14 @@ elif [ "$MODE" = android-peer-build ]; then
     publish_android_peer_artifact
 fi
 /usr/bin/printf 'VERIFIER_VM_HOST_LISTENER_AUDIT=pass complete_snapshots=before,during,after additions=none inventory=protocol-endpoint-only process_inventory=absent\n'
+if [ "$MODE" = linux-service-receiver-tests ]; then
+    [ "$(linux_receiver_input_inventory)" = "$linux_receiver_inputs_before" ] \
+        && [ "$(android_peer_runtime_inventory)" = "$ANDROID_PEER_INPUT_INVENTORY" ] \
+        && [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ANDROID_PEER_INPUT_FD")" = "$ANDROID_PEER_INPUT_ID" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'installed Linux receiver source or immutable inputs changed'
+fi
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     [ "$(android_frame_input_inventory)" = "$frame_inputs_before" ] \
         || fail 'Android frame-test inputs changed during execution'

@@ -32,6 +32,11 @@ case "$#:${8:-}" in
     8:--debian-polkit-tests)
         MODE=debian-polkit-tests
         ;;
+    12:--linux-service-receiver-tests)
+        MODE=linux-service-receiver-tests
+        [[ "${9}" =~ ^[0-9a-f]{40}$ ]] && [[ "${10}" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ "${11}" =~ ^[0-9a-f]{64}$ ]] && [[ "${12}" =~ ^[0-9a-f]{40}$ ]] || exit 2
+        ;;
     8:--linux-flutter-artifact-tests)
         MODE=linux-flutter-artifact-tests
         ;;
@@ -179,6 +184,8 @@ readonly EXPECTED_SHA256=$5
 readonly EXPECTED_KERNEL_RELEASE=$6
 readonly EXPECTED_ROOT_UUID=$7
 readonly MODE FLUTTER_PEER_CANDIDATE FLUTTER_APP_BUILD_ONLY FLUTTER_APP_BUILD_CONTEXT
+readonly LINUX_RECEIVER_COMMIT=${9:-} LINUX_RECEIVER_TREE=${10:-} \
+    LINUX_RECEIVER_MANIFEST_SHA256=${11:-} LINUX_RECEIVER_HARNESS_COMMIT=${12:-}
 readonly FLUTTER_TEST_PROFILE
 readonly FLUTTER_APP_ENGINE_CONTEXT
 if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
@@ -617,6 +624,94 @@ run_linux_flutter_engine_prepare() {
     printf 'FLUTTER_ENGINE_PREPARE_VM=pass commit=%s tree=%s helper_sha256=%s runtime=%s uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined\n' \
         "$ENGINE_PREPARE_COMMIT" "$ENGINE_PREPARE_TREE" "$(sha256sum "$helper" | awk '{print $1}')" \
         "$DEV_CHECK_IMAGE_CONFIG_ID"
+}
+
+run_linux_service_receiver_tests() {
+    local work=$ROOT/linux-service-receiver inspect load_output status=0
+    local helper=$VERIFY_REPO/scripts/test-linux-service-receiver-native.py
+    local native=$VERIFY_REPO/libs/libxdo-sys-stub/native
+    local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
+    local runtime=/usr/local/lib/rustdesk-receiver-fixture source_before
+    source_before="$(sha256sum "$helper" "$VERIFY_REPO/scripts/test-linux-logind-session-selection.py" \
+        "$VERIFY_REPO/res/rustdesk.service" "$VERIFY_REPO/res/com.carriez.RustDesk.policy" \
+        "$native/build.py" "$native/xdo.c" "$native/xdo.h" "$native/xdo_version.h" "$native/COPYRIGHT" "$native/SOURCE.txt")"
+    load_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
+                --archive "$archive" --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+                --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" --role devcheck \
+                --expected-id "$DEV_CHECK_IMAGE_ID" --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+                --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+                --cargo-sha "$SHA256_DEV_CHECK_CARGO" --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+                --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+                --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
+                --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+    )" || fail 'Linux receiver verifier image verification/load failed'
+    [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
+        || fail 'Linux receiver image load receipt differs'
+    prepare_engine_xvfb
+    chmod 0711 "$ROOT"
+    install -d -m 0711 "$work"
+    install -d -o 1000 -g 1000 -m 0700 "$work/prepared"
+    install -d -o 4000 -g 4000 -m 0700 "$work/libraries"
+    CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
+        --name rustdesk-linux-receiver-prepare --pull=never --network=none --read-only --user 1000:1000 \
+        --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
+        --cgroupns=private --ipc=private --memory=512m --memory-swap=512m --cpus=2 --pids-limit=64 \
+        --ulimit nofile=1024:1024 --ulimit core=0:0 --ulimit fsize=67108864:67108864 \
+        --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=700,uid=1000,gid=1000 \
+        --mount "type=bind,source=$native,target=/native,readonly" \
+        --mount "type=bind,source=$helper,target=/fixture.py,readonly" \
+        --mount "type=bind,source=$work/prepared,target=/out,bind-recursive=disabled" \
+        --workdir /tmp "$DEV_CHECK_IMAGE_CONFIG_ID" /usr/bin/python3 -B -I -S /fixture.py --prepare-container)" \
+        || fail 'cannot create the confined native receiver preparer'
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'native receiver preparer ID differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.Image}}|{{.Config.User}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' "$CONTAINER_ID")"
+    [ "$inspect" = "$DEV_CHECK_IMAGE_CONFIG_ID|1000:1000|none|true|536870912|536870912|2000000000|64|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]|false||private||private|[]|{}" ] \
+        || fail 'native receiver preparer envelope differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
+    [ "$inspect" = "$(printf '%s\n' "bind|$native|/native|false" \
+        "bind|$helper|/fixture.py|false" "bind|$work/prepared|/out|true" | LC_ALL=C sort)" ] \
+        || fail 'native receiver preparer mount envelope differs'
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" || status=$?
+    [ "$status" -eq 0 ] \
+        && [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+        || fail 'native receiver preparer failed'
+    "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+    CONTAINER_ID=
+    install -d -m 0755 /usr/share/rustdesk /usr/lib/rustdesk-fork "$runtime"
+    install -m 0755 /mnt/rustdesk-verifier-inputs/receiver/rustdesk /usr/share/rustdesk/rustdesk
+    install -m 0711 /mnt/rustdesk-verifier-inputs/receiver/rustdesk /usr/share/rustdesk/rustdesk-service-child
+    ln -s ../share/rustdesk/rustdesk /usr/bin/rustdesk
+    install -m 0644 "$work/prepared/libxdo.so.3" /usr/lib/rustdesk-fork/libxdo.so.3
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" /usr/share/rustdesk/rustdesk \
+            /usr/lib/rustdesk-fork/libxdo.so.3 "$work/libraries" \
+        || fail 'production receiver runtime library staging failed'
+    install -m 0644 "$work/libraries/"* "$runtime/"
+    find "$ROOT/engine-xvfb/root/usr/lib" -type f -name '*.so*' \
+        -exec install -m 0644 {} "$runtime/" \;
+    install -m 0755 "$ROOT/engine-xvfb/root/usr/bin/Xvfb" "$work/Xvfb"
+    install -m 0755 "$ROOT/engine-xvfb/root/usr/bin/xkbcomp" /usr/bin/xkbcomp
+    cp -a "$work/prepared/xkb" "$work/xkb"
+    chown -R root:root "$work/xkb"
+    printf '%s\n' "$runtime" > /etc/ld.so.conf.d/rustdesk-receiver-fixture.conf
+    /usr/sbin/ldconfig
+    stop_docker_authority
+    /usr/bin/python3 -B -I -S "$helper" "$LINUX_RECEIVER_COMMIT" "$LINUX_RECEIVER_TREE" \
+        "$LINUX_RECEIVER_MANIFEST_SHA256" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \
+        "$POLKIT_RUNTIME_CANDIDATE_MANIFEST_SHA256" || fail 'installed Linux receiver native scenario failed'
+    [ "$(sha256sum "$helper" "$VERIFY_REPO/scripts/test-linux-logind-session-selection.py" \
+        "$VERIFY_REPO/res/rustdesk.service" "$VERIFY_REPO/res/com.carriez.RustDesk.policy" \
+        "$native/build.py" "$native/xdo.c" "$native/xdo.h" "$native/xdo_version.h" "$native/COPYRIGHT" "$native/SOURCE.txt")" = "$source_before" ] \
+        || fail 'native Linux receiver fixture source changed'
+    printf 'LINUX_SERVICE_RECEIVER_VM=pass harness=%s manifest=%s source=readonly network=none docker=retired cleanup=joined\n' \
+        "$LINUX_RECEIVER_HARNESS_COMMIT" "$LINUX_RECEIVER_MANIFEST_SHA256"
 }
 
 run_debian_polkit_tests() {
@@ -7869,6 +7964,10 @@ fi
 
 if [ "$MODE" = debian-polkit-tests ]; then
     run_debian_polkit_tests
+    exit 0
+fi
+if [ "$MODE" = linux-service-receiver-tests ]; then
+    run_linux_service_receiver_tests
     exit 0
 fi
 

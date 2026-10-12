@@ -39,7 +39,7 @@ def guard():
         raise RuntimeError("this fixture requires the owned zero-NIC systemd verifier VM")
 
 
-def pam_actor(username, session_type, confdir):
+def pam_actor(username, session_type, confdir, display=None, desktop_command=None):
     # Linux-PAM 1.5.2 pam_appl.h/_pam_types.h; one PAM session per retained process.
     # systemd v252 pam_systemd.c intentionally retains the FIFO until process exit.
     callback_type = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int,
@@ -56,6 +56,7 @@ def pam_actor(username, session_type, confdir):
                                      ctypes.POINTER(Conversation), ctypes.c_char_p,
                                      ctypes.POINTER(ctypes.c_void_p)]
     pam.pam_putenv.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    pam.pam_set_item.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
     pam.pam_getenv.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
     pam.pam_getenv.restype = ctypes.c_char_p
     for name in ("pam_open_session", "pam_close_session", "pam_end"):
@@ -69,16 +70,26 @@ def pam_actor(username, session_type, confdir):
                               ctypes.byref(conversation), os.fsencode(confdir),
                               ctypes.byref(handle)))
     opened = closed = False
+    desktop = None
     try:
         check(pam.pam_putenv(handle, f"XDG_SESSION_TYPE={session_type}".encode()))
         check(pam.pam_putenv(handle, b"XDG_SESSION_CLASS=user"))
+        if display is not None:
+            # Linux-PAM 1.5.2 defines PAM_XDISPLAY=11; pam_systemd v252
+            # reads this item when registering the session's Display property.
+            check(pam.pam_set_item(handle, 11, ctypes.c_char_p(display.encode())))
         check(pam.pam_open_session(handle, 0))
         opened = True
         session = pam.pam_getenv(handle, b"XDG_SESSION_ID")
         if not session or not re.fullmatch(rb"[a-zA-Z0-9]+", session):
             raise RuntimeError("pam_systemd did not create a native session")
         session = session.decode("ascii")
-        print(json.dumps({"session": session, "phase": "opened"}), flush=True)
+        response = {"session": session, "phase": "opened"}
+        if desktop_command is not None:
+            desktop = subprocess.Popen(desktop_command, env=ENV, stdin=subprocess.DEVNULL,
+                                       stdout=sys.stderr, stderr=sys.stderr)
+            response["desktop_pid"] = desktop.pid
+        print(json.dumps(response), flush=True)
         for line in sys.stdin:
             if line == "close\n" and not closed:
                 check(pam.pam_close_session(handle, 0))
@@ -92,10 +103,23 @@ def pam_actor(username, session_type, confdir):
             raise RuntimeError("PAM actor lost its owning controller")
     finally:
         try:
-            if opened and not closed:
-                check(pam.pam_close_session(handle, 0))
+            if desktop is not None:
+                if desktop.poll() is None:
+                    desktop.terminate()
+                try:
+                    status = desktop.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    desktop.kill()
+                    desktop.wait()
+                    raise RuntimeError("PAM-owned desktop required forced termination")
+                if status not in (0, -15):
+                    raise RuntimeError(f"PAM-owned desktop exited {status}")
         finally:
-            check(pam.pam_end(handle, 0))
+            try:
+                if opened and not closed:
+                    check(pam.pam_close_session(handle, 0))
+            finally:
+                check(pam.pam_end(handle, 0))
 
 
 def reply(process):

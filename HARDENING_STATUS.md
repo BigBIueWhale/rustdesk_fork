@@ -2085,8 +2085,7 @@ Acquisition only; polkit installation/authorization and release closure OPEN.
 Receipt `online-fetch-receipts/run.63EwFoon0W.receipt`; raw/failure identities: audit.
 `--debian-polkit-tests`, f99f6cc0; seven archive metadata cases, outer0/13s;
 uid4000/caps-none/NNP/read-only/no-network/joined/no listener additions.
-`debian-polkit-tests-run.gX6siRyvuz.serial.log`65,117B/SHA256
-`e4dfcfb934c6cd9086f5d65a7024406f919da933f8f04a7750c9d5cae8198345`.
+Raw `debian-polkit-tests-run.gX6siRyvuz.serial.log`65,117B; SHA256: audit.
 Receiver/installation unexecuted; fixture/failure provenance: audit/raw log.
 
 Logs: `.harness-state/verifier-vm/`; all hashes SHA256.
@@ -2114,13 +2113,17 @@ qQbkGLjypv passed seven; stale guard rejected. Guard-only retry/same artifact; f
 14 unit/7 native PAM/logind cases; outer0/153s. Empty/removed, seatless unspecified/TTY,
 active X11, user switch/closing X11: expected UID/no-user. No X server/installed receiver.
 Artifact `e12dac152e028dab82cc954580f14abb95c6b4419374d1ae3e4171e69b5d6269`.
-`hbb-common-fs-run.fC5nZoJoWL.serial.log` 71,910B/SHA256
-`8e20a94f08232d07773cd31de8f755d8b4563a0a09c7d5422e7fe5c780b34654`.
+Raw `hbb-common-fs-run.fC5nZoJoWL.serial.log`71,910B; SHA256: audit.
 PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2. Failed cf11738d/GBIedIhNRI parser and
 e11cd41d/5WpwxPMq5i summary/listener artifacts retained; failure/source/raw hashes:
 `/tmp/privilege_securiry_deep_audit.md`.
 Rust runs: fixed artifacts/Rust1.75/zero-NIC/no-network/uid1000/read-only/caps-none/NNP,
 no listener additions; joined cleanup.
+
+**Installed fixture:** `--linux-service-receiver-tests` reuses d2f309ef's exact headless
+binary. Actual polkit, PAM/logind/Xvfb, shipped unit and mode-0711 child drive eight
+principal/commit/restart cases. Fork XDO builds in a pinned ordinary container.
+Execution PENDING; no installed/release acceptance.
 
 **Still OPEN:** installed Linux both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

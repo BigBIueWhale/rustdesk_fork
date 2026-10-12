@@ -23,6 +23,7 @@ APPLE_CURSOR_ONLY=0
 X11_CLIPBOARD_ONLY=0
 X11_KEY_INPUT_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
+PEER_BUILD_PROFILE=default
 LIFECYCLE_ARTIFACT=
 LIFECYCLE_ARTIFACT_SHA256=
 LIFECYCLE_COMMIT=
@@ -204,11 +205,14 @@ case "$#:${1:-}" in
             *) echo 'unknown X11 shard' >&2; exit 2 ;;
         esac
         ;;
-    1:--android-peer-build)
+    1:--android-peer-build|1:--linux-service-build)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Android peer-build input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-peer-build
+        if [ "$1" = --linux-service-build ]; then
+            PEER_BUILD_PROFILE=bounded
+        fi
         ;;
     1:--cm-file-replay)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -652,7 +656,11 @@ elif [ "$MODE" = linux-flutter-engine-build ]; then
 elif [ "$MODE" = android-peer-build ]; then
     readonly VM_TIMEOUT_SECONDS=2400
     readonly OVERLAY_SIZE=40G
-    readonly VM_MEMORY=16384
+    if [ "$PEER_BUILD_PROFILE" = bounded ]; then
+        readonly VM_MEMORY=8192
+    else
+        readonly VM_MEMORY=16384
+    fi
 elif [ "$MODE" = cm-file-replay ]; then
     readonly VM_TIMEOUT_SECONDS=2400
     readonly OVERLAY_SIZE=40G
@@ -4017,6 +4025,9 @@ elif [ "$MODE" = android-owner-tests ]; then
     guest_invocation+=" --android-owner-tests /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_OWNER_SOURCE_COMMIT $ANDROID_OWNER_SOURCE_TREE $ANDROID_OWNER_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-peer-build ]; then
     guest_invocation+=" --android-peer-build /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
+    if [ "$PEER_BUILD_PROFILE" = bounded ]; then
+        guest_invocation+=" --linux-service-build"
+    fi
 elif [ "$MODE" = cm-file-replay ]; then
     guest_invocation+=" --cm-file-replay /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-emulator-boot ]; then
@@ -4523,10 +4534,10 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied durable=unchanged listener=owned' 'installed Linux fresh administrator refusal after failed convergence'
         require_exact_fixed_receipt "LINUX_SERVICE_CONVERGENCE_NATIVE=pass cases=4 cpace=3 stale_refusals=1 convergence_failures=1 admin_grants=1 fresh_refusals=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux convergence-failure integration profile'
     else
-        for phase in root-applied root-reapplied root-reapplied-after-refusal restart restart-after-refusal race-before-keys-recovery race-before-login-recovery requester-exit-recovery session-close-recovery admin-denied-recovery agent-exit-recovery supervisor-shutdown-recovery admitted-shutdown-recovery admin-applied; do
+        for phase in root-applied root-reapplied root-reapplied-after-refusal restart restart-after-refusal race-before-keys-recovery race-before-login-recovery requester-exit-recovery session-close-recovery admin-denied-recovery agent-exit-recovery supervisor-shutdown-recovery admitted-shutdown-recovery unit-stop-recovery admin-applied; do
             require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver CPace credential use'
         done
-        for phase in root-reapplied restart admitted-shutdown-recovery; do
+        for phase in root-reapplied restart admitted-shutdown-recovery unit-stop-recovery; do
             require_exact_fixed_receipt "LINUX_RECEIVER_STALE=pass phase=$phase uid=4002 server=supervised-child listener=owned rejection=confirmation-mismatch journal=invocation-cursor-bound probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver obsolete credential refusal'
         done
         require_exact_fixed_receipt "LINUX_RECEIVER_PROXY_CONTROL=pass uid=4002 server=supervised-child transcript=unmodified postkey=decrypted-test-delay cleanup=joined probe_sha256=$linux_receiver_probe_sha" 'installed Linux receiver transparent-proxy control'
@@ -4539,8 +4550,9 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         require_exact_fixed_receipt 'LINUX_RECEIVER_AGENT_EXIT=pass uid=4001 prompt=actual password=withheld agent=group-killed requester=alive-before-loss cli=explicit-denial pkcheck=exit1 helper=service-reaped durable=unchanged listener=owned cleanup=agent-client-joined' 'installed Linux receiver lost authentication agent'
         require_exact_fixed_receipt 'LINUX_RECEIVER_SUPERVISOR_SHUTDOWN=pass uid=4001 prompt=actual password=withheld signal=supervisor-only cli=explicit-denial helper=reaped child=reaped supervisor=clean-exit unit=inactive cgroup=absent durable=unchanged cleanup=agent-client-joined' 'installed Linux receiver pending authorization during supervisor shutdown'
         require_exact_fixed_receipt 'LINUX_RECEIVER_ADMITTED_SHUTDOWN=pass uid=0 durable=changed-before-stop child=kernel-stopped shutdown=supervisor-only admitted=retained resume=pidfd cli=Applied supervisor=clean-exit unit=inactive cgroup=absent durable=retained cleanup=client-joined' 'installed Linux receiver admitted credential convergence during supervisor shutdown'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_UNIT_STOP_SHUTDOWN=pass uid=0 durable=changed-before-stop child=kernel-stopped shutdown=systemctl admitted=retained resume=ptrace-detach cli=Applied supervisor=clean-exit unit=inactive cgroup=absent durable=retained cleanup=client-joined' 'installed Linux receiver admitted work beyond the normal manager stop timeout'
         require_exact_fixed_receipt 'LINUX_RECEIVER_SESSION_REVOKED=pass uid=4001 session=closing requester=alive authentication=polkit-pam authorization=fresh-denied durable=unchanged supervisor=retained helper=reaped cleanup=agent-client-joined' 'installed Linux receiver administrator grant after session revocation'
-        require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_NATIVE=pass cases=16 cpace=14 stale_refusals=3 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 session_revocations=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux receiver behavior'
+        require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_NATIVE=pass cases=17 cpace=15 stale_refusals=4 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 unit_stops=1 session_revocations=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux receiver behavior'
     fi
     require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_VM=pass harness=$FOCUSED_TEST_COMMIT manifest=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 source=readonly network=none docker=retired cleanup=joined" 'installed Linux receiver fixture finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed Linux receiver guest completion'
@@ -6304,7 +6316,7 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
             "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"
     else
-        printf 'LINUX_SERVICE_RECEIVER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=16 cpace=14 stale_refusals=3 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 session_revocations=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+        printf 'LINUX_SERVICE_RECEIVER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=17 cpace=15 stale_refusals=4 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 unit_stops=1 session_revocations=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
             "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"

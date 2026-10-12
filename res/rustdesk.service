@@ -16,9 +16,12 @@ After=systemd-user-sessions.service network.target
 StartLimitIntervalSec=0
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 ExecStart=/usr/bin/rustdesk --service
-KillMode=control-group
+# The supervisor drains admitted IPC before retiring its exact child. Only it
+# receives the initial stop signal; the whole cgroup remains the kill backstop.
+KillMode=mixed
 TimeoutStopSec=30
 User=root
 # The portable supervisor protocol owns this directory on every init system.

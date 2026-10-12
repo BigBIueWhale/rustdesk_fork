@@ -1,5 +1,6 @@
 use super::{CursorData, ResultType};
 mod native_context;
+mod systemd;
 mod window_focus;
 mod x11_context;
 mod x11_cursor;
@@ -2412,7 +2413,30 @@ fn merge_linux_service_result(
     }
 }
 
+fn drain_linux_service_ipc_thread(
+    handle: LinuxServiceIpcThread,
+    notification: &mut systemd::ServiceNotification,
+) -> ResultType<()> {
+    let mut result = Ok(());
+    while !handle.is_finished() {
+        merge_linux_service_result(
+            &mut result,
+            notification.extend_stop().map_err(Into::into),
+            "systemd stop extension",
+        );
+        sleep_millis(500);
+    }
+    merge_linux_service_result(
+        &mut result,
+        classify_linux_service_ipc_thread_outcome(handle.join(), true),
+        "protected IPC drain",
+    );
+    result
+}
+
 pub fn start_os_service() -> ResultType<()> {
+    let mut notification = systemd::ServiceNotification::from_environment()
+        .map_err(|err| anyhow!("Failed to open systemd notification endpoint: {err}"))?;
     let running = Arc::new(AtomicBool::new(true));
     let signal_running = running.clone();
     ctrlc::set_handler(move || {
@@ -2442,10 +2466,15 @@ pub fn start_os_service() -> ResultType<()> {
     {
         crate::server::request_graceful_shutdown();
         let mut result = Err(startup_err);
+        merge_linux_service_result(
+            &mut result,
+            notification.stopping().map_err(Into::into),
+            "systemd startup-failure notification",
+        );
         if let Some(handle) = ipc_thread.take() {
             merge_linux_service_result(
                 &mut result,
-                classify_linux_service_ipc_thread_outcome(handle.join(), true),
+                drain_linux_service_ipc_thread(handle, &mut notification),
                 "protected IPC startup cleanup",
             );
         }
@@ -2460,6 +2489,10 @@ pub fn start_os_service() -> ResultType<()> {
     let mut root_server_desktop = ServiceChildDesktopIdentity::default();
     let mut user_server_desktop = ServiceChildDesktopIdentity::default();
     let mut result = (|| -> ResultType<()> {
+        if running.load(Ordering::SeqCst) {
+            notification.ready()
+                .map_err(|err| anyhow!("Failed to notify systemd of service readiness: {err}"))?;
+        }
         while running.load(Ordering::SeqCst) {
             observe_linux_service_ipc_thread(&mut ipc_thread, &running)?;
             if !running.load(Ordering::SeqCst) {
@@ -2526,17 +2559,32 @@ pub fn start_os_service() -> ResultType<()> {
     })();
 
     crate::server::request_graceful_shutdown();
+    merge_linux_service_result(
+        &mut result,
+        notification.stopping().map_err(Into::into),
+        "systemd stopping notification",
+    );
     if let Some(handle) = ipc_thread.take() {
         merge_linux_service_result(
             &mut result,
-            classify_linux_service_ipc_thread_outcome(handle.join(), true),
+            drain_linux_service_ipc_thread(handle, &mut notification),
             "protected IPC drain",
         );
     }
     merge_linux_service_result(
         &mut result,
+        notification.extend_stop().map_err(Into::into),
+        "systemd active-user child retirement extension",
+    );
+    merge_linux_service_result(
+        &mut result,
         terminate_child(&mut user_server, "--server", &runtime).map(|_| ()),
         "active-user service-child termination",
+    );
+    merge_linux_service_result(
+        &mut result,
+        notification.extend_stop().map_err(Into::into),
+        "systemd root child retirement extension",
     );
     merge_linux_service_result(
         &mut result,

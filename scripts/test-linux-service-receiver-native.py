@@ -482,7 +482,7 @@ def observe_admin_supervisor_shutdown(client, agent, terminal, start, record, be
         if (status["Uid"].split() != ["0"] * 4 or not (supervisor / "exe").samefile(PRIMARY)
                 or (supervisor / "cmdline").read_bytes().split(b"\0")[1:] != [b"--service", b""]
                 or properties.get("MainPID") != str(record["supervisor"])
-                or properties.get("ControlGroup") != cgroup or properties.get("KillMode") != "control-group"
+                or properties.get("ControlGroup") != cgroup or properties.get("KillMode") != "mixed"
                 or properties.get("Restart") != "on-failure" or re.fullmatch(r"[0-9a-f]{32}", invocation) is None
                 or (supervisor / "cgroup").read_text() != "0::" + cgroup + "\n"
                 or (helper / "cgroup").read_text() != (supervisor / "cgroup").read_text()
@@ -565,7 +565,51 @@ def observe_admin_supervisor_shutdown(client, agent, terminal, start, record, be
             os.close(fd)
 
 
-def admitted_password_shutdown(value, record, fail_convergence=False):
+class TracedChildStop:
+    def __init__(self, pid):
+        self.pid = pid
+        self.attached = set()
+        self.libc = ctypes.CDLL(None, use_errno=True)
+        self.libc.ptrace.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+        self.libc.ptrace.restype = ctypes.c_long
+        try:
+            deadline = time.monotonic() + 3
+            while True:
+                tids = {int(task.name) for task in Path(f"/proc/{pid}/task").iterdir()}
+                if not tids or len(tids) > 512 or not self.attached.issubset(tids):
+                    raise RuntimeError("retained guest child thread inventory changed or exceeded its bound")
+                for tid in sorted(tids - self.attached):
+                    self.call(0x4206, tid)  # PTRACE_SEIZE each retained child thread.
+                    self.attached.add(tid)
+                    self.call(0x4207, tid)  # SIGCONT cannot release PTRACE_INTERRUPT.
+                    while True:
+                        waited, status = os.waitpid(tid, os.WNOHANG | 0x40000000)  # __WALL
+                        if waited == tid:
+                            if not os.WIFSTOPPED(status):
+                                raise RuntimeError("owned tracee exited before its stop barrier")
+                            break
+                        if time.monotonic() >= deadline:
+                            raise RuntimeError("owned tracee did not enter its stop barrier")
+                        time.sleep(0.005)
+                if {int(task.name) for task in Path(f"/proc/{pid}/task").iterdir()} == self.attached:
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("retained child threads did not settle into the stop barrier")
+        except BaseException:
+            self.release()
+            raise
+
+    def call(self, request, tid):
+        if self.libc.ptrace(request, tid, None, None) == -1:
+            raise OSError(ctypes.get_errno(), "owned guest child ptrace operation failed")
+
+    def release(self):
+        for tid in sorted(self.attached, reverse=True):
+            self.call(17, tid)  # PTRACE_DETACH each exact retained tracee.
+            self.attached.remove(tid)
+
+
+def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=False):
     listener = direct_listener(record)
     if listener is None:
         raise RuntimeError("admitted shutdown has no retained serving listener")
@@ -577,6 +621,8 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
     pidfds = {}
     client = None
     child_stopped = False
+    trace_stop = None
+    stopped_state = b"t" if unit_stop else b"T"
     unit_reference = ServiceUnitResultReference()
     try:
         for role, (proc, expected_start) in identities.items():
@@ -601,10 +647,13 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
         run(["/usr/bin/journalctl", "--sync"], timeout=5)
         cursor = json.loads(run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager",
                                 "--output=json", "-n", "1"]).stdout)["__CURSOR"]
-        signal.pidfd_send_signal(pidfds["child"], signal.SIGSTOP)
+        if unit_stop:
+            trace_stop = TracedChildStop(record["pid"])
+        else:
+            signal.pidfd_send_signal(pidfds["child"], signal.SIGSTOP)
         child_stopped = True
         deadline = time.monotonic() + 3
-        while (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()[0] != b"T":
+        while (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()[0] != stopped_state:
             if time.monotonic() >= deadline or select.select([pidfds["child"]], [], [], 0)[0]:
                 raise RuntimeError("retained child did not reach the actual kernel stop barrier")
             time.sleep(0.005)
@@ -630,11 +679,14 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
                 raise RuntimeError("actual admitted root request did not change durable credential")
             time.sleep(0.005)
         if (client.poll() is not None or child_record() != record
-                or (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()[0] != b"T"
+                or (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()[0] != stopped_state
                 or any(select.select([fd], [], [], 0)[0] for fd in pidfds.values())):
             raise RuntimeError("durable change lost its pending requester or stopped-child barrier")
         began = time.monotonic()
-        signal.pidfd_send_signal(pidfds["supervisor"], signal.SIGTERM)
+        if unit_stop:
+            run(["/usr/bin/systemctl", "stop", "--no-block", "rustdesk.service"], timeout=5)
+        else:
+            signal.pidfd_send_signal(pidfds["supervisor"], signal.SIGTERM)
         time.sleep(0.05)
         expected = {"_PID": str(record["supervisor"]), "_UID": "0", "_TRANSPORT": "stdout",
                     "_SYSTEMD_UNIT": "rustdesk.service", "_SYSTEMD_INVOCATION_ID": invocation,
@@ -650,14 +702,36 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
                 time.sleep(0.005)
         fields = (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()
         if (client.poll() is not None or credential() != changed or int(fields[19]) != record["start"]
-                or fields[0] != b"T" or len(shutdowns) != 1
+                or fields[0] != stopped_state or len(shutdowns) != 1
                 or any(select.select([fd], [], [], 0)[0] for fd in pidfds.values())):
             raise RuntimeError("shutdown cancelled admitted work or completed before child convergence")
+        if unit_stop:
+            while time.monotonic() - began < 40:
+                fields = (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                status = dict(line.split(":", 1) for line in (child / "status").read_text().splitlines() if ":" in line)
+                if (client.poll() is not None or credential() != changed
+                        or fields[0] != stopped_state or int(fields[19]) != record["start"]
+                        or int(status["TracerPid"]) != os.getpid()
+                        or any(select.select([fd], [], [], 0)[0] for fd in pidfds.values())):
+                    raise RuntimeError("normal systemd stop killed or cancelled admitted credential work")
+                if any((Path(f"/proc/{record['pid']}/task/{tid}/stat").read_bytes()
+                        .rsplit(b") ", 1)[1].split()[0] != b"t") for tid in trace_stop.attached):
+                    raise RuntimeError("a retained child thread escaped the native stop barrier")
+                time.sleep(0.1)
+            stop_properties = dict(line.split("=", 1) for line in run(
+                ["/usr/bin/systemctl", "show", "rustdesk.service",
+                 "--property=MainPID,ActiveState,SubState,KillMode,Type,NotifyAccess,TimeoutStopUSec,NRestarts"]).stdout.splitlines())
+            if stop_properties != {"MainPID": str(record["supervisor"]), "ActiveState": "deactivating",
+                                   "SubState": "stop-sigterm", "KillMode": "mixed", "Type": "notify",
+                                   "NotifyAccess": "main", "TimeoutStopUSec": "30s",
+                                   "NRestarts": properties["NRestarts"]}:
+                raise RuntimeError("normal stop did not retain the notified supervisor past the original timeout")
+            print("LINUX_RECEIVER_UNIT_STOP_PENDING=" + json.dumps(stop_properties, sort_keys=True), flush=True)
         held_seconds = time.monotonic() - began
-        barrier_name = "CONVERGENCE" if fail_convergence else "ADMITTED"
+        barrier_name = "UNIT_STOP" if unit_stop else "CONVERGENCE" if fail_convergence else "ADMITTED"
         print(f"LINUX_RECEIVER_{barrier_name}_BARRIER_OBSERVED=" + json.dumps(
             {**record, "requester_pid": client.pid, "requester_start": requester_start,
-             "durable_changed": True, "requester_alive": True, "child_state": "T",
+             "durable_changed": True, "requester_alive": True, "child_state": stopped_state.decode(),
              "supervisor_alive": True, "held_seconds": held_seconds, "shutdown_journal": shutdowns[0]},
             sort_keys=True), flush=True)
         if fail_convergence:
@@ -819,12 +893,16 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
                   "cli=explicit-uncertainty supervisor=SIGABRT old_child=reaped old_listener=absent "
                   "restart=automatic-once durable=retained cleanup=client-joined", flush=True)
             return recovered
-        signal.pidfd_send_signal(pidfds["child"], signal.SIGCONT)
+        released_at = time.monotonic()
+        if trace_stop is not None:
+            trace_stop.release()
+        else:
+            signal.pidfd_send_signal(pidfds["child"], signal.SIGCONT)
         child_stopped = False
         stdout, stderr = client.communicate(timeout=5)
-        reply_seconds = time.monotonic() - began
+        reply_seconds = time.monotonic() - released_at
         retired = {}
-        while time.monotonic() - began < 20:
+        while time.monotonic() - released_at < 20:
             for role, (proc, expected_start) in identities.items():
                 exited = bool(select.select([pidfds[role]], [], [], 0)[0])
                 try:
@@ -839,7 +917,7 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
             ["/usr/bin/systemctl", "show", "rustdesk.service",
              "--property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus"]).stdout.splitlines())
         unit_reference.close()
-        while Path("/sys/fs/cgroup" + cgroup).exists() and time.monotonic() - began < 20:
+        while Path("/sys/fs/cgroup" + cgroup).exists() and time.monotonic() - released_at < 20:
             time.sleep(0.02)
         elapsed = time.monotonic() - began
         run(["/usr/bin/journalctl", "--sync"], timeout=5)
@@ -851,19 +929,21 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
         listener_absent = not any(len(fields := line.split()) >= 10 and fields[3] == "0A" and fields[9] == str(listener)
                                   for line in Path("/proc/net/tcp").read_text().splitlines()[1:])
         retained_durable = credential() == changed
-        print("LINUX_RECEIVER_ADMITTED_SHUTDOWN_OBSERVED=" + json.dumps(
+        print(f"LINUX_RECEIVER_{barrier_name}_SHUTDOWN_OBSERVED=" + json.dumps(
             {**record, "supervisor_start": supervisor_start, "listener_inode": listener,
              "requester_pid": client.pid, "requester_start": requester_start, "requester_uid": 0,
-             "child_barrier": "pidfd-SIGSTOP/kernel-T", "durable_changed_before_shutdown": True,
+             "child_barrier": "ptrace/kernel-t" if unit_stop else "pidfd-SIGSTOP/kernel-T", "durable_changed_before_shutdown": True,
              "held_after_shutdown_seconds": held_seconds, "incomplete_while_child_stopped": True,
-             "shutdown_signal": "supervisor-pidfd-SIGTERM", "resume_signal": "child-pidfd-SIGCONT",
+             "shutdown_signal": "systemctl-stop" if unit_stop else "supervisor-pidfd-SIGTERM",
+             "resume_signal": "PTRACE_DETACH" if unit_stop else "child-pidfd-SIGCONT",
              "reply_seconds": reply_seconds, "elapsed_seconds": elapsed, "retired": retired,
              "cli_exit": client.returncode, "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:],
              "durable_retained": retained_durable, "listener_absent": listener_absent,
              "unit_outcome": outcome, "unit_reference_held_at_outcome": True,
              "cgroup_absent": not Path("/sys/fs/cgroup" + cgroup).exists(), "root_journal": root_messages},
             sort_keys=True), flush=True)
-        if (client.returncode != 0 or stdout.strip() != "Done!" or stderr or reply_seconds > 5 or elapsed >= 20
+        if (client.returncode != 0 or stdout.strip() != "Done!" or stderr or reply_seconds > 5
+                or time.monotonic() - released_at >= 20
                 or not all(item["exited"] and item["reaped"] for item in retired.values())
                 or outcome != {"ActiveState": "inactive", "SubState": "dead", "Result": "success",
                                "MainPID": "0", "ExecMainCode": "1", "ExecMainStatus": "0"}
@@ -873,7 +953,10 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
     finally:
         try:
             if child_stopped and not select.select([pidfds["child"]], [], [], 0)[0]:
-                signal.pidfd_send_signal(pidfds["child"], signal.SIGCONT)
+                if trace_stop is not None:
+                    trace_stop.release()
+                else:
+                    signal.pidfd_send_signal(pidfds["child"], signal.SIGCONT)
         finally:
             try:
                 if client is not None:
@@ -887,8 +970,9 @@ def admitted_password_shutdown(value, record, fail_convergence=False):
                 unit_reference.close()
                 for fd in pidfds.values():
                     os.close(fd)
-    print("LINUX_RECEIVER_ADMITTED_SHUTDOWN=pass uid=0 durable=changed-before-stop child=kernel-stopped "
-          "shutdown=supervisor-only admitted=retained resume=pidfd cli=Applied supervisor=clean-exit "
+    print(f"LINUX_RECEIVER_{barrier_name}_SHUTDOWN=pass uid=0 durable=changed-before-stop child=kernel-stopped "
+          f"shutdown={'systemctl' if unit_stop else 'supervisor-only'} admitted=retained "
+          f"resume={'ptrace-detach' if unit_stop else 'pidfd'} cli=Applied supervisor=clean-exit "
           "unit=inactive cgroup=absent durable=retained cleanup=client-joined", flush=True)
 
 
@@ -1684,6 +1768,12 @@ def tests(args, convergence_failure=False):
             print("LINUX_RECEIVER_ADMITTED_RECOVERY_OBSERVED=" + json.dumps(second, sort_keys=True), flush=True)
             keyed("Receiver-fixture-shutdown-2026!", "admitted-shutdown-recovery", second, probe_spec["sha256"])
             stale_refused("Receiver-fixture-fourth-2026!", "admitted-shutdown-recovery", second, probe_spec["sha256"])
+            admitted_password_shutdown("Receiver-fixture-unit-stop-2026!", second, unit_stop=True)
+            run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+            second = ready(second)
+            print("LINUX_RECEIVER_UNIT_STOP_RECOVERY_OBSERVED=" + json.dumps(second, sort_keys=True), flush=True)
+            keyed("Receiver-fixture-unit-stop-2026!", "unit-stop-recovery", second, probe_spec["sha256"])
+            stale_refused("Receiver-fixture-shutdown-2026!", "unit-stop-recovery", second, probe_spec["sha256"])
         admin_change("Receiver-fixture-admin-2026!", second)
         keyed("Receiver-fixture-admin-2026!", "admin-applied", second, probe_spec["sha256"])
         before = credential()
@@ -1721,7 +1811,7 @@ def tests(args, convergence_failure=False):
               f"probe_sha256={probe_spec['sha256']} fixture=installed-layout polkit=actual logind=actual "
               "child=supervised cleanup=joined", flush=True)
         return
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=16 cpace=14 stale_refusals=3 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=17 cpace=15 stale_refusals=4 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 unit_stops=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 

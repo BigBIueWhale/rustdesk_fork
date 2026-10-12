@@ -2344,6 +2344,15 @@ artifact are unchanged. Standard unit-stop remains OPEN: the shipped Type=simple
 30-second stop budget does not establish the admitted 600-second drain. Other schedules,
 desktops, platform/whole-app/release/resource/reproduction/review acceptance remain OPEN.
 
+**Normal systemd stop: candidate correction; native acceptance OPEN.** The unit uses
+Type=notify/NotifyAccess=main/KillMode=mixed with the existing 30-second kill backstop.
+The root supervisor reports IPC readiness, closes admission, extends the stop timeout
+while joining owned IPC, then retires its child. Notification failures remain errors.
+The installed fixture adds real systemctl stop with a 40-second ptrace-held child,
+pending durable mutation, release/finality/retirement and fresh-generation CPace/refusal.
+An explicit 8-GiB guest/6-GiB container/two-job source-bound build profile retains all
+storage admission/monitor ceilings; its resource viability and both native outcomes are pending.
+
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

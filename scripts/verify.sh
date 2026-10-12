@@ -9920,9 +9920,11 @@ if grep -q 'rm -rf /root/.config/rustdesk' res/DEBIAN/postrm; then
   r_s11c10j="$r_s11c10j postrm:lowercase-only-root-config-purge"
 fi
 grep -q 'init-system-helpers' build.py                         || r_s11c10j="$r_s11c10j deb-control:no-init-system-helpers-dep"
-grep -qE '^KillMode=control-group$' res/rustdesk.service       || r_s11c10j="$r_s11c10j unit:not-control-group"
-if grep -qE '^ExecStop=|pkill|KillMode=mixed' res/rustdesk.service; then
-  r_s11c10j="$r_s11c10j unit:legacy-execstop-or-mixed-killmode"
+grep -qE '^KillMode=mixed$' res/rustdesk.service       || r_s11c10j="$r_s11c10j unit:not-supervisor-led"
+grep -qE '^Type=notify$' res/rustdesk.service || r_s11c10j="$r_s11c10j unit:no-notification-lifetime"
+grep -qE '^NotifyAccess=main$' res/rustdesk.service || r_s11c10j="$r_s11c10j unit:not-main-only-notification"
+if grep -qE '^ExecStop=|pkill' res/rustdesk.service; then
+  r_s11c10j="$r_s11c10j unit:legacy-execstop"
 fi
 if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|systemctl|--machine=' res/DEBIAN | grep -vF '/bin/systemctl --system daemon-reload >/dev/null' >"$VERIFY_TMP/rd_verify_r_s11c10j_pkg"; then
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_pkg"
@@ -13249,9 +13251,11 @@ grep -q 'SignalKind::terminate' src/direct_service.rs || r_t9_missing="$r_t9_mis
 grep -q 'own_controlled_server_lifecycle' src/direct_service.rs || r_t9_missing="$r_t9_missing retained-lifecycle-owner"
 grep -q 'is_shutting_down()' src/direct_service.rs    || r_t9_missing="$r_t9_missing accept-stop"
 grep -qE '^TimeoutStopSec=[1-9][0-9]*$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-TimeoutStopSec(must be a positive drain backstop, =0 is infinite)"
-grep -qE '^KillMode=control-group$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-KillMode-control-group"
-if grep -qE '^ExecStop=|pkill|KillMode=mixed' res/rustdesk.service; then
-  r_t9_missing="$r_t9_missing legacy-pkill-or-mixed-stop"
+grep -qE '^KillMode=mixed$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-supervisor-led-stop"
+grep -qE '^Type=notify$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-notification-lifetime"
+grep -qE '^NotifyAccess=main$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-main-only-notification"
+if grep -qE '^ExecStop=|pkill' res/rustdesk.service; then
+  r_t9_missing="$r_t9_missing legacy-pkill-stop"
 fi
 if [ -n "$r_t9_missing" ]; then
   echo "  FAIL R-T9: graceful-shutdown machinery incomplete:$r_t9_missing"; rc=1

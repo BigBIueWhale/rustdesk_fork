@@ -17,6 +17,7 @@ HBB_LOGIND_NATIVE=0
 APPLE_CURSOR_ONLY=0
 X11_KEY_INPUT_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
+PEER_BUILD_PROFILE=default
 case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
@@ -112,6 +113,11 @@ case "$#:${8:-}" in
         ;;
     12:--android-peer-build)
         MODE=android-peer-build
+        ;;
+    13:--android-peer-build)
+        [ "${13}" = --linux-service-build ] || exit 2
+        MODE=android-peer-build
+        PEER_BUILD_PROFILE=bounded
         ;;
     12:--cm-file-replay)
         MODE=cm-file-replay
@@ -4851,6 +4857,13 @@ LAYOUT
 }
 
 run_android_peer_build() {
+    local build_memory=12g build_memory_bytes=12884901888 build_cpus=4 build_jobs=4
+    if [ "$PEER_BUILD_PROFILE" = bounded ]; then
+        build_memory=6g
+        build_memory_bytes=6442450944
+        build_cpus=2
+        build_jobs=2
+    fi
     local inputs=/mnt/rustdesk-sealed-inputs
     local artifact_output=/mnt/rustdesk-android-artifact-output
     local source_root=$ROOT/android-peer-build-source
@@ -4933,12 +4946,12 @@ run_android_peer_build() {
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" "$DEV_CHECK_IMAGE_CONFIG_ID"
     CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
         --name rustdesk-android-peer-artifact-build --pull=never --network=none --read-only \
-        --user 1000:1000 --pids-limit=1024 --memory=12g --memory-swap=12g --cpus=4 \
+        --user 1000:1000 --pids-limit=1024 --memory="$build_memory" --memory-swap="$build_memory" --cpus="$build_cpus" \
         --ulimit nofile=8192:8192 --ulimit core=0:0 \
         --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g \
         --env HOME=/tmp/android-peer-build --env CARGO_HOME=/tmp/smoke-cargo-home \
-        --env CARGO_TARGET_DIR=/smoke-target --env CARGO_INCREMENTAL=0 \
+        --env CARGO_TARGET_DIR=/smoke-target --env CARGO_INCREMENTAL=0 --env "CARGO_BUILD_JOBS=$build_jobs" \
         --env CARGO_NET_OFFLINE=true --env CARGO_NET_RETRY=0 \
         --env "RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \
         --env "SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \
@@ -4952,7 +4965,7 @@ run_android_peer_build() {
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'Android peer build container ID is malformed'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' "$CONTAINER_ID")"
-    [ "$inspect" = 'none|true|1000:1000|12884901888|12884901888|4000000000|1024|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]' ] \
+    [ "$inspect" = "none|true|1000:1000|$build_memory_bytes|$build_memory_bytes|${build_cpus}000000000|1024|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]|{}|[]" ] \
         || fail 'Android peer build confinement differs'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}' "$CONTAINER_ID")"

@@ -2078,7 +2078,7 @@ Current normative specification SHA-256: `6128acd48ad9ad7ccf1f0fc32abe51f3d6d6d2
 
 ### Current authority and source closure
 
-**Offline verifier host sockets (R-S11dh): source corrected; final integration pending.**
+**Offline verifier host sockets (R-S11dh): exact Linux boundary accepted.**
 `vm-host-network.py` closes extra inherited descriptors, refuses IP stdout/stderr and
 installs an ordinary-user, capabilities-free, inherited seccomp restriction before
 executing the fixed Bash body from sealed RAM. IP/packet/vsock socket creation,
@@ -2087,11 +2087,22 @@ the two netlink protocols required by the read-only ss inventory remain availabl
 The fixed shell ignores startup files; no environment marker selects confinement.
 Complete listener snapshots/deltas remain evidence without ownership inference.
 Global changes alone no longer veto a run whose owned process tree cannot create IP
-sockets. Native `4cb935cb` passed four real TCP/UDP controls, kernel socket/ABI
-refusals, Unix roundtrips, ss and bootstrap checks in 14 seconds; the final shell
-startup/descriptor assertions and changed observation handling still need integration.
-The acquisition launcher is unchanged. Normal installed-service stop and the wider
-platform/release/storage obligations remain OPEN.
+sockets. Native `002a2b02` passed in 14 VM seconds: four real TCP/UDP controls;
+141 socket/48 socketpair/31 netlink-protocol refusals; seven blocked APIs;
+fork/exec inheritance; x32/i386 SIGSYS; Unix roundtrips and ss; actual BASH_ENV
+attack refusal, sealed argument-preserving startup, IP stdout refusal, exact kernel
+EBADF for an extra bound socket, and closed stdin. A separate unfiltered guest
+process creates one real UDP endpoint; the exact confined observer retains its
+complete snapshots/delta as unattributed and succeeds, then proves retirement.
+All source/index/audit/ledger/specification/instruction freezes match; owned joins
+and RAM retirement pass. RAM scratch peaks at 399,450,112 bytes, disk diagnostics
+at 110,592 bytes; QEMU's observed block writes are 4,096 bytes. Immutable
+`.harness-state/verifier-vm/vm-host-network-accepted-002a2b02.json` (7,706 bytes;
+SHA-256 `8d00995466a857e0bb33df382840e06cbd7868ede2b1ace5488f9fba721b6f3b`)
+binds source, native outcomes, raw serial, storage, freezes and retained failures.
+A later independent host snapshot adds unknown UDP60041; it remains unattributed
+and untouched. The acquisition launcher is unchanged. Normal installed-service
+stop and the wider platform/release/storage obligations remain OPEN.
 
 **VM transient storage (R-S11cj/R-S11dh): the observed Linux VM disk-churn path is corrected.**
 The ordinary-user verification and acquisition launchers use one private existing-`/dev/shm` workspace for disposable

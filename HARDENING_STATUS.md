@@ -2301,34 +2301,41 @@ freezes. This is one admitted-write schedule in debug/headless seatless-X11 inst
 standard unit-stop, failed convergence, delay/contention/capacity/GUI cancellation and wider
 acceptance remain OPEN. No product code or artifact changed.
 
-**Pending native acceptance: terminal child-convergence failure during supervisor shutdown.**
-The separate `--linux-service-convergence-failure-tests` integration profile reuses the
-sealed `924b5aed` binary/probe and runs only a root baseline, full failure/recovery schedule,
-fresh actual administrator grant and no-agent refusal. Its 780-second VM budget accommodates
-the real 600-second admitted-operation recovery window; the ordinary receiver profile keeps
-its 300-second budget and existing scenarios. `src/ipc.rs:8307` sets the complete recovery
-deadline, while `:8314` starts each one-second transport attempt; `:6363` retains uncertainty,
-and `:1642` aborts unresolved authority after drain. The fixture holds the exact child stopped
-through that full window after observing a real durable root CLI write and supervisor-only
-SIGTERM. It requires explicit CLI uncertainty without `Done!`, exact old supervisor SIGABRT/
-unit failure, invocation-bound unresolved-replica journal, old process/listener retirement and
-exactly one automatic restart into a fresh generation honoring the durable value. Systemd
-may resume the old child during its own failure cleanup; the fixture never resumes it before
-supervisor exit. Exact child pidfd exit is also permitted at the recovery deadline: its
-parent-death SIGKILL is tied to the creating thread, before whole-supervisor pidfd finality.
-The observer records that transition and still requires exact supervisor SIGABRT failure.
-New-password CPace, obsolete-password refusal and fresh OS authorization are
-mandatory. Product, shipped unit and artifact are unchanged; this schedule remains pending.
-Four full-window attempts are unaccepted. The corrected observer recorded the exact old
-supervisor SIGABRT/failed-unit outcome after 600.9 seconds and CLI1 explicit uncertainty,
-then stopped at terminal journal selection. Diagnostics prove both required messages carry
-the exact old root/boot/invocation authority. The first query capped earliest after-cursor
-entries; the grep repair searched backwards under installed systemd 252.39. The fixture
-now queries the bounded old-invocation tail and requires boot-bound monotonic freshness
-after the actual shutdown barrier, retaining every authority/failure predicate. Recovery
-and fresh credential/authorization checks were not reached. The latest host endpoint audit
-is unchanged; three earlier audits found unexplained UDP additions without ownership
-inference. Failed diagnostics remain retained after joined RAM retirement.
+**Terminal child-convergence failure during supervisor shutdown: exact installed Linux case accepted.**
+Integration harness `734271a3` reuses the sealed `924b5aed` binary/probe. The exact child
+receives pidfd SIGSTOP/kernel T; an actual root CLI changes the durable credential while
+remaining pending. Only the retained supervisor receives SIGTERM. Its boot/PID/UID/invocation-
+bound journal proves graceful shutdown began while that stopped-child barrier remains held.
+The fixture never resumes the child. After the real 600-second recovery window, CLI1 reports
+explicit uncertainty without `Done!`; the old supervisor fails by SIGABRT at 600.877 seconds.
+The held guest D-Bus unit reference proves old ExecMainPID, exit code2/status6/result signal,
+MainPID0 and auto-restart. The bounded old-invocation journal tail proves replica failure and
+unresolved-admission abort after the fresh monotonic barrier, with no normal Exit.
+Old supervisor/child pidfds exit and identities are reaped; the old listener disappears.
+Exactly one automatic restart reaches active/running/success with a fresh root/child/invocation/
+generation by 603.121 seconds; the durable value is retained. Actual mutual CPace accepts the
+new password and rejects the obsolete password. A fresh administrator PAM/polkit grant reaches
+Applied/new-password CPace; fresh no-agent denial passes. `src/ipc.rs:8307,8314` distinguishes
+the full recovery window from each one-second attempt; `:6363,1642` retains uncertainty and
+aborts unresolved authority rather than evicting replay ownership.
+
+The separate `--linux-service-convergence-failure-tests` profile passes four cases/three CPace
+exchanges/one stale refusal in 701 VM seconds, with complete host endpoint snapshots unchanged,
+all source/index/audit/specification/ledger/instruction freezes equal and exact joined cleanup.
+Its explicit integration budget is 780 seconds; the ordinary 300-second receiver profile and
+its prior acceptance remain unchanged. RAM scratch peaks at 4,995,383,296 bytes, overlay at
+3,761,246,208 bytes, private-run disk at 212,992 bytes (208 KiB); observed QEMU host block writes
+are 4,096 bytes. All RAM/shared/acquisition run markers retire. Immutable
+`.harness-state/verifier-vm/linux-receiver-convergence-failure-accepted-734271a3.json`
+(48,546 bytes; SHA-256 `1fe4c1399bf5c03496a2dbf3c91edd2624150c9bd8e1aff984b0fc1099aede78`)
+binds structured barrier/failure/recovery/authentication observations, artifacts, raw serial,
+storage and freezes. Interleaved serial records remain raw and are not reconstructed.
+Four failed observer/query attempts remain unaccepted in retained diagnostics and the audit;
+three also had unexplained host UDP additions, with no ownership inference or host changes.
+This is one debug/headless installed-layout seatless-X11 schedule. Product, shipped unit and
+artifact are unchanged. Standard unit-stop remains OPEN: the shipped Type=simple/control-group/
+30-second stop budget does not establish the admitted 600-second drain. Other schedules,
+desktops, platform/whole-app/release/resource/reproduction/review acceptance remain OPEN.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

@@ -706,6 +706,7 @@ fn send_data_to_all(data: ClipboardFile) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hbb_common::tokio;
 
     fn scalar(id: i32) -> ClipboardFile {
         ClipboardFile::FormatListResponse { msg_flags: id }

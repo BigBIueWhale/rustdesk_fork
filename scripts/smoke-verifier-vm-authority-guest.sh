@@ -3968,7 +3968,13 @@ PY
                 || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
         fi
     fi
-    [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \
+    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+        [ "$(grep -Ec '^test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^test .* \.\.\. FAILED$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'test platform::unix::fuse::cs::fuse_test::read_node_keeps_failed_request_and_next_read_responses_separate ... FAILED' "$output")" -eq 1 ] \
+            || { cat "$output" >&2; fail 'earlier FUSE implementation did not fail only the exact regression'; }
+    fi
+    [ "$(grep -Ec '^test result: ' "$output")" -eq "$((${#result_lines[@]} + HBB_FUSE_READ_TESTS))" ] \
         || fail 'focused Rust-test output contains a non-success result summary'
     for result_line in "${result_lines[@]}"; do
         passed="$(printf '%s\n' "$result_line" | sed -E 's/^test result: ok\. ([0-9]+) passed;.*/\1/')"

@@ -2121,12 +2121,18 @@ then root's fresh check refuses (CLI1/durable unchanged/helper reaped). Old acto
 runtime retire; c2/new PID/start keeps supervisor/generation. Current-password CPace, new admin Applied
 and fresh no-agent denial pass. No product change; lingering-runtime recovery OPEN; failures retained.
 
-**Incorrect administrator password: native acceptance OPEN.** The installed fixture submits an
-incorrect password to the real administrator PAM challenge and requires failed authentication,
-exact root `pkcheck` exit1/reap, unchanged durable state/child/listener, CPace recovery and a subsequent
-fresh administrator Applied result. The first transaction failed waiting for CLI finality after the
-agent's failure response; helper outcome/cause were unobserved. Diagnostics are retained; prior
-acceptance is unchanged, and a focused replay must distinguish a further prompt from receiver drain.
+**Incorrect administrator password: correction prepared; native acceptance OPEN.** Two unchanged
+peer3b runs failed CLI finality. The diagnostic replay observed real PAM failure, root `pkcheck`
+exit1 and exact helper reap, unchanged durable credential/listener, and another prompt for the same
+live CLI. The client reused its one-second request deadline across root authorization (bounded at
+120 seconds); timeout entered same-operation recovery, while denial removed the unadmitted claim.
+`src/ipc.rs` now retains that short proof/body deadline, awaits Linux status within the existing
+600-second operation/recovery lifetime, and starts a fresh one-second receiver status-send deadline
+after authorization/commit. macOS status timing and authorization/admission rules are unchanged.
+The native fixture and five-second post-failure finality check are unchanged. A new source-bound
+artifact must prove one failed challenge, root denial/helper reap, CLI1, unchanged credential/child/
+listener, current-password CPace, subsequent fresh administrator Applied and no-agent denial.
+Raw failures `97LVckTCqO`/`N4gM3dtGCg` and full diagnostic observations are retained in the audit.
 
 Evidence: `linux-wire-v2-accepted-e69129bc.json`,
 `linux-receiver-requester-exit-accepted-bb5a78b2.json`,

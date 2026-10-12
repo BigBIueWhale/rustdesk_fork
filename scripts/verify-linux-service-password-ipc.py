@@ -2844,14 +2844,15 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     service_handler = ipc.function("handle_sensitive_linux_service_ipc_transaction")
     service_handler.require_order(
         (
-            (("if", "tokio", "::", "time", "::", "Instant", "::", "now", "(", ")", ">=", "deadline", "{", "return", ";", "}"), "expired proof deadline refuses secret-body read"),
-            (("receive_request_unix", "(", "&", "mut", "stream", ",", "password", "::", "SensitivePayloadKind", "::", "Password", ",", "deadline", OPTIONAL_COMMA, ")"), "raw bounded service request"),
+            (("if", "tokio", "::", "time", "::", "Instant", "::", "now", "(", ")", ">=", "request_deadline", "{", "return", ";", "}"), "expired proof deadline refuses secret-body read"),
+            (("receive_request_unix", "(", "&", "mut", "stream", ",", "password", "::", "SensitivePayloadKind", "::", "Password", ",", "request_deadline", OPTIONAL_COMMA, ")"), "raw bounded service request"),
             (("operation_id", "=", "request", ".", "operation_id", "(", ")"), "service operation ID"),
             (("execute_linux_service_owned_unattended_password_request", "(", "operation_id", ".", "to_string", "(", ")", ",", "value", ",", "identity", ",", "&", "password_authorizations", OPTIONAL_COMMA, ")"), "identity-bound retained authority/commit"),
-            (("send_status_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "status", ",", "deadline", ")"), "operation-bound status"),
+            (("response_deadline", "=", "tokio", "::", "time", "::", "Instant", "::", "now", "(", ")", "+", "std", "::", "time", "::", "Duration", "::", "from_millis", "(", "SERVICE_IPC_REQUEST_TIMEOUT_MS", ")"), "bounded response after retained authority/commit"),
+            (("send_status_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "status", ",", "response_deadline", ")"), "operation-bound status"),
         )
     )
-    service_handler.forbid(("let", "deadline"), "resetting the inherited service deadline")
+    service_handler.forbid(("let", "request_deadline"), "resetting the inherited request deadline")
     credential_handler = ipc.function("handle_linux_service_credential_snapshot_transaction")
     credential_handler.require_order(
         (
@@ -3283,7 +3284,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             (("deadline", "=", "tokio", "::", "time", "::", "Instant", "::", "now"), "per-attempt absolute deadline"),
             (("connect_sensitive_unix", "(", "deadline", ",", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ")"), "raw service endpoint"),
             (("send_request_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "&", "v"), "same UUID/value request"),
-            (("receive_status_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "deadline", ")"), "same UUID status"),
+            (("receive_status_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "status_deadline", ")"), "same UUID status within its platform operation deadline"),
             (("Err", "(", "password", "::", "UnixSensitivePasswordSendError", "::", "Uncertain", "(", "err", ")", ")", "=>", "{", "recovery_required", "=", "true"), "uncertain response finality"),
             (("windows_credential_client_decision", "(", "status", ",", "recovery_required", ")"), "terminality policy"),
         )

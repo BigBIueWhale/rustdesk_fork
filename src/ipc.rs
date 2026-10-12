@@ -4333,15 +4333,15 @@ async fn handle_sensitive_linux_service_ipc_transaction(
     identity: PeerProcessIdentity,
     _permit: OwnedSemaphorePermit,
     password_authorizations: mpsc::Sender<LinuxPasswordAuthorizationRequest>,
-    deadline: tokio::time::Instant,
+    request_deadline: tokio::time::Instant,
 ) {
-    if tokio::time::Instant::now() >= deadline {
+    if tokio::time::Instant::now() >= request_deadline {
         return;
     }
     let request = match password::receive_request_unix(
         &mut stream,
         password::SensitivePayloadKind::Password,
-        deadline,
+        request_deadline,
     )
     .await
     {
@@ -4366,7 +4366,10 @@ async fn handle_sensitive_linux_service_ipc_transaction(
         &password_authorizations,
     )
     .await;
-    if let Err(err) = password::send_status_unix(&mut stream, operation_id, status, deadline).await
+    let response_deadline = tokio::time::Instant::now()
+        + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+    if let Err(err) =
+        password::send_status_unix(&mut stream, operation_id, status, response_deadline).await
     {
         log::trace!("Linux service password status could not be returned: {err}");
     }
@@ -8840,6 +8843,10 @@ async fn set_service_owned_unattended_password_with_ack(v: SensitivePassword) ->
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
         #[cfg(target_os = "linux")]
         let authorization: Option<password::SensitiveAuthorization> = None;
+        #[cfg(target_os = "linux")]
+        let status_deadline = recovery_deadline;
+        #[cfg(target_os = "macos")]
+        let status_deadline = deadline;
 
         let mut stream =
             match connect_sensitive_unix(deadline, password::SERVICE_PASSWORD_IPC_POSTFIX).await
@@ -8864,7 +8871,8 @@ async fn set_service_owned_unattended_password_with_ack(v: SensitivePassword) ->
         .await
         {
             Ok(()) => {
-                match password::receive_status_unix(&mut stream, operation_id, deadline).await {
+                match password::receive_status_unix(&mut stream, operation_id, status_deadline).await
+                {
                     Ok(status) => Ok(status),
                     Err(err) => {
                         recovery_required = true;

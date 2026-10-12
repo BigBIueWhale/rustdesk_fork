@@ -2351,7 +2351,10 @@ while joining owned IPC, then retires its child. Notification failures remain er
 The installed fixture adds real systemctl stop with a 40-second ptrace-held child,
 pending durable mutation, release/finality/retirement and fresh-generation CPace/refusal.
 An explicit 8-GiB guest/6-GiB container/two-job source-bound build profile retains all
-storage admission/monitor ceilings; its resource viability and both native outcomes are pending.
+storage admission/monitor ceilings. Its first compile completed but reached the hard
+overlay limit during cleanup; the outer success is unaccepted. The bounded profile now
+omits debug symbols, and guest block/filesystem errors refuse artifact publication.
+The corrected build's storage viability and installed stop outcome remain pending.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

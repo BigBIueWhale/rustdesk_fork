@@ -6192,6 +6192,10 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     verify_sha256 "$DEV_CHECK_ARCHIVE" "$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
 fi
 
+if /usr/bin/grep -Eq 'Buffer I/O error on dev vda|I/O error, dev vda|EXT4-fs.*(I/O error|Aborting journal|Remounting filesystem read-only)' "$SERIAL_LOG"; then
+    fail 'owned guest filesystem failed; refusing artifact publication and runtime acceptance'
+fi
+
 if [ "$MODE" = android-emulator-app ]; then
     publish_android_runtime_artifact
 elif [ "$MODE" = android-peer-build ]; then

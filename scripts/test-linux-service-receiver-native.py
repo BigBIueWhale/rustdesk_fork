@@ -578,6 +578,12 @@ class TracedChildStop:
                 tids = {int(task.name) for task in Path(f"/proc/{pid}/task").iterdir()}
                 if not tids or len(tids) > 512 or not self.attached.issubset(tids):
                     raise RuntimeError("retained guest child thread inventory changed or exceeded its bound")
+                if not self.attached and any((Path(f"/proc/{pid}/task/{tid}/stat").read_bytes()
+                        .rsplit(b") ", 1)[1].split()[0] != b"T") for tid in tids):
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("retained child threads did not finish their group stop")
+                    time.sleep(0.005)
+                    continue
                 for tid in sorted(tids - self.attached):
                     self.call(0x4206, tid)  # PTRACE_SEIZE each retained child thread.
                     self.attached.add(tid)
@@ -647,16 +653,19 @@ def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=
         run(["/usr/bin/journalctl", "--sync"], timeout=5)
         cursor = json.loads(run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager",
                                 "--output=json", "-n", "1"]).stdout)["__CURSOR"]
-        if unit_stop:
-            trace_stop = TracedChildStop(record["pid"])
-        else:
-            signal.pidfd_send_signal(pidfds["child"], signal.SIGSTOP)
+        signal.pidfd_send_signal(pidfds["child"], signal.SIGSTOP)
         child_stopped = True
         deadline = time.monotonic() + 3
-        while (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()[0] != stopped_state:
+        while (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()[0] != b"T":
             if time.monotonic() >= deadline or select.select([pidfds["child"]], [], [], 0)[0]:
                 raise RuntimeError("retained child did not reach the actual kernel stop barrier")
             time.sleep(0.005)
+        if unit_stop:
+            # Group stop keeps thread IDs alive while ptrace takes exact ownership.
+            trace_stop = TracedChildStop(record["pid"])
+            signal.pidfd_send_signal(pidfds["child"], signal.SIGCONT)
+            if (child / "stat").read_bytes().rsplit(b") ", 1)[1].split()[0] != stopped_state:
+                raise RuntimeError("group-stop release escaped the retained tracing barrier")
         client = subprocess.Popen([str(PRIMARY), "--password-stdin"], env=ENV,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         requester = Path("/proc") / str(client.pid)
@@ -732,6 +741,7 @@ def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=
         print(f"LINUX_RECEIVER_{barrier_name}_BARRIER_OBSERVED=" + json.dumps(
             {**record, "requester_pid": client.pid, "requester_start": requester_start,
              "durable_changed": True, "requester_alive": True, "child_state": stopped_state.decode(),
+             "child_threads": sorted(trace_stop.attached) if trace_stop is not None else None,
              "supervisor_alive": True, "held_seconds": held_seconds, "shutdown_journal": shutdowns[0]},
             sort_keys=True), flush=True)
         if fail_convergence:

@@ -4858,11 +4858,13 @@ LAYOUT
 
 run_android_peer_build() {
     local build_memory=12g build_memory_bytes=12884901888 build_cpus=4 build_jobs=4
+    local -a profile_environment=()
     if [ "$PEER_BUILD_PROFILE" = bounded ]; then
         build_memory=6g
         build_memory_bytes=6442450944
         build_cpus=2
         build_jobs=2
+        profile_environment+=(--env CARGO_PROFILE_DEV_DEBUG=0)
     fi
     local inputs=/mnt/rustdesk-sealed-inputs
     local artifact_output=/mnt/rustdesk-android-artifact-output
@@ -4952,6 +4954,7 @@ run_android_peer_build() {
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g \
         --env HOME=/tmp/android-peer-build --env CARGO_HOME=/tmp/smoke-cargo-home \
         --env CARGO_TARGET_DIR=/smoke-target --env CARGO_INCREMENTAL=0 --env "CARGO_BUILD_JOBS=$build_jobs" \
+        "${profile_environment[@]}" \
         --env CARGO_NET_OFFLINE=true --env CARGO_NET_RETRY=0 \
         --env "RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \
         --env "SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \

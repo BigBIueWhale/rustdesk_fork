@@ -51,10 +51,10 @@ def install_network_policy():
     for number in DENY_SYSCALLS:
         instructions.extend(((0x15, 0, 1, number), (0x06, 0, 0, deny)))
     instructions.extend((
-        (0x15, 2, 0, 41), (0x15, 9, 0, 53), (0x06, 0, 0, allow),
+        (0x15, 2, 0, 41), (0x15, 10, 0, 53), (0x06, 0, 0, allow),
         (0x20, 0, 0, 16), (0x15, 0, 1, socket.AF_UNIX), (0x06, 0, 0, allow),
-        (0x15, 0, 3, socket.AF_NETLINK), (0x20, 0, 0, 32),
-        (0x15, 0, 1, 4), (0x06, 0, 0, allow), (0x06, 0, 0, deny),
+        (0x15, 0, 4, socket.AF_NETLINK), (0x20, 0, 0, 32),
+        (0x15, 1, 0, 0), (0x15, 0, 1, 4), (0x06, 0, 0, allow), (0x06, 0, 0, deny),
         (0x20, 0, 0, 16), (0x15, 0, 1, socket.AF_UNIX),
         (0x06, 0, 0, allow), (0x06, 0, 0, deny),
     ))
@@ -125,7 +125,7 @@ def main():
     finally:
         if script != 0:
             os.close(script)
-    print('VERIFIER_VM_HOST_NETWORK=pass ip_sockets=denied unix=allowed netlink=socket-diag-only '
+    print('VERIFIER_VM_HOST_NETWORK=pass ip_sockets=denied unix=allowed netlink=route-and-socket-diag '
           'io_uring=denied foreign_process_access=denied inheritance=fork-exec '
           'entry=sealed-ram body_sha256=' + hashlib.sha256(body).hexdigest(), flush=True)
     os.execv('/bin/bash', ['/bin/bash', '--noprofile', '--norc', '-s', '--', str(root), *sys.argv[1:]])

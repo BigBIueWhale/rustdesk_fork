@@ -43,7 +43,7 @@ def restriction_cases():
         pair = (ctypes.c_int * 2)()
         denied(53, family, socket.SOCK_STREAM, 0, ctypes.byref(pair))
     for protocol in range(33):
-        if protocol != 4:
+        if protocol not in (0, 4):
             denied(41, socket.AF_NETLINK, socket.SOCK_RAW, protocol)
     # Socket arguments are kernel ints; nonzero upper words cannot select IP.
     denied(41, ctypes.c_ulonglong((1 << 32) | socket.AF_INET), socket.SOCK_DGRAM, 0)
@@ -78,7 +78,8 @@ def worker():
     restriction_cases()
     child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(Path(__file__)), '--inherited'],
                            capture_output=True, text=True, timeout=5)
-    assert (child.returncode, child.stdout, child.stderr) == (0, 'inherited restrictions passed\n', '')
+    assert (child.returncode, child.stdout, child.stderr) == (0, 'inherited restrictions passed\n', ''), \
+        (child.returncode, child.stdout, child.stderr)
     child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(Path(__file__)), '--x32'],
                            capture_output=True, text=True, timeout=5)
     assert child.returncode == -signal.SIGSYS, (child.returncode, child.stdout, child.stderr)
@@ -104,7 +105,8 @@ def main():
     child = subprocess.run(['/usr/bin/python3', '-B', '-I', '-S', str(Path(__file__)), '--worker'],
                            capture_output=True, text=True, timeout=15)
     assert (child.returncode, child.stdout, child.stderr) == (
-        0, 'native restrictions and fork-exec inheritance passed\n', '')
+        0, 'native restrictions and fork-exec inheritance passed\n', ''), \
+        (child.returncode, child.stdout, child.stderr)
     # Exercise the actual bootstrap, source bound and argument preserving, inside
     # guest scratch. An ambient environment variable cannot skip its filter.
     with tempfile.TemporaryDirectory() as root:
@@ -143,7 +145,7 @@ def main():
     assert hashlib.sha256(SOURCE.read_bytes()).hexdigest() == before
     print('VM_HOST_NETWORK_NATIVE=' + json.dumps({
         'ip_controls': 4, 'socket_denials': 141, 'socketpair_denials': 47,
-        'netlink_protocol_denials': 32, 'upper_word_denials': 1,
+        'netlink_protocol_denials': 31, 'upper_word_denials': 1,
         'blocked_syscalls': len(policy.DENY_SYSCALLS), 'inherited_worker': True,
         'x32': 'SIGSYS', 'i386': 'SIGSYS', 'unix_control': 'roundtrip', 'unix_socketpair': 'roundtrip',
         'ss': 'protocol-endpoint-only', 'bootstrap': 'sealed-body-executed',

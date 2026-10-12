@@ -2261,7 +2261,11 @@ durable credential, and CPace plus actual administrator authorization after a fr
 This distinguishes product cancellation/drain from systemd's initial control-group signaling.
 `src/platform/linux.rs:2418,2528` initiates shutdown and joins protected IPC before retiring
 the child; `src/ipc.rs:4077,4304,6047` cancels authorization, joins workers/transactions and
-reaps the owned helper. Product/artifact unchanged; runtime result remains pending.
+reaps the owned helper. The first run failed the observer's exit-code assertion after
+systemd unloaded the inactive unit, and separately failed the host-listener baseline.
+Its bounded evidence is retained. A guest D-Bus unit reference now preserves the actual
+exit result until observation, then closes before cgroup-retirement proof. Product/artifact
+unchanged; accepted runtime result remains pending.
 
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,

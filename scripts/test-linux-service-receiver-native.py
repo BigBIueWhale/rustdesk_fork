@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Installed-layout Linux receiver behavior in the owned zero-NIC systemd VM."""
 
+import ctypes
 import fcntl
 import grp
 import hashlib
@@ -429,7 +430,28 @@ def observe_admin_supervisor_shutdown(client, agent, terminal, start, record, be
                   "helper": (helper, helper_start),
                   "child": (Path("/proc") / str(record["pid"]), record["start"])}
     pidfds = {}
+    systemd = ctypes.CDLL("libsystemd.so.0")
+    systemd.sd_bus_open_system.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+    systemd.sd_bus_open_system.restype = ctypes.c_int
+    systemd.sd_bus_call_method.argtypes = [ctypes.c_void_p, *[ctypes.c_char_p] * 4,
+                                         ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p]
+    systemd.sd_bus_call_method.restype = ctypes.c_int
+    systemd.sd_bus_message_unref.argtypes = [ctypes.c_void_p]
+    systemd.sd_bus_message_unref.restype = ctypes.c_void_p
+    systemd.sd_bus_flush_close_unref.argtypes = [ctypes.c_void_p]
+    systemd.sd_bus_flush_close_unref.restype = ctypes.c_void_p
+    bus = ctypes.c_void_p()
+    reply = ctypes.c_void_p()
     try:
+        # Retain the unit's exit result until observed; inactive units may be garbage-collected.
+        if systemd.sd_bus_open_system(ctypes.byref(bus)) < 0:
+            raise RuntimeError("shutdown observer could not open the guest system bus")
+        result = systemd.sd_bus_call_method(
+            bus, b"org.freedesktop.systemd1", b"/org/freedesktop/systemd1",
+            b"org.freedesktop.systemd1.Manager", b"RefUnit", None, ctypes.byref(reply), b"s", b"rustdesk.service")
+        if result < 0:
+            raise RuntimeError(f"shutdown observer could not retain the unit result: {result}")
+        reply = ctypes.c_void_p(systemd.sd_bus_message_unref(reply))
         for role, (proc, expected_start) in identities.items():
             pidfds[role] = os.pidfd_open(int(proc.name))
             fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
@@ -477,13 +499,16 @@ def observe_admin_supervisor_shutdown(client, agent, terminal, start, record, be
                 except (FileNotFoundError, ProcessLookupError):
                     reaped = True
                 retired[role] = {"exited": exited, "reaped": reaped}
-            if all(item["exited"] and item["reaped"] for item in retired.values()) and not Path("/sys/fs/cgroup" + cgroup).exists():
+            if all(item["exited"] and item["reaped"] for item in retired.values()):
                 break
             time.sleep(0.02)
-        elapsed = time.monotonic() - began
         outcome = dict(line.split("=", 1) for line in run(
             ["/usr/bin/systemctl", "show", "rustdesk.service",
              "--property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus"]).stdout.splitlines())
+        bus = ctypes.c_void_p(systemd.sd_bus_flush_close_unref(bus))
+        while Path("/sys/fs/cgroup" + cgroup).exists() and time.monotonic() - began < 20:
+            time.sleep(0.02)
+        elapsed = time.monotonic() - began
         run(["/usr/bin/journalctl", "--sync"], timeout=5)
         messages = [json.loads(line) for line in run(
             ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "--output=json",
@@ -506,7 +531,8 @@ def observe_admin_supervisor_shutdown(client, agent, terminal, start, record, be
              "supervisor_alive_at_reply": supervisor_alive_at_reply, "agent_alive_before_cleanup": agent_alive,
              "administrator_password_sent": False, "agent_terminal": terminal.decode(errors="replace"),
              "cli_exit": client.returncode, "cli_stdout": stdout[-4096:], "cli_stderr": stderr[-4096:],
-             "unit_outcome": outcome, "cgroup_absent": not Path("/sys/fs/cgroup" + cgroup).exists(),
+             "unit_outcome": outcome, "unit_reference_held_at_outcome": True,
+             "cgroup_absent": not Path("/sys/fs/cgroup" + cgroup).exists(),
              "listener_absent": listener_absent, "durable_unchanged": unchanged,
              "root_journal": root_messages}, sort_keys=True), flush=True)
         if (client.returncode != 1 or "Changing service-owned unattended password was rejected by service" not in stderr
@@ -519,6 +545,10 @@ def observe_admin_supervisor_shutdown(client, agent, terminal, start, record, be
                 or terminal.count(b"Password:") != 1 or b"AUTHENTICATION COMPLETE" in terminal):
             raise RuntimeError("pending authorization did not reject and drain through a clean supervisor shutdown")
     finally:
+        if reply:
+            systemd.sd_bus_message_unref(reply)
+        if bus:
+            systemd.sd_bus_flush_close_unref(bus)
         for fd in pidfds.values():
             os.close(fd)
 

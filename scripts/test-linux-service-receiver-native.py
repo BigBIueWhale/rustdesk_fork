@@ -756,6 +756,14 @@ def credential_race(old, new, phase, record, probe_sha):
 
 def tests(args):
     guard()
+    checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
+                   "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                   "/usr/bin/python3", "-B", "-I", "-S",
+                   str(MEDIA / "repo/scripts/verify-linux-service-password-ipc.py"),
+                   "--repo", str(MEDIA / "repo")])
+    if checked.stdout.strip() != "verify-linux-service-password-ipc: source checks passed" or checked.stderr:
+        raise RuntimeError("supplementary password IPC source checks returned an unexpected receipt")
+    print(checked.stdout, end="", flush=True)
     commit, tree, manifest_sha, archive_sha, package_manifest_sha = args
     manifest = MEDIA / "receiver/peer-manifest.json"
     if digest(manifest) != manifest_sha:

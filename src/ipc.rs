@@ -18,6 +18,8 @@ use bytes::Bytes;
 pub use clipboard::ClipboardFile;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use hbb_common::anyhow;
+#[cfg(target_os = "linux")]
+use hbb_common::libc;
 use hbb_common::{
     bail, bytes,
     bytes_codec::BytesCodec,

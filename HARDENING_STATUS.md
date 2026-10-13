@@ -11027,6 +11027,15 @@ observer receipt `.harness-state/verifier-vm/route-retirement-2a373f25-evidence/
 This is historical library/wire evidence without a final-product digest or independent reproduction;
 it does not prove direct-address grammar conformance. The focused predicate evidence follows.
 
+**Initial saved-address restoration — source correction; behavioral verification OPEN.**
+At `e2c7e588`, the direct-address controller owns one initial lookup and retires it on any text
+change, including a later clear, or disposal. Desktop/mobile pages delegate to that exact owner;
+selection-only changes do not cancel restoration. Seven added controller/widget regressions cover
+delayed responses, text edits, earlier initialization, duplicate reads, disposal and explicit errors;
+the focused shard requires all nineteen named tests. Its attempted run refused before VM startup:
+27,648 MiB required, 26,378 MiB available. Diff and parser-only checks passed; no Dart/widget test,
+whole-page/bridge/native integration or packaged-artifact behavior is validated by this correction.
+
 **SOURCE CORRECTED — direct-address grammar; focused Rust/Dart tests PASSED, native integration OPEN.**
 `hbb_common::is_direct_address` owns the IPv4/IPv4:port/qualified-ASCII-hostname:port predicate used by
 client initiation, desktop URL IPC validation and login-name admission. Supplied ports are bounded ASCII

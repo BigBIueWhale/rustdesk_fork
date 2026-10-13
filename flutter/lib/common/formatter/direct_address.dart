@@ -34,7 +34,8 @@ class DirectAddressTextEditingController extends TextEditingController {
   }
 
   /// Restore once, until an address write, text edit, clear, or disposal.
-  Future<bool> restoreInitialAddress(Future<String> Function() loadAddress) async {
+  Future<bool> restoreInitialAddress(
+      Future<String> Function() loadAddress) async {
     if (_initialRestoreState != _InitialAddressRestoreState.available ||
         text.isNotEmpty) {
       return false;

@@ -180,7 +180,8 @@ void main() {
       expect(controller.text, isEmpty);
     });
 
-    test('disposal retires a pending lookup and prevents another read', () async {
+    test('disposal retires a pending lookup and prevents another read',
+        () async {
       final controller = DirectAddressTextEditingController();
       final savedAddress = Completer<String>();
       final restoration =

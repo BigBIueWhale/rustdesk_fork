@@ -128,6 +128,31 @@ def publish(path, value):
         output.write('\n')
 
 
+def qemu_output_receipt(run):
+    try:
+        descriptor = os.open(Path(run) / 'storage.qemu-io',
+                             os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(descriptor, 'rb') as source:
+        metadata = os.fstat(source.fileno())
+        require(stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
+                and (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode))
+                == (os.geteuid(), os.getegid(), 0o600)
+                and 0 < metadata.st_size <= 4096, 'QEMU output receipt authority differs')
+        data = source.read(4097)
+        require(len(data) == metadata.st_size, 'QEMU output receipt size differs')
+    value = json.loads(data)
+    require(isinstance(value, dict)
+            and set(value) == {'qemu_pid', 'returncode', 'write_bytes'}
+            and all(type(value[key]) is int for key in value),
+            'QEMU output receipt shape differs')
+    require(value['qemu_pid'] > 0 and -64 <= value['returncode'] <= 255
+            and value['write_bytes'] >= 0 and value['write_bytes'] % 512 == 0,
+            'QEMU output receipt values differ')
+    return value
+
+
 def run_qemu(args):
     require(args.qemu and args.qemu[0] == '/usr/bin/qemu-system-x86_64',
             'storage supervisor requires the fixed QEMU executable')
@@ -136,6 +161,7 @@ def run_qemu(args):
     # -S prevents guest disk writes until the final hard limit is installed.
     initial_limit = max(8 * GIB, args.memory_mib * 1024 ** 2)
     resource.setrlimit(resource.RLIMIT_FSIZE, (initial_limit, initial_limit))
+    output_before = resource.getrusage(resource.RUSAGE_CHILDREN).ru_oublock
     child = subprocess.Popen(args.qemu + ['-S'], close_fds=False)
     try:
         child_identity = os.pidfd_open(child.pid)
@@ -223,6 +249,14 @@ def run_qemu(args):
         for signum, handler in handlers.items():
             signal.signal(signum, handler)
         os.close(child_identity)
+        # This supervisor creates and waits for only this child. Linux accounts
+        # its output in 512-byte blocks; no PID-file process lookup is needed.
+        output_blocks = resource.getrusage(resource.RUSAGE_CHILDREN).ru_oublock - output_before
+        require(output_blocks >= 0, 'QEMU child output accounting decreased')
+        publish(Path(args.run) / 'storage.qemu-io', {
+            'qemu_pid': child.pid, 'returncode': child.returncode,
+            'write_bytes': output_blocks * 512,
+        })
 
 
 def watch(args):
@@ -237,8 +271,7 @@ def watch(args):
     overlay_peak = 0
     minimum_memory = available_memory()
     samples = 0
-    qemu_identity = None
-    qemu_write_bytes = 0
+    qemu_io = None
     durable_peak = 0
     reason = 'completed'
     try:
@@ -260,34 +293,14 @@ def watch(args):
                     durable += metadata.st_blocks * 512
             durable_peak = max(durable_peak, durable)
             samples += 1
-            pidfile = Path(args.run) / 'qemu.pid'
-            if pidfile.exists():
-                metadata = pidfile.lstat()
-                require(stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
-                        and metadata.st_uid == os.geteuid() and metadata.st_size <= 32,
-                        'owned QEMU pidfile differs')
-                value = pidfile.read_text().strip()
-                if value.isdecimal():
-                    process = Path('/proc') / value
-                    try:
-                        start = process.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19]
-                        current = (value, start)
-                        if qemu_identity is None:
-                            require(process.joinpath('exe').resolve()
-                                    == Path('/usr/bin/qemu-system-x86_64'),
-                                    'owned QEMU executable differs')
-                            qemu_identity = current
-                        if qemu_identity == current:
-                            for line in process.joinpath('io').read_text().splitlines():
-                                if line.startswith('write_bytes:'):
-                                    qemu_write_bytes = max(qemu_write_bytes, int(line.split()[1]))
-                    except (FileNotFoundError, ProcessLookupError):
-                        pass
             if used > SCRATCH_LIMIT or minimum_memory < HEADROOM:
                 reason = 'scratch-budget' if used > SCRATCH_LIMIT else 'memory-headroom'
                 signal.pidfd_send_signal(parent, signal.SIGTERM)
                 break
             if Path(args.stop).exists():
+                # The controller writes stop only after joining the supervisor,
+                # so its receipt is complete. A missing observation stays unavailable.
+                qemu_io = qemu_output_receipt(args.run)
                 break
             if poll.poll(100):
                 reason = 'harness-owner-exited'
@@ -303,7 +316,9 @@ def watch(args):
             'headroom_bytes': HEADROOM, 'guest_memory_mib': args.memory_mib,
             'peak_allocated_bytes': peak, 'overlay_peak_allocated_bytes': overlay_peak,
             'minimum_mem_available_bytes': minimum_memory, 'samples': samples,
-            'observed_qemu_block_write_bytes': qemu_write_bytes,
+            'observed_qemu_block_write_bytes': qemu_io['write_bytes'] if qemu_io else None,
+            'qemu_io': qemu_io,
+            'qemu_io_source': 'supervisor-waited-child-rusage' if qemu_io else 'unavailable',
             'durable_run_peak_allocated_bytes': durable_peak,
             'elapsed_seconds': round(time.monotonic() - began, 3), 'reason': reason,
             'tmpfs_swap_disabled': False,

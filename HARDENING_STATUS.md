@@ -122,6 +122,7 @@ These documentation corrections supply no compiler, artifact, scanner or native 
 | §12.1 | Debian/Android compilation and separate Android signing require the admitted no-NIC verifier VM and sole R-S11cj acquisition. Direct-host Docker, per-builder fetching and host-forwarded control recipes are deleted. Target/toolchain pins, complete offline closure, software codecs, stable certificate/content verification, independent generated state, epoch and cold equality remain binding. |
 | R-B7 / §15 | Every release target requires a reproduced pinned upstream baseline and complete fork-delta accounting. False two-delta/verbatim-build claims are removed from the specification and three builder headers; Windows bridge commentary names the VM. FRB 1.80.1, authenticated offline code generation, pass-private state, VM authority and native/cold acceptance remain; builder command bytes are unchanged. |
 | R-A6 UDP/probe / R-SV4 / R-SV10 | Both roles and all targets exclude first-party actuators and startup/UI/CLI/FFI/JNI/IPC/Drop routes; direct TCP/capture bootstrap and distinct credential-park, serving, viewer/helper and iOS socket scopes remain. Linked-UDP/ordinary-IPC narration, Wake-on-LAN alternatives, disabled-WebRTC descriptions and every-process TCP-listener claims are removed. Driven-session native connect observation remains required for transitive egress. |
+| §18 / R-SV1–3, R-SV4a, R-SV5–9 | Nine entries now state stable sovereignty obligations. The stale running-app inventory and duplicate completion box are deleted, along with obsolete widget diagnosis, repair causation, link counts and platform-clean assertions. Source deletion follows R-SV1/R-SV6a/R-SV10, preserving direct TCP and authenticated owner port forwarding, the explicit Apple entitlement exception, and R-SV9's SHOULD marketing/MUST plaintext-link distinction. All requirement IDs, levels, anchors and other requirement bodies are unchanged; this is specification cleanup, not native acceptance. |
 
 Whole-document/test classification, exact-current builders/artifacts, installed/native authority,
 scanner acceptance, complete inputs/signing, upstream baseline reproduction, fork-delta accounting,
@@ -2074,7 +2075,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `6128acd48ad9ad7ccf1f0fc32abe51f3d6d6d27e947b923493a4a28d1a4e8586  requirements.html`.
+Current normative specification SHA-256: `3ffe686d37d12f624b305c927bafa3ff71a42ec7d3e28765a693ab8b033d2afe  requirements.html`.
 
 ### Current authority and source closure
 
@@ -11028,12 +11029,12 @@ This is historical library/wire evidence without a final-product digest or indep
 it does not prove direct-address grammar conformance. The focused predicate evidence follows.
 
 **Initial saved-address restoration — source correction; behavioral verification OPEN.**
-At `e2c7e588`, the direct-address controller owns one initial lookup and retires it on any text
-change, including a later clear, or disposal. Desktop/mobile pages delegate to that exact owner;
+At `8f66a22f`, the direct-address controller owns one initial lookup and retires it on explicit address
+writes, text changes, Clear or disposal, including writes that normalize to unchanged empty text. Pages delegate to that owner;
 selection-only changes do not cancel restoration. Seven added controller/widget regressions cover
 delayed responses, text edits, earlier initialization, duplicate reads, disposal and explicit errors;
 the focused shard requires all nineteen named tests. Its attempted run refused before VM startup:
-27,648 MiB required, 26,378 MiB available. Diff and parser-only checks passed; no Dart/widget test,
+27,648 MiB required, 26,758 MiB available after an earlier admitting snapshot. Diff and parser-only checks passed; no Dart/widget test,
 whole-page/bridge/native integration or packaged-artifact behavior is validated by this correction.
 
 **SOURCE CORRECTED — direct-address grammar; focused Rust/Dart tests PASSED, native integration OPEN.**

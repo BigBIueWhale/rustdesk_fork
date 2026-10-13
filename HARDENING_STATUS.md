@@ -3776,6 +3776,24 @@ artifact role admission and its fixture; full ELF/dependency closure, the actual
 installed RustDesk loader/renderer, current release and independent reproduction
 remain OPEN. No product execution or local privilege escalation is established.
 
+**Final Debian ELF roles — focused native acceptance.** `90391b63` makes both
+byte-identical runner paths use the same ET_EXEC/ET_DYN rule and rejects DF_1_PIE
+in shared-library slots (`verify-debian-package-authority.py:561,708`). The exact
+historical `f41c0462` checker admits a PIE-marked native library in an actual Debian
+archive although `dlopen` refuses it; the current ELF partition refuses that same
+archive. The valid-library archive passes both checkers and its native function
+returns the expected result. Six focused cases/two archives pass in an 18-second
+no-NIC VM transaction; runner ET_EXEC/ET_DYN and invalid-type cases are metadata
+checks, without a non-PIE execution claim. Immutable
+`.harness-state/verifier-vm/debian-elf-roles-accepted-90391b63.json` (15,296 bytes;
+SHA-256 `e078ad68ebc7c36efa4d5158f9049e85c49e3c4b16ba67e5e2f21add92edca55`)
+binds historical/current source, archive/native ELF digests, complete serial,
+freezes, three endpoint observations and storage. Exact joins retired RAM scratch;
+disk diagnostics peaked at 114,688 bytes. Three added UDP endpoints remain
+unattributed and untouched. The earlier fixture-permissions failure is retained
+and unaccepted. This closes these ELF admission defects only; complete final
+RustDesk package validation, installed loader/service behavior and release remain OPEN.
+
 The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and
 joined inert publication in 1,150,890 host BOOTTIME ms. The 74-file app/readiness manifest SHA-256 is

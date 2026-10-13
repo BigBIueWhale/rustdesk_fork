@@ -4778,12 +4778,15 @@ elif [ "$MODE" = fixed-archive-tests ]; then
     printf '%s\n' 'VERIFIER_VM_BASE_METADATA=pass cases=22 profiles=400,444 source=production metadata=actual cleanup=joined' \
         'fixed archive transaction self-test: PASS' "$fixed_archive_vm_receipt"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
-    linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=23 publication=noclobber admission=exact execution=guest-only cleanup=joined'
+    linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=24 publication=noclobber admission=exact execution=guest-only cleanup=joined'
     require_exact_fixed_receipt \
         'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined' \
         'Linux app build/run admission result'
-    linux_flutter_vm_receipt="LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=23 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_TEST" | /usr/bin/awk '{ print $1 }') helper_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" | /usr/bin/awk '{ print $1 }') source=readonly docker=retired network=none cleanup=joined"
+    linux_flutter_vm_receipt="LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=24 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_TEST" | /usr/bin/awk '{ print $1 }') helper_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" | /usr/bin/awk '{ print $1 }') source=readonly docker=retired network=none cleanup=joined"
     require_exact_fixed_receipt "$linux_flutter_test_receipt" 'native Linux app-capsule result'
+    require_exact_fixed_receipt \
+        'ELF_SHARED_ROLE_NATIVE=pass program=exec library=dlopen program-as-library=loader-refused admission=refused-before-materialization' \
+        'native ELF library loading and wrong-role refusal'
     require_exact_fixed_receipt "$linux_flutter_vm_receipt" 'Linux app-capsule source/finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"

@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import resource
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
@@ -189,40 +190,79 @@ def names(descriptor):
     return tuple(sorted(result))
 
 
-def executable(relative):
+def elf_role(relative):
     if relative in ("smoke-readiness", "bundle/rustdesk"):
-        return True
+        return "program"
     if relative.startswith("bundle/lib/") and re.fullmatch(
         r"lib[A-Za-z0-9_.+-]+\.so(?:\.[0-9]+)*", relative[len("bundle/lib/"):]
     ) is not None:
-        return True
+        return "shared"
     if relative == "bundle/data/icudtl.dat" or relative.startswith("bundle/data/flutter_assets/"):
-        return False
+        return None
     fail(f"Linux app file is outside the product layout: {relative}")
 
 
-def consume(descriptor, info, is_executable, output=None):
+def engine_elf_role(relative):
+    if relative not in ENGINE_ELFS:
+        return None
+    return "shared" if relative.endswith(".so") else "program"
+
+
+def validate_elf_role(read_at, size, role):
+    header = read_at(0, 64)
+    if (len(header) != 64 or header[:7] != b"\x7fELF\x02\x01\x01"
+            or int.from_bytes(header[16:18], "little") not in (2, 3)
+            or int.from_bytes(header[18:20], "little") != 62):
+        fail("Linux app executable is not an x86_64 ELF image")
+    kind, _, version, entry, offset, _, _, header_size, stride, count, _, _, _ = \
+        struct.unpack_from("<HHIQQQIHHHHHH", header, 16)
+    if (version != 1 or header_size != 64 or stride != 56 or not 0 < count <= 1024
+            or offset < 64 or offset + count * stride > size):
+        fail("Linux ELF program-header table is invalid or unbounded")
+    table = read_at(offset, count * stride)
+    if len(table) != count * stride:
+        fail("Linux ELF program-header table is truncated")
+    segments = list(struct.iter_unpack("<IIQQQQQQ", table))
+    if role == "program":
+        if entry == 0:
+            fail("Linux ELF program has no entry point")
+        return
+    if role != "shared":
+        fail("Linux ELF role is invalid")
+    if kind != 3 or any(segment[0] == 3 for segment in segments):
+        fail("Linux ELF shared-library role requires ET_DYN without a program interpreter")
+    dynamic = [segment for segment in segments if segment[0] == 2]
+    if len(dynamic) != 1:
+        fail("Linux ELF shared library requires one dynamic segment")
+    _, _, offset, _, _, length, _, _ = dynamic[0]
+    if not 16 <= length <= 65536 or length % 16 or offset + length > size:
+        fail("Linux ELF dynamic segment is invalid or unbounded")
+    entries = read_at(offset, length)
+    if len(entries) != length:
+        fail("Linux ELF dynamic segment is truncated")
+    for tag, value in struct.iter_unpack("<QQ", entries):
+        if tag == 0:
+            return
+        if tag == 0x6FFFFFFB and value & 0x08000000:
+            fail("Linux ELF shared-library role forbids DF_1_PIE")
+    fail("Linux ELF dynamic segment is not terminated")
+
+
+def consume(descriptor, info, role, output=None):
+    if role is not None:
+        validate_elf_role(lambda offset, count: os.pread(descriptor, count, offset), info.st_size, role)
     digest = hashlib.sha256()
-    prefix = bytearray()
     remaining = info.st_size
     while remaining:
         chunk = os.read(descriptor, min(1024 * 1024, remaining))
         if not chunk:
             fail("Linux app file ended before its recorded size")
-        if len(prefix) < 64:
-            prefix.extend(chunk[:64 - len(prefix)])
         digest.update(chunk)
         if output is not None:
             publication.write_all(output, chunk, "Linux app file")
         remaining -= len(chunk)
     if os.read(descriptor, 1) or publication.stable_file(info) != publication.stable_file(os.fstat(descriptor)):
         fail("Linux app file changed while being read")
-    if is_executable and (
-        len(prefix) < 64 or prefix[:6] != b"\x7fELF\x02\x01"
-        or int.from_bytes(prefix[16:18], "little") not in (2, 3)
-        or int.from_bytes(prefix[18:20], "little") != 62
-    ):
-        fail("Linux app executable is not an x86_64 ELF image")
     return {"bytes": info.st_size, "sha256": digest.hexdigest()}
 
 
@@ -266,7 +306,7 @@ class Tree:
             self.stack.callback(os.close, descriptor)
             opened = os.fstat(descriptor)
             mode = 0o500 if is_directory or (
-                self.executable_files and relative != MANIFEST and executable(relative)
+                self.executable_files and relative != MANIFEST and elf_role(relative)
             ) else 0o400
             if (
                 publication.stable_file(before) != publication.stable_file(opened)
@@ -295,7 +335,7 @@ class Tree:
                 self.total += opened.st_size
                 if self.total > MAX_TOTAL_BYTES:
                     fail("Linux app aggregate size exceeds its bound")
-                self.files[relative] = (descriptor, opened, executable(relative))
+                self.files[relative] = (descriptor, opened, elf_role(relative))
 
     def reprove(self):
         for descriptor, (info, inventory) in self.inventories.items():
@@ -334,13 +374,13 @@ def copy_tree(tree, target, stack, *, inert):
         stack.callback(os.close, descriptor)
         directories[relative] = descriptor
     records = {}
-    for relative, (descriptor, info, is_executable) in tree.files.items():
+    for relative, (descriptor, info, role) in tree.files.items():
         parent, _, basename = relative.rpartition("/")
         output = publication.create_output_file(directories[parent], basename)
         try:
             os.lseek(descriptor, 0, os.SEEK_SET)
-            records[relative] = consume(descriptor, info, is_executable, output)
-            seal_file(output, info.st_size, 0o500 if is_executable and not inert else 0o400)
+            records[relative] = consume(descriptor, info, role, output)
+            seal_file(output, info.st_size, 0o500 if role and not inert else 0o400)
         finally:
             os.close(output)
     for relative in sorted(directories, key=lambda value: value.count("/"), reverse=True):
@@ -482,7 +522,7 @@ def _verify_engine_sdk_roles(path, expected_identity, raw_manifest, digest, cont
                 parent = directories[key]
             descriptor, info = acquire(parent, components[-1], False)
             if info.st_size != selected[relative]["bytes"] \
-                    or consume(descriptor, info, False) != selected[relative]:
+                    or consume(descriptor, info, None) != selected[relative]:
                 fail("engine SDK role bytes differ: " + relative)
 
         # Include empty directories in the closed sky_engine inventory: neither
@@ -547,7 +587,7 @@ def materialize_engine(path, root_identity, parent_path, parent_identity,
         expected_checksum = (archive_digest + "  " + ENGINE_ARCHIVE + "\n").encode("ascii")
         if checksum_info.st_size != len(expected_checksum) or os.read(checksum, 257) != expected_checksum:
             fail("engine independently supplied checksum differs")
-        if consume(archive, archive_info, False)["sha256"] != archive_digest:
+        if consume(archive, archive_info, None)["sha256"] != archive_digest:
             fail("engine archive digest differs")
         os.lseek(archive, 0, os.SEEK_SET)
         stream = stack.enter_context(os.fdopen(os.dup(archive), "rb"))
@@ -599,15 +639,19 @@ def materialize_engine(path, root_identity, parent_path, parent_identity,
 
         def read_member(relative, output=None):
             digest = hashlib.sha256()
-            prefix = bytearray()
             with tar.extractfile(members[relative]) as source:
+                role = engine_elf_role(relative)
+                if role is not None:
+                    def read_at(offset, count):
+                        source.seek(offset)
+                        return source.read(count)
+                    validate_elf_role(read_at, members[relative].size, role)
+                    source.seek(0)
                 remaining = members[relative].size
                 while remaining:
                     chunk = source.read(min(1024 * 1024, remaining))
                     if not chunk:
                         fail("engine archive file ended early")
-                    if len(prefix) < 64:
-                        prefix.extend(chunk[:64 - len(prefix)])
                     digest.update(chunk)
                     if output is not None:
                         publication.write_all(output, chunk, "engine toolkit file")
@@ -616,10 +660,6 @@ def materialize_engine(path, root_identity, parent_path, parent_identity,
                     fail("engine archive file exceeds its record")
             if digest.hexdigest() != records[relative]["sha256"]:
                 fail("engine toolkit file digest differs")
-            if relative in ENGINE_ELFS and (len(prefix) < 64 or prefix[:6] != b"\x7fELF\x02\x01"
-                    or int.from_bytes(prefix[16:18], "little") not in (2, 3)
-                    or int.from_bytes(prefix[18:20], "little") != 62):
-                fail("engine toolkit executable is not an x86_64 ELF")
 
         for relative in records:
             read_member(relative)
@@ -698,7 +738,7 @@ def materialize_engine(path, root_identity, parent_path, parent_identity,
                     != (os.getuid(), os.getgid(), 0o500 if relative in ENGINE_ELFS else 0o400, 1, record["bytes"])):
                 fail("engine projection file authority differs")
             publication.reject_access_acl(descriptor, "engine projection file", include_default=False)
-            if consume(descriptor, info, relative in ENGINE_ELFS) != record:
+            if consume(descriptor, info, engine_elf_role(relative)) != record:
                 fail("engine projection file bytes differ")
             execution_edges.append((directories[prefix], basename, descriptor, info))
         _verify_engine_sdk_roles(sdk_path, sdk_identity, raw, manifest_digest, context)
@@ -756,7 +796,7 @@ def admit(root, context, digest, stack):
         or manifest["directories"] != sorted(relative for relative in tree.directories if relative)
     ):
         fail("Linux app manifest contract differs")
-    for relative, (descriptor, info, is_executable) in tree.files.items():
+    for relative, (descriptor, info, role) in tree.files.items():
         record = manifest["files"][relative]
         if (
             type(record) is not dict or set(record) != {"bytes", "sha256"}
@@ -764,7 +804,7 @@ def admit(root, context, digest, stack):
             or type(record["sha256"]) is not str or publication.SHA256_RE.fullmatch(record["sha256"]) is None
         ):
             fail("Linux app file record differs")
-        if consume(descriptor, info, is_executable) != record:
+        if consume(descriptor, info, role) != record:
             fail("Linux app file digest differs")
         os.lseek(descriptor, 0, os.SEEK_SET)
     verify_bundle_engine(manifest["files"], context)
@@ -789,8 +829,8 @@ def prepare(source_path, source_identity, parent_path, parent_identity, context)
         tree = Tree(source, stack, capsule=False)
         selected = {}
         for relative in APP_ENGINE_ROLES.values():
-            descriptor, info, is_executable = tree.files[relative]
-            selected[relative] = consume(descriptor, info, is_executable)
+            descriptor, info, role = tree.files[relative]
+            selected[relative] = consume(descriptor, info, role)
             os.lseek(descriptor, 0, os.SEEK_SET)
         verify_bundle_engine(selected, context)
         tree.reprove()
@@ -878,8 +918,8 @@ def materialize(path, root_identity, parent_path, parent_identity, context, dige
         execution = Tree(target, stack, capsule=False, executable_files=True)
         if sorted(relative for relative in execution.directories if relative) != manifest["directories"]:
             fail("Linux app materialized directory inventory differs")
-        records = {relative: consume(descriptor, info, is_executable)
-                   for relative, (descriptor, info, is_executable) in execution.files.items()}
+        records = {relative: consume(descriptor, info, role)
+                   for relative, (descriptor, info, role) in execution.files.items()}
         if records != manifest["files"]:
             fail("Linux app materialized file inventory or digest differs")
         execution.reprove()

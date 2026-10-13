@@ -985,7 +985,7 @@ run_linux_flutter_artifact_tests() {
     local test=$VERIFY_REPO/scripts/test-linux-flutter-artifact.py
     local helper=$VERIFY_REPO/scripts/linux-flutter-artifact.py
     local output=$ROOT/linux-flutter-artifact-tests.out
-    local receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=23 publication=noclobber admission=exact execution=guest-only cleanup=joined'
+    local receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=24 publication=noclobber admission=exact execution=guest-only cleanup=joined'
     local -a sources=("$test" "$helper" "$ENTRY_PREFLIGHT"
         "$VERIFY_REPO/scripts/publish-artifact-result.py"
         "$VERIFY_REPO/scripts/verify-private-tree-closure.py"
@@ -1074,6 +1074,8 @@ PY
     grep -Fxq "$receipt" "$output" \
         && [ "$(grep -Fc 'LINUX_FLUTTER_ARTIFACT=' "$output")" -eq 1 ] \
         || fail 'Linux app-capsule result is absent, malformed or duplicated'
+    [ "$(grep -Fxc 'ELF_SHARED_ROLE_NATIVE=pass program=exec library=dlopen program-as-library=loader-refused admission=refused-before-materialization' "$output")" -eq 1 ] \
+        || fail 'Linux app-capsule native ELF role result differs'
     [ "$(sha256sum "${sources[@]}")" = "$source_before" ] \
         || fail 'Linux app-capsule admitted source changed'
     setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -1089,7 +1091,7 @@ PY
         || fail 'Linux app-capsule scratch remains after retirement'
     stop_docker_authority
     cat "$output"
-    printf 'LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=23 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=%s helper_sha256=%s source=readonly docker=retired network=none cleanup=joined\n' \
+    printf 'LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=24 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=%s helper_sha256=%s source=readonly docker=retired network=none cleanup=joined\n' \
         "$test_sha" "$helper_sha"
 }
 

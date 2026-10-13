@@ -2,6 +2,7 @@
 """Run real filesystem/ELF capsule cases only inside the authenticated verifier VM."""
 
 import copy
+import ctypes
 import fcntl
 import hashlib
 import importlib.util
@@ -35,11 +36,12 @@ CONTEXT = {
     "source_date_epoch": "1700000000", "inputs": {key: "5" * 64 for key in app.INPUTS},
 }
 ELF = Path("/usr/bin/true").read_bytes()
+SHARED_ELF = Path("/lib/x86_64-linux-gnu/libm.so.6").read_bytes()
 CONTEXT["engine"] = {
     "source_commit": "6" * 40, "source_tree": "7" * 40,
     "framework_revision": "8" * 40, "patch_sha256": "9" * 64,
     "archive_sha256": "a" * 64, "manifest_sha256": "b" * 64,
-    "core": {"bytes": len(ELF), "sha256": hashlib.sha256(ELF).hexdigest()},
+    "core": {"bytes": len(SHARED_ELF), "sha256": hashlib.sha256(SHARED_ELF).hexdigest()},
     "icu": {"bytes": len(b"asset bytes"), "sha256": hashlib.sha256(b"asset bytes").hexdigest()},
 }
 WORKSPACE = Path(tempfile.mkdtemp(prefix="linux-flutter-artifact-test."))
@@ -62,6 +64,18 @@ def write(path, data):
     path.chmod(0o400)
 
 
+def execute_elf(path, role):
+    if role == "shared":
+        library = ctypes.CDLL(str(path))
+        library.cos.argtypes = [ctypes.c_double]
+        library.cos.restype = ctypes.c_double
+        if library.cos(0.0) != 1.0:
+            raise AssertionError("materialized shared-library function differs")
+    elif role == "program":
+        subprocess.run([str(path)], check=True, timeout=5, stdin=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 class LinuxFlutterArtifactTests(unittest.TestCase):
     def setUp(self):
         self.case = directory(WORKSPACE / self.id().rsplit(".", 1)[-1])
@@ -70,7 +84,9 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
                          "bundle/data/flutter_assets/packages/example/asset"):
             path = self.source / relative
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            write(path, ELF if app.executable(relative) else b"" if path.name == "empty asset" else b"asset bytes")
+            role = app.elf_role(relative)
+            write(path, SHARED_ELF if role == "shared" else ELF if role == "program"
+                  else b"" if path.name == "empty asset" else b"asset bytes")
         for path in sorted(self.source.rglob("*"), reverse=True):
             if path.is_dir():
                 path.chmod(0o500)
@@ -130,10 +146,65 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
             output = target / relative
             self.assertEqual(output.read_bytes(), (root / relative).read_bytes())
             self.assertEqual((stat.S_IMODE(output.stat().st_mode), output.stat().st_nlink),
-                             (0o500 if app.executable(relative) else 0o400, 1))
-            if app.executable(relative):
-                subprocess.run([str(output)], check=True, timeout=5, stdin=subprocess.DEVNULL,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                             (0o500 if app.elf_role(relative) else 0o400, 1))
+            execute_elf(output, app.elf_role(relative))
+
+    def test_elf_roles_refuse_program_library_substitution_before_execution(self):
+        with self.assertRaises(OSError):
+            ctypes.CDLL("/usr/bin/true")
+        root, digest = self.published()
+        path = root / "bundle/lib/libapp.so"
+        path.chmod(0o600)
+        path.write_bytes(ELF)
+        path.chmod(0o400)
+        digest = self.change_manifest(root, lambda value: json.dumps({
+            **value, "files": {**value["files"], "bundle/lib/libapp.so": {
+                "bytes": len(ELF), "sha256": hashlib.sha256(ELF).hexdigest(),
+            }},
+        }).encode())
+        descriptors = set(os.listdir("/proc/self/fd"))
+        with self.assertRaisesRegex(app.publication.PublicationError,
+                                    "^Linux ELF shared-library role requires ET_DYN without a program interpreter$"):
+            self.materialize(root, digest)
+        self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
+        self.assertEqual(list(self.execution.iterdir()), [])
+        self.assertEqual(path.read_bytes(), ELF)
+
+        fixed_address = bytearray(SHARED_ELF)
+        struct.pack_into("<H", fixed_address, 16, 2)
+        pie = bytearray(SHARED_ELF)
+        program_offset = struct.unpack_from("<Q", pie, 32)[0]
+        count = struct.unpack_from("<H", pie, 56)[0]
+        dynamic, = [segment for segment in struct.iter_unpack(
+            "<IIQQQQQQ", pie[program_offset:program_offset + count * 56]) if segment[0] == 2]
+        struct.pack_into("<QQ", pie, dynamic[2], 0x6FFFFFFB, 0x08000000)
+        source_library = self.source / "bundle/lib/libapp.so"
+        for name, payload, error in (
+                ("program", ELF, "requires ET_DYN without a program interpreter"),
+                ("fixed-address", fixed_address, "requires ET_DYN without a program interpreter"),
+                ("pie", pie, "forbids DF_1_PIE")):
+            with self.subTest(library=name):
+                source_library.chmod(0o600)
+                source_library.write_bytes(payload)
+                source_library.chmod(0o400)
+                parent = directory(self.case / (name + "-publication"))
+                with self.assertRaisesRegex(app.publication.PublicationError, error):
+                    app.prepare(str(self.source), identity(self.source), str(parent), identity(parent), CONTEXT)
+                self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
+        source_library.chmod(0o600)
+        source_library.write_bytes(SHARED_ELF)
+        source_library.chmod(0o400)
+        source_program = self.source / "smoke-readiness"
+        source_program.chmod(0o600)
+        source_program.write_bytes(SHARED_ELF)
+        source_program.chmod(0o400)
+        parent = directory(self.case / "wrong-program-publication")
+        with self.assertRaisesRegex(app.publication.PublicationError,
+                                    "^Linux ELF program has no entry point$"):
+            app.prepare(str(self.source), identity(self.source), str(parent), identity(parent), CONTEXT)
+        self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
+        print("ELF_SHARED_ROLE_NATIVE=pass program=exec library=dlopen "
+              "program-as-library=loader-refused admission=refused-before-materialization", file=sys.stderr)
 
     def test_wrong_context_refuses_before_execution_copy(self):
         root, digest = self.published()
@@ -531,7 +602,8 @@ class EngineMaterializationTests(unittest.TestCase):
         EngineSdkRoleTests.setUp(self)
         self.capsule = directory(self.case / "engine-capsule")
         self.execution = directory(self.case / "engine-execution")
-        self.payloads = {key: ELF if key in app.ENGINE_ELFS else b"toolkit fixture\n"
+        self.payloads = {key: SHARED_ELF if app.engine_elf_role(key) == "shared"
+                         else ELF if app.engine_elf_role(key) == "program" else b"toolkit fixture\n"
                          for key in app.ENGINE_ELFS | app.ENGINE_HEADERS | app.ENGINE_DATA | app.ENGINE_SHADERS}
         self.payloads.update({relative.replace("bin/cache/pkg/sky_engine/", "gen/dart-pkg/sky_engine/")
             .replace("bin/cache/dart-sdk/bin/snapshots/", "gen/"): data
@@ -599,9 +671,7 @@ class EngineMaterializationTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), data)
             self.assertEqual((stat.S_IMODE(path.stat().st_mode), path.stat().st_nlink),
                              (0o500 if relative in app.ENGINE_ELFS else 0o400, 1))
-            if relative in app.ENGINE_ELFS:
-                subprocess.run([str(path)], check=True, timeout=5, stdin=subprocess.DEVNULL,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            execute_elf(path, app.engine_elf_role(relative))
         alias = host / "dart-sdk"
         self.assertTrue(alias.is_symlink())
         self.assertEqual(os.readlink(alias), str(self.sdk / "bin/cache/dart-sdk"))
@@ -683,6 +753,11 @@ class EngineMaterializationTests(unittest.TestCase):
         shadow = directory(self.sdk / "packages/sky_engine")
         self.reject(self.materialize)
         shadow.rmdir()
+        original = self.payloads["libtessellator.so"]
+        self.payloads["libtessellator.so"] = ELF
+        self.reseal()
+        self.reject(self.materialize)
+        self.payloads["libtessellator.so"] = original
         self.payloads["gen_snapshot"] = b"not an ELF"
         self.reseal()
         self.reject(self.materialize)
@@ -766,7 +841,7 @@ def main():
     try:
         result = unittest.TextTestRunner(verbosity=2).run(
             unittest.defaultTestLoader.loadTestsFromTestCase(LinuxFlutterArtifactTests))
-        successful = result.wasSuccessful() and result.testsRun == 23 and not result.skipped
+        successful = result.wasSuccessful() and result.testsRun == 24 and not result.skipped
         sdk_result = unittest.TextTestRunner(verbosity=2).run(
             unittest.defaultTestLoader.loadTestsFromTestCase(EngineSdkRoleTests))
         successful = successful and sdk_result.wasSuccessful() and sdk_result.testsRun == 6 and not sdk_result.skipped
@@ -784,7 +859,7 @@ def main():
           "sky=exact frontend=exact mutation=refused links=refused writes=none cleanup=joined", file=sys.stderr)
     print("FLUTTER_ENGINE_MATERIALIZATION=pass cases=9 fixture=system-elf-and-toolkit "
           "inventory=closed sdk=reused mutation=refused fallback=refused cleanup=joined", file=sys.stderr)
-    print("LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=23 publication=noclobber admission=exact execution=guest-only cleanup=joined")
+    print("LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=24 publication=noclobber admission=exact execution=guest-only cleanup=joined")
 
 
 if __name__ == "__main__":

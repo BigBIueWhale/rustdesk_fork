@@ -9951,36 +9951,7 @@ if grep -HnE '/usr/bin([^[:alnum:]_]|$)' res/DEBIAN/preinst res/DEBIAN/postinst 
   cat "$VERIFY_TMP/rd_verify_r_s11bz_usr_bin_paths"
   r_s11c10j="$r_s11c10j maintscript:package-command-or-unowned-usr-bin-mutation"
 fi
-grep -qF '"usr/lib/systemd/system/rustdesk.service"' build.py \
-  || r_s11c10j="$r_s11c10j package:vendor-unit-inventory-missing"
-grep -qF "cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service" build.py \
-  || r_s11c10j="$r_s11c10j package:vendor-unit-direct-copy-missing"
-if grep -qF 'usr/share/rustdesk/files/systemd' build.py; then
-  r_s11c10j="$r_s11c10j package:legacy-unit-template-retained"
-fi
-grep -qF '"usr/bin/rustdesk": "../share/rustdesk/rustdesk"' build.py \
-  || r_s11c10j="$r_s11c10j package:command-symlink-inventory-missing"
-grep -qF "os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')" build.py \
-  || r_s11c10j="$r_s11c10j package:command-symlink-constructor-missing"
 python3 scripts/verify-debian-package-authority.py --repo . --self-test || r_s11c10j="$r_s11c10j package:tree-authority"
-generated_plugin_authority_refs=$(
-  awk '
-    BEGIN { needle = "flutter/linux/flutter/generated_plugins.cmake" }
-    {
-      rest = $0
-      while ((position = index(rest, needle)) != 0) {
-        count++
-        rest = substr(rest, position + length(needle))
-      }
-    }
-    END { print count + 0 }
-  ' \
-    scripts/verify-debian-package-authority.py
-)
-if [ "$generated_plugin_authority_refs" -ne 1 ] ||
-   ! grep -qF 'generated_plugins = fixture / "flutter/linux/flutter/generated_plugins.cmake"' scripts/verify-debian-package-authority.py; then
-  r_s11c10j="$r_s11c10j package:generated-plugin-metadata-became-authority"
-fi
 grep -qF 'built .deb control script $script is not a mode-0755 non-hardlinked regular file' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-maintscript-mode-gate"
 grep -qF 'built .deb systemd unit differs from res/rustdesk.service' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-unit-byte-gate"
 grep -qF 'built .deb command is not the exact mode-0777 non-hardlinked relative symlink' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-command-link-gate"
@@ -9988,11 +9959,6 @@ grep -qF 'package install replaced the administrator-owned systemd unit link' sc
 grep -qF 'package removal deleted the administrator-owned systemd unit link' scripts/smoke-debian-systemd-lifecycle-guest.sh || r_s11c10j="$r_s11c10j lifecycle:no-admin-unit-remove-proof"
 grep -qF 'installed RustDesk command link is not owned by the package database' scripts/smoke-debian-systemd-lifecycle-guest.sh || r_s11c10j="$r_s11c10j lifecycle:no-systemd-package-command-ownership-proof"
 grep -qF 'installed RustDesk command link is not owned by the package database' scripts/smoke-debian-sysv-lifecycle.sh || r_s11c10j="$r_s11c10j lifecycle:no-sysv-package-command-ownership-proof"
-if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >"$VERIFY_TMP/rd_verify_r_s11c10j_build_os_system"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11c10j_build_os_system"
-  r_s11c10j="$r_s11c10j build.py:unchecked-os-system"
-fi
-grep -q "system2('/bin/rm -rf tmpdeb')" build.py || r_s11c10j="$r_s11c10j build.py:no-clean-staging-root"
 grep -q 'const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-drain-timeout"
 grep -qF 'fn terminate_child(' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-terminate-helper"
 grep -q 'hbb_common::libc::SIGTERM' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-sigterm"

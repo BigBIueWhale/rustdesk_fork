@@ -3799,6 +3799,15 @@ unaccepted. This closes these artifact admission defects only; no RustDesk proce
 or root service ran. Complete final RustDesk package validation, installed
 loader/service behavior, release and independent reproduction remain OPEN.
 
+**Debian shared-gate cleanup.** `verify.sh` delegates constructor/package authority
+to the existing semantic validator and its self-test. Thirty-four duplicate
+text-check lines are deleted, including the counter that treated a fixture's
+generated-plugin pathname spelling as authority. The package checker, required
+constructor/generated-state negatives, actual finalizer/archive tests and native
+ELF fixture are byte-identical to the named acceptance above. Bash syntax, exact
+checker digest and deletion-only diff review pass; this is maintenance correction,
+without new package installation or service evidence.
+
 The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and
 joined inert publication in 1,150,890 host BOOTTIME ms. The 74-file app/readiness manifest SHA-256 is

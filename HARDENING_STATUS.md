@@ -3776,23 +3776,28 @@ artifact role admission and its fixture; full ELF/dependency closure, the actual
 installed RustDesk loader/renderer, current release and independent reproduction
 remain OPEN. No product execution or local privilege escalation is established.
 
-**Final Debian ELF roles — focused native acceptance.** `90391b63` makes both
-byte-identical runner paths use the same ET_EXEC/ET_DYN rule and rejects DF_1_PIE
-in shared-library slots (`verify-debian-package-authority.py:561,708`). The exact
-historical `f41c0462` checker admits a PIE-marked native library in an actual Debian
-archive although `dlopen` refuses it; the current ELF partition refuses that same
-archive. The valid-library archive passes both checkers and its native function
-returns the expected result. Six focused cases/two archives pass in an 18-second
-no-NIC VM transaction; runner ET_EXEC/ET_DYN and invalid-type cases are metadata
-checks, without a non-PIE execution claim. Immutable
-`.harness-state/verifier-vm/debian-elf-roles-accepted-90391b63.json` (15,296 bytes;
-SHA-256 `e078ad68ebc7c36efa4d5158f9049e85c49e3c4b16ba67e5e2f21add92edca55`)
+**Final Debian ELF admission — focused native acceptance.** `ae334bfa` gives both
+byte-identical runners the same ET_EXEC/ET_DYN rule, requires their nonzero entry
+inside exactly one file-backed executable LOAD, and rejects DF_1_PIE in library
+slots (`verify-debian-package-authority.py:562,615,715`). The exact historical
+`f41c0462` identity predicate admits zero, data and unmapped entry variants of the
+guest's native executable; all three actually terminate with SIGSEGV. The current
+predicate refuses each variant at both runner paths, while the valid native
+control exits0. Runner type variants remain metadata checks, without a non-PIE
+execution claim. The historical checker also admits an actual Debian library
+archive that native `dlopen` refuses for DF_1_PIE; the current ELF partition
+refuses it. The valid-library archive passes both and its native function returns
+the expected result. Nine focused cases/two archives pass in a 15-second no-NIC
+VM transaction. Immutable
+`.harness-state/verifier-vm/debian-entry-accepted-ae334bfa.json` (15,017 bytes;
+SHA-256 `42a2366ac6934d427cf126426a34ca55c437d78857235bf946ff13cfebe3c366`)
 binds historical/current source, archive/native ELF digests, complete serial,
-freezes, three endpoint observations and storage. Exact joins retired RAM scratch;
-disk diagnostics peaked at 114,688 bytes. Three added UDP endpoints remain
-unattributed and untouched. The earlier fixture-permissions failure is retained
-and unaccepted. This closes these ELF admission defects only; complete final
-RustDesk package validation, installed loader/service behavior and release remain OPEN.
+freezes, three complete endpoint observations and storage. Exact joins retired
+RAM scratch; disk diagnostics peaked at 114,688 bytes and endpoint inventories
+had no deltas. The earlier fixture-permissions failure remains retained and
+unaccepted. This closes these artifact admission defects only; no RustDesk process
+or root service ran. Complete final RustDesk package validation, installed
+loader/service behavior, release and independent reproduction remain OPEN.
 
 The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and

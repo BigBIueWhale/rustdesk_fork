@@ -2576,7 +2576,7 @@ run_focused_rust_tests() {
         container_name=rustdesk-hbb-common-fs
         memory=8g
         memory_bytes=8589934592
-        if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then
+        if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
             memory=5g
             memory_bytes=5368709120
         fi
@@ -2709,6 +2709,8 @@ run_focused_rust_tests() {
                 libs/clipboard/src/lib.rs
                 libs/clipboard/src/platform/unix/fuse/cs.rs
                 libs/clipboard/src/platform/unix/fuse/mod.rs
+                libs/clipboard/src/platform/unix/serv_files.rs
+                libs/clipboard/src/platform/unix/local_file.rs
                 scripts/run-linux-fuse-read-test.py
             )
             required_tests=(
@@ -2720,6 +2722,8 @@ run_focused_rust_tests() {
                 platform::unix::fuse::cs::fuse_test::read_node_refuses_invalid_flags_and_oversized_response
                 platform::unix::fuse::cs::fuse_test::fuse_stream_ids_preserve_unsigned_bits_and_refuse_exhaustion
                 platform::unix::fuse::cs::fuse_test::old_route_guard_does_not_remove_new_request
+                platform::unix::serv_files::tests::file_contents_reads_unsigned_offset_words_from_sparse_file
+                platform::unix::serv_files::tests::clamp_file_read_size_is_overflow_safe
             )
             local fuse_before_source=$ROOT/fuse-before.rs
             cp /mnt/rustdesk-verifier-inputs/fuse-before.rs "$fuse_before_source"
@@ -3856,25 +3860,30 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=5
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
-        if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=1; fi
+        if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
             || { tail -n 200 "$output" >&2; fail 'focused shared-library test summary count differs'; }
         local -a hbb_artifact_receipts
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
             hbb_test_artifact_sha="$(python3 -I -S - "$output" \
-                "$(sha256sum "$source_root/libs/clipboard/src/platform/unix/fuse/cs.rs" | cut -d ' ' -f 1)" <<'PY'
+                "$(sha256sum "$source_root/libs/clipboard/src/platform/unix/fuse/cs.rs" | cut -d ' ' -f 1)" \
+                "$(sha256sum "$source_root/libs/clipboard/src/platform/unix/serv_files.rs" | cut -d ' ' -f 1)" <<'PY'
 import json, re, sys
 lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
 records = [json.loads(line.split("=pass ", 1)[1]) for line in lines if line.startswith("FUSE_READ_COMPONENT_ARTIFACT=pass ")]
 assert len(records) == 1
 record = records[0]
 assert record["source_sha256"] == sys.argv[2]
+assert record["serv_source_sha256"] == sys.argv[3]
+assert record["serv_before_prefix_sha256"] == "d69868124040b2c0bf4a71158200a7f911b899fbcfd4bd0adee31b3221deb1df"
+assert record["serv_old_exit"] == 101
 assert record["before_source_sha256"] == "3c7fad9d747cec3489ca6d4f09f41a81c59d1ae66d72b20c9f122d1c7cff6154"
 assert record["old_exit"] == 101 and record["new_exit"] == 0 and record["mounted_fuse"] is False
 assert record["execution"] == "production-library-read-path"
 summaries = [line for line in lines if line.startswith("test result: ok.")]
-assert len(summaries) == 1 and int(summaries[0].split()[3]) == record["tests"]
-for key in ("new_artifact_sha256", "old_artifact_sha256", "before_with_fixture_sha256", "fixture_sha256"):
+assert len(summaries) == 2 and sum(int(s.split()[3]) for s in summaries) == record["tests"]
+for key in ("new_artifact_sha256", "old_artifact_sha256", "before_with_fixture_sha256", "fixture_sha256",
+            "serv_before_with_fixture_sha256", "serv_fixture_sha256", "serv_old_artifact_sha256"):
     assert re.fullmatch("[0-9a-f]{64}", record[key])
 print(record["new_artifact_sha256"])
 PY
@@ -4079,12 +4088,13 @@ PY
         fi
     fi
     if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
-        [ "$(grep -Ec '^test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test .* \.\.\. FAILED$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" -eq 2 ] \
+            && [ "$(grep -Ec '^test .* \.\.\. FAILED$' "$output")" -eq 2 ] \
             && [ "$(grep -Fxc 'test platform::unix::fuse::cs::fuse_test::read_node_keeps_failed_request_and_next_read_responses_separate ... FAILED' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'test platform::unix::serv_files::tests::file_contents_reads_unsigned_offset_words_from_sparse_file ... FAILED' "$output")" -eq 1 ] \
             || { cat "$output" >&2; fail 'earlier FUSE implementation did not fail only the exact regression'; }
     fi
-    [ "$(grep -Ec '^test result: ' "$output")" -eq "$((${#result_lines[@]} + HBB_FUSE_READ_TESTS))" ] \
+    [ "$(grep -Ec '^test result: ' "$output")" -eq "$((${#result_lines[@]} + HBB_FUSE_READ_TESTS * 2))" ] \
         || fail 'focused Rust-test output contains a non-success result summary'
     for result_line in "${result_lines[@]}"; do
         passed="$(printf '%s\n' "$result_line" | sed -E 's/^test result: ok\. ([0-9]+) passed;.*/\1/')"

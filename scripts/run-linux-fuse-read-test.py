@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the production clipboard read tests and the earlier retry implementation in the VM."""
+"""Run production Unix clipboard reads and exact retry/offset comparisons in the VM."""
 
 import hashlib
 import json
@@ -19,6 +19,10 @@ MODULE = "platform::unix::fuse::cs::fuse_test"
 REGRESSION = MODULE + "::read_node_keeps_failed_request_and_next_read_responses_separate"
 SOURCE = Path("/cargo-target/fuse-test-source")
 RELATIVE = Path("libs/clipboard/src/platform/unix/fuse/cs.rs")
+SERV_RELATIVE = Path("libs/clipboard/src/platform/unix/serv_files.rs")
+SERV_MODULE = "platform::unix::serv_files::tests"
+SERV_REGRESSION = SERV_MODULE + "::file_contents_reads_unsigned_offset_words_from_sparse_file"
+SERV_BEFORE_PREFIX_SHA = "d69868124040b2c0bf4a71158200a7f911b899fbcfd4bd0adee31b3221deb1df"
 MAX_OUTPUT = 4 * 1024 * 1024
 
 
@@ -56,6 +60,15 @@ def main():
     assert_role()
     deadline = time.monotonic() + 220
     current = read_bounded(Path("/source") / RELATIVE)
+    serv_current = read_bounded(Path("/source") / SERV_RELATIVE)
+    offset = (b"let offset = (u64::from(n_position_high as u32) << 32)\n"
+              b"            | u64::from(n_position_low as u32);")
+    old_offset = b"let offset = (n_position_high as u64) << 32 | n_position_low as u64;"
+    if serv_current.count(offset) != 1:
+        raise ValueError("Exact corrected clipboard offset expression is ambiguous")
+    serv_before = serv_current.replace(offset, old_offset)
+    if digest(serv_before.partition(b"#[cfg(test)]\n")[0]) != SERV_BEFORE_PREFIX_SHA:
+        raise ValueError("Earlier production clipboard serving implementation differs")
     before = read_bounded(Path("/inputs/fuse-before.rs"))
     if digest(before) != BEFORE_SHA or not before.endswith(b"}\n"):
         raise ValueError("Earlier production FUSE source identity differs")
@@ -71,6 +84,11 @@ def main():
     if not stat.S_ISREG(module_stat.st_mode) or module_stat.st_uid != 1000 or module_stat.st_nlink != 1:
         raise ValueError("Private FUSE source is not an owned regular file")
     module.chmod(0o600)
+    serv_module = SOURCE / SERV_RELATIVE
+    serv_stat = serv_module.lstat()
+    if not stat.S_ISREG(serv_stat.st_mode) or serv_stat.st_uid != 1000 or serv_stat.st_nlink != 1:
+        raise ValueError("Private clipboard serving source is not an owned regular file")
+    serv_module.chmod(0o600)
     select_artifact = runpy.run_path("/source/scripts/select-hbb-common-test-artifact.py")["select_artifact"]
     environment = dict(os.environ, CARGO_BUILD_JOBS="2", CARGO_PROFILE_DEV_DEBUG="0", CARGO_PROFILE_TEST_DEBUG="0")
 
@@ -118,6 +136,14 @@ def main():
     if (status != 0 or len(summary) != 1 or int(summary[0]) < len(required)
             or any(output.count(("test " + MODULE + "::" + name + " ... ok").encode()) != 1 for name in required)):
         raise ValueError("Corrected FUSE component cases did not complete")
+    status, serv_output = run([str(new_executable), SERV_MODULE, "--color", "never",
+                              "--test-threads=1"], "clipboard-current-tests")
+    sys.stdout.buffer.write(serv_output)
+    sys.stdout.flush()
+    serv_summary = re.findall(rb"^test result: ok\. (2) passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$", serv_output, re.M)
+    if (status != 0 or len(serv_summary) != 1
+            or serv_output.count(("test " + SERV_REGRESSION + " ... ok").encode()) != 1):
+        raise ValueError("Corrected clipboard serving cases did not complete")
     old_executable, old_sha = build(earlier, "fuse-before")
     status, old_output = run([str(old_executable), REGRESSION, "--exact", "--color", "never", "--test-threads=1"], "fuse-before-tests")
     sys.stdout.buffer.write(old_output)
@@ -126,17 +152,36 @@ def main():
             or old_output.count(("test " + REGRESSION + " ... FAILED").encode()) != 1
             or b"test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured;" not in old_output):
         raise ValueError("Earlier FUSE component did not exhibit the exact retry defect")
-    for executable, expected in [(new_executable, new_sha), (old_executable, old_sha)]:
+    serv_module.write_bytes(serv_before)
+    offset_executable, offset_sha = build(current, "clipboard-offset-before")
+    offset_status, offset_output = run([str(offset_executable), SERV_REGRESSION, "--exact",
+                                      "--color", "never", "--test-threads=1"], "clipboard-offset-before-tests")
+    sys.stdout.buffer.write(offset_output)
+    sys.stdout.flush()
+    if (offset_status != 101 or b"unsigned offset read failed" not in offset_output
+            or offset_output.count(("test " + SERV_REGRESSION + " ... FAILED").encode()) != 1
+            or b"test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured;" not in offset_output):
+        raise ValueError("Earlier clipboard source did not exhibit the exact offset defect")
+    for executable, expected in [(new_executable, new_sha), (old_executable, old_sha),
+                                 (offset_executable, offset_sha)]:
         if file_digest(executable) != expected:
             raise ValueError("Executed FUSE artifact changed")
-    if read_bounded(module) != earlier or read_bounded(Path("/source") / RELATIVE) != current:
+    if read_bounded(module) != current or read_bounded(Path("/source") / RELATIVE) != current:
         raise ValueError("FUSE source changed during execution")
+    if (read_bounded(serv_module) != serv_before
+            or read_bounded(Path("/source") / SERV_RELATIVE) != serv_current):
+        raise ValueError("Clipboard serving source changed during execution")
     module.write_bytes(current)
+    serv_module.write_bytes(serv_current)
     print("FUSE_READ_COMPONENT_ARTIFACT=pass " + json.dumps({
         "before_source_sha256": BEFORE_SHA, "before_with_fixture_sha256": digest(earlier),
         "source_sha256": digest(current), "new_artifact_sha256": new_sha,
         "old_artifact_sha256": old_sha, "old_exit": status, "new_exit": 0,
-        "tests": int(summary[0]), "fixture_sha256": digest(fixture),
+        "tests": int(summary[0]) + int(serv_summary[0]), "fixture_sha256": digest(fixture),
+        "serv_source_sha256": digest(serv_current), "serv_before_prefix_sha256": SERV_BEFORE_PREFIX_SHA,
+        "serv_before_with_fixture_sha256": digest(serv_before),
+        "serv_fixture_sha256": digest(serv_current.partition(b"#[cfg(test)]\n")[2]),
+        "serv_old_artifact_sha256": offset_sha, "serv_old_exit": offset_status,
         "mounted_fuse": False, "execution": "production-library-read-path",
     }, sort_keys=True), flush=True)
 

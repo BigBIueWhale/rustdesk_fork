@@ -233,7 +233,8 @@ pub fn read_file_contents(
             file_idx: list_index as usize,
         }
     } else if dw_flags == 0x2 {
-        let offset = (n_position_high as u64) << 32 | n_position_low as u64;
+        let offset = (u64::from(n_position_high as u32) << 32)
+            | u64::from(n_position_low as u32);
         let length = cb_requested as u64;
 
         FileContentsRequest::Range {
@@ -281,6 +282,74 @@ fn clamp_file_read_size(offset: u64, length: u64, file_size: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::clamp_file_read_size;
+
+    #[test]
+    fn file_contents_reads_unsigned_offset_words_from_sparse_file() {
+        use std::{fs::File, io::{Seek, SeekFrom, Write}, os::unix::fs::MetadataExt};
+
+        struct Fixture(std::path::PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                super::clear_files();
+                std::fs::remove_file(self.0.join("sparse.bin")).expect("remove sparse file");
+                std::fs::remove_dir(&self.0).expect("remove clipboard fixture directory");
+            }
+        }
+
+        let directory = std::env::temp_dir().join(format!(
+            "rustdesk-clipboard-offset-{}-{:016x}", std::process::id(), rand::random::<u64>()
+        ));
+        std::fs::create_dir(&directory).expect("create private clipboard fixture");
+        let fixture = Fixture(directory);
+        let path = fixture.0.join("sparse.bin");
+        let offsets = [0, (1u64 << 31) - 8, 1u64 << 31, (1u64 << 32) - 8,
+            1u64 << 32, (1u64 << 32) + (1u64 << 31), (1u64 << 33) + 17];
+        let mut file = File::create(&path).expect("create sparse clipboard file");
+        for (index, offset) in offsets.iter().enumerate() {
+            file.seek(SeekFrom::Start(*offset)).expect("seek sparse fixture");
+            file.write_all(&[index as u8, 0x52, 0x44, 0xff]).expect("write sparse marker");
+        }
+        file.sync_all().expect("synchronize sparse fixture");
+        let metadata = file.metadata().expect("inspect sparse file");
+        assert!(metadata.blocks() * 512 <= 128 * 1024, "fixture must remain sparse");
+        drop(file);
+        super::sync_files(&[path.to_string_lossy().into_owned()]).expect("admit clipboard file");
+
+        for (index, offset) in offsets.iter().enumerate() {
+            let responses = super::read_file_contents(71, index as i32, 0, 2,
+                *offset as u32 as i32, (*offset >> 32) as u32 as i32, 4);
+            let mut content = None;
+            for response in responses {
+                match response.expect("unsigned offset read failed") {
+                    crate::ClipboardFile::FileContentsResponse { msg_flags, stream_id, requested_data } => {
+                        assert!(content.is_none(), "one content response per request");
+                        assert_eq!(msg_flags, 1);
+                        assert_eq!(stream_id, index as i32);
+                        content = Some(requested_data);
+                    }
+                    crate::ClipboardFile::Files { .. } if *offset == 0 => {}
+                    other => panic!("unexpected clipboard response: {:?}", other),
+                }
+            }
+            assert_eq!(content.as_deref(), Some([index as u8, 0x52, 0x44, 0xff].as_slice()));
+        }
+        for (index, low, high) in [(-1, 0, 0), (0, -1, -1),
+            (0, metadata.len() as u32 as i32 + 1, (metadata.len() >> 32) as i32)] {
+            assert!(super::read_file_contents(71, 90, index, 2, low, high, 4)
+                .into_iter().any(|response| response.is_err()));
+        }
+        let responses = super::read_file_contents(71, 91, 0, 2,
+            metadata.len() as u32 as i32, (metadata.len() >> 32) as i32, 4);
+        assert!(matches!(responses.as_slice(), [Ok(crate::ClipboardFile::FileContentsResponse {
+            msg_flags: 1, stream_id: 91, requested_data
+        })] if requested_data.is_empty()));
+        let responses = super::read_file_contents(71, 92, 0, 2, i32::MIN, 0, 4);
+        assert!(matches!(responses.as_slice(), [Ok(crate::ClipboardFile::FileContentsResponse {
+            msg_flags: 1, stream_id: 92, requested_data
+        })] if requested_data.as_slice() == [2, 0x52, 0x44, 0xff]));
+        super::clear_files();
+        assert!(super::get_file_list_pdu().is_empty());
+    }
 
     // §20: a peer FileContentsRequest with cb_requested=-1 makes length=u64::MAX; the old
     // `offset + length > file.size` wrapped, selected `length`, and over-allocated vec![0u8; length].

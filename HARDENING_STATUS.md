@@ -2176,6 +2176,12 @@ future media execution must use the shared bounded RAM orchestration. No replace
 disk fallback or override is introduced. Direct invocation returns missing-file exit2 with
 unchanged shared/RAM directory inventories and host listeners. This is execution-path removal,
 not new media behavior: media execution/storage acceptance remains OPEN.
+The Windows presentation launcher now calls the existing verifier admission before
+loading helpers/pins, inspecting ambient libvirt state or creating run state.
+The no-NIC Linux authority smoke passed actual root, foreign-principal and wrong
+descriptor-limit refusals in 95 seconds, with exact receipt cardinality, source
+freezes, bounded RAM scratch and joined cleanup. This proves early entry refusal;
+Windows storage, graphical presentation, installed and release acceptance remain OPEN.
 Complete acquisition/bootstrap closure, full-release and other-platform VM storage acceptance
 remain OPEN. Tmpfs is swappable here: no host swap/mount
 change or zero-system-I/O claim is made. Design sources:

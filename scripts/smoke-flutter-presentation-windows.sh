@@ -6,6 +6,7 @@ export LC_ALL=C
 umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+/usr/bin/bash "$SCRIPT_DIR/verify-vm-entry-preflight.sh" >/dev/null
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins

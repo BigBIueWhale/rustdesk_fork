@@ -488,6 +488,7 @@ readonly FRB_CODEGEN_SOURCE="$SCRIPT_DIR/frb-codegen.sh"
 readonly DART_VERIFY_SOURCE="$SCRIPT_DIR/dart-verify.sh"
 readonly SMOKE_SERVER_SOURCE="$SCRIPT_DIR/smoke-server.sh"
 readonly AUTHORITY_GATE_SOURCES=(
+    "$SCRIPT_DIR/smoke-flutter-presentation-windows.sh"
     "$SCRIPT_DIR/verify-viewer-audio-mailbox.py"
     "$REPO_ROOT/src/client.rs"
     "$REPO_ROOT/src/client/io_loop.rs"
@@ -5155,6 +5156,11 @@ printf 'ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnosti
     "VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused nofile=524544 workspace_fixtures=actual workspace_cleanup=joined" \
     "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'main verifier exact-entry result marker is absent'; }
+if [ "$MODE" = authority-smoke ]; then
+    require_exact_fixed_receipt \
+        'WINDOWS_PRESENTATION_ENTRY=pass root=refused foreign=refused nofile=refused workload=unexecuted' \
+        'Windows presentation entry refusals'
+fi
 /usr/bin/grep -Fq \
     "VERIFIER_VM_FRB_ENTRY=pass uid=4000 gid=4000 foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION prepost=replayed" \
     "$SERIAL_LOG" \

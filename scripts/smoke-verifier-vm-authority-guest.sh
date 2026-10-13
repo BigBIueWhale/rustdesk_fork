@@ -9374,6 +9374,35 @@ printf 'VERIFIER_VM_DEBIAN_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused for
     "$EXPECTED_VERSION"
 
 if [ "$MODE" = authority-smoke ]; then
+    presentation_script="$VERIFY_REPO/scripts/smoke-flutter-presentation-windows.sh"
+    /bin/bash -n "$presentation_script" || fail 'Windows presentation entry syntax differs'
+    for principal in root foreign nofile; do
+        presentation_command=(/bin/bash "$presentation_script")
+        case "$principal" in
+            root)
+                presentation_error='the verifier principal must not be root'
+                ;;
+            foreign)
+                presentation_command=(setpriv --reuid=4001 --regid=4001 --clear-groups "${presentation_command[@]}")
+                presentation_error='VM Docker channel metadata differs'
+                ;;
+            nofile)
+                presentation_command=(setpriv --reuid=4000 --regid=4000 --clear-groups
+                    /usr/bin/prlimit --nofile=64 "${presentation_command[@]}")
+                presentation_error='verifier descriptor limit differs'
+                ;;
+        esac
+        presentation_status=0
+        "${presentation_command[@]}" >"$ROOT/presentation-$principal.out" \
+            2>"$ROOT/presentation-$principal.err" || presentation_status=$?
+        [ "$presentation_status" -eq 1 ] \
+            && [ ! -s "$ROOT/presentation-$principal.out" ] \
+            && [ "$(<"$ROOT/presentation-$principal.err")" = \
+                "verifier-VM entry preflight: $presentation_error" ] \
+            || fail "Windows presentation $principal entry refusal differs"
+    done
+    printf 'WINDOWS_PRESENTATION_ENTRY=pass root=refused foreign=refused nofile=refused workload=unexecuted\n'
+
     for epoch_script in "$ANDROID_BUILDER_SCRIPT" "$DEBIAN_BUILDER_SCRIPT" \
         "$VERIFY_REPO/scripts/build-windows-vm.sh"; do
         epoch_args=()

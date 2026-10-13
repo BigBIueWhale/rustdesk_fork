@@ -1075,7 +1075,7 @@ PY
         && [ "$(grep -Fc 'LINUX_FLUTTER_ARTIFACT=' "$output")" -eq 1 ] \
         || fail 'Linux app-capsule result is absent, malformed or duplicated'
     [ "$(grep -Fxc 'ELF_SHARED_ROLE_NATIVE=pass program=exec library=dlopen program-as-library=loader-refused admission=refused-before-materialization' "$output")" -eq 1 ] \
-        || fail 'Linux app-capsule native ELF role result differs'
+        || { tail -n 80 "$output" >&2; fail 'Linux app-capsule native ELF role result differs'; }
     [ "$(sha256sum "${sources[@]}")" = "$source_before" ] \
         || fail 'Linux app-capsule admitted source changed'
     setpriv --reuid=4000 --regid=4000 --clear-groups \

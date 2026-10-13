@@ -203,8 +203,6 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
                                     "^Linux ELF program has no entry point$"):
             app.prepare(str(self.source), identity(self.source), str(parent), identity(parent), CONTEXT)
         self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
-        print("ELF_SHARED_ROLE_NATIVE=pass program=exec library=dlopen "
-              "program-as-library=loader-refused admission=refused-before-materialization", file=sys.stderr)
 
     def test_wrong_context_refuses_before_execution_copy(self):
         root, digest = self.published()
@@ -855,6 +853,8 @@ def main():
         ], check=True)
     if not successful:
         raise SystemExit(1)
+    print("ELF_SHARED_ROLE_NATIVE=pass program=exec library=dlopen "
+          "program-as-library=loader-refused admission=refused-before-materialization", file=sys.stderr)
     print("FLUTTER_ENGINE_SDK_ROLES=pass cases=6 fixture=manifest-and-filesystem "
           "sky=exact frontend=exact mutation=refused links=refused writes=none cleanup=joined", file=sys.stderr)
     print("FLUTTER_ENGINE_MATERIALIZATION=pass cases=9 fixture=system-elf-and-toolkit "

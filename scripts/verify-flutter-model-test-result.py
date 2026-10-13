@@ -82,6 +82,12 @@ DIRECT_ADDRESS_TESTS = {
     "hostname label and complete name bounds",
 }
 MAXIMUM_BYTES = 8 * 1024 * 1024
+PASSWORD_FIELD_TESTS = {
+    "password keyboard policy survives reveal on android",
+    "password keyboard policy survives reveal on iOS",
+    "ordinary obscured field is a keyboard learning control",
+    "password field retains focused obscured semantics",
+}
 MAXIMUM_EVENTS = 16_384
 MAXIMUM_LINE_BYTES = 1024 * 1024
 
@@ -112,7 +118,7 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "password-fields"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     if profile == "frame-queue":
         expected_suites = {"latest_frame_queue_test.dart"}
@@ -122,6 +128,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"address_validator_test.dart"}
         expected_tests = len(DIRECT_ADDRESS_TESTS)
         expected_names = DIRECT_ADDRESS_TESTS
+    elif profile == "password-fields":
+        expected_suites = {"password_text_field_test.dart"}
+        expected_tests = len(PASSWORD_FIELD_TESTS)
+        expected_names = PASSWORD_FIELD_TESTS
     else:
         expected_tests = model_test_count()
     metadata = os.lstat(path)
@@ -210,7 +220,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -222,6 +232,7 @@ def main():
         "models": "FLUTTER_MODEL_TEST_JSON",
         "frame-queue": "FLUTTER_FRAME_QUEUE_TEST_JSON",
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
+        "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
     }[arguments.profile]
     print("{}=pass suites={} tests={}".format(prefix, suites, tests))
     return 0

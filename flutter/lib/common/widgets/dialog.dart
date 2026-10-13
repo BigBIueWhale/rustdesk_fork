@@ -5,6 +5,7 @@ import 'package:bot_toast/bot_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
+import 'package:flutter_hbb/common/widgets/password_text_field.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
@@ -115,7 +116,8 @@ Future<String> changeAutoDisconnectTimeout(String old) async {
 class DialogTextField extends StatelessWidget {
   final String title;
   final String? hintText;
-  final bool obscureText;
+  final bool isPassword;
+  final bool passwordVisible;
   final String? errorText;
   final String? helperText;
   final Widget? prefixIcon;
@@ -134,7 +136,8 @@ class DialogTextField extends StatelessWidget {
   DialogTextField(
       {Key? key,
       this.focusNode,
-      this.obscureText = false,
+      this.isPassword = false,
+      this.passwordVisible = false,
       this.errorText,
       this.helperText,
       this.prefixIcon,
@@ -149,6 +152,14 @@ class DialogTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final decoration = InputDecoration(
+      labelText: title,
+      hintText: hintText,
+      prefixIcon: prefixIcon,
+      suffixIcon: suffixIcon,
+      helperText: helperText,
+      helperMaxLines: 8,
+    );
     return Row(
       children: [
         Expanded(
@@ -156,23 +167,25 @@ class DialogTextField extends StatelessWidget {
             children: [
               Semantics(
                 focusable: true,
-                child: TextField(
-                  decoration: InputDecoration(
-                    labelText: title,
-                    hintText: hintText,
-                    prefixIcon: prefixIcon,
-                    suffixIcon: suffixIcon,
-                    helperText: helperText,
-                    helperMaxLines: 8,
-                  ),
-                  controller: controller,
-                  focusNode: focusNode,
-                  autofocus: true,
-                  obscureText: obscureText,
-                  keyboardType: keyboardType,
-                  inputFormatters: inputFormatters,
-                  maxLength: maxLength,
-                ),
+                child: isPassword
+                    ? PasswordTextField(
+                        decoration: decoration,
+                        controller: controller,
+                        focusNode: focusNode,
+                        autofocus: true,
+                        obscureText: !passwordVisible,
+                        inputFormatters: inputFormatters,
+                        maxLength: maxLength,
+                      )
+                    : TextField(
+                        decoration: decoration,
+                        controller: controller,
+                        focusNode: focusNode,
+                        autofocus: true,
+                        keyboardType: keyboardType,
+                        inputFormatters: inputFormatters,
+                        maxLength: maxLength,
+                      ),
               ),
               if (errorText != null)
                 Align(
@@ -272,7 +285,8 @@ class _PasswordWidgetState extends State<PasswordWidget> {
           });
         },
       ),
-      obscureText: !_passwordVisible,
+      isPassword: true,
+      passwordVisible: _passwordVisible,
       errorText: widget.errorText,
       focusNode: _focusNode,
       maxLength: widget.maxLength,

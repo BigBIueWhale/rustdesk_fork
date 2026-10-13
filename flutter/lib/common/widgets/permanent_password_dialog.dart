@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/custom_password.dart';
+import 'package:flutter_hbb/common/widgets/password_text_field.dart';
 import 'package:get/get.dart';
 
 typedef PermanentPasswordWriter = Future<bool> Function(String password);
@@ -301,8 +302,7 @@ class _PermanentPasswordDialogState extends State<PermanentPasswordDialog> {
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    obscureText: true,
+                  child: PasswordTextField(
                     enabled: !_submitting,
                     decoration: InputDecoration(
                       labelText: _translate('Password'),
@@ -334,8 +334,7 @@ class _PermanentPasswordDialogState extends State<PermanentPasswordDialog> {
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    obscureText: true,
+                  child: PasswordTextField(
                     enabled: !_submitting,
                     decoration: InputDecoration(
                       labelText: _translate('Confirmation'),

@@ -27,6 +27,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "frame-queue":
             suites = ["latest_frame_queue_test.dart"]
             names = sorted(result.FRAME_QUEUE_TESTS)
+        elif profile == "password-fields":
+            suites = ["password_text_field_test.dart"]
+            names = sorted(result.PASSWORD_FIELD_TESTS)
         else:
             suites = ["address_validator_test.dart"]
             names = sorted(result.DIRECT_ADDRESS_TESTS)
@@ -63,6 +66,7 @@ class ResultTests(unittest.TestCase):
         )
         self.assertEqual(self.parse(self.events("frame-queue"), "frame-queue"), (1, 24))
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
+        self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"
             path.write_bytes(b"7\n")
@@ -96,7 +100,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address"):
+        for profile in ("frame-queue", "direct-address", "password-fields"):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing"):
                 with self.subTest(profile=profile, edit=edit):
@@ -113,7 +117,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_and_incomplete_are_rejected(self):
-        for profile in ("models", "frame-queue", "direct-address"):
+        for profile in ("models", "frame-queue", "direct-address", "password-fields"):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

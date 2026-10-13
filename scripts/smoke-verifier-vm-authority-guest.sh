@@ -121,7 +121,7 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [[ "${13}" = --frame-queue || "${13}" = --direct-address ]] || exit 2
+        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --password-fields ]] || exit 2
         MODE=flutter-model-tests
         FLUTTER_TEST_PROFILE=${13#--}
         ;;
@@ -199,6 +199,7 @@ case "$#:${8:-}" in
         echo 'CM file integration replay accepts --cm-file-replay SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused Flutter queue shard appends --frame-queue to --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused Flutter address shard appends --direct-address to that same source-bound invocation.' >&2
+        echo 'The focused password input shard appends --password-fields to that same source-bound invocation.' >&2
         echo 'The focused Rust clipboard shard appends --clipboard to --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused whiteboard state shard appends --whiteboard-presentation to that same source-bound invocation.' >&2
         echo 'The focused whiteboard client state shard appends --whiteboard-client to that same source-bound invocation.' >&2
@@ -6772,6 +6773,9 @@ run_flutter_model_tests() {
         if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
             result_prefix=FLUTTER_FRAME_QUEUE_TEST_JSON
             expected_result='suites=1 tests=24'
+        elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
+            result_prefix=FLUTTER_PASSWORD_FIELD_TEST_JSON
+            expected_result='suites=1 tests=4'
         else
             result_prefix=FLUTTER_DIRECT_ADDRESS_TEST_JSON
             expected_result='suites=1 tests=19'
@@ -6780,6 +6784,8 @@ run_flutter_model_tests() {
         source_writable=false
         if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
             printf 'FLUTTER_FRAME_QUEUE_STAGE=verify-source-and-inputs\n'
+        elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
+            printf 'FLUTTER_PASSWORD_FIELD_STAGE=verify-source-and-inputs\n'
         else
             printf 'FLUTTER_DIRECT_ADDRESS_STAGE=verify-source-and-inputs\n'
         fi
@@ -7085,6 +7091,8 @@ run_flutter_model_tests() {
                 format_paths=(lib/models/latest_frame_queue.dart test/latest_frame_queue_test.dart)
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
                     format_paths=(lib/common/formatter/direct_address.dart test/address_validator_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
+                    format_paths=(lib/common/widgets/password_text_field.dart test/password_text_field_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = models ]; then
                     format_paths+=(
                         lib/models/android_permission_request_coordinator.dart
@@ -7123,7 +7131,7 @@ run_flutter_model_tests() {
                     cat /work/format.err >&2
                     exit 1
                 fi
-                if [ "$FLUTTER_TEST_PROFILE" != direct-address ]; then
+                if [ "$FLUTTER_TEST_PROFILE" = models ] || [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
                     /usr/bin/python3 -I -S \
                         /source/scripts/verify-display-selection-finality.py --repo /source
                 fi
@@ -7157,6 +7165,8 @@ run_flutter_model_tests() {
                 test_budget=90s
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
                     tests=(test/address_validator_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
+                    tests=(test/password_text_field_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = models ]; then
                     tests=(
                         test/global_event_dispatcher_test.dart
@@ -7207,6 +7217,9 @@ run_flutter_model_tests() {
                     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
                         cmp /source/flutter/lib/models/latest_frame_queue.dart lib/models/latest_frame_queue.dart
                         cmp /source/flutter/test/latest_frame_queue_test.dart test/latest_frame_queue_test.dart
+                    elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
+                        cmp /source/flutter/lib/common/widgets/password_text_field.dart lib/common/widgets/password_text_field.dart
+                        cmp /source/flutter/test/password_text_field_test.dart test/password_text_field_test.dart
                     else
                         cmp /source/flutter/lib/common/formatter/direct_address.dart lib/common/formatter/direct_address.dart
                         cmp /source/flutter/test/address_validator_test.dart test/address_validator_test.dart
@@ -7243,6 +7256,8 @@ run_flutter_model_tests() {
         printf 'FLUTTER_FRAME_QUEUE_STAGE=run-production-queue-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
         printf 'FLUTTER_DIRECT_ADDRESS_STAGE=run-production-validator-tests\n'
+    elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
+        printf 'FLUTTER_PASSWORD_FIELD_STAGE=run-production-input-tests\n'
     fi
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
@@ -7298,6 +7313,14 @@ run_flutter_model_tests() {
         printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=19 flutter=3.24.5 validator=%s tests_source=%s vectors=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$address_sha256" "$tests_sha256" "$vectors_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+            "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
+        local password_sha256
+        password_sha256="$(sha256sum "$source_root/flutter/lib/common/widgets/password_text_field.dart" | awk '{print $1}')"
+        tests_sha256="$(sha256sum "$source_root/flutter/test/password_text_field_test.dart" | awk '{print $1}')"
+        printf 'FLUTTER_PASSWORD_FIELD_TESTS_VM=pass commit=%s tree=%s suites=1 tests=4 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-password-field-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+            "$password_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     else
         printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=23 tests=%s flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \

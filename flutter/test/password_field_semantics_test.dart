@@ -15,7 +15,7 @@ void main() {
         home: Material(
           child: DialogTextField(
             title: 'Password',
-            obscureText: true,
+            isPassword: true,
             controller: controller,
             focusNode: focusNode,
           ),

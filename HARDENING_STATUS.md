@@ -2079,6 +2079,19 @@ Current normative specification SHA-256: `3ffe686d37d12f624b305c927bafa3ff71a42e
 
 ### Current authority and source closure
 
+**Password input policy: source corrected; focused execution pending.** The
+connection-password reveal control and both permanent-password fields use
+`PasswordTextField`. Credential input always requests a password keyboard with
+autocorrection, suggestions, IME personalized learning, smart punctuation and
+spell checking disabled; revealing text changes only obscurity. `DialogTextField`
+names password intent separately from visibility. The old display-only password
+configuration is removed. The focused `--flutter-model-tests --password-fields`
+shard observes actual Flutter text-input channel configuration during hidden,
+revealed and hidden-again transitions, with a default-field learning control and
+focused accessibility semantics. It is component/channel evidence, not proof
+that a native Android/iOS keyboard honors the flags or an installed password
+transaction. Those device and full-dialog paths remain OPEN.
+
 **Offline verifier host sockets (R-S11dh): Linux socket restriction and observation retention accepted; wider coverage OPEN.**
 `vm-host-network.py` closes extra inherited descriptors, refuses IP stdout/stderr and
 installs an ordinary-user, capabilities-free, inherited seccomp restriction before

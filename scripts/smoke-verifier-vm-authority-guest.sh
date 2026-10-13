@@ -2576,6 +2576,10 @@ run_focused_rust_tests() {
         container_name=rustdesk-hbb-common-fs
         memory=8g
         memory_bytes=8589934592
+        if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then
+            memory=4g
+            memory_bytes=4294967296
+        fi
         tmpfs_size=3g
         image_archive=$inputs/build-images/deb-builder.docker.tar.gz
         image_config=$DEB_BUILDER_CONFIG_ID

@@ -626,11 +626,12 @@ elif [ "$MODE" = android-rust-target-check ]; then
 elif [ "$MODE" = hbb-common-fs ]; then
     if [ "$HBB_LOGIND_NATIVE" -eq 1 ] || [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
         readonly VM_TIMEOUT_SECONDS=300
+        readonly VM_MEMORY=8192
     else
         readonly VM_TIMEOUT_SECONDS=1800
+        readonly VM_MEMORY=6144
     fi
     readonly OVERLAY_SIZE=16G
-    readonly VM_MEMORY=8192
 elif [ "$MODE" = cpace-recovery-tests ]; then
     readonly VM_TIMEOUT_SECONDS=900
     readonly OVERLAY_SIZE=16G

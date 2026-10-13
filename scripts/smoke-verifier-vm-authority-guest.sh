@@ -3467,6 +3467,11 @@ run_focused_rust_tests() {
                         tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
                         /tmp/toolchain/rust-1.75.0-x86_64-unknown-linux-gnu/install.sh \
                             --prefix=/tmp/rust --disable-ldconfig >/dev/null
+                        if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+                            rm -rf -- /tmp/toolchain
+                            [ ! -e /tmp/toolchain ] && [ ! -L /tmp/toolchain ]
+                            printf "CLIPBOARD_TOOLCHAIN_SCRATCH=retired installer=/tmp/toolchain compiler=/tmp/rust\n"
+                        fi
                         unset RUSTUP_TOOLCHAIN
                         export RUSTUP_HOME=/nonexistent PATH=/tmp/rust/bin:/usr/bin:/bin
                         ;;
@@ -4088,6 +4093,8 @@ PY
         fi
     fi
     if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+        grep -Fxq 'CLIPBOARD_TOOLCHAIN_SCRATCH=retired installer=/tmp/toolchain compiler=/tmp/rust' "$output" \
+            || fail 'clipboard compiler installer scratch was not retired'
         [ "$(grep -Ec '^test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" -eq 2 ] \
             && [ "$(grep -Ec '^test .* \.\.\. FAILED$' "$output")" -eq 2 ] \
             && [ "$(grep -Fxc 'test platform::unix::fuse::cs::fuse_test::read_node_keeps_failed_request_and_next_read_responses_separate ... FAILED' "$output")" -eq 1 ] \

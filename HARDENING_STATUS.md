@@ -10995,7 +10995,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
 ## Closed excision and direct-only presentation backlog
 
-**State: current source topology closed; exact-current artifact evidence remains open.** Normative behavior is in
+**State: first-party excision largely implemented; hostname resolution and exact-current artifact evidence remain OPEN.** Normative behavior is in
 R-P1, R-P5, R-G1, R-G2, R-G4a, R-G6, R-G9, R-S12, R-S17, R-S19, R-X7, R-X9, R-SV4a, R-SV5, R-SV5a, and
 R-SV6a through R-SV6d. Git history retains the original findings, implementation sequence, source counts, and
 per-run gate receipts; this section retains only present disposition and evidence limits.
@@ -11077,6 +11077,23 @@ the corresponding private evidence and audit and are not accepted runs. This pro
 validators and shared-library behavior, not a final product artifact or privileged receiver. Native whole-app
 client/URL/login dispatch, rendered UI, installed/platform artifacts, full-verifier integration and independent
 reproduction remain OPEN; listener IPv4-only binding is a separate R-D5 property.
+
+**OPEN — hostname resolution transport and lifetime (R-SV5/R-SV10).**
+The actual viewer path is `Client::_start` → `connect_tcp_local` → `FramedStream::new`
+(`src/client.rs:499`, `libs/hbb_common/src/socket_client.rs:79`, `tcp.rs:466`). String targets
+use Tokio 1.44.2's blocking standard-library resolver; Rust 1.75 calls libc `getaddrinfo`
+with a stream hint. Resolution precedes the per-address TCP-connect timeout. Reviewed glibc 2.27
+source creates datagram sockets for ordinary DNS and, with multiple returned addresses, for
+source-address sorting probes. TCP DNS configuration alone does not remove the latter path.
+This is a source/upstream-library finding, without an exact-current product syscall trace or
+demonstrated local privilege escalation. The nineteen Dart controller/grammar tests do not exercise
+name resolution. Required next evidence is a source-bound isolated viewer/connector replay covering
+literal IPv4 controls, qualified hostnames, single/multiple A/AAAA and hosts-file results, default/TCP
+DNS, transient socket creation, failure, cancellation and exact resolver drain. Hostname support and
+the zero-UDP contract remain binding; the product correction and all target-native acceptance are OPEN.
+Primary references: [Rust 1.75 lookup](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys_common/net.rs#L181),
+[glibc 2.27 sorting](https://github.com/bminor/glibc/blob/glibc-2.27/sysdeps/posix/getaddrinfo.c#L2187),
+[glibc DNS sockets](https://github.com/bminor/glibc/blob/glibc-2.27/resolv/res_send.c#L858).
 
 ### R-S11gk/R-S11e-223 — real Windows full-peer focus/presentation transaction
 

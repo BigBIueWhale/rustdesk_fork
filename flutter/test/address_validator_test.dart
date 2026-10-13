@@ -125,6 +125,40 @@ void main() {
       }
       expect(existing.address, 'initial.example:21118');
       expect(edited.text, isEmpty);
+
+      final unchangedEdits =
+          <String, void Function(DirectAddressTextEditingController)>{
+        'empty address write': (controller) {
+          controller.address = '';
+        },
+        'whitespace address write': (controller) {
+          controller.address = ' \t ';
+        },
+        'clear while empty': (controller) {
+          controller.clear();
+        },
+      };
+      for (final edit in unchangedEdits.entries) {
+        final earlierEdit = DirectAddressTextEditingController();
+        addTearDown(earlierEdit.dispose);
+        edit.value(earlierEdit);
+        expect(
+            await earlierEdit.restoreInitialAddress(() {
+              fail('an explicit edit must not trigger a saved lookup');
+            }),
+            isFalse,
+            reason: edit.key);
+
+        final pending = DirectAddressTextEditingController();
+        addTearDown(pending.dispose);
+        final savedAddress = Completer<String>();
+        final restoration =
+            pending.restoreInitialAddress(() => savedAddress.future);
+        edit.value(pending);
+        savedAddress.complete('saved.example:21118');
+        expect(await restoration, isFalse, reason: edit.key);
+        expect(pending.text, isEmpty, reason: edit.key);
+      }
     });
 
     test('one controller admits only one initial lookup', () async {

@@ -14,7 +14,10 @@ class DirectAddressTextEditingController extends TextEditingController {
 
   String get address => normalizeDirectAddress(value.text);
 
-  set address(String newAddress) => text = normalizeDirectAddress(newAddress);
+  set address(String newAddress) {
+    _initialRestoreState = _InitialAddressRestoreState.retired;
+    text = normalizeDirectAddress(newAddress);
+  }
 
   @override
   set value(TextEditingValue newValue) {
@@ -24,7 +27,13 @@ class DirectAddressTextEditingController extends TextEditingController {
     super.value = newValue;
   }
 
-  /// Restore once, only while this controller's text has never been edited.
+  @override
+  void clear() {
+    _initialRestoreState = _InitialAddressRestoreState.retired;
+    super.clear();
+  }
+
+  /// Restore once, until an address write, text edit, clear, or disposal.
   Future<bool> restoreInitialAddress(Future<String> Function() loadAddress) async {
     if (_initialRestoreState != _InitialAddressRestoreState.available ||
         text.isNotEmpty) {

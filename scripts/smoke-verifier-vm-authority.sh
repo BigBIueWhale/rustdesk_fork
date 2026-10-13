@@ -165,6 +165,11 @@ case "$#:${1:-}" in
             || { echo 'fixed-archive test input/run overrides are forbidden' >&2; exit 2; }
         MODE=fixed-archive-tests
         ;;
+    1:--debian-elf-role-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Debian ELF-role input/run overrides are forbidden' >&2; exit 2; }
+        MODE=debian-elf-role-tests
+        ;;
     1:--debian-polkit-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Debian polkit-test input/run overrides are forbidden' >&2; exit 2; }
@@ -648,7 +653,7 @@ elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
-elif [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ]; then
+elif [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ]; then
     readonly VM_TIMEOUT_SECONDS=150
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
@@ -2107,7 +2112,7 @@ frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-   || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+   || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
         && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime ]]; }; then
@@ -2145,7 +2150,7 @@ if [ "$MODE" = ledger-token-count ]; then
     ledger_input_sha=$(/usr/bin/sha256sum "$HARDENING_SOURCE" | /usr/bin/awk '{print $1}')
     ledger_recipe_sha=$(/usr/bin/sha256sum "$LEDGER_TOKEN_COUNT_SOURCE" | /usr/bin/awk '{print $1}')
 fi
-if [ "$MODE" = debian-polkit-tests ]; then
+if { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; }; then
     for source in "$DEBIAN_CONTROL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE"; do
         [ -f "$source" ] && [ ! -L "$source" ] || fail 'Debian polkit-test source is absent or ambiguous'
         verify_committed_test_source "$source"
@@ -2877,7 +2882,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
     if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-       || [ "$MODE" = fixed-archive-tests ] || [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = ledger-token-count ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+       || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
     fi
@@ -3815,9 +3820,23 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_OWNER_SOURCE_ARCHIVE")
-elif [ "$MODE" = debian-polkit-tests ]; then
+elif { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; }; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("repo/build.py=$DEBIAN_CONTROL_SOURCE")
+    if [ "$MODE" = debian-elf-role-tests ]; then
+        debian_elf_baseline=$VM_TRANSIENT/debian-elf-role-baseline.py
+        (
+            set -o noclobber
+            git_closed -C "$REPO_ROOT" show \
+                f41c04622656869b43cf0742b9ceb79cce81a2e7:scripts/verify-debian-package-authority.py \
+                >"$debian_elf_baseline"
+        ) || fail 'cannot export the exact historical Debian ELF baseline'
+        [ "$(/usr/bin/sha256sum "$debian_elf_baseline" | /usr/bin/awk '{print $1}')" = \
+            1da47d4ea90bc8901a92c4cc7ef4bf6a94a7f1b1dc6f1127e7429ca0ea2b49c0 ] \
+            || fail 'historical Debian ELF baseline digest differs'
+        /usr/bin/chmod 400 "$debian_elf_baseline"
+        lifecycle_payload_grafts+=("repo/scripts/debian-elf-role-baseline.py=$debian_elf_baseline")
+    fi
 elif [ "$MODE" = ledger-token-count ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -4128,6 +4147,8 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     guest_invocation+=' --android-runtime-log-tests'
 elif [ "$MODE" = fixed-archive-tests ]; then
     guest_invocation+=' --fixed-archive-tests'
+elif [ "$MODE" = debian-elf-role-tests ]; then
+    guest_invocation+=' --debian-elf-role-tests'
 elif [ "$MODE" = debian-polkit-tests ]; then
     guest_invocation+=' --debian-polkit-tests'
 elif [ "$MODE" = ledger-token-count ]; then
@@ -4723,6 +4744,14 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     fi
     require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_VM=pass harness=$FOCUSED_TEST_COMMIT manifest=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 source=readonly network=none docker=retired cleanup=joined" 'installed Linux receiver fixture finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed Linux receiver guest completion'
+elif [ "$MODE" = debian-elf-role-tests ]; then
+    require_exact_fixed_receipt \
+        'DEBIAN_ELF_ROLES=pass cases=6 packages=2 gate=elf-partition old-pie=accepted current-pie=refused native-dlopen=refused shared-call=pass runners=metadata-only product=unexecuted cleanup=joined' \
+        'Debian ELF roles and exact historical/native loader comparison'
+    debian_elf_vm_receipt="DEBIAN_ELF_ROLE_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes checker_sha256=$(/usr/bin/sha256sum "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" | /usr/bin/awk '{print $1}') baseline_sha256=1da47d4ea90bc8901a92c4cc7ef4bf6a94a7f1b1dc6f1127e7429ca0ea2b49c0 source=readonly network=none docker=retired scratch=retired cleanup=joined"
+    require_exact_fixed_receipt "$debian_elf_vm_receipt" 'Debian ELF fixture authority and finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Debian ELF cloud-init completion'
+    printf '%s\n' "$debian_elf_vm_receipt"
 elif [ "$MODE" = debian-polkit-tests ]; then
     debian_polkit_receipt='DEBIAN_POLKIT_DEPENDENCY=pass cases=7 generator=production artifacts=actual-deb policy=standalone-depends receiver=unexecuted'
     debian_polkit_vm_receipt="DEBIAN_POLKIT_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes generator_sha256=$(/usr/bin/sha256sum "$DEBIAN_CONTROL_SOURCE" | /usr/bin/awk '{print $1}') checker_sha256=$(/usr/bin/sha256sum "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" | /usr/bin/awk '{print $1}') source=readonly network=none docker=retired scratch=retired cleanup=joined"
@@ -6432,7 +6461,7 @@ if [ "$MODE" = ledger-token-count ]; then
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'ledger token-count source or inputs changed during execution'
 fi
-if [ "$MODE" = debian-polkit-tests ]; then
+if { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; }; then
     [ "$(/usr/bin/sha256sum "$DEBIAN_CONTROL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE")" = "$debian_polkit_sources_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
@@ -6511,6 +6540,9 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
         "$HOST_UID" "$vm_elapsed_seconds"
 elif [ "$MODE" = fixed-archive-tests ]; then
     printf 'FIXED_ARCHIVE_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = debian-elf-role-tests ]; then
+    printf 'DEBIAN_ELF_ROLE_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted scope=debian-elf-partition cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = debian-polkit-tests ]; then
     printf 'DEBIAN_POLKIT_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only receiver=unexecuted cleanup=joined elapsed_seconds=%s\n' \

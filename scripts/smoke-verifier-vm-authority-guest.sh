@@ -35,6 +35,9 @@ case "$#:${8:-}" in
     8:--debian-polkit-tests)
         MODE=debian-polkit-tests
         ;;
+    8:--debian-elf-role-tests)
+        MODE=debian-elf-role-tests
+        ;;
     10:--ledger-token-count)
         MODE=ledger-token-count
         [[ "${9}" =~ ^[0-9a-f]{64}$ ]] && [[ "${10}" =~ ^[0-9a-f]{64}$ ]] || exit 2
@@ -849,13 +852,19 @@ run_ledger_token_count() {
         "$LEDGER_INPUT_SHA256" "$LEDGER_RECIPE_SHA256"
 }
 
-run_debian_polkit_tests() {
+run_debian_package_tests() {
     local work work_id source_before status=0
     local generator=$VERIFY_REPO/build.py
     local checker=$VERIFY_REPO/scripts/verify-debian-package-authority.py
     local output=$ROOT/debian-polkit-tests.out
     local receipt='DEBIAN_POLKIT_DEPENDENCY=pass cases=7 generator=production artifacts=actual-deb policy=standalone-depends receiver=unexecuted'
     local -a sources=("$generator" "$checker" "$ENTRY_PREFLIGHT")
+    local action=--polkit-dependency-self-test
+    if [ "$MODE" = debian-elf-role-tests ]; then
+        action=--elf-role-self-test
+        receipt='DEBIAN_ELF_ROLES=pass cases=6 packages=2 gate=elf-partition old-pie=accepted current-pie=refused native-dlopen=refused shared-call=pass runners=metadata-only product=unexecuted cleanup=joined'
+        sources+=("$VERIFY_REPO/scripts/debian-elf-role-baseline.py")
+    fi
 
     source_before="$(sha256sum "${sources[@]}")"
     setpriv --reuid=4000 --regid=4000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
@@ -869,15 +878,21 @@ run_debian_polkit_tests() {
         --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
         /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
         /usr/bin/python3 -B -I -S "$checker" --repo "$VERIFY_REPO" \
-            --polkit-dependency-self-test >"$output" 2>&1 || status=$?
+            "$action" >"$output" 2>&1 || status=$?
     [ "$(stat -c '%s' -- "$output")" -le 65536 ] \
         || fail 'Debian polkit-test diagnostics exceeded their bound'
     [ "$status" -eq 0 ] \
         || { tail -n 60 "$output" >&2; fail "Debian polkit tests failed with status $status"; }
     [ "$(grep -Fxc "$receipt" "$output")" -eq 1 ] \
-        && [ "$(grep -Ec '^DEBIAN_POLKIT_ARTIFACTS=sha256 ([0-9a-f]{64} ){6}[0-9a-f]{64}$' "$output")" -eq 1 ] \
         && [ "$(wc -l <"$output")" -eq 2 ] \
         || fail 'Debian polkit-test result is missing, duplicated or unexpected'
+    if [ "$MODE" = debian-elf-role-tests ]; then
+        [ "$(grep -c '^DEBIAN_ELF_ROLE_ARTIFACTS={' "$output")" -eq 1 ] \
+            || fail 'Debian ELF fixture artifact digests differ'
+    else
+        [ "$(grep -Ec '^DEBIAN_POLKIT_ARTIFACTS=sha256 ([0-9a-f]{64} ){6}[0-9a-f]{64}$' "$output")" -eq 1 ] \
+            || fail 'Debian polkit fixture artifact digests differ'
+    fi
     [ "$(sha256sum "${sources[@]}")" = "$source_before" ] \
         || fail 'Debian polkit-test source changed during execution'
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
@@ -890,6 +905,11 @@ run_debian_polkit_tests() {
     [ ! -e "$work" ] && [ ! -L "$work" ] || fail 'Debian polkit-test scratch remains'
     stop_docker_authority
     cat "$output"
+    if [ "$MODE" = debian-elf-role-tests ]; then
+        printf 'DEBIAN_ELF_ROLE_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes checker_sha256=%s baseline_sha256=1da47d4ea90bc8901a92c4cc7ef4bf6a94a7f1b1dc6f1127e7429ca0ea2b49c0 source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
+            "$(sha256sum "$checker" | awk '{print $1}')"
+        return
+    fi
     printf 'DEBIAN_POLKIT_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes generator_sha256=%s checker_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
         "$(sha256sum "$generator" | awk '{print $1}')" "$(sha256sum "$checker" | awk '{print $1}')"
 }
@@ -8265,8 +8285,8 @@ if [ "$MODE" = ledger-token-count ]; then
     run_ledger_token_count
     exit 0
 fi
-if [ "$MODE" = debian-polkit-tests ]; then
-    run_debian_polkit_tests
+if [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; then
+    run_debian_package_tests
     exit 0
 fi
 if [ "$MODE" = linux-service-receiver-tests ]; then

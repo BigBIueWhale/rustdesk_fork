@@ -2,9 +2,11 @@
 import argparse
 import ast
 import copy
+import ctypes
 import gzip
 import hashlib
 import io
+import json
 import os
 import re
 import shutil
@@ -556,7 +558,7 @@ def validate_elf_identity(contents, name, label):
         raise ValidationError(f"{label}: ELF header version or size is invalid")
     if machine != 62:
         raise ValidationError(f"{label}: ELF machine is not x86-64")
-    expected_types = (2, 3) if name == "./usr/share/rustdesk/rustdesk" else (3,)
+    expected_types = (2, 3) if name in RUNNER_BINARIES else (3,)
     if elf_type not in expected_types:
         expected_text = "ET_EXEC or ET_DYN" if len(expected_types) == 2 else "ET_DYN"
         raise ValidationError(f"{label}: ELF type is {elf_type}, expected {expected_text}")
@@ -703,6 +705,11 @@ def validate_elf_identity(contents, name, label):
             dynamic_entries.append((tag, value))
     if not terminated:
         raise ValidationError(f"{label}: ELF dynamic segment is not DT_NULL-terminated")
+
+    if name not in RUNNER_BINARIES and any(
+        tag == 0x6FFFFFFB and value & 0x08000000 for tag, value in dynamic_entries
+    ):
+        raise ValidationError(f"{label}: ELF shared object is marked DF_1_PIE")
 
     string_addresses = [value for tag, value in dynamic_entries if tag == 5]
     string_sizes = [value for tag, value in dynamic_entries if tag == 10]
@@ -2464,12 +2471,137 @@ def load_build_module(repo):
     return module
 
 
-def run_polkit_dependency_self_test(repo):
+def require_native_fixture_principal():
     status = dict(line.split(":", 1) for line in Path("/proc/self/status").read_text().splitlines())
     if (os.geteuid() == 0 or os.getegid() == 0 or status.get("NoNewPrivs", "").strip() != "1"
             or any(int(status.get(name, "1"), 16) for name in
                    ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"))):
-        raise ValidationError("polkit dependency tests require non-root, no capabilities and no-new-privileges")
+        raise ValidationError("Debian native fixtures require non-root, no capabilities and no-new-privileges")
+
+
+def run_elf_role_self_test():
+    require_native_fixture_principal()
+    subprocess.run(["/bin/bash", str(Path(__file__).with_name("verify-vm-entry-preflight.sh"))],
+                   check=True, stdout=subprocess.DEVNULL)
+    baseline_sha = "1da47d4ea90bc8901a92c4cc7ef4bf6a94a7f1b1dc6f1127e7429ca0ea2b49c0"
+    descriptor = os.open(Path(__file__).with_name("debian-elf-role-baseline.py"),
+                         os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= 1048576:
+            raise ValidationError("ELF role baseline is not a bounded regular source")
+        with os.fdopen(os.dup(descriptor), "rb") as stream:
+            source = stream.read(1048577)
+        if len(source) != before.st_size or hashlib.sha256(source).hexdigest() != baseline_sha:
+            raise ValidationError("ELF role baseline digest differs")
+        if os.fstat(descriptor) != before:
+            raise ValidationError("ELF role baseline changed")
+    finally:
+        os.close(descriptor)
+    baseline = types.ModuleType("debian_elf_role_baseline")
+    baseline.__file__ = "debian-elf-role-baseline.py"
+    exec(compile(source, baseline.__file__, "exec", dont_inherit=True), baseline.__dict__)
+
+    library_name = "./usr/share/rustdesk/data/flutter_assets/libm.so.6"
+    library = Path("/lib/x86_64-linux-gnu/libm.so.6").read_bytes()
+    layout = elf_dynamic_test_layout(library)
+    terminator = layout["entries"][-1]
+    if (terminator[1:] != (0, 0)
+            or terminator[0] + 32 > layout["dynamic_offset"] + layout["dynamic_size"]
+            or library[terminator[0] + 16:terminator[0] + 32] != bytes(16)):
+        raise ValidationError("native library lacks a spare dynamic entry for PIE fixture")
+    pie = bytearray(library)
+    struct.pack_into("<QQ", pie, terminator[0], 0x6FFFFFFB, 0x08000000)
+    runner = Path("/usr/bin/true").read_bytes()
+    fixed_runner = bytearray(runner)
+    struct.pack_into("<H", fixed_runner, 16, 2)
+    artifacts = []
+    with tempfile.TemporaryDirectory(prefix="debian-elf-roles.") as scratch:
+        scratch = Path(scratch)
+        for name, payload in (("shared", library), ("pie", bytes(pie))):
+            tree = scratch / name
+            write_file(tree / "DEBIAN/control",
+                       "Package: rustdesk-elf-fixture\nVersion: 1\nArchitecture: amd64\n"
+                       "Maintainer: fixture <fixture@example.invalid>\nDescription: ELF partition fixture\n", 0o644)
+            target = tree / library_name[2:]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+            target.chmod(0o400)
+            package = scratch / (name + ".deb")
+            build_deb(tree, package, root_owner_group=True)
+            data = tar_stream_from_deb(package, "--fsys-tarfile")
+            members = tar_members_from_stream(data, str(package))
+            actual = archive_member_bytes(data, members[library_name], str(package))
+            if actual != payload or (members[library_name].uid, members[library_name].gid) != (0, 0):
+                raise ValidationError("Debian ELF fixture bytes or archive principal differ")
+            artifacts.append(hashlib.sha256(package.read_bytes()).hexdigest())
+            baseline.validate_elf_runpaths(package, data, members)
+            if name == "shared":
+                validate_elf_runpaths(package, data, members)
+                loaded = ctypes.CDLL(str(target))
+                loaded.cos.argtypes = [ctypes.c_double]
+                loaded.cos.restype = ctypes.c_double
+                if loaded.cos(0.0) != 1.0:
+                    raise ValidationError("native shared-library function differs")
+            else:
+                try:
+                    validate_elf_runpaths(package, data, members)
+                except ValidationError as err:
+                    if "ELF shared object is marked DF_1_PIE" not in str(err):
+                        raise
+                else:
+                    raise ValidationError("PIE-marked shared library was admitted")
+                try:
+                    ctypes.CDLL(str(target))
+                except OSError as err:
+                    if "cannot dynamically load position-independent executable" not in str(err):
+                        raise
+                else:
+                    raise ValidationError("native loader admitted the PIE fixture")
+
+        for payload in (runner, bytes(fixed_runner)):
+            for name in RUNNER_BINARIES:
+                validate_elf_identity(payload, name, name)
+        baseline.validate_elf_identity(fixed_runner, PRIMARY_BINARY, PRIMARY_BINARY)
+        try:
+            baseline.validate_elf_identity(fixed_runner, SERVICE_CHILD_BINARY, SERVICE_CHILD_BINARY)
+        except baseline.ValidationError as err:
+            if "expected ET_DYN" not in str(err):
+                raise
+        else:
+            raise ValidationError("baseline did not reproduce the service-child role mismatch")
+        invalid = bytearray(runner)
+        struct.pack_into("<H", invalid, 16, 1)
+        for name in RUNNER_BINARIES:
+            try:
+                validate_elf_identity(invalid, name, name)
+            except ValidationError as err:
+                if "expected ET_EXEC or ET_DYN" not in str(err):
+                    raise
+            else:
+                raise ValidationError("relocatable runner was admitted")
+        invalid_library = bytearray(library)
+        struct.pack_into("<H", invalid_library, 16, 2)
+        try:
+            validate_elf_identity(invalid_library, library_name, library_name)
+        except ValidationError as err:
+            if "expected ET_DYN" not in str(err):
+                raise
+        else:
+            raise ValidationError("ET_EXEC library was admitted")
+    print("DEBIAN_ELF_ROLES=pass cases=6 packages=2 gate=elf-partition "
+          "old-pie=accepted current-pie=refused native-dlopen=refused "
+          "shared-call=pass runners=metadata-only product=unexecuted cleanup=joined")
+    print("DEBIAN_ELF_ROLE_ARTIFACTS=" + json.dumps({
+        "baseline_sha256": baseline_sha, "packages_sha256": artifacts,
+        "library_sha256": hashlib.sha256(library).hexdigest(),
+        "pie_sha256": hashlib.sha256(pie).hexdigest(),
+        "runner_sha256": hashlib.sha256(runner).hexdigest(),
+    }, sort_keys=True, separators=(",", ":")))
+
+
+def run_polkit_dependency_self_test(repo):
+    require_native_fixture_principal()
     build_module = load_build_module(repo)
     with tempfile.TemporaryDirectory(prefix="rustdesk-polkit-dependency.") as scratch:
         scratch = Path(scratch)
@@ -3580,10 +3712,16 @@ def main():
     parser.add_argument("--deb", action="append", default=[], help="built .deb to validate; may be repeated")
     parser.add_argument("--self-test", action="store_true", help="run synthetic positive and negative package checks")
     parser.add_argument("--polkit-dependency-self-test", action="store_true", help="test production dependency metadata in actual Debian archives")
+    parser.add_argument("--elf-role-self-test", action="store_true", help="test ELF roles in Debian archives against the native loader")
     args = parser.parse_args()
 
     try:
         repo = Path(args.repo).resolve()
+        if args.elf_role_self_test:
+            if args.self_test or args.deb or args.polkit_dependency_self_test:
+                raise ValidationError("ELF role tests cannot be combined with other modes")
+            run_elf_role_self_test()
+            return
         if args.polkit_dependency_self_test:
             if args.self_test or args.deb:
                 raise ValidationError("polkit dependency tests cannot be combined with other modes")

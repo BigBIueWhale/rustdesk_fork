@@ -12025,9 +12025,12 @@ exact-bound oldest replacement/FIFO, and stale-frame refusal. The existing
 cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never
 ```
 
-`scripts/verify-viewer-audio-mailbox.py --repo . --self-test` remains wired in
-`scripts/verify.sh` and `scripts/apple-conform-check.sh`; it checks source topology and mutations,
-not native behavior, and no longer reads requirements or ledger wording. The Rust tests and wiring
+`scripts/verify-viewer-audio-mailbox.py --repo .` remains wired in
+`scripts/verify.sh` and `scripts/apple-conform-check.sh` as a single source-topology check.
+Its source-string mutation loop, test-name checks and checks of other verifier wording are deleted;
+the product source guards and executable Rust regressions remain. Gate output identifies source
+checks explicitly. The ordinary-user authority-smoke VM also executes this checker and parses both
+shell entry points without executing their full workloads. The Rust tests and wiring
 are present, but no accepted exact-current Rust execution or native playback result is established here.
 Neither the source correction nor unrelated model passes identify the defect in weeks-old deployed
 artifacts or establish causation for the reported display-only delay.

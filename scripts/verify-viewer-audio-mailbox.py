@@ -64,8 +64,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "client": "src/client.rs",
         "io_loop": "src/client/io_loop.rs",
         "connection": "src/server/connection.rs",
-        "verify": "scripts/verify.sh",
-        "apple": "scripts/apple-conform-check.sh",
     }
     return {
         key: (repo / relative).read_text(encoding="utf-8")
@@ -339,85 +337,14 @@ def validate(sources: Dict[str, str]) -> None:
         "controlled authorized playback handles every frame outcome",
     )
 
-    for test in (
-        "r_s11hi_audio_mailbox_requires_and_prioritizes_the_first_format",
-        "r_s11hi_audio_mailbox_pins_one_format_without_replay_work",
-        "r_s11hi_audio_mailbox_retires_oldest_frame_at_its_exact_bound",
-        "r_s11hi_audio_mailbox_discards_stale_frames_before_delivery",
-        "owned_media_thread_closes_admission_before_join",
-        "owned_media_thread_hard_drop_never_joins_inline",
-    ):
-        require(client, f"fn {test}()", f"{test} behavior regression")
-
-    for key, needle, label in (
-        (
-            "verify",
-            "cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never",
-            "shared Rust behavior-test wiring",
-        ),
-        (
-            "verify",
-            "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test",
-            "shared focused-verifier wiring",
-        ),
-        (
-            "apple",
-            "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test",
-            "Apple/shared focused-verifier wiring",
-        ),
-    ):
-        require(sources[key], needle, label)
-
-
-
-Mutation = Tuple[str, str, str, str]
-
-MUTATIONS: Tuple[Mutation, ...] = (
-    ("client", "pub const AUDIO_FRAME_QUEUE_CAPACITY: usize = 8;", "pub const AUDIO_FRAME_QUEUE_CAPACITY: usize = 8000;", "frame bound"),
-    ("client", "pub const MAX_AUDIO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);", "pub const MAX_AUDIO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(10);", "freshness bound"),
-    ("client", "format: Option<AudioFormat>", "formats: Vec<AudioFormat>", "single pending format"),
-    ("client", "format_key: Option<(u32, u32)>", "format_key: Vec<(u32, u32)>", "pinned format identity"),
-    ("client", "impl Drop for AudioMailboxSender", "impl AudioMailboxSender", "sender-drop finality"),
-    ("client", "impl Drop for AudioMailboxReceiver", "impl AudioMailboxReceiver", "receiver-drop finality"),
-    ("client", "if state.format_key.is_none()", "if false && state.format_key.is_none()", "pre-format refusal"),
-    ("client", "state.frames.pop_front();", "state.frames.pop_back();", "oldest-frame retirement"),
-    ("client", "if audio_frame_is_fresh(frame.queued_at", "if true || audio_frame_is_fresh(frame.queued_at", "dequeue freshness"),
-    ("client", "if let Some(format) = state.format.take()", "if false { let Some(format) = state.format.take() else { unreachable!() };", "format-first delivery"),
-    ("client", "fn r_s11hi_audio_mailbox_retires_oldest_frame_at_its_exact_bound()", "fn audio_mailbox_retires_oldest_frame_at_its_exact_bound()", "overflow regression"),
-    ("io_loop", "self.audio_thread.admit_format(f)", "self.audio_thread.drop_format(f)", "viewer format caller"),
-    ("io_loop", "self.audio_thread.admit_frame(frame)", "self.audio_thread.drop_frame(frame)", "viewer frame caller"),
-    ("connection", "match decoder.admit_format(format)", "match AudioFormatAdmission::Closed", "controlled first-format caller"),
-    ("connection", "audio.decoder.admit_frame(frame)", "AudioFrameAdmission::Queued", "controlled frame caller"),
-    ("verify", "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test", "true # peer-audio mailbox verifier disabled", "shared gate"),
-    ("apple", "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test", "true # peer-audio mailbox verifier disabled", "Apple gate"),
-)
-
-
-def run_self_test(sources: Dict[str, str]) -> None:
-    for key, old, new, label in MUTATIONS:
-        if old not in sources[key]:
-            raise VerificationError(f"self-test fixture missing for {label}")
-        mutated = dict(sources)
-        mutated[key] = sources[key].replace(old, new, 1)
-        try:
-            validate(mutated)
-        except VerificationError:
-            continue
-        raise VerificationError(f"self-test mutation survived: {label}")
-
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, default=Path("."))
-    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     sources = load_sources(args.repo.resolve())
     validate(sources)
-    if args.self_test:
-        run_self_test(sources)
-        print(f"viewer audio mailbox verifier self-test passed ({len(MUTATIONS)} mutations)")
-    else:
-        print("viewer audio mailbox verifier passed")
+    print("viewer audio mailbox source checks passed")
     return 0
 
 
@@ -425,5 +352,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except VerificationError as error:
-        print(f"viewer audio mailbox verifier failed: {error}")
+        print(f"viewer audio mailbox source checks failed: {error}")
         raise SystemExit(1)

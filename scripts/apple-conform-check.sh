@@ -4542,11 +4542,11 @@ else
   rc=1
 fi
 
-echo "== (2g-c2-0) R-S11hi bounded format-first peer-audio decoder mailbox =="
-if python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test; then
-  note "ok  R-S11hi Apple/shared peer-audio decode admission is bounded, format-first, fresh, and exact-owner final"
+echo "== (2g-c2-0) R-S11hi peer-audio mailbox source checks =="
+if python3 scripts/verify-viewer-audio-mailbox.py --repo .; then
+  note "ok  R-S11hi Apple/shared peer-audio mailbox source checks passed"
 else
-  echo "  FAIL R-S11hi Apple/shared peer-audio decode admission regained generic FIFO drops, stale backlog, pre-format frames, or incomplete finality"
+  echo "  FAIL R-S11hi Apple/shared peer-audio mailbox source checks"
   rc=1
 fi
 

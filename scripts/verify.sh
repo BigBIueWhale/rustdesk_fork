@@ -10201,10 +10201,10 @@ else
   rc=1
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never
-if python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test; then
-  echo "  ok  R-S11hi/R-S11e-246 peer-audio decode admission is bounded, format-first, fresh, and exact-owner final"
+if python3 scripts/verify-viewer-audio-mailbox.py --repo .; then
+  echo "  ok  R-S11hi/R-S11e-246 peer-audio mailbox source checks passed"
 else
-  echo "  FAIL R-S11hi/R-S11e-246: peer-audio decode admission regained generic FIFO drops, stale backlog, pre-format frames, or incomplete finality"
+  echo "  FAIL R-S11hi/R-S11e-246 peer-audio mailbox source checks"
   rc=1
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never

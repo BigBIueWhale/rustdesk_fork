@@ -862,7 +862,7 @@ run_debian_package_tests() {
     local action=--polkit-dependency-self-test
     if [ "$MODE" = debian-elf-role-tests ]; then
         action=--elf-role-self-test
-        receipt='DEBIAN_ELF_ROLES=pass cases=6 packages=2 gate=elf-partition old-pie=accepted current-pie=refused native-dlopen=refused shared-call=pass runners=metadata-only product=unexecuted cleanup=joined'
+        receipt='DEBIAN_ELF_ROLES=pass cases=9 packages=2 gate=elf-partition old-pie=accepted current-pie=refused native-dlopen=refused shared-call=pass runners=types-metadata entry=valid-exit0-invalid-SIGSEGV product=unexecuted cleanup=joined'
         sources+=("$VERIFY_REPO/scripts/debian-elf-role-baseline.py")
     fi
 

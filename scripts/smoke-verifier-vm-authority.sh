@@ -4746,7 +4746,7 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed Linux receiver guest completion'
 elif [ "$MODE" = debian-elf-role-tests ]; then
     require_exact_fixed_receipt \
-        'DEBIAN_ELF_ROLES=pass cases=6 packages=2 gate=elf-partition old-pie=accepted current-pie=refused native-dlopen=refused shared-call=pass runners=metadata-only product=unexecuted cleanup=joined' \
+        'DEBIAN_ELF_ROLES=pass cases=9 packages=2 gate=elf-partition old-pie=accepted current-pie=refused native-dlopen=refused shared-call=pass runners=types-metadata entry=valid-exit0-invalid-SIGSEGV product=unexecuted cleanup=joined' \
         'Debian ELF roles and exact historical/native loader comparison'
     debian_elf_vm_receipt="DEBIAN_ELF_ROLE_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes checker_sha256=$(/usr/bin/sha256sum "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" | /usr/bin/awk '{print $1}') baseline_sha256=1da47d4ea90bc8901a92c4cc7ef4bf6a94a7f1b1dc6f1127e7429ca0ea2b49c0 source=readonly network=none docker=retired scratch=retired cleanup=joined"
     require_exact_fixed_receipt "$debian_elf_vm_receipt" 'Debian ELF fixture authority and finality'

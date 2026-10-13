@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+import signal
 import shutil
 import stat
 import struct
@@ -541,7 +542,7 @@ def validate_elf_identity(contents, name, label):
             elf_type,
             machine,
             version,
-            _entry,
+            entry,
             program_offset,
             _section_offset,
             _flags,
@@ -594,7 +595,7 @@ def validate_elf_identity(contents, name, label):
             if (align not in (0, 1)
                     and (align & (align - 1) != 0 or file_offset % align != virtual_address % align)):
                 raise ValidationError(f"{label}: ELF load segment alignment is invalid")
-            load_segments.append((file_offset, virtual_address, file_size))
+            load_segments.append((file_offset, virtual_address, file_size, segment_flags))
         elif segment_type == 2:
             dynamic_segments.append((file_offset, virtual_address, file_size, memory_size, align))
         elif segment_type == 3:
@@ -613,6 +614,12 @@ def validate_elf_identity(contents, name, label):
             ))
 
     if name in RUNNER_BINARIES:
+        entry_loads = [
+            segment for segment in load_segments
+            if segment[1] <= entry < segment[1] + segment[2]
+        ]
+        if entry == 0 or len(entry_loads) != 1 or not entry_loads[0][3] & 1:
+            raise ValidationError(f"{label}: ELF runner entry is not in one file-backed executable load segment")
         if len(interpreter_segments) != 1:
             raise ValidationError(f"{label}: ELF runner must contain exactly one program interpreter")
         (
@@ -2516,6 +2523,7 @@ def run_elf_role_self_test():
     fixed_runner = bytearray(runner)
     struct.pack_into("<H", fixed_runner, 16, 2)
     artifacts = []
+    entry_artifacts = []
     with tempfile.TemporaryDirectory(prefix="debian-elf-roles.") as scratch:
         scratch = Path(scratch)
         for name, payload in (("shared", library), ("pie", bytes(pie))):
@@ -2560,6 +2568,40 @@ def run_elf_role_self_test():
                 else:
                     raise ValidationError("native loader admitted the PIE fixture")
 
+        program_offset = struct.unpack_from("<Q", runner, 32)[0]
+        program_count = struct.unpack_from("<H", runner, 56)[0]
+        non_executable_loads = [
+            header[3] for index in range(program_count)
+            if (header := struct.unpack_from("<IIQQQQQQ", runner, program_offset + 56 * index))[0] == 1
+            and not header[1] & 1 and header[3] != 0 and header[5] != 0
+        ]
+        if not non_executable_loads:
+            raise ValidationError("native runner lacks a non-executable file-backed load segment")
+        for label, entry in (("valid", None), ("zero", 0),
+                             ("data", non_executable_loads[0]), ("unmapped", 0x100000000)):
+            payload = bytearray(runner)
+            if entry is not None:
+                struct.pack_into("<Q", payload, 24, entry)
+                baseline.validate_elf_identity(payload, PRIMARY_BINARY, PRIMARY_BINARY)
+                for name in RUNNER_BINARIES:
+                    try:
+                        validate_elf_identity(payload, name, name)
+                    except ValidationError as err:
+                        if "ELF runner entry is not in one file-backed executable load segment" not in str(err):
+                            raise
+                    else:
+                        raise ValidationError(f"invalid {label} runner entry was admitted")
+                entry_artifacts.append(hashlib.sha256(payload).hexdigest())
+            target = scratch / ("entry-" + label)
+            target.write_bytes(payload)
+            target.chmod(0o500)
+            result = subprocess.run(["/usr/bin/prlimit", "--core=0", "--", str(target)],
+                                    cwd=scratch, stdin=subprocess.DEVNULL, capture_output=True,
+                                    timeout=5, check=False)
+            expected = 0 if entry is None else -signal.SIGSEGV
+            if result.returncode != expected or result.stdout or result.stderr:
+                raise ValidationError(f"native {label} runner entry result differs: {result.returncode}")
+
         for payload in (runner, bytes(fixed_runner)):
             for name in RUNNER_BINARIES:
                 validate_elf_identity(payload, name, name)
@@ -2590,14 +2632,15 @@ def run_elf_role_self_test():
                 raise
         else:
             raise ValidationError("ET_EXEC library was admitted")
-    print("DEBIAN_ELF_ROLES=pass cases=6 packages=2 gate=elf-partition "
+    print("DEBIAN_ELF_ROLES=pass cases=9 packages=2 gate=elf-partition "
           "old-pie=accepted current-pie=refused native-dlopen=refused "
-          "shared-call=pass runners=metadata-only product=unexecuted cleanup=joined")
+          "shared-call=pass runners=types-metadata entry=valid-exit0-invalid-SIGSEGV product=unexecuted cleanup=joined")
     print("DEBIAN_ELF_ROLE_ARTIFACTS=" + json.dumps({
         "baseline_sha256": baseline_sha, "packages_sha256": artifacts,
         "library_sha256": hashlib.sha256(library).hexdigest(),
         "pie_sha256": hashlib.sha256(pie).hexdigest(),
         "runner_sha256": hashlib.sha256(runner).hexdigest(),
+        "entry_variants_sha256": entry_artifacts,
     }, sort_keys=True, separators=(",", ":")))
 
 

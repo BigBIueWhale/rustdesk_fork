@@ -467,19 +467,17 @@ preflight() {
         "android-ndk-${ANDROID_NDK_VERSION}.zip"               "${SHA256_ANDROID_NDK_R28C}" \
         "android-cmdline-tools.zip"                            "${SHA256_ANDROID_CMDLINE_TOOLS}"
     case "$SHA256_BASEIMAGE_UBUNTU_2404" in *"${SHA_PENDING}"*) die "the ubuntu:24.04 base digest is the R-B12 sentinel — record it in pins.env first" ;; esac
-    [ -n "$KEYSTORE" ] && [ -f "$KEYSTORE" ] || die "set ANDROID_KEYSTORE to the stable RSA-4096 keystore (R-B2) — generate it once with scripts/gen-android-keystore.sh; Android refuses to install an unsigned APK"
-    [ -n "$KEYSTORE_PASS_FILE" ] && [ -f "$KEYSTORE_PASS_FILE" ] || die "set ANDROID_KEYSTORE_PASS_FILE (password via file, never env/argv — R-B2)"
+    [ -n "$KEYSTORE" ] && [ -f "$KEYSTORE" ] || die "set ANDROID_KEYSTORE to the existing keystore matching ANDROID_SIGNING_CERT_SHA256 (R-B2); recover a verified backup using docs/ANDROID-SIGNING-RECOVERY.md"
+    [ -n "$KEYSTORE_PASS_FILE" ] && [ -f "$KEYSTORE_PASS_FILE" ] || die "set ANDROID_KEYSTORE_PASS_FILE to the matching password file (R-B2; password bytes never in env/argv); see docs/ANDROID-SIGNING-RECOVERY.md"
     assert_private_signing_files
     assert_keystore_properties
     log "preflight OK — building aarch64 .apk in $IMAGE_ID, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 
-# assert_keystore_properties: R-B2 mandates a SPECIFIC key (RSA 4096-bit, SHA256withRSA, fixed alias).
-# A wrong key silently signs the release, and Android WELDS app identity to the signing key — a wrong
-# key at first release is PERMANENT (rotation = a data-wiping reinstall). So assert the key's
-# PROPERTIES, not just its existence. keytool runs in the build image inside the authenticated verifier
-# VM (the orchestration host may have no JDK); the
-# store password is fed on keytool's stdin (never argv/env — both leak via /proc, per the R-B2 note).
+# R-B2 requires the existing pinned certificate, RSA-4096/SHA256withRSA and fixed alias.
+# Check all properties before building. keytool runs in the immutable build image inside
+# the authenticated verifier VM, with the store password on stdin rather than argv/env.
+# Signing failures use docs/ANDROID-SIGNING-RECOVERY.md; a new key cannot replace this identity.
 assert_keystore_properties() {
     local info fingerprint
     /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null \
@@ -492,15 +490,15 @@ assert_keystore_properties() {
         --mount "type=bind,source=$KEYSTORE_PASS_FILE,target=/ks/pass,readonly" \
         "$IMAGE_ID" /bin/bash --noprofile --norc -c \
         'mkdir -p "$HOME"; keytool -J-Duser.language=en -J-Duser.country=US -list -v -keystore /ks/keystore.jks -alias "'"$KEY_ALIAS"'" 2>/dev/null < /ks/pass')" \
-        || die "android keystore: alias '$KEY_ALIAS' not found, or wrong password (R-B2) — regenerate with scripts/gen-android-keystore.sh"
+        || die "cannot inspect android keystore alias '$KEY_ALIAS' (R-B2); check the existing keystore and matching password file; see docs/ANDROID-SIGNING-RECOVERY.md"
     printf '%s' "$info" | grep -qE 'Signature algorithm name:[[:space:]]*SHA256withRSA' \
-        || die "android keystore signature algorithm is not SHA256withRSA (R-B2) — regenerate: scripts/gen-android-keystore.sh"
+        || die "android keystore signature algorithm is not SHA256withRSA (R-B2); use the existing pinned signing identity; see docs/ANDROID-SIGNING-RECOVERY.md"
     printf '%s' "$info" | grep -qiE '4096-bit RSA key' \
-        || die "android keystore is not a 4096-bit RSA key (R-B2) — regenerate: scripts/gen-android-keystore.sh"
+        || die "android keystore is not a 4096-bit RSA key (R-B2); use the existing pinned signing identity; see docs/ANDROID-SIGNING-RECOVERY.md"
     fingerprint="$(printf '%s\n' "$info" | certificate_fingerprint_from_keytool)" \
-        || die "android keystore did not expose exactly one canonical SHA-256 certificate fingerprint"
+        || die "android keystore did not expose exactly one canonical SHA-256 certificate fingerprint; verify the existing signing identity using docs/ANDROID-SIGNING-RECOVERY.md"
     [ "$fingerprint" = "$ANDROID_SIGNING_CERT_SHA256" ] \
-        || die "android keystore certificate does not match ANDROID_SIGNING_CERT_SHA256"
+        || die "android keystore certificate does not match ANDROID_SIGNING_CERT_SHA256; follow docs/ANDROID-SIGNING-RECOVERY.md without replacing the pin"
     log "android keystore OK: pinned certificate $fingerprint"
 }
 

@@ -8850,7 +8850,9 @@ if ! echo "$service_shutdown_entry_block" | awk '
 '; then
   r_s11c27f="$r_s11c27f handler-or-final-reap-order-regressed"
 fi
-bash -n scripts/smoke-service-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh || r_s11c27f="$r_s11c27f lifecycle-shell-syntax-invalid"
+for syntax_source in scripts/smoke-service-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh; do
+  bash -n "$syntax_source" || r_s11c27f="$r_s11c27f lifecycle-shell-syntax-invalid:$syntax_source"
+done
 dash -n scripts/smoke-service-loginctl.sh || r_s11c27f="$r_s11c27f loginctl-fixture-syntax-invalid"
 [ "$(stat -c %a scripts/smoke-service-lifecycle.sh)" = 755 ] || r_s11c27f="$r_s11c27f lifecycle-stage-not-executable"
 [ "$(stat -c %a scripts/smoke-service-loginctl.sh)" = 755 ] || r_s11c27f="$r_s11c27f loginctl-fixture-not-executable"
@@ -8977,8 +8979,12 @@ if [ -n "$r_s11c27u" ]; then echo "  FAIL R-S11c-27u Linux pidfd-unavailable rec
 
 echo "== (3b-iii-h2m) installed Debian non-systemd lifecycle has exact SysV authority (R-S11c-27l) =="
 r_s11c27l=
-bash -n scripts/smoke-debian-sysv-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh || r_s11c27l="$r_s11c27l smoke-shell-syntax-invalid"
-dash -n res/rustdesk.init res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm || r_s11c27l="$r_s11c27l package-shell-syntax-invalid"
+for syntax_source in scripts/smoke-debian-sysv-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh; do
+  bash -n "$syntax_source" || r_s11c27l="$r_s11c27l smoke-shell-syntax-invalid:$syntax_source"
+done
+for syntax_source in res/rustdesk.init res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm; do
+  dash -n "$syntax_source" || r_s11c27l="$r_s11c27l package-shell-syntax-invalid:$syntax_source"
+done
 [ "$(stat -c %a res/rustdesk.init)" = 755 ] || r_s11c27l="$r_s11c27l init-script-not-executable"
 [ "$(stat -c %a scripts/smoke-debian-sysv-lifecycle.sh)" = 755 ] || r_s11c27l="$r_s11c27l smoke-script-not-executable"
 grep -qF 'readonly BINARY=/smoke-target/debug/rustdesk' scripts/smoke-debian-sysv-lifecycle.sh || r_s11c27l="$r_s11c27l disjoint-source-binary-missing"
@@ -8995,7 +9001,10 @@ for maintscript in res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm; do
   grep -qF 'if [ -d /run/systemd/system ]; then' "$maintscript" || r_s11c27l="$r_s11c27l ${maintscript##*/}:backend-selection-missing"
 done
 grep -qF 'invoke-rc.d "$service" start >/dev/null' res/DEBIAN/postinst || r_s11c27l="$r_s11c27l postinst:sysv-start-missing"
-grep -qF 'invoke-rc.d "$service" stop >/dev/null' res/DEBIAN/preinst res/DEBIAN/prerm || r_s11c27l="$r_s11c27l maintscript:sysv-stop-missing"
+for maintscript in res/DEBIAN/preinst res/DEBIAN/prerm; do
+  grep -qF 'invoke-rc.d "$service" stop >/dev/null' "$maintscript" \
+    || r_s11c27l="$r_s11c27l ${maintscript##*/}:sysv-stop-missing"
+done
 grep -qF 'update-rc.d "$service" defaults >/dev/null' res/DEBIAN/postinst || r_s11c27l="$r_s11c27l postinst:sysv-enable-missing"
 grep -qF '"etc/init.d/rustdesk"' build.py || r_s11c27l="$r_s11c27l package-init-payload-missing"
 grep -qF 'debian-sysv-installed-lifecycle)' scripts/smoke-server-stage.sh || r_s11c27l="$r_s11c27l runtime-stage-dispatch-missing"
@@ -9034,8 +9043,9 @@ systemd_vm_guest=scripts/smoke-verifier-vm-authority-guest.sh
 systemd_stage=scripts/stage-debian-systemd-runtime-libs.sh
 systemd_guest=scripts/smoke-debian-systemd-lifecycle-guest.sh
 systemd_loginctl=scripts/smoke-debian-systemd-loginctl.sh
-bash -n "$systemd_host" "$systemd_vm_guest" "$systemd_stage" "$systemd_guest" "$systemd_loginctl" \
-  || r_s11c27m="$r_s11c27m smoke-shell-syntax-invalid"
+for syntax_source in "$systemd_host" "$systemd_vm_guest" "$systemd_stage" "$systemd_guest" "$systemd_loginctl"; do
+  bash -n "$syntax_source" || r_s11c27m="$r_s11c27m smoke-shell-syntax-invalid:$syntax_source"
+done
 dash -n "$systemd_loginctl" || r_s11c27m="$r_s11c27m loginctl-shell-syntax-invalid"
 for executable in "$systemd_host" "$systemd_vm_guest" "$systemd_stage" "$systemd_guest" "$systemd_loginctl"; do
   [ "$(stat -c %a "$executable")" = 755 ] \
@@ -9186,8 +9196,9 @@ fi
 
 echo "== (3b-iii-h2o) cross-container service identity ignores identical path/bytes/role text (R-S11c-27n) =="
 r_s11c27n=
-bash -n scripts/smoke-service-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh \
-  || r_s11c27n="$r_s11c27n smoke-shell-syntax-invalid"
+for syntax_source in scripts/smoke-service-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh; do
+  bash -n "$syntax_source" || r_s11c27n="$r_s11c27n smoke-shell-syntax-invalid:$syntax_source"
+done
 python3 -c 'import ast; ast.parse(open("scripts/smoke-process-guard.py", encoding="utf-8").read())' \
   || r_s11c27n="$r_s11c27n process-guard-syntax-invalid"
 cc -fsyntax-only -Wall -Wextra -Werror scripts/smoke-server-launcher.c \
@@ -9251,8 +9262,9 @@ if [ -n "$r_s11c27n" ]; then echo "  FAIL R-S11c-27n cross-container executable 
 
 echo "== (3b-iii-h2p) Linux recovery rejects actual kernel numeric-PID reuse (R-S11c-27o) =="
 r_s11c27o=
-bash -n scripts/smoke-service-pid-reuse.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh \
-  || r_s11c27o="$r_s11c27o smoke-shell-syntax-invalid"
+for syntax_source in scripts/smoke-service-pid-reuse.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh; do
+  bash -n "$syntax_source" || r_s11c27o="$r_s11c27o smoke-shell-syntax-invalid:$syntax_source"
+done
 [ "$(stat -c %a scripts/smoke-service-pid-reuse.sh)" = 755 ] \
   || r_s11c27o="$r_s11c27o pid-reuse-script-not-executable"
 for token in \
@@ -9310,9 +9322,8 @@ r_s11c27p=
 openrc_template=res/service-managers/openrc/rustdesk
 runit_template=res/service-managers/runit/run
 manual_template=res/service-managers/manual/rustdesk-service
-dash -n "$openrc_template" "$runit_template" "$manual_template" \
-  || r_s11c27p="$r_s11c27p template-shell-syntax-invalid"
 for template in "$openrc_template" "$runit_template" "$manual_template"; do
+  dash -n "$template" || r_s11c27p="$r_s11c27p template-shell-syntax-invalid:$template"
   [ "$(stat -c %a "$template")" = 755 ] \
     || r_s11c27p="$r_s11c27p ${template#res/service-managers/}:not-executable"
 done
@@ -9363,8 +9374,9 @@ if [ -n "$r_s11c27p" ]; then echo "  FAIL R-S11c-27p service-manager templates:$
 
 echo "== (3b-iii-h2r) native OpenRC owns one exact supervisor and preserves unrelated RustDesk (R-S11c-27q) =="
 r_s11c27q=
-bash -n scripts/smoke-openrc-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh \
-  || r_s11c27q="$r_s11c27q smoke-shell-syntax-invalid"
+for syntax_source in scripts/smoke-openrc-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh; do
+  bash -n "$syntax_source" || r_s11c27q="$r_s11c27q smoke-shell-syntax-invalid:$syntax_source"
+done
 [ "$(stat -c %a scripts/smoke-openrc-lifecycle.sh)" = 755 ] \
   || r_s11c27q="$r_s11c27q smoke-script-not-executable"
 grep -qF 'openrc=0.45.2-2+deb12u1' scripts/Dockerfile.devcheck \
@@ -9412,8 +9424,9 @@ if [ -n "$r_s11c27q" ]; then echo "  FAIL R-S11c-27q native OpenRC lifecycle:$r_
 
 echo "== (3b-iii-h2s) native runit owns one exact supervision tree and preserves unrelated RustDesk (R-S11c-27r) =="
 r_s11c27r=
-bash -n scripts/smoke-runit-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh \
-  || r_s11c27r="$r_s11c27r smoke-shell-syntax-invalid"
+for syntax_source in scripts/smoke-runit-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh; do
+  bash -n "$syntax_source" || r_s11c27r="$r_s11c27r smoke-shell-syntax-invalid:$syntax_source"
+done
 [ "$(stat -c %a scripts/smoke-runit-lifecycle.sh)" = 755 ] \
   || r_s11c27r="$r_s11c27r smoke-script-not-executable"
 grep -qF 'runit=2.1.2-54' scripts/Dockerfile.devcheck \

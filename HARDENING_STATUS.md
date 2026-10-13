@@ -2243,6 +2243,13 @@ and were not rerun for this deletion. No product or native behavior is validated
 cleanup. Exact target-native readiness, authorization/admission, failure/shutdown drain,
 resource retirement, installed artifacts, and independent review remain OPEN.
 
+Service/installer source inspection in `scripts/verify.sh` now parses each file
+separately in all nine formerly aggregate Bash/Dash syntax checks and verifies
+the SysV stop action in both maintainer scripts independently. All 12 selected
+Bash sources and eight Dash sources parse; extra shell operands were previously
+ignored, and one matching stop action could mask the other's absence. This is
+source-check correctness only; installed/native and release acceptance stays OPEN.
+
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
 **Policy/capture/coordinator/logind and installed CPace/races/admin/exit accepted;

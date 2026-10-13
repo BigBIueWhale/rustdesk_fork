@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+enum _InitialAddressRestoreState { available, pending, retired }
+
 /// Text controller for the direct address used by the viewer connection UI.
 ///
 /// Only surrounding whitespace is presentation noise. Interior whitespace is
@@ -8,9 +10,47 @@ import 'package:flutter/material.dart';
 class DirectAddressTextEditingController extends TextEditingController {
   DirectAddressTextEditingController({String? text}) : super(text: text);
 
+  var _initialRestoreState = _InitialAddressRestoreState.available;
+
   String get address => normalizeDirectAddress(value.text);
 
   set address(String newAddress) => text = normalizeDirectAddress(newAddress);
+
+  @override
+  set value(TextEditingValue newValue) {
+    if (newValue.text != value.text) {
+      _initialRestoreState = _InitialAddressRestoreState.retired;
+    }
+    super.value = newValue;
+  }
+
+  /// Restore once, only while this controller's text has never been edited.
+  Future<bool> restoreInitialAddress(Future<String> Function() loadAddress) async {
+    if (_initialRestoreState != _InitialAddressRestoreState.available ||
+        text.isNotEmpty) {
+      return false;
+    }
+    _initialRestoreState = _InitialAddressRestoreState.pending;
+    try {
+      final savedAddress = await loadAddress();
+      if (_initialRestoreState != _InitialAddressRestoreState.pending) {
+        return false;
+      }
+      _initialRestoreState = _InitialAddressRestoreState.retired;
+      final normalized = normalizeDirectAddress(savedAddress);
+      if (normalized == address) return false;
+      address = normalized;
+      return true;
+    } finally {
+      _initialRestoreState = _InitialAddressRestoreState.retired;
+    }
+  }
+
+  @override
+  void dispose() {
+    _initialRestoreState = _InitialAddressRestoreState.retired;
+    super.dispose();
+  }
 }
 
 String normalizeDirectAddress(String address) => address.trim();

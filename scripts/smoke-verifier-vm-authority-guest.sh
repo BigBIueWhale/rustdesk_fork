@@ -6774,7 +6774,7 @@ run_flutter_model_tests() {
             expected_result='suites=1 tests=24'
         else
             result_prefix=FLUTTER_DIRECT_ADDRESS_TEST_JSON
-            expected_result='suites=1 tests=12'
+            expected_result='suites=1 tests=19'
         fi
         source_mount+=,readonly
         source_writable=false
@@ -7295,7 +7295,7 @@ run_flutter_model_tests() {
         address_sha256="$(sha256sum "$source_root/flutter/lib/common/formatter/direct_address.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/address_validator_test.dart" | awk '{print $1}')"
         vectors_sha256="$(sha256sum "$source_root/flutter/test/fixtures/direct_address.json" | awk '{print $1}')"
-        printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=12 flutter=3.24.5 validator=%s tests_source=%s vectors=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined\n' \
+        printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=19 flutter=3.24.5 validator=%s tests_source=%s vectors=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$address_sha256" "$tests_sha256" "$vectors_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

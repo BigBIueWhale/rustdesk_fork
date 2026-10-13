@@ -162,18 +162,12 @@ class _ConnectionPageState extends State<ConnectionPage>
     super.initState();
     _allPeersLoader.init(setState);
     _addressFocusNode.addListener(onFocusChanged);
-    if (_addressController.text.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted || _addressController.text.isNotEmpty) return;
-        final lastRemoteAddress = await bind.mainGetLastRemoteId();
-        if (!mounted || _addressController.text.isNotEmpty) return;
-        if (lastRemoteAddress != _addressController.address) {
-          setState(() {
-            _addressController.address = lastRemoteAddress;
-          });
-        }
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final restored = await _addressController
+          .restoreInitialAddress(() => bind.mainGetLastRemoteId());
+      if (restored && mounted) setState(() {});
+    });
     Get.put<TextEditingController>(_addressEditingController);
     Get.put<DirectAddressTextEditingController>(_addressController);
     windowManager.addListener(this);

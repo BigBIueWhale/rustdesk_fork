@@ -62,7 +62,7 @@ class ResultTests(unittest.TestCase):
             (len(result.EXPECTED_SUITES), result.model_test_count()),
         )
         self.assertEqual(self.parse(self.events("frame-queue"), "frame-queue"), (1, 24))
-        self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 12))
+        self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"
             path.write_bytes(b"7\n")

@@ -6184,7 +6184,7 @@ else
         address_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/address_validator_test.dart" | /usr/bin/awk '{print $1}')"
         address_vectors_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/fixtures/direct_address.json" | /usr/bin/awk '{print $1}')"
         require_exact_fixed_receipt \
-            "FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=12 flutter=$FLUTTER_VERSION validator=$address_sha256 tests_source=$address_tests_sha256 vectors=$address_vectors_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined" \
+            "FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=19 flutter=$FLUTTER_VERSION validator=$address_sha256 tests_source=$address_tests_sha256 vectors=$address_vectors_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined" \
             'focused Flutter direct-address receipt'
     else
         require_exact_fixed_receipt \

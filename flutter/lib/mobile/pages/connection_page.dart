@@ -65,7 +65,9 @@ class _ConnectionPageState extends State<ConnectionPage> {
     _addressFocusNode.addListener(onFocusChanged);
     if (_addressController.text.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted || _addressController.text.isNotEmpty) return;
         final lastRemoteAddress = await bind.mainGetLastRemoteId();
+        if (!mounted || _addressController.text.isNotEmpty) return;
         if (lastRemoteAddress != _addressController.address) {
           setState(() {
             _addressController.address = lastRemoteAddress;

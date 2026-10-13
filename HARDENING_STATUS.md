@@ -2497,6 +2497,29 @@ seatless-X11 schedule. Manager crash/acknowledgement, installed temporary backpr
 startup failure, new-unit 600-second failure/recovery, ordinary network drain and broader
 shutdown/platform/whole-app/release/resource/reproduction/review remain OPEN.
 
+**Ordinary pre-login network shutdown: one installed Linux schedule accepted.**
+Harness `4b86a759` reuses the current `bf2ef7fd` binary (`51eb6e87`, manifest
+`9ed447c2`). Two concurrent exact-child kernel sockets remain open at actual unit
+stop: one incomplete CPace peer and one mutually keyed pre-login peer. Both reach
+receiver-originated EOF in **83.2 ms**; the keyed peer decrypts the shutdown
+CloseReason. Retained supervisor/child pidfds exit and kernel identities are reaped;
+normal exit0/success/no restart, absent listener/cgroup and unchanged durable
+credential are observed by 3.096 seconds, including the probe's three-second read
+wait. Fresh-generation CPace, real administrator Applied and fresh denial pass.
+The zero-NIC fixture passes four cases/three CPace exchanges in 57 VM seconds.
+Complete endpoint records have no delta; source/index/audit/ledger/specification/
+instruction freezes match before/during/after, and exact joins/RAM retirement pass.
+RAM scratch peaks at 4,549,697,536 bytes; retained run disk at 126,976 bytes and
+observed QEMU block writes at 4,096. Immutable
+`.harness-state/verifier-vm/linux-receiver-network-drain-accepted-4b86a759.json`
+(17,432 bytes; SHA-256 `d5b3076fe996757e67effe7b9b256693bb7a4fbb28f843473deae3f7b1c77048`)
+binds the exact capsule, native observation, raw serial, storage, endpoint records
+and freezes. This is debug/headless seatless-X11 installed-layout evidence for
+pre-login sockets. Remote/transfer/tunnel drain, writer backpressure, forced
+network deadline, native input/display cleanup and broader shutdown acceptance
+remain OPEN. No product code changed; the suspected join-order hang was not
+reproduced in this schedule.
+
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

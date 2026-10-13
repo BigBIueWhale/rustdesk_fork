@@ -11661,7 +11661,30 @@ handles, and thread finality. Physical Android/Windows symptom reproduction,
 cross-version/platform behavior, capture-to-present timing, sustained coexistence soak,
 cold R-B2/R-B10 equality, installed artifacts/services, independent reproduction, R-V3
 external review, causation, and the complete connection flow remaining correct and
-performant are open. No product source or Android persistent-service behavior changed.
+performant are open. The earlier verifier deletion changed no product source or Android
+persistent-service behavior.
+
+**Unix clipboard file offsets — source corrected; named Linux library transaction ACCEPTED;
+OS clipboard and installed integration OPEN.** `1a862b6d` converts both signed protobuf
+offset words through `u32` before assembling the unsigned 64-bit position in
+`libs/clipboard/src/platform/unix/serv_files.rs::read_file_contents`. The prior low-word
+sign extension rejected valid reads at 2 GiB. Microsoft's MS-RDPECLIP 2.2.5.3 defines
+both words as unsigned. The real sparse-file regression reads seven distinct markers
+around 2/4 GiB and above 8 GiB, checks at most 128 KiB allocated, exact response/stream IDs,
+invalid index/offset refusal, EOF, recovery and cache retirement. Rebuilding the exact old
+production prefix with identical tests fails; corrected source passes. `036163bc` passed
+20 tests (18 FUSE read regressions plus two serving tests) in 229 VM seconds, pinned Rust
+1.75, zero NIC, nonroot networkless container, stable three-artifact digests and joined
+cleanup. The lane now retires its duplicate extracted Rust installer before compilation;
+6 GiB guest/5 GiB container and fixed RAM scratch/headroom guards remain enforced. The
+earlier compiler OOM and two preflight refusals are unaccepted, retained evidence.
+Immutable `.harness-state/verifier-vm/clipboard-offset-accepted-036163bc.json` (32,787 bytes;
+SHA-256 `43ecad885b1ab6d2064bf7607fae92240451964d3d49318d9c2fc197b72785ab`) binds
+source/fixture/artifacts, full raw serial, terminal results, complete endpoint observations,
+storage and source/control freezes. Unknown endpoint changes remain unattributed and
+untouched. This executes the complete production clipboard library and real file reads;
+mounted FUSE, PAKE, native OS clipboard, viewer/CM/installed and other-platform behavior
+remain OPEN. No broader privilege or release closure is claimed.
 
 ### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership (2026-08-20)
 

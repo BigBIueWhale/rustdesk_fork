@@ -44,12 +44,14 @@ case "$#:${8:-}" in
     8:--host-network-tests)
         MODE=host-network-tests
         ;;
-    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests)
+    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests)
         MODE=linux-service-receiver-tests
         if [ "${8}" = --linux-service-convergence-failure-tests ]; then
             LINUX_RECEIVER_PROFILE=convergence-failure
         elif [ "${8}" = --linux-service-notification-failure-tests ]; then
             LINUX_RECEIVER_PROFILE=notification-failure
+        elif [ "${8}" = --linux-service-network-drain-tests ]; then
+            LINUX_RECEIVER_PROFILE=network-drain
         fi
         [[ "${9}" =~ ^[0-9a-f]{40}$ ]] && [[ "${10}" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "${11}" =~ ^[0-9a-f]{64}$ ]] && [[ "${12}" =~ ^[0-9a-f]{40}$ ]] || exit 2
@@ -754,6 +756,8 @@ run_linux_service_receiver_tests() {
         native_args+=(--convergence-failure)
     elif [ "$LINUX_RECEIVER_PROFILE" = notification-failure ]; then
         native_args+=(--notification-failure)
+    elif [ "$LINUX_RECEIVER_PROFILE" = network-drain ]; then
+        native_args+=(--network-drain)
     fi
     /usr/bin/python3 -B -I -S "$helper" "$LINUX_RECEIVER_COMMIT" "$LINUX_RECEIVER_TREE" \
         "$LINUX_RECEIVER_MANIFEST_SHA256" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \

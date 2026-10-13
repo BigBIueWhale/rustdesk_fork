@@ -1788,7 +1788,148 @@ def credential_race(old, new, phase, record, probe_sha):
               f"cleanup=joined probe_sha256={probe_sha}", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False):
+def network_shutdown(value, record, probe_sha):
+    before = credential()
+    listener = direct_listener(record)
+    supervisor = Path("/proc") / str(record["supervisor"])
+    supervisor_start = int((supervisor / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19])
+    identities = {"supervisor": (supervisor, supervisor_start),
+                  "child": (Path("/proc") / str(record["pid"]), record["start"])}
+    pidfds = {}
+    probe = None
+    unit_reference = ServiceUnitResultReference()
+    frames = []
+    try:
+        for role, (proc, start) in identities.items():
+            pidfds[role] = os.pidfd_open(int(proc.name))
+            fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+            if int(fields[19]) != start or fields[0] in (b"Z", b"X"):
+                raise RuntimeError("network shutdown lost a retained service identity")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as proxy:
+            proxy.bind(("127.0.0.1", 0))
+            proxy.listen(1)
+            proxy.settimeout(5)
+            probe = subprocess.Popen(
+                ["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                 "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                 str(PROBE), f"127.0.0.1:{proxy.getsockname()[1]}", "--password-stdin", "ok", "read"],
+                env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            probe.stdin.write(value + "\n")
+            probe.stdin.close()
+            probe.stdin = None
+            downstream, _ = proxy.accept()
+            with downstream, socket.create_connection(("127.0.0.1", 21118), timeout=5) as keyed_peer, \
+                    socket.create_connection(("127.0.0.1", 21118), timeout=5) as prekey_peer:
+                for source, destination in ((downstream, keyed_peer), (keyed_peer, downstream),
+                                            (downstream, keyed_peer), (keyed_peer, downstream)):
+                    frame = wire_frame(source)
+                    destination.sendall(frame)
+                    frames.append({"bytes": len(frame), "sha256": hashlib.sha256(frame).hexdigest()})
+                # A sealed server frame establishes the keyed connection before shutdown.
+                frame = wire_frame(keyed_peer)
+                downstream.sendall(frame)
+                frames.append({"bytes": len(frame), "sha256": hashlib.sha256(frame).hexdigest()})
+                ports = {keyed_peer.getsockname()[1], prekey_peer.getsockname()[1]}
+                accepted = {}
+                admission_deadline = time.monotonic() + 2
+                while time.monotonic() < admission_deadline:
+                    owned = set()
+                    for fd in (identities["child"][0] / "fd").iterdir():
+                        try:
+                            target = os.readlink(fd)
+                        except FileNotFoundError:
+                            continue
+                        match = re.fullmatch(r"socket:\[([1-9][0-9]*)\]", target)
+                        if match:
+                            owned.add(int(match[1]))
+                    accepted = {}
+                    for line in Path("/proc/net/tcp").read_text().splitlines()[1:]:
+                        fields = line.split()
+                        if (len(fields) >= 10 and fields[1] == "0100007F:527E" and fields[3] == "01"
+                                and fields[2].startswith("0100007F:") and int(fields[9]) in owned):
+                            port = int(fields[2].split(":")[1], 16)
+                            if port in ports:
+                                accepted[port] = int(fields[9])
+                    if set(accepted) == ports:
+                        break
+                    time.sleep(0.01)
+                if (set(accepted) != ports or probe.poll() is not None or child_record() != record
+                        or direct_listener(record) != listener
+                        or any(select.select([fd], [], [], 0)[0] for fd in pidfds.values())):
+                    raise RuntimeError("network shutdown lacks two live exact-child sockets")
+                began = time.monotonic()
+                run(["/usr/bin/systemctl", "stop", "--no-block", "rustdesk.service"], timeout=2)
+                # Neither peer closes its write direction; only receiver-originated EOF counts.
+                for _ in range(4):
+                    frame = wire_frame(keyed_peer, allow_eof=True)
+                    if frame is None:
+                        break
+                    downstream.sendall(frame)
+                    frames.append({"bytes": len(frame), "sha256": hashlib.sha256(frame).hexdigest()})
+                else:
+                    raise RuntimeError("keyed shutdown did not reach receiver EOF")
+                prekey_peer.settimeout(max(0.001, 8 - (time.monotonic() - began)))
+                if prekey_peer.recv(1) != b"":
+                    raise RuntimeError("incomplete CPace peer received application data")
+                eof_seconds = time.monotonic() - began
+                stdout, stderr = probe.communicate(timeout=4)
+        retired = {}
+        while time.monotonic() - began < 10:
+            for role, (proc, start) in identities.items():
+                exited = bool(select.select([pidfds[role]], [], [], 0)[0])
+                try:
+                    fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                    reaped = int(fields[19]) != start
+                except (FileNotFoundError, ProcessLookupError):
+                    reaped = True
+                retired[role] = {"exited": exited, "reaped": reaped}
+            if all(item["exited"] and item["reaped"] for item in retired.values()):
+                break
+            time.sleep(0.02)
+        outcome = dict(line.split("=", 1) for line in run(
+            ["/usr/bin/systemctl", "show", "rustdesk.service",
+             "--property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus,NRestarts"]).stdout.splitlines())
+        unit_reference.close()
+        cgroup = Path("/sys/fs/cgroup/system.slice/rustdesk.service")
+        while cgroup.exists() and time.monotonic() - began < 10:
+            time.sleep(0.02)
+        elapsed = time.monotonic() - began
+        absent = not any(len(f := line.split()) >= 10 and f[3] == "0A" and f[9] == str(listener)
+                         for line in Path("/proc/net/tcp").read_text().splitlines()[1:])
+        print("LINUX_RECEIVER_NETWORK_SHUTDOWN_OBSERVED=" + json.dumps(
+            {**record, "supervisor_start": supervisor_start, "listener_inode": listener,
+             "accepted_sockets": accepted, "frames": frames, "eof_seconds": eof_seconds,
+             "elapsed_seconds": elapsed, "retired": retired, "unit_outcome": outcome,
+             "unit_reference_held_at_outcome": True, "listener_absent": absent,
+             "cgroup_absent": not cgroup.exists(), "durable_unchanged": credential() == before,
+             "probe_exit": probe.returncode, "probe_stdout": stdout, "probe_stderr": stderr}, sort_keys=True), flush=True)
+        lines = stdout.splitlines()
+        if (probe.returncode != 0 or stderr or len(lines) != 3
+                or lines[0] != "probe_client: keying ok=true (expected=ok)" or lines[-1] != "probe_client: PASS"
+                or "Some(TestDelay(" not in lines[1] or 'CloseReason("Server is shutting down")' not in lines[1]
+                or "READ_ERR" in lines[1] or eof_seconds >= 8 or elapsed >= 10
+                or not all(item["exited"] and item["reaped"] for item in retired.values())
+                or outcome != {"ActiveState": "inactive", "SubState": "dead", "Result": "success", "MainPID": "0",
+                               "ExecMainCode": "1", "ExecMainStatus": "0", "NRestarts": "0"}
+                or cgroup.exists() or not absent or credential() != before):
+            raise RuntimeError("ordinary network shutdown did not close both peers and retire cleanly")
+        print(f"LINUX_RECEIVER_NETWORK_SHUTDOWN=pass peers=prekey,keyed-prelogin close_reason=decrypted "
+              f"eof=receiver-originated deadline=8 unit=clean process=exact-reaped durable=unchanged "
+              f"cleanup=probe-joined probe_sha256={probe_sha}", flush=True)
+    finally:
+        if probe is not None:
+            if probe.poll() is None:
+                probe.kill()
+                probe.communicate(timeout=5)
+            for pipe in (probe.stdin, probe.stdout, probe.stderr):
+                if pipe is not None:
+                    pipe.close()
+        unit_reference.close()
+        for fd in pidfds.values():
+            os.close(fd)
+
+
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -1862,7 +2003,12 @@ def tests(args, convergence_failure=False, notification_failure=False):
             raise RuntimeError("root mutation did not converge on the original child")
         print("LINUX_RECEIVER_CASE=root-applied durable=root convergence=Applied", flush=True)
         keyed("Receiver-fixture-first-2026!", "root-applied", first, probe_spec["sha256"])
-        if convergence_failure:
+        if network_drain:
+            network_shutdown("Receiver-fixture-first-2026!", first, probe_spec["sha256"])
+            run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+            second = ready(first)
+            keyed("Receiver-fixture-first-2026!", "network-drain-recovery", second, probe_spec["sha256"])
+        elif convergence_failure:
             second = admitted_password_shutdown("Receiver-fixture-convergence-2026!", first, fail_convergence=True)
             keyed("Receiver-fixture-convergence-2026!", "convergence-failure-recovery", second, probe_spec["sha256"])
             stale_refused("Receiver-fixture-first-2026!", "convergence-failure-recovery", second, probe_spec["sha256"])
@@ -2022,6 +2168,12 @@ def tests(args, convergence_failure=False, notification_failure=False):
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
+    if network_drain:
+        print(f"LINUX_SERVICE_NETWORK_NATIVE=pass cases=4 cpace=3 network_drains=1 "
+              f"admin_grants=1 fresh_refusals=1 source={commit} binary_sha256={spec['sha256']} "
+              f"probe_sha256={probe_spec['sha256']} fixture=installed-layout polkit=actual logind=actual "
+              "child=supervised cleanup=joined", flush=True)
+        return
     if convergence_failure:
         print(f"LINUX_SERVICE_CONVERGENCE_NATIVE=pass cases=4 cpace=3 stale_refusals=1 convergence_failures=1 "
               f"admin_grants=1 fresh_refusals=1 source={commit} binary_sha256={spec['sha256']} "
@@ -2092,6 +2244,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], convergence_failure=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--notification-failure":
         tests(sys.argv[1:6], notification_failure=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--network-drain":
+        tests(sys.argv[1:6], network_drain=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

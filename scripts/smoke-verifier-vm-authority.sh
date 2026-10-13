@@ -180,7 +180,7 @@ case "$#:${1:-}" in
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
         MODE=host-network-tests
         ;;
-    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -190,6 +190,8 @@ case "$#:${1:-}" in
             LINUX_RECEIVER_PROFILE=convergence-failure
         elif [ "$1" = --linux-service-notification-failure-tests ]; then
             LINUX_RECEIVER_PROFILE=notification-failure
+        elif [ "$1" = --linux-service-network-drain-tests ]; then
+            LINUX_RECEIVER_PROFILE=network-drain
         fi
         ANDROID_RUNTIME_PEER_COMMIT=$3
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=$5
@@ -4138,6 +4140,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         linux_receiver_guest_flag=--linux-service-convergence-failure-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = notification-failure ]; then
         linux_receiver_guest_flag=--linux-service-notification-failure-tests
+    elif [ "$LINUX_RECEIVER_PROFILE" = network-drain ]; then
+        linux_receiver_guest_flag=--linux-service-network-drain-tests
     fi
     guest_invocation+=" $linux_receiver_guest_flag $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256 $FOCUSED_TEST_COMMIT"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
@@ -4670,7 +4674,15 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
     require_exact_fixed_receipt 'verify-linux-service-password-ipc: source checks passed' 'supplementary password IPC source checks'
-    if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = network-drain ]; then
+        for phase in root-applied network-drain-recovery admin-applied; do
+            require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux network-drain credential use'
+        done
+        require_exact_fixed_receipt "LINUX_RECEIVER_NETWORK_SHUTDOWN=pass peers=prekey,keyed-prelogin close_reason=decrypted eof=receiver-originated deadline=8 unit=clean process=exact-reaped durable=unchanged cleanup=probe-joined probe_sha256=$linux_receiver_probe_sha" 'installed Linux ordinary network shutdown'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN=pass uid=4001 administrator_uid=4003 subject=pid-start-bound authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined' 'installed Linux administrator authentication after network drain'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied durable=unchanged listener=owned' 'installed Linux fresh administrator refusal after network drain'
+        require_exact_fixed_receipt "LINUX_SERVICE_NETWORK_NATIVE=pass cases=4 cpace=3 network_drains=1 admin_grants=1 fresh_refusals=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux network-drain profile'
+    elif [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
         for phase in root-applied convergence-failure-recovery admin-applied; do
             require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux convergence-failure credential use'
         done
@@ -6509,7 +6521,12 @@ elif [ "$MODE" = ledger-token-count ]; then
     printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    if [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = network-drain ]; then
+        printf 'LINUX_SERVICE_NETWORK_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=4 cpace=3 network_drains=1 admin_grants=1 fresh_refusals=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"
+    elif [ "$LINUX_RECEIVER_PROFILE" = convergence-failure ]; then
         printf 'LINUX_SERVICE_CONVERGENCE_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=4 cpace=3 stale_refusals=1 convergence_failures=1 admin_grants=1 fresh_refusals=1 recovery_window=600 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \

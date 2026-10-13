@@ -11028,14 +11028,19 @@ observer receipt `.harness-state/verifier-vm/route-retirement-2a373f25-evidence/
 This is historical library/wire evidence without a final-product digest or independent reproduction;
 it does not prove direct-address grammar conformance. The focused predicate evidence follows.
 
-**Initial saved-address restoration — source correction; behavioral verification OPEN.**
-At `8f66a22f`, the direct-address controller owns one initial lookup and retires it on explicit address
-writes, text changes, Clear or disposal, including writes that normalize to unchanged empty text. Pages delegate to that owner;
-selection-only changes do not cancel restoration. Seven added controller/widget regressions cover
-delayed responses, text edits, earlier initialization, duplicate reads, disposal and explicit errors;
-the focused shard requires all nineteen named tests. Its attempted run refused before VM startup:
-27,648 MiB required, 26,758 MiB available after an earlier admitting snapshot. Diff and parser-only checks passed; no Dart/widget test,
-whole-page/bridge/native integration or packaged-artifact behavior is validated by this correction.
+**Initial saved-address restoration — focused Flutter tests PASSED; native page integration OPEN.**
+The controller owns one initial lookup; explicit address writes, text changes, Clear or disposal
+retire it, including writes that normalize to unchanged empty text. Selection-only changes preserve
+restoration. At `6f42d76c`, the isolated direct-address shard passed all nineteen named production
+controller/widget tests and three result-parser controls on pinned Flutter 3.24.5 in 134 VM seconds.
+Read-only source, offline-tools freshness, exact JSON completion inventory, source/index/audit/spec/
+instruction freezes and joined cleanup passed. The host process tree cannot create IP sockets;
+complete endpoint deltas remain unattributed. Earlier admission and formatter failures are retained.
+Raw serial `flutter-model-tests-run.fD71sIhPQU.serial.log`, SHA-256
+`320ccf266187b952635a7071f13b77bc89ab523ece009f1230e291e11c8c239c`.
+This is the actual controller/TextField test layer, without Rust bridge generation or whole desktop/
+mobile pages, sockets/peers, installed/package artifacts, current production engine or independent
+native platform reproduction; those acceptance obligations remain OPEN.
 
 **SOURCE CORRECTED — direct-address grammar; focused Rust/Dart tests PASSED, native integration OPEN.**
 `hbb_common::is_direct_address` owns the IPv4/IPv4:port/qualified-ASCII-hostname:port predicate used by

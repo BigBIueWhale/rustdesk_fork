@@ -813,6 +813,19 @@ run_ledger_token_count() {
             || fail "VM storage helper did not refuse root for $operation"
     done
     printf 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started\n'
+    local wait_status=0
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -B -I -S -c '
+import os, signal, sys
+signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
+         "run", "--memory-mib", "2048", "--run", "/tmp",
+         "--qmp", "/tmp/qmp.sock", "--qemu", "/usr/bin/qemu-system-x86_64")
+' "$storage_helper" >"$ROOT/storage-no-wait.out" 2>"$ROOT/storage-no-wait.err" || wait_status=$?
+    [ "$wait_status" -eq 1 ] && [ ! -s "$ROOT/storage-no-wait.out" ] \
+        && grep -Fxq 'ValueError: QEMU supervisor requires waitable children' "$ROOT/storage-no-wait.err" \
+        || fail 'VM storage supervisor did not refuse inherited child auto-reaping'
+    printf 'VM_TRANSIENT_WAIT_REFUSAL=pass principal=4000 sigchld=ignored qemu=not-started\n'
     source_before="$(sha256sum "$helper" "$input" "$archive" "$VERIFY_REPO/scripts/pins.env")"
     [ "$(sha256sum "$helper" | awk '{print $1}')" = "$LEDGER_RECIPE_SHA256" ] \
         && [ "$(sha256sum "$input" | awk '{print $1}')" = "$LEDGER_INPUT_SHA256" ] \

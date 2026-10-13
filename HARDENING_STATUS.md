@@ -2138,6 +2138,12 @@ before private-QMP `cont`; the unreaped child prevents PID reuse during `prlimit
 monitor aborts only the owned harness on scratch/headroom exhaustion. Canonical disk markers,
 bounded diagnostics and intentional artifacts retain their ownership. Transients retire only
 after exact joins; uncertain cleanup blocks another run. All helper entry points refuse root.
+QEMU output accounting belongs to its sole creating/waiting supervisor, which
+requires waitable children and publishes kernel child usage after the join.
+The monitor consumes a bounded receipt, never a PID-selected process; missing
+measurement stays unavailable. An ordinary no-NIC transaction passed in 15 seconds
+with 4,096 accounted bytes and retired scratch. Other launcher, failure/cancellation,
+malformed-receipt and native/platform/release acceptance remains OPEN.
 
 At storage core `ec79c77f`, the actual installed-layout Linux receiver passed 13 cases/11 CPace
 exchanges in 94 seconds, with zero NIC, unchanged host listeners and joined cleanup. Sampled

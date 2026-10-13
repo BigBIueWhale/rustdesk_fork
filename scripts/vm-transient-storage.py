@@ -157,6 +157,8 @@ def run_qemu(args):
     require(args.qemu and args.qemu[0] == '/usr/bin/qemu-system-x86_64',
             'storage supervisor requires the fixed QEMU executable')
     require(Path(args.qmp) == Path(args.run) / 'qmp.sock', 'QMP path differs')
+    require(signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL,
+            'QEMU supervisor requires waitable children')
     # The shared guest RAM memfd must be sized before lowering RLIMIT_FSIZE.
     # -S prevents guest disk writes until the final hard limit is installed.
     initial_limit = max(8 * GIB, args.memory_mib * 1024 ** 2)

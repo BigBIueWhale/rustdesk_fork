@@ -2523,6 +2523,7 @@ def run_elf_role_self_test():
             write_file(tree / "DEBIAN/control",
                        "Package: rustdesk-elf-fixture\nVersion: 1\nArchitecture: amd64\n"
                        "Maintainer: fixture <fixture@example.invalid>\nDescription: ELF partition fixture\n", 0o644)
+            (tree / "DEBIAN").chmod(0o755)
             target = tree / library_name[2:]
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)

@@ -2674,6 +2674,10 @@ run_focused_rust_tests() {
             fs::tests::confirmation_refuses_a_send_job_after_exact_eof
             fs::tests::confirmation_refuses_a_receive_job_after_publication
             fs::tests::confirmation_preserves_active_empty_files_and_skip_actions
+            fs::tests::file_list_admission_is_single_use_and_transactional
+            fs::tests::receive_file_list_replacement_cannot_authorize_early_done
+            fs::tests::receive_file_list_replacement_cannot_expand_the_active_file
+            fs::tests::send_file_list_is_immutable_from_construction
             fs::tests::directory_enumeration_budgets_returned_root_paths
             fs::tests::empty_directory_enumeration_budgets_repeated_absolute_paths
         )

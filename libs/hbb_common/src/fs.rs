@@ -5612,6 +5612,14 @@ mod tests {
         let mut entry = new_file_entry(name);
         // Most receive fixtures intentionally stop while partial; completion cases set exact size.
         entry.size = 4096;
+        new_write_job_with_files(id, download_dir, vec![entry])
+    }
+
+    fn new_write_job_with_files(
+        id: i32,
+        download_dir: PathBuf,
+        files: Vec<FileEntry>,
+    ) -> ResultType<TransferJob> {
         let job = TransferJob::new_write(
             id,
             JobType::Generic,
@@ -5622,7 +5630,7 @@ mod tests {
             true,
             false,
         )
-        .with_files(vec![entry])?;
+        .with_files(files)?;
         Ok(job)
     }
 
@@ -5677,9 +5685,7 @@ mod tests {
         first.size = payload.len() as u64;
         let mut second = new_file_entry("second.bin");
         second.size = 1;
-        let mut job = new_write_job(101, tmp.path.clone(), "first.bin")
-            .expect("create receive job")
-            .with_files(vec![first, second])
+        let mut job = new_write_job_with_files(101, tmp.path.clone(), vec![first, second])
             .expect("admit both files");
         job.write(FileTransferBlock {
             id: 101,
@@ -5735,9 +5741,7 @@ mod tests {
         first.size = 1;
         let mut second = new_file_entry("second.bin");
         second.size = 1;
-        let mut job = new_write_job(214, tmp.path.clone(), "first.bin")
-            .expect("create receive job")
-            .with_files(vec![first, second])
+        let mut job = new_write_job_with_files(214, tmp.path.clone(), vec![first, second])
             .expect("admit both files");
         job.write(FileTransferBlock {
             id: 214,
@@ -5812,9 +5816,7 @@ mod tests {
         let mut first = new_file_entry("first.bin");
         first.size = payload.len() as u64;
         let second = new_file_entry("empty.bin");
-        let mut job = new_write_job(102, tmp.path.clone(), "first.bin")
-            .expect("create receive job")
-            .with_files(vec![first, second])
+        let mut job = new_write_job_with_files(102, tmp.path.clone(), vec![first, second])
             .expect("admit both files");
         for (file_num, data) in [(0, payload.as_slice()), (1, b"".as_slice())] {
             job.write(FileTransferBlock {
@@ -5850,10 +5852,12 @@ mod tests {
         let tmp = TestTempDir::new("rustdesk_receive_skipped_list");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
         for names in [vec![], vec!["first.bin", "second.bin"]] {
-            let mut job = new_write_job(103, tmp.path.clone(), "unused.bin")
-                .expect("create receive job")
-                .with_files(names.iter().map(|name| new_file_entry(name)).collect())
-                .expect("admit the file list");
+            let mut job = new_write_job_with_files(
+                103,
+                tmp.path.clone(),
+                names.iter().map(|name| new_file_entry(name)).collect(),
+            )
+            .expect("admit the file list");
             for _ in &names {
                 job.set_file_skipped()
                     .expect("explicitly skip the current file");
@@ -7047,9 +7051,7 @@ mod tests {
         first.size = payload.len() as u64;
         let mut second = new_file_entry("second.bin");
         second.size = 1;
-        let mut job = new_write_job(213, tmp.path.clone(), "first.bin")
-            .expect("create receive job")
-            .with_files(vec![first, second])
+        let mut job = new_write_job_with_files(213, tmp.path.clone(), vec![first, second])
             .expect("admit both files");
         job.write(FileTransferBlock {
             id: 213,
@@ -7625,10 +7627,7 @@ mod tests {
             false,
         )
         .expect("admit multi-file source");
-        let mut files = std::mem::take(&mut job.files);
-        files.sort_by(|left, right| left.name.cmp(&right.name));
-        job.set_files(files)
-            .expect("admit a deterministic valid file order");
+        job.files.sort_by(|left, right| left.name.cmp(&right.name));
         assert_eq!(job.files().len(), 3);
         job.init_data_stream_for_cm().await.expect("open first source");
         let first = job.read().await.expect("read first prefix").expect("prefix");
@@ -7870,6 +7869,180 @@ mod tests {
     }
 
     #[test]
+    fn file_list_admission_is_single_use_and_transactional() {
+        for files in [Vec::new(), vec![new_file_entry("original.bin")]] {
+            let mut job = new_validation_job(216);
+            job.set_files(vec![new_file_entry("../escape.bin")])
+                .expect_err("refused first admission must leave the job unadmitted");
+            job.set_files(files.clone()).expect("admit the original list");
+            for replacement in [files.clone(), Vec::new(), vec![new_file_entry("other.bin")]] {
+                job.set_files(replacement)
+                    .expect_err("even an empty or identical admitted list is immutable");
+                assert_eq!(job.files(), &files);
+                assert_eq!(job.total_size(), 0);
+                assert_eq!(job.file_num(), 0);
+                assert!(job.data_stream.is_none());
+                assert!(job.receive_write_claim.is_none());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn receive_file_list_replacement_cannot_authorize_early_done() {
+        let tmp = TestTempDir::new("rustdesk_receive_list_owner");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut first = new_file_entry("first.bin");
+        first.size = 5;
+        let mut second = new_file_entry("second.bin");
+        second.size = 4;
+        let original = vec![first.clone(), second];
+        let mut job = new_write_job_with_files(217, tmp.path.clone(), original.clone())
+            .expect("admit both files once");
+        job.write(FileTransferBlock {
+            id: 217,
+            file_num: 0,
+            data: b"first".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("stage the complete first file");
+
+        match job.data_stream.as_mut().expect("retain the staged stream") {
+            DataStream::FileStream(file) => file.flush().await.expect("flush the staged prefix"),
+            DataStream::BufStream(_) => panic!("expected a file-backed stream"),
+        }
+        let replacement_refused = job.set_files(vec![first]).is_err();
+        let early_done_refused = job.finalize_write(1).await.is_err();
+        let published = tmp.join("first.bin").exists();
+        assert!(
+            replacement_refused && early_done_refused && !published,
+            "replacement_refused={replacement_refused} early_done_refused={early_done_refused} published={published}"
+        );
+        assert_eq!(job.files(), &original);
+        assert_eq!(job.total_size(), 9);
+        assert_eq!(job.finished_size(), 5);
+        assert_eq!(job.transferred(), 5);
+        assert_eq!(job.file_num(), 0);
+        assert!(job.data_stream.is_some());
+        assert!(job.receive_write_claim.is_some());
+        assert_eq!(std::fs::read(tmp.join("first.bin.download")).unwrap(), b"first");
+
+        job.write(FileTransferBlock {
+            id: 217,
+            file_num: 1,
+            data: b"next".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("write the remaining admitted file");
+        job.finalize_write(2).await.expect("complete the original list");
+        job.set_files(original.clone())
+            .expect_err("publication cannot reopen file-list admission");
+        assert_eq!(job.files(), &original);
+        assert_eq!(job.finished_size(), 9);
+        assert_eq!(job.file_num(), 2);
+        assert_eq!(std::fs::read(tmp.join("first.bin")).unwrap(), b"first");
+        assert_eq!(std::fs::read(tmp.join("second.bin")).unwrap(), b"next");
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
+        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 2);
+    }
+
+    #[tokio::test]
+    async fn receive_file_list_replacement_cannot_expand_the_active_file() {
+        let tmp = TestTempDir::new("rustdesk_receive_list_size");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut entry = new_file_entry("incoming.bin");
+        entry.size = 4;
+        let original = vec![entry.clone()];
+        let mut job = new_write_job_with_files(218, tmp.path.clone(), original.clone())
+            .expect("admit the exact file size");
+        job.write(FileTransferBlock {
+            id: 218,
+            file_num: 0,
+            data: b"ab".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("stage a partial file");
+        match job.data_stream.as_mut().expect("retain the staged stream") {
+            DataStream::FileStream(file) => file.flush().await.expect("flush the staged prefix"),
+            DataStream::BufStream(_) => panic!("expected a file-backed stream"),
+        }
+
+        entry.size = 6;
+        let replacement_refused = job.set_files(vec![entry]).is_err();
+        let excess_refused = job.write(FileTransferBlock {
+            id: 218,
+            file_num: 0,
+            data: b"cdef".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .is_err();
+        assert!(
+            replacement_refused && excess_refused,
+            "replacement_refused={replacement_refused} excess_refused={excess_refused} finished={}",
+            job.finished_size()
+        );
+        assert_eq!(job.files(), &original);
+        assert_eq!(job.total_size(), 4);
+        assert_eq!(job.finished_size(), 2);
+        assert_eq!(job.transferred(), 2);
+        assert_eq!(job.receive_file_offset, 2);
+        assert_eq!(std::fs::read(tmp.join("incoming.bin.download")).unwrap(), b"ab");
+        assert!(!tmp.join("incoming.bin").exists());
+
+        job.write(FileTransferBlock {
+            id: 218,
+            file_num: 0,
+            data: b"cd".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("finish within the original authority");
+        job.finalize_write(1).await.expect("publish the exact admitted bytes");
+        assert_eq!(std::fs::read(tmp.join("incoming.bin")).unwrap(), b"abcd");
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
+        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn send_file_list_is_immutable_from_construction() {
+        let tmp = TestTempDir::new("rustdesk_send_list_owner");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        std::fs::write(tmp.join("source.zip"), b"source").expect("create source file");
+        let mut job = TransferJob::new_read(
+            219,
+            JobType::Generic,
+            String::new(),
+            DataSource::FilePath(tmp.path.clone()),
+            0,
+            false,
+            false,
+            false,
+        )
+        .expect("admit the source list during construction");
+        let original = job.files().clone();
+        for replacement in [original.clone(), Vec::new(), vec![new_file_entry("other.bin")]] {
+            job.set_files(replacement)
+                .expect_err("a send constructor already owns its admitted list");
+            assert_eq!(job.files(), &original);
+            assert_eq!(job.total_size(), 6);
+        }
+        job.init_data_stream_for_cm().await.expect("open the source");
+        let block = job.read().await.unwrap().expect("read original bytes");
+        assert_eq!(block.data.as_ref(), b"source");
+        assert_eq!(block.file_num, 0);
+        assert!(!block.compressed);
+        assert!(job.read().await.unwrap().expect("exact EOF").data.is_empty());
+        assert_eq!(job.file_num(), 1);
+        assert_eq!(job.finished_size(), 6);
+        assert!(job.data_stream.is_none());
+    }
+
+    #[test]
     fn transfer_file_total_size_overflow_is_rejected_transactionally() {
         let mut job = new_validation_job(87);
         let mut first = new_file_entry("first.bin");
@@ -7960,9 +8133,7 @@ mod tests {
                     )
                     .expect("admit empty send list")
                 } else {
-                    new_write_job(185, tmp.path.clone(), "unused.zip")
-                        .expect("create receive job")
-                        .with_files(Vec::new())
+                    new_write_job_with_files(185, tmp.path.clone(), Vec::new())
                         .expect("admit empty receive list")
                 };
                 assert!(job.files().is_empty());

@@ -659,6 +659,8 @@ pub struct TransferJob {
     pub file_num: i32,
     #[serde(skip_serializing)]
     files: Vec<FileEntry>,
+    #[serde(skip_serializing)]
+    files_admitted: bool,
     pub conn_id: i32, // server only
 
     #[serde(skip_serializing)]
@@ -3293,6 +3295,7 @@ impl TransferJob {
             show_hidden,
             is_remote,
             files,
+            files_admitted: true,
             total_size,
             enable_overwrite_detection,
             role: TransferRole::Send,
@@ -3326,6 +3329,9 @@ impl TransferJob {
         files: Vec<FileEntry>,
         max_files: usize,
     ) -> ResultType<()> {
+        if self.files_admitted {
+            bail!("file list has already been admitted");
+        }
         let base = match &self.data_source {
             DataSource::FilePath(base) => Some(base),
             DataSource::MemoryCursor(_) => None,
@@ -3340,6 +3346,7 @@ impl TransferJob {
         }
         self.total_size = checked_file_total_size(&files)?;
         self.files = files;
+        self.files_admitted = true;
         Ok(())
     }
 
@@ -7916,7 +7923,10 @@ mod tests {
         let published = tmp.join("first.bin").exists();
         assert!(
             replacement_refused && early_done_refused && !published,
-            "replacement_refused={replacement_refused} early_done_refused={early_done_refused} published={published}"
+            "replacement_refused={} early_done_refused={} published={}",
+            replacement_refused,
+            early_done_refused,
+            published
         );
         assert_eq!(job.files(), &original);
         assert_eq!(job.total_size(), 9);

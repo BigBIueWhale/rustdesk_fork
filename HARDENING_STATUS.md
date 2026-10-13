@@ -13730,6 +13730,7 @@ native integration OPEN.** The relevant implementation is in `libs/hbb_common/sr
 
 | Surface | Current behavior |
 | --- | --- |
+| File-list ownership | `new_read_with_budget` admits the send list at construction. `set_files_with_limit` admits a receive list once, including an empty list, after all validation succeeds; refused first admission remains retryable. Every duplicate or replacement list refuses before changing entries, sizes, indexes, flags, streams or claims. Completion and byte limits keep their original admitted authority. |
 | Send starting index | `new_read_with_budget` and its `new_read` wrapper admit filesystem indexes only in the inclusive range zero through the exact list length. An invalid index fails before job publication rather than becoming an empty successful transfer. |
 | Whole-list receive completion | `finalize_write` requires the active file's exact next index to equal the whole admitted list length before consuming the stream or publishing the claim. Empty and explicitly skipped lists retain their no-stream completion path. |
 | Send length and EOF | `read` owns a per-file position and probes at most the admitted remainder plus one byte, capped at 128 KiB. Short EOF or overrun closes the stream and fails before publishing the affected block or changing counters/file number. Successful seek establishes the position; skip, retirement, fresh open and exact EOF reset it. Memory-cursor behavior is unchanged. |
@@ -13738,6 +13739,24 @@ native integration OPEN.** The relevant implementation is in `libs/hbb_common/sr
 | Resume admitted size | Both roles reject offsets beyond the admitted entry size before path resolution, open, seek or accounting. Send also checks the retained object's actual length; in-place growth does not enlarge the admitted authority. |
 | File confirmation entry | Every filesystem-backed skip, overwrite and resume action requires a present entry at the exact matching current index before changing flags, counters, streams or cleanup state. Empty and completed lists cannot confirm an absent file; a present zero-byte file remains valid. |
 | File-list construction | `read_dir_with_budget`, both recursive scanners and `new_read_with_budget` propagate iterator, root/entry metadata and descendant failures. Unsupported UTF-8 names, unavailable modification times and pre-epoch times fail explicitly. Every scanned entry consumes quota even when hidden filtering excludes it; recursive byte accounting includes the complete relative name. Flat and empty-directory results reserve each full returned path in the shared byte counter before copying it. The private scanner returns entries without allocating a discarded directory path. Child-error string classification and partial-success branches are deleted. |
+
+**File-list replacement — named Linux library transaction ACCEPTED; caller integration OPEN.**
+At `68309547`, all four new regressions failed while 98 existing filesystem tests passed;
+an active four-byte receive file accepted a replacement six-byte size and counted excess input.
+Correction `d7c42514` passed all 102 filesystem tests plus 18 adjacent tests in 147 VM seconds.
+Real-file fixtures refuse shortened-list early completion and active-size expansion, preserve
+staged bytes/counters/claims, then publish the original exact files and retire sidecars.
+Empty/nonempty one-use admission, invalid-first retry, send bytes/EOF and post-completion
+refusal are covered. Scenario inputs/assertions are unchanged; only one Rust-2018 diagnostic
+format is corrected. Immutable `.harness-state/verifier-vm/file-list-admission-accepted-d7c42514.json`
+(56,801 bytes; SHA-256 `206c60f91a3099292eb69c3a32c5344599cedb4fc0cc4878a70012e2506adfe3`)
+binds both sources/artifacts, terminal results, raw logs, storage, complete endpoint observations
+and matching freezes. The corrected 6 GiB guest/5 GiB nonroot container has zero NICs/published
+ports and joined cleanup; scratch peaks at 3,633,655,808 RAM bytes, disk diagnostics at
+3,297,280 bytes, and observed QEMU block writes at 4,096 bytes. Four removed endpoints
+remain unattributed and untouched. A prior 4 GiB compiler OOM is retained and unaccepted.
+These are production-library calls with real files, not viewer/CM, installed or other-platform
+acceptance; every broader OPEN obligation below remains required.
 
 CM, controlled-side and viewer constructor/confirmation/finalization error propagation remains
 source-reviewed for these corrections. The direct common producer has the separate native TCP

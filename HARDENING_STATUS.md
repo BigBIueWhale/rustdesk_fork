@@ -3755,6 +3755,27 @@ same prefix; only their exact inactive run roots were reconciled after joined te
 This is Linux artifact-tool/fixture and launcher evidence, not RustDesk lifecycle,
 installed-service, presentation, sustained resource, or release acceptance; those remain OPEN.
 
+**ELF role admission — current focused native acceptance.** `0655f096` replaces the
+app/toolkit executable boolean with layout-selected program/shared/data roles.
+Shared slots require an x86_64 ET_DYN image without a program interpreter, one
+bounded terminated dynamic segment, and no DF_1_PIE; programs require a nonzero
+entry point. Earlier fixtures copied `/usr/bin/true` into library slots and did
+not establish shared-library loading. The current fixtures load real shared
+objects with `dlopen` and call their function. The no-NIC VM passed 24 capsule,
+six SDK-role and nine toolkit tests in 66 seconds, including executable/library
+substitution, inert ET_EXEC and DF_1_PIE variant refusal, a self-consistent altered
+manifest refused before execution-copy creation, descriptor closure and retained
+failure state. Root/foreign refusal and one-winner admission also passed.
+The 78,859-byte raw serial `linux-flutter-artifact-tests-run.9MW9ze6rdt.serial.log`
+and complete source freezes, three protocol/endpoint observations and storage
+measurements are bound by `.harness-state/verifier-vm/linux-elf-roles-accepted-0655f096.json`
+(14,197 bytes, SHA-256 `6c8af58897943787cc0ebeb02baeb5e96fe06c3be05905690ec40bbc876dbe43`).
+Exact joins retired the RAM workspace; disk diagnostics peaked at 126,976 bytes.
+One removed host UDP endpoint remains unattributed and untouched. This corrects
+artifact role admission and its fixture; full ELF/dependency closure, the actual
+installed RustDesk loader/renderer, current release and independent reproduction
+remain OPEN. No product execution or local privilege escalation is established.
+
 The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and
 joined inert publication in 1,150,890 host BOOTTIME ms. The 74-file app/readiness manifest SHA-256 is

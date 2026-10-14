@@ -1,4 +1,8 @@
 use bytes::{Bytes, BytesMut};
+use hbb_common::{
+    message_proto::{Clipboard, ClipboardFormat},
+    protobuf::Enum,
+};
 use serde_derive::{Deserialize, Serialize};
 use std::io;
 
@@ -17,8 +21,15 @@ pub struct ClipboardNonFile {
 }
 
 impl ClipboardNonFile {
+    fn format(&self) -> io::Result<ClipboardFormat> {
+        ClipboardFormat::from_i32(self.format).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "unknown CM clipboard format")
+        })
+    }
+
     pub(crate) fn raw_content_len(contents: &[Self]) -> io::Result<usize> {
         contents.iter().try_fold(0usize, |total, item| {
+            item.format()?;
             if item.next_raw {
                 if !item.content.is_empty() {
                     return Err(io::Error::new(
@@ -43,7 +54,7 @@ impl ClipboardNonFile {
     pub(crate) fn restore_raw_contents(
         mut contents: Vec<Self>,
         mut raw: BytesMut,
-    ) -> io::Result<Vec<Self>> {
+    ) -> io::Result<Vec<Clipboard>> {
         if Self::raw_content_len(&contents)? != raw.len() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -53,10 +64,20 @@ impl ClipboardNonFile {
         for item in &mut contents {
             if item.next_raw {
                 item.content = raw.split_to(item.content_len).freeze();
-                item.next_raw = false;
             }
         }
-        Ok(contents)
+        contents.into_iter().map(|item| {
+            let format = item.format()?.into();
+            Ok(Clipboard {
+                compress: item.compress,
+                content: item.content,
+                width: item.width,
+                height: item.height,
+                format,
+                special_name: item.special_name,
+                ..Default::default()
+            })
+        }).collect()
     }
 }
 
@@ -89,8 +110,7 @@ mod tests {
         assert_eq!(restored[1].content.as_ref(), b"ab");
         assert_eq!(restored[2].content.as_ref(), b"cdef");
         assert_eq!(restored[1].content.as_ptr(), ptr);
-        assert!(restored.iter().all(|item| !item.next_raw));
-        assert_eq!(ClipboardNonFile::raw_content_len(&restored).unwrap(), 0);
+        assert!(restored.iter().all(|item| item.format.enum_value().unwrap() == ClipboardFormat::Text));
     }
 
     #[test]
@@ -150,5 +170,51 @@ mod tests {
         }));
         let decoded: ClipboardNonFile = serde_json::from_value(encoded).unwrap();
         assert_eq!(ClipboardNonFile::raw_content_len(&[decoded]).unwrap(), 0);
+    }
+
+    #[test]
+    fn unknown_format_refuses_the_complete_reply() {
+        for format in [-1, 3, 20, 24, 32, i32::MAX] {
+            let mut unknown = item(b"invalid", 7, false);
+            unknown.format = format;
+            let contents = vec![item(b"valid", 5, false), unknown];
+            assert!(ClipboardNonFile::raw_content_len(&contents).is_err());
+            let error = ClipboardNonFile::restore_raw_contents(contents, BytesMut::new()).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        }
+    }
+
+    #[test]
+    fn declared_formats_preserve_payload_and_metadata() {
+        assert_eq!(ClipboardFormat::VALUES.len(), 7);
+        for &format in ClipboardFormat::VALUES {
+            let mut source = item(b"abcdefgh", 8, false);
+            source.format = format.value();
+            source.width = 2;
+            source.height = 1;
+            source.special_name = "XML Spreadsheet".to_owned();
+            let restored = ClipboardNonFile::restore_raw_contents(vec![source], BytesMut::new()).unwrap();
+            assert_eq!(restored[0].format.enum_value().unwrap(), format);
+            assert_eq!(restored[0].content.as_ref(), b"abcdefgh");
+            assert_eq!((restored[0].width, restored[0].height), (2, 1));
+            assert_eq!(restored[0].special_name, "XML Spreadsheet");
+            assert!(!restored[0].compress);
+        }
+    }
+
+    #[test]
+    fn raw_json_reply_roundtrips_through_the_production_protobuf() {
+        use hbb_common::protobuf::Message as _;
+        let raw = vec![b'x'; 4096];
+        let mut source = item(b"", raw.len(), true);
+        source.format = ClipboardFormat::Html.value();
+        let encoded = serde_json::to_vec(&source).unwrap();
+        let decoded = serde_json::from_slice(&encoded).unwrap();
+        let restored = ClipboardNonFile::restore_raw_contents(vec![decoded], BytesMut::from(raw.as_slice())).unwrap();
+        let wire = restored[0].write_to_bytes().unwrap();
+        let parsed = Clipboard::parse_from_bytes(&wire).unwrap();
+        assert_eq!(parsed.format.enum_value().unwrap(), ClipboardFormat::Html);
+        assert_eq!(parsed.content.as_ref(), raw.as_slice());
+        assert!(!parsed.compress);
     }
 }

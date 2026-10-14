@@ -3116,6 +3116,8 @@ run_focused_rust_tests() {
             source_fingerprints=(
                 Cargo.lock src/ipc.rs src/ipc/clipboard_non_file.rs
                 src/server/clipboard_service.rs scripts/run-cm-clipboard-response-tests.py
+                libs/hbb_common/build.rs libs/hbb_common/src/protos/mod.rs
+                libs/hbb_common/protos/message.proto libs/hbb_common/protos/rendezvous.proto
             )
             required_tests=(
                 clipboard_non_file::tests::mixed_inline_and_raw_items_restore_exact_bytes
@@ -3126,6 +3128,9 @@ run_focused_rust_tests() {
                 clipboard_non_file::tests::raw_item_cannot_also_supply_inline_content
                 clipboard_non_file::tests::empty_and_inline_only_replies_need_no_raw_frame
                 clipboard_non_file::tests::response_metadata_retains_its_serialized_wire_shape
+                clipboard_non_file::tests::unknown_format_refuses_the_complete_reply
+                clipboard_non_file::tests::declared_formats_preserve_payload_and_metadata
+                clipboard_non_file::tests::raw_json_reply_roundtrips_through_the_production_protobuf
             )
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then
             container_name=rustdesk-file-block-tests
@@ -4157,7 +4162,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
-        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=8 bridge=absent windows=unexecuted\n'
+        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=11 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=6 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -4302,7 +4307,7 @@ PY
             || fail 'compiled UID-policy test artifact digest is malformed'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'CM clipboard response summary count differs'
-        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=11 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CM_CLIPBOARD_RESPONSE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'CM clipboard response artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then

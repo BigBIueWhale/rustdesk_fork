@@ -150,20 +150,7 @@ impl Handler {
                     if !data.is_empty() {
                         let mut msg = Message::new();
                         let multi_clipboards = MultiClipboards {
-                            clipboards: data
-                                .into_iter()
-                                .map(|c| Clipboard {
-                                    compress: c.compress,
-                                    content: c.content,
-                                    width: c.width,
-                                    height: c.height,
-                                    format: ClipboardFormat::from_i32(c.format)
-                                        .unwrap_or(ClipboardFormat::Text)
-                                        .into(),
-                                    special_name: c.special_name,
-                                    ..Default::default()
-                                })
-                                .collect(),
+                            clipboards: data,
                             ..Default::default()
                         };
                         msg.set_multi_clipboards(multi_clipboards);
@@ -193,7 +180,7 @@ impl Handler {
     fn read_clipboard_from_cm_ipc(
         &mut self,
         authority: ipc::CmClipboardAuthority,
-    ) -> ResultType<Vec<ClipboardNonFile>> {
+    ) -> ResultType<Vec<Clipboard>> {
         if self.rt.is_none() {
             self.rt = Some(Runtime::new()?);
         }
@@ -201,7 +188,7 @@ impl Handler {
             bail!("failed to get tokio runtime");
         };
         let mut stream = self.stream.take();
-        let result: ResultType<Vec<ClipboardNonFile>> = rt.block_on(async {
+        let result: ResultType<Vec<Clipboard>> = rt.block_on(async {
             hbb_common::timeout(2000, async {
                 if stream.is_none() {
                     stream = Some(crate::server::connect_authenticated_cm(100, "--cm").await?);

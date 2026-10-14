@@ -13,7 +13,9 @@ import tomllib
 
 PACKAGE = "rustdesk-cm-clipboard-response"
 INPUTS = ("Cargo.lock", "src/ipc.rs", "src/ipc/clipboard_non_file.rs",
-          "src/server/clipboard_service.rs", "scripts/run-cm-clipboard-response-tests.py")
+          "src/server/clipboard_service.rs", "scripts/run-cm-clipboard-response-tests.py",
+          "libs/hbb_common/build.rs", "libs/hbb_common/src/protos/mod.rs",
+          "libs/hbb_common/protos/message.proto", "libs/hbb_common/protos/rendezvous.proto")
 
 
 def digest(data):
@@ -50,13 +52,22 @@ def main():
     print("R-B10 canary: build confirmed network-isolated (offline compile stage).", flush=True)
     with tempfile.TemporaryDirectory(prefix="cm-clipboard-response-", dir="/tmp") as directory:
         fixture = Path(directory)
+        (fixture / "protos").mkdir()
+        for name in ("message.proto", "rendezvous.proto"):
+            (fixture / "protos" / name).write_bytes(inputs[f"libs/hbb_common/protos/{name}"])
+        (fixture / "build.rs").write_bytes(inputs["libs/hbb_common/build.rs"])
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
             '[dependencies]\nbytes = { version = "=1.11.1", features = ["serde"] }\n'
             'serde = "=1.0.228"\nserde_derive = "=1.0.228"\n'
+            'protobuf = { version = "=3.7.2", features = ["with-bytes"] }\n'
+            '[build-dependencies]\nprotobuf-codegen = "=3.7.2"\n'
             '[dev-dependencies]\nserde_json = "=1.0.118"\n'
             '[lib]\nname = "rustdesk_cm_clipboard_response"\npath = "lib.rs"\n')
         (fixture / "lib.rs").write_text(
+            'extern crate self as hbb_common;\npub use bytes;\npub use protobuf;\n'
+            f'#[path = "{repo}/libs/hbb_common/src/protos/mod.rs"] pub mod protos;\n'
+            'pub use protos::message as message_proto;\n'
             f'#[path = "{repo}/src/ipc/clipboard_non_file.rs"] mod clipboard_non_file;\n')
         run(["cargo", "generate-lockfile", "--offline", *config], fixture, 30)
         lock_bytes = (fixture / "Cargo.lock").read_bytes()
@@ -91,7 +102,7 @@ def main():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"CM clipboard response source changed: {name}")
             print(f"CM_CLIPBOARD_RESPONSE_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256={artifact_sha} tests=8 unchanged=before-after", flush=True)
+        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256={artifact_sha} tests=11 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

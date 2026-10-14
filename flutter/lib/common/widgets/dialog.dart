@@ -5,6 +5,7 @@ import 'package:bot_toast/bot_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
+import 'package:flutter_hbb/common/widgets/connect_password_dialog.dart';
 import 'package:flutter_hbb/common/widgets/password_text_field.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/consts.dart';
@@ -217,6 +218,7 @@ class PasswordWidget extends StatefulWidget {
     this.errorText,
     this.title,
     this.maxLength,
+    this.translateText,
   }) : super(key: key);
 
   final TextEditingController controller;
@@ -226,6 +228,7 @@ class PasswordWidget extends StatefulWidget {
   final String? errorText;
   final String? title;
   final int? maxLength;
+  final String Function(String text)? translateText;
 
   @override
   State<PasswordWidget> createState() => _PasswordWidgetState();
@@ -268,9 +271,10 @@ class _PasswordWidgetState extends State<PasswordWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final translateText = widget.translateText ?? translate;
     return DialogTextField(
-      title: translate(widget.title ?? DialogTextField.kPasswordTitle),
-      hintText: translate(widget.hintText ?? 'Enter your password'),
+      title: translateText(widget.title ?? DialogTextField.kPasswordTitle),
+      hintText: translateText(widget.hintText ?? 'Enter your password'),
       controller: widget.controller,
       prefixIcon: DialogTextField.kPasswordIcon,
       suffixIcon: IconButton(
@@ -294,174 +298,32 @@ class _PasswordWidgetState extends State<PasswordWidget> {
   }
 }
 
-// R-S13/A3 (prompt-before-keying): the CPace handshake needs the box's password BEFORE keying, but
-// a bare-ID first connect has none remembered. The keying then fails closed and surfaces
-// `connect-password-prompt`; this dialog takes the password and, via `sessionSetConnectPassword`,
-// stores it as the connect-password and RECONNECTS — the reconnect keys with it. There is NO
-// post-keying login re-prompt (`enterPasswordDialog`/`wrongPasswordDialog` are excised): CPace is
-// the sole authenticator (R-A1), so the responder never re-asks for a login password over a keyed
-// stream. `reason` is the keying-failure text shown above the field — it names a wrong password or
-// a box re-provisioned with a new password, so a legitimately re-provisioned box is not dead-ended
-// in an eternal "Password Required" loop with no hint of the real cause.
+// CPace credential replacement belongs to this exact session and prompt round.
 void enterConnectPasswordDialog(
     SessionID sessionId,
     int credentialPromptRound,
     OverlayDialogManager dialogManager,
     [String reason = '']) async {
-  await _connectDialog(
-    sessionId,
-    credentialPromptRound,
-    dialogManager,
-    passwordController: TextEditingController(),
-    reason: reason,
-  );
-}
-
-// R-S18/R-X8: the connect-time password dialog (rd-password only). The os-username/os-password
-// fields it used to carry — the operator's OS credentials pushed to the host — are removed: the
-// viewer never solicits OS creds (the host-triggered os-login prompts are gone, the responder
-// strips os_login, and create_login_msg no longer sends it).
-_connectDialog(
-  SessionID sessionId,
-  int credentialPromptRound,
-  OverlayDialogManager dialogManager, {
-  required TextEditingController passwordController,
-  String reason = '',
-}) async {
-  var rememberPassword =
-      await bind.sessionGetRemember(sessionId: sessionId) ?? false;
-  var submitted = false;
-
   dialogManager.dismissAll();
-  dialogManager.show((setState, close, context) {
-    cancel() {
-      close();
-      closeConnection();
-    }
-
-    submit() {
-      final password = passwordController.text.trim();
-      if (password.isEmpty || submitted) return;
-      submitted = true;
-      // R-S13/A3: store the connect-time password + reconnect so the CPace handshake keys with it
-      // (no keyed connection exists yet, so we cannot `login`). CPace is the sole authenticator,
-      // so there is no post-keying `login` path here. The dialog generation grants exactly one
-      // replacement attempt even if button and keyboard submission arrive back-to-back.
-      final accepted = bind.sessionSetConnectPassword(
-          sessionId: sessionId,
-          credentialPromptRound: credentialPromptRound,
-          password: password,
-          remember: rememberPassword);
-      if (!accepted) {
-        submitted = false;
-        return;
-      }
-      close();
-      dialogManager.showLoading(translate('Connecting...'),
-          onCancel: closeConnection);
-    }
-
-    descWidget(String text) {
-      return Column(
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              text,
-              maxLines: 3,
-              softWrap: true,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 16),
-            ),
+  try {
+    await dialogManager.show((setState, close, context) => ConnectPasswordDialog(
+          key: ValueKey('$sessionId:$credentialPromptRound'),
+          reason: reason,
+          readRemember: () => bind.sessionGetRemember(sessionId: sessionId),
+          submitPassword: (password, remember) => bind.sessionSetConnectPassword(
+            sessionId: sessionId,
+            credentialPromptRound: credentialPromptRound,
+            password: password,
+            remember: remember,
           ),
-          Container(
-            height: 8,
-          ),
-        ],
-      );
-    }
-
-    rememberWidget(
-      String desc,
-      bool remember,
-      ValueChanged<bool?>? onChanged,
-    ) {
-      return CheckboxListTile(
-        contentPadding: const EdgeInsets.all(0),
-        dense: true,
-        controlAffinity: ListTileControlAffinity.leading,
-        title: Text(desc),
-        value: remember,
-        onChanged: onChanged,
-      );
-    }
-
-    passwdWidget() {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Keep the actionable fields first. On compact Android screens the
-          // software keyboard substantially reduces the dialog viewport; a long
-          // keying diagnostic before this field can otherwise make first-connect
-          // onboarding impossible. AlertDialog remains scrollable, so the complete
-          // diagnostic below stays available without displacing the focused field.
-          PasswordWidget(
-            controller: passwordController,
-            autoFocus: true,
-          ),
-          rememberWidget(
-            translate('Remember password'),
-            rememberPassword,
-            (v) {
-              if (v != null) {
-                setState(() => rememberPassword = v);
-              }
-            },
-          ),
-          // On a keying FAILURE show the reason (a wrong password, or a box re-provisioned with a
-          // new password), so a legitimately re-provisioned box is not dead-ended in a silent
-          // "Password Required" loop. On a fresh first-connect prompt (empty reason) show the
-          // generic tip instead.
-          if (reason.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SelectableText(reason, style: TextStyle(fontSize: 14)),
-            ),
-          ] else
-            descWidget(translate('verify_rustdesk_password_tip')),
-        ],
-      );
-    }
-
-    return CustomAlertDialog(
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.password_rounded, color: MyTheme.accent),
-          Text(translate('Password Required')).paddingOnly(left: 10),
-        ],
-      ),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        passwdWidget(),
-      ]),
-      actions: [
-        dialogButton(
-          'Cancel',
-          icon: Icon(Icons.close_rounded),
-          onPressed: cancel,
-          isOutline: true,
-        ),
-        dialogButton(
-          'OK',
-          icon: Icon(Icons.done_rounded),
-          onPressed: submit,
-        ),
-      ],
-      onSubmit: submit,
-      onCancel: cancel,
-    );
-  });
+          close: () => close(),
+          onCancel: closeConnection,
+          onAccepted: () => dialogManager.showLoading(translate('Connecting...'),
+              onCancel: closeConnection),
+        ));
+  } catch (error) {
+    debugPrint('Connect password dialog failed: ${error.runtimeType}');
+  }
 }
 
 void showRestartRemoteDevice(PeerInfo pi, String id, SessionID sessionId,

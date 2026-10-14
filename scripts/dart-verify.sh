@@ -328,7 +328,8 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
       test/desktop_tab_retirement_test.dart \
       test/permanent_password_dialog_lifecycle_test.dart \
       test/password_field_semantics_test.dart \
-      test/password_text_field_test.dart
+      test/password_text_field_test.dart \
+      test/connect_password_dialog_lifecycle_test.dart
     set +e
     out="$(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/ 2>&1)"
     analyze_status=$?
@@ -397,6 +398,7 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
     echo "  == R-S11gc obscured password fields retain enabled focused semantics =="
     flutter test --no-pub test/password_field_semantics_test.dart
     flutter test --no-pub test/password_text_field_test.dart
+    flutter test --no-pub test/connect_password_dialog_lifecycle_test.dart
     echo "  == permanent-password dialog owns one mutation through retirement =="
     flutter test --no-pub test/permanent_password_dialog_lifecycle_test.dart
     echo "  == R-S11ex/R-S11ez Linux native texture unregister and callback retirement finality =="

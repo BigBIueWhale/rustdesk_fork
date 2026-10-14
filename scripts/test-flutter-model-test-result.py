@@ -30,6 +30,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "password-fields":
             suites = ["password_text_field_test.dart"]
             names = sorted(result.PASSWORD_FIELD_TESTS)
+        elif profile == "credential-dialog":
+            suites = sorted(result.CREDENTIAL_DIALOG_TESTS)
+            names = sorted(set().union(*result.CREDENTIAL_DIALOG_TESTS.values()))
         else:
             suites = ["address_validator_test.dart"]
             names = sorted(result.DIRECT_ADDRESS_TESTS)
@@ -40,9 +43,13 @@ class ResultTests(unittest.TestCase):
                 "suite": {"id": suite_id, "path": "/test/" + name},
             })
         for test_id, name in enumerate(names):
+            suite_id = test_id % len(suites)
+            if profile == "credential-dialog":
+                suite_id = next(i for i, suite in enumerate(suites)
+                                if name in result.CREDENTIAL_DIALOG_TESTS[suite])
             events.append({
                 "type": "testStart",
-                "test": {"id": test_id, "suiteID": test_id % len(suites), "name": name},
+                "test": {"id": test_id, "suiteID": suite_id, "name": name},
             })
             events.append({
                 "type": "testDone", "testID": test_id,
@@ -67,6 +74,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("frame-queue"), "frame-queue"), (1, 24))
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
+        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (4, 16))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"
             path.write_bytes(b"7\n")
@@ -100,24 +108,27 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address", "password-fields"):
+        for profile in ("frame-queue", "direct-address", "password-fields", "credential-dialog"):
             events = self.events(profile)
-            for edit in ("rename", "duplicate", "suite", "missing"):
+            for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
                     changed = copy.deepcopy(events)
+                    started = [e["test"] for e in changed if e["type"] == "testStart"]
                     if edit == "rename":
-                        changed[2]["test"]["name"] = "unrelated passing test"
+                        started[0]["name"] = "unrelated passing test"
                     elif edit == "duplicate":
-                        changed[4]["test"]["name"] = changed[2]["test"]["name"]
+                        started[1]["name"] = started[0]["name"]
                     elif edit == "suite":
                         changed[1]["suite"]["path"] = "/test/unrelated_test.dart"
+                    elif edit == "wrong-suite":
+                        started[0]["suiteID"] = len(result.CREDENTIAL_DIALOG_TESTS) - 1
                     else:
                         del changed[-3:-1]
                     with self.assertRaises(result.ResultError):
                         self.parse(changed, profile)
 
     def test_failure_skip_and_incomplete_are_rejected(self):
-        for profile in ("models", "frame-queue", "direct-address", "password-fields"):
+        for profile in ("models", "frame-queue", "direct-address", "password-fields", "credential-dialog"):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

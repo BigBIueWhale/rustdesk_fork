@@ -88,6 +88,27 @@ PASSWORD_FIELD_TESTS = {
     "ordinary obscured field is a keyboard learning control",
     "password field retains focused obscured semantics",
 }
+CREDENTIAL_DIALOG_TESTS = {
+    "connect_password_dialog_lifecycle_test.dart": {
+        "connect prompt is present before its saved preference resolves",
+        "retired connect preference cannot change its replacement",
+        "explicit remember choice wins over delayed saved preference",
+        "connect submit admits one accepted replacement attempt",
+        "rejected connect submission retains its prompt for retry",
+        "cancel retires a pending connect preference and callbacks",
+        "failed saved preference needs an explicit remember decision",
+    },
+    "permanent_password_dialog_lifecycle_test.dart": {
+        "one submit owns every action until durable completion",
+        "failed mutation reopens the same dialog owner",
+        "retired dialog ignores its outstanding completion",
+        "replacement dialog takes over the same pending mutation",
+    },
+    "password_text_field_test.dart": PASSWORD_FIELD_TESTS,
+    "password_field_semantics_test.dart": {
+        "obscured dialog field exposes enabled focused semantics",
+    },
+}
 MAXIMUM_EVENTS = 16_384
 MAXIMUM_LINE_BYTES = 1024 * 1024
 
@@ -118,8 +139,9 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "password-fields"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
+    expected_by_suite = None
     if profile == "frame-queue":
         expected_suites = {"latest_frame_queue_test.dart"}
         expected_tests = len(FRAME_QUEUE_TESTS)
@@ -132,6 +154,11 @@ def parse_result(path, profile="models"):
         expected_suites = {"password_text_field_test.dart"}
         expected_tests = len(PASSWORD_FIELD_TESTS)
         expected_names = PASSWORD_FIELD_TESTS
+    elif profile == "credential-dialog":
+        expected_by_suite = CREDENTIAL_DIALOG_TESTS
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     else:
         expected_tests = model_test_count()
     metadata = os.lstat(path)
@@ -197,6 +224,10 @@ def parse_result(path, profile="models"):
                 if not hidden:
                     visible_successes += 1
                     name = tests[test_id][1]
+                    if expected_by_suite is not None:
+                        suite_name = suites[tests[test_id][0]]
+                        require(name in expected_by_suite.get(suite_name, set()),
+                                "test name does not belong to its suite")
                     if profile != "models":
                         require(name not in visible_names, "visible test name is duplicated")
                         visible_names.add(name)
@@ -220,7 +251,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -233,6 +264,7 @@ def main():
         "frame-queue": "FLUTTER_FRAME_QUEUE_TEST_JSON",
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
+        "credential-dialog": "FLUTTER_CREDENTIAL_DIALOG_TEST_JSON",
     }[arguments.profile]
     print("{}=pass suites={} tests={}".format(prefix, suites, tests))
     return 0

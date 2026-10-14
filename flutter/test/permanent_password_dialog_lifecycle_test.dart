@@ -47,6 +47,13 @@ void main() {
 
     final fields = find.byType(TextField);
     expect(fields, findsNWidgets(2));
+    for (var field = 0; field < 2; field++) {
+      await tester.showKeyboard(fields.at(field));
+      final configuration = tester.testTextInput.setClientArgs!;
+      expect(configuration['autocorrect'], isFalse);
+      expect(configuration['enableSuggestions'], isFalse);
+      expect(configuration['enableIMEPersonalizedLearning'], isFalse);
+    }
     await tester.enterText(fields.at(0), 'Runtime1x');
     await tester.enterText(fields.at(1), 'Runtime1x');
     await tester.tap(find.text('OK'));

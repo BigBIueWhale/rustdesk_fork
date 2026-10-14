@@ -2079,6 +2079,21 @@ Current normative specification SHA-256: `3ffe686d37d12f624b305c927bafa3ff71a42e
 
 ### Current authority and source closure
 
+**Connection-password prompt lifetime: source corrected; native dialog execution pending.**
+The prompt is published synchronously before its saved-preference read starts.
+`ConnectPasswordDialog` owns the password controller, initial preference and
+submission latch. Session UUID plus native credential-prompt round select its
+widget identity; cancellation, accepted submission and disposal retire callbacks.
+Late preferences cannot replace newer UI or overwrite an explicit remember choice.
+An unresolved or failed preference cannot silently authorize a storage choice;
+the operator may choose it explicitly. Submission still uses the existing exact
+session/round receiver check. The earlier async-before-publication closure and
+external undisposed controller are removed. The `--credential-dialog` shard
+generates the current bridge from complete pinned Cargo/Pub inputs in private
+guest scratch and targets both actual dialogs, reveal and semantics (16 named
+tests). Current widget/bridge, physical keyboard, real peer and installed-service
+acceptance remain OPEN until their exact execution evidence is retained.
+
 **Password input policy: source corrected; focused component/channel tests accepted.** The
 connection-password reveal control and both permanent-password fields use
 `PasswordTextField`. Credential input always requests a password keyboard with

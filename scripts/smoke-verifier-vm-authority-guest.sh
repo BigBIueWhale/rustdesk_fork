@@ -121,7 +121,7 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --password-fields ]] || exit 2
+        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --password-fields || "${13}" = --credential-dialog ]] || exit 2
         MODE=flutter-model-tests
         FLUTTER_TEST_PROFILE=${13#--}
         ;;
@@ -200,6 +200,7 @@ case "$#:${8:-}" in
         echo 'The focused Flutter queue shard appends --frame-queue to --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused Flutter address shard appends --direct-address to that same source-bound invocation.' >&2
         echo 'The focused password input shard appends --password-fields to that same source-bound invocation.' >&2
+        echo 'The credential dialog shard appends --credential-dialog and generates its exact bridge in private guest scratch.' >&2
         echo 'The focused Rust clipboard shard appends --clipboard to --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused whiteboard state shard appends --whiteboard-presentation to that same source-bound invocation.' >&2
         echo 'The focused whiteboard client state shard appends --whiteboard-client to that same source-bound invocation.' >&2
@@ -6764,8 +6765,19 @@ run_flutter_model_tests() {
     local source_archive_sha input_mount_options cargo_receipt pub_receipt post_pub_receipt
     local tools_freshness_line source_authority source_writable=true
     local memory=8g memory_bytes=8589934592 result_prefix=FLUTTER_MODEL_TEST_JSON
-    local expected_result queue_sha256 tests_sha256 address_sha256 vectors_sha256
     local -a toolchain_mounts=()
+    local bridge_required=0
+    if [ "$FLUTTER_TEST_PROFILE" = models ] || [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+        bridge_required=1
+        toolchain_mounts=(
+            --mount "type=bind,source=$cargo_vendor,target=/online/cargo-vendor,readonly"
+            --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly"
+            --mount "type=bind,source=$llvm_archive,target=/inputs/llvm.tar.xz,readonly"
+            --mount "type=bind,source=$cargo_config,target=/inputs/cargo-vendor-config.toml,readonly"
+            --mount "type=bind,source=$frb_codegen,target=/inputs/flutter_rust_bridge_codegen,readonly"
+        )
+    fi
+    local expected_result queue_sha256 tests_sha256 address_sha256 vectors_sha256
     local source_mount="type=bind,source=$source_root,target=/source"
     if [ "$FLUTTER_TEST_PROFILE" != models ]; then
         memory=2g
@@ -6776,6 +6788,11 @@ run_flutter_model_tests() {
         elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
             result_prefix=FLUTTER_PASSWORD_FIELD_TEST_JSON
             expected_result='suites=1 tests=4'
+        elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+            memory=3g
+            memory_bytes=3221225472
+            result_prefix=FLUTTER_CREDENTIAL_DIALOG_TEST_JSON
+            expected_result='suites=4 tests=16'
         else
             result_prefix=FLUTTER_DIRECT_ADDRESS_TEST_JSON
             expected_result='suites=1 tests=19'
@@ -6786,17 +6803,11 @@ run_flutter_model_tests() {
             printf 'FLUTTER_FRAME_QUEUE_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
             printf 'FLUTTER_PASSWORD_FIELD_STAGE=verify-source-and-inputs\n'
+        elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+            printf 'FLUTTER_CREDENTIAL_DIALOG_STAGE=verify-source-and-inputs\n'
         else
             printf 'FLUTTER_DIRECT_ADDRESS_STAGE=verify-source-and-inputs\n'
         fi
-    else
-        toolchain_mounts=(
-            --mount "type=bind,source=$cargo_vendor,target=/online/cargo-vendor,readonly"
-            --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly"
-            --mount "type=bind,source=$llvm_archive,target=/inputs/llvm.tar.xz,readonly"
-            --mount "type=bind,source=$cargo_config,target=/inputs/cargo-vendor-config.toml,readonly"
-            --mount "type=bind,source=$frb_codegen,target=/inputs/flutter_rust_bridge_codegen,readonly"
-        )
     fi
 
     [[ "$FLUTTER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -6881,7 +6892,7 @@ run_flutter_model_tests() {
         && [ "$(sha256sum "$flutter_archive" | awk '{ print $1 }')" = \
              "$SHA256_FLUTTER_3_24_5" ] \
         || fail 'sealed Flutter 3.24.5 archive differs'
-    if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+    if [ "$bridge_required" -eq 1 ]; then
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
           "1000:1000:400:1:$SIZE_RUST_1_75" ] \
             && [ "$(sha256sum "$rust_archive" | awk '{ print $1 }')" = \
@@ -6982,6 +6993,7 @@ run_flutter_model_tests() {
             --mount "type=bind,source=$result_validator,target=/authority/result.py,readonly" \
             --mount "type=bind,source=$model_count_file,target=/authority/flutter-model-test-count.txt,readonly" \
             --env "FLUTTER_TEST_PROFILE=$FLUTTER_TEST_PROFILE" \
+            --env "FLUTTER_BRIDGE_REQUIRED=$bridge_required" \
             --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
             --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=700,uid=1000,gid=1000 \
@@ -7011,10 +7023,19 @@ run_flutter_model_tests() {
                 [ "$(stat -c "%u:%g:%a:%h" /authority/flutter-model-test-count.txt)" = 0:0:444:1 ]
                 [ ! -w /authority/flutter-model-test-count.txt ]
                 tar -C /work/toolchain -xf /inputs/flutter.tar.xz
-                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     mkdir /work/cargo-home
                     tar -C /work/toolchain -xf /inputs/rust.tar.xz
-                    tar -C /work/toolchain -xf /inputs/llvm.tar.xz
+                    if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                        llvm_root=clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04
+                        tar -C /work/toolchain -xf /inputs/llvm.tar.xz \
+                            "$llvm_root/lib/libclang.so" \
+                            "$llvm_root/lib/libclang.so.15" \
+                            "$llvm_root/lib/libclang.so.15.0.6" \
+                            "$llvm_root/lib/clang/15.0.6/include"
+                    else
+                        tar -C /work/toolchain -xf /inputs/llvm.tar.xz
+                    fi
                     rust_installer=(/work/toolchain/rust-1.*/install.sh)
                     [ "${#rust_installer[@]}" -eq 1 ] && [ -f "${rust_installer[0]}" ]
                     "${rust_installer[0]}" --prefix=/work/toolchain/rustinstall \
@@ -7039,11 +7060,11 @@ run_flutter_model_tests() {
                 export GIT_ATTR_NOSYSTEM=1 GIT_NO_REPLACE_OBJECTS=1
                 export GIT_OPTIONAL_LOCKS=0
                 export PATH=/work/toolchain/flutter/bin:/work/toolchain/flutter/bin/cache/dart-sdk/bin:/usr/bin:/bin
-                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     export PATH=/work/toolchain/rustinstall/bin:$PATH
                 fi
                 [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
-                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     {
                         printf "[net]\noffline = true\n"
                         sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
@@ -7055,7 +7076,12 @@ run_flutter_model_tests() {
                 export REAL_FLUTTER=/work/toolchain/flutter/bin/flutter
                 export PATH=/work/flutter-shim:$PATH
                 project_root=/source/flutter
-                if [ "$FLUTTER_TEST_PROFILE" != models ]; then
+                codegen_source=/source
+                if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                    cp -a /source /work/source
+                    codegen_source=/work/source
+                    project_root=/work/source/flutter
+                elif [ "$FLUTTER_TEST_PROFILE" != models ]; then
                     cp -a /source/flutter /work/project
                     project_root=/work/project
                 fi
@@ -7093,6 +7119,12 @@ run_flutter_model_tests() {
                     format_paths=(lib/common/formatter/direct_address.dart test/address_validator_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
                     format_paths=(lib/common/widgets/password_text_field.dart test/password_text_field_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                    format_paths=(
+                        lib/common/widgets/connect_password_dialog.dart
+                        test/connect_password_dialog_lifecycle_test.dart
+                        test/permanent_password_dialog_lifecycle_test.dart
+                    )
                 elif [ "$FLUTTER_TEST_PROFILE" = models ]; then
                     format_paths+=(
                         lib/models/android_permission_request_coordinator.dart
@@ -7135,9 +7167,9 @@ run_flutter_model_tests() {
                     /usr/bin/python3 -I -S \
                         /source/scripts/verify-display-selection-finality.py --repo /source
                 fi
-                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     codegen_log=/work/codegen.log
-                    if ! (cd /source && \
+                    if ! (cd "$codegen_source" && \
                         /work/toolchain/flutter_rust_bridge_codegen \
                             --rust-input ./src/flutter_ffi.rs \
                             --dart-output ./flutter/lib/generated_bridge.dart \
@@ -7151,22 +7183,32 @@ run_flutter_model_tests() {
                     ! grep -Fq "[SEVERE]" "$codegen_log" \
                         || { tail -n 160 "$codegen_log" >&2; exit 1; }
                     for generated in \
-                        /source/src/bridge_generated.rs \
-                        /source/src/bridge_generated.io.rs \
-                        /source/flutter/lib/generated_bridge.dart \
-                        /source/flutter/lib/generated_bridge.freezed.dart; do
+                        "$codegen_source/src/bridge_generated.rs" \
+                        "$codegen_source/src/bridge_generated.io.rs" \
+                        "$codegen_source/flutter/lib/generated_bridge.dart" \
+                        "$codegen_source/flutter/lib/generated_bridge.freezed.dart"; do
                         [ -s "$generated" ] && [ ! -L "$generated" ]
                     done
                     sed -i "s/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g" \
-                        /source/flutter/lib/generated_bridge.dart
+                        "$codegen_source/flutter/lib/generated_bridge.dart"
                 fi
                 [ "$project_lock" = "$(sha256sum pubspec.lock | awk "{print \$1}")" ]
                 tests=(test/latest_frame_queue_test.dart)
                 test_budget=90s
+                test_concurrency=4
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
                     tests=(test/address_validator_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
                     tests=(test/password_text_field_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                    tests=(
+                        test/connect_password_dialog_lifecycle_test.dart
+                        test/permanent_password_dialog_lifecycle_test.dart
+                        test/password_text_field_test.dart
+                        test/password_field_semantics_test.dart
+                    )
+                    test_budget=120s
+                    test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = models ]; then
                     tests=(
                         test/global_event_dispatcher_test.dart
@@ -7200,7 +7242,7 @@ run_flutter_model_tests() {
                     [ -f "$test_path" ] && [ ! -L "$test_path" ]
                 done
                 if ! timeout --signal=TERM --kill-after=10s "$test_budget" \
-                    flutter test --no-pub --reporter json --concurrency=4 \
+                    flutter test --no-pub --reporter json --concurrency="$test_concurrency" \
                         --timeout=30s \
                         "${tests[@]}" >/work/test.json 2>/work/test.err; then
                     tail -c 4194304 /work/test.json >&2
@@ -7220,17 +7262,30 @@ run_flutter_model_tests() {
                     elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
                         cmp /source/flutter/lib/common/widgets/password_text_field.dart lib/common/widgets/password_text_field.dart
                         cmp /source/flutter/test/password_text_field_test.dart test/password_text_field_test.dart
+                    elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                        diff -r --exclude=generated_bridge.dart \
+                            --exclude=generated_bridge.freezed.dart /source/flutter/lib lib
+                        for relative in \
+                            lib/common/widgets/connect_password_dialog.dart \
+                            lib/common/widgets/dialog.dart \
+                            lib/common/widgets/permanent_password_dialog.dart \
+                            lib/common/widgets/password_text_field.dart \
+                            "${tests[@]}"; do
+                            cmp "/source/flutter/$relative" "$relative"
+                        done
                     else
                         cmp /source/flutter/lib/common/formatter/direct_address.dart lib/common/formatter/direct_address.dart
                         cmp /source/flutter/test/address_validator_test.dart test/address_validator_test.dart
                         cmp /source/flutter/test/fixtures/direct_address.json test/fixtures/direct_address.json
                     fi
-                    [ ! -e /work/toolchain/rustinstall ]
-                    [ ! -e /work/toolchain/flutter_rust_bridge_codegen ]
-                    [ ! -e /inputs/rust.tar.xz ]
-                    [ ! -e /inputs/llvm.tar.xz ]
-                    [ ! -e /online/cargo-vendor ]
-                    [ ! -e lib/generated_bridge.dart ]
+                    if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 0 ]; then
+                        [ ! -e /work/toolchain/rustinstall ]
+                        [ ! -e /work/toolchain/flutter_rust_bridge_codegen ]
+                        [ ! -e /inputs/rust.tar.xz ]
+                        [ ! -e /inputs/llvm.tar.xz ]
+                        [ ! -e /online/cargo-vendor ]
+                        [ ! -e lib/generated_bridge.dart ]
+                    fi
                 fi
             '
     )"
@@ -7258,6 +7313,8 @@ run_flutter_model_tests() {
         printf 'FLUTTER_DIRECT_ADDRESS_STAGE=run-production-validator-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
         printf 'FLUTTER_PASSWORD_FIELD_STAGE=run-production-input-tests\n'
+    elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+        printf 'FLUTTER_CREDENTIAL_DIALOG_STAGE=run-production-dialog-tests\n'
     fi
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
@@ -7322,6 +7379,11 @@ run_flutter_model_tests() {
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$password_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+        printf 'FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=%s tree=%s suites=4 tests=16 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+            "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+            "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     else
         printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=23 tests=%s flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$model_test_count" \

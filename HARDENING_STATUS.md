@@ -2110,7 +2110,7 @@ Current normative specification SHA-256: `5c603741c7af7a6137988ed139069d0c23e228
 
 ### Current authority and source closure
 
-**Resolution restoration record identity (R-T4): source corrected; focused execution pending.**
+**Resolution restoration record identity (R-T4): production component accepted; integration OPEN.**
 The registry privately retains an immutable original-resolution object for each output.
 Every change publication creates a fresh object while preserving the first original size.
 Restoration holds that exact object across its unlocked native callback and removes it
@@ -2119,7 +2119,12 @@ completion to delete a newer publication. The value-equality path, unused reques
 field and commented third-party-change branch are deleted. Original-resolution reads
 use a read lock. `--resolution-restoration-tests` compiles the actual production module
 with six named tests, including two controlled cross-thread replacement schedules,
-failure/retry, invalid dimensions and callback unwind. Native callbacks are fixtures;
+failure/retry, invalid dimensions and callback unwind. Source `2c01f918` passed all six
+in 60 VM seconds; artifact SHA-256
+`08cd2a22827ea9ae66a78eeabfc9f30e66285a062867c6b6d9b7a312ccb94daf`.
+`.harness-state/verifier-vm/resolution-restoration-accepted-2c01f918.json` binds exact
+source, raw results, frozen inputs, endpoint observations, limits and joined cleanup.
+Native callbacks are fixtures;
 actual X-server/Remote changes, blocking query and detached setter ownership, full app
 and installed/platform acceptance remain OPEN. Credential/dialog and Android CM work
 remain parked under the user's pivot.

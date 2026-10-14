@@ -171,7 +171,8 @@ void main() {
     expect(Get.isRegistered<DesktopTabController>(), isFalse);
     Get.put<DesktopTabController>(controller);
     try {
-      msgBox(const Uuid().v4obj(), 'error', 'notice', 'error detail', '', manager);
+      msgBox(
+          const Uuid().v4obj(), 'error', 'notice', 'error detail', '', manager);
       await tester.pump();
       final submit = _messageButton(tester, 'OK');
       final unrelated = manager.show<void>(
@@ -326,7 +327,8 @@ void main() {
     }
   });
 
-  testWidgets('retired message submit cannot act before unmount', (tester) async {
+  testWidgets('retired message submit cannot act before unmount',
+      (tester) async {
     final manager = await _manager(tester);
     final session = const Uuid().v4obj();
     final events = <String>[];
@@ -361,7 +363,8 @@ void main() {
       final manager = await _manager(tester);
       final session = const Uuid().v4obj();
       try {
-        msgBox(session, 'custom-hasclose', 'old request', 'confirm', '', manager);
+        msgBox(
+            session, 'custom-hasclose', 'old request', 'confirm', '', manager);
         await tester.pump();
         final oldElement = tester.element(find.byType(CustomAlertDialog));
         final action = cancel
@@ -369,7 +372,8 @@ void main() {
                 .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
                 .onCancel!
             : _messageButton(tester, 'Close');
-        msgBox(session, 'custom-hasclose', 'new request', 'confirm', '', manager);
+        msgBox(
+            session, 'custom-hasclose', 'new request', 'confirm', '', manager);
         expect(oldElement.mounted, isTrue);
         action();
         await tester.pump();
@@ -473,7 +477,8 @@ void main() {
     }
   });
 
-  testWidgets('dialog close grants only its exact current entry', (tester) async {
+  testWidgets('dialog close grants only its exact current entry',
+      (tester) async {
     final manager = await _manager(tester);
     try {
       late DialogClose originalClose;
@@ -544,9 +549,8 @@ void main() {
       final cancel = tester
           .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
           .onCancel!;
-      final replacement = manager.show<void>(
-          (_, __, ___) => const Text('replacement'),
-          tag: 'state');
+      final replacement = manager
+          .show<void>((_, __, ___) => const Text('replacement'), tag: 'state');
       expect(oldElement.mounted, isTrue);
       cancel();
       expect(cancels, 0);

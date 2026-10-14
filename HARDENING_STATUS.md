@@ -2298,6 +2298,12 @@ terminal window, remains required. This dialog workload now reserves 4 GiB guest
 RAM plus 7 GiB scratch, 6 GiB host headroom and 1 GiB overhead, for 18 GiB admission.
 Its 6 GiB overlay ceiling is reserved in full before launch; prepared inputs may occupy
 at most 1 GiB. Current compilation/runtime execution with this profile remains PENDING.
+The `e333f4af` native attempt stopped at the pinned Dart formatter before executing tests.
+Its six emitted whitespace edits in `dialog_close_ownership_test.dart` are applied without
+changing test tokens/assertions. The 7 GiB scratch/6 GiB overlay guard stayed within bounds,
+96 control hashes matched, exact owners joined and failed diagnostics were retained and
+reconciled. `.harness-state/verifier-vm/credential-format-failed-e333f4af.json` records the
+failure; it supplies no dialog test or application acceptance.
 
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.

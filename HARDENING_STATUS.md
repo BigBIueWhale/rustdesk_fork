@@ -57,7 +57,7 @@ obligations and remaining document-role cleanup stay open.
 Current normative specification identity:
 
 ```text
-46aa53b2e65afd2ce6097dbda14bfb3ec685cee930177c963d956c85585a38b7  requirements.html
+d0f7d7c8d87f024373e5cec793c3218d1b6e50d3c47bbbca52faebc2f2d6612c  requirements.html
 ```
 
 ## Current Verdict
@@ -115,6 +115,7 @@ These documentation corrections supply no compiler, artifact, scanner or native 
 
 | Scope | Retained contract and current disposition |
 | --- | --- |
+| R-S9 credential contract | Upstream storage-change narration, the legacy `PeerConfig.password` field presented as the active CPace cache, and repeated balanced-PAKE rationale are removed. Twenty obligations retain policy pins, NFC/Argon2id/fixed salt, sole durable PRS, legacy/preset exclusion, live reads/rotation, remembered PRS/manual provisioning, independent box passwords, desktop/mobile secrecy and the accepted connect-equivalent residual. The clause shrinks 5,756→3,382 bytes; all other specification bytes, 406 requirement ID/levels, 36 anchors and its reference set remain equal. Classification is in `.harness-state/verifier-vm/rs9-credential-contract-5753c573.json`. This changes documentation only; native/installed and whole-document acceptance remain OPEN. |
 | R-S11b-3q / Appendix C #241 | The typed-PRS availability, sole receiver-derived status, preset/local-surface exclusion and startup-refusal contract is intact. R-S11b-3q's obsolete-API repair narrative is removed; the full normative opening and required suffix and Appendix disposition are unchanged. |
 | Appendix C #118 | Repair narration is removed; the full Windows terminal principal, token/lease identity, cancellation, pipe rights, output/finality bounds, teardown and referenced contract remain. |
 | Appendix C #354–#362 | Findings retain timeless refresh, native display/cursor ownership, service/CM/writer bounds, clipboard routing and terminal-log risks. Source-repair narration and symptom theories are deleted; all nine complete dispositions, requirement bodies, IDs and references are unchanged. |

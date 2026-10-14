@@ -47,7 +47,8 @@ void main() {
     await tester.pump();
     expect(tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
         isTrue);
-    expect(tester.widget<ButtonStyleButton>(_button('OK')).onPressed, isNotNull);
+    expect(
+        tester.widget<ButtonStyleButton>(_button('OK')).onPressed, isNotNull);
 
     await tester.enterText(find.byType(TextField), 'Exact1x-\'"');
     for (var reveal = 0; reveal < 2; reveal++) {
@@ -55,7 +56,8 @@ void main() {
       await tester.pump();
       final configuration = tester.testTextInput.setClientArgs!;
       expect(configuration['obscureText'], reveal == 1);
-      expect(configuration['inputType'], TextInputType.visiblePassword.toJson());
+      expect(
+          configuration['inputType'], TextInputType.visiblePassword.toJson());
       expect(configuration['autocorrect'], isFalse);
       expect(configuration['enableSuggestions'], isFalse);
       expect(configuration['enableIMEPersonalizedLearning'], isFalse);
@@ -75,8 +77,7 @@ void main() {
     });
     final oldController =
         tester.widget<TextField>(find.byType(TextField)).controller!;
-    await _show(tester,
-        owner: 'new', readRemember: () => newPreference.future);
+    await _show(tester, owner: 'new', readRemember: () => newPreference.future);
     oldPreference.complete(true);
     await tester.pump();
     expect(oldReads, 1);
@@ -86,7 +87,8 @@ void main() {
     expect(() => oldController.addListener(() {}), throwsFlutterError);
     newPreference.complete(false);
     await tester.pump();
-    expect(tester.widget<ButtonStyleButton>(_button('OK')).onPressed, isNotNull);
+    expect(
+        tester.widget<ButtonStyleButton>(_button('OK')).onPressed, isNotNull);
     expect(tester.takeException(), isNull);
   });
 
@@ -124,7 +126,8 @@ void main() {
         close: () => events.add('close'),
         onAccepted: () => events.add('accepted'));
     await tester.enterText(find.byType(TextField), ' Runtime1x ');
-    final dialog = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog));
+    final dialog =
+        tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog));
     dialog.onSubmit!();
     dialog.onSubmit!();
     expect(events, ['submit:Runtime1x:false', 'close', 'accepted']);
@@ -158,7 +161,8 @@ void main() {
         readRemember: () => preference.future,
         close: () => events.add('close'),
         onCancel: () => events.add('cancel'));
-    final dialog = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog));
+    final dialog =
+        tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog));
     dialog.onCancel!();
     dialog.onCancel!();
     preference.complete(true);
@@ -184,7 +188,8 @@ void main() {
       expect(tester.widget<ButtonStyleButton>(_button('OK')).onPressed, isNull);
       await tester.tap(find.byType(CheckboxListTile));
       await tester.pump();
-      expect(tester.widget<ButtonStyleButton>(_button('OK')).onPressed, isNotNull);
+      expect(
+          tester.widget<ButtonStyleButton>(_button('OK')).onPressed, isNotNull);
       expect(tester.takeException(), isNull);
     }
   });

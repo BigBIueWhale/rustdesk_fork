@@ -10436,9 +10436,9 @@ else
   echo "  ok  R-S11e-13 macOS clipboard-file paste placeholders use a private per-context temp dir with fd-relative exclusive create/unlink"
 fi
 
-# (3c-iii-b) Linux FUSE clipboard mount points live under /tmp, but must not
-# adopt symlinked/foreign-owned temp state or recreate upstream's 0777 chmod.
-echo "== (3c-iii-b) Linux FUSE clipboard mount-point component validation (R-S11a/R-S8) =="
+# (3c-iii-b) Execute mount-component byte validation. These tests do not
+# exercise directory ownership, symlink races, or an actual FUSE mount.
+echo "== (3c-iii-b) Linux FUSE clipboard mount-component byte validation (R-S11a/R-S8) =="
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fuse_mount_component --color never
 
 # (3c-iii-c) Linux FUSE FileContentsResponse delivery is peer-driven after
@@ -14202,35 +14202,9 @@ else
   rc=1
 fi
 rm -f "$native_watch_log"
-# R-S11a/R-S8 companion: Linux clipboard-file FUSE mount setup uses /tmp by
-# design, so every path component must be explicit, no-follow, current-euid
-# owned, and non-world-writable. Never silently adopt or chmod a pre-existing
-# /tmp path from a hostile local namespace.
+# Supplementary source scan for two forbidden FUSE setup operations.
+# Native directory ownership and no-follow behavior require isolated OS tests.
 r_fuse_mount=
-grep -qF 'prepare_fuse_mount_point(&mount_point)?' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount init-not-fail-closed"
-grep -qF 'fn fuse_component_cstring(component: &OsStr, label: &str) -> Result<CString, CliprdrError>' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount component-validator"
-grep -qF 'bytes.is_empty() || bytes == b"." || bytes == b".." || bytes.contains(&b' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount component-dot-slash-guard"
-grep -qF 'CString::new(bytes)' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount component-nul-guard"
-grep -qF 'libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount nofollow-directory-open"
-grep -qF 'libc::mkdirat(parent_fd, name.as_ptr(), 0o755 as libc::mode_t)' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount mkdirat-0755"
-grep -qF 'libc::openat(' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount openat"
-grep -qF 'let current_euid = unsafe { libc::geteuid() };' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount geteuid"
-grep -qF 'if stat.st_uid != current_euid' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount foreign-owner-reject"
-grep -qF 'libc::fchmod(guard.0, 0o755 as libc::mode_t)' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount fchmod-0755"
-grep -qF 'FUSE mount point must stay under /tmp/<app>' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount tmp-app-boundary"
-grep -qF 'fuse_mount_component_rejects_empty_dot_dotdot_slash_and_nul' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_mount="$r_fuse_mount component-reject-test"
 if grep -qF 'fs::create_dir(mount_point).ok()' libs/clipboard/src/platform/unix/fuse/mod.rs; then
   r_fuse_mount="$r_fuse_mount silent-create-dir"
 fi
@@ -14238,9 +14212,9 @@ if grep -qF 'Permissions::from_mode(0o777)' libs/clipboard/src/platform/unix/fus
   r_fuse_mount="$r_fuse_mount world-writable-chmod"
 fi
 if [ -n "$r_fuse_mount" ]; then
-  echo "  FAIL R-S11a/R-S8: Linux FUSE clipboard mount-point no-follow/no-adoption hardening regressed:$r_fuse_mount"; rc=1
+  echo "  FAIL R-S11a/R-S8: forbidden FUSE setup source operation:$r_fuse_mount"; rc=1
 else
-  echo "  ok  R-S11a/R-S8 Linux FUSE clipboard mount-point setup is fail-closed, no-follow, current-euid-owned, and non-world-writable"
+  echo "  ok  R-S11a/R-S8 supplementary source scan: discarded directory-create errors and 0777 chmod absent; native mount safety untested"
 fi
 # Supplementary invariants; the focused VM executes both production read implementations.
 r_fuse_response_queue=

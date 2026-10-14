@@ -1302,6 +1302,12 @@ Focused source gates in `scripts/verify.sh` bind derivation-before-options, disp
 exact screenshot ownership, viewer/mobile confinement, voice-call ownership, and the Linux response router;
 `libs/clipboard` tests exercise the route state machine and request/response behavior. Source gates are
 supplementary; the native FUSE component above executes production-library code without mounting it.
+The mount-setup wording checklist is removed: matching function names, syscall text and a test name
+cannot establish directory ownership or no-follow behavior. The shared runner retains both executable
+`fuse_mount_component` byte-validation tests and two supplementary scans for discarded directory-create
+errors and mode-0777 chmod. Their output states that native mount safety is untested. This cleanup
+supplies no new runtime evidence; native directory/principal/symlink-race and mounted-FUSE acceptance
+remain OPEN.
 The global OPEN tables remain authoritative for exact-current native packages,
 cross-platform peer behavior, focus/background freshness, latency, reconnect, concurrency, soak, resource
 bounds, cleanup, cold artifacts, independent reproduction, and external review.

@@ -57,7 +57,7 @@ obligations and remaining document-role cleanup stay open.
 Current normative specification identity:
 
 ```text
-560a0d4efb1752481ecb65d0ac936e7e75058846202c315434b884ac3ef0e58f  requirements.html
+46aa53b2e65afd2ce6097dbda14bfb3ec685cee930177c963d956c85585a38b7  requirements.html
 ```
 
 ## Current Verdict
@@ -14077,16 +14077,21 @@ explicit write failure rather than a successful empty block.
 native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.
 
 **Per-block resource admission — source corrected; native execution PENDING.** Sending and
-receiving now share the existing 128-KiB block size. `TransferJob::write` rejects larger
-encoded/raw input and bounds decoded output to that size before opening a stream, changing
-files, writing bytes or publishing progress; memory-backed receive jobs use the same bound.
-The previous receiver used the general 64-MiB decoder limit and admitted oversized blocks
-when the declared file was large enough. Three new production-library tests cover raw,
-compressed-output and compressed-input refusal for file/memory jobs, six actual
-sender-to-receiver file round trips across empty/exact-boundary/multi-block sizes, and
-memory-stream boundary/tail recovery. The existing `--hbb-common-fs` gate requires and
-exports those names. These new tests have not compiled or executed; earlier library
-acceptance above does not cover this change. Installed/native integration remains OPEN.
+receiving share the 128-KiB size from private `fs/file_block.rs`. Its `decode` admits raw
+bytes by borrowing and compressed bytes only through a 128-KiB zstd history-window limit
+and one fixed 128-KiB-plus-one-byte output buffer. Input/output excess, malformed/truncated
+content and larger advertised windows refuse before `TransferJob::write` opens a stream,
+changes files, writes bytes or publishes progress; memory receive uses the same boundary.
+The general decoder path is removed from file writes. `--file-block-tests` compiles the
+actual decoder and production compressor with root-locked zstd 0.13.1 and the extracted
+actual compression-level declaration. Six cases cover raw backing identity, production
+boundary round trips, total output across concatenated frames, three excessive window
+headers with the previous decoder as a positive control, frame-boundary window persistence,
+malformed/truncated input and the nearest existing generic-decoder case. Execution remains
+PENDING. The three `--hbb-common-fs` filesystem/memory tests and whole-parent compilation
+also remain unexecuted after RAM admission refusal; the component lane will not replace
+them. Earlier library acceptance does not cover these changes. Installed/native integration,
+whole-process allocation/resource measurements and other-platform acceptance remain OPEN.
 
 | Surface | Current behavior |
 | --- | --- |

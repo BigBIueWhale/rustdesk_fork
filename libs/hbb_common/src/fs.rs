@@ -18,9 +18,12 @@ use tokio::{
 use crate::{anyhow::anyhow, bail, get_version_number, message_proto::*, ResultType, Stream};
 // https://doc.rust-lang.org/std/os/windows/fs/trait.MetadataExt.html
 use crate::{
-    compress::{compress, try_decompress_with_limit},
+    compress::compress,
     config::Config,
 };
+
+mod file_block;
+use file_block::SIZE as FILE_TRANSFER_BLOCK_SIZE;
 
 static NEXT_JOB_ID: AtomicI32 = AtomicI32::new(1);
 
@@ -32,7 +35,6 @@ pub const MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN: usize = 32;
 pub const MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN: usize = 32;
 const FILE_ENUMERATION_BUDGET_EXCEEDED: &str = "file enumeration budget exceeded";
 const EMPTY_DIRECTORY_REMOVAL_BUDGET_EXCEEDED: &str = "empty-directory removal budget exceeded";
-const FILE_TRANSFER_BLOCK_SIZE: usize = 128 * 1024;
 
 #[derive(Default)]
 struct EmptyDirectoryRemovalState {
@@ -3566,15 +3568,7 @@ impl TransferJob {
                 }
             }
         }
-        if block.data.len() > FILE_TRANSFER_BLOCK_SIZE {
-            bail!("file block exceeds the 128 KiB limit");
-        }
-        let decoded = if block.compressed {
-            Some(try_decompress_with_limit(&block.data, FILE_TRANSFER_BLOCK_SIZE)?)
-        } else {
-            None
-        };
-        let bytes = decoded.as_deref().unwrap_or(block.data.as_ref());
+        let bytes = file_block::decode(&block.data, block.compressed)?;
         let receive_file_offset = if file_backed && block.file_num != self.file_num {
             0
         } else {
@@ -3639,7 +3633,7 @@ impl TransferJob {
         self.data_stream
             .as_mut()
             .ok_or(anyhow!("data stream is None"))?
-            .write_all(bytes)
+            .write_all(&bytes)
             .await?;
         self.receive_file_offset = receive_file_offset;
         self.finished_size = finished_size;
@@ -7027,7 +7021,8 @@ mod tests {
         let tmp = TestTempDir::new("rustdesk_receive_block_limit");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
         let oversized = vec![0x5a; LIMIT + 1];
-        let encoded = compress(&oversized).expect("encode oversized output");
+        let mut encoded = compress(&oversized[..LIMIT]).expect("encode the first frame");
+        encoded.extend(compress(&oversized[LIMIT..]).expect("encode the excess-output frame"));
         assert!(encoded.len() < LIMIT, "fixture must cross only the decoded limit");
 
         for file_backed in [true, false] {

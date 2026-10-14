@@ -1314,7 +1314,9 @@ truncation or cardinality, closes all delivered handles on refusal, and admits e
 descriptor. `MSG_CMSG_CLOEXEC` and `F_DUPFD_CLOEXEC` establish inheritance exclusion atomically;
 the separate flag-setting windows are deleted. The private production module has nine real Unix
 transfer/lifetime/exec tests and a focused `--fusermount-fd-tests` lane with the prior native functions
-as an A/B control. **Execution pending:** those tests do not yet provide accepted evidence. Native
+as an A/B control. **Execution pending:** source `1049cbcb` refused before VM creation because its
+unchanged admission required 25,600 MiB and found 24,378 MiB. No compiler or test ran; the refusal
+is retained in `.harness-state/verifier-vm/fusermount-fd-ram-refusal-1049cbcb.json`. Native
 helper launch/wait/failure, device identity, directory/principal/race, mounted FUSE, complete parent
 compilation, installed and release acceptance remain OPEN.
 The global OPEN tables remain authoritative for exact-current native packages,

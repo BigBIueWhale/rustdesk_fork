@@ -10414,11 +10414,7 @@ impl Connection {
                     (display.height() as f64 / scale).round() as _,
                 );
                 if record_changed {
-                    display_service::set_last_changed_resolution(
-                        &name,
-                        original,
-                        (r.width, r.height),
-                    );
+                    display_service::remember_original_resolution(&name, original);
                 }
                 if let Err(e) =
                     crate::platform::change_resolution(&name, r.width as _, r.height as _)

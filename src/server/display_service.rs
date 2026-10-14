@@ -10,6 +10,8 @@ use hbb_common::protobuf::MessageField;
 use scrap::Display;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, Ordering};
+mod resolution_restore;
+use resolution_restore::ResolutionRestorations;
 
 // https://github.com/rustdesk/rustdesk/discussions/6042, avoiding dbus call
 
@@ -18,15 +20,9 @@ pub const NAME: &'static str = "display";
 #[cfg(windows)]
 const DUMMY_DISPLAY_SIDE_MAX_SIZE: usize = 1024;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct ChangedResolution {
-    original: (i32, i32),
-    changed: (i32, i32),
-}
-
 lazy_static::lazy_static! {
     static ref IS_CAPTURER_MAGNIFIER_SUPPORTED: bool = is_capturer_mag_supported();
-    static ref CHANGED_RESOLUTIONS: Arc<RwLock<HashMap<String, ChangedResolution>>> = Default::default();
+    static ref RESOLUTION_RESTORATIONS: ResolutionRestorations = Default::default();
     // Initial primary display index.
     // It should not be updated when displays changed.
     pub static ref PRIMARY_DISPLAY_IDX: usize = get_primary();
@@ -120,81 +116,23 @@ pub(super) fn check_display_changed(
 }
 
 #[inline]
-pub fn set_last_changed_resolution(display_name: &str, original: (i32, i32), changed: (i32, i32)) {
-    let mut lock = CHANGED_RESOLUTIONS.write().unwrap();
-    match lock.get_mut(display_name) {
-        Some(res) => res.changed = changed,
-        None => {
-            lock.insert(
-                display_name.to_owned(),
-                ChangedResolution { original, changed },
-            );
-        }
-    }
+pub fn remember_original_resolution(display_name: &str, original: (i32, i32)) {
+    RESOLUTION_RESTORATIONS.record(display_name, original);
 }
 
 #[inline]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn restore_resolutions() -> ResultType<()> {
-    restore_changed_resolutions(&CHANGED_RESOLUTIONS, |name, width, height| {
-        crate::platform::change_resolution(name, width, height)
-    })
-}
-
-#[cfg(any(not(any(target_os = "android", target_os = "ios")), test))]
-fn restore_changed_resolutions<F>(
-    changed_resolutions: &RwLock<HashMap<String, ChangedResolution>>,
-    mut restore: F,
-) -> ResultType<()>
-where
-    F: FnMut(&str, usize, usize) -> ResultType<()>,
-{
-    let pending = changed_resolutions
-        .read()
-        .unwrap()
-        .iter()
-        .map(|(name, resolution)| (name.clone(), resolution.clone()))
-        .collect::<Vec<_>>();
-    let mut failures = Vec::new();
-    for (name, resolution) in pending {
-        let (w, h) = resolution.original;
-        log::info!("Restore resolution of display '{}' to ({}, {})", name, w, h);
-        let (width, height) = match (usize::try_from(w), usize::try_from(h)) {
-            (Ok(width), Ok(height)) if width > 0 && height > 0 => (width, height),
-            _ => {
-                let error = format!("invalid stored resolution ({w},{h})");
-                log::error!("Refusing to restore display '{}': {}", name, error);
-                failures.push(format!("{name}: {error}"));
-                continue;
-            }
-        };
-        if let Err(error) = restore(&name, width, height) {
-            log::error!(
-                "Failed to restore resolution of display '{}' to ({},{}): {}",
-                name,
-                w,
-                h,
-                error
-            );
-            failures.push(format!("{name}: {error}"));
-            continue;
-        }
-        let mut current = changed_resolutions.write().unwrap();
-        match current.get(&name) {
-            Some(current_resolution) if current_resolution == &resolution => {
-                current.remove(&name);
-            }
-            Some(_) => failures.push(format!(
-                "{name}: resolution record changed during restoration"
-            )),
-            None => {}
-        }
-    }
-    if !failures.is_empty() {
-        bail!(
-            "Failed to restore one or more changed resolutions: {}",
-            failures.join("; ")
+    if let Err(error) = RESOLUTION_RESTORATIONS.restore(|name, width, height| {
+        log::info!(
+            "Restore resolution of display '{}' to ({}, {})",
+            name,
+            width,
+            height
         );
+        crate::platform::change_resolution(name, width, height).map_err(|error| error.to_string())
+    }) {
+        bail!(error);
     }
     Ok(())
 }
@@ -343,24 +281,9 @@ pub(super) fn get_original_resolution(
     h: usize,
 ) -> MessageField<Resolution> {
     Some({
-        let changed_resolutions = CHANGED_RESOLUTIONS.write().unwrap();
-        let (width, height) = match changed_resolutions.get(display_name) {
-            Some(res) => {
-                res.original
-                /*
-                The resolution change may not happen immediately, `changed` has been updated,
-                but the actual resolution is old, it will be mistaken for a third-party change.
-                if res.changed.0 != w as i32 || res.changed.1 != h as i32 {
-                    // If the resolution is changed by third process, remove the record in changed_resolutions.
-                    changed_resolutions.remove(display_name);
-                    (w as _, h as _)
-                } else {
-                    res.original
-                }
-                */
-            }
-            None => (w as _, h as _),
-        };
+        let (width, height) = RESOLUTION_RESTORATIONS
+            .original(display_name)
+            .unwrap_or((w as _, h as _));
         Resolution {
             width,
             height,
@@ -572,73 +495,4 @@ pub fn try_get_displays_(add_amyuni_headless: bool) -> ResultType<Vec<Display>> 
         }
     }
     Ok(displays)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{restore_changed_resolutions, ChangedResolution};
-    use hbb_common::anyhow::anyhow;
-    use std::{
-        collections::HashMap,
-        sync::{Arc, RwLock},
-    };
-
-    #[test]
-    fn r_s11iu_r_t4_resolution_restore_retains_failure_and_concurrent_replacement() {
-        let changed = Arc::new(RwLock::new(HashMap::from([
-            (
-                "failed".to_owned(),
-                ChangedResolution {
-                    original: (1920, 1080),
-                    changed: (1280, 720),
-                },
-            ),
-            (
-                "restored".to_owned(),
-                ChangedResolution {
-                    original: (2560, 1440),
-                    changed: (1600, 900),
-                },
-            ),
-            (
-                "replaced".to_owned(),
-                ChangedResolution {
-                    original: (3840, 2160),
-                    changed: (1920, 1080),
-                },
-            ),
-            (
-                "invalid".to_owned(),
-                ChangedResolution {
-                    original: (-1, 1080),
-                    changed: (800, 600),
-                },
-            ),
-        ])));
-        let callback_state = Arc::clone(&changed);
-        let result = restore_changed_resolutions(changed.as_ref(), move |name, _, _| match name {
-            "failed" => Err(anyhow!("injected native refusal")),
-            "replaced" => {
-                callback_state.write().unwrap().insert(
-                    name.to_owned(),
-                    ChangedResolution {
-                        original: (3840, 2160),
-                        changed: (1024, 768),
-                    },
-                );
-                Ok(())
-            }
-            _ => Ok(()),
-        });
-
-        let error = result.unwrap_err().to_string();
-        assert!(error.contains("failed: injected native refusal"));
-        assert!(error.contains("replaced: resolution record changed during restoration"));
-        assert!(error.contains("invalid: invalid stored resolution (-1,1080)"));
-        let remaining = changed.read().unwrap();
-        assert!(remaining.contains_key("failed"));
-        assert!(!remaining.contains_key("restored"));
-        assert_eq!(remaining["replaced"].changed, (1024, 768));
-        assert!(remaining.contains_key("invalid"));
-    }
 }

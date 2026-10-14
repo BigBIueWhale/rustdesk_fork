@@ -112,7 +112,7 @@ case "$#:${8:-}" in
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
             || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release || "${13}" = --input-lifetime \
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
-            || "${13}" = --linux-xrandr-query ]] || exit 2
+            || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -2925,6 +2925,7 @@ run_focused_rust_tests() {
             src/server/connection.rs
             src/server/audio_service.rs
             src/server/display_service.rs
+            src/server/display_service/resolution_restore.rs
             src/server/service.rs
             src/ui_cm_interface.rs
             src/ui_session_interface.rs
@@ -2991,7 +2992,12 @@ run_focused_rust_tests() {
             server::audio_service::test::r_s11iu_pa_capture_authority_requires_a_positive_subscriber_id
             server::audio_service::test::r_s11iu_pa_capture_rechecks_exact_current_recipients
             server::service::pa_dispatch_tests::r_s11iu_pa_audio_dispatch_excludes_later_subscribers
-            server::display_service::tests::r_s11iu_r_t4_resolution_restore_retains_failure_and_concurrent_replacement
+            server::display_service::resolution_restore::tests::r_s11iu_r_t4_remembers_first_original_until_success
+            server::display_service::resolution_restore::tests::r_s11iu_r_t4_failed_restore_retains_for_retry
+            server::display_service::resolution_restore::tests::r_s11iu_r_t4_invalid_originals_refuse_callback
+            server::display_service::resolution_restore::tests::r_s11iu_r_t4_identical_republication_survives_inflight_restore
+            server::display_service::resolution_restore::tests::r_s11iu_r_t4_removed_and_republished_record_survives_old_completion
+            server::display_service::resolution_restore::tests::r_s11iu_r_t4_callback_unwind_retains_record_without_poisoning
             ui_cm_interface::tests::r_s11iu_android_cm_future_terminally_retires_its_registry_owner
             ui_cm_interface::tests::r_s11iu_android_terminal_preempts_queued_file_work
             ui_cm_interface::tests::r_s11iu_android_cm_future_cancellation_retires_its_registry_owner
@@ -3095,6 +3101,24 @@ run_focused_rust_tests() {
             [ "${#clipboard_tests[@]}" -eq 13 ] \
                 || fail 'focused clipboard test inventory differs'
             required_tests=("${clipboard_tests[@]}")
+        elif [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
+            container_name=rustdesk-resolution-restoration-tests
+            memory=512m
+            memory_bytes=536870912
+            tmpfs_size=64m
+            source_fingerprints=(
+                src/server/display_service.rs src/server/connection.rs
+                src/server/display_service/resolution_restore.rs
+                scripts/test-resolution-restoration.rs
+            )
+            required_tests=(
+                resolution_restore::tests::r_s11iu_r_t4_remembers_first_original_until_success
+                resolution_restore::tests::r_s11iu_r_t4_failed_restore_retains_for_retry
+                resolution_restore::tests::r_s11iu_r_t4_invalid_originals_refuse_callback
+                resolution_restore::tests::r_s11iu_r_t4_identical_republication_survives_inflight_restore
+                resolution_restore::tests::r_s11iu_r_t4_removed_and_republished_record_survives_old_completion
+                resolution_restore::tests::r_s11iu_r_t4_callback_unwind_retains_record_without_poisoning
+            )
         elif [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
             container_name=rustdesk-linux-xrandr-query-tests
             memory=1g
@@ -3615,6 +3639,25 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        if [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
+                            python3 -I -S -c '\''import errno, socket
+with socket.socket() as canary:
+    try:
+        canary.connect(("192.0.2.1", 9))
+    except OSError as error:
+        assert error.errno == errno.ENETUNREACH, error
+    else:
+        raise SystemExit("resolution-restoration canary connected")
+print("R-B10 canary: build confirmed network-isolated (offline compile stage).")'\''
+                            test_executable=/cargo-target/resolution-restoration-tests
+                            rustc --edition=2021 --test /source/scripts/test-resolution-restoration.rs \
+                                -o "$test_executable"
+                            artifact_sha="$(sha256sum "$test_executable" | cut -d " " -f 1)"
+                            "$test_executable" --test-threads=1 --color never
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            printf "RESOLUTION_RESTORATION_ARTIFACT=pass sha256=%s tests=6 unchanged=before-after\n" "$artifact_sha"
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
                             python3 -I -S /source/scripts/run-linux-xrandr-query-tests.py \
                                 /source /tmp/cargo-home/config.toml
@@ -4022,6 +4065,11 @@ PY
         uid_test_artifact_sha="$(sha256sum "$target_root/uid-policy-tests" | awk '{ print $1 }')"
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution-restoration summary count differs'
+        [ "$(grep -Ec '^RESOLUTION_RESTORATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'RESOLUTION_RESTORATION_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'resolution-restoration artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'xrandr-query summary count differs'
         [ "$(grep -Ec '^LINUX_XRANDR_QUERY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -4284,7 +4332,12 @@ PY
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        if [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
+        if [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
+            grep -E '^test resolution_restore::tests::.* \.\.\. ok$|^RESOLUTION_RESTORATION_ARTIFACT=' "$output"
+            printf 'RESOLUTION_RESTORATION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-record-identity-with-callback-fixtures rust=1.75.0 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
             grep -E '^test tests::.* \.\.\. ok$|^LINUX_XRANDR_QUERY_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'LINUX_XRANDR_QUERY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-query-result-and-output-identity rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

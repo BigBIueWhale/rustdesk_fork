@@ -2110,6 +2110,20 @@ Current normative specification SHA-256: `5c603741c7af7a6137988ed139069d0c23e228
 
 ### Current authority and source closure
 
+**Resolution restoration record identity (R-T4): source corrected; focused execution pending.**
+The registry privately retains an immutable original-resolution object for each output.
+Every change publication creates a fresh object while preserving the first original size.
+Restoration holds that exact object across its unlocked native callback and removes it
+only after success while it is still current. Equal dimensions cannot authorize an older
+completion to delete a newer publication. The value-equality path, unused requested-size
+field and commented third-party-change branch are deleted. Original-resolution reads
+use a read lock. `--resolution-restoration-tests` compiles the actual production module
+with six named tests, including two controlled cross-thread replacement schedules,
+failure/retry, invalid dimensions and callback unwind. Native callbacks are fixtures;
+actual X-server/Remote changes, blocking query and detached setter ownership, full app
+and installed/platform acceptance remain OPEN. Credential/dialog and Android CM work
+remain parked under the user's pivot.
+
 **Dialog close authority: source corrected; focused execution pending.** The
 overlay receiver gives each entry a `DialogClose` carrying exact current-object
 identity and a result-bearing close. Replacement or dismissal revokes it before

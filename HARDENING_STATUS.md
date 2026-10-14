@@ -2152,6 +2152,27 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
+**Windows CM clipboard replies (R-S11c-22): source corrected; response-component tests PASS;
+Windows integration OPEN.** `src/server/clipboard_service.rs` keeps request and reply waits
+inside one two-second initiating timeout, accepts at most one MonitorReady prelude, and
+retains the cached stream only after a successful complete response. Errors and timeouts
+discard the stream; failed/empty CM reads cannot substitute the service process's own
+clipboard. `src/ipc/clipboard_non_file.rs` retains the existing serialized response type
+and checks inline lengths, exclusive raw/inline placement, checked aggregate raw length,
+and exact received-frame length before splitting any bytes. No incomplete reply is returned
+as success and no uncertain request is retried in the same operation.
+Exact source `5f57a320` passed `--cm-clipboard-response-tests` in 79 VM seconds:
+eight production-type/Bytes/serde tests cover mixed exact zero-copy bytes, short and trailing
+replies, overflow, inline mismatch, conflicting placement, empty/inline-only replies and
+the unchanged JSON shape. Root-locked dependencies, stable artifact, frozen source and
+joined zero-NIC VM cleanup are bound in
+`.harness-state/verifier-vm/cm-clipboard-response-accepted-5f57a320.json`.
+Artifact SHA-256 `99c6bb740bf8412ac99511adc72f4cba4237a6f1fe53f608aac7d4c727ff729d`.
+This executes the response component on Linux. The Windows handler/parent compilation,
+real named-pipe truncation/stall/error, deadline and stream retirement, native clipboard
+nonpublication, fresh authorized reconnect and live/stale/disabled/wrong-type/principal
+transactions remain OPEN. No installed-service or LPE closure follows from these tests.
+
 **Resolution mutation and Linux command lifetime (R-T4/R-S11c-10c): production components accepted; integration OPEN.**
 The connection retains one resolution-work ticket and awaits off-runtime enumeration,
 mode validation and mutation. Pending ticket retirement revokes native admission;

@@ -57,7 +57,7 @@ obligations and remaining document-role cleanup stay open.
 Current normative specification identity:
 
 ```text
-0598a2cde47a76504ba967aa99b3a1369865e667071d830402a845830515678f  requirements.html
+784791ac03c8d3725d153f1f0c3a3ebe22220357ea82962e72a2eba905dde1a5  requirements.html
 ```
 
 ## Current Verdict
@@ -123,6 +123,7 @@ These documentation corrections supply no compiler, artifact, scanner or native 
 | R-B7 / §15 | Every release target requires a reproduced pinned upstream baseline and complete fork-delta accounting. False two-delta/verbatim-build claims are removed from the specification and three builder headers; Windows bridge commentary names the VM. FRB 1.80.1, authenticated offline code generation, pass-private state, VM authority and native/cold acceptance remain; builder command bytes are unchanged. |
 | R-A6 UDP/probe / R-SV4 / R-SV10 | Both roles and all targets exclude first-party actuators and startup/UI/CLI/FFI/JNI/IPC/Drop routes; direct TCP/capture bootstrap and distinct credential-park, serving, viewer/helper and iOS socket scopes remain. Linked-UDP/ordinary-IPC narration, Wake-on-LAN alternatives, disabled-WebRTC descriptions and every-process TCP-listener claims are removed. Driven-session native connect observation remains required for transitive egress. |
 | Appendix C #339/#340 / R-S11gd/R-S11ge | Runner exit status and Linux plugin/window teardown are required behavior, not repair reports. Failed-run chronology, run ordinals, a successful-commit receipt and wording/self-mutation acceptance are removed. Loader failures, handled-command success, UI continuation, exact plugin provenance, native positive/negative regressions, paired GTK-hook retirement, destroyed-window refusal, delayed-query cancellation and clean full-peer teardown remain required. The named historical CLI/full-peer evidence below is unchanged; exact-current native, installed and release acceptance remains OPEN. |
+| 22 verification clauses | Mandatory ledger/documentation and complete source-mutation-catalog coupling is removed from R-S11af–ao, R-S11au/av/az/ba/be/bf/by/bz/cg, R-S11b-3q, R-SV6c and R-S11ga. Principal/role/lifetime, helper, scanner, package and bridge checks retain concrete behavioral and refusal cases plus source topology review. Actual-child environments, compiler ABI checks, emitted-package/installed ownership, existing signing-identity preservation and severe-generator-output refusal remain required. Every requirement body outside the classified clauses, native/artifact evidence limit, ID, level, link and original API element is unchanged. Classification is retained in `.harness-state/verifier-vm/verification-clause-classification-a5946201.json`. This is document review; current native/installed/release acceptance and whole-test classification remain OPEN. |
 | §18 / R-SV1–3, R-SV4a, R-SV5–9 | Nine entries now state stable sovereignty obligations. The stale running-app inventory and duplicate completion box are deleted, along with obsolete widget diagnosis, repair causation, link counts and platform-clean assertions. Source deletion follows R-SV1/R-SV6a/R-SV10, preserving direct TCP and authenticated owner port forwarding, the explicit Apple entitlement exception, and R-SV9's SHOULD marketing/MUST plaintext-link distinction. All requirement IDs, levels, anchors and other requirement bodies are unchanged; this is specification cleanup, not native acceptance. |
 
 Whole-document/test classification, exact-current builders/artifacts, installed/native authority,
@@ -2076,7 +2077,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `0598a2cde47a76504ba967aa99b3a1369865e667071d830402a845830515678f  requirements.html`.
+Current normative specification SHA-256: `784791ac03c8d3725d153f1f0c3a3ebe22220357ea82962e72a2eba905dde1a5  requirements.html`.
 
 ### Current authority and source closure
 

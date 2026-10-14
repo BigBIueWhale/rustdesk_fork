@@ -113,7 +113,7 @@ case "$#:${8:-}" in
             || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release || "${13}" = --input-lifetime \
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
-            || "${13}" = --linux-resolution-lifetime ]] || exit 2
+            || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -3102,6 +3102,32 @@ run_focused_rust_tests() {
             [ "${#clipboard_tests[@]}" -eq 13 ] \
                 || fail 'focused clipboard test inventory differs'
             required_tests=("${clipboard_tests[@]}")
+        elif [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
+            container_name=rustdesk-audio-mailbox-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=64m
+            source_fingerprints=(
+                Cargo.lock src/client.rs src/client/audio_mailbox.rs
+                src/client/io_loop.rs src/server/connection.rs
+                libs/hbb_common/build.rs libs/hbb_common/src/protos/mod.rs
+                libs/hbb_common/protos/message.proto libs/hbb_common/protos/rendezvous.proto
+                scripts/test-audio-mailbox.rs scripts/run-audio-mailbox-tests.py
+            )
+            required_tests=(
+                audio_mailbox::tests::r_s11hi_audio_mailbox_requires_and_prioritizes_the_first_format
+                audio_mailbox::tests::r_s11hi_audio_mailbox_pins_one_format_without_replay_work
+                audio_mailbox::tests::r_s11hi_audio_mailbox_retires_oldest_frame_at_its_exact_bound
+                audio_mailbox::tests::r_s11hi_audio_mailbox_discards_stale_frames_before_delivery
+                audio_mailbox::tests::r_s11hi_unsupported_format_does_not_claim_codec_identity
+                audio_mailbox::tests::r_s11hi_oversized_packet_preserves_pending_format_and_full_queue
+                audio_mailbox::tests::r_s11hi_exact_packet_bound_is_admitted
+                audio_mailbox::tests::r_s11hi_packet_unknown_wire_fields_are_not_retained
+                audio_mailbox::tests::r_s11hi_format_unknown_wire_fields_are_not_retained
+                audio_mailbox::tests::r_s11hi_small_packet_releases_large_backing_owner_at_admission
+                audio_mailbox::tests::r_s11hi_sender_drop_wakes_and_joins_the_native_receiver
+                audio_mailbox::tests::r_s11hi_receiver_drop_refuses_further_admission
+            )
         elif [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
             container_name=rustdesk-resolution-restoration-tests
             memory=512m
@@ -3674,6 +3700,11 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        if [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
+                            python3 -I -S /source/scripts/run-audio-mailbox-tests.py \
+                                /source /tmp/cargo-home/config.toml
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
                             python3 -I -S /source/scripts/run-linux-xrandr-query-tests.py \
                                 /source /tmp/cargo-home/config.toml --lifetime
@@ -3973,6 +4004,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
+        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
         printf 'WHITEBOARD_CLIENT_STATE_PROFILE=whiteboard-client stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
@@ -4105,6 +4138,11 @@ PY
         uid_test_artifact_sha="$(sha256sum "$target_root/uid-policy-tests" | awk '{ print $1 }')"
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-mailbox summary count differs'
+        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=12 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'AUDIO_MAILBOX_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'audio-mailbox artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution-restoration summary count differs'
         [ "$(grep -Ec '^RESOLUTION_RESTORATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -4377,7 +4415,12 @@ PY
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        if [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
+        if [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
+            grep -E '^test audio_mailbox::tests::.* \.\.\. ok$|^AUDIO_MAILBOX_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            printf 'AUDIO_MAILBOX_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-mailbox-and-generated-protobuf rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
             grep -E '^test resolution_restore::tests::.* \.\.\. ok$|^RESOLUTION_RESTORATION_ARTIFACT=' "$output"
             printf 'RESOLUTION_RESTORATION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-record-identity-with-callback-fixtures rust=1.75.0 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

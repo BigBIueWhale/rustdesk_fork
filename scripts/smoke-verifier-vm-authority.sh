@@ -100,6 +100,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=resolution-restoration
         ;;
+    1:--audio-mailbox-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'audio-mailbox input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=audio-mailbox
+        ;;
     1:--linux-resolution-lifetime-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'resolution-lifetime input/run overrides are forbidden' >&2; exit 2; }
@@ -645,7 +651,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     fi
     readonly OVERLAY_SIZE=40G
     if [[ "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
-        || "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]]; then
+        || "$RUST_TEST_PROFILE" = linux-resolution-lifetime || "$RUST_TEST_PROFILE" = audio-mailbox ]]; then
         readonly VM_MEMORY=2048
     else
         readonly VM_MEMORY=16384
@@ -5652,6 +5658,18 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'focused whiteboard presentation state receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused whiteboard presentation state cloud-init completion marker'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
+    mapfile -t audio_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=12 unchanged=before-after$'
+    )
+    [ "${#audio_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'AUDIO_MAILBOX_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'audio-mailbox artifact receipt differs'
+    require_exact_fixed_receipt \
+        "AUDIO_MAILBOX_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=12 target=linux-x86_64 scope=production-mailbox-and-generated-protobuf rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'focused audio-mailbox receipt'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'audio-mailbox cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
     mapfile -t restoration_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -6730,6 +6748,9 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     if [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
         printf 'LINUX_PASSWORD_ADMISSION_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-linux-password-coordinator-and-raw-transport installed=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
+        printf 'AUDIO_MAILBOX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=12 scope=production-mailbox-and-generated-protobuf network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
         printf 'RESOLUTION_RESTORATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=6 scope=production-record-identity-with-callback-fixtures network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

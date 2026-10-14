@@ -9693,6 +9693,7 @@ impl Connection {
                                             }
                                             AudioFormatAdmission::Duplicate
                                             | AudioFormatAdmission::Changed
+                                            | AudioFormatAdmission::Unsupported
                                             | AudioFormatAdmission::Closed => {
                                                 log::error!(
                                                     "fresh controlled audio decoder refused its first validated format"
@@ -9796,6 +9797,9 @@ impl Connection {
                                     log::error!(
                                         "controlled audio decoder lost its admitted format"
                                     );
+                                }
+                                AudioFrameAdmission::Oversized => {
+                                    log::warn!("controlled audio mailbox refused an oversized packet");
                                 }
                                 AudioFrameAdmission::Closed => {
                                     log::warn!(

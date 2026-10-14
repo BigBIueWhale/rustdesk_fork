@@ -84,10 +84,17 @@ pub mod helper;
 pub mod io_loop;
 pub mod screenshot;
 
+mod audio_mailbox;
+pub use audio_mailbox::{AUDIO_FRAME_QUEUE_CAPACITY, MAX_AUDIO_FRAME_QUEUE_AGE};
+pub(crate) use audio_mailbox::{
+    native_opus_format_admission, native_opus_format_key, native_opus_format_within_limit,
+    native_opus_packet_within_limit, AudioFormatAdmission, AudioFrameAdmission,
+    NativeOpusFormatAdmission, MAX_NATIVE_OPUS_PACKET_BYTES,
+};
+use audio_mailbox::{audio_mailbox, AudioMailboxItem, AudioMailboxSender};
+
 pub const MILLI1: Duration = Duration::from_millis(1);
 pub const SEC30: Duration = Duration::from_secs(30);
-pub const AUDIO_FRAME_QUEUE_CAPACITY: usize = 8;
-pub const MAX_AUDIO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);
 pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;
 pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);
 pub(crate) const MAX_PEER_VIDEO_DISPLAYS: usize = 16;
@@ -952,47 +959,6 @@ impl ClientClipboardHandler {
     }
 }
 
-/// Maximum compressed Opus packet bytes handed to libopus for one AudioFrame.
-/// Opus packets are small; this is deliberately generous while still making the
-/// native decoder handoff length-bounded.
-pub(crate) const MAX_NATIVE_OPUS_PACKET_BYTES: usize = 4096;
-
-#[inline]
-pub(crate) fn native_opus_packet_within_limit(len: usize) -> bool {
-    len <= MAX_NATIVE_OPUS_PACKET_BYTES
-}
-
-#[inline]
-pub(crate) fn native_opus_format_within_limit(sample_rate: u32, channels: u32) -> bool {
-    matches!(sample_rate, 8000 | 12000 | 16000 | 24000 | 48000) && matches!(channels, 1 | 2)
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum NativeOpusFormatAdmission {
-    AcceptFirst,
-    Duplicate,
-    Changed,
-}
-
-#[inline]
-pub(crate) fn native_opus_format_key(sample_rate: u32, channels: u32) -> (u32, u32) {
-    (sample_rate, channels)
-}
-
-#[inline]
-pub(crate) fn native_opus_format_admission(
-    current: Option<(u32, u32)>,
-    sample_rate: u32,
-    channels: u32,
-) -> NativeOpusFormatAdmission {
-    match current {
-        None => NativeOpusFormatAdmission::AcceptFirst,
-        Some(current) if current == native_opus_format_key(sample_rate, channels) => {
-            NativeOpusFormatAdmission::Duplicate
-        }
-        Some(_) => NativeOpusFormatAdmission::Changed,
-    }
-}
 
 #[inline]
 pub(crate) fn native_video_format_locally_unsupported(
@@ -2587,171 +2553,6 @@ impl LoginConfigHandler {
     }
 }
 
-struct QueuedAudioFrame {
-    queued_at: std::time::Instant,
-    frame: AudioFrame,
-}
-
-#[derive(Default)]
-struct AudioMailboxState {
-    format: Option<AudioFormat>,
-    format_key: Option<(u32, u32)>,
-    frames: VecDeque<QueuedAudioFrame>,
-    closed: bool,
-}
-
-struct AudioMailboxShared {
-    state: Mutex<AudioMailboxState>,
-    ready: Condvar,
-}
-
-impl AudioMailboxShared {
-    fn close(&self) {
-        let mut state = self.state.lock().unwrap();
-        state.closed = true;
-        state.format = None;
-        state.frames.clear();
-        drop(state);
-        self.ready.notify_all();
-    }
-}
-
-pub(crate) struct AudioMailboxSender {
-    shared: Arc<AudioMailboxShared>,
-}
-
-struct AudioMailboxReceiver {
-    shared: Arc<AudioMailboxShared>,
-}
-
-enum AudioMailboxItem {
-    Frame(AudioFrame),
-    Format(AudioFormat),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AudioFormatAdmission {
-    Queued,
-    Duplicate,
-    Changed,
-    Closed,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AudioFrameAdmission {
-    Queued,
-    ReplacedOldest,
-    AwaitingFormat,
-    Closed,
-}
-
-fn audio_frame_is_fresh(queued_at: std::time::Instant, now: std::time::Instant) -> bool {
-    now.checked_duration_since(queued_at).unwrap_or_default() <= MAX_AUDIO_FRAME_QUEUE_AGE
-}
-
-fn audio_mailbox() -> (AudioMailboxSender, AudioMailboxReceiver) {
-    let shared = Arc::new(AudioMailboxShared {
-        state: Mutex::new(AudioMailboxState::default()),
-        ready: Condvar::new(),
-    });
-    (
-        AudioMailboxSender {
-            shared: Arc::clone(&shared),
-        },
-        AudioMailboxReceiver { shared },
-    )
-}
-
-impl AudioMailboxSender {
-    pub(crate) fn admit_format(&self, format: AudioFormat) -> AudioFormatAdmission {
-        let mut state = self.shared.state.lock().unwrap();
-        if state.closed {
-            return AudioFormatAdmission::Closed;
-        }
-        match native_opus_format_admission(
-            state.format_key,
-            format.sample_rate,
-            format.channels,
-        ) {
-            NativeOpusFormatAdmission::AcceptFirst => {
-                state.format_key = Some(native_opus_format_key(
-                    format.sample_rate,
-                    format.channels,
-                ));
-                state.format = Some(format);
-                state.frames.clear();
-                drop(state);
-                self.shared.ready.notify_one();
-                AudioFormatAdmission::Queued
-            }
-            NativeOpusFormatAdmission::Duplicate => AudioFormatAdmission::Duplicate,
-            NativeOpusFormatAdmission::Changed => AudioFormatAdmission::Changed,
-        }
-    }
-
-    fn admit_frame_queued_at(
-        &self,
-        frame: AudioFrame,
-        queued_at: std::time::Instant,
-    ) -> AudioFrameAdmission {
-        let mut state = self.shared.state.lock().unwrap();
-        if state.closed {
-            return AudioFrameAdmission::Closed;
-        }
-        if state.format_key.is_none() {
-            return AudioFrameAdmission::AwaitingFormat;
-        }
-        let admission = if state.frames.len() >= AUDIO_FRAME_QUEUE_CAPACITY {
-            state.frames.pop_front();
-            AudioFrameAdmission::ReplacedOldest
-        } else {
-            AudioFrameAdmission::Queued
-        };
-        state.frames.push_back(QueuedAudioFrame { queued_at, frame });
-        drop(state);
-        self.shared.ready.notify_one();
-        admission
-    }
-
-    pub(crate) fn admit_frame(&self, frame: AudioFrame) -> AudioFrameAdmission {
-        self.admit_frame_queued_at(frame, std::time::Instant::now())
-    }
-}
-
-impl Drop for AudioMailboxSender {
-    fn drop(&mut self) {
-        self.shared.close();
-    }
-}
-
-impl AudioMailboxReceiver {
-    fn recv(&self) -> Option<AudioMailboxItem> {
-        loop {
-            let mut state = self.shared.state.lock().unwrap();
-            while state.format.is_none() && state.frames.is_empty() && !state.closed {
-                state = self.shared.ready.wait(state).unwrap();
-            }
-            if state.closed {
-                return None;
-            }
-            if let Some(format) = state.format.take() {
-                return Some(AudioMailboxItem::Format(format));
-            }
-            let Some(frame) = state.frames.pop_front() else {
-                continue;
-            };
-            if audio_frame_is_fresh(frame.queued_at, std::time::Instant::now()) {
-                return Some(AudioMailboxItem::Frame(frame.frame));
-            }
-        }
-    }
-}
-
-impl Drop for AudioMailboxReceiver {
-    fn drop(&mut self) {
-        self.shared.close();
-    }
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum VideoControl {
@@ -5653,122 +5454,6 @@ mod tests {
         ));
     }
 
-    fn audio_format(sample_rate: u32, channels: u32) -> AudioFormat {
-        let mut format = AudioFormat::new();
-        format.sample_rate = sample_rate;
-        format.channels = channels;
-        format
-    }
-
-    fn audio_frame(marker: u8) -> AudioFrame {
-        let mut frame = AudioFrame::new();
-        frame.data = vec![marker].into();
-        frame
-    }
-
-    fn admitted_audio_frame(item: AudioMailboxItem) -> AudioFrame {
-        match item {
-            AudioMailboxItem::Frame(frame) => frame,
-            AudioMailboxItem::Format(_) => panic!("expected queued audio frame, got format"),
-        }
-    }
-
-    #[test]
-    fn r_s11hi_audio_mailbox_requires_and_prioritizes_the_first_format() {
-        let (sender, receiver) = audio_mailbox();
-
-        assert_eq!(
-            sender.admit_frame(audio_frame(0)),
-            AudioFrameAdmission::AwaitingFormat
-        );
-        assert_eq!(
-            sender.admit_format(audio_format(48000, 2)),
-            AudioFormatAdmission::Queued
-        );
-        assert_eq!(
-            sender.admit_frame(audio_frame(1)),
-            AudioFrameAdmission::Queued
-        );
-        assert!(matches!(receiver.recv(), Some(AudioMailboxItem::Format(_))));
-        assert_eq!(
-            admitted_audio_frame(receiver.recv().expect("queued audio frame")).data,
-            vec![1]
-        );
-    }
-
-    #[test]
-    fn r_s11hi_audio_mailbox_pins_one_format_without_replay_work() {
-        let (sender, receiver) = audio_mailbox();
-
-        assert_eq!(
-            sender.admit_format(audio_format(48000, 2)),
-            AudioFormatAdmission::Queued
-        );
-        assert_eq!(
-            sender.admit_format(audio_format(48000, 2)),
-            AudioFormatAdmission::Duplicate
-        );
-        assert_eq!(
-            sender.admit_format(audio_format(24000, 1)),
-            AudioFormatAdmission::Changed
-        );
-        let Some(AudioMailboxItem::Format(format)) = receiver.recv() else {
-            panic!("the first format must remain pending");
-        };
-        assert_eq!((format.sample_rate, format.channels), (48000, 2));
-    }
-
-    #[test]
-    fn r_s11hi_audio_mailbox_retires_oldest_frame_at_its_exact_bound() {
-        let (sender, receiver) = audio_mailbox();
-        assert_eq!(
-            sender.admit_format(audio_format(48000, 2)),
-            AudioFormatAdmission::Queued
-        );
-        for marker in 0..AUDIO_FRAME_QUEUE_CAPACITY {
-            assert_eq!(
-                sender.admit_frame(audio_frame(marker as u8)),
-                AudioFrameAdmission::Queued
-            );
-        }
-        assert_eq!(
-            sender.admit_frame(audio_frame(AUDIO_FRAME_QUEUE_CAPACITY as u8)),
-            AudioFrameAdmission::ReplacedOldest
-        );
-
-        assert!(matches!(receiver.recv(), Some(AudioMailboxItem::Format(_))));
-        for marker in 1..=AUDIO_FRAME_QUEUE_CAPACITY {
-            assert_eq!(
-                admitted_audio_frame(receiver.recv().expect("bounded audio frame")).data,
-                vec![marker as u8]
-            );
-        }
-    }
-
-    #[test]
-    fn r_s11hi_audio_mailbox_discards_stale_frames_before_delivery() {
-        let (sender, receiver) = audio_mailbox();
-        assert_eq!(
-            sender.admit_format(audio_format(48000, 2)),
-            AudioFormatAdmission::Queued
-        );
-        assert!(matches!(receiver.recv(), Some(AudioMailboxItem::Format(_))));
-        let stale_at = std::time::Instant::now()
-            .checked_sub(MAX_AUDIO_FRAME_QUEUE_AGE + std::time::Duration::from_millis(1))
-            .expect("test instant supports the stale interval");
-        assert_eq!(
-            sender.admit_frame_queued_at(audio_frame(1), stale_at),
-            AudioFrameAdmission::Queued
-        );
-        assert_eq!(
-            sender.admit_frame(audio_frame(2)),
-            AudioFrameAdmission::Queued
-        );
-        assert_eq!(
-            admitted_audio_frame(receiver.recv().expect("fresh audio frame")).data,
-            vec![2]
-        );
-    }
 
     fn video_frame(display: i32) -> VideoFrame {
         let mut frame = VideoFrame::new();

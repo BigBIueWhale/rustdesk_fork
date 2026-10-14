@@ -3455,6 +3455,9 @@ impl<T: InvokeUiSession> Remote<T> {
                                         "dropping peer Opus format change after viewer audio setup"
                                     );
                                 }
+                                AudioFormatAdmission::Unsupported => {
+                                    log::warn!("viewer audio mailbox refused an unsupported format");
+                                }
                                 AudioFormatAdmission::Closed => {
                                     log::warn!(
                                         "viewer audio decoder is closed; dropping peer audio format"
@@ -3663,6 +3666,9 @@ impl<T: InvokeUiSession> Remote<T> {
                                     log::debug!(
                                         "dropping peer audio frame before viewer format admission"
                                     );
+                                }
+                                AudioFrameAdmission::Oversized => {
+                                    log::warn!("viewer audio mailbox refused an oversized packet");
                                 }
                                 AudioFrameAdmission::Closed => {
                                     log::warn!(

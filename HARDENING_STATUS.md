@@ -12204,12 +12204,20 @@ artifacts; cold R-B2/R-B10 equality; independent reproduction; and external revi
 
 **SOURCE IMPLEMENTED; EXACT CURRENT RUST/NATIVE AUDIO AND RELEASE EVIDENCE OPEN.**
 The shared outgoing viewer on Android/iOS/Windows/Linux/macOS and accepted controlled-call playback
-use `src/client.rs`'s `AudioMailboxState`: one immutable first-format identity, one pending format,
+use the private `src/client/audio_mailbox.rs` boundary: one immutable first-format identity, one pending format,
 at most eight timestamped frames, and terminal state under a mutex. The sole receiver uses a
 condition-variable predicate wait. Frames are refused before format; duplicate formats coalesce;
 changes are refused; format is consumed first; capacity replaces the oldest frame; dequeue refuses
 frames older than one second without expiring the format. Close releases pending payloads and
 wakes the decoder. No polling, secondary queue, per-message worker, or nested runtime is added.
+
+Mailbox admission now validates Opus rate/channel and the 4096-byte packet limit itself.
+This closes the controlled-call path that queued packets before the decoder checked their
+size. Refusal preserves the pending format and existing frames. Accepted state copies only
+format scalars and bounded packet bytes into fresh generated messages, dropping unknown
+protobuf fields and detaching a small packet from any larger incoming backing allocation.
+The eight queued packets retain at most 32768 data bytes plus fixed message metadata; this
+does not bound network parsing, an in-flight decoder, output-device buffering or whole-process memory.
 
 `OwnedMediaThread` retains the non-cloneable sender and exact decoder handle; the existing bounded
 completion pool owns final joining after close or hard Drop. Viewer and controlled callers retain
@@ -12218,13 +12226,13 @@ accepted-call input lease and separate pinned format; a refused fresh decoder is
 rather than partly installed. Capture, output-device selection, voice-call authorization, protocol,
 foreground service, listener, video/input/file paths, and the existing retirement topology are unchanged.
 
-Four Rust regressions `client::tests::r_s11hi_` cover pre-format/format-priority, duplicate/change,
+Four moved Rust regressions `client::audio_mailbox::tests::r_s11hi_` cover pre-format/format-priority, duplicate/change,
 exact-bound oldest replacement/FIFO, and stale-frame refusal. The existing
 `owned_media_thread_closes_admission_before_join` and
 `owned_media_thread_hard_drop_never_joins_inline` tests cover owner finality. The shared gate retains:
 
 ```sh
-cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never
+cargo test --lib --features linux-pkg-config,flutter client::audio_mailbox::tests:: --color never
 ```
 
 The 356-line audio source-wording checker and its shared, Apple and authority-smoke calls
@@ -12233,8 +12241,16 @@ decoder playback, authorization or worker retirement. R-S11hi now requires the c
 behavioral regressions rather than a mutation/source-wiring catalog; the four production
 mailbox tests, worker-finality tests and shared Cargo invocation remain. Changed shell entry
 points pass parser-only checks, and reference/diff review finds no remaining executable
-call to the deleted checker. No exact-current Rust execution or native playback result
-is established by this documentation/verifier cleanup.
+call to the deleted checker. That cleanup supplied no Rust execution or native playback result.
+
+Eight new production-module regressions cover unsupported-first-format recovery,
+oversized-packet refusal without full-queue or format mutation, exact packet-limit admission,
+actual parsed frame/format unknown-field stripping, large backing-owner release at admission,
+native receiver wake/join on sender drop and receiver-drop admission closure. The focused
+`--audio-mailbox-tests` lane compiles this module with the production proto files and
+unchanged `hbb_common` build script, checks every dependency against the root lock, and
+runs the twelve tests in the bounded zero-NIC VM/nonroot networkless container. Execution
+is pending; whole-parent compilation, native decoder/playback, installed and device acceptance remain OPEN.
 Neither the source correction nor unrelated model passes identify the defect in weeks-old deployed
 artifacts or establish causation for the reported display-only delay.
 

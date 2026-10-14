@@ -10197,7 +10197,7 @@ else
   echo "  FAIL R-S11fw/R-S11e-209 + R-S11fx/R-S11e-210: X11 capture source contract regressed"
   rc=1
 fi
-"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::audio_mailbox::tests:: --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11iw_ --color never

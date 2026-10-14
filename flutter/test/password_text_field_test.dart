@@ -42,7 +42,8 @@ void main() {
           expect(configuration['smartQuotesType'],
               SmartQuotesType.disabled.index.toString());
           expect(controller.text, 'Exact1x-\'"');
-          final editable = tester.widget<EditableText>(find.byType(EditableText));
+          final editable =
+              tester.widget<EditableText>(find.byType(EditableText));
           expect(editable.spellCheckConfiguration?.spellCheckEnabled, false);
           expect(tester.takeException(), isNull);
         }

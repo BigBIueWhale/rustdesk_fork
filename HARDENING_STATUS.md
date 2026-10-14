@@ -12263,7 +12263,22 @@ CPAL's actual dasp_sample conversions across all ten supported sample types and 
 thread-local allocation counter with a positive control. It checks 1000 warmed fill
 calls plus a contended fill for Rust allocations on the calling thread. The fixture
 uses the root-locked dasp_sample 0.11.0 dependency; no product dependency changes.
-Execution is pending. Full CPAL/parent/target compilation, native callback cadence,
+Exact source `406579e9` (product change `908dd918`) passed all sixteen named cases
+with outer status 0 in 65 seconds; the test body took 0.04s. The allocator's positive
+control passed, followed by zero Rust allocations on the measured thread during 1000
+warmed fills and a contended fill. The held-producer case returned before release
+without consuming its queued PCM, then recovered its exact samples. All ten actual
+dasp conversions preserved PCM and their signed/unsigned silence equilibria.
+Artifact SHA-256 `761f8dd8c43784c4a5272f817461c4e4c4408b71a8dc0517915074d9bdc80386`
+was stable before/after. Raw serial `android-rust-lifecycle-tests-run.q1BdSEkJKK.serial.log`
+is 68788 bytes, SHA-256 `6f2cb97341e3e97a05ad752c6d867227e6bc2c43408fee946037db268d393430`.
+Five source records and every dependency matched; all 43 before/live/after freeze
+fields matched. Four outer endpoint snapshots retained one unattributed addition,
+which was untouched; exact QEMU/monitor/guest cleanup joined and retired RAM/markers.
+The initial sixteen-test pass omitted two fixture names from its serial export;
+the corrected export retains all names. One intervening RAM-admission refusal started
+no VM and used no disk fallback. Neither source-bound artifact has a cross-run byte
+equality claim. Full CPAL/parent/target compilation, native callback cadence,
 backend memory/locking, playback, installed/device performance and teardown remain OPEN.
 Linux PulseAudio write errors are still ignored by `AudioHandler::handle_frame` and
 remain a separate error-finality issue; this callback slice does not close that path.

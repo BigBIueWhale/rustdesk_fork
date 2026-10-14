@@ -2418,6 +2418,14 @@ scratch/headroom exhaustion. Canonical markers, bounded diagnostics and intentio
 their ownership; exact joins precede retirement, and uncertainty retains the marker and blocks reuse.
 Every helper entry refuses root.
 
+At source `3156926f`, actual filesystem admission passed, standard admission refused at
+19,745 MiB available, and a filesystem profile with a 4 GiB guest refused. Before launch,
+available RAM fell to 18,787,524 KiB, below the 19 GiB floor even without the observation
+margin. No harness or VM was started and no bulk scratch, compiler or tests ran. All 82 frozen
+control hashes and complete endpoint snapshots matched; exact shared roots remained idle.
+`.harness-state/verifier-vm/filesystem-storage-profile-3156926f.json` retains these admission
+observations and the historical capacity basis. Current native storage/test acceptance remains OPEN.
+
 The sole creator/waiter publishes kernel QEMU child usage after its join. The monitor consumes that
 bounded receipt rather than selecting a process by PID; absent measurements remain unavailable.
 Cold preparation reserves the same workspace before its 3 GiB raw conversion and exact partition

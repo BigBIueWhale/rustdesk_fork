@@ -1252,12 +1252,7 @@ void msgBox(SessionID sessionId, String type, String title, String text,
       bool hasOk = false;
       submit() {
         if (!close()) return;
-        if (onSubmit != null) {
-          onSubmit.call();
-        } else if (!type.contains("custom") &&
-            desktopType != DesktopType.portForward) {
-          closeConnection();
-        }
+        onSubmit?.call();
       }
 
       jumplink() {

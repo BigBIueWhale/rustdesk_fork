@@ -33,6 +33,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:vector_math/vector_math.dart' show Vector2;
 
 import '../common.dart';
+import '../desktop/widgets/tabbar_widget.dart';
 import '../utils/image.dart' as img;
 import '../common/widgets/dialog.dart';
 import 'display_selection_queue.dart';
@@ -1178,6 +1179,8 @@ class FfiModel with ChangeNotifier {
   showMsgBox(SessionID sessionId, String type, String title, String text,
       String link, bool hasRetry, OverlayDialogManager dialogManager,
       {bool? hasCancel}) async {
+    final owner = parent.target;
+    if (owner == null || !owner.isCurrentSession(sessionId)) return;
     _timer?.cancel();
     _timer = null;
     final retryGeneration = _reconnectScheduleAuthority
@@ -1200,6 +1203,10 @@ class FfiModel with ChangeNotifier {
     // fetched, so this path only ever fell through to the plain msgBox).
     msgBox(sessionId, type, title, text, link, dialogManager,
         hasCancel: hasCancel,
+        onSubmit: type.contains('custom') ||
+                owner.connType == ConnType.portForward
+            ? null
+            : () => owner.closeView(sessionId),
         reconnect: retryGeneration == null ? null : retry,
         reconnectTimeout: retryGeneration == null ? null : _reconnects);
     if (retryGeneration != null) {
@@ -1232,16 +1239,7 @@ class FfiModel with ChangeNotifier {
         !owner.isCurrentSession(sessionId) ||
         waitForFirstImage.isFalse) return;
     dialogManager.showWaitingForImage(sessionId, type, title, text,
-        onCancel: () {
-      if (!owner.isCurrentSession(sessionId)) return;
-      if (isDesktop) {
-        if (!Get.isRegistered<FFI>(tag: owner.id) ||
-            !identical(ffi(owner.id), owner)) return;
-      } else if (!identical(gFFI, owner)) {
-        return;
-      }
-      closeConnection(id: owner.id);
-    });
+        onCancel: () => owner.closeView(sessionId));
     waitForImageDialogShow.value = true;
     waitForImageTimer = Timer(Duration(milliseconds: 1500), () {
       if (!_isCurrentSession(sessionId)) return;
@@ -1652,8 +1650,11 @@ class FfiModel with ChangeNotifier {
                   expectedTopologyRevision: topologyRevision)) return;
             }
           } else {
+            final owner = parent.target;
+            if (owner == null) return;
             msgBox(sessionId, 'nocancel-error', 'Prompt', 'No Displays', '',
-                parent.target!.dialogManager);
+                owner.dialogManager,
+                onSubmit: () => owner.closeView(sessionId));
           }
         }
       }
@@ -4511,6 +4512,28 @@ class FFI {
           SessionID expectedSessionId, SessionID expectedClientOwnerId) =>
       isCurrentSession(expectedSessionId) &&
       clientOwnerId == expectedClientOwnerId;
+
+  void closeView(SessionID expectedSessionId) {
+    if (!isCurrentSession(expectedSessionId)) return;
+    if (isDesktop) {
+      final view = switch (connType) {
+        ConnType.defaultConn => (id, DesktopTabType.remoteScreen),
+        ConnType.viewCamera => (id, DesktopTabType.viewCamera),
+        ConnType.fileTransfer => ('ft_$id', DesktopTabType.fileTransfer),
+        ConnType.portForward => ('pf_$id', DesktopTabType.portForward),
+        ConnType.terminal => ('terminal_$id', DesktopTabType.terminal),
+        ConnType.rdp => null,
+      };
+      if (view == null ||
+          !Get.isRegistered<FFI>(tag: view.$1) ||
+          !identical(Get.find<FFI>(tag: view.$1), this) ||
+          !Get.isRegistered<DesktopTabController>() ||
+          Get.find<DesktopTabController>().tabType != view.$2) return;
+    } else if (!identical(gFFI, this)) {
+      return;
+    }
+    closeConnection(id: id);
+  }
 
   bool suspendPresentation(
       SessionID expectedSessionId, SessionID expectedClientOwnerId) {

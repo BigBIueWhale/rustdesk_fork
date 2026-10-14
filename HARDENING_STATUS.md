@@ -2251,10 +2251,22 @@ The message callback `dismissAll()` paths are removed; publication retains its
 explicit replacement of prior dialog state. Message rendering/countdown labels use
 the manager's existing translator. The unused automatic-submit option and private
 callback branch are deleted; the supported reconnect countdown only renders time.
-The focused dialog shard targets 50 named tests across seven suites, including
+The focused dialog shard targets 51 named tests across seven suites, including
 six real message-widget cases for current one-shot
 submit/reconnect, stale submit/cancel/Close/reconnect before unmount, and display-only
 reconnect expiry. The real overlay and affected file-dialog mocks are retained.
+Generic message submission now dismisses only its exact dialog and invokes a
+supplied action; message type strings cannot infer a connection close. The
+connection error/no-display and explicit close-confirmation owners supply their
+captured session to `FFI::closeView`. That receiver requires a live matching UUID
+and exact FFI registration plus window role, using the real screen/camera,
+`ft_`, `pf_` and `terminal_` registrations, or the exact mobile/web global owner.
+Image-wait cancellation uses the same receiver. A prepared production-overlay/
+real-desktop-controller case retains a different selected tab while submitting
+an unbound non-custom message, and verifies both tabs and an unrelated dialog
+survive. Compilation, real caller/registration/tab/window routing and native
+acceptance remain OPEN; other loading/credential/direct close callers still
+require complete ownership migration.
 Image-wait cancellation now belongs to the manager's exact current dialog entry:
 button and keyboard callbacks must retire that entry before dispatch. The connection
 callback captures its FFI owner, rechecks the session UUID and current FFI registration

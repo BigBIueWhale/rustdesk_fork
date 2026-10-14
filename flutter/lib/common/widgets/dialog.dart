@@ -21,7 +21,8 @@ import '../../models/platform_model.dart';
 
 void clientClose(SessionID sessionId, FFI ffi) async {
   msgBox(sessionId, 'info', 'Close', 'Are you sure to close the connection?', '',
-      ffi.dialogManager);
+      ffi.dialogManager,
+      onSubmit: () => ffi.closeView(sessionId));
 }
 
 abstract class ValidationRule {

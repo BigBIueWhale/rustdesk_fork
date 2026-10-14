@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/connect_password_dialog.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
+import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 
 Future<OverlayDialogManager> _manager(WidgetTester tester) async {
@@ -26,6 +28,47 @@ VoidCallback _messageButton(WidgetTester tester, String label) => tester
     .onPressed!;
 
 void main() {
+  testWidgets('unbound message cannot close the active desktop tab',
+      (tester) async {
+    final manager = await _manager(tester);
+    final controller = DesktopTabController(
+      tabType: DesktopTabType.remoteScreen,
+    );
+    final removed = <String>[];
+    controller.onRemoved = (_, key) => removed.add(key);
+    controller.state.value.tabs.addAll([
+      TabInfo(key: 'origin', label: 'origin', page: const SizedBox.shrink()),
+      TabInfo(key: 'active', label: 'active', page: const SizedBox.shrink()),
+    ]);
+    controller.state.value.selected = 1;
+    controller.state.value.scrollController.itemCount = 2;
+    expect(Get.isRegistered<DesktopTabController>(), isFalse);
+    Get.put<DesktopTabController>(controller);
+    try {
+      msgBox(const Uuid().v4obj(), 'error', 'notice', 'error detail', '', manager);
+      await tester.pump();
+      final submit = _messageButton(tester, 'OK');
+      final unrelated = manager.show<void>(
+          (_, __, ___) => const Text('unrelated'),
+          tag: 'unrelated');
+      submit();
+      submit();
+      await tester.pump();
+      expect(removed, isEmpty);
+      expect(controller.state.value.tabs.map((tab) => tab.key),
+          ['origin', 'active']);
+      expect(controller.state.value.selected, 1);
+      expect(find.text('notice'), findsNothing);
+      expect(manager.existing('unrelated'), isTrue);
+      manager.dismissByTag('unrelated');
+      await unrelated;
+    } finally {
+      manager.dismissAll();
+      await Get.delete<DesktopTabController>();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   testWidgets('image wait cancel retires its entry and dispatches once',
       (tester) async {
     final manager = await _manager(tester);

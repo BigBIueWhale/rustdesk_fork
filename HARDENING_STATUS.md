@@ -2146,8 +2146,9 @@ in 60 VM seconds; artifact SHA-256
 `.harness-state/verifier-vm/resolution-restoration-accepted-2c01f918.json` binds exact
 source, raw results, frozen inputs, endpoint observations, limits and joined cleanup.
 Native callbacks are fixtures;
-actual X-server/Remote changes, blocking query and detached setter ownership, full app
-and installed/platform acceptance remain OPEN. Credential/dialog and Android CM work
+actual X-server/Remote changes, remaining synchronous discovery callers, full app
+and installed/platform acceptance remain OPEN. Command/task ownership is covered above.
+Credential/dialog and Android CM work
 remain parked under the user's pivot.
 
 **Dialog close authority: source corrected; focused execution pending.** The

@@ -2161,13 +2161,13 @@ clipboard. `src/ipc/clipboard_non_file.rs` retains the existing serialized respo
 and checks inline lengths, exclusive raw/inline placement, checked aggregate raw length,
 and exact received-frame length before splitting any bytes. No incomplete reply is returned
 as success and no uncertain request is retried in the same operation.
-Exact source `5f57a320` passed `--cm-clipboard-response-tests` in 79 VM seconds:
+Exact source `3f1a48f1` passed `--cm-clipboard-response-tests` in 72 VM seconds:
 eight production-type/Bytes/serde tests cover mixed exact zero-copy bytes, short and trailing
 replies, overflow, inline mismatch, conflicting placement, empty/inline-only replies and
 the unchanged JSON shape. Root-locked dependencies, stable artifact, frozen source and
 joined zero-NIC VM cleanup are bound in
-`.harness-state/verifier-vm/cm-clipboard-response-accepted-5f57a320.json`.
-Artifact SHA-256 `99c6bb740bf8412ac99511adc72f4cba4237a6f1fe53f608aac7d4c727ff729d`.
+`.harness-state/verifier-vm/cm-clipboard-response-accepted-3f1a48f1.json`.
+Artifact SHA-256 `829a2edc4dac46a1e78d05ba326e5d771622ca7f4ac9dea6f6a535b9b63fbde6`.
 This executes the response component on Linux. The Windows handler/parent compilation,
 real named-pipe truncation/stall/error, deadline and stream retirement, native clipboard
 nonpublication, fresh authorized reconnect and live/stale/disabled/wrong-type/principal

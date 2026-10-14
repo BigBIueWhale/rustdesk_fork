@@ -24,6 +24,9 @@ def storage_limits(profile, memory_mib):
     if profile == 'hbb-common-fs':
         require(memory_mib == 6144, 'filesystem storage profile requires its 6 GiB guest')
         return 6 * GIB, 4 * GIB
+    if profile == 'flutter-credential-dialog':
+        require(memory_mib == 4096, 'dialog storage profile requires its 4 GiB guest')
+        return 8 * GIB, 6 * GIB
     require(profile == 'standard', 'unknown VM storage profile')
     return SCRATCH_LIMIT, 8 * GIB
 
@@ -349,7 +352,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation', choices=('preflight', 'reserve', 'check', 'watch', 'run'))
     parser.add_argument('--memory-mib', type=int, required=True)
-    parser.add_argument('--storage-profile', choices=('standard', 'hbb-common-fs'),
+    parser.add_argument('--storage-profile',
+                        choices=('standard', 'hbb-common-fs', 'flutter-credential-dialog'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

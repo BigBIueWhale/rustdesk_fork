@@ -2294,9 +2294,10 @@ success or failure. They are prepared, uncompiled and unexecuted; the full
 model inventory is 25 suites/277 cases. Native execution, actual peer/session/
 route cancellation and installed acceptance remain OPEN. Binding every close
 caller to its initiating session and retained tab/route/window, including the
-terminal window, remains required. Focused isolation still requires 4 GiB guest
-RAM plus 16 GiB scratch, 6 GiB host headroom and 1 GiB overhead; available host
-RAM is below admission, so no launcher, compile, formatter or runtime was run.
+terminal window, remains required. This dialog workload now reserves 4 GiB guest
+RAM plus 8 GiB scratch, 6 GiB host headroom and 1 GiB overhead, for 19 GiB admission.
+Its 6 GiB overlay ceiling is reserved in full before launch; prepared inputs may occupy
+at most 2 GiB. Current compilation/runtime execution with this profile remains PENDING.
 
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.
@@ -2409,7 +2410,12 @@ a 4 GiB overlay ceiling with its unchanged 6 GiB guest, for a 19 GiB admission f
 inputs must occupy at most 2 GiB before launch, reserving the full overlay ceiling independently
 of monitor polling. Its VM deadline is 300 seconds; the complete existing filesystem workload,
 5 GiB container, source/input authority and all outcome checks remain. The named Linux execution
-at `432cd6d1` below passed with this profile. Logind, FUSE and every other
+at `432cd6d1` below passed with this profile. The credential-dialog workload alone now uses
+8 GiB scratch/6 GiB overlay with its unchanged 4 GiB guest, also for 19 GiB admission and
+at most 2 GiB prepared inputs. Its earlier accepted run peaked at 6,292,570,112 bytes of
+scratch and 6,133,387,264 bytes of overlay; current execution of this new profile is PENDING.
+Its 54 tests, 120-second test/300-second VM budgets, bridge generation and outcome checks
+remain. Logind, FUSE and every other
 profile retain standard storage. Other file ceilings remain 5 GiB input ISO, 256 MiB source and
 8 MiB seed. QEMU initializes shared RAM while paused; its direct supervisor
 installs and reads back the overlay ceiling before private-QMP `cont`, retaining the unreaped child

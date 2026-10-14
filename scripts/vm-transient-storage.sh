@@ -7,6 +7,8 @@ readonly VM_STORAGE_SOURCE="$SCRIPT_DIR/vm-transient-storage.py"
 if [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \
     && [ "${HBB_FUSE_READ_TESTS:-}" = 0 ]; then
     readonly VM_STORAGE_PROFILE=hbb-common-fs
+elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-dialog ]; then
+    readonly VM_STORAGE_PROFILE=flutter-credential-dialog
 else
     readonly VM_STORAGE_PROFILE=standard
 fi

@@ -1308,6 +1308,15 @@ cannot establish directory ownership or no-follow behavior. The shared runner re
 errors and mode-0777 chmod. Their output states that native mount safety is untested. This cleanup
 supplies no new runtime evidence; native directory/principal/symlink-race and mounted-FUSE acceptance
 remain OPEN.
+
+The Linux fusermount descriptor receiver now owns every kernel-delivered right before checking
+truncation or cardinality, closes all delivered handles on refusal, and admits exactly one complete
+descriptor. `MSG_CMSG_CLOEXEC` and `F_DUPFD_CLOEXEC` establish inheritance exclusion atomically;
+the separate flag-setting windows are deleted. The private production module has nine real Unix
+transfer/lifetime/exec tests and a focused `--fusermount-fd-tests` lane with the prior native functions
+as an A/B control. **Execution pending:** those tests do not yet provide accepted evidence. Native
+helper launch/wait/failure, device identity, directory/principal/race, mounted FUSE, complete parent
+compilation, installed and release acceptance remain OPEN.
 The global OPEN tables remain authoritative for exact-current native packages,
 cross-platform peer behavior, focus/background freshness, latency, reconnect, concurrency, soak, resource
 bounds, cleanup, cold artifacts, independent reproduction, and external review.
@@ -2112,7 +2121,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `5c603741c7af7a6137988ed139069d0c23e2280077634b8578d1f18144dc0a45  requirements.html`.
+Current normative specification SHA-256: `159defca7018bd87611a16b4e0aacffea99cf7b49c566bd6ce798271bb78c033  requirements.html`.
 
 ### Current authority and source closure
 

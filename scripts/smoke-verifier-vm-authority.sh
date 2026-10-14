@@ -106,6 +106,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=audio-mailbox
         ;;
+    1:--fusermount-fd-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'FUSE fd-test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=fusermount-fd
+        ;;
     1:--audio-buffer-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'audio-buffer input/run overrides are forbidden' >&2; exit 2; }
@@ -658,7 +664,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     readonly OVERLAY_SIZE=40G
     if [[ "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
         || "$RUST_TEST_PROFILE" = linux-resolution-lifetime || "$RUST_TEST_PROFILE" = audio-mailbox \
-        || "$RUST_TEST_PROFILE" = audio-buffer ]]; then
+        || "$RUST_TEST_PROFILE" = audio-buffer || "$RUST_TEST_PROFILE" = fusermount-fd ]]; then
         readonly VM_MEMORY=2048
     else
         readonly VM_MEMORY=16384
@@ -5665,6 +5671,18 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'focused whiteboard presentation state receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused whiteboard presentation state cloud-init completion marker'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
+    mapfile -t fd_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'FUSE_FD_ARTIFACT=pass sha256=[0-9a-f]{64} tests=9 unchanged=before-after$'
+    )
+    [ "${#fd_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'FUSE_FD_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'FUSE fd artifact receipt differs'
+    require_exact_fixed_receipt \
+        "FUSE_FD_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=9 target=linux-x86_64 scope=production-descriptor-transfer rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'focused FUSE fd receipt'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'FUSE fd cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
     mapfile -t buffer_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -6767,6 +6785,9 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     if [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
         printf 'LINUX_PASSWORD_ADMISSION_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-linux-password-coordinator-and-raw-transport installed=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
+        printf 'FUSE_FD_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=9 scope=production-descriptor-transfer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
         printf 'AUDIO_BUFFER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=16 scope=production-portable-pcm-buffer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

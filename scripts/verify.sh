@@ -7055,7 +7055,7 @@ if [ -n "$r_s11e66" ]; then echo "  FAIL R-S11e-66 macOS administrator-script en
 echo "== (3b-iii-d9cq) Linux clipboard fusermount process-context finality (R-S11ba/R-S11e-67) =="
 r_s11e67=
 fusermount_context_policy=$(awk '/enum FusermountOperation/,/pub fn get_exclude_paths/' libs/clipboard/src/platform/unix/fuse/mod.rs)
-fusermount_mount_caller=$(awk '/fn mount_with_fixed_fusermount/,/fn receive_fusermount_fd/' libs/clipboard/src/platform/unix/fuse/mod.rs)
+fusermount_mount_caller=$(awk '/fn mount_with_fixed_fusermount/,/fn fuse_device_still_mounted/' libs/clipboard/src/platform/unix/fuse/mod.rs)
 fusermount_unmount_caller=$(awk '/fn fixed_fusermount_unmount/,/fn unmount_stale_fuse_mount/' libs/clipboard/src/platform/unix/fuse/mod.rs)
 for binding in \
   'Mount { communication_fd: RawFd }' \
@@ -7248,7 +7248,7 @@ loginctl_helper=$(awk '/fn run_loginctl/,/#\[derive\(Debug, Clone\)\]/' libs/hbb
 xrandr_query_helper=$(awk '/fn xrandr_query\(\)/,/pub fn resolutions/' src/platform/linux.rs)
 xrandr_change_helper=$(awk '/pub fn change_resolution_directly/,/mod desktop/' src/platform/linux.rs)
 systemctl_helper=$(awk '/fn systemctl_service/,/pub fn uninstall_service/' src/platform/linux.rs)
-fuse_mount_helper=$(awk '/fn mount_with_fixed_fusermount/,/fn receive_fusermount_fd/' libs/clipboard/src/platform/unix/fuse/mod.rs)
+fuse_mount_helper=$(awk '/fn mount_with_fixed_fusermount/,/fn fuse_device_still_mounted/' libs/clipboard/src/platform/unix/fuse/mod.rs)
 fuse_unmount_helper=$(awk '/fn fixed_fusermount_unmount/,/fn unmount_stale_fuse_mount/' libs/clipboard/src/platform/unix/fuse/mod.rs)
 hwcodec_check_helper=$(awk '/pub fn start_check_process\(\)/,/^}/' libs/scrap/src/common/hwcodec.rs)
 shared_descriptor_test=$(awk '/fn r_s11e32_linux_command_descriptor_allowlist_is_exact\(\)/,/fn r_s11e32_linux_command_descriptor_allowlist_rejects_invalid_entries/' libs/hbb_common/src/platform/linux.rs)
@@ -9732,14 +9732,10 @@ grep -qF '"/usr/bin/fusermount"' libs/clipboard/src/platform/unix/fuse/mod.rs ||
 grep -qF 'fs::canonicalize(path)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r helper-target-not-canonicalized"
 grep -qF 'Command::new(&helper)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r helper-not-executed-by-verified-path"
 grep -qF 'communication_fd: child_socket.as_raw_fd()' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r fuse-commfd-not-passed"
-grep -qF 'fn receive_fusermount_fd(socket: &UnixStream) -> Result<OwnedFd, CliprdrError>' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-fd-receiver"
-grep -qF 'libc::SCM_RIGHTS' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-scm-rights-validation"
-grep -qF 'libc::MSG_CTRUNC' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-control-truncation-check"
 grep -qF 'configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r child-fd-not-in-exec-allowlist"
 if grep -qF 'set_fd_cloexec(child_socket.as_raw_fd(), false)' libs/clipboard/src/platform/unix/fuse/mod.rs; then
   r_s11c10r="$r_s11c10r parent-mutates-child-fd-inheritability"
 fi
-grep -qF 'set_fd_cloexec(fuse_fd.as_raw_fd(), true)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r fuse-fd-not-cloexec"
 grep -qF 'fuser::Session::from_fd(' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-session-from-fd"
 grep -qF 'fuser::SessionACL::Owner' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-owner-acl"
 grep -qF 'struct ClipboardFuseSession' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-owned-session-guard"
@@ -10440,6 +10436,7 @@ fi
 # exercise directory ownership, symlink races, or an actual FUSE mount.
 echo "== (3c-iii-b) Linux FUSE clipboard mount-component byte validation (R-S11a/R-S8) =="
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fuse_mount_component --color never
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fusermount_fd::tests:: --color never -- --test-threads=1
 
 # (3c-iii-c) Linux FUSE FileContentsResponse delivery is peer-driven after
 # PAKE. Each response is byte-capped before protobuf conversion, but the local

@@ -96,7 +96,7 @@ class _TerminalPageState extends State<TerminalPage>
   @override
   void dispose() {
     // Unregister terminal model from FFI
-    _ffi.unregisterTerminalModel(widget.terminalId);
+    _ffi.unregisterTerminalModel(widget.terminalId, _terminalModel);
     _terminalModel.dispose();
     _keyboardDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);

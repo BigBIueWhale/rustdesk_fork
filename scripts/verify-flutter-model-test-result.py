@@ -34,6 +34,7 @@ EXPECTED_SUITES = {
     "session_stream_finality_test.dart",
     "start_ellipsis_text_test.dart",
     "terminal_output_decoder_test.dart",
+    "terminal_model_lifecycle_test.dart",
 }
 FRAME_QUEUE_TESTS = {
     "retains one running frame and only the latest successor per display",

@@ -21,9 +21,13 @@ class TerminalModel with ChangeNotifier {
 
   bool _terminalOpened = false;
   bool get terminalOpened => _terminalOpened;
+  Object? _openGeneration;
 
   bool _disposed = false;
   TerminalOutputDecoder _outputDecoder = TerminalOutputDecoder();
+
+  bool get _isCurrent =>
+      !_disposed && identical(parent.terminalModels[terminalId], this);
 
   final _inputBuffer = <String>[];
   // Buffer for output data received before terminal view has valid dimensions.
@@ -41,6 +45,7 @@ class TerminalModel with ChangeNotifier {
   void Function(int w, int h, int pw, int ph)? onResizeExternal;
 
   Future<void> _handleInput(String data) async {
+    if (!_isCurrent) return;
     // Soft keyboards (notably iOS) emit '\n' when Enter is pressed, while a
     // real keyboard's Enter sends '\r'. Some Android keyboards also emit '\n'.
     // - Peer Windows: '\r' works, '\n' is just a newline.
@@ -83,6 +88,7 @@ class TerminalModel with ChangeNotifier {
     };
 
     terminal.onResize = (w, h, pw, ph) async {
+      if (!_isCurrent) return;
       // Validate all dimensions before using them
       if (w > 0 && h > 0 && pw > 0 && ph > 0) {
         debugPrint(
@@ -97,7 +103,7 @@ class TerminalModel with ChangeNotifier {
           _scheduleMarkViewReady();
         }
 
-        if (_terminalOpened) {
+        if (_isCurrent && _terminalOpened) {
           // Notify remote terminal of resize
           try {
             await bind.sessionResizeTerminal(
@@ -118,6 +124,7 @@ class TerminalModel with ChangeNotifier {
   }
 
   void onReady() {
+    if (!_isCurrent) return;
     parent.dialogManager.dismissAll();
 
     // Fire and forget - don't block onReady. If the transport reconnects while
@@ -129,6 +136,7 @@ class TerminalModel with ChangeNotifier {
   }
 
   Future<void> openTerminal({bool force = false}) async {
+    if (!_isCurrent) return;
     if (_terminalOpened && !force) return;
     // Request the remote side to open a terminal with default shell
     // The remote side will decide which shell to use based on its OS
@@ -176,7 +184,8 @@ class TerminalModel with ChangeNotifier {
   }
 
   Future<void> closeTerminal() async {
-    if (_terminalOpened) {
+    if (_isCurrent && _terminalOpened) {
+      final generation = _openGeneration;
       try {
         await bind
             .sessionCloseTerminal(
@@ -195,6 +204,8 @@ class TerminalModel with ChangeNotifier {
         debugPrint('[TerminalModel] Error calling sessionCloseTerminal: $e');
         // Continue with cleanup even if close fails
       }
+      if (!_isCurrent || !identical(_openGeneration, generation)) return;
+      _openGeneration = null;
       _terminalOpened = false;
       notifyListeners();
     }
@@ -250,7 +261,7 @@ class TerminalModel with ChangeNotifier {
   }
 
   void handleTerminalResponse(Map<String, dynamic> evt) {
-    if (_disposed) return;
+    if (!_isCurrent) return;
     final String? type = evt['type'];
     final int evtTerminalId = getTerminalIdFromEvt(evt);
 
@@ -288,6 +299,8 @@ class TerminalModel with ChangeNotifier {
     if (success) {
       _finishTerminalOutput();
       _outputDecoder = TerminalOutputDecoder();
+      final generation = Object();
+      _openGeneration = generation;
       _terminalOpened = true;
 
       // On reconnect, the server may replay recent output. That replay can include
@@ -307,11 +320,15 @@ class TerminalModel with ChangeNotifier {
       }
 
       // Process any buffered input
-      _processBufferedInputAsync().then((_) {
-        notifyListeners();
+      _processBufferedInputAsync(generation).then((_) {
+        if (_isCurrent && identical(_openGeneration, generation)) {
+          notifyListeners();
+        }
       }).catchError((e) {
         debugPrint('[TerminalModel] Error processing buffered input: $e');
-        notifyListeners();
+        if (_isCurrent && identical(_openGeneration, generation)) {
+          notifyListeners();
+        }
       });
 
       final persistentSessions =
@@ -333,11 +350,12 @@ class TerminalModel with ChangeNotifier {
     }
   }
 
-  Future<void> _processBufferedInputAsync() async {
+  Future<void> _processBufferedInputAsync(Object generation) async {
     final buffer = List<String>.from(_inputBuffer);
     _inputBuffer.clear();
 
     for (final data in buffer) {
+      if (!_isCurrent || !identical(_openGeneration, generation)) return;
       try {
         await bind.sessionSendTerminalInput(
           sessionId: parent.sessionId,
@@ -389,7 +407,7 @@ class TerminalModel with ChangeNotifier {
     String text, {
     bool suppressTerminalOutput = false,
   }) {
-    if (text.isEmpty) return;
+    if (!_isCurrent || text.isEmpty) return;
     if (!_terminalViewReady) {
       // If a single chunk exceeds the cap, keep only its tail.
       // Note: truncation may split a multi-byte ANSI escape sequence,
@@ -456,11 +474,11 @@ class TerminalModel with ChangeNotifier {
 
   /// Mark terminal view as ready and flush buffered output.
   void _scheduleMarkViewReady() {
-    if (_disposed || _terminalViewReady || _markViewReadyScheduled) return;
+    if (!_isCurrent || _terminalViewReady || _markViewReadyScheduled) return;
     _markViewReadyScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markViewReadyScheduled = false;
-      if (_disposed || _terminalViewReady) return;
+      if (!_isCurrent || _terminalViewReady) return;
       if (terminal.viewWidth > 0 && terminal.viewHeight > 0) {
         _markViewReady();
       }
@@ -475,10 +493,12 @@ class TerminalModel with ChangeNotifier {
   }
 
   void _handleTerminalClosed(Map<String, dynamic> evt) {
+    _openGeneration = null;
+    _terminalOpened = false;
+    _inputBuffer.clear();
     _finishTerminalOutput();
     final int exitCode = evt['exit_code'] ?? 0;
     _writeToTerminal('\r\nTerminal closed with exit code: $exitCode\r\n');
-    _terminalOpened = false;
     notifyListeners();
   }
 
@@ -495,6 +515,7 @@ class TerminalModel with ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _openGeneration = null;
     _outputDecoder.finish();
     // Clear buffers to free memory
     _inputBuffer.clear();

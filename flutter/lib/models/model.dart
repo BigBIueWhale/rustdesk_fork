@@ -5694,7 +5694,8 @@ class FFI {
     _terminalModels[terminalId] = model;
   }
 
-  void unregisterTerminalModel(int terminalId) {
+  void unregisterTerminalModel(int terminalId, TerminalModel owner) {
+    if (!identical(_terminalModels[terminalId], owner)) return;
     debugPrint('[FFI] Unregistering terminal model for terminal $terminalId');
     _terminalModels.remove(terminalId);
   }

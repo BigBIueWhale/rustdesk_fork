@@ -7332,7 +7332,7 @@ run_flutter_model_tests() {
              "$(( ${#model_test_count} + 1 ))" ] \
         || fail 'focused Flutter model-test count is malformed'
     if [ "$FLUTTER_TEST_PROFILE" = models ]; then
-        expected_result="suites=24 tests=$model_test_count"
+        expected_result="suites=25 tests=$model_test_count"
     fi
     chown -R 1000:1000 "$source_root" "$work_root"
     chmod 0700 "$work_root"
@@ -7704,8 +7704,9 @@ run_flutter_model_tests() {
                         test/android_permission_request_coordinator_test.dart
                         test/remote_key_routing_test.dart
                         test/terminal_output_decoder_test.dart
+                        test/terminal_model_lifecycle_test.dart
                     )
-                    [ "${#tests[@]}" -eq 24 ]
+                    [ "${#tests[@]}" -eq 25 ]
                     test_budget=900s
                 fi
                 for test_path in "${tests[@]}"; do
@@ -7868,7 +7869,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     else
-        printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=24 tests=%s flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+        printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=25 tests=%s flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$model_test_count" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

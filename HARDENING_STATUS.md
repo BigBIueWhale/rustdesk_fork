@@ -6136,7 +6136,7 @@ disposed models reject events. Empty decoded fragments consume no pre-layout buf
 entries. Six production-decoder regressions cover every two-packet split of mixed
 Hebrew/accented/CJK/emoji/ANSI output, bytewise continuation, malformed bytes, EOF,
 independent terminals and replacement isolation. They are included in the existing
-model checkpoint (24 suites/264 cases). The focused command
+model checkpoint (25 suites/269 cases). The focused command
 `scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --terminal-output`
 runs the same six tests with exact suite/name/completion checks. It inherits the
 existing 4-GiB guest, 2-GiB networkless container, 90-second test and 300-second VM
@@ -6147,6 +6147,21 @@ Diff review/check, Bash syntax and Python AST inspection are preparatory checks 
 Available RAM is below unchanged VM admission, so no test/count launcher ran; the
 current ledger token count remains PENDING. Real terminal rendering, reconnect/replay,
 platform behavior and all installed/service/release obligations remain OPEN.
+
+**Terminal model callback ownership — SOURCE CORRECTED; MODEL/NATIVE EXECUTION OPEN.**
+Only the exact currently registered model admits input, resize, open/close, event,
+output and scheduled layout work. Each successful open creates a fresh object
+identity; buffered-input iterations and open/close completions retain that identity,
+so disposal, replacement, close or reopen stops later dispatch/publication. Closed
+events discard old pending input before status output. Unregistration now requires
+the exact model, and both desktop/mobile callers pass their own instance. Five
+regressions execute the real `TerminalModel`/Flutter notification path with a parent
+that supplies only ID and registry state; unexpected parent access fails. They cover
+current completion, disposal, same-ID replacement, close and repeated open. They are
+included in the model checkpoint above and remain UNEXECUTED. Admitted native command
+completion, actual input/resize delivery, page replacement/unmount, transport/native
+terminal generations and resource bounds remain OPEN. Diff/syntax/AST/catalog checks
+are preparatory; no VM/compiler/test/count ran while RAM admission was unavailable.
 
 **R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the

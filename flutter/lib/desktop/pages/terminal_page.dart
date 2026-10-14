@@ -119,7 +119,7 @@ class _TerminalPageState extends State<TerminalPage>
     // Cancel tab state subscription to prevent memory leak
     _tabStateSubscription?.cancel();
     // Unregister terminal model from FFI
-    _ffi.unregisterTerminalModel(widget.terminalId);
+    _ffi.unregisterTerminalModel(widget.terminalId, _terminalModel);
     _terminalModel.dispose();
     _terminalFocusNode.dispose();
     // Release connection reference instead of closing directly

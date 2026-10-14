@@ -1338,7 +1338,10 @@ after successful helper completion. Consuming `wait_with_output` and direct unmo
 are removed. Two opaque-owner pipe accessors expose IO without transferring child wait authority.
 **Focused execution pending:** `--fusermount-process-tests` compiles the unchanged extracted child
 owner plus its new IO accessors, the actual private helper loop and 18 tests (nine process scenarios
-and nine nearest descriptor regressions). Process actors and cleanup callbacks are fixtures;
+and nine nearest descriptor regressions). Source `26536da5` refused before VM creation: its unchanged
+admission required 25,600 MiB and found 24,552 MiB. No compiler or new test ran; the refusal is retained
+in `.harness-state/verifier-vm/fusermount-process-ram-refusal-26536da5.json`.
+Process actors and cleanup callbacks are fixtures;
 actual setuid helper/device/mount, descendant lifetime, principal/permission failures, full parent
 compilation, async caller placement, installed and sustained resource/latency acceptance remain OPEN.
 The global OPEN tables remain authoritative for exact-current native packages,

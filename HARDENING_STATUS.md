@@ -2079,18 +2079,28 @@ Current normative specification SHA-256: `3ffe686d37d12f624b305c927bafa3ff71a42e
 
 ### Current authority and source closure
 
-**Password input policy: source corrected; focused execution pending.** The
+**Password input policy: source corrected; focused component/channel tests accepted.** The
 connection-password reveal control and both permanent-password fields use
 `PasswordTextField`. Credential input always requests a password keyboard with
 autocorrection, suggestions, IME personalized learning, smart punctuation and
 spell checking disabled; revealing text changes only obscurity. `DialogTextField`
 names password intent separately from visibility. The old display-only password
-configuration is removed. The focused `--flutter-model-tests --password-fields`
-shard observes actual Flutter text-input channel configuration during hidden,
-revealed and hidden-again transitions, with a default-field learning control and
-focused accessibility semantics. It is component/channel evidence, not proof
-that a native Android/iOS keyboard honors the flags or an installed password
-transaction. Those device and full-dialog paths remain OPEN.
+configuration is removed; the enabled field retains explicit focusable semantics.
+Exact source `e7ff7eb9e6a76b058e6b081c15ac638b5ef014d1` passed all four named
+`--flutter-model-tests --password-fields` checks and three result-parser controls
+in 100 VM seconds with pinned Flutter 3.24.5, zero NICs and guest-only networkless,
+non-root, capability-free Docker. Actual widget/channel execution covers Android
+and iOS platform selection, hidden/revealed/hidden-again policy, unchanged password
+punctuation, an ordinary-field learning control and focused obscured semantics.
+Source/index/audit/ledger/specification/instruction freezes match; exact joins and
+RAM retirement pass. Scratch peaks at 4,163,911,680 bytes; observed QEMU block
+writes are 4,096 bytes. Retained raw serial is 67,129 bytes, SHA-256
+`5c33819552045fd5b0384f62dfcd5eb106b24e4e6650d758d51f615af870d066`;
+`.harness-state/verifier-vm/password-input-accepted-e7ff7eb9.json` binds source,
+results, resource/cleanup and complete unattributed endpoint snapshots. This is
+Linux Flutter component execution with a test text-input channel, not proof that
+a native Android/iOS keyboard honors the flags. Current full-dialog/bridge,
+physical-device keyboard and installed password transaction acceptance remain OPEN.
 
 **Offline verifier host sockets (R-S11dh): Linux socket restriction and observation retention accepted; wider coverage OPEN.**
 `vm-host-network.py` closes extra inherited descriptors, refuses IP stdout/stderr and

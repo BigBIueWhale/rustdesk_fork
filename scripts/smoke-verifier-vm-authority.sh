@@ -706,7 +706,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly VM_MEMORY=6144
     else
-        readonly VM_TIMEOUT_SECONDS=1800
+        readonly VM_TIMEOUT_SECONDS=300
         readonly VM_MEMORY=6144
     fi
     readonly OVERLAY_SIZE=16G
@@ -4498,6 +4498,7 @@ vm_started_seconds=$SECONDS
 vm_storage_check
 /usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
     /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" run --memory-mib "$VM_MEMORY" \
+    --storage-profile "$VM_STORAGE_PROFILE" \
     --run "$RUN" --qmp "$QMP_SOCKET" --qemu \
     /usr/bin/qemu-system-x86_64 \
         -name rustdesk-verifier-authority \

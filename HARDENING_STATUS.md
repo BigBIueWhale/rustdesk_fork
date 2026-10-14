@@ -2402,9 +2402,16 @@ remain OPEN; this acceptance covers new runs of the offline Linux verifier.
 **VM transient storage (R-S11cj/R-S11dh): the observed Linux VM disk-churn path is corrected.**
 Verification and acquisition use the shared ordinary-user, identity-checked private workspace on the
 existing `/dev/shm` for overlays, input/seed media, source archives and tool temporary files. Admission
-reserves 16 GiB scratch, guest RAM, 6 GiB host headroom and 1 GiB overhead before VM reservation;
-insufficient resources refuse without disk scratch. Hard ceilings remain 8 GiB overlay, 5 GiB input
-ISO, 256 MiB source and 8 MiB seed. QEMU initializes shared RAM while paused; its direct supervisor
+reserves scratch, guest RAM, 6 GiB host headroom and 1 GiB overhead before VM reservation;
+insufficient resources refuse without disk scratch. The standard profile reserves 16 GiB scratch
+with an 8 GiB overlay ceiling. The ordinary filesystem-test profile alone uses 6 GiB scratch and
+a 4 GiB overlay ceiling with its unchanged 6 GiB guest, for a 19 GiB admission floor. Its prepared
+inputs must occupy at most 2 GiB before launch, reserving the full overlay ceiling independently
+of monitor polling. Its VM deadline is 300 seconds; the complete existing filesystem workload,
+5 GiB container, source/input authority and all outcome checks remain. This profile is source
+prepared; current native storage and test acceptance are PENDING. Logind, FUSE and every other
+profile retain standard storage. Other file ceilings remain 5 GiB input ISO, 256 MiB source and
+8 MiB seed. QEMU initializes shared RAM while paused; its direct supervisor
 installs and reads back the overlay ceiling before private-QMP `cont`, retaining the unreaped child
 through `prlimit` to exclude PID reuse. The pidfd-bound monitor aborts only the owned harness on
 scratch/headroom exhaustion. Canonical markers, bounded diagnostics and intentional artifacts keep
@@ -14261,10 +14268,9 @@ truncate large values, as described in the [Protocol Buffers schema-evolution co
 Three real-file regressions are required by `--hbb-common-fs`: both-role wrap refusal with
 unchanged staging/state followed by valid resume, exact `u32::MAX` wire/seek/read/accounting
 through a Unix sparse tail, and zero-offset fresh transfer with real receive publication and
-sidecar retirement. They are prepared, uncompiled and unexecuted. The isolated 6 GiB guest
-still requires 16 GiB RAM scratch plus 6 GiB host headroom and 1 GiB overhead; available host
-RAM is below the 29 GiB admission floor. No launcher, compiler or runtime was run for this
-slice. Viewer/CM/peer, installed and other-platform integration remain OPEN.
+sidecar retirement. They are prepared, uncompiled and unexecuted. The filesystem storage
+profile above now has a 19 GiB admission floor; its current native execution is pending.
+Viewer/CM/peer, installed and other-platform integration remain OPEN.
 
 **Filesystem-only job authority — source implemented; compilation/native execution PENDING.**
 All production constructors use filesystem paths. `TransferJob` now accepts and retains a
@@ -14324,9 +14330,9 @@ first list. The viewer creates a receive job before the peer's directory respons
 without that response. CM already admits its list before publishing a receive job. One required
 `--hbb-common-fs` regression covers both refusals, retained job accounting/unowned partial files,
 and successful explicit empty-list admission afterward. It is uncompiled and unexecuted;
-current library/app, viewer/CM, installed and other-platform acceptance remain OPEN. Available
-host RAM remains below the unchanged 29 GiB filesystem-test admission floor, so no VM or
-test payload was launched for this correction. Earlier accepted transactions do not cover it.
+current library/app, viewer/CM, installed and other-platform acceptance remain OPEN. The
+filesystem storage profile above now has a 19 GiB admission floor; its current native execution
+is pending. Earlier accepted transactions do not cover this correction.
 
 **File-list replacement — named Linux library transaction ACCEPTED; caller integration OPEN.**
 At `68309547`, all four new regressions failed while 98 existing filesystem tests passed;

@@ -20,6 +20,14 @@ HEADROOM = 6 * GIB
 OVERHEAD = GIB
 
 
+def storage_limits(profile, memory_mib):
+    if profile == 'hbb-common-fs':
+        require(memory_mib == 6144, 'filesystem storage profile requires its 6 GiB guest')
+        return 6 * GIB, 4 * GIB
+    require(profile == 'standard', 'unknown VM storage profile')
+    return SCRATCH_LIMIT, 8 * GIB
+
+
 def require(condition, message):
     if not condition:
         raise ValueError(message)
@@ -47,15 +55,16 @@ def tmpfs_root():
     return mount
 
 
-def preflight(memory_mib):
+def preflight(memory_mib, profile='standard'):
+    scratch_limit, _ = storage_limits(profile, memory_mib)
     mount = tmpfs_root()
-    required = memory_mib * 1024 ** 2 + SCRATCH_LIMIT + HEADROOM + OVERHEAD
+    required = memory_mib * 1024 ** 2 + scratch_limit + HEADROOM + OVERHEAD
     available = available_memory()
     require(available >= required,
             f'VM refused: RAM requires {required // 1024 ** 2} MiB including scratch '
             f'and headroom; only {available // 1024 ** 2} MiB available')
     filesystem = os.statvfs(mount)
-    require(filesystem.f_bavail * filesystem.f_frsize >= SCRATCH_LIMIT + OVERHEAD,
+    require(filesystem.f_bavail * filesystem.f_frsize >= scratch_limit + OVERHEAD,
             'VM refused: /dev/shm has insufficient capacity for bounded scratch')
     return mount
 
@@ -78,8 +87,8 @@ def private_directory(path, expected=None):
         raise
 
 
-def reserve(memory_mib):
-    mount = preflight(memory_mib)
+def reserve(memory_mib, profile='standard'):
+    mount = preflight(memory_mib, profile)
     root = mount / f'rustdesk-fork-vm-{os.geteuid()}'
     try:
         root.mkdir(mode=0o700)
@@ -154,6 +163,7 @@ def qemu_output_receipt(run):
 
 
 def run_qemu(args):
+    _, overlay_limit = storage_limits(args.storage_profile, args.memory_mib)
     require(args.qemu and args.qemu[0] == '/usr/bin/qemu-system-x86_64',
             'storage supervisor requires the fixed QEMU executable')
     require(Path(args.qmp) == Path(args.run) / 'qmp.sock', 'QMP path differs')
@@ -161,7 +171,7 @@ def run_qemu(args):
             'QEMU supervisor requires waitable children')
     # The shared guest RAM memfd must be sized before lowering RLIMIT_FSIZE.
     # -S prevents guest disk writes until the final hard limit is installed.
-    initial_limit = max(8 * GIB, args.memory_mib * 1024 ** 2)
+    initial_limit = max(overlay_limit, args.memory_mib * 1024 ** 2)
     resource.setrlimit(resource.RLIMIT_FSIZE, (initial_limit, initial_limit))
     output_before = resource.getrusage(resource.RUSAGE_CHILDREN).ru_oublock
     child = subprocess.Popen(args.qemu + ['-S'], close_fds=False)
@@ -224,11 +234,13 @@ def run_qemu(args):
                 require(not cancelled, 'QEMU storage admission cancelled')
                 # This remains our unreaped direct child: its PID cannot be
                 # recycled between the process proof and prlimit syscall.
-                resource.prlimit(child.pid, resource.RLIMIT_FSIZE, (8 * GIB, 8 * GIB))
-                require(resource.prlimit(child.pid, resource.RLIMIT_FSIZE) == (8 * GIB, 8 * GIB),
+                resource.prlimit(child.pid, resource.RLIMIT_FSIZE, (overlay_limit, overlay_limit))
+                require(resource.prlimit(child.pid, resource.RLIMIT_FSIZE)
+                        == (overlay_limit, overlay_limit),
                         'QEMU hard file limit differs')
                 publish(Path(args.run) / 'storage.limit', {
-                    'qemu_pid': child.pid, 'hard_file_limit_bytes': 8 * GIB,
+                    'qemu_pid': child.pid, 'hard_file_limit_bytes': overlay_limit,
+                    'storage_profile': args.storage_profile,
                     'guest_memory_mib': args.memory_mib, 'guest_started_paused': True,
                     'limit_installed_before_guest_execution': True,
                 })
@@ -262,6 +274,7 @@ def run_qemu(args):
 
 
 def watch(args):
+    scratch_limit, overlay_limit = storage_limits(args.storage_profile, args.memory_mib)
     tmpfs_root()
     descriptor = private_directory(args.workspace, args.identity)
     require(os.getppid() == args.parent, 'storage monitor is not the harness child')
@@ -295,8 +308,8 @@ def watch(args):
                     durable += metadata.st_blocks * 512
             durable_peak = max(durable_peak, durable)
             samples += 1
-            if used > SCRATCH_LIMIT or minimum_memory < HEADROOM:
-                reason = 'scratch-budget' if used > SCRATCH_LIMIT else 'memory-headroom'
+            if used > scratch_limit or minimum_memory < HEADROOM:
+                reason = 'scratch-budget' if used > scratch_limit else 'memory-headroom'
                 signal.pidfd_send_signal(parent, signal.SIGTERM)
                 break
             if Path(args.stop).exists():
@@ -314,7 +327,8 @@ def watch(args):
     finally:
         publish(args.receipt, {
             'storage': 'existing-/dev/shm-tmpfs', 'workspace': args.workspace,
-            'identity': args.identity, 'scratch_limit_bytes': SCRATCH_LIMIT,
+            'identity': args.identity, 'scratch_limit_bytes': scratch_limit,
+            'storage_profile': args.storage_profile, 'overlay_limit_bytes': overlay_limit,
             'headroom_bytes': HEADROOM, 'guest_memory_mib': args.memory_mib,
             'peak_allocated_bytes': peak, 'overlay_peak_allocated_bytes': overlay_peak,
             'minimum_mem_available_bytes': minimum_memory, 'samples': samples,
@@ -335,6 +349,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation', choices=('preflight', 'reserve', 'check', 'watch', 'run'))
     parser.add_argument('--memory-mib', type=int, required=True)
+    parser.add_argument('--storage-profile', choices=('standard', 'hbb-common-fs'),
+                        default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')
     parser.add_argument('--parent', type=int)
@@ -346,16 +362,17 @@ def main():
     parser.add_argument('--qemu', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     require(2048 <= args.memory_mib <= 24576, 'guest memory is outside the fixed profile bounds')
+    scratch_limit, overlay_limit = storage_limits(args.storage_profile, args.memory_mib)
     if args.operation == 'preflight':
-        preflight(args.memory_mib)
+        preflight(args.memory_mib, args.storage_profile)
     elif args.operation == 'reserve':
-        reserve(args.memory_mib)
+        reserve(args.memory_mib, args.storage_profile)
     elif args.operation == 'check':
         descriptor = private_directory(args.workspace, args.identity)
         try:
-            # Only QEMU may write after this check. Its hard 8 GiB file limit
+            # Only QEMU may write after this check. Its selected hard file limit
             # bounds the remaining growth independently of the polling monitor.
-            require(allocation(args.workspace) <= SCRATCH_LIMIT - 8 * GIB,
+            require(allocation(args.workspace) <= scratch_limit - overlay_limit,
                     'prepared inputs leave insufficient RAM overlay capacity')
             require(available_memory() >= args.memory_mib * 1024 ** 2 + HEADROOM + OVERHEAD,
                     'RAM headroom changed before QEMU launch')

@@ -4,15 +4,23 @@ VM_TRANSIENT_ID=
 VM_TRANSIENT_ROOT_FD=
 VM_STORAGE_MONITOR_PID=
 readonly VM_STORAGE_SOURCE="$SCRIPT_DIR/vm-transient-storage.py"
+if [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \
+    && [ "${HBB_FUSE_READ_TESTS:-}" = 0 ]; then
+    readonly VM_STORAGE_PROFILE=hbb-common-fs
+else
+    readonly VM_STORAGE_PROFILE=standard
+fi
 
 vm_storage_preflight() {
     /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" preflight --memory-mib "$VM_MEMORY" \
+        --storage-profile "$VM_STORAGE_PROFILE" \
         || fail 'VM RAM admission failed; no disk-backed scratch fallback is permitted'
 }
 
 reserve_vm_storage() {
     local reserved
-    reserved=$(/usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" reserve --memory-mib "$VM_MEMORY") \
+    reserved=$(/usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" reserve --memory-mib "$VM_MEMORY" \
+        --storage-profile "$VM_STORAGE_PROFILE") \
         || fail 'cannot reserve bounded VM RAM scratch'
     VM_TRANSIENT=${reserved%%$'\n'*}
     VM_TRANSIENT_ID=${reserved#*$'\n'}
@@ -26,6 +34,7 @@ reserve_vm_storage() {
     printf '%s\n%s\n' "$VM_TRANSIENT" "$VM_TRANSIENT_ID" >"$RUN/storage.workspace"
     export TMPDIR="$VM_TRANSIENT"
     /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" watch --memory-mib "$VM_MEMORY" \
+        --storage-profile "$VM_STORAGE_PROFILE" \
         --workspace "$VM_TRANSIENT" --identity "$VM_TRANSIENT_ID" --parent "$$" \
         --run "$RUN" --ready "$RUN/storage.ready" --stop "$RUN/storage.stop" \
         --receipt "$RUN_ROOT/$MODE-${RUN##*/}.storage.json" &
@@ -41,6 +50,7 @@ reserve_vm_storage() {
 
 vm_storage_check() {
     /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" check --memory-mib "$VM_MEMORY" \
+        --storage-profile "$VM_STORAGE_PROFILE" \
         --workspace "$VM_TRANSIENT" --identity "$VM_TRANSIENT_ID" \
         || fail 'VM RAM storage admission changed before launch'
 }

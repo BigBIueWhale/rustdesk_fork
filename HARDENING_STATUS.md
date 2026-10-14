@@ -12202,7 +12202,7 @@ artifacts; cold R-B2/R-B10 equality; independent reproduction; and external revi
 
 ### R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox (2026-08-22)
 
-**PRODUCTION MAILBOX COMPONENT ACCEPTED; WHOLE-APP, NATIVE PLAYBACK AND RELEASE EVIDENCE OPEN.**
+**PRODUCTION MAILBOX/PCM BUFFER COMPONENTS ACCEPTED; WHOLE-APP, NATIVE PLAYBACK AND RELEASE EVIDENCE OPEN.**
 The shared outgoing viewer on Android/iOS/Windows/Linux/macOS and accepted controlled-call playback
 use the private `src/client/audio_mailbox.rs` boundary: one immutable first-format identity, one pending format,
 at most eight timestamped frames, and terminal state under a mutex. The sole receiver uses a
@@ -12231,10 +12231,21 @@ the existing ring-capacity/oldest-retention and shrink heuristic are unchanged.
 
 Eight production-buffer regressions cover initial and exact-deadline behavior,
 independent owners, backwards-clock refusal to trim, real/no-op resize, bounded PCM
-retention, and four joined native workers with distinct epochs over 200 trim periods.
+retention, and four joined native workers with distinct epochs over 200 injected intervals.
 The `--audio-buffer-tests` lane compiles the actual portable buffer with root-locked
-ringbuf 0.3.3/log in the existing bounded zero-NIC VM. Execution is pending. Linux executes
-the portable component directly; Windows/Android/Apple CPAL compilation, device playback,
+ringbuf 0.3.3/log in the existing bounded zero-NIC VM. Exact source `a30df600`
+(tree `250b6cfe`) passed all eight named tests with outer status 0 in 64 seconds;
+the test body took 0.02s and used injected `Instant` values for interval cases.
+Artifact SHA-256 `9b697da943cfd3316db4ac5467e82bbe356b6decb29717d42d6f12c45ca741f7`
+was stable before/after, and every fixture dependency matched the root lock.
+Raw serial `android-rust-lifecycle-tests-run.li5BUpATxt.serial.log` is 67817 bytes,
+SHA-256 `094ba1ed40e8b3113019b77cf243260ddb3e59e913302b161cfe326aae47eb50`.
+All 43 before/observed-after-terminal/after freeze fields matched; the first resumed
+poll was terminal, so no live manual source observation is claimed. Four outer endpoint
+snapshots retained one unattributed addition, which was untouched; kernel policy denied
+harness IP sockets. Exact QEMU/monitor/guest cleanup joined and retired the RAM workspace
+and active markers. Linux executes the portable component directly;
+Windows/Android/Apple CPAL compilation, device playback,
 actual trim timing, concurrent deployed sessions and whole-app acceptance remain OPEN.
 
 `OwnedMediaThread` retains the non-cloneable sender and exact decoder handle; the existing bounded

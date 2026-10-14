@@ -1,5 +1,10 @@
 #[path = "ipc/auth.rs"]
 mod ipc_auth;
+#[cfg(any(target_os = "windows", test))]
+#[path = "ipc/clipboard_non_file.rs"]
+mod clipboard_non_file;
+#[cfg(target_os = "windows")]
+pub use clipboard_non_file::ClipboardNonFile;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[path = "ipc/uid_policy.rs"]
 mod uid_policy;
@@ -2359,21 +2364,6 @@ pub enum FS {
         conn_id: i32,
         request_id: u64,
     },
-}
-
-#[cfg(target_os = "windows")]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "t")]
-pub struct ClipboardNonFile {
-    pub compress: bool,
-    pub content: bytes::Bytes,
-    pub content_len: usize,
-    pub next_raw: bool,
-    pub width: i32,
-    pub height: i32,
-    // message.proto: ClipboardFormat
-    pub format: i32,
-    pub special_name: String,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

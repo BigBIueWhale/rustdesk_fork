@@ -147,9 +147,6 @@ impl Handler {
                     log::error!("Failed to read clipboard from cm: {}", e);
                 }
                 Ok(data) => {
-                    // Skip sending empty clipboard data.
-                    // Maybe there's something wrong reading the clipboard data in cm, but no error msg is returned.
-                    // The clipboard data should not be empty, the last line will try again to get the clipboard data.
                     if !data.is_empty() {
                         let mut msg = Message::new();
                         let multi_clipboards = MultiClipboards {
@@ -174,6 +171,7 @@ impl Handler {
                     }
                 }
             }
+            return None;
         }
 
         #[cfg(target_os = "linux")]
@@ -191,12 +189,6 @@ impl Handler {
         }
     }
 
-    // Read clipboard data from cm using ipc.
-    //
-    // We cannot use `#[tokio::main(flavor = "current_thread")]` here,
-    // because the auto-managed tokio runtime (async context) will be dropped after the call.
-    // The next call will create a new runtime, which will cause the previous stream to be unusable.
-    // So we need to manage the tokio runtime manually.
     #[cfg(windows)]
     fn read_clipboard_from_cm_ipc(
         &mut self,
@@ -206,79 +198,47 @@ impl Handler {
             self.rt = Some(Runtime::new()?);
         }
         let Some(rt) = &self.rt else {
-            // unreachable!
             bail!("failed to get tokio runtime");
         };
-        let mut is_sent = false;
-        if let Some(stream) = &mut self.stream {
-            // If previous stream is still alive, reuse it.
-            // If the previous stream is dead, `is_sent` will trigger reconnect.
-            is_sent = match rt
-                .block_on(stream.send(&authorized_clipboard_non_file_request(&authority)))
-            {
-                Ok(_) => true,
-                Err(e) => {
-                    log::debug!("Failed to send to cm: {}", e);
-                    false
+        let mut stream = self.stream.take();
+        let result: ResultType<Vec<ClipboardNonFile>> = rt.block_on(async {
+            hbb_common::timeout(2000, async {
+                if stream.is_none() {
+                    stream = Some(crate::server::connect_authenticated_cm(100, "--cm").await?);
                 }
-            };
-        }
-        if !is_sent {
-            let mut stream = rt.block_on(crate::server::connect_authenticated_cm(100, "--cm"))?;
-            rt.block_on(stream.send(&authorized_clipboard_non_file_request(&authority)))?;
-            self.stream = Some(stream);
-        }
-
-        if let Some(stream) = &mut self.stream {
-            loop {
-                match rt.block_on(stream.next_timeout(800))? {
-                    Some(Data::ClipboardNonFile(Some((err, mut contents)))) => {
-                        if !err.is_empty() {
-                            bail!("{}", err);
-                        } else {
-                            if contents.iter().any(|c| c.next_raw) {
-                                // Wrap the future with a `Timeout` in an async block to avoid panic.
-                                // We cannot use `rt.block_on(timeout(1000, stream.next_raw()))` here, because it causes panic:
-                                // thread '<unnamed>' panicked at D:\Projects\rust\rustdesk\libs\hbb_common\src\lib.rs:98:5:
-                                // there is no reactor running, must be called from the context of a Tokio 1.x runtime
-                                // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-                                match rt.block_on(async {
-                                    hbb_common::timeout(1000, stream.next_raw()).await
-                                }) {
-                                    Ok(Ok(mut data)) => {
-                                        for c in &mut contents {
-                                            if c.next_raw {
-                                                // No need to check the length because sum(content_len) == data.len().
-                                                c.content = data.split_to(c.content_len).into();
-                                            }
-                                        }
-                                    }
-                                    Ok(Err(e)) => {
-                                        // reset by peer
-                                        self.stream = None;
-                                        bail!("failed to get raw clipboard data: {}", e);
-                                    }
-                                    Err(e) => {
-                                        // Reconnect to avoid the next raw data remaining in the buffer.
-                                        self.stream = None;
-                                        log::debug!("Failed to get raw clipboard data: {}", e);
-                                    }
-                                }
+                let Some(stream) = stream.as_mut() else {
+                    bail!("failed to get CM clipboard stream");
+                };
+                stream.send(&authorized_clipboard_non_file_request(&authority)).await?;
+                let mut monitor_ready_seen = false;
+                loop {
+                    match stream.next().await? {
+                        Some(Data::ClipboardNonFile(Some((err, contents)))) => {
+                            if !err.is_empty() {
+                                bail!("{}", err);
                             }
-                            return Ok(contents);
+                            let raw = if ClipboardNonFile::raw_content_len(&contents)? != 0 {
+                                stream.next_raw().await?
+                            } else {
+                                hbb_common::bytes::BytesMut::new()
+                            };
+                            return Ok(ClipboardNonFile::restore_raw_contents(contents, raw)?);
+                        }
+                        Some(Data::ClipboardFile(ClipboardFile::MonitorReady))
+                            if !monitor_ready_seen => {
+                                monitor_ready_seen = true;
+                            }
+                        _ => {
+                            bail!("failed to get clipboard data from cm");
                         }
                     }
-                    Some(Data::ClipboardFile(ClipboardFile::MonitorReady)) => {
-                        // ClipboardFile::MonitorReady is the first message sent by cm.
-                    }
-                    _ => {
-                        bail!("failed to get clipboard data from cm");
-                    }
                 }
-            }
+            }).await?
+        });
+        if result.is_ok() {
+            self.stream = stream;
         }
-        // unreachable!
-        bail!("failed to get clipboard data from cm");
+        result
     }
 }
 

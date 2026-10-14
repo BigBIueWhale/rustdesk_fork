@@ -115,7 +115,8 @@ case "$#:${8:-}" in
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
-            || "${13}" = --fusermount-process || "${13}" = --file-block ]] || exit 2
+            || "${13}" = --fusermount-process || "${13}" = --file-block \
+            || "${13}" = --clipboard-response ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -3107,6 +3108,25 @@ run_focused_rust_tests() {
             [ "${#clipboard_tests[@]}" -eq 13 ] \
                 || fail 'focused clipboard test inventory differs'
             required_tests=("${clipboard_tests[@]}")
+        elif [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
+            container_name=rustdesk-cm-clipboard-response-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=512m
+            source_fingerprints=(
+                Cargo.lock src/ipc.rs src/ipc/clipboard_non_file.rs
+                src/server/clipboard_service.rs scripts/run-cm-clipboard-response-tests.py
+            )
+            required_tests=(
+                clipboard_non_file::tests::mixed_inline_and_raw_items_restore_exact_bytes
+                clipboard_non_file::tests::short_raw_reply_refuses_without_panicking
+                clipboard_non_file::tests::trailing_raw_bytes_refuse_the_complete_reply
+                clipboard_non_file::tests::metadata_length_overflow_refuses_before_splitting
+                clipboard_non_file::tests::inline_length_mismatch_refuses_the_complete_reply
+                clipboard_non_file::tests::raw_item_cannot_also_supply_inline_content
+                clipboard_non_file::tests::empty_and_inline_only_replies_need_no_raw_frame
+                clipboard_non_file::tests::response_metadata_retains_its_serialized_wire_shape
+            )
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then
             container_name=rustdesk-file-block-tests
             memory=1g
@@ -3807,6 +3827,11 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        if [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
+                            python3 -I -S /source/scripts/run-cm-clipboard-response-tests.py \
+                                /source /tmp/cargo-home/config.toml
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = file-block ]; then
                             python3 -I -S /source/scripts/run-file-block-tests.py \
                                 /source /tmp/cargo-home/config.toml
@@ -4131,6 +4156,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
+        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=8 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=6 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -4273,6 +4300,11 @@ PY
         uid_test_artifact_sha="$(sha256sum "$target_root/uid-policy-tests" | awk '{ print $1 }')"
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'CM clipboard response summary count differs'
+        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'CM_CLIPBOARD_RESPONSE_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'CM clipboard response artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'file-block summary count differs'
         [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -4575,7 +4607,12 @@ PY
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        if [ "$RUST_TEST_PROFILE" = file-block ]; then
+        if [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
+            grep -E '^test clipboard_non_file::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            printf 'CM_CLIPBOARD_RESPONSE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-response-type-and-assembly windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = file-block ]; then
             grep -E '^test (file_block|compress)::tests::.* \.\.\. ok$|^FILE_BLOCK_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'FILE_BLOCK_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-file-block-decoder-and-compressor rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

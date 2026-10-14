@@ -117,6 +117,15 @@ classification and source comparisons. Product code and the normative specificat
 current APK/device/native acceptance and the fresh ledger token count remain OPEN. Whole-document and
 test classification remains OPEN.
 
+The Debian deployment guide puts independent artifact verification before installer execution and uses
+the fixed installed password command with its terminal service-owned acknowledgement. The mandatory
+password-apply restart, guaranteed-install-start claim, whole-host socket/health inference and
+hardware-bound migration guarantee are removed. Unit state, endpoint observations, file logs and a
+fresh authenticated connection have explicit scopes; unknown credential outcomes retain uncertainty.
+Classification is in `.harness-state/verifier-vm/deployment-guide-source-7e735cfd.json`. Product source
+and the normative specification are unchanged; current installed/native and fresh token-count
+acceptance remain OPEN.
+
 Current specification/source disposition is recorded below; repair chronology remains in Git.
 These documentation corrections supply no compiler, artifact, scanner or native execution evidence.
 

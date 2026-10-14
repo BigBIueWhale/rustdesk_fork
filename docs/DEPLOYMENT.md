@@ -5,16 +5,10 @@ host** on a Debian/Ubuntu machine. It reflects the fork's hardened, direct-IP-on
 model — there is **no rendezvous server, no relay, no UDP, and no auto-update**. A
 viewer dials the host's IP directly and authenticates with a **balanced CPace PAKE**
 over a sealed two-key channel — the shared permanent password is the **sole**
-authenticator. There is no host-key/fingerprint to pin: the mutual PAKE defeats an
-active MITM by construction (a party that does not know the password cannot key), so
-nothing per-box needs to be verified out-of-band.
-
-The steps below were validated by installing the built `.deb` in a clean
-`ubuntu:22.04` container (clean install, binary + systemd unit placement), and the
-portable runtime behaviour by `scripts/smoke-server.sh --portable-rootless` (one
-container-loopback v4 TCP listener on 21118, zero UDP, fail-closed startup). This
-does not claim installed-service, packet-capture, native GUI/device, or release-artifact
-validation.
+authenticator. There is no host-key/fingerprint setup. Authenticate the software
+package separately through the independent release-verification procedure below.
+Current installed-service, artifact and native acceptance is tracked in
+[`HARDENING_STATUS.md`](../HARDENING_STATUS.md#current-verdict).
 
 Related: [`TRANSPORT-SECURITY.md`](./TRANSPORT-SECURITY.md) (the wire protocol),
 the [normative threat model](../requirements.html#threat).
@@ -23,19 +17,26 @@ the [normative threat model](../requirements.html#threat).
 
 ## 0. What you are deploying
 
-- **One inbound port:** TCP **21118** (`DIRECT_PORT`). Zero UDP. No other listener.
+- **Controlled-side direct listener:** IPv4 TCP **21118** (`DIRECT_PORT`), with no UDP
+  transport. Other host programs have their own network surface.
 - **Authentication:** a CPace PAKE keyed by the host's permanent password. There is
   no anonymous access and no "accept once" prompt — every session is authenticated.
-- **Reachable, CPace-gated:** the host binds 21118 on all interfaces and admits any peer
+- **Reachable, CPace-gated:** the direct listener binds 21118 on all IPv4 interfaces and admits a peer
   that completes the CPace handshake — like SSH, there is **no in-app source allow-list**.
   To restrict by source IP, do it at the **firewall** (§3), where the kernel sheds the
   packet before it ever reaches RustDesk.
-- **Fail-closed:** with no password set the host **refuses to listen at all** and logs
-  the reason. Misconfiguration cannot silently expose the box.
+- **Fail-closed credential state:** an empty or undecryptable permanent credential
+  parks the direct listener. A running supervisor can therefore be non-listening.
 
 ---
 
 ## 1. Install
+
+Install only a `.deb` from a complete R-B2 release set whose independently authenticated
+`dist/SHA256SUMS` records `independent-snapshots-a-equals-b`. Verify the complete set
+as specified in [`RELEASE-VERIFICATION.md`](./RELEASE-VERIFICATION.md) before running
+the installer. A checksum downloaded beside the package from the same host is not
+independent authentication.
 
 ```sh
 sudo apt install ./rustdesk-x86_64.deb
@@ -55,14 +56,12 @@ The vendor unit is a dpkg-owned file. Package scripts do not replace or remove
 `/etc/systemd/system/rustdesk.service`, so an administrator replacement, primary-unit
 link, or `/dev/null` mask remains administrator-owned across install and removal.
 
-So the service is **already running after install** — but, being fail-closed, it will
-not listen until you complete step 2.
-
-> Reproducibility: install only a `.deb` from a complete R-B2 release set whose authenticated
-> `dist/SHA256SUMS` records `independent-snapshots-a-equals-b`. Authenticate that manifest through an
-> independent trusted channel and then verify the complete release set exactly as specified in
-> [`RELEASE-VERIFICATION.md`](./RELEASE-VERIFICATION.md). A checksum downloaded beside the package
-> from the same host is not independent authentication.
+The package requests startup through Debian's service policy. A policy refusal,
+mask, administrator override or startup failure can leave the unit stopped; inspect
+the selected unit before provisioning. Installation alone does not prove that its
+supervisor or direct listener is running. The
+[Debian service helper](https://manpages.debian.org/bookworm/init-system-helpers/deb-systemd-invoke.1p.en.html)
+respects local package-start policy.
 
 ### Native non-systemd service templates
 
@@ -96,22 +95,29 @@ owned process for normal stop. Do not add a separate `rustdesk --server` cleanup
 ### 2a. Set the host password (the CPace credential)
 
 ```sh
-sudo rustdesk --password
+sudo /usr/bin/rustdesk --password
 ```
 
-Enter and confirm the shared secret at the hidden terminal prompts. It is stored only as a salted
-password-equivalent, never in cleartext. Without it the service **parks** — it stays
-up but binds no listener (logging *"no permanent password set — the direct listener is
-PARKED"*) and refuses every connection until a password is set.
+Enter and confirm a strong password at the hidden terminal prompts; do not put the
+secret in command arguments. In installed mode, this command requests the privileged
+service-owned credential transaction. It does not write a substitute user-profile
+credential when the service is unavailable or rejects authorization. The durable
+value is a memory-hard CPace password-equivalent (PRS), never the plaintext password.
+Protect that value as a credential and use an independent password for each host.
 
-### 2b. Apply
+### 2b. Confirm the transaction and listener state
 
-```sh
-sudo systemctl restart rustdesk
-```
+Wait for the command's terminal result. `Done!` follows an acknowledged applied
+transaction, including the service-owned runtime credential update. A separate
+restart is not a password-application step. The direct listener tracks whether the
+runtime credential is usable; it can bind when provisioning succeeds and park when
+the credential is absent or unreadable.
 
-After the restart the service re-evaluates its config, passes the fail-closed checks,
-and begins listening on TCP 21118.
+An error reporting an unknown outcome or runtime-update failure does not establish
+that the durable credential stayed unchanged. Diagnose the selected service and
+credential state before another change; a restart is not proof of the prior
+transaction's result. Continue with the deployment observations in §6 and a fresh
+viewer connection using the password just set.
 
 ---
 
@@ -120,15 +126,16 @@ and begins listening on TCP 21118.
 Open **only** TCP 21118 (zero UDP). This is the layer where you scope by source IP, if
 you want to — the same place you'd scope SSH:
 
-- **Reach-from-anywhere — the sovereign direct-IP box:** open 21118 to the internet — CPace is
-  the authentication gate, the same exposure as a public password-SSH on `:22`.
+- **Reach-from-anywhere — the sovereign direct-IP box:** allow inbound TCP 21118;
+  every admitted RustDesk session still requires CPace authentication.
   ```sh
   sudo ufw allow 21118/tcp
   ```
 - **Scope to a known network:** restrict the port to the viewer's CIDR, so non-allowlisted
   IPs are dropped in the kernel before they reach RustDesk (defense-in-depth, never a substitute for CPace).
+  Replace the quoted placeholder below with your authorized viewer CIDR.
   ```sh
-  sudo ufw allow from <viewer-CIDR> to any port 21118 proto tcp
+  sudo ufw allow from '<viewer-CIDR>' to any port 21118 proto tcp
   ```
 
 No UDP rule is needed.
@@ -145,27 +152,40 @@ the CPace-keyed, per-direction-keyed, AEAD-sealed channel.
 
 ## 5. Harden the host itself
 
-The fork's own surface is minimal (one authenticated TCP port, fail-closed). On a
-real internet-facing/DMZ box the **larger residual exposure is the host OS**, not
-RustDesk — in particular password-based SSH on port 22:
-
-- Use key-only SSH (`PasswordAuthentication no`), and/or restrict `:22` to admin IPs.
-- Run `fail2ban`.
-- Keep the OS patched.
+Maintain the host OS and secure every other exposed service under its own policy.
+RustDesk's authentication does not protect another daemon or a compromised endpoint;
+the applicable threat boundaries are in the linked normative model.
 
 ---
 
 ## 6. Verify the deployment
 
 ```sh
-# exactly one v4 TCP listener on 21118, zero UDP:
-sudo ss -ltnup | grep -E ':21118|:.*udp' || true
+# selected unit state and recent service-manager/process output:
+systemctl status rustdesk.service --no-pager
+sudo journalctl -u rustdesk.service -n 50 --no-pager
 
-# service healthy:
-systemctl status rustdesk --no-pager
+# IPv4 TCP listening endpoints at the direct port; endpoint observation only:
+ss -H -4 -lnt 'sport = :21118'
 ```
 
-A correctly-deployed host shows a single `0.0.0.0:21118` TCP LISTEN line and no UDP.
+The unit's state describes the supervisor, which can remain running while its
+listener is parked. An endpoint at `0.0.0.0:21118` matches the expected direct bind,
+but this observation does not identify its owner, prove authentication or establish
+RustDesk's complete socket surface. Do not attribute other programs' sockets to
+RustDesk. See the [socket-filter syntax](https://manpages.debian.org/bookworm/iproute2/ss.8.en.html)
+and [unit-state semantics](https://manpages.debian.org/bookworm/systemd/systemctl.1.en.html).
+
+Release builds also write RustDesk file logs under the relevant process home's
+`.local/share/logs/<app-name>/`, with role-specific subdirectories. The journal is
+not the complete RustDesk log stream. Review the applicable logs when diagnosing
+credential parking, authorization failure or a bind error.
+
+From a trusted viewer, open a fresh connection with the current password and
+exercise the intended capability, including changing presented frames for remote
+viewing. An existing authenticated connection is not a test of the newly provisioned
+credential. These operational observations do not prove installed privilege
+boundaries, the absence of UDP in owned processes, or release correctness.
 
 Build and verification execute through the authenticated no-NIC verifier VM. Portable smoke
 uses nonroot, capability-free guest containers; installed-service and other privileged
@@ -176,17 +196,18 @@ runs after cold A==B comparison. Deployment checks do not supply that release ev
 
 ## Operational notes
 
-- **Updates:** the fork has no auto-updater (by design). Deploy a new `.deb` with
-  `apt install ./rustdesk-<ver>.deb`; the `postinst` reloads the service.
+- **Updates:** authenticate each complete release set before installing its `.deb`.
+  Package upgrade scripts request stop/start through the selected service manager
+  and preserve administrator-owned unit files and masks. There is no auto-updater.
 - **Stop/disable:** `sudo systemctl disable --now rustdesk`. The `prerm` stops/disables
   the unit on package removal.
-- **Logs:** `journalctl -u rustdesk`. With no password the service **parks** and logs the
-  R-S9 park at warn level; a managed-override / policy violation is a fail-closed refusal
-  logged at error level with its R-ID.
-- **Do not clone/migrate the box to different hardware:** the permanent-password credential is
-  encrypted at rest under the machine's UUID, so a disk clone / VM migration / hardware swap makes it
-  unreadable and the host fail-closes (refuses to listen) until you re-run `sudo rustdesk --password`
-  on the new hardware. This is intentional — the at-rest credential is bound to the box.
+- **Logs:** use the selected supervisor's output and RustDesk's process-specific file
+  logs described in §6.
+- **Migration:** machine-identifier wrapping is reversible storage protection, not a
+  hardware-authentication or secrecy boundary. Do not assume a clone loses the credential.
+  Provision an independent service-owned password on each host. If stored PRS cannot be
+  decrypted, the listener parks until authorized provisioning succeeds; do not repair that
+  state by importing another user's configuration or writing a shadow credential file.
 - **Android/Windows clients** connect to the same `<host-ip>:21118` with the same
   password (no fingerprint to pin). Using an **Android phone as the controlled host** is a
   foreground-service and OS-capture-grant model — see [`ANDROID-SERVER.md`](./ANDROID-SERVER.md).

@@ -4531,14 +4531,6 @@ else
   rc=1
 fi
 
-echo "== (2g-b) R-S11bo Unix desktop helper exact process roles =="
-if python3 scripts/verify-unix-helper-process-role.py --repo . --self-test; then
-  note "ok  R-S11bo Unix desktop helper IPC accepts only complete case-sensitive process-role vectors"
-else
-  echo "  FAIL R-S11bo Unix desktop helper IPC regained ambient first-argument process-role authority"
-  rc=1
-fi
-
 echo "== (2g-b1) R-S11bs Unix incumbent-listener identity =="
 if python3 scripts/verify-unix-listener-incumbent.py --repo . --self-test; then
   note "ok  R-S11bs Unix singleton detection requires current-principal/current-executable incumbent identity"

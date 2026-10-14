@@ -6443,11 +6443,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   The historical Rust-1.75 locked/offline Linux exact-role regression recorded with
   `22d1f62f` passed 1/1 in confinement. It exercises pure argument-vector decisions,
   not a native connected-peer acquisition, end-to-end helper connection, installed service,
-  macOS signature/authorization path, or current release artifact. The Python source
-  checker retains exact-length/case predicates, closed inventories, direct peer readers,
-  fail-closed branches, retired-scan absence, regression and shared/Apple wiring; it carries
-  no requirement/ledger wording or document mutations. Original review, setup and verifier
-  failures, diagnostic limitations and detailed receipts remain in that commit and audit entry.
+  macOS signature/authorization path, or current release artifact. The 335-line Python
+  checker and its seventeen in-memory replacements are deleted, together with shared/Apple
+  source-success wrappers. They inspected spelling, call counts/order, test names and
+  self-wiring without executing argv predicates or kernel/process authentication.
+  The actual Rust role-vector test and existing `ipc::ipc_auth::tests` Cargo gate remain
+  byte-identical; no replacement fixture or platform override is introduced. This deletion
+  supplies no new test/native result. Classification is retained in
+  `.harness-state/verifier-vm/unix-role-verifier-removal-f0ba5a5b.json`.
+  Fresh current ledger count remains pending resource admission. Historical detailed
+  review, failures and receipts remain in the named commit and audit journal.
 
   **Still required:** exact-current regressions and native Linux/macOS connected-peer runs
   covering every admitted/refused vector, acquisition failure, process/identity replacement,

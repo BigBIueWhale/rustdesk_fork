@@ -2408,8 +2408,8 @@ with an 8 GiB overlay ceiling. The ordinary filesystem-test profile alone uses 6
 a 4 GiB overlay ceiling with its unchanged 6 GiB guest, for a 19 GiB admission floor. Its prepared
 inputs must occupy at most 2 GiB before launch, reserving the full overlay ceiling independently
 of monitor polling. Its VM deadline is 300 seconds; the complete existing filesystem workload,
-5 GiB container, source/input authority and all outcome checks remain. This profile is source
-prepared; current native storage and test acceptance are PENDING. Logind, FUSE and every other
+5 GiB container, source/input authority and all outcome checks remain. The named Linux execution
+at `432cd6d1` below passed with this profile. Logind, FUSE and every other
 profile retain standard storage. Other file ceilings remain 5 GiB input ISO, 256 MiB source and
 8 MiB seed. QEMU initializes shared RAM while paused; its direct supervisor
 installs and reads back the overlay ceiling before private-QMP `cont`, retaining the unreaped child
@@ -2424,7 +2424,25 @@ available RAM fell to 18,787,524 KiB, below the 19 GiB floor even without the ob
 margin. No harness or VM was started and no bulk scratch, compiler or tests ran. All 82 frozen
 control hashes and complete endpoint snapshots matched; exact shared roots remained idle.
 `.harness-state/verifier-vm/filesystem-storage-profile-3156926f.json` retains these admission
-observations and the historical capacity basis. Current native storage/test acceptance remains OPEN.
+observations and the historical capacity basis; these precede the later accepted run below.
+
+After RAM recovered, exact source `432cd6d1` passed the complete filesystem transaction in
+154 VM seconds: 109 filesystem and 18 adjacent tests, including the four newly required resume/
+completion cases. The 4 GiB QEMU limit was installed/read back before execution; RAM scratch
+peaked at 3,626,422,272 bytes, overlay at 3,466,596,352 bytes, and available host RAM stayed
+above 11,012,009,984 bytes. Waited-child QEMU block output was 4,096 bytes; bounded durable
+run diagnostics peaked at 3,301,376 bytes. All 82 before/during/after source/index/audit/spec/
+ledger/instruction hashes matched, exact processes joined and the run/RAM workspace retired.
+The harness snapshots contain no added endpoint and two removed UDP endpoints. A separate later
+post-terminal observation contains two added and two removed UDP endpoints relative to its
+baseline. All such deltas remain unattributed and untouched; the inherited kernel restriction
+denied owned IP-socket creation. These observations do not establish a global process inventory.
+`.harness-state/verifier-vm/filesystem-accepted-432cd6d1.json` binds the complete retained
+snapshots, limit/storage observations, raw serial and source/artifact identities. This accepts
+the named Linux library and selected storage profile, not full application/caller, installed,
+other-platform, saturation/soak, cold equality or independent acceptance. Tmpfs remains swappable;
+the QEMU counter is not whole-system I/O. This run reused authenticated boot assets; fresh cold
+boot preparation under the new filesystem scratch cap remains OPEN.
 
 The sole creator/waiter publishes kernel QEMU child usage after its join. The monitor consumes that
 bounded receipt rather than selecting a process by PID; absent measurements remain unavailable.
@@ -14264,7 +14282,20 @@ explicit write failure rather than a successful empty block.
 **Current library disposition — source corrected; named ordinary-user Linux behavior PASSED,
 native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.
 
-**Resume confirmation width — source corrected; compilation/runtime PENDING.** Both viewer
+Exact source `432cd6d1` passed `--hbb-common-fs` in 154 VM seconds: 109 filesystem,
+eight Linux child-process, four configuration, five direct-address and one socket-helper test.
+The unchanged executed artifact SHA-256 is
+`c3da56b926f622bb7852e78d4b0057f413b34d98d6fd4ff571115841122c4727`.
+`.harness-state/verifier-vm/filesystem-accepted-432cd6d1.json` retains exact source/tree, pinned
+Rust 1.75/vendor/builder, raw serial SHA-256
+`1c11caf42bc4ff3dcc78bd06c8a46d2e4a4388aef06cedd48ac9fa4ea1546db1`, storage/limit and
+complete endpoint observations, 82 matching freezes and joined cleanup. Every required exact
+case name was checked in the guest before acceptance. Individual successful test stdout and
+executable bytes were ephemeral; retained serials carry group summaries and the stable artifact
+receipt. These are corrected-source library results, with no new historical A/B. Application/
+viewer/CM compilation, real peer/installed routing and every broader obligation below remain OPEN.
+
+**Resume confirmation width — Linux library regressions ACCEPTED; caller integration OPEN.** Both viewer
 upload and download resume paths retain the digest's 64-bit byte offset until
 `TransferJob::confirm_with_offset` checks its representability in the protocol's existing
 32-bit `offset_blk` field. Unrepresentable offsets now fail before confirmation, seek,
@@ -14276,11 +14307,10 @@ truncate large values, as described in the [Protocol Buffers schema-evolution co
 Three real-file regressions are required by `--hbb-common-fs`: both-role wrap refusal with
 unchanged staging/state followed by valid resume, exact `u32::MAX` wire/seek/read/accounting
 through a Unix sparse tail, and zero-offset fresh transfer with real receive publication and
-sidecar retirement. They are prepared, uncompiled and unexecuted. The filesystem storage
-profile above now has a 19 GiB admission floor; its current native execution is pending.
+sidecar retirement. All three are required and passed in the named Linux library transaction above.
 Viewer/CM/peer, installed and other-platform integration remain OPEN.
 
-**Filesystem-only job authority — source implemented; compilation/native execution PENDING.**
+**Filesystem-only job authority — Linux library compilation/tests ACCEPTED; application integration OPEN.**
 All production constructors use filesystem paths. `TransferJob` now accepts and retains a
 private immutable `PathBuf` plus an optional owned Tokio `File`; the path getter borrows,
 and the unused `DataSource`/`DataStream` enums,
@@ -14292,7 +14322,8 @@ unconditional. The `dataSource` JSON path field consumed by Flutter CM remains e
 The existing encrypted writer-receipt test now reads actual `.zip` files and requires exact
 raw bytes/file index while back-pressured. The obsolete memory-receive test is removed;
 the focused filesystem gate retains both file-block tests and requires a real job-serialization
-test for the CM field. Current library/app compilation, those tests and native/platform
+test for the CM field. The named Linux transaction above compiled the common library and passed
+the real-file writer/serialization cases. Application/caller compilation and native/platform
 transactions remain PENDING. No live memory-backend constructor or newly proven LPE was
 found; this removes an obsolete production abstraction rather than claiming an exploit.
 
@@ -14314,9 +14345,9 @@ remained unchanged before/after. The accepted zero-NIC, guest-only networkless/n
 run retained all outcomes and source/dependency bindings, added no host endpoint and joined
 cleanup; `.harness-state/verifier-vm/file-block-accepted-a9a4774a.json` binds its receipts.
 These controls execute the prior output-only helper, not a historical whole-app A/B.
-The current `--hbb-common-fs` filesystem/serialization tests and whole-parent compilation
-also remain unexecuted after RAM admission refusal; the component lane will not replace
-them. Earlier library acceptance does not cover these changes. Installed/native integration,
+The named current `--hbb-common-fs` library transaction above also passed the production
+filesystem/serialization cases after the earlier RAM refusal. Whole-application compilation,
+installed/native integration,
 whole-process allocation/resource measurements and other-platform acceptance remain OPEN.
 
 | Surface | Current behavior |
@@ -14331,16 +14362,15 @@ whole-process allocation/resource measurements and other-platform acceptance rem
 | File confirmation entry | Every filesystem-backed skip, overwrite and resume action requires a present entry at the exact matching current index before changing flags, counters, streams or cleanup state. Empty and completed lists cannot confirm an absent file; a present zero-byte file remains valid. |
 | File-list construction | `read_dir_with_budget`, both recursive scanners and `new_read_with_budget` propagate iterator, root/entry metadata and descendant failures. Unsupported UTF-8 names, unavailable modification times and pre-epoch times fail explicitly. Every scanned entry consumes quota even when hidden filtering excludes it; recursive byte accounting includes the complete relative name. Flat and empty-directory results reserve each full returned path in the shared byte counter before copying it. The private scanner returns entries without allocating a discarded directory path. Child-error string classification and partial-success branches are deleted. |
 
-**Completion before list admission — source corrected; compilation/runtime PENDING.**
+**Completion before list admission — Linux library regression ACCEPTED; caller integration OPEN.**
 Current source refuses `Done(0)` before any list is admitted, including after a rejected
 first list. The viewer creates a receive job before the peer's directory response and uses
 `finalize_write` to decide completion; the old empty-vector equality could report success
 without that response. CM already admits its list before publishing a receive job. One required
 `--hbb-common-fs` regression covers both refusals, retained job accounting/unowned partial files,
-and successful explicit empty-list admission afterward. It is uncompiled and unexecuted;
-current library/app, viewer/CM, installed and other-platform acceptance remain OPEN. The
-filesystem storage profile above now has a 19 GiB admission floor; its current native execution
-is pending. Earlier accepted transactions do not cover this correction.
+and successful explicit empty-list admission afterward. It passed in the named Linux library
+transaction above. Application/caller compilation, viewer/CM/peer, installed and other-platform
+acceptance remain OPEN.
 
 **File-list replacement — named Linux library transaction ACCEPTED; caller integration OPEN.**
 At `68309547`, all four new regressions failed while 98 existing filesystem tests passed;

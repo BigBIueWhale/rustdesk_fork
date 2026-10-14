@@ -130,7 +130,7 @@ Whole-document/test classification, exact-current builders/artifacts, installed/
 scanner acceptance, complete inputs/signing, upstream baseline reproduction, fork-delta accounting,
 per-target surface/egress, cold equality, release acceptance and independent reproduction remain OPEN.
 
-**R-S11av macOS file-mode compiler: wired; focused execution pending.** The
+**R-S11av macOS file-mode compiler: focused component checks accepted; native acceptance OPEN.** The
 289-line string/mutation checker and its duplicate shared/Apple invocations are
 removed. They inspected eight call shapes and two verifier banners without
 executing a compiler. The Apple gate now compiles AST-extracted production mode
@@ -138,10 +138,26 @@ expressions against the root-locked Darwin `libc` before it can accept an SDK
 boundary. The focused `--apple-conform --file-mode-compile` transaction targets
 five variadic and three fixed-prototype calls on both macOS architectures, with
 positive metadata and 16 negative compiler checks identifying the exact call.
-It uses the existing bounded no-NIC Apple VM and complete pinned vendor/image
-authority. Filesystem source guards and real regressions remain. This is an
-extracted mode-expression compiler check; complete app/functions, linking,
-native filesystem behavior, signed artifacts and installed acceptance remain OPEN.
+Exact source `99f69e4676fe479b46b3ee40da441e53a55ca407` passed the focused
+transaction in **100 VM seconds** with pinned Rust 1.81, Darwin `libc 0.2.171`,
+Syn 2.0.98 and Quote 1.0.36. Both targets produced nonempty compiler metadata;
+all 16 controls returned 101 with E0617 or E0308 at the exact generated call.
+Resolved package versions, sources and checksums match the root lock, and source,
+fixture-lock and full vendor/image postconditions pass. The VM uses no NIC and
+guest-only networkless, nonroot, capability-free Docker. Source/index/audit/
+ledger/specification/instruction freezes match; owned joins and RAM retirement
+pass. The leaf consumes the already private, owner-checked, read-only vendor
+projection with full closure, inode and mount-option checks before/after use,
+removing the duplicate bulk snapshot. Overlay peak is 8,086,491,136 bytes under
+the unchanged 8 GiB ceiling; RAM scratch peaks at 8,245,723,136 bytes and observed
+QEMU block writes are 4,096 bytes. Raw serial is 309,975 bytes, SHA-256
+`413a94d1f1a8e7a42aececc53861107de0c58575c67ac513793a06d3db956d49`.
+The bounded acceptance bundle `.harness-state/verifier-vm/macos-file-mode-accepted-99f69e46.json`
+binds source, compiler results, prior failures, endpoint observations and cleanup.
+Filesystem source guards and real regressions remain. This is an extracted
+mode-expression compiler check; complete app/functions, the full Apple matrix
+after the shared snapshot change, linking, native filesystem behavior, signed
+artifacts and installed acceptance remain OPEN.
 
 Windows §12.2 and R-B8/R-B10/R-B11/R-B11a/§12.3 state the admitted verifier-VM boundary,
 sole acquisition authority, immutable host baseline and exact creator-owned retirement. Historical

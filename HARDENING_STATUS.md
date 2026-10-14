@@ -108,7 +108,14 @@ integration/release checkpoint.
 `requirements.html` owns the normative contract; this ledger owns current state and open obligations.
 Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
 Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
-model. Whole-document and test classification remains OPEN.
+model. The Android controlled-host guide follows the distinct foreground-service, task and capture-grant
+lifetimes; the ADB consent-override recipe and per-launch/attended-only/privacy-superiority claims are
+removed. Setup uses the actual screen-sharing control and separate listener/capture status. Official
+Android sources support projection retirement, restricted settings, Active apps stop and Android 15 QPR1
+lock-stop behavior. `.harness-state/verifier-vm/android-operator-guide-source-c8807899.json` retains
+classification and source comparisons. Product code and the normative specification are unchanged;
+current APK/device/native acceptance and the fresh ledger token count remain OPEN. Whole-document and
+test classification remains OPEN.
 
 Current specification/source disposition is recorded below; repair chronology remains in Git.
 These documentation corrections supply no compiler, artifact, scanner or native execution evidence.

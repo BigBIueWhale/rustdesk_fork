@@ -189,4 +189,4 @@ runs after cold A==B comparison. Deployment checks do not supply that release ev
   on the new hardware. This is intentional — the at-rest credential is bound to the box.
 - **Android/Windows clients** connect to the same `<host-ip>:21118` with the same
   password (no fingerprint to pin). Using an **Android phone as the controlled host** is a
-  different, *attended-only* model — see [`ANDROID-SERVER.md`](./ANDROID-SERVER.md).
+  foreground-service and OS-capture-grant model — see [`ANDROID-SERVER.md`](./ANDROID-SERVER.md).

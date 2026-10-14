@@ -2079,7 +2079,7 @@ Current normative specification SHA-256: `3ffe686d37d12f624b305c927bafa3ff71a42e
 
 ### Current authority and source closure
 
-**Connection-password prompt lifetime: source corrected; native dialog execution pending.**
+**Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.
 `ConnectPasswordDialog` owns the password controller, initial preference and
 submission latch. Session UUID plus native credential-prompt round select its
@@ -2090,9 +2090,23 @@ the operator may choose it explicitly. Submission still uses the existing exact
 session/round receiver check. The earlier async-before-publication closure and
 external undisposed controller are removed. The `--credential-dialog` shard
 generates the current bridge from complete pinned Cargo/Pub inputs in private
-guest scratch and targets both actual dialogs, reveal and semantics (16 named
-tests). Current widget/bridge, physical keyboard, real peer and installed-service
-acceptance remain OPEN until their exact execution evidence is retained.
+guest scratch. Exact candidate `ec103b444c6064051d0f64e519408366691b7f46`
+passed all 16 named tests in four suites and three result-parser controls in
+268 VM seconds with pinned Flutter 3.24.5, Rust 1.75, libclang 15.0.6 and the
+authenticated bridge generator. The actual connection/permanent-password dialogs,
+shared reveal control and accessibility field ran; source/index/audit/ledger/spec/
+instruction freezes match and every original Flutter library file remains equal
+after generation/testing. The input mount and source are read-only; only the
+private source copy holds generated bridge files. Scratch peaks at 6,292,570,112
+bytes; observed QEMU block writes are 4,096 bytes. Exact joins and RAM retirement
+passed. Raw serial is 68,070 bytes, SHA-256
+`f9c195b835474f7a4bfe50f605041b63c97d4191e275dc3b9fed4e0e069f7857`;
+`.harness-state/verifier-vm/credential-dialog-accepted-ec103b44.json` binds source,
+results, the retained formatter failure, full endpoint observations and cleanup.
+Preference and submission callbacks are controlled fixtures; this is current
+Linux Flutter component execution and generated-bridge compilation, not an
+actual Rust/peer/IPC transaction or current Flutter 3.47.5 app artifact. Real peer,
+native Android/iOS keyboard and installed-service acceptance remain OPEN.
 
 **Password input policy: source corrected; focused component/channel tests accepted.** The
 connection-password reveal control and both permanent-password fields use
@@ -2114,7 +2128,7 @@ writes are 4,096 bytes. Retained raw serial is 67,129 bytes, SHA-256
 `.harness-state/verifier-vm/password-input-accepted-e7ff7eb9.json` binds source,
 results, resource/cleanup and complete unattributed endpoint snapshots. This is
 Linux Flutter component execution with a test text-input channel, not proof that
-a native Android/iOS keyboard honors the flags. Current full-dialog/bridge,
+a native Android/iOS keyboard honors the flags. Actual peer/bridge transactions,
 physical-device keyboard and installed password transaction acceptance remain OPEN.
 
 **Offline verifier host sockets (R-S11dh): Linux socket restriction and observation retention accepted; wider coverage OPEN.**

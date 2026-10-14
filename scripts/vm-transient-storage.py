@@ -26,7 +26,7 @@ def storage_limits(profile, memory_mib):
         return 6 * GIB, 4 * GIB
     if profile == 'flutter-credential-dialog':
         require(memory_mib == 4096, 'dialog storage profile requires its 4 GiB guest')
-        return 8 * GIB, 6 * GIB
+        return 7 * GIB, 6 * GIB
     require(profile == 'standard', 'unknown VM storage profile')
     return SCRATCH_LIMIT, 8 * GIB
 

@@ -111,7 +111,8 @@ case "$#:${8:-}" in
         [[ "${13}" = --clipboard || "${13}" = --whiteboard-presentation \
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
             || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release || "${13}" = --input-lifetime \
-            || "${13}" = --installer-package || "${13}" = --linux-password-admission ]] || exit 2
+            || "${13}" = --installer-package || "${13}" = --linux-password-admission \
+            || "${13}" = --linux-xrandr-query ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -3094,6 +3095,26 @@ run_focused_rust_tests() {
             [ "${#clipboard_tests[@]}" -eq 13 ] \
                 || fail 'focused clipboard test inventory differs'
             required_tests=("${clipboard_tests[@]}")
+        elif [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
+            container_name=rustdesk-linux-xrandr-query-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=64m
+            source_fingerprints=(
+                Cargo.lock src/platform/linux.rs src/platform/linux/xrandr_query.rs
+                libs/hbb_common/src/lib.rs scripts/test-linux-xrandr-query.rs
+                scripts/run-linux-xrandr-query-tests.py
+            )
+            required_tests=(
+                tests::successful_query_preserves_geometry_and_mode_lines
+                tests::failed_query_refuses_plausible_stdout
+                tests::signalled_query_refuses_plausible_stdout
+                tests::successful_query_refuses_invalid_utf8
+                tests::current_geometry_selects_the_exact_output
+                tests::supported_modes_belong_to_the_exact_output
+                tests::output_names_are_literal_regex_text
+                tests::output_identity_cannot_continue_on_another_line
+            )
         elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
             source_fingerprints+=(
                 src/server/input_service.rs src/server/connection.rs
@@ -3594,6 +3615,11 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        if [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
+                            python3 -I -S /source/scripts/run-linux-xrandr-query-tests.py \
+                                /source /tmp/cargo-home/config.toml
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = installer-package ]; then
                             python3 -I -S /source/scripts/verify-windows-harness.py --repo /source
                             python3 -I -S -c '\''import errno, socket
@@ -3870,6 +3896,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'WHITEBOARD_PRESENTATION_STATE_PROFILE=whiteboard-presentation stage=container-start tests=2 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
         printf 'WHITEBOARD_DISPLAY_PROFILE=whiteboard-display-lifetime stage=container-start tests=6 bridge=absent backend=x11\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
+        printf 'LINUX_XRANDR_QUERY_PROFILE=linux-xrandr-query stage=container-start tests=8 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
         printf 'INSTALLER_PACKAGE_PROFILE=installer-package stage=container-start tests=6 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
@@ -3994,6 +4022,11 @@ PY
         uid_test_artifact_sha="$(sha256sum "$target_root/uid-policy-tests" | awk '{ print $1 }')"
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'xrandr-query summary count differs'
+        [ "$(grep -Ec '^LINUX_XRANDR_QUERY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LINUX_XRANDR_QUERY_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'xrandr-query artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'installer package summary count differs'
         [ "$(grep -Ec '^INSTALLER_PACKAGE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/installer_package-[0-9a-f]{16} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -4251,7 +4284,12 @@ PY
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        if [ "$RUST_TEST_PROFILE" = installer-package ]; then
+        if [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
+            grep -E '^test tests::.* \.\.\. ok$|^LINUX_XRANDR_QUERY_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            printf 'LINUX_XRANDR_QUERY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-query-result-and-output-identity rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = installer-package ]; then
             grep -E '^INSTALLER_PACKAGE_ARTIFACT(_BEFORE)?=|^test installer_package::tests::.* \.\.\. ok$|^verify-windows-harness: ok$' "$output"
             printf 'INSTALLER_PACKAGE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-encoder-decoder windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

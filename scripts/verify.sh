@@ -9461,16 +9461,16 @@ if [ -n "$r_s11c27r" ]; then echo "  FAIL R-S11c-27r native runit lifecycle:$r_s
   echo "  ok  R-S11c-27r supplementary pinned runit tree/lifecycle source and fixture conformance; native VM acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
+"${RUN[@]}" python3 -I -S /work/scripts/run-linux-xrandr-query-tests.py \
+    /work /tmp/cargo-config.toml
 r_s11c10c=
 grep -q 'fn xrandr_query() -> ResultType<String>' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-xrandr-query-helper"
 grep -q 'const XRANDR_PATHS' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-fixed-xrandr-paths"
 grep -q 'let Some(xrandr) = xrandr_path()' src/platform/linux.rs || r_s11c10c="$r_s11c10c xrandr-not-fixed-path-resolved"
 xrandr_query_block=$(awk '/fn xrandr_query\(\) -> ResultType<String>/,/^}/' src/platform/linux.rs)
-for binding in 'let mut command = Command::new(xrandr);' 'command.arg("--query");' 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'let output = command.output()?;'; do
+for binding in 'let mut command = Command::new(xrandr);' 'command.arg("--query");' 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'let output = command.output()?;' 'xrandr_query::admit_output(output)?'; do
   grep -qF "$binding" <<<"$xrandr_query_block" || r_s11c10c="$r_s11c10c xrandr-query-not-argv-only"
 done
-grep -q 'normalize_xrandr_query_output' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-rust-space-normalizer"
 grep -q 'match xrandr_query()' src/platform/linux.rs || r_s11c10c="$r_s11c10c resolutions-not-using-helper"
 grep -q 'let xrandr_output = xrandr_query()?' src/platform/linux.rs || r_s11c10c="$r_s11c10c current-resolution-not-using-helper"
 xrandr_blocks=$(

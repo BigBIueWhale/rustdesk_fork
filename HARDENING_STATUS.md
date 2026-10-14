@@ -5490,7 +5490,15 @@ exists only to make the current source disposition discoverable.
 - R-S11c-16 — Desktop service lifecycle completion authority
 - R-S11c-10a — Linux root-context desktop discovery shell interpolation
 - R-S11c-10b — Linux helper/tray process cleanup shell pipelines
-- R-S11c-10c — Linux xrandr resolution discovery shell pipeline
+- R-S11c-10c — Linux xrandr resolution discovery shell pipeline. Query-result correction
+  is source implemented; focused Linux execution pending. The trusted argv-only query
+  now rejects unsuccessful process status and invalid UTF-8 before normalization.
+  Current geometry and supported modes select a literal output name at the start of
+  its own line, so `DP-1` cannot select `eDP-1`. The focused
+  `--linux-xrandr-query-tests` shard executes the production module and eight native
+  process/parser cases with the root-locked regex dependency. Real X-server/peer
+  resolution changes, blocking-query lifetime, the detached setter child and premature
+  restoration bookkeeping remain OPEN; this is no new LPE-closure claim.
 - R-S11c-10d — Linux process-discovery `pgrep` shell probes
 - R-S11c-10g — Linux SELinux status shell probes
 - R-S11c-10h — Linux config-home correction shell probes

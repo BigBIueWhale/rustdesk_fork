@@ -1,6 +1,7 @@
 use super::{CursorData, ResultType};
 mod native_context;
 mod systemd;
+mod xrandr_query;
 mod window_focus;
 mod x11_context;
 mod x11_cursor;
@@ -4870,28 +4871,6 @@ mod process_cleanup_tests {
     }
 }
 
-#[cfg(test)]
-mod xrandr_tests {
-    use super::*;
-
-    #[test]
-    fn r_s11c10_xrandr_query_normalization_matches_space_squeeze() {
-        let normalized = normalize_xrandr_query_output(
-            "eDP-1  connected   primary 1920x1080+0+0\n  1920x1080     60.01*+  59.97\n",
-        );
-        assert_eq!(
-            normalized,
-            "eDP-1 connected primary 1920x1080+0+0\n 1920x1080 60.01*+ 59.97\n"
-        );
-
-        let re = Regex::new(&get_xrandr_conn_pat("eDP-1")).unwrap();
-        let caps = re
-            .captures(&normalized)
-            .expect("normalized xrandr output should parse");
-        assert_eq!(get_width_height_from_captures(&caps), Some((1920, 1080)));
-    }
-}
-
 pub fn quit_gui() {
     unsafe { gtk_main_quit() };
 }
@@ -4947,31 +4926,6 @@ fn get_width_height_from_captures<'t>(caps: &Captures<'t>) -> Option<(i32, i32)>
     None
 }
 
-#[inline]
-fn get_xrandr_conn_pat(name: &str) -> String {
-    format!(
-        r"{}\s+connected.+?(?P<width>\d+)x(?P<height>\d+)\+(?P<x>\d+)\+(?P<y>\d+).*?\n",
-        name
-    )
-}
-
-fn normalize_xrandr_query_output(output: &str) -> String {
-    let mut normalized = String::with_capacity(output.len());
-    let mut previous_was_space = false;
-    for c in output.chars() {
-        if c == ' ' {
-            if !previous_was_space {
-                normalized.push(c);
-            }
-            previous_was_space = true;
-        } else {
-            normalized.push(c);
-            previous_was_space = false;
-        }
-    }
-    normalized
-}
-
 fn xrandr_query() -> ResultType<String> {
     let Some(xrandr) = xrandr_path() else {
         bail!("xrandr was not found at a trusted fixed path");
@@ -4980,14 +4934,12 @@ fn xrandr_query() -> ResultType<String> {
     command.arg("--query");
     configure_command_close_nonstdio_on_exec(&mut command)?;
     let output = command.output()?;
-    Ok(normalize_xrandr_query_output(&String::from_utf8_lossy(
-        &output.stdout,
-    )))
+    Ok(xrandr_query::admit_output(output)?)
 }
 
 pub fn resolutions(name: &str) -> Vec<Resolution> {
     let resolutions_pat = r"(?P<resolutions>(\s*\d+x\d+\s+\d+.*\n)+)";
-    let connected_pat = get_xrandr_conn_pat(name);
+    let connected_pat = xrandr_query::connected_output_pattern(name);
     let mut v = vec![];
     if let Ok(re) = Regex::new(&format!("{}{}", connected_pat, resolutions_pat)) {
         match xrandr_query() {
@@ -5049,7 +5001,7 @@ pub fn resolutions(name: &str) -> Vec<Resolution> {
 
 pub fn current_resolution(name: &str) -> ResultType<Resolution> {
     let xrandr_output = xrandr_query()?;
-    let re = Regex::new(&get_xrandr_conn_pat(name))?;
+    let re = Regex::new(&xrandr_query::connected_output_pattern(name))?;
     if let Some(caps) = re.captures(&xrandr_output) {
         if let Some((width, height)) = get_width_height_from_captures(&caps) {
             return Ok(Resolution {

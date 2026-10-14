@@ -2304,6 +2304,14 @@ changing test tokens/assertions. The 7 GiB scratch/6 GiB overlay guard stayed wi
 96 control hashes matched, exact owners joined and failed diagnostics were retained and
 reconciled. `.harness-state/verifier-vm/credential-format-failed-e333f4af.json` records the
 failure; it supplies no dialog test or application acceptance.
+The corrected-format `db5b6ae3` attempt reached Dart compilation and exposed six remaining
+migration errors: a filtered test import omitted `DialogClose`, two file-dialog builders still
+declared function-valued close parameters, two nullable callback expressions needed explicit
+`close.call`, and a test used a `Future<void>` result as a value. Those sites are corrected;
+the completion test still awaits the old prompt. The dialog command now stops at the first
+test failure while preserving all 54 required cases on success and the existing budgets.
+The failed compile and outer 300-second deadline are retained in
+`.harness-state/verifier-vm/credential-compile-failed-db5b6ae3.json`; no full pass is claimed.
 
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.

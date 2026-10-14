@@ -1348,7 +1348,7 @@ void msgBox(SessionID sessionId, String type, String title, String text,
                 translateText: dialogManager._translate)),
         actions: buttons,
         onSubmit: hasOk ? submit : null,
-        onCancel: canCancel ? close : null,
+        onCancel: canCancel ? close.call : null,
       );
     },
     tag: '$sessionId-$type-$title-$text-$link',
@@ -1446,7 +1446,7 @@ void msgBoxCommon(OverlayDialogManager dialogManager, String title,
         ),
         content: content,
         actions: buttons,
-        onCancel: hasCancel ? close : null,
+        onCancel: hasCancel ? close.call : null,
       ));
 }
 

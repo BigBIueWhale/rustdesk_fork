@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_hbb/common.dart' show CustomAlertDialog;
+import 'package:flutter_hbb/common.dart' show CustomAlertDialog, DialogClose;
 import 'package:flutter_hbb/common/widgets/connect_password_dialog.dart';
 import 'package:flutter_test/flutter_test.dart';
 

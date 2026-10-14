@@ -598,7 +598,7 @@ void main() {
         action();
         expect(events, isEmpty);
         await tester.pump();
-        expect(await oldPrompt, isNull);
+        await oldPrompt;
         expect(manager.existing('state'), isTrue);
         expect(find.text('replacement'), findsOneWidget);
         manager.dismissByTag('state');

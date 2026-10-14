@@ -7716,12 +7716,16 @@ run_flutter_model_tests() {
                     [ "${#tests[@]}" -eq 25 ]
                     test_budget=900s
                 fi
+                test_fail_fast=()
+                if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                    test_fail_fast=(--fail-fast)
+                fi
                 for test_path in "${tests[@]}"; do
                     [ -f "$test_path" ] && [ ! -L "$test_path" ]
                 done
                 if ! timeout --signal=TERM --kill-after=10s "$test_budget" \
                     flutter test --no-pub --reporter json --concurrency="$test_concurrency" \
-                        --timeout=30s \
+                        --timeout=30s "${test_fail_fast[@]}" \
                         "${tests[@]}" >/work/test.json 2>/work/test.err; then
                     tail -c 4194304 /work/test.json >&2
                     tail -c 1048576 /work/test.err >&2

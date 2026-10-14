@@ -1300,11 +1300,17 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a0) Linux/macOS exact installed-service ownership classifier (R-S11bn/R-S11e-80) =="
-if python3 scripts/verify-installed-service-classifier.py --repo . --self-test; then
-  echo "  ok  R-S11e-80 installed-service ownership uses only exact supported executable identities"
+echo "== (3b-iii-a1a0) compiled Linux installed-executable path regression (R-S11bn/R-S11e-80) =="
+installed_classifier_test='platform::linux::installed_executable_path_tests::r_s11e80_linux_installed_classifier_requires_an_exact_supported_executable'
+installed_classifier_output="$VERIFY_TMP/installed-classifier-test.out"
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config "$installed_classifier_test" --color never -- --exact --color never \
+  | tee "$installed_classifier_output"
+if [ "$(grep -c '^running 1 test$' "$installed_classifier_output")" -eq 1 ] \
+  && [ "$(grep -cFx "test $installed_classifier_test ... ok" "$installed_classifier_output")" -eq 1 ] \
+  && [ "$(grep -cE '^test result: ok[.] 1 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in ' "$installed_classifier_output")" -eq 1 ]; then
+  echo "  ok  R-S11bn one compiled Linux path-classifier regression passed; installed/native authority remains separate"
 else
-  echo "  FAIL R-S11e-80 installed-service ownership regained ambient path-prefix authority"
+  echo "  FAIL R-S11bn exact one-test Linux path-classifier result missing"
   rc=1
 fi
 

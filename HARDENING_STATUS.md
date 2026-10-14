@@ -6414,10 +6414,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   The historical Rust-1.75 locked/offline Linux classifier regression recorded with
   `9da6251b` passed 1/1 in confinement. It exercises path classification, not an installed
   service, OS authorization, live credential transaction, native macOS, or current release
-  artifact. The focused Python checker retains source inventories, equality/error paths,
-  test negatives and shared/Apple wiring, without document-text inputs or mutations.
-  Original analysis, diagnostic setup failures, operational incidents, and detailed
-  receipts remain in that commit and the installed-service-classifier audit entry.
+  artifact. The 317-line Python spelling checker and its thirteen in-memory replacements
+  are deleted, together with the shared/Apple source-success wrappers. They inspected
+  strings, names, diagnostics and self-wiring without executing either classifier.
+  Both actual Rust path-match tests remain unchanged. The shared gate now selects the
+  real Linux test through the existing guest-only Cargo authority and requires exactly
+  one named passing result; zero-selection cannot pass. The new wiring is unexecuted.
+  macOS native test execution remains required rather than represented by Linux source
+  wording. Classification is retained in
+  `.harness-state/verifier-vm/installed-classifier-verifier-removal-2610e06f.json`.
+  Fresh current ledger count remains pending resource admission. Detailed historical
+  analysis and receipts remain in the named commit and audit journal.
 
   **Still required:** exact-current compiled regressions and native packaged execution of
   all supported identities and lookup/prefix/sibling/helper/copied-bundle/Nix-store refusal

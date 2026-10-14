@@ -74,7 +74,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err("unknown file-mode negative control".into());
     }
     let mut generated = String::from(
-        "#[allow(unused_imports)] extern crate libc;\nmod hbb_common { pub use ::libc; }\n",
+        "#[allow(unused_imports)] pub extern crate libc;\nmod hbb_common { pub use ::libc; }\n",
     );
     for case in CASES {
         let input = PathBuf::from("/work").join(case.file);

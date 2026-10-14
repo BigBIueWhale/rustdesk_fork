@@ -10874,10 +10874,8 @@ rm -f "$r_s11c9_tmp"
 # into the connect call or the launch args — a malicious rustdesk:// link must carry no trust anchor/cred.
 if grep -qF '?key=$key' flutter/lib/common.dart || grep -qF "['--password', password]" flutter/lib/common.dart; then
   echo "  FAIL R-X6: flutter/lib/common.dart deep-link parser still carries an embedded key/password"; rc=1
-elif ! grep -qF 'connect-only and MUST NOT carry an embedded' flutter/lib/common.dart; then
-  echo "  FAIL R-X6: the urlLinkToCmdArgs R-X6 strip marker is gone (regrowth risk)"; rc=1
 else
-  echo "  ok  R-X6 Dart deep-link parser strips embedded key/password/relay"
+  echo "  ok  R-X6 former Dart credential-query constructions absent (source only)"
 fi
 # R-X6 (desktop IPC handoff): when a secondary Flutter/runner instance forwards a uni-link to the
 # main process, the IPC payload must be the same address-only canonical link, not `uri.toString()`.
@@ -10901,15 +10899,14 @@ fi
 # link or a --password CLI arg is a footgun (it leaks into shell history, logs, clipboards, shared msgs).
 # Assert (a) no `password = args[i+1]` parse, (b) no `new*(cid, ...password:)` forward into the connect
 # (only handleUriLink connects via the `cid` local; the legit UI connect paths use `id` + a remembered
-# secret and keep their password), and (c) the positive strip marker is present (regrowth guard).
+# secret and keep their password). These source guards do not execute link handling.
 r_x6_cli=""
 grep -qE 'password *= *args\[ *i *\+ *1 *\]' flutter/lib/common.dart flutter/lib/mobile/pages/home_page.dart                            && r_x6_cli="$r_x6_cli parse:--password"
 grep -qE 'rustDeskWinManager\.new[A-Za-z]+\(cid,[^)]*password:' flutter/lib/common.dart   && r_x6_cli="$r_x6_cli forward:new*(cid,password)"
-grep -qF 'NO embedded credential is forwarded into any deep-link/CLI connect' flutter/lib/common.dart || r_x6_cli="$r_x6_cli marker-gone"
 if [ -n "$r_x6_cli" ]; then
   echo "  FAIL R-X6: the deep-link/CLI handleUriLink connect still carries an embedded password:$r_x6_cli"; rc=1
 else
-  echo "  ok  R-X6 handleUriLink connect carries NO embedded password (desktop/CLI branch matches the clean mobile branch)"
+  echo "  ok  R-X6 former Dart CLI credential parse/forward constructions absent (source only)"
 fi
 # R-X6 (stricter, Rust layer) — core_main_invoke_new_connection MUST NOT fold an embedded --password into
 # the connect URI. It used to `param_array.push(format!("password={password}"))`, folding it as ?password=
@@ -10918,11 +10915,10 @@ fi
 # because the raw URI reaches the Rust core via bind.sendUrlScheme, bypassing a Dart-only fix (spec R-X6).
 r_x6_rustcli=""
 grep -qE 'param_array\.push\(format!\("password=' src/core_main.rs && r_x6_rustcli="$r_x6_rustcli fold:password="
-grep -qF 'NEVER fold an embedded credential into the connect URI' src/core_main.rs || r_x6_rustcli="$r_x6_rustcli marker-gone"
 if [ -n "$r_x6_rustcli" ]; then
   echo "  FAIL R-X6: core_main still folds an embedded --password into the connect URI:$r_x6_rustcli"; rc=1
 else
-  echo "  ok  R-X6 core_main connect URI carries the address only (no embedded --password fold)"
+  echo "  ok  R-X6 former Rust CLI credential-query construction absent (source only)"
 fi
 # R-G6 / R-SV4 / R-X6: relay route syntax must FAIL CLOSED. The inherited flow accepted
 # rustdesk://<id>/r, stripped `/r` in Rust, set forceRelay, and could persist
@@ -10930,10 +10926,8 @@ fi
 # save/read force-always-relay.
 if grep -qF 'param_array.push(format!("relay=true"))' src/core_main.rs; then
   echo "  FAIL R-G6/R-X6: core_main still forwards --relay as relay=true"; rc=1
-elif ! grep -qF 'rejecting --relay on direct-only fork' src/core_main.rs; then
-  echo "  FAIL R-G6/R-X6: core_main no longer explicitly rejects --relay"; rc=1
 else
-  echo "  ok  R-G6/R-X6 CLI --relay rejected instead of forwarded"
+  echo "  ok  R-G6/R-X6 former CLI relay-query construction absent (source only)"
 fi
 if grep -qE 'handle_relay_id\(' src/client.rs; then
   echo "  FAIL R-G6/R-SV4: client.rs still strips relay suffixes through handle_relay_id"; rc=1
@@ -11063,22 +11057,6 @@ if [ -n "$r_x6_rust_address" ]; then
   echo "  FAIL R-X6: Rust client address identity is not structurally free of cross-server key grammar:$r_x6_rust_address"; rc=1
 else
   echo "  ok  R-X6 Rust core retains the exact address and has no cross-server key parser or state"
-fi
-# R-X6 confirmation gate: a deep-link-initiated connection MUST be confirmed by the user. The Dart gate
-# (confirmDeepLinkConnect via msgBox) wraps every rustdesk:// connect, routed through the `fromUri`
-# discriminator so the user-typed CLI is NOT gated but every URI-derived connect is.
-if grep -qF 'confirmDeepLinkConnect' flutter/lib/common.dart && grep -qF 'fromUri' flutter/lib/common.dart; then
-  echo "  ok  R-X6 deep-link connect is confirmation-gated (confirmDeepLinkConnect + fromUri)"
-else
-  echo "  FAIL R-X6: the deep-link-connect confirmation gate (confirmDeepLinkConnect/fromUri) is missing"; rc=1
-fi
-# R-X6 deep-link WRITE authorities: rustdesk://config/<b64> (server + key trust-anchor write) and
-# rustdesk://password/<pw> (permanent-password write) MUST be ignored, not honored (the same trust-anchor
-# / credential-injection class as R-X4). Assert urlLinkToCmdArgs still treats them as ignore-return-null.
-if grep -qF '["config", "password"].contains(uri.authority)' flutter/lib/common.dart && grep -qF 'Ignoring rustdesk:// server/credential write authority' flutter/lib/common.dart; then
-  echo "  ok  R-X6 deep-link config/password WRITE authorities are ignored (no trust-anchor/credential write)"
-else
-  echo "  FAIL R-X6: the rustdesk://config + rustdesk://password WRITE authorities are not provably excised"; rc=1
 fi
 # R-X6/R-S14 Android manifest hardening — lock both source intent and final-APK artifact proof against
 # regrowth. Library manifests are allowed to contain legacy declarations only when the app manifest removes

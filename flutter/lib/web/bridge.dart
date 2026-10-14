@@ -897,7 +897,7 @@ class RustdeskImpl {
   }
 
   String mainUriPrefixSync({dynamic hint}) {
-    throw UnimplementedError("mainUriPrefixSync");
+    return '${mainGetAppNameSync().toLowerCase()}://';
   }
 
   Future<String> mainGetLicense({dynamic hint}) {

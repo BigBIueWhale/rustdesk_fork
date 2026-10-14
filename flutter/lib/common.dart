@@ -2442,6 +2442,11 @@ String? urlLinkToForwardUrl(Uri uri) {
 }
 
 List<String>? urlLinkToCmdArgs(Uri uri) {
+  final appScheme = Uri.parse(bind.mainUriPrefixSync()).scheme;
+  if (appScheme.isEmpty || uri.scheme != appScheme) {
+    debugPrint("Rejected external link with the wrong application scheme.");
+    return null;
+  }
   String? command;
   String? id;
   final options = [

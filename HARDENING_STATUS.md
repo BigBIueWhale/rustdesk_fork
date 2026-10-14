@@ -10791,16 +10791,19 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `DesktopUrlIpcRequest` (OpenUrl/Activate/CloseAll), with 8-KiB frames, one-second I/O
   deadlines, one sequential request, 1,024-byte links and 512-byte direct addresses.
   Invalid requests never reach Flutter or encode activation/close as sentinel strings.
-  Startup no longer logs the raw argument list, which can include subwindow password
-  and connection-token fields; cold/warm link handlers no longer log incoming URLs or
-  exception text. Link failures emit fixed diagnostics because
-  parse/platform errors may contain the original credential-bearing input. This is
-  a source correction; final-artifact cold/warm and malformed-link log-capture
-  acceptance is still OPEN.
-  The obsolete Linux D-Bus URL startup API, native caller and web stub are deleted;
-  the existing source gate no longer exempts the no-op. Linux command-line links
-  remain local to their instance. Current bridge generation/compilation and native
-  startup/link behavior for this API deletion remain OPEN.
+  Startup/link diagnostics omit raw arguments, incoming URLs and error objects;
+  failures use fixed messages. Subwindow arguments can contain passwords/tokens.
+  The shared Dart parser refuses foreign or missing URI schemes before bare-link
+  activation, confirmation or IPC forwarding. It derives the scheme from the current
+  app prefix; the web bridge derives that prefix from its existing app-name metadata.
+  Linux command-line links remain local to their instance; the obsolete D-Bus URL
+  startup API, native caller and web stub are absent. Source guards cover specific
+  retired credential/relay constructions, without requiring comments/log wording
+  or crediting name matches as confirmation/write-refusal behavior. The real Rust
+  protocol test is retained. Current bridge generation/compilation, cold/warm allowed,
+  wrong-scheme and scheme-less delivery, no-action outcomes, startup and malformed-link
+  log capture, and final-artifact/native behavior remain OPEN. These source and
+  verifier corrections have no new runtime acceptance.
   Android retains its custom-scheme launcher entry, private service/boot components,
   merged-manifest permission/backup/network limits and foreground-service conditions.
   iOS now deletes both the bundled plugin's web-activity callback and declaration;

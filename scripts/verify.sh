@@ -10198,6 +10198,7 @@ else
   rc=1
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::audio_mailbox::tests:: --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::audio_buffer::tests:: --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11iw_ --color never

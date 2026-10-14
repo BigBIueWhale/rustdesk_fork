@@ -113,7 +113,8 @@ case "$#:${8:-}" in
             || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release || "${13}" = --input-lifetime \
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
-            || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox ]] || exit 2
+            || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
+            || "${13}" = --audio-buffer ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -3102,6 +3103,25 @@ run_focused_rust_tests() {
             [ "${#clipboard_tests[@]}" -eq 13 ] \
                 || fail 'focused clipboard test inventory differs'
             required_tests=("${clipboard_tests[@]}")
+        elif [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
+            container_name=rustdesk-audio-buffer-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=64m
+            source_fingerprints=(
+                Cargo.lock src/client.rs src/client/audio_buffer.rs
+                scripts/test-audio-buffer.rs scripts/run-audio-buffer-tests.py
+            )
+            required_tests=(
+                audio_buffer::tests::first_observation_arms_only_its_own_window
+                audio_buffer::tests::exact_interval_trims_without_early_retirement
+                audio_buffer::tests::independently_started_buffers_do_not_postpone_each_other
+                audio_buffer::tests::backwards_clock_preserves_pcm_and_restarts_observation
+                audio_buffer::tests::ring_replacement_retires_old_statistics_and_clock
+                audio_buffer::tests::no_op_resize_preserves_the_current_window
+                audio_buffer::tests::bounded_append_preserves_the_newest_pcm
+                audio_buffer::tests::parallel_native_workers_keep_distinct_clock_epochs
+            )
         elif [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
             container_name=rustdesk-audio-mailbox-tests
             memory=1g
@@ -3700,6 +3720,11 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        if [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
+                            python3 -I -S /source/scripts/run-audio-buffer-tests.py \
+                                /source /tmp/cargo-home/config.toml
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
                             python3 -I -S /source/scripts/run-audio-mailbox-tests.py \
                                 /source /tmp/cargo-home/config.toml
@@ -4004,6 +4029,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
+        printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=8 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
@@ -4138,6 +4165,11 @@ PY
         uid_test_artifact_sha="$(sha256sum "$target_root/uid-policy-tests" | awk '{ print $1 }')"
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-buffer summary count differs'
+        [ "$(grep -Ec '^AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'AUDIO_BUFFER_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'audio-buffer artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-mailbox summary count differs'
         [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=12 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -4415,7 +4447,12 @@ PY
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        if [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
+        if [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
+            grep -E '^test audio_buffer::tests::.* \.\.\. ok$|^AUDIO_BUFFER_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            printf 'AUDIO_BUFFER_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-portable-pcm-buffer rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
             grep -E '^test audio_mailbox::tests::.* \.\.\. ok$|^AUDIO_MAILBOX_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'AUDIO_MAILBOX_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-mailbox-and-generated-protobuf rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

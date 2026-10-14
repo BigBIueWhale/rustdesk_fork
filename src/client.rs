@@ -85,6 +85,12 @@ pub mod io_loop;
 pub mod screenshot;
 
 mod audio_mailbox;
+#[cfg(any(not(target_os = "linux"), test))]
+mod audio_buffer;
+#[cfg(not(target_os = "linux"))]
+use audio_buffer::AudioBuffer;
+#[cfg(any(not(target_os = "linux"), test))]
+pub use audio_buffer::AUDIO_BUFFER_MS;
 pub use audio_mailbox::{AUDIO_FRAME_QUEUE_CAPACITY, MAX_AUDIO_FRAME_QUEUE_AGE};
 pub(crate) use audio_mailbox::{
     native_opus_format_admission, native_opus_format_key, native_opus_format_within_limit,
@@ -124,8 +130,6 @@ pub const SCRAP_XDP_PORTAL_UNAVAILABLE: &str = "xdp-portal-unavailable";
 pub const SCRAP_X11_REQUIRED: &str = "x11 expected";
 pub const SCRAP_X11_REF_URL: &str = "";
 
-#[cfg(not(target_os = "linux"))]
-pub const AUDIO_BUFFER_MS: usize = 3000;
 
 #[cfg(feature = "flutter")]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -988,127 +992,6 @@ pub struct AudioHandler {
     ready: Arc<std::sync::Mutex<bool>>,
 }
 
-#[cfg(not(target_os = "linux"))]
-struct AudioBuffer(
-    pub Arc<std::sync::Mutex<ringbuf::HeapRb<f32>>>,
-    usize,
-    [usize; 30],
-);
-
-#[cfg(not(target_os = "linux"))]
-impl Default for AudioBuffer {
-    fn default() -> Self {
-        Self(
-            Arc::new(std::sync::Mutex::new(
-                ringbuf::HeapRb::<f32>::new(48000 * 2 * AUDIO_BUFFER_MS / 1000), // 48000hz, 2 channel
-            )),
-            48000 * 2,
-            [0; 30],
-        )
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-impl AudioBuffer {
-    pub fn resize(&mut self, sample_rate: usize, channels: usize) {
-        let capacity = sample_rate * channels * AUDIO_BUFFER_MS / 1000;
-        let old_capacity = self.0.lock().unwrap().capacity();
-        if capacity != old_capacity {
-            *self.0.lock().unwrap() = ringbuf::HeapRb::<f32>::new(capacity);
-            self.1 = sample_rate * channels;
-            log::info!("Audio buffer resized from {old_capacity} to {capacity}");
-        }
-    }
-
-    fn try_shrink(&mut self, having: usize) {
-        extern crate chrono;
-        use chrono::prelude::*;
-
-        let mut i = (having * 10) / self.1;
-        if i > 29 {
-            i = 29;
-        }
-        self.2[i] += 1;
-
-        #[allow(non_upper_case_globals)]
-        static mut tms: i64 = 0;
-        let dt = Local::now().timestamp_millis();
-        unsafe {
-            if tms == 0 {
-                tms = dt;
-                return;
-            } else if dt < tms + 12000 {
-                return;
-            }
-            tms = dt;
-        }
-
-        // the safer water mark to drop
-        let mut zero = 0;
-        // the water mark taking most of time
-        let mut max = 0;
-        for i in 0..30 {
-            if self.2[i] == 0 && zero == i {
-                zero += 1;
-            }
-
-            if self.2[i] > self.2[max] {
-                self.2[max] = 0;
-                max = i;
-            } else {
-                self.2[i] = 0;
-            }
-        }
-        zero = zero * 2 / 3;
-
-        // how many data can be dropped:
-        // 1. will not drop if buffered data is less than 600ms
-        // 2. choose based on min(zero, max)
-        const N: usize = 4;
-        self.2[max] = 0;
-        if max < 6 {
-            return;
-        } else if max > zero * N {
-            max = zero * N;
-        }
-
-        let mut lock = self.0.lock().unwrap();
-        let cap = lock.capacity();
-        let having = lock.occupied_len();
-        let skip = (cap * max / (30 * N) + 1) & (!1);
-        if (having > skip * 3) && (skip > 0) {
-            lock.skip(skip);
-            log::info!("skip {skip}, based {max} {zero}");
-        }
-    }
-
-    /// append pcm to audio buffer, if buffered data
-    /// exceeds AUDIO_BUFFER_MS,  only AUDIO_BUFFER_MS
-    /// will be kept.
-    fn append_pcm2(&self, buffer: &[f32]) -> usize {
-        let mut lock = self.0.lock().unwrap();
-        let cap = lock.capacity();
-        if buffer.len() > cap {
-            lock.push_slice_overwrite(buffer);
-            return cap;
-        }
-
-        let having = lock.occupied_len() + buffer.len();
-        if having > cap {
-            lock.skip(having - cap);
-        }
-        lock.push_slice_overwrite(buffer);
-        lock.occupied_len()
-    }
-
-    /// append pcm to audio buffer, trying to drop data
-    /// when data is too much (per 12 seconds) based
-    /// statistics.
-    pub fn append_pcm(&mut self, buffer: &[f32]) {
-        let having = self.append_pcm2(buffer);
-        self.try_shrink(having);
-    }
-}
 
 impl AudioHandler {
     #[cfg(target_os = "linux")]
@@ -1322,7 +1205,7 @@ impl AudioHandler {
         };
         self.audio_buffer
             .resize(config.sample_rate.0 as _, config.channels as _);
-        let audio_buffer = self.audio_buffer.0.clone();
+        let audio_buffer = self.audio_buffer.samples.clone();
         let ready = self.ready.clone();
         let timeout = None;
         let stream = device.build_output_stream(

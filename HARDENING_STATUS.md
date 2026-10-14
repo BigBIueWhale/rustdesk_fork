@@ -12219,6 +12219,24 @@ protobuf fields and detaching a small packet from any larger incoming backing al
 The eight queued packets retain at most 32768 data bytes plus fixed message metadata; this
 does not bound network parsing, an in-flight decoder, output-device buffering or whole-process memory.
 
+The non-Linux PCM buffer now lives in private `src/client/audio_buffer.rs`. Its producer
+owns the occupancy histogram and last-shrink `Instant`; the output callback shares only
+the mutex-protected ring. The former function-static mutable wall clock was reachable from
+independent native decoder threads and let one buffer postpone another's trim window.
+That shared clock and unsafe block are removed. First observation arms a twelve-second
+window; due observations affect only that buffer. Ring replacement resets its statistics
+and clock, while a no-op resize preserves them. A backwards monotonic observation logs
+and starts a fresh window without dropping PCM. Packet admission, voice authority and
+the existing ring-capacity/oldest-retention and shrink heuristic are unchanged.
+
+Eight production-buffer regressions cover initial and exact-deadline behavior,
+independent owners, backwards-clock refusal to trim, real/no-op resize, bounded PCM
+retention, and four joined native workers with distinct epochs over 200 trim periods.
+The `--audio-buffer-tests` lane compiles the actual portable buffer with root-locked
+ringbuf 0.3.3/log in the existing bounded zero-NIC VM. Execution is pending. Linux executes
+the portable component directly; Windows/Android/Apple CPAL compilation, device playback,
+actual trim timing, concurrent deployed sessions and whole-app acceptance remain OPEN.
+
 `OwnedMediaThread` retains the non-cloneable sender and exact decoder handle; the existing bounded
 completion pool owns final joining after close or hard Drop. Viewer and controlled callers retain
 native Opus packet/rate/channel limits and typed outcomes. Controlled playback retains the

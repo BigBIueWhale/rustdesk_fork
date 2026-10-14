@@ -5,6 +5,11 @@ use arboard::{ClipboardData, ClipboardFormat};
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::Message as _;
 use hbb_common::{bail, log, message_proto::*, ResultType};
+pub(crate) mod limits;
+use limits::{
+    MAX_NATIVE_CLIPBOARD_ITEMS, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES,
+    MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES, MAX_NATIVE_CLIPBOARD_TOTAL_BYTES,
+};
 #[cfg(not(target_os = "android"))]
 use std::sync::{
     mpsc::{self, SyncSender, TrySendError},
@@ -25,14 +30,6 @@ const RUSTDESK_CLIPBOARD_OWNER_FORMAT: &'static str = "dyn.com.rustdesk.owner";
 
 // Add special format for Excel XML Spreadsheet
 const CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET: &'static str = "XML Spreadsheet";
-/// Maximum bytes handed to native/platform clipboard handlers for one peer
-/// clipboard item after optional zstd decompression. This mirrors the R-S7
-/// decompression ceiling and makes the native clipboard handoff length-bounded;
-/// it is not a process sandbox.
-pub(crate) const MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES: usize = 64 * 1024 * 1024;
-pub(crate) const MAX_NATIVE_CLIPBOARD_TOTAL_BYTES: usize = 64 * 1024 * 1024;
-pub(crate) const MAX_NATIVE_CLIPBOARD_ITEMS: usize = 16;
-pub(crate) const MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES: usize = 256;
 #[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
 pub(crate) const MAX_FILE_CLIPBOARD_URLS: usize = 1024;
 #[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]

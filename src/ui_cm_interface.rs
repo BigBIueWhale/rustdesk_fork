@@ -1829,32 +1829,13 @@ where
                                         }
                                         continue;
                                     }
-                                    match crate::clipboard::check_clipboard_cm() {
-                                        Ok(multi_clipoards) => {
-                                            let mut raw_contents = bytes::BytesMut::new();
-                                            let mut main_data = vec![];
-                                            for c in multi_clipoards.clipboards.into_iter() {
-                                                let content_len = c.content.len();
-                                                let (content, next_raw) = {
-                                                    // TODO: find out a better threshold
-                                                    if content_len > 1024 * 3 {
-                                                        raw_contents.extend(c.content);
-                                                        (bytes::Bytes::new(), true)
-                                                    } else {
-                                                        (c.content, false)
-                                                    }
-                                                };
-                                                main_data.push(ClipboardNonFile {
-                                                    compress: c.compress,
-                                                    content,
-                                                    content_len,
-                                                    next_raw,
-                                                    width: c.width,
-                                                    height: c.height,
-                                                    format: c.format.value(),
-                                                    special_name: c.special_name,
-                                                });
-                                            }
+                                    let contents = crate::clipboard::check_clipboard_cm()
+                                        .and_then(|multi| {
+                                            ClipboardNonFile::prepare_contents(multi.clipboards)
+                                                .map_err(Into::into)
+                                        });
+                                    match contents {
+                                        Ok((main_data, raw_contents)) => {
                                             if let Err(error) = self
                                                 .stream
                                                 .send(&Data::ClipboardNonFile(Some((
@@ -1870,7 +1851,7 @@ where
                                             }
                                             if !raw_contents.is_empty() {
                                                 if let Err(error) =
-                                                    self.stream.send_raw(raw_contents.into()).await
+                                                    self.stream.send_raw(raw_contents).await
                                                 {
                                                     log::error!(
                                                         "failed to publish CM non-file clipboard payload: {error}"

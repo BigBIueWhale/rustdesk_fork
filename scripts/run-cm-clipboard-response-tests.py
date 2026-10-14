@@ -14,6 +14,8 @@ import tomllib
 PACKAGE = "rustdesk-cm-clipboard-response"
 INPUTS = ("Cargo.lock", "src/ipc.rs", "src/ipc/clipboard_non_file.rs",
           "src/server/clipboard_service.rs", "scripts/run-cm-clipboard-response-tests.py",
+          "src/clipboard.rs", "src/clipboard/limits.rs", "src/ui_cm_interface.rs",
+          "libs/hbb_common/src/bytes_codec.rs",
           "libs/hbb_common/build.rs", "libs/hbb_common/src/protos/mod.rs",
           "libs/hbb_common/protos/message.proto", "libs/hbb_common/protos/rendezvous.proto")
 
@@ -61,11 +63,15 @@ def main():
             '[dependencies]\nbytes = { version = "=1.11.1", features = ["serde"] }\n'
             'serde = "=1.0.228"\nserde_derive = "=1.0.228"\n'
             'protobuf = { version = "=3.7.2", features = ["with-bytes"] }\n'
+            'tokio-util = { version = "=0.7.15", features = ["codec"] }\n'
             '[build-dependencies]\nprotobuf-codegen = "=3.7.2"\n'
             '[dev-dependencies]\nserde_json = "=1.0.118"\n'
             '[lib]\nname = "rustdesk_cm_clipboard_response"\npath = "lib.rs"\n')
         (fixture / "lib.rs").write_text(
-            'extern crate self as hbb_common;\npub use bytes;\npub use protobuf;\n'
+            'extern crate self as hbb_common;\npub use bytes;\npub use protobuf;\npub use tokio_util;\n'
+            'mod clipboard {\n'
+            f'#[path = "{repo}/src/clipboard/limits.rs"] pub(crate) mod limits;\n}}\n'
+            f'#[path = "{repo}/libs/hbb_common/src/bytes_codec.rs"] pub mod bytes_codec;\n'
             f'#[path = "{repo}/libs/hbb_common/src/protos/mod.rs"] pub mod protos;\n'
             'pub use protos::message as message_proto;\n'
             f'#[path = "{repo}/src/ipc/clipboard_non_file.rs"] mod clipboard_non_file;\n')
@@ -102,7 +108,7 @@ def main():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"CM clipboard response source changed: {name}")
             print(f"CM_CLIPBOARD_RESPONSE_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256={artifact_sha} tests=11 unchanged=before-after", flush=True)
+        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256={artifact_sha} tests=29 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

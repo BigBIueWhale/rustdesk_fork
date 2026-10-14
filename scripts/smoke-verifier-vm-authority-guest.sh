@@ -3116,6 +3116,8 @@ run_focused_rust_tests() {
             source_fingerprints=(
                 Cargo.lock src/ipc.rs src/ipc/clipboard_non_file.rs
                 src/server/clipboard_service.rs scripts/run-cm-clipboard-response-tests.py
+                src/clipboard.rs src/clipboard/limits.rs src/ui_cm_interface.rs
+                libs/hbb_common/src/bytes_codec.rs
                 libs/hbb_common/build.rs libs/hbb_common/src/protos/mod.rs
                 libs/hbb_common/protos/message.proto libs/hbb_common/protos/rendezvous.proto
             )
@@ -3131,6 +3133,24 @@ run_focused_rust_tests() {
                 clipboard_non_file::tests::unknown_format_refuses_the_complete_reply
                 clipboard_non_file::tests::declared_formats_preserve_payload_and_metadata
                 clipboard_non_file::tests::raw_json_reply_roundtrips_through_the_production_protobuf
+                clipboard_non_file::tests::metadata_item_count_is_bounded
+                clipboard_non_file::tests::metadata_total_counts_inline_and_raw_bytes
+                clipboard_non_file::tests::inline_payload_obeys_the_producer_threshold
+                clipboard_non_file::tests::format_name_limit_counts_utf8_bytes
+                clipboard_non_file::tests::exact_maximum_raw_reply_restores_without_copy
+                clipboard_non_file::tests::worst_case_metadata_fits_its_codec_budget
+                clipboard_non_file::tests::codec_rejects_oversized_metadata_and_raw_headers_before_reserve
+                clipboard_non_file::tests::codec_phase_limits_preserve_buffered_frame_order
+                clipboard_non_file::tests::producer_and_receiver_preserve_inline_and_raw_entries
+                clipboard_non_file::tests::producer_refuses_out_of_policy_metadata
+                bytes_codec::tests::test_codec1
+                bytes_codec::tests::test_codec2
+                bytes_codec::tests::test_codec3
+                bytes_codec::tests::test_codec4
+                bytes_codec::tests::test_codec5
+                bytes_codec::tests::test_codec6
+                bytes_codec::tests::decode_large_frame_header_caps_preallocation
+                bytes_codec::tests::decode_rejects_frame_over_max_packet_length_before_reserve
             )
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then
             container_name=rustdesk-file-block-tests
@@ -4162,7 +4182,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
-        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=11 bridge=absent windows=unexecuted\n'
+        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=29 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=6 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -4307,7 +4327,7 @@ PY
             || fail 'compiled UID-policy test artifact digest is malformed'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'CM clipboard response summary count differs'
-        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=11 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=29 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CM_CLIPBOARD_RESPONSE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'CM clipboard response artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
@@ -4613,7 +4633,7 @@ PY
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
         if [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
-            grep -E '^test clipboard_non_file::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            grep -E '^test (clipboard_non_file|bytes_codec)::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'CM_CLIPBOARD_RESPONSE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-response-type-and-assembly windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

@@ -196,6 +196,7 @@ impl Handler {
                 let Some(stream) = stream.as_mut() else {
                     bail!("failed to get CM clipboard stream");
                 };
+                stream.set_max_packet_length(ClipboardNonFile::METADATA_FRAME_BYTES);
                 stream.send(&authorized_clipboard_non_file_request(&authority)).await?;
                 let mut monitor_ready_seen = false;
                 loop {
@@ -204,8 +205,12 @@ impl Handler {
                             if !err.is_empty() {
                                 bail!("{}", err);
                             }
-                            let raw = if ClipboardNonFile::raw_content_len(&contents)? != 0 {
-                                stream.next_raw().await?
+                            let raw_len = ClipboardNonFile::raw_content_len(&contents)?;
+                            let raw = if raw_len != 0 {
+                                stream.set_max_packet_length(raw_len);
+                                let raw = stream.next_raw().await?;
+                                stream.set_max_packet_length(ClipboardNonFile::METADATA_FRAME_BYTES);
+                                raw
                             } else {
                                 hbb_common::bytes::BytesMut::new()
                             };

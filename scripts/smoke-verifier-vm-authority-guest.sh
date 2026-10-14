@@ -4456,7 +4456,7 @@ PY
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
         if [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
-            grep -E '^test audio_buffer::tests::.* \.\.\. ok$|^AUDIO_BUFFER_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            grep -E '^test .* \.\.\. ok$|^AUDIO_BUFFER_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'AUDIO_BUFFER_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-portable-pcm-buffer rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

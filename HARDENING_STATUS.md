@@ -12202,7 +12202,7 @@ artifacts; cold R-B2/R-B10 equality; independent reproduction; and external revi
 
 ### R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox (2026-08-22)
 
-**SOURCE IMPLEMENTED; EXACT CURRENT RUST/NATIVE AUDIO AND RELEASE EVIDENCE OPEN.**
+**PRODUCTION MAILBOX COMPONENT ACCEPTED; WHOLE-APP, NATIVE PLAYBACK AND RELEASE EVIDENCE OPEN.**
 The shared outgoing viewer on Android/iOS/Windows/Linux/macOS and accepted controlled-call playback
 use the private `src/client/audio_mailbox.rs` boundary: one immutable first-format identity, one pending format,
 at most eight timestamped frames, and terminal state under a mutex. The sole receiver uses a
@@ -12249,8 +12249,22 @@ actual parsed frame/format unknown-field stripping, large backing-owner release 
 native receiver wake/join on sender drop and receiver-drop admission closure. The focused
 `--audio-mailbox-tests` lane compiles this module with the production proto files and
 unchanged `hbb_common` build script, checks every dependency against the root lock, and
-runs the twelve tests in the bounded zero-NIC VM/nonroot networkless container. Execution
-is pending; whole-parent compilation, native decoder/playback, installed and device acceptance remain OPEN.
+runs the twelve tests in the bounded zero-NIC VM/nonroot networkless container.
+
+Exact source `847f5566` (tree `520adfce`) passed all twelve named component tests
+with outer status 0 in 82 seconds. Rust 1.75 compiled the production mailbox with the
+actual generated protobuf types; the artifact SHA-256 is
+`fd64689c4a506719f0145c1c908c73b1e24e9f58498e7a91d8a25be828b62f78`.
+The eleven source-input records and every fixture dependency matched the root lock.
+Raw serial `android-rust-lifecycle-tests-run.F0LSO7lpFg.serial.log` is 71367 bytes,
+SHA-256 `bfde896c22854ff2341ef0646019d3f1b02c5107430c197497a7e589e8badd2c`,
+under `.harness-state/verifier-vm/`. All 40 before/live/after source/index/audit/spec/
+instruction fields matched. Four endpoint snapshots reported no addition; one removed
+endpoint was unattributed and untouched. Exact QEMU exit and monitor completion were
+joined; the RAM workspace and both active-marker sets retired. A preceding source-admission
+refusal executed no VM or test and remains preserved separately. The twelve outcomes
+prove the mailbox cases only. Whole-parent compilation, native decoder/playback,
+installed and device acceptance remain OPEN.
 Neither the source correction nor unrelated model passes identify the defect in weeks-old deployed
 artifacts or establish causation for the reported display-only delay.
 

@@ -109,6 +109,12 @@ CREDENTIAL_DIALOG_TESTS = {
         "obscured dialog field exposes enabled focused semantics",
     },
     "dialog_close_ownership_test.dart": {
+        "message submit retires only its entry and dispatches once",
+        "retired message submit cannot act before unmount",
+        "retired message cancel and close cannot dismiss a replacement",
+        "message reconnect countdown never submits an action",
+        "retired message reconnect cannot act before unmount",
+        "message reconnect retires its entry and dispatches once",
         "dialog close grants only its exact current entry",
         "loading cancel retires only its own entry and dispatches once",
         "superseded loading cancel has no authority before unmount",

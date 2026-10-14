@@ -1223,91 +1223,85 @@ void msgBox(SessionID sessionId, String type, String title, String text,
     {bool? hasCancel,
     ReconnectHandle? reconnect,
     int? reconnectTimeout,
-    VoidCallback? onSubmit,
-    int? submitTimeout}) {
+    VoidCallback? onSubmit}) {
   dialogManager.dismissAll();
-  List<Widget> buttons = [];
-  bool hasOk = false;
-  submit() {
-    dialogManager.dismissAll();
-    if (onSubmit != null) {
-      onSubmit.call();
-    } else {
-      // https://github.com/rustdesk/rustdesk/blob/5e9a31340b899822090a3731769ae79c6bf5f3e5/src/ui/common.tis#L263
-      if (!type.contains("custom") && desktopType != DesktopType.portForward) {
-        closeConnection();
-      }
-    }
-  }
-
-  cancel() {
-    dialogManager.dismissAll();
-  }
-
-  jumplink() {
-    if (link.startsWith('http')) {
-      launchUrl(Uri.parse(link));
-    }
-  }
-
-  if (type != "connecting" && type != "success" && !type.contains("nook")) {
-    hasOk = true;
-    late final Widget btn;
-    if (submitTimeout != null) {
-      btn = _CountDownButton(
-        text: 'OK',
-        second: submitTimeout,
-        onPressed: submit,
-        submitOnTimeout: true,
-      );
-    } else {
-      btn = dialogButton('OK', onPressed: submit);
-    }
-    buttons.insert(0, btn);
-  }
-  hasCancel ??= !type.contains("error") &&
-      !type.contains("nocancel") &&
-      type != "restarting";
-  if (hasCancel) {
-    buttons.insert(
-        0, dialogButton('Cancel', onPressed: cancel, isOutline: true));
-  }
-  if (type.contains("hasclose")) {
-    buttons.insert(
-        0,
-        dialogButton('Close', onPressed: () {
-          dialogManager.dismissAll();
-        }));
-  }
-  if (reconnect != null &&
-      title == "Connection Error" &&
-      reconnectTimeout != null) {
-    // `enabled` is used to disable the dialog button once the button is clicked.
-    final enabled = true.obs;
-    final button = Obx(() => _CountDownButton(
-          text: 'Reconnect',
-          second: reconnectTimeout,
-          onPressed: enabled.isTrue
-              ? () {
-                  // Disable the button
-                  enabled.value = false;
-                  reconnect(dialogManager, sessionId);
-                }
-              : null,
-        ));
-    buttons.insert(0, button);
-  }
-  if (link.isNotEmpty) {
-    buttons.insert(0, dialogButton('JumpLink', onPressed: jumplink));
-  }
   dialogManager.show(
-    (setState, close, context) => CustomAlertDialog(
-      title: null,
-      content: SelectionArea(child: msgboxContent(type, title, text)),
-      actions: buttons,
-      onSubmit: hasOk ? submit : null,
-      onCancel: hasCancel == true ? cancel : null,
-    ),
+    (setState, close, context) {
+      List<Widget> buttons = [];
+      bool hasOk = false;
+      submit() {
+        if (!close()) return;
+        if (onSubmit != null) {
+          onSubmit.call();
+        } else if (!type.contains("custom") &&
+            desktopType != DesktopType.portForward) {
+          closeConnection();
+        }
+      }
+
+      jumplink() {
+        if (close.isCurrent && link.startsWith('http')) {
+          launchUrl(Uri.parse(link));
+        }
+      }
+
+      if (type != "connecting" && type != "success" && !type.contains("nook")) {
+        hasOk = true;
+        final btn = dialogButton('OK',
+            onPressed: submit, translateText: dialogManager._translate);
+        buttons.insert(0, btn);
+      }
+      final canCancel = hasCancel ??
+          (!type.contains("error") &&
+              !type.contains("nocancel") &&
+              type != "restarting");
+      if (canCancel) {
+        buttons.insert(
+            0,
+            dialogButton('Cancel',
+                onPressed: close,
+                isOutline: true,
+                translateText: dialogManager._translate));
+      }
+      if (type.contains("hasclose")) {
+        buttons.insert(
+            0,
+            dialogButton('Close',
+                onPressed: close, translateText: dialogManager._translate));
+      }
+      if (reconnect != null &&
+          title == "Connection Error" &&
+          reconnectTimeout != null) {
+        final enabled = true.obs;
+        final button = Obx(() => _CountDownButton(
+              text: dialogManager._translate('Reconnect'),
+              second: reconnectTimeout,
+              onPressed: enabled.isTrue
+                  ? () {
+                      if (!close()) return;
+                      enabled.value = false;
+                      reconnect(dialogManager, sessionId);
+                    }
+                  : null,
+            ));
+        buttons.insert(0, button);
+      }
+      if (link.isNotEmpty) {
+        buttons.insert(
+            0,
+            dialogButton('JumpLink',
+                onPressed: jumplink, translateText: dialogManager._translate));
+      }
+      return CustomAlertDialog(
+        title: null,
+        content: SelectionArea(
+            child: msgboxContent(type, title, text,
+                translateText: dialogManager._translate)),
+        actions: buttons,
+        onSubmit: hasOk ? submit : null,
+        onCancel: canCancel ? close : null,
+      );
+    },
     tag: '$sessionId-$type-$title-$text-$link',
   );
 }
@@ -1351,22 +1345,24 @@ Widget msgboxIcon(String type) {
 }
 
 // title should be null
-Widget msgboxContent(String type, String title, String text) {
-  String translateText(String text) {
+Widget msgboxContent(String type, String title, String text,
+    {String Function(String text)? translateText}) {
+  final translateMessage = translateText ?? translate;
+  String translateContentText(String text) {
     if (text.indexOf('Failed') == 0 && text.indexOf(': ') > 0) {
       List<String> words = text.split(': ');
       for (var i = 0; i < words.length; ++i) {
-        words[i] = translate(words[i]);
+        words[i] = translateMessage(words[i]);
       }
       text = words.join(': ');
     } else {
       List<String> words = text.split(' ');
       if (words.length > 1 && words[0].endsWith('_tip')) {
-        words[0] = translate(words[0]);
+        words[0] = translateMessage(words[0]);
         final rest = text.substring(words[0].length + 1);
-        text = '${words[0]} ${translate(rest)}';
+        text = '${words[0]} ${translateMessage(rest)}';
       } else {
-        text = translate(text);
+        text = translateMessage(text);
       }
     }
     return text;
@@ -1380,10 +1376,10 @@ Widget msgboxContent(String type, String title, String text) {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              translate(title),
+              translateMessage(title),
               style: TextStyle(fontSize: 21),
             ).marginOnly(bottom: 10),
-            createDialogContent(translateText(text)),
+            createDialogContent(translateContentText(text)),
           ],
         ),
       ),
@@ -3392,12 +3388,10 @@ class _CountDownButton extends StatefulWidget {
     required this.text,
     required this.second,
     required this.onPressed,
-    this.submitOnTimeout = false,
   }) : super(key: key);
   final String text;
   final VoidCallback? onPressed;
   final int second;
-  final bool submitOnTimeout;
 
   @override
   State<_CountDownButton> createState() => _CountDownButtonState();
@@ -3424,9 +3418,6 @@ class _CountDownButtonState extends State<_CountDownButton> {
     _timer = Timer.periodic(Duration(seconds: 1), (timer) {
       if (_countdownSeconds <= 0) {
         timer.cancel();
-        if (widget.submitOnTimeout) {
-          widget.onPressed?.call();
-        }
       } else {
         setState(() {
           _countdownSeconds--;
@@ -3438,9 +3429,10 @@ class _CountDownButtonState extends State<_CountDownButton> {
   @override
   Widget build(BuildContext context) {
     return dialogButton(
-      '${translate(widget.text)} (${_countdownSeconds}s)',
+      '${widget.text} (${_countdownSeconds}s)',
       onPressed: widget.onPressed,
       isOutline: true,
+      translateText: (text) => text,
     );
   }
 }

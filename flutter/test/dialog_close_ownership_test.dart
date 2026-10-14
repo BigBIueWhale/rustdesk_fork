@@ -3,6 +3,7 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/connect_password_dialog.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uuid/uuid.dart';
 
 Future<OverlayDialogManager> _manager(WidgetTester tester) async {
   final state = BlockableOverlayState();
@@ -17,7 +18,191 @@ Future<OverlayDialogManager> _manager(WidgetTester tester) async {
   return manager;
 }
 
+VoidCallback _messageButton(WidgetTester tester, String label) => tester
+    .widget<ButtonStyleButton>(find.ancestor(
+      of: find.text(label),
+      matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
+    ))
+    .onPressed!;
+
 void main() {
+  testWidgets('message submit retires only its entry and dispatches once',
+      (tester) async {
+    final manager = await _manager(tester);
+    final session = const Uuid().v4obj();
+    var submits = 0;
+    try {
+      msgBox(session, 'custom', 'request', 'confirm', '', manager,
+          onSubmit: () => submits++);
+      await tester.pump();
+      final submit = tester
+          .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      final unrelated = manager.show<void>(
+          (_, __, ___) => const Text('unrelated'),
+          tag: 'unrelated');
+      submit();
+      submit();
+      await tester.pump();
+      expect(submits, 1);
+      expect(find.text('request'), findsNothing);
+      expect(manager.existing('unrelated'), isTrue);
+      expect(find.text('unrelated'), findsOneWidget);
+      manager.dismissByTag('unrelated');
+      await unrelated;
+    } finally {
+      manager.dismissAll();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('retired message submit cannot act before unmount', (tester) async {
+    final manager = await _manager(tester);
+    final session = const Uuid().v4obj();
+    final events = <String>[];
+    try {
+      msgBox(session, 'custom', 'old request', 'confirm', '', manager,
+          onSubmit: () => events.add('old'));
+      await tester.pump();
+      final oldElement = tester.element(find.byType(CustomAlertDialog));
+      final submit = tester
+          .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      msgBox(session, 'custom', 'new request', 'confirm', '', manager,
+          onSubmit: () => events.add('new'));
+      expect(oldElement.mounted, isTrue);
+      submit();
+      expect(events, isEmpty);
+      await tester.pump();
+      expect(find.text('new request'), findsOneWidget);
+      tester
+          .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!();
+      expect(events, ['new']);
+    } finally {
+      manager.dismissAll();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('retired message cancel and close cannot dismiss a replacement',
+      (tester) async {
+    for (final cancel in [true, false]) {
+      final manager = await _manager(tester);
+      final session = const Uuid().v4obj();
+      try {
+        msgBox(session, 'custom-hasclose', 'old request', 'confirm', '', manager);
+        await tester.pump();
+        final oldElement = tester.element(find.byType(CustomAlertDialog));
+        final action = cancel
+            ? tester
+                .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+                .onCancel!
+            : _messageButton(tester, 'Close');
+        msgBox(session, 'custom-hasclose', 'new request', 'confirm', '', manager);
+        expect(oldElement.mounted, isTrue);
+        action();
+        await tester.pump();
+        expect(find.text('new request'), findsOneWidget);
+        final currentAction = cancel
+            ? tester
+                .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+                .onCancel!
+            : _messageButton(tester, 'Close');
+        final unrelated = manager.show<void>(
+            (_, __, ___) => const Text('unrelated'),
+            tag: 'unrelated');
+        currentAction();
+        currentAction();
+        await tester.pump();
+        expect(find.text('new request'), findsNothing);
+        expect(manager.existing('unrelated'), isTrue);
+        expect(find.text('unrelated'), findsOneWidget);
+        manager.dismissByTag('unrelated');
+        await unrelated;
+      } finally {
+        manager.dismissAll();
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    }
+  });
+
+  testWidgets('message reconnect countdown never submits an action',
+      (tester) async {
+    final manager = await _manager(tester);
+    final session = const Uuid().v4obj();
+    final events = <String>[];
+    try {
+      msgBox(session, 'error', 'Connection Error', 'retry', '', manager,
+          onSubmit: () => events.add('submit'),
+          reconnect: (_, __) => events.add('reconnect'),
+          reconnectTimeout: 3);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 4));
+      expect(events, isEmpty);
+      expect(find.text('Reconnect (0s)'), findsOneWidget);
+      _messageButton(tester, 'Reconnect (0s)')();
+      expect(events, ['reconnect']);
+    } finally {
+      manager.dismissAll();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('retired message reconnect cannot act before unmount',
+      (tester) async {
+    final manager = await _manager(tester);
+    final session = const Uuid().v4obj();
+    var reconnects = 0;
+    try {
+      msgBox(session, 'error', 'Connection Error', 'retry', '', manager,
+          reconnect: (_, __) => reconnects++, reconnectTimeout: 3);
+      await tester.pump();
+      final oldElement = tester.element(find.byType(CustomAlertDialog));
+      final reconnect = _messageButton(tester, 'Reconnect (3s)');
+      msgBox(session, 'custom', 'new request', 'confirm', '', manager);
+      expect(oldElement.mounted, isTrue);
+      reconnect();
+      expect(reconnects, 0);
+      await tester.pump();
+      expect(find.text('new request'), findsOneWidget);
+    } finally {
+      manager.dismissAll();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('message reconnect retires its entry and dispatches once',
+      (tester) async {
+    final manager = await _manager(tester);
+    final session = const Uuid().v4obj();
+    var reconnects = 0;
+    try {
+      msgBox(session, 'error', 'Connection Error', 'retry', '', manager,
+          reconnect: (actualManager, actualSession) {
+        expect(identical(actualManager, manager), isTrue);
+        expect(actualSession, session);
+        reconnects++;
+      }, reconnectTimeout: 3);
+      await tester.pump();
+      final reconnect = _messageButton(tester, 'Reconnect (3s)');
+      final unrelated = manager.show<void>(
+          (_, __, ___) => const Text('unrelated'),
+          tag: 'unrelated');
+      reconnect();
+      reconnect();
+      await tester.pump();
+      expect(reconnects, 1);
+      expect(manager.existing('unrelated'), isTrue);
+      expect(find.text('unrelated'), findsOneWidget);
+      manager.dismissByTag('unrelated');
+      await unrelated;
+    } finally {
+      manager.dismissAll();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   testWidgets('dialog close grants only its exact current entry', (tester) async {
     final manager = await _manager(tester);
     try {

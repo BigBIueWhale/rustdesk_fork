@@ -2215,7 +2215,7 @@ source, raw results, frozen inputs, endpoint observations, limits and joined cle
 Native callbacks are fixtures;
 actual X-server/Remote changes, remaining synchronous discovery callers, full app
 and installed/platform acceptance remain OPEN. Command/task ownership is covered above.
-Credential/dialog and Android CM work
+Credential provisioning and Android CM work
 remain parked under the user's pivot.
 
 **Dialog close authority: source corrected; focused execution pending.** The
@@ -2224,9 +2224,17 @@ identity and a result-bearing close. Replacement or dismissal revokes it before
 Flutter unmounts the old widget. Loading cancel closes only its own entry and
 dispatches once after a successful claim; password submit checks current authority
 before calling its receiver, and cancel/accepted follow-up require a successful
-close. The void closer and loading `dismissAll()` path are removed. The focused
-credential shard targets 39 named tests across seven suites, including real
-overlay replacement/cancellation before unmount and affected file-dialog mocks.
+close. Message-box actions are constructed inside that same receiver-owned entry:
+submit and manual reconnect require a successful close before dispatch,
+cancel/Close affect only that entry, and helper-link actions require current ownership.
+The message callback `dismissAll()` paths are removed; publication retains its
+explicit replacement of prior dialog state. Message rendering/countdown labels use
+the manager's existing translator. The unused automatic-submit option and private
+callback branch are deleted; the supported reconnect countdown only renders time.
+The focused dialog shard targets 45 named tests across seven suites, including
+six real message-widget cases for current one-shot
+submit/reconnect, stale submit/cancel/Close/reconnect before unmount, and display-only
+reconnect expiry. The real overlay and affected file-dialog mocks are retained.
 Native execution, actual peer/session/route cancellation and installed acceptance
 remain OPEN. `closeConnection()` still selects the active desktop tab or navigates
 the global mobile route after an await; binding those actions to an exact session
@@ -10796,6 +10804,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   The shared Dart parser refuses foreign or missing URI schemes before bare-link
   activation, confirmation or IPC forwarding. It derives the scheme from the current
   app prefix; the web bridge derives that prefix from its existing app-name metadata.
+  External-link confirmation actions also require their exact current message entry;
+  replacement revokes old button/key actions before unmount.
   Linux command-line links remain local to their instance; the obsolete D-Bus URL
   startup API, native caller and web stub are absent. Source guards cover specific
   retired credential/relay constructions, without requiring comments/log wording

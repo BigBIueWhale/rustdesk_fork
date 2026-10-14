@@ -14309,13 +14309,24 @@ whole-process allocation/resource measurements and other-platform acceptance rem
 | --- | --- |
 | File-list ownership | `new_read_with_budget` admits the send list at construction. `set_files_with_limit` admits a receive list once, including an empty list, after all validation succeeds; refused first admission remains retryable. Every duplicate or replacement list refuses before changing entries, sizes, indexes, flags, streams or claims. Completion and byte limits keep their original admitted authority. |
 | Send starting index | `new_read_with_budget` and its `new_read` wrapper admit filesystem indexes only in the inclusive range zero through the exact list length. An invalid index fails before job publication rather than becoming an empty successful transfer. |
-| Whole-list receive completion | `finalize_write` requires the active file's exact next index to equal the whole admitted list length before consuming the stream or publishing the claim. Empty and explicitly skipped lists retain their no-stream completion path. |
+| Whole-list receive completion | `finalize_write` first requires successful file-list admission, then requires the active file's exact next index to equal the whole admitted list length before consuming the stream or publishing the claim. A missing or rejected list cannot become a successful empty transfer. Explicitly admitted empty and skipped lists retain their no-stream completion path. |
 | Send length and EOF | `read` owns a per-file position and probes at most the admitted remainder plus one byte, capped at 128 KiB. Short EOF or overrun closes the stream and fails before publishing the affected block or changing counters/file number. Successful seek establishes the position; skip, retirement, fresh open and exact EOF reset it. |
 | Direct read-step retirement | `handle_read_jobs` uses one selected vector entry through initialization, reading and terminal retirement, and returns at most one exact writer receipt. The separate initializer and numeric-ID finished list are deleted. |
 | Send resume source ownership | `set_stream_offset` checks metadata and seeks on the retained send `FileStream`; it does not reopen the pathname to replace an active stream. A first open remains provisional until length validation and seek succeed. Refused offsets preserve confirmation and accounting. |
 | Resume admitted size | Both roles reject offsets beyond the admitted entry size before path resolution, open, seek or accounting. Send also checks the retained object's actual length; in-place growth does not enlarge the admitted authority. |
 | File confirmation entry | Every filesystem-backed skip, overwrite and resume action requires a present entry at the exact matching current index before changing flags, counters, streams or cleanup state. Empty and completed lists cannot confirm an absent file; a present zero-byte file remains valid. |
 | File-list construction | `read_dir_with_budget`, both recursive scanners and `new_read_with_budget` propagate iterator, root/entry metadata and descendant failures. Unsupported UTF-8 names, unavailable modification times and pre-epoch times fail explicitly. Every scanned entry consumes quota even when hidden filtering excludes it; recursive byte accounting includes the complete relative name. Flat and empty-directory results reserve each full returned path in the shared byte counter before copying it. The private scanner returns entries without allocating a discarded directory path. Child-error string classification and partial-success branches are deleted. |
+
+**Completion before list admission — source corrected; compilation/runtime PENDING.**
+Current source refuses `Done(0)` before any list is admitted, including after a rejected
+first list. The viewer creates a receive job before the peer's directory response and uses
+`finalize_write` to decide completion; the old empty-vector equality could report success
+without that response. CM already admits its list before publishing a receive job. One required
+`--hbb-common-fs` regression covers both refusals, retained job accounting/unowned partial files,
+and successful explicit empty-list admission afterward. It is uncompiled and unexecuted;
+current library/app, viewer/CM, installed and other-platform acceptance remain OPEN. Available
+host RAM remains below the unchanged 29 GiB filesystem-test admission floor, so no VM or
+test payload was launched for this correction. Earlier accepted transactions do not cover it.
 
 **File-list replacement — named Linux library transaction ACCEPTED; caller integration OPEN.**
 At `68309547`, all four new regressions failed while 98 existing filesystem tests passed;

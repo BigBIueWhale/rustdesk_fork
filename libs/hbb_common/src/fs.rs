@@ -3364,10 +3364,14 @@ impl TransferJob {
     /// The sender advances its file number after emitting the final (possibly empty) block, so an
     /// active stream must finish at `self.file_num + 1`, which must also end the admitted list.
     /// A job with no active stream is complete only when its current index is already the end
-    /// of that list (an empty or skipped transfer). Other terminal commands are incomplete or stale.
+    /// of that list (an empty or skipped transfer). Even an empty list must have been admitted.
+    /// Other terminal commands are incomplete or stale.
     pub async fn finalize_write(&mut self, done_file_num: i32) -> ResultType<()> {
         if self.role != TransferRole::Receive {
             bail!("cannot finalize a send job as a receive write");
+        }
+        if !self.files_admitted {
+            bail!("cannot finalize a receive job before file-list admission");
         }
         if self.data_stream.is_some() {
             let expected = self
@@ -5710,6 +5714,64 @@ mod tests {
         assert_eq!(
             std::fs::read_dir(&tmp.path)
                 .expect("read receive directory")
+                .count(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn receive_done_requires_successful_file_list_admission() {
+        let tmp = TestTempDir::new("rustdesk_receive_unadmitted_done");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let partial = tmp.join("older.bin.download");
+        let digest = tmp.join("older.bin.digest");
+        std::fs::write(&partial, b"older partial").expect("stage unowned partial file");
+        std::fs::write(&digest, b"older digest").expect("stage unowned digest");
+        let mut job = TransferJob::new_write(
+            222,
+            JobType::Generic,
+            "remote".to_owned(),
+            tmp.path.clone(),
+            0,
+            false,
+            true,
+            false,
+        );
+
+        for reject_list in [false, true] {
+            if reject_list {
+                job.set_files(vec![new_file_entry("../outside.bin")])
+                    .expect_err("invalid file list cannot admit a transfer");
+            }
+            job.finalize_write(0)
+                .await
+                .expect_err("Done cannot turn a missing file list into an empty transfer");
+            assert!(!job.files_admitted);
+            assert!(job.files().is_empty());
+            assert_eq!(job.file_num(), 0);
+            assert_eq!(job.total_size(), 0);
+            assert_eq!(job.finished_size(), 0);
+            assert_eq!(job.transferred(), 0);
+            assert!(job.data_stream.is_none());
+            assert!(job.receive_write_claim.is_none());
+        }
+
+        job.set_files(Vec::new())
+            .expect("explicitly admit an empty transfer");
+        job.finalize_write(0)
+            .await
+            .expect("complete the admitted empty list");
+        assert_eq!(
+            std::fs::read(&partial).expect("read unowned partial"),
+            b"older partial"
+        );
+        assert_eq!(
+            std::fs::read(&digest).expect("read unowned digest"),
+            b"older digest"
+        );
+        assert_eq!(
+            std::fs::read_dir(&tmp.path)
+                .expect("inspect receive directory")
                 .count(),
             2
         );

@@ -18,7 +18,7 @@ use tokio::{
 use crate::{anyhow::anyhow, bail, get_version_number, message_proto::*, ResultType, Stream};
 // https://doc.rust-lang.org/std/os/windows/fs/trait.MetadataExt.html
 use crate::{
-    compress::{compress, try_decompress},
+    compress::{compress, try_decompress_with_limit},
     config::Config,
 };
 
@@ -32,6 +32,7 @@ pub const MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN: usize = 32;
 pub const MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN: usize = 32;
 const FILE_ENUMERATION_BUDGET_EXCEEDED: &str = "file enumeration budget exceeded";
 const EMPTY_DIRECTORY_REMOVAL_BUDGET_EXCEEDED: &str = "empty-directory removal budget exceeded";
+const FILE_TRANSFER_BLOCK_SIZE: usize = 128 * 1024;
 
 #[derive(Default)]
 struct EmptyDirectoryRemovalState {
@@ -3565,8 +3566,11 @@ impl TransferJob {
                 }
             }
         }
+        if block.data.len() > FILE_TRANSFER_BLOCK_SIZE {
+            bail!("file block exceeds the 128 KiB limit");
+        }
         let decoded = if block.compressed {
-            Some(try_decompress(&block.data)?)
+            Some(try_decompress_with_limit(&block.data, FILE_TRANSFER_BLOCK_SIZE)?)
         } else {
             None
         };
@@ -3767,20 +3771,19 @@ impl TransferJob {
             }
             DataSource::MemoryCursor(..) => ("", None),
         };
-        const BUF_SIZE: usize = 128 * 1024;
         let read_limit = match expected_size {
             Some(size) => {
                 let remaining = size
                     .checked_sub(self.send_file_offset)
                     .ok_or_else(|| anyhow!("send position exceeds declared file size"))?;
-                if remaining < BUF_SIZE as u64 {
+                if remaining < FILE_TRANSFER_BLOCK_SIZE as u64 {
                     // A nonempty probe distinguishes exact EOF from an oversized source.
                     remaining as usize + 1
                 } else {
-                    BUF_SIZE
+                    FILE_TRANSFER_BLOCK_SIZE
                 }
             }
-            None => BUF_SIZE,
+            None => FILE_TRANSFER_BLOCK_SIZE,
         };
         let mut buf: Vec<u8> = vec![0; read_limit];
         let mut compressed = false;
@@ -4447,6 +4450,7 @@ pub fn serialize_transfer_job(job: &TransferJob, done: bool, cancel: bool, error
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::compress::try_decompress;
     use crate::protobuf::Message as _;
 
     #[tokio::test]
@@ -7015,6 +7019,123 @@ mod tests {
         assert!(!download.exists());
         assert!(!digest.exists());
         assert!(!lock.exists(), "complete cleanup must retire the lease marker");
+    }
+
+    #[tokio::test]
+    async fn receive_blocks_refuse_oversized_input_and_decoded_output() {
+        const LIMIT: usize = 128 * 1024;
+        let tmp = TestTempDir::new("rustdesk_receive_block_limit");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let oversized = vec![0x5a; LIMIT + 1];
+        let encoded = compress(&oversized).expect("encode oversized output");
+        assert!(encoded.len() < LIMIT, "fixture must cross only the decoded limit");
+
+        for file_backed in [true, false] {
+            let mut job = if file_backed {
+                let mut entry = new_file_entry("incoming.bin");
+                entry.size = oversized.len() as u64;
+                new_write_job_with_files(214, tmp.path.clone(), vec![entry])
+                    .expect("admit a file large enough for the refused block")
+            } else {
+                TransferJob::new_write(
+                    214, JobType::Generic, String::new(),
+                    DataSource::MemoryCursor(Cursor::new(Vec::new())),
+                    0, false, false, false,
+                )
+            };
+            for (data, compressed, reason) in [
+                (oversized.clone(), false, "file block exceeds"),
+                (encoded.clone(), true, "decompressed output exceeds limit"),
+                (oversized.clone(), true, "file block exceeds"),
+            ] {
+                let error = job.write(FileTransferBlock {
+                    id: 214, file_num: 0, data: data.into(), compressed,
+                    ..Default::default()
+                }).await.expect_err("oversized block must refuse before opening a stream");
+                assert!(error.to_string().contains(reason), "unexpected refusal: {error}");
+                assert_eq!(job.file_num(), 0);
+                assert_eq!(job.receive_file_offset, 0);
+                assert_eq!(job.finished_size(), 0);
+                assert_eq!(job.transferred(), 0);
+                assert!(job.data_stream.is_none());
+                assert!(job.receive_write_claim.is_none());
+                assert_eq!(std::fs::read_dir(&tmp.path).expect("inspect receive directory").count(), 0);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn file_block_limit_preserves_real_sender_receiver_roundtrips() {
+        const LIMIT: usize = 128 * 1024;
+        let tmp = TestTempDir::new("rustdesk_file_block_roundtrip");
+        let destination = tmp.join("received");
+        std::fs::create_dir_all(&destination).expect("create destination");
+        for extension in ["zip", "txt"] {
+            for size in [0, LIMIT, LIMIT + 3] {
+                let name = format!("source-{size}.{extension}");
+                let path = tmp.join(&name);
+                let content = vec![0x5a; size];
+                std::fs::write(&path, &content).expect("create actual source file");
+                let mut sender = TransferJob::new_read(
+                    215, JobType::Generic, String::new(), DataSource::FilePath(path),
+                    0, false, false, false,
+                ).expect("admit actual source");
+                let mut receiver = new_write_job_with_files(
+                    215, destination.join(&name), sender.files().clone(),
+                ).expect("admit sender file list");
+                let mut nonempty_blocks = 0;
+                loop {
+                    sender.init_data_stream_for_cm().await.expect("open the exact send stream");
+                    let Some(block) = sender.read().await.expect("read next source block") else {
+                        break;
+                    };
+                    assert!(block.data.len() <= LIMIT);
+                    if !block.data.is_empty() {
+                        nonempty_blocks += 1;
+                        assert_eq!(block.compressed, extension == "txt" && nonempty_blocks == 1);
+                    }
+                    receiver.write(block).await.expect("receive the actual emitted block");
+                }
+                assert_eq!(nonempty_blocks, (size + LIMIT - 1) / LIMIT);
+                receiver.finalize_write(sender.file_num()).await.expect("commit the exact received file");
+                assert_eq!(receiver.finished_size(), size as u64);
+                assert_eq!(receiver.transferred(), sender.transferred());
+                assert!(receiver.data_stream.is_none());
+                assert!(receiver.receive_write_claim.is_none());
+                assert_eq!(std::fs::read(destination.join(&name)).expect("read published bytes"), content);
+            }
+        }
+        assert_eq!(std::fs::read_dir(destination).expect("inspect committed files").count(), 6);
+    }
+
+    #[tokio::test]
+    async fn memory_receive_block_limit_accepts_exact_boundary_and_next_block() {
+        const LIMIT: usize = 128 * 1024;
+        let mut expected = vec![0x5a; LIMIT];
+        expected.extend_from_slice(b"tail");
+        for compressed in [false, true] {
+            let mut job = TransferJob::new_write(
+                216, JobType::Generic, String::new(),
+                DataSource::MemoryCursor(Cursor::new(Vec::new())),
+                0, false, false, false,
+            );
+            let mut transferred = 0;
+            for bytes in [&expected[..LIMIT], &expected[LIMIT..]] {
+                let data = if compressed {
+                    compress(bytes).expect("encode the admitted block")
+                } else {
+                    bytes.to_vec()
+                };
+                transferred += data.len() as u64;
+                job.write(FileTransferBlock {
+                    id: 216, file_num: 0, data: data.into(), compressed,
+                    ..Default::default()
+                }).await.expect("receive an in-limit block");
+            }
+            assert_eq!(job.finished_size(), expected.len() as u64);
+            assert_eq!(job.transferred(), transferred);
+            assert_eq!(job.get_buf_data().await.expect("flush actual memory stream"), Some(expected.clone()));
+        }
     }
 
     #[tokio::test]

@@ -14076,6 +14076,18 @@ explicit write failure rather than a successful empty block.
 **Current library disposition — source corrected; named ordinary-user Linux behavior PASSED,
 native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.
 
+**Per-block resource admission — source corrected; native execution PENDING.** Sending and
+receiving now share the existing 128-KiB block size. `TransferJob::write` rejects larger
+encoded/raw input and bounds decoded output to that size before opening a stream, changing
+files, writing bytes or publishing progress; memory-backed receive jobs use the same bound.
+The previous receiver used the general 64-MiB decoder limit and admitted oversized blocks
+when the declared file was large enough. Three new production-library tests cover raw,
+compressed-output and compressed-input refusal for file/memory jobs, six actual
+sender-to-receiver file round trips across empty/exact-boundary/multi-block sizes, and
+memory-stream boundary/tail recovery. The existing `--hbb-common-fs` gate requires and
+exports those names. These new tests have not compiled or executed; earlier library
+acceptance above does not cover this change. Installed/native integration remains OPEN.
+
 | Surface | Current behavior |
 | --- | --- |
 | File-list ownership | `new_read_with_budget` admits the send list at construction. `set_files_with_limit` admits a receive list once, including an empty list, after all validation succeeds; refused first admission remains retryable. Every duplicate or replacement list refuses before changing entries, sizes, indexes, flags, streams or claims. Completion and byte limits keep their original admitted authority. |

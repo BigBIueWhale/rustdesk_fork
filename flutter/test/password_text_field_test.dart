@@ -7,42 +7,47 @@ void main() {
   for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
     testWidgets('password keyboard policy survives reveal on ${platform.name}',
         (tester) async {
-      debugDefaultTargetPlatformOverride = platform;
-      addTearDown(() => debugDefaultTargetPlatformOverride = null);
       final controller = TextEditingController();
       final focusNode = FocusNode();
       addTearDown(controller.dispose);
       addTearDown(focusNode.dispose);
 
-      for (final obscured in [true, false, true]) {
-        await tester.pumpWidget(MaterialApp(
-          home: Material(
-            child: PasswordTextField(
-              controller: controller,
-              focusNode: focusNode,
-              obscureText: obscured,
+      debugDefaultTargetPlatformOverride = platform;
+      try {
+        for (final obscured in [true, false, true]) {
+          await tester.pumpWidget(MaterialApp(
+            home: Material(
+              child: PasswordTextField(
+                controller: controller,
+                focusNode: focusNode,
+                obscureText: obscured,
+              ),
             ),
-          ),
-        ));
-        await tester.showKeyboard(find.byType(TextField));
-        if (controller.text.isEmpty) {
-          await tester.enterText(find.byType(TextField), 'Exact1x-\'"');
+          ));
+          await tester.showKeyboard(find.byType(TextField));
+          if (controller.text.isEmpty) {
+            await tester.enterText(find.byType(TextField), 'Exact1x-\'"');
+          }
+          final configuration = tester.testTextInput.setClientArgs!;
+          expect(
+            configuration['inputType'],
+            TextInputType.visiblePassword.toJson(),
+          );
+          expect(configuration['obscureText'], obscured);
+          expect(configuration['autocorrect'], false);
+          expect(configuration['enableSuggestions'], false);
+          expect(configuration['enableIMEPersonalizedLearning'], false);
+          expect(configuration['smartDashesType'],
+              SmartDashesType.disabled.index.toString());
+          expect(configuration['smartQuotesType'],
+              SmartQuotesType.disabled.index.toString());
+          expect(controller.text, 'Exact1x-\'"');
+          final editable = tester.widget<EditableText>(find.byType(EditableText));
+          expect(editable.spellCheckConfiguration?.spellCheckEnabled, false);
+          expect(tester.takeException(), isNull);
         }
-        final configuration = tester.testTextInput.setClientArgs!;
-        expect(
-            configuration['inputType'], TextInputType.visiblePassword.toJson());
-        expect(configuration['obscureText'], obscured);
-        expect(configuration['autocorrect'], false);
-        expect(configuration['enableSuggestions'], false);
-        expect(configuration['enableIMEPersonalizedLearning'], false);
-        expect(configuration['smartDashesType'],
-            SmartDashesType.disabled.index.toString());
-        expect(configuration['smartQuotesType'],
-            SmartQuotesType.disabled.index.toString());
-        expect(controller.text, 'Exact1x-\'"');
-        final editable = tester.widget<EditableText>(find.byType(EditableText));
-        expect(editable.spellCheckConfiguration?.spellCheckEnabled, false);
-        expect(tester.takeException(), isNull);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
       }
     });
   }

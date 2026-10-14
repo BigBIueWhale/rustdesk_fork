@@ -28,23 +28,26 @@ class PasswordTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      focusNode: focusNode,
-      decoration: decoration,
-      autofocus: autofocus,
-      obscureText: obscureText,
-      enabled: enabled,
-      onChanged: onChanged,
-      inputFormatters: inputFormatters,
-      maxLength: maxLength,
-      keyboardType: TextInputType.visiblePassword,
-      autocorrect: false,
-      enableSuggestions: false,
-      enableIMEPersonalizedLearning: false,
-      smartDashesType: SmartDashesType.disabled,
-      smartQuotesType: SmartQuotesType.disabled,
-      spellCheckConfiguration: const SpellCheckConfiguration.disabled(),
+    return Semantics(
+      focusable: enabled != false,
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        decoration: decoration,
+        autofocus: autofocus,
+        obscureText: obscureText,
+        enabled: enabled,
+        onChanged: onChanged,
+        inputFormatters: inputFormatters,
+        maxLength: maxLength,
+        keyboardType: TextInputType.visiblePassword,
+        autocorrect: false,
+        enableSuggestions: false,
+        enableIMEPersonalizedLearning: false,
+        smartDashesType: SmartDashesType.disabled,
+        smartQuotesType: SmartQuotesType.disabled,
+        spellCheckConfiguration: const SpellCheckConfiguration.disabled(),
+      ),
     );
   }
 }

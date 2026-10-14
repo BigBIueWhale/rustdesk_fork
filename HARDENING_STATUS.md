@@ -1314,9 +1314,19 @@ truncation or cardinality, closes all delivered handles on refusal, and admits e
 descriptor. `MSG_CMSG_CLOEXEC` and `F_DUPFD_CLOEXEC` establish inheritance exclusion atomically;
 the separate flag-setting windows are deleted. The private production module has nine real Unix
 transfer/lifetime/exec tests and a focused `--fusermount-fd-tests` lane with the prior native functions
-as an A/B control. **Execution pending:** source `1049cbcb` refused before VM creation because its
-unchanged admission required 25,600 MiB and found 24,378 MiB. No compiler or test ran; the refusal
-is retained in `.harness-state/verifier-vm/fusermount-fd-ram-refusal-1049cbcb.json`. Native
+as an A/B control. **Named Linux component accepted:** `f9a1e8bc` passed all nine in 64 VM seconds
+with Rust 1.75 and root-locked libc 0.2.171. The prior functions passed the valid-transfer control
+and failed both leaked-reference cases (native peer read returned WouldBlock) and the immediate
+close-on-exec check (native flags were zero); all four retained outputs identify the exact case.
+The same scenarios observe the corrected object's bytes, EOF after extra/truncated refusal,
+retained duplicate lifetime, native flags and an exec child with a positive inherited-object control.
+Artifact SHA-256 `0384d801f5692775a159c19db10fe30c6e8fb4875a3806c935386e20bed393a3`
+stayed unchanged before/after execution. The zero-NIC VM, guest-only nonroot/capless/network-none
+container, source/control comparisons, complete listener observations and joined cleanup pass.
+The intermediate manual freeze was not confirmed live and is not a live-snapshot claim. The first
+RAM refusal and failed fixture-target selection remain unaccepted, separately retained evidence.
+`.harness-state/verifier-vm/fusermount-fd-accepted-f9a1e8bc.json` binds outcomes, source/dependencies,
+serial, storage, retirement and prior attempts. This runs the private descriptor module; native
 helper launch/wait/failure, device identity, directory/principal/race, mounted FUSE, complete parent
 compilation, installed and release acceptance remain OPEN.
 The global OPEN tables remain authoritative for exact-current native packages,

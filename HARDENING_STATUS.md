@@ -14249,6 +14249,23 @@ explicit write failure rather than a successful empty block.
 **Current library disposition — source corrected; named ordinary-user Linux behavior PASSED,
 native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.
 
+**Resume confirmation width — source corrected; compilation/runtime PENDING.** Both viewer
+upload and download resume paths retain the digest's 64-bit byte offset until
+`TransferJob::confirm_with_offset` checks its representability in the protocol's existing
+32-bit `offset_blk` field. Unrepresentable offsets now fail before confirmation, seek,
+accounting or publication; the two truncating casts are removed. Existing send-job retirement
+and exact receive-claim cleanup handle the failure without claiming unowned partial files.
+Offsets from 4 GiB upward are explicitly refused; this does not add support for larger resume
+positions or change the wire schema. Merely widening that field would allow old readers to
+truncate large values, as described in the [Protocol Buffers schema-evolution contract](https://protobuf.dev/programming-guides/proto3/#binary-wire-compatible-changes-conditionally-safe).
+Three real-file regressions are required by `--hbb-common-fs`: both-role wrap refusal with
+unchanged staging/state followed by valid resume, exact `u32::MAX` wire/seek/read/accounting
+through a Unix sparse tail, and zero-offset fresh transfer with real receive publication and
+sidecar retirement. They are prepared, uncompiled and unexecuted. The isolated 6 GiB guest
+still requires 16 GiB RAM scratch plus 6 GiB host headroom and 1 GiB overhead; available host
+RAM is below the 29 GiB admission floor. No launcher, compiler or runtime was run for this
+slice. Viewer/CM/peer, installed and other-platform integration remain OPEN.
+
 **Filesystem-only job authority — source implemented; compilation/native execution PENDING.**
 All production constructors use filesystem paths. `TransferJob` now accepts and retains a
 private immutable `PathBuf` plus an optional owned Tokio `File`; the path getter borrows,

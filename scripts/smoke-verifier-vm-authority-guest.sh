@@ -2715,6 +2715,9 @@ run_focused_rust_tests() {
             fs::tests::send_resume_bounds_the_offset_by_the_announced_source
             fs::tests::send_resume_refuses_grown_retained_source_beyond_admitted_size
             fs::tests::send_resume_refuses_grown_first_open_beyond_admitted_size
+            fs::tests::resume_confirmation_refuses_wrapped_offsets_and_preserves_files
+            fs::tests::resume_confirmation_preserves_the_largest_wire_offset
+            fs::tests::resume_confirmation_zero_starts_a_fresh_transfer
             fs::tests::send_read_refuses_short_source_before_declared_eof
             fs::tests::send_read_refuses_truncation_after_a_full_block
             fs::tests::send_read_refuses_growth_beyond_admitted_size

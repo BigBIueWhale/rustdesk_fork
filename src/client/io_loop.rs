@@ -3179,36 +3179,39 @@ impl<T: InvokeUiSession> Remote<T> {
                                         if digest.is_identical && job.is_resume {
                                             if digest.transferred_size > 0 {
                                                 overwrite_strategy = Some(true);
-                                                offset = digest.transferred_size as _;
+                                                offset = digest.transferred_size;
                                             }
                                         }
                                         if let Some(overwrite) = overwrite_strategy {
-                                            let req = FileTransferSendConfirmRequest {
-                                                id: digest.id,
-                                                file_num: digest.file_num,
-                                                union: Some(if overwrite {
-                                                    file_transfer_send_confirm_request::Union::OffsetBlk(offset)
-                                                } else {
-                                                    file_transfer_send_confirm_request::Union::Skip(
-                                                        true,
-                                                    )
-                                                }),
-                                                ..Default::default()
+                                            let confirmation = if overwrite {
+                                                job.confirm_with_offset(digest.file_num, offset)
+                                                    .await
+                                            } else {
+                                                let req = FileTransferSendConfirmRequest {
+                                                    id: digest.id,
+                                                    file_num: digest.file_num,
+                                                    union: Some(file_transfer_send_confirm_request::Union::Skip(true)),
+                                                    ..Default::default()
+                                                };
+                                                job.confirm(&req).await.map(|()| req)
                                             };
-                                            if let Err(error) = job.confirm(&req).await {
-                                                let _ = fs::remove_job(
-                                                    digest.id,
-                                                    &mut self.read_jobs,
-                                                );
-                                                return self.record_file_flow_failure(
-                                                    ViewerFileWriteContext::control(
-                                                        Some(digest.id),
-                                                        digest.file_num,
-                                                        "confirm peer download",
-                                                    ),
-                                                    error.to_string(),
-                                                );
-                                            }
+                                            let req = match confirmation {
+                                                Ok(req) => req,
+                                                Err(error) => {
+                                                    let _ = fs::remove_job(
+                                                        digest.id,
+                                                        &mut self.read_jobs,
+                                                    );
+                                                    return self.record_file_flow_failure(
+                                                        ViewerFileWriteContext::control(
+                                                            Some(digest.id),
+                                                            digest.file_num,
+                                                            "confirm peer download",
+                                                        ),
+                                                        error.to_string(),
+                                                    );
+                                                }
+                                            };
                                             let msg = new_send_confirm(req);
                                             if !self.send_tracked_file_action(peer, &msg).await
                                             {
@@ -3275,37 +3278,40 @@ impl<T: InvokeUiSession> Remote<T> {
                                             && digest.transferred_size > 0
                                         {
                                             overwrite_strategy = Some(true);
-                                            offset = digest.transferred_size as _;
+                                            offset = digest.transferred_size;
                                         }
                                         if let Some(overwrite) = overwrite_strategy {
-                                            let req = FileTransferSendConfirmRequest {
-                                                id: digest.id,
-                                                file_num: digest.file_num,
-                                                union: Some(if overwrite {
-                                                    file_transfer_send_confirm_request::Union::OffsetBlk(offset)
-                                                } else {
-                                                    file_transfer_send_confirm_request::Union::Skip(
-                                                        true,
-                                                    )
-                                                }),
-                                                ..Default::default()
+                                            let confirmation = if overwrite {
+                                                job.confirm_with_offset(digest.file_num, offset)
+                                                    .await
+                                            } else {
+                                                let req = FileTransferSendConfirmRequest {
+                                                    id: digest.id,
+                                                    file_num: digest.file_num,
+                                                    union: Some(file_transfer_send_confirm_request::Union::Skip(true)),
+                                                    ..Default::default()
+                                                };
+                                                job.confirm(&req).await.map(|()| req)
                                             };
-                                            if let Err(error) = job.confirm(&req).await {
-                                                let error =
-                                                    retire_viewer_receive_job_after_failure(
-                                                        &mut self.write_jobs,
-                                                        digest.id,
-                                                        error.to_string(),
+                                            let req = match confirmation {
+                                                Ok(req) => req,
+                                                Err(error) => {
+                                                    let error =
+                                                        retire_viewer_receive_job_after_failure(
+                                                            &mut self.write_jobs,
+                                                            digest.id,
+                                                            error.to_string(),
+                                                        );
+                                                    return self.record_file_flow_failure(
+                                                        ViewerFileWriteContext::control(
+                                                            Some(digest.id),
+                                                            digest.file_num,
+                                                            "confirm peer upload",
+                                                        ),
+                                                        error,
                                                     );
-                                                return self.record_file_flow_failure(
-                                                    ViewerFileWriteContext::control(
-                                                        Some(digest.id),
-                                                        digest.file_num,
-                                                        "confirm peer upload",
-                                                    ),
-                                                    error,
-                                                );
-                                            }
+                                                }
+                                            };
                                             let msg = new_send_confirm(req);
                                             if !self.send_tracked_file_action(peer, &msg).await {
                                                 return false;

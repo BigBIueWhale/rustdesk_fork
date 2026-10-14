@@ -1,6 +1,7 @@
 #[cfg(windows)]
 use std::os::windows::prelude::*;
 use std::{
+    convert::TryFrom,
     path::{Path, PathBuf},
     sync::atomic::{AtomicI32, Ordering},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -3865,6 +3866,28 @@ impl TransferJob {
             TransferRole::Send => self.send_file_offset = offset,
         }
         Ok(())
+    }
+
+    /// Admit the exact byte offset before publishing a protocol confirmation.
+    pub async fn confirm_with_offset(
+        &mut self,
+        file_num: i32,
+        offset: u64,
+    ) -> ResultType<FileTransferSendConfirmRequest> {
+        let offset = u32::try_from(offset).map_err(|_| {
+            anyhow!(
+                "resume byte offset {offset} exceeds the protocol limit of {} bytes",
+                u32::MAX
+            )
+        })?;
+        let request = FileTransferSendConfirmRequest {
+            id: self.id,
+            file_num,
+            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(offset)),
+            ..Default::default()
+        };
+        self.confirm(&request).await?;
+        Ok(request)
     }
 
     pub async fn confirm(&mut self, r: &FileTransferSendConfirmRequest) -> ResultType<()> {
@@ -7798,6 +7821,219 @@ mod tests {
         assert!(job.receive_write_claim.is_none());
         assert_eq!(job.transferred(), u64::MAX);
         assert_eq!(job.finished_size(), 0);
+    }
+
+    #[tokio::test]
+    async fn resume_confirmation_refuses_wrapped_offsets_and_preserves_files() {
+        for receive in [false, true] {
+            let tmp = TestTempDir::new("rustdesk_resume_wire_limit");
+            std::fs::create_dir_all(&tmp.path).expect("create transfer directory");
+            let source = tmp.join("source.zip");
+            let download = tmp.join("incoming.bin.download");
+            let digest_path = tmp.join("incoming.bin.digest");
+            let digest = json!(FileDigest::default()).to_string();
+            std::fs::write(&source, b"partial").expect("create send source");
+            std::fs::write(&download, b"pa").expect("stage receive prefix");
+            std::fs::write(&digest_path, &digest).expect("stage receive digest");
+            let mut job = if receive {
+                let mut entry = new_file_entry("incoming.bin");
+                entry.size = 7;
+                new_write_job_with_files(219, tmp.path.clone(), vec![entry])
+                    .expect("admit receive file")
+            } else {
+                let mut job = TransferJob::new_read(
+                    219,
+                    JobType::Generic,
+                    "remote.zip".to_owned(),
+                    source.clone(),
+                    0,
+                    false,
+                    false,
+                    true,
+                )
+                .expect("admit send source");
+                job.init_data_stream_for_cm()
+                    .await
+                    .expect("retain send source");
+                job
+            };
+            job.is_resume = true;
+            job.set_file_is_waiting(true);
+
+            for offset in [1u64 << 32, (1u64 << 32) + 2, 1u64 << 33, u64::MAX] {
+                let error = job
+                    .confirm_with_offset(0, offset)
+                    .await
+                    .expect_err("unrepresentable offset must not wrap into a confirmation");
+                assert!(error.to_string().contains("exceeds the protocol limit"));
+                assert_eq!(job.file_num(), 0);
+                assert!(!job.file_confirmed());
+                assert!(job.file_is_waiting());
+                assert_eq!(job.finished_size(), 0);
+                assert_eq!(job.transferred(), 0);
+                assert_eq!(job.send_file_offset, 0);
+                assert_eq!(job.receive_file_offset, 0);
+                assert_eq!(job.data_stream.is_some(), !receive);
+                assert!(job.receive_write_claim.is_none());
+                assert_eq!(std::fs::read(&source).expect("read source"), b"partial");
+                assert_eq!(std::fs::read(&download).expect("read prefix"), b"pa");
+                assert_eq!(
+                    std::fs::read_to_string(&digest_path).expect("read digest"),
+                    digest
+                );
+                assert!(!tmp.join("incoming.bin.download.lock").exists());
+            }
+
+            let request = job
+                .confirm_with_offset(0, 2)
+                .await
+                .expect("valid resume after refusal");
+            let wire = request.write_to_bytes().expect("encode admitted confirmation");
+            let decoded = FileTransferSendConfirmRequest::parse_from_bytes(&wire)
+                .expect("decode admitted confirmation");
+            assert_eq!(decoded.id, 219);
+            assert_eq!(decoded.file_num, 0);
+            assert_eq!(decoded.offset_blk(), 2);
+            assert_eq!(job.finished_size(), 2);
+            assert_eq!(job.transferred(), 2);
+            if receive {
+                job.write(FileTransferBlock {
+                    id: 219,
+                    file_num: 0,
+                    data: b"rtial".to_vec().into(),
+                    ..Default::default()
+                })
+                .await
+                .expect("continue exact receive prefix");
+                job.finalize_write(1)
+                    .await
+                    .expect("publish complete resumed file");
+                assert_eq!(
+                    std::fs::read(tmp.join("incoming.bin")).expect("read publication"),
+                    b"partial"
+                );
+                for suffix in [".download", ".digest", ".download.lock"] {
+                    assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+                }
+            } else {
+                let block = job
+                    .read()
+                    .await
+                    .expect("read resumed source")
+                    .expect("remaining bytes");
+                assert_eq!(block.data.as_ref(), b"rtial");
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn resume_confirmation_preserves_the_largest_wire_offset() {
+        use std::io::{Seek, SeekFrom, Write};
+
+        let tmp = TestTempDir::new("rustdesk_resume_max_wire_offset");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        let path = tmp.join("source.zip");
+        let offset = u64::from(u32::MAX);
+        let mut file = std::fs::File::create(&path).expect("create sparse source");
+        file.seek(SeekFrom::Start(offset))
+            .expect("seek to exact wire boundary");
+        file.write_all(b"tail").expect("write sparse tail marker");
+        {
+            use std::os::unix::fs::MetadataExt;
+            assert!(file.metadata().expect("inspect sparse source").blocks() * 512 <= 128 * 1024);
+        }
+        drop(file);
+        let mut job = TransferJob::new_read(
+            220,
+            JobType::Generic,
+            "remote.zip".to_owned(),
+            path,
+            0,
+            false,
+            false,
+            true,
+        )
+        .expect("admit sparse source");
+        let request = job
+            .confirm_with_offset(0, offset)
+            .await
+            .expect("admit exact maximum");
+        let wire = request.write_to_bytes().expect("encode exact maximum");
+        let decoded = FileTransferSendConfirmRequest::parse_from_bytes(&wire)
+            .expect("decode exact maximum");
+        assert_eq!(u64::from(decoded.offset_blk()), offset);
+        assert_eq!(job.finished_size(), offset);
+        assert_eq!(job.transferred(), offset);
+        let block = job
+            .read()
+            .await
+            .expect("read sparse tail")
+            .expect("tail marker");
+        assert_eq!(block.data.as_ref(), b"tail");
+        assert_eq!(job.finished_size(), offset + 4);
+        assert_eq!(job.transferred(), offset + 4);
+        let eof = job.read().await.expect("read exact EOF").expect("EOF block");
+        assert!(eof.data.is_empty());
+        assert_eq!(job.file_num(), 1);
+    }
+
+    #[tokio::test]
+    async fn resume_confirmation_zero_starts_a_fresh_transfer() {
+        let tmp = TestTempDir::new("rustdesk_resume_zero_offset");
+        let destination = tmp.join("destination");
+        std::fs::create_dir_all(&destination).expect("create receive directory");
+        let source = tmp.join("source.zip");
+        std::fs::write(&source, b"new").expect("create source");
+        let mut sender = TransferJob::new_read(
+            221,
+            JobType::Generic,
+            "remote.zip".to_owned(),
+            source,
+            0,
+            false,
+            false,
+            true,
+        )
+        .expect("admit send source");
+        sender.init_data_stream_for_cm().await.expect("open source");
+        let mut entry = new_file_entry("incoming.bin");
+        entry.size = 3;
+        let mut receiver = new_write_job_with_files(221, destination.clone(), vec![entry])
+            .expect("admit receive file");
+        for job in [&mut sender, &mut receiver] {
+            let request = job
+                .confirm_with_offset(0, 0)
+                .await
+                .expect("confirm zero offset");
+            let wire = request.write_to_bytes().expect("encode explicit zero offset");
+            let decoded = FileTransferSendConfirmRequest::parse_from_bytes(&wire)
+                .expect("decode explicit zero offset");
+            assert_eq!(
+                decoded.union,
+                Some(file_transfer_send_confirm_request::Union::OffsetBlk(0))
+            );
+            assert!(job.file_confirmed());
+            assert_eq!(job.finished_size(), 0);
+            assert_eq!(job.transferred(), 0);
+        }
+        let block = sender
+            .read()
+            .await
+            .expect("read source")
+            .expect("source block");
+        receiver.write(block).await.expect("receive fresh bytes");
+        receiver.finalize_write(1).await.expect("publish fresh file");
+        assert_eq!(
+            std::fs::read(destination.join("incoming.bin")).expect("read publication"),
+            b"new"
+        );
+        assert_eq!(
+            std::fs::read_dir(&destination)
+                .expect("inspect cleanup")
+                .count(),
+            1
+        );
     }
 
     #[test]

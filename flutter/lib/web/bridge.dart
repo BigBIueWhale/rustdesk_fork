@@ -1190,10 +1190,6 @@ class RustdeskImpl {
     return 500;
   }
 
-  Future<void> mainStartDbusServer({dynamic hint}) {
-    throw UnimplementedError("mainStartDbusServer");
-  }
-
   Future<void> sessionSendPointer(
       {required UuidValue sessionId, required String msg, dynamic hint}) {
     throw UnimplementedError("sessionSendPointer");

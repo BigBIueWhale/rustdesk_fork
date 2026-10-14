@@ -2192,7 +2192,6 @@ var webInitialLink = "";
 ///
 /// [Availability]
 /// initUniLinks should only be used on macos/windows.
-/// we use dbus for linux currently.
 Future<bool> initUniLinks() async {
   if (isLinux) {
     return false;

@@ -1724,12 +1724,6 @@ pub fn get_double_click_time() -> SyncReturn<i32> {
     SyncReturn(500i32)
 }
 
-pub fn main_start_dbus_server() {
-    // R-X6: the D-Bus deep-link server (org.rustdesk.rustdesk `NewConnection`, a local-IPC injection
-    // vector that claimed the bus name with replace_existing) is excised — this FFI is now a no-op.
-    // The Dart caller (native_model) is harmless; uni-links are self-handled per-instance (core_main).
-}
-
 pub fn session_send_pointer(session_id: SessionID, msg: String) {
     super::flutter::session_send_pointer(session_id, msg);
 }

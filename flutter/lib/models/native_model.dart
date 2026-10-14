@@ -133,12 +133,7 @@ class PlatformFFI {
       }
       _ffiBind = RustdeskImpl(dylib);
 
-      if (isLinux) {
-        if (isMain) {
-          // Start a dbus service for uri links, no need to await
-          _ffiBind.mainStartDbusServer();
-        }
-      } else if ((isWindows || isMacOS) && isMain) {
+      if ((isWindows || isMacOS) && isMain) {
         // Start ipc service for uri links.
         _ffiBind.mainStartIpcUrlServer();
       }

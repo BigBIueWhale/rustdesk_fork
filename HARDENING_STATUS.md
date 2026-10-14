@@ -10797,6 +10797,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   parse/platform errors may contain the original credential-bearing input. This is
   a source correction; final-artifact cold/warm and malformed-link log-capture
   acceptance is still OPEN.
+  The obsolete Linux D-Bus URL startup API, native caller and web stub are deleted;
+  the existing source gate no longer exempts the no-op. Linux command-line links
+  remain local to their instance. Current bridge generation/compilation and native
+  startup/link behavior for this API deletion remain OPEN.
   Android retains its custom-scheme launcher entry, private service/boot components,
   merged-manifest permission/backup/network limits and foreground-service conditions.
   iOS now deletes both the bundled plugin's web-activity callback and declaration;

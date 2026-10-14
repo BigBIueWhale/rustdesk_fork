@@ -10818,13 +10818,18 @@ else
   echo "  ok  R-A6/BR-13 remote-printer tokens absent from flutter/lib + res (Dart UI + MSI/WiX/C++)"
 fi
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
-# R-X6: the Linux D-Bus deep-link delivery transport (src/server/dbus.rs: session-bus name
-# org.rustdesk.rustdesk, method NewConnection) is EXCISED. It ignored the caller (any co-installed
-# same-session app could fire it — a local-IPC injection vector) and claimed the bus name with
-# replace_existing=true (a name-hijack to intercept legitimate links). The module is deleted; uni-links
-# are self-handled per-instance (core_main); their embedded key/password/relay is stripped (R-X6, below). \bstart_dbus_server
-# excludes the kept no-op FFI shim main_start_dbus_server (no word boundary before "start").
-ra6_clean 'crate::dbus|org\.rustdesk\.rustdesk|\bstart_dbus_server' 'R-X6 D-Bus deep-link transport (NewConnection)' || rc=1
+# R-X6: Linux handles command-line links in its own instance; no D-Bus URL server or startup API.
+ra6_clean 'crate::dbus|org\.rustdesk\.rustdesk|start_dbus_server' 'R-X6 D-Bus deep-link transport and startup API' || rc=1
+if grep -RIn 'mainStartDbusServer' flutter/lib --include='*.dart' --exclude='generated_bridge*'; then
+  echo '  FAIL R-X6: D-Bus URL startup API remains in authored Dart'; rc=1
+else
+  r_x6_dbus_status=$?
+  if [ "$r_x6_dbus_status" -eq 1 ]; then
+    echo '  ok  R-X6 D-Bus URL startup API absent from authored Dart'
+  else
+    echo '  FAIL R-X6: could not inspect authored Dart for D-Bus URL startup API'; rc=1
+  fi
+fi
 # R-X6 (cont.): dbus-crossroads (the D-Bus SERVER framework) was the dead Cargo-dep residual of the
 # excised dbus.rs — zero crossroads:: usage remains, so the dep is dropped. Assert it stays gone (the
 # base `dbus` crate stays for the legit platform/linux.rs session-bus call — do NOT gate that out).

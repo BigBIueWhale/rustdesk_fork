@@ -5491,12 +5491,17 @@ exists only to make the current source disposition discoverable.
 - R-S11c-10a — Linux root-context desktop discovery shell interpolation
 - R-S11c-10b — Linux helper/tray process cleanup shell pipelines
 - R-S11c-10c — Linux xrandr resolution discovery shell pipeline. Query-result correction
-  is source implemented; focused Linux execution pending. The trusted argv-only query
+  accepted at source `149c9800` in 70 VM seconds; eight named process/parser tests pass.
+  The trusted argv-only query
   now rejects unsuccessful process status and invalid UTF-8 before normalization.
   Current geometry and supported modes select a literal output name at the start of
   its own line, so `DP-1` cannot select `eDP-1`. The focused
-  `--linux-xrandr-query-tests` shard executes the production module and eight native
-  process/parser cases with the root-locked regex dependency. Real X-server/peer
+  `--linux-xrandr-query-tests` shard executes the production module with real Linux
+  child exit/output results and the root-locked regex dependency. Test artifact SHA-256
+  `e0231bf4300a192ab6019784ccd56705666590ebba6b9dc8de1841e9f1741c08`;
+  `.harness-state/verifier-vm/xrandr-query-accepted-149c9800.json` binds exact source,
+  raw output, all before/live/after freezes, endpoint snapshots, limits and joined cleanup.
+  Real X-server/peer
   resolution changes, blocking-query lifetime, the detached setter child and premature
   restoration bookkeeping remain OPEN; this is no new LPE-closure claim.
 - R-S11c-10d — Linux process-discovery `pgrep` shell probes

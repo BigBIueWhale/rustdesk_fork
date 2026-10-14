@@ -2238,80 +2238,64 @@ and installed/platform acceptance remain OPEN. Command/task ownership is covered
 Credential provisioning and Android CM work
 remain parked under the user's pivot.
 
-**Dialog close authority: source corrected; focused execution pending.** The
-overlay receiver gives each entry a `DialogClose` carrying exact current-object
-identity and a result-bearing close. Replacement or dismissal revokes it before
-Flutter unmounts the old widget. Loading cancel closes only its own entry and
-dispatches once after a successful claim; password submit checks current authority
-before calling its receiver, and cancel/accepted follow-up require a successful
-close. Message-box actions are constructed inside that same receiver-owned entry:
-submit and manual reconnect require a successful close before dispatch,
-cancel/Close affect only that entry, and helper-link actions require current ownership.
-The message callback `dismissAll()` paths are removed; publication retains its
-explicit replacement of prior dialog state. Message rendering/countdown labels use
-the manager's existing translator. The unused automatic-submit option and private
-callback branch are deleted; the supported reconnect countdown only renders time.
-The focused dialog shard targets 54 named tests across seven suites, including
-six real message-widget cases for current one-shot
-submit/reconnect, stale submit/cancel/Close/reconnect before unmount, and display-only
-reconnect expiry. The real overlay and affected file-dialog mocks are retained.
-Screenshot Save/Copy/Cancel actions are now constructed inside the manager's
-exact screenshot entry and must retire it before dispatch. Publication replaces
-only the prior screenshot entry, and action callbacks no longer dismiss every
-dialog. Escape shares the owned Cancel action. Three production-overlay cases
-cover all current choices once, supersession and dismissal before old-widget
-unmount, retained button/keyboard callbacks and unrelated-dialog survival. They
-are prepared, uncompiled and unexecuted. Real file-picker/PNG/clipboard operations,
-admitted async-action/result lifetime and newer-request/session replacement remain
-OPEN; the source change does not claim those native or post-dispatch properties.
-Generic message submission now dismisses only its exact dialog and invokes a
-supplied action; message type strings cannot infer a connection close. The
-connection error/no-display and explicit close-confirmation owners supply their
-captured session to `FFI::closeView`. That receiver requires a live matching UUID
-and exact FFI registration plus window role, using the real screen/camera,
-`ft_`, `pf_` and `terminal_` registrations, or the exact mobile/web global owner.
-Image-wait cancellation uses the same receiver. A prepared production-overlay/
-real-desktop-controller case retains a different selected tab while submitting
-an unbound non-custom message, and verifies both tabs and an unrelated dialog
-survive. Compilation, real caller/registration/tab/window routing and native
-acceptance remain OPEN; other loading/credential/direct close callers still
-require complete ownership migration.
-Image-wait cancellation now belongs to the manager's exact current dialog entry:
-button and keyboard callbacks must retire that entry before dispatch. The connection
-callback captures its FFI owner, rechecks the session UUID and current FFI registration
-(or exact mobile/web global owner), and passes that owner's peer ID rather than
-selecting the active desktop tab. Three production-overlay regressions cover current
-one-shot cancellation, supersession and dismissal before unmount, including retained
-button/keyboard callbacks and unrelated-entry survival. They are uncompiled and
-unexecuted; actual session/registration/tab routing and native acceptance remain OPEN.
-Mobile `closeConnection()` now retires chat/main-page state synchronously and
-passes the selected `NavigatorState` to `closeMobileConnectionRoute`; route
-dismissal does not await the system-UI request. Its late result can only report
-a type-only error, and failed restoration cannot prevent route dismissal.
-Two production-helper widget regressions use a real Navigator and hold the
-platform-channel reply through replacement-route publication, then deliver
-success or failure. They are prepared, uncompiled and unexecuted; the full
-model inventory is 25 suites/277 cases. Native execution, actual peer/session/
-route cancellation and installed acceptance remain OPEN. Binding every close
-caller to its initiating session and retained tab/route/window, including the
-terminal window, remains required. This dialog workload now reserves 4 GiB guest
-RAM plus 7 GiB scratch, 6 GiB host headroom and 1 GiB overhead, for 18 GiB admission.
-Its 6 GiB overlay ceiling is reserved in full before launch; prepared inputs may occupy
-at most 1 GiB. Current compilation/runtime execution with this profile remains PENDING.
-The `e333f4af` native attempt stopped at the pinned Dart formatter before executing tests.
-Its six emitted whitespace edits in `dialog_close_ownership_test.dart` are applied without
-changing test tokens/assertions. The 7 GiB scratch/6 GiB overlay guard stayed within bounds,
-96 control hashes matched, exact owners joined and failed diagnostics were retained and
-reconciled. `.harness-state/verifier-vm/credential-format-failed-e333f4af.json` records the
-failure; it supplies no dialog test or application acceptance.
-The corrected-format `db5b6ae3` attempt reached Dart compilation and exposed six remaining
-migration errors: a filtered test import omitted `DialogClose`, two file-dialog builders still
-declared function-valued close parameters, two nullable callback expressions needed explicit
-`close.call`, and a test used a `Future<void>` result as a value. Those sites are corrected;
-the completion test still awaits the old prompt. The dialog command now stops at the first
-test failure while preserving all 54 required cases on success and the existing budgets.
-The failed compile and outer 300-second deadline are retained in
-`.harness-state/verifier-vm/credential-compile-failed-db5b6ae3.json`; no full pass is claimed.
+**Dialog close authority — LINUX FLUTTER WIDGET PASS; BROADER NATIVE/INSTALLED ACCEPTANCE OPEN.**
+The overlay receiver gives each entry a `DialogClose` bound to its exact current object.
+Replacement or dismissal revokes it before Flutter unmounts the old widget. Loading, password,
+message, image-wait and screenshot actions check that authority; retiring actions require a
+successful close before dispatch. The password receiver also retains its session/prompt-round
+check. Message helper links require current ownership. Automatic message submission is absent;
+the supported reconnect countdown only renders time. Rendering uses the manager's translator.
+Message publication retains its explicit replacement of prior dialog state.
+
+Screenshot publication replaces only the prior screenshot entry. Save/Copy/Cancel and Escape
+retire that entry once before dispatch and cannot dismiss unrelated entries. Generic message
+submission invokes only an explicit supplied action; type strings cannot infer connection
+closure. General connection-error/no-display and explicit close-confirmation callbacks capture
+their FFI/session and call `FFI::closeView`. That receiver requires the live matching UUID and
+exact FFI registration/window role (`remoteScreen`, camera, `ft_`, `pf_`, `terminal_`), or the
+exact mobile/web global owner. Image-wait cancellation uses the same receiver. Remaining loading/
+credential/direct-close callers and exact retained route/tab/window binding remain OPEN.
+
+Mobile connection close retires chat/main-page state synchronously, then passes the selected
+`NavigatorState` to `closeMobileConnectionRoute`. Route dismissal does not await SystemChrome;
+a late reply can only report a type-only error. The two real-Navigator widget schedules hold
+that reply through publication of a replacement route, then deliver success or failure.
+
+Exact source `bca72101` passed all 54 tests in seven suites plus three result-parser controls in
+292 VM seconds. Pinned Flutter 3.24.5, Rust 1.75, LLVM 15.0.6 and FRB 1.80.1 generated the
+current bridge in a private guest copy. The selected production Dart imports compile, including
+typed file-dialog builders and explicit `close.call` callback references. Widget cases cover
+current one-shot actions, replacement/dismissal before old-widget unmount, retained button and
+keyboard callbacks, unrelated-dialog survival, a real desktop controller's unrelated selected
+tab, image-wait/screenshot choices, and mobile route lifetime. The exact 54-case set remains
+mandatory on success; `--fail-fast` only stops a failed dialog run sooner.
+
+All 97 before/during/after source/index/audit/spec/ledger/instruction hashes matched. The source
+and input mounts were read-only, original non-generated Flutter libraries matched after the
+private bridge generation, exact processes joined and the run/RAM workspace retired. Controller
+listener snapshots added no endpoint and observed one removed UDP endpoint. A separate later
+post-terminal observation saw two additions/one removal; all deltas remain unattributed and
+untouched. The inherited kernel restriction denied owned IP-socket creation.
+`.harness-state/verifier-vm/credential-dialog-accepted-bca72101.json` binds the source/tree,
+pinned execution, complete endpoint and limit/storage observations and raw serial SHA-256
+`975790c83d34bc4da3d66c35ae57b71182b822e1cf3ca582aad31831ace93603`.
+Successful individual test JSON and generated executable artifacts were ephemeral; the retained
+serial contains the strict result summary. This is corrected-source execution, not a new A/B.
+Earlier formatter and compiler failures remain in `credential-format-failed-e333f4af.json` and
+`credential-compile-failed-db5b6ae3.json` in the same evidence directory.
+
+The dialog profile uses a 4 GiB guest, 7 GiB scratch, 6 GiB overlay ceiling, 6 GiB host headroom
+and 1 GiB overhead (18 GiB admission). Prepared input allocation must stay at or below 1 GiB
+before launch, reserving the full overlay ceiling. Named peaks were 6,375,006,208 scratch bytes
+and 6,215,176,192 overlay bytes; minimum available host RAM was 9,380,626,432 bytes. This run
+used authenticated cached boot assets; cold preparation under this cap remains OPEN.
+
+Real file-picker/PNG/native clipboard actions, admitted asynchronous-result/request/session
+replacement, actual FFI registration/session/route/tab/window races and remaining close-caller
+migration remain OPEN. The declared whole model checkpoint (25 suites/277 cases), terminal
+pool/decoder tests, native Rust application/FFI and full-peer compilation/execution, installed
+and other-platform/device behavior, persistent-service lifecycle, presentation/resource soak,
+release/cold equality, independent reproduction and external review remain OPEN.
 
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.
@@ -2427,9 +2411,12 @@ of monitor polling. Its VM deadline is 300 seconds; the complete existing filesy
 at `432cd6d1` below passed with this profile. The credential-dialog workload alone now uses
 7 GiB scratch/6 GiB overlay with its unchanged 4 GiB guest, for 18 GiB admission and
 at most 1 GiB prepared inputs. Its earlier accepted run peaked at 6,292,570,112 bytes of
-scratch and 6,133,387,264 bytes of overlay; current execution of this new profile is PENDING.
-Its 54 tests, 120-second test/300-second VM budgets, bridge generation and outcome checks
-remain. Logind, FUSE and every other
+scratch and 6,133,387,264 bytes of overlay.
+Exact source `bca72101` now passes its 54 tests and three parser controls in 292 VM seconds
+with 6,375,006,208 bytes of scratch and 6,215,176,192 bytes of overlay. The earlier partial
+formatter/compiler failures remain retained; current acceptance is the named warm-boot dialog
+transaction only. Its 120-second test/300-second VM budgets, bridge generation and complete
+outcome checks remain. Logind, FUSE and every other
 profile retain standard storage. Other file ceilings remain 5 GiB input ISO, 256 MiB source and
 8 MiB seed. QEMU initializes shared RAM while paused; its direct supervisor
 installs and reads back the overlay ceiling before private-QMP `cont`, retaining the unreaped child

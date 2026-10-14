@@ -2110,6 +2110,22 @@ Current normative specification SHA-256: `5c603741c7af7a6137988ed139069d0c23e228
 
 ### Current authority and source closure
 
+**Resolution mutation and Linux command lifetime (R-T4/R-S11c-10c): source implemented; execution pending.**
+The connection retains one resolution-work ticket and awaits off-runtime enumeration,
+mode validation and mutation. Pending ticket retirement revokes native admission;
+admitted work retains only an exact shared final-cleanup lease through native completion,
+while the authenticated registry can revoke helper authority immediately. Native task
+ownership survives async-supervisor cancellation, and panic poisons cleanup authority.
+Linux queries and setters use one retained-child/pidfd runner with a five-second initiating
+deadline and one-MiB stdout ceiling; errors/unwind retain termination and reap before
+return. The setter accepts only successful terminal status. Missing pidfd acquisition
+fails the operation and retains natural wait without numeric-PID signaling fallback.
+`--linux-resolution-lifetime-tests` targets 20 production-component checks: five real
+child-process cases, seven task/owner/runtime cases and eight query regressions, with
+root-locked Tokio/libc/log/regex. Actual parent/application integration, real monitor/peer,
+syscall-failure retirement, other synchronous discovery callers and native Windows/macOS
+remain OPEN; no installed or LPE closure follows from these component checks.
+
 **Resolution restoration record identity (R-T4): production component accepted; integration OPEN.**
 The registry privately retains an immutable original-resolution object for each output.
 Every change publication creates a fresh object while preserving the first original size.

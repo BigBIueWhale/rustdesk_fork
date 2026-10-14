@@ -39,7 +39,15 @@ def main():
         raise ValueError("query tests require the nonroot isolated container")
     repo = Path(sys.argv[1]).resolve(strict=True)
     config = ["--config", str(Path(sys.argv[2]).resolve(strict=True))]
-    inputs = {name: (repo / name).read_bytes() for name in INPUTS}
+    if len(sys.argv) not in (3, 4) or (len(sys.argv) == 4 and sys.argv[3] != "--lifetime"):
+        raise ValueError("query fixture selection differs")
+    lifetime = len(sys.argv) == 4
+    test_file = "scripts/test-linux-resolution-lifetime.rs" if lifetime else "scripts/test-linux-xrandr-query.rs"
+    input_names = INPUTS + (("src/server/connection.rs", "src/server/connection/resolution_work.rs",
+                            "src/platform/linux/xrandr_command.rs", test_file) if lifetime else ())
+    inputs = {name: (repo / name).read_bytes() for name in input_names}
+    receipt = "LINUX_RESOLUTION_LIFETIME" if lifetime else "LINUX_XRANDR_QUERY"
+    tests = 20 if lifetime else 8
     root_lock = tomllib.loads(inputs["Cargo.lock"].decode("utf-8"))
     records = {(p["name"], p["version"]): p for p in root_lock["package"] if "source" in p}
     with socket.socket() as canary:
@@ -53,10 +61,13 @@ def main():
     print("R-B10 canary: build confirmed network-isolated (offline compile stage).", flush=True)
     with tempfile.TemporaryDirectory(prefix="xrandr-query-", dir="/tmp") as temporary:
         fixture = Path(temporary)
+        dependencies = ('libc = "=0.2.171"\nlog = "=0.4.22"\n'
+                        'tokio = { version = "=1.44.2", features = ["rt", "sync", "time", "macros"] }\n'
+                        if lifetime else "")
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
-            '[dependencies]\nregex = "=1.11.1"\n[[test]]\nname = "xrandr_query"\n'
-            f'path = "{repo}/scripts/test-linux-xrandr-query.rs"\n')
+            '[dependencies]\nregex = "=1.11.1"\n' + dependencies +
+            '[[test]]\nname = "xrandr_query"\n' + f'path = "{repo}/{test_file}"\n')
         run(["cargo", "generate-lockfile", "--offline", *config], fixture, timeout=30)
         lock_bytes = (fixture / "Cargo.lock").read_bytes()
         dependencies = []
@@ -67,7 +78,7 @@ def main():
             if expected is None or any(item.get(k) != expected.get(k) for k in ("source", "checksum")):
                 raise ValueError("query fixture dependency differs from the root lock")
             dependencies.append({k: item[k] for k in ("name", "version", "source", "checksum")})
-        print(f"LINUX_XRANDR_QUERY_DEPENDENCIES=pass lock_sha256={digest(lock_bytes)} "
+        print(f"{receipt}_DEPENDENCIES=pass lock_sha256={digest(lock_bytes)} "
               f"records_sha256={digest(json.dumps(dependencies, sort_keys=True).encode())}", flush=True)
         output = run(["cargo", "test", "--offline", "--locked", "--test", "xrandr_query",
                       "--no-run", "--jobs", "1", "--message-format=json", *config], fixture)
@@ -85,8 +96,8 @@ def main():
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"query test source changed: {name}")
-            print(f"LINUX_XRANDR_QUERY_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"LINUX_XRANDR_QUERY_ARTIFACT=pass sha256={artifact_sha} tests=8 unchanged=before-after", flush=True)
+            print(f"{receipt}_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
+        print(f"{receipt}_ARTIFACT=pass sha256={artifact_sha} tests={tests} unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

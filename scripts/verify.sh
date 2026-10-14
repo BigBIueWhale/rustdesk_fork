@@ -7284,8 +7284,8 @@ check_r_s11e32_helper_contract() {
   fi
 }
 check_r_s11e32_helper_contract "$loginctl_helper" 'configure_command_close_nonstdio_on_exec(&mut cmd)?;' 'cmd.output()'
-check_r_s11e32_helper_contract "$xrandr_query_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.output()?'
-check_r_s11e32_helper_contract "$xrandr_change_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.spawn()?'
+check_r_s11e32_helper_contract "$xrandr_query_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'xrandr_command::run(command)?'
+check_r_s11e32_helper_contract "$xrandr_change_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'xrandr_command::run(command)?'
 check_r_s11e32_helper_contract "$systemctl_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
 check_r_s11e32_helper_contract "$fuse_unmount_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
 check_r_s11e32_helper_contract "$hwcodec_check_helper" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
@@ -9468,7 +9468,7 @@ grep -q 'fn xrandr_query() -> ResultType<String>' src/platform/linux.rs || r_s11
 grep -q 'const XRANDR_PATHS' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-fixed-xrandr-paths"
 grep -q 'let Some(xrandr) = xrandr_path()' src/platform/linux.rs || r_s11c10c="$r_s11c10c xrandr-not-fixed-path-resolved"
 xrandr_query_block=$(awk '/fn xrandr_query\(\) -> ResultType<String>/,/^}/' src/platform/linux.rs)
-for binding in 'let mut command = Command::new(xrandr);' 'command.arg("--query");' 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'let output = command.output()?;' 'xrandr_query::admit_output(output)?'; do
+for binding in 'let mut command = Command::new(xrandr);' 'command.arg("--query");' 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'let output = xrandr_command::run(command)?;' 'xrandr_query::admit_output(output)?'; do
   grep -qF "$binding" <<<"$xrandr_query_block" || r_s11c10c="$r_s11c10c xrandr-query-not-argv-only"
 done
 grep -q 'match xrandr_query()' src/platform/linux.rs || r_s11c10c="$r_s11c10c resolutions-not-using-helper"
@@ -13445,7 +13445,7 @@ echo "$capset" | grep -qF 'misc::Union::ClientRecordStatus(_)' || rs19="$rs19 re
 echo "$capset" | grep -q 'MessageQuery'            || rs19="$rs19 messagequery-not-capture-gated"
 grep -qF 'if self.is_authed_remote_conn() && s.width != 0 && s.height != 0 {' "$conn" || rs19="$rs19 switch-display-resolution-not-remote-gated"
 change_resolution_body=$(awk '/fn change_resolution\(/,/^    }/' "$conn")
-echo "$change_resolution_body" | grep -qF 'if self.is_authed_remote_conn() && self.keyboard {' || rs19="$rs19 resolution-sink-not-remote-gated"
+echo "$change_resolution_body" | grep -qF 'if !self.is_authed_remote_conn() || !self.keyboard {' || rs19="$rs19 resolution-sink-not-remote-gated"
 # (c) flag-gated sinks key on AuthConnType / exact voice-call input ownership
 grep -q 'self.clipboard && self.is_authed_remote_conn()' "$conn"       || rs19="$rs19 clipboard-text-not-remote-gated"
 grep -q '!self.disable_audio && self.voice_call_input.is_some()' "$conn" || rs19="$rs19 audio-not-voice-gated"

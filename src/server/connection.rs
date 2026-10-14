@@ -34,6 +34,10 @@ use hbb_common::anyhow::anyhow;
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::tokio::sync::oneshot;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod resolution_work;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use resolution_work::{ResolutionWork, ResolutionWorkOwner};
 use hbb_common::{
     config::{self, keys, Config},
     fs::{self, can_enable_overwrite_detection, JobType},
@@ -772,7 +776,7 @@ struct FinalRemoteCleanupDispatcher {
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 struct FinalRemoteCleanupLease {
     generation: u64,
-    retire_on_drop: bool,
+    retire_on_drop: AtomicBool,
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
@@ -923,7 +927,7 @@ pub(crate) fn retire_connection_workers() -> ResultType<()> {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-async fn acquire_final_remote_cleanup_lease() -> ResultType<FinalRemoteCleanupLease> {
+async fn acquire_final_remote_cleanup_lease() -> ResultType<Arc<FinalRemoteCleanupLease>> {
     if let Err(error) = ensure_final_remote_cleanup_dispatcher() {
         bail!(error);
     }
@@ -938,10 +942,10 @@ async fn acquire_final_remote_cleanup_lease() -> ResultType<FinalRemoteCleanupLe
             .begin_admission(joined_retry);
         match decision {
             FinalRemoteAdmissionDecision::Admit(generation) => {
-                let lease = FinalRemoteCleanupLease {
+                let lease = Arc::new(FinalRemoteCleanupLease {
                     generation,
-                    retire_on_drop: true,
-                };
+                    retire_on_drop: AtomicBool::new(true),
+                });
                 try_start_record_cursor_pos()?;
                 return Ok(lease);
             }
@@ -967,7 +971,7 @@ async fn acquire_final_remote_cleanup_lease() -> ResultType<FinalRemoteCleanupLe
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 impl Drop for FinalRemoteCleanupLease {
     fn drop(&mut self) {
-        if !self.retire_on_drop {
+        if !self.retire_on_drop.load(Ordering::Acquire) {
             return;
         }
         let revision = {
@@ -990,13 +994,20 @@ impl Drop for FinalRemoteCleanupLease {
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 impl FinalRemoteCleanupLease {
-    fn fail_closed(&mut self, error: String) {
-        self.retire_on_drop = false;
+    fn fail_closed(&self, error: String) {
+        self.retire_on_drop.store(false, Ordering::Release);
         let mut state = FINAL_REMOTE_CLEANUP_COORDINATOR.state.lock().unwrap();
         state.failure = Some(error);
         state.successful_retry = None;
         drop(state);
         FINAL_REMOTE_CLEANUP_COORDINATOR.notify();
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+impl ResolutionWorkOwner for Arc<FinalRemoteCleanupLease> {
+    fn fail_closed(&self, error: String) {
+        self.as_ref().fail_closed(error);
     }
 }
 
@@ -4847,6 +4858,8 @@ pub struct Connection {
     rx_input: Option<std_mpsc::Receiver<QueuedInput>>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     input_worker: Option<InputWorker>,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    resolution_work: Option<ResolutionWork>,
     lr: LoginRequest,
     peer_argb: u32,
     chat_unanswered: bool,
@@ -6131,6 +6144,8 @@ impl Connection {
             rx_input: Some(rx_input),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             input_worker: None,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            resolution_work: None,
             lr: Default::default(),
             peer_argb: 0u32,
             chat_unanswered: false,
@@ -9703,10 +9718,10 @@ impl Connection {
                         }
                     }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    Some(misc::Union::ChangeResolution(r)) => self.change_resolution(None, &r),
+                    Some(misc::Union::ChangeResolution(r)) => self.change_resolution(None, &r).await,
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     Some(misc::Union::ChangeDisplayResolution(dr)) => {
-                        self.change_resolution(Some(dr.display), &dr.resolution)
+                        self.change_resolution(Some(dr.display), &dr.resolution).await
                     }
                     Some(misc::Union::AutoAdjustFps(fps)) => video_service::VIDEO_QOS
                         .lock()
@@ -10201,7 +10216,7 @@ impl Connection {
                         height: s.height,
                         ..Default::default()
                     },
-                );
+                ).await;
             }
 
             // Send display changed message.
@@ -10343,92 +10358,81 @@ impl Connection {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn change_resolution(&mut self, d: Option<i32>, r: &Resolution) {
-        if self.is_authed_remote_conn() && self.keyboard {
-            if !self.validate_peer_resolution_dims(r, "change resolution") {
-                return;
-            }
-            if let Some(display) = d {
+    async fn change_resolution(&mut self, d: Option<i32>, r: &Resolution) {
+        if !self.is_authed_remote_conn() || !self.keyboard {
+            return;
+        }
+        if !self.validate_peer_resolution_dims(r, "change resolution") {
+            return;
+        }
+        let display_idx = match d {
+            Some(display) => {
                 if !self.validate_peer_display_index_syntax(display, "change resolution") {
                     return;
                 }
+                let Ok(display) = usize::try_from(display) else {
+                    return;
+                };
+                display
             }
-            let displays = match display_service::try_get_displays() {
-                Ok(displays) => displays,
-                Err(err) => {
-                    self.note_display_control_reject(format_args!(
-                        "change resolution: failed to enumerate displays: {err}"
-                    ));
-                    return;
-                }
-            };
-            let display_idx = match d {
-                Some(display) => {
-                    let Some(display) = self.validate_peer_display_index_against_count(
-                        display,
-                        "change resolution",
-                        displays.len(),
-                    ) else {
-                        return;
-                    };
-                    display
-                }
-                None => {
-                    if self.display_idx >= displays.len() {
-                        let current_display_idx = self.display_idx;
-                        let display_count = displays.len();
-                        self.note_display_control_reject(format_args!(
-                            "change resolution: current display index {} outside display_count={}",
-                            current_display_idx, display_count
-                        ));
-                        return;
-                    }
-                    self.display_idx
-                }
-            };
-            if let Some(display) = displays.get(display_idx) {
-                let name = display.name();
-                let supported_modes = crate::platform::resolutions(&name);
-                if !supported_modes
-                    .iter()
-                    .any(|mode| mode.width == r.width && mode.height == r.height)
-                {
-                    self.note_display_control_reject(format_args!(
-                        "change resolution for '{}': unsupported mode {}x{}",
-                        &name, r.width, r.height
-                    ));
-                    return;
-                }
-                #[allow(unused_mut)]
-                let mut record_changed = true;
-                #[cfg(windows)]
-                if virtual_display_manager::amyuni_idd::is_my_display(&name) {
-                    record_changed = false;
-                }
-                #[cfg(not(target_os = "macos"))]
-                let scale = 1.0;
-                #[cfg(target_os = "macos")]
-                let scale = display.scale();
-                let original = (
-                    ((display.width() as f64) / scale).round() as _,
-                    (display.height() as f64 / scale).round() as _,
-                );
-                if record_changed {
-                    display_service::remember_original_resolution(&name, original);
-                }
-                if let Err(e) =
-                    crate::platform::change_resolution(&name, r.width as _, r.height as _)
-                {
-                    log::error!(
-                        "Failed to change resolution '{}' to ({},{}): {:?}",
-                        &name,
-                        r.width,
-                        r.height,
-                        e
-                    );
-                }
+            None => self.display_idx,
+        };
+        if self.resolution_work.is_some() {
+            self.note_display_control_reject(format_args!("previous resolution work is still owned"));
+            return;
+        }
+        let owner = match self.authed_conn_id.as_ref()
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("authenticated resolution owner is missing"))
+            .and_then(self::raii::AuthedConnID::retain_resolution_cleanup)
+        {
+            Ok(owner) => owner,
+            Err(error) => {
+                self.note_display_control_reject(format_args!("resolution work authority: {error}"));
+                return;
+            }
+        };
+        let (width, height) = (r.width, r.height);
+        self.resolution_work = Some(ResolutionWork::start(owner, move || {
+            Self::apply_resolution_change(display_idx, width, height).map_err(|error| error.to_string())
+        }));
+        if let Some(work) = self.resolution_work.as_mut() {
+            let result = work.wait().await;
+            self.resolution_work.take();
+            if let Err(error) = result {
+                log::error!("Resolution transaction failed: {error}");
             }
         }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn apply_resolution_change(display_idx: usize, width: i32, height: i32) -> ResultType<()> {
+        let displays = display_service::try_get_displays()?;
+        let Some(display) = displays.get(display_idx) else {
+            bail!("resolution display index {display_idx} outside display_count={}", displays.len());
+        };
+        let name = display.name();
+        let supported_modes = crate::platform::resolutions(&name);
+        if !supported_modes.iter().any(|mode| mode.width == width && mode.height == height) {
+            bail!("change resolution for '{name}': unsupported mode {width}x{height}");
+        }
+        #[allow(unused_mut)]
+        let mut record_changed = true;
+        #[cfg(windows)]
+        if virtual_display_manager::amyuni_idd::is_my_display(&name) {
+            record_changed = false;
+        }
+        #[cfg(not(target_os = "macos"))]
+        let scale = 1.0;
+        #[cfg(target_os = "macos")]
+        let scale = display.scale();
+        let original = (
+            ((display.width() as f64) / scale).round() as _,
+            (display.height() as f64 / scale).round() as _,
+        );
+        if record_changed {
+            display_service::remember_original_resolution(&name, original);
+        }
+        crate::platform::change_resolution(&name, width as _, height as _)
     }
 
     pub async fn handle_voice_call(&mut self, accepted: bool) {
@@ -11023,6 +11027,14 @@ impl Connection {
             return;
         }
         drop(self.voice_call_input.take());
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if let Some(work) = self.resolution_work.as_mut() {
+            work.cancel_pending();
+            if let Err(error) = work.wait().await {
+                log::error!("Resolution work retirement failed: {error}");
+            }
+            self.resolution_work.take();
+        }
         self.voice_call_request_timestamp = None;
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         self.stop_input_worker().await;
@@ -13674,6 +13686,8 @@ impl Default for PortableState {
 
 impl Drop for Connection {
     fn drop(&mut self) {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        drop(self.resolution_work.take());
         if !self.closed {
             // R-T4: cancellation can drop the run-loop future at any `.await`, skipping
             // `on_close()`. The dedicated one-shot terminal path cannot be starved by the bounded
@@ -14052,7 +14066,7 @@ mod raii {
         registry_generation: u64,
         published: bool,
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-        final_remote_cleanup: Option<FinalRemoteCleanupLease>,
+        final_remote_cleanup: Option<Arc<FinalRemoteCleanupLease>>,
     }
 
     impl AuthedConnID {
@@ -14188,6 +14202,20 @@ mod raii {
             self.conn_type
         }
 
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+        pub(super) fn retain_resolution_cleanup(&self) -> ResultType<Arc<FinalRemoteCleanupLease>> {
+            if !self.published || self.conn_type != AuthConnType::Remote {
+                bail!("resolution work requires a published Remote owner");
+            }
+            let Some(lease) = self.final_remote_cleanup.as_ref() else {
+                bail!("resolution cleanup lease is missing");
+            };
+            if !lease.retire_on_drop.load(Ordering::Acquire) {
+                bail!("resolution cleanup authority is poisoned");
+            }
+            Ok(Arc::clone(lease))
+        }
+
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         pub fn registry_generation(&self) -> u64 {
             self.registry_generation
@@ -14209,7 +14237,7 @@ mod raii {
                 );
                 log::error!("{error}");
                 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-                if let Some(lease) = self.final_remote_cleanup.as_mut() {
+                if let Some(lease) = self.final_remote_cleanup.as_ref() {
                     lease.fail_closed(error);
                 }
                 return;
@@ -14251,7 +14279,7 @@ mod raii {
                 );
                 log::error!("{error}");
                 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-                if let Some(lease) = self.final_remote_cleanup.as_mut() {
+                if let Some(lease) = self.final_remote_cleanup.as_ref() {
                     lease.fail_closed(error);
                 }
                 return;

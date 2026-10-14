@@ -112,7 +112,8 @@ case "$#:${8:-}" in
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
             || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release || "${13}" = --input-lifetime \
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
-            || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration ]] || exit 2
+            || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
+            || "${13}" = --linux-resolution-lifetime ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -3119,6 +3120,40 @@ run_focused_rust_tests() {
                 resolution_restore::tests::r_s11iu_r_t4_removed_and_republished_record_survives_old_completion
                 resolution_restore::tests::r_s11iu_r_t4_callback_unwind_retains_record_without_poisoning
             )
+        elif [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
+            container_name=rustdesk-linux-resolution-lifetime-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=64m
+            source_fingerprints=(
+                Cargo.lock src/platform/linux.rs src/platform/linux/xrandr_query.rs
+                src/platform/linux/xrandr_command.rs src/server/connection.rs
+                src/server/connection/resolution_work.rs libs/hbb_common/src/lib.rs
+                scripts/test-linux-xrandr-query.rs scripts/test-linux-resolution-lifetime.rs
+                scripts/run-linux-xrandr-query-tests.py
+            )
+            required_tests=(
+                command_tests::successful_command_waits_for_exact_child_completion
+                command_tests::unsuccessful_child_status_is_preserved
+                command_tests::signalled_child_status_is_preserved
+                command_tests::timeout_terminates_and_reaps_owned_child
+                command_tests::output_limit_terminates_and_reaps_owned_child
+                work_tests::normal_completion_holds_owner_and_runtime_stays_responsive
+                work_tests::queued_cancellation_performs_no_native_work
+                work_tests::controller_drop_retains_admitted_owner_until_completion
+                work_tests::cancelled_waiter_keeps_the_retained_ticket
+                work_tests::native_failure_is_reported
+                work_tests::native_panic_poison_and_release
+                resolution_work::tests::r_s11iu_resolution_supervisor_abort_keeps_native_owner
+                query_regressions::tests::successful_query_preserves_geometry_and_mode_lines
+                query_regressions::tests::failed_query_refuses_plausible_stdout
+                query_regressions::tests::signalled_query_refuses_plausible_stdout
+                query_regressions::tests::successful_query_refuses_invalid_utf8
+                query_regressions::tests::current_geometry_selects_the_exact_output
+                query_regressions::tests::supported_modes_belong_to_the_exact_output
+                query_regressions::tests::output_names_are_literal_regex_text
+                query_regressions::tests::output_identity_cannot_continue_on_another_line
+            )
         elif [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
             container_name=rustdesk-linux-xrandr-query-tests
             memory=1g
@@ -3639,6 +3674,11 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        if [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
+                            python3 -I -S /source/scripts/run-linux-xrandr-query-tests.py \
+                                /source /tmp/cargo-home/config.toml --lifetime
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
                             python3 -I -S -c '\''import errno, socket
 with socket.socket() as canary:
@@ -4070,6 +4110,11 @@ PY
         [ "$(grep -Ec '^RESOLUTION_RESTORATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'RESOLUTION_RESTORATION_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'resolution-restoration artifact receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution-lifetime summary count differs'
+        [ "$(grep -Ec '^LINUX_RESOLUTION_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LINUX_RESOLUTION_LIFETIME_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'resolution-lifetime artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'xrandr-query summary count differs'
         [ "$(grep -Ec '^LINUX_XRANDR_QUERY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -4337,6 +4382,11 @@ PY
             printf 'RESOLUTION_RESTORATION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-record-identity-with-callback-fixtures rust=1.75.0 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
+            grep -E '^test (command_tests|work_tests|resolution_work::tests|query_regressions::tests)::.* \.\.\. ok$|^LINUX_RESOLUTION_LIFETIME_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            printf 'LINUX_RESOLUTION_LIFETIME_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-command-and-owned-work-components rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
             grep -E '^test tests::.* \.\.\. ok$|^LINUX_XRANDR_QUERY_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'LINUX_XRANDR_QUERY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-query-result-and-output-identity rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \

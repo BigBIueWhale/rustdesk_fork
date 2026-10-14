@@ -2,6 +2,7 @@ use super::{CursorData, ResultType};
 mod native_context;
 mod systemd;
 mod xrandr_query;
+mod xrandr_command;
 mod window_focus;
 mod x11_context;
 mod x11_cursor;
@@ -4933,7 +4934,7 @@ fn xrandr_query() -> ResultType<String> {
     let mut command = Command::new(xrandr);
     command.arg("--query");
     configure_command_close_nonstdio_on_exec(&mut command)?;
-    let output = command.output()?;
+    let output = xrandr_command::run(command)?;
     Ok(xrandr_query::admit_output(output)?)
 }
 
@@ -5022,7 +5023,10 @@ pub fn change_resolution_directly(name: &str, width: usize, height: usize) -> Re
     let mut command = Command::new(xrandr);
     command.args(["--output", name, "--mode", &mode]);
     configure_command_close_nonstdio_on_exec(&mut command)?;
-    command.spawn()?;
+    let output = xrandr_command::run(command)?;
+    if !output.status.success() {
+        bail!("xrandr resolution change failed: {}", output.status);
+    }
     Ok(())
 }
 

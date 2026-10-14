@@ -260,10 +260,10 @@ def validate(repo: Path) -> None:
         cpu="--cpus=4",
         tmpfs="--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g",
     )
-    cursor = section(apple, "  CURSOR_CHECK=(", "    --workdir /tmp)", "cursor compiler launch")
+    component = section(apple, "COMPONENT_CHECK=(", "    --workdir /tmp)", "component compiler launch")
     require_confined_launch(
-        cursor,
-        "macOS cursor compiler",
+        component,
+        "macOS component compiler",
         mounts=(
             '--mount "type=bind,source=$APPLE_SOURCE,target=/work,readonly"',
             '--mount "type=bind,source=$APPLE_VENDOR,target=/vendor,readonly"',
@@ -274,6 +274,12 @@ def validate(repo: Path) -> None:
         memory="--memory=2g --memory-swap=2g",
         cpu="--cpus=2",
         tmpfs="--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m",
+    )
+    require_order(
+        apple,
+        ("apple_check_stage file-mode-compiler", "check-macos-file-mode-component.py",
+         "# ---- Apple source set", "apple_sdk_boundary_after_successful_workspace_anchor \"$log\""),
+        "file-mode compiler before SDK boundary",
     )
     for value in (
         "--env CARGO_NET_OFFLINE=true",

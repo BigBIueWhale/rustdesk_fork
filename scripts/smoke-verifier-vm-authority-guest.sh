@@ -16,6 +16,7 @@ RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
 HBB_FUSE_READ_TESTS=0
 APPLE_CURSOR_ONLY=0
+APPLE_FILE_MODE_ONLY=0
 X11_KEY_INPUT_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
@@ -157,9 +158,13 @@ case "$#:${8:-}" in
         MODE=apple-conform
         ;;
     13:--apple-conform)
-        [ "${13}" = --cursor-compile ] || exit 2
+        [[ "${13}" = --cursor-compile || "${13}" = --file-mode-compile ]] || exit 2
         MODE=apple-conform
-        APPLE_CURSOR_ONLY=1
+        if [ "${13}" = --cursor-compile ]; then
+            APPLE_CURSOR_ONLY=1
+        else
+            APPLE_FILE_MODE_ONLY=1
+        fi
         ;;
     18:--linux-flutter-app-replay)
         MODE=flutter-peer-presentation
@@ -206,6 +211,7 @@ case "$#:${8:-}" in
         echo 'The focused whiteboard client state shard appends --whiteboard-client to that same source-bound invocation.' >&2
         echo 'The native Linux whiteboard display shard appends --whiteboard-display-lifetime to that same source-bound invocation.' >&2
         echo 'The focused macOS cursor compiler appends --cursor-compile to --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
+        echo 'The focused macOS file-mode compiler appends --file-mode-compile to that same source-bound invocation.' >&2
         exit 2
         ;;
 esac
@@ -2038,6 +2044,8 @@ run_apple_conform() {
     local -a conform_arguments=()
     if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
         conform_arguments=(--cursor-compile)
+    elif [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
+        conform_arguments=(--file-mode-compile)
     fi
     printf 'APPLE_CHECK_STAGE=source-admission cursor_only=%s\n' "$APPLE_CURSOR_ONLY"
 
@@ -2272,6 +2280,20 @@ run_apple_conform() {
         || fail 'Apple-conformance output exceeds its bound'
     [ "$conform_status" -eq 0 ] \
         || { tail -n 240 "$output" >&2; fail "Apple conformance exited with status $conform_status"; }
+    if [ "$APPLE_CURSOR_ONLY" -eq 0 ]; then
+        [ "$(grep -Fxc 'MACOS_FILE_MODE_COMPONENT_COMPILE=pass targets=2 cases=8 negatives=16 libc=root-locked parser=syn sdk_shim=none linking=not-run native=false cleanup=joined' "$output")" -eq 1 ] \
+            || fail 'macOS file-mode component compiler receipt differs'
+        for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            [ "$(grep -Ec "^MACOS_FILE_MODE_COMPILE_TARGET=pass target=$target cases=8 negatives=8 metadata_bytes=[1-9][0-9]* metadata_sha256=[0-9a-f]{64} fixture_sha256=[0-9a-f]{64} lock_sha256=[0-9a-f]{64} dependencies_sha256=[0-9a-f]{64} native=false$" "$output")" -eq 1 ] \
+                || fail "macOS file-mode compiler metadata receipt differs: $target"
+            for case in config transfer pid paste placeholder config_fixed paste_fixed placeholder_fixed; do
+                local code=E0617
+                [[ "$case" != *_fixed ]] || code=E0308
+                [ "$(grep -Ec "^MACOS_FILE_MODE_NEGATIVE=pass target=$target case=$case code=$code status=101 source_sha256=[0-9a-f]{64} compiler_log_sha256=[0-9a-f]{64}$" "$output")" -eq 1 ] \
+                    || fail "macOS file-mode negative compiler receipt differs: $target $case"
+            done
+        done
+    fi
     if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
         [ "$(grep -Fxc '== apple-cursor-compile PASS ==' "$output")" -eq 1 ] \
             || fail 'macOS cursor compile pass verdict is absent or duplicated'
@@ -2281,6 +2303,9 @@ run_apple_conform() {
             [ "$(grep -Ec "^MACOS_CURSOR_COMPILE_TARGET=pass target=$target metadata_bytes=[1-9][0-9]* metadata_sha256=[0-9a-f]{64} compiler_log_sha256=[0-9a-f]{64} fixture_sha256=[0-9a-f]{64} lock_sha256=[0-9a-f]{64} dependencies_sha256=[0-9a-f]{64} native=false$" "$output")" -eq 1 ] \
                 || fail "macOS cursor compiler metadata receipt differs: $target"
         done
+    elif [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
+        [ "$(grep -Fxc '== apple-file-mode-compile PASS ==' "$output")" -eq 1 ] \
+            || fail 'macOS file-mode compile pass verdict is absent or duplicated'
     else
         [ "$(grep -Fxc '== apple-conform-check PASS ==' "$output")" -eq 1 ] \
             || { tail -n 240 "$output" >&2; fail 'Apple-conformance pass verdict is absent or duplicated'; }
@@ -2327,6 +2352,10 @@ run_apple_conform() {
     printf '%s\n' "$architecture_output"
     if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
         printf 'APPLE_CURSOR_COMPILE_VM=pass commit=%s tree=%s targets=2 image=%s runtime=%s vendor=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined\n' \
+            "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
+            "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+    elif [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
+        printf 'APPLE_FILE_MODE_COMPILE_VM=pass commit=%s tree=%s targets=2 cases=8 negatives=16 image=%s runtime=%s vendor=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined\n' \
             "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
             "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
     else

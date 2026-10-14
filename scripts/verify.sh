@@ -6751,22 +6751,6 @@ grep -qF 'macOS privileged helper current-build binding (R-S11au/R-S11e-61)' scr
 if [ -n "$r_s11e61" ]; then echo "  FAIL R-S11e-61 macOS helper current-build binding:$r_s11e61"; rc=1; else
   echo "  ok  R-S11e-61 signed installed-app nested code, deployed helper bytes, upgrade status, reinstall, and partial-state uninstall share one current-build authority"; fi
 
-# (3b-iii-d9cl) R-S11av/R-S11e-62: Darwin's narrow mode_t cannot be
-# passed directly through the variadic open/openat creation-mode argument.
-echo "== (3b-iii-d9cl) macOS variadic file-creation ABI (R-S11av/R-S11e-62) =="
-r_s11e62=
-python3 scripts/verify-macos-variadic-open-mode.py --repo . \
-  || r_s11e62="$r_s11e62 macos-variadic-open-mode-semantic-invalid"
-python3 scripts/verify-macos-variadic-open-mode.py --repo . --self-test \
-  || r_s11e62="$r_s11e62 macos-variadic-open-mode-mutations-invalid"
-python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
-  scripts/verify-macos-variadic-open-mode.py \
-  || r_s11e62="$r_s11e62 validator-python-syntax-invalid"
-grep -qF 'macOS variadic file-creation ABI (R-S11av/R-S11e-62)' scripts/apple-conform-check.sh \
-  || r_s11e62="$r_s11e62 apple-source-conformance-gate-missing"
-if [ -n "$r_s11e62" ]; then echo "  FAIL R-S11e-62 macOS variadic file-creation ABI:$r_s11e62"; rc=1; else
-  echo "  ok  R-S11e-62 macOS-reachable variadic creation modes are ABI-promoted while fixed-prototype mode_t calls remain exact"; fi
-
 # (3b-iii-d9cn) R-S11ax/R-S11dd/R-S11e-64/R-S11e-122 runtime smoke.
 # Supplementary source invariants bind the sole verifier-VM Docker authority,
 # deleted privileged-container routes, exact-source mounts and confined launches.

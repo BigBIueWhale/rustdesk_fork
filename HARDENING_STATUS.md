@@ -57,7 +57,7 @@ obligations and remaining document-role cleanup stay open.
 Current normative specification identity:
 
 ```text
-784791ac03c8d3725d153f1f0c3a3ebe22220357ea82962e72a2eba905dde1a5  requirements.html
+5c603741c7af7a6137988ed139069d0c23e2280077634b8578d1f18144dc0a45  requirements.html
 ```
 
 ## Current Verdict
@@ -129,6 +129,19 @@ These documentation corrections supply no compiler, artifact, scanner or native 
 Whole-document/test classification, exact-current builders/artifacts, installed/native authority,
 scanner acceptance, complete inputs/signing, upstream baseline reproduction, fork-delta accounting,
 per-target surface/egress, cold equality, release acceptance and independent reproduction remain OPEN.
+
+**R-S11av macOS file-mode compiler: wired; focused execution pending.** The
+289-line string/mutation checker and its duplicate shared/Apple invocations are
+removed. They inspected eight call shapes and two verifier banners without
+executing a compiler. The Apple gate now compiles AST-extracted production mode
+expressions against the root-locked Darwin `libc` before it can accept an SDK
+boundary. The focused `--apple-conform --file-mode-compile` transaction targets
+five variadic and three fixed-prototype calls on both macOS architectures, with
+positive metadata and 16 negative compiler checks identifying the exact call.
+It uses the existing bounded no-NIC Apple VM and complete pinned vendor/image
+authority. Filesystem source guards and real regressions remain. This is an
+extracted mode-expression compiler check; complete app/functions, linking,
+native filesystem behavior, signed artifacts and installed acceptance remain OPEN.
 
 Windows §12.2 and R-B8/R-B10/R-B11/R-B11a/§12.3 state the admitted verifier-VM boundary,
 sole acquisition authority, immutable host baseline and exact creator-owned retirement. Historical
@@ -2077,7 +2090,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `784791ac03c8d3725d153f1f0c3a3ebe22220357ea82962e72a2eba905dde1a5  requirements.html`.
+Current normative specification SHA-256: `5c603741c7af7a6137988ed139069d0c23e2280077634b8578d1f18144dc0a45  requirements.html`.
 
 ### Current authority and source closure
 

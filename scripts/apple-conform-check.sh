@@ -92,18 +92,21 @@ verifier_vm_image_provenance() {
 
 APPLE_VM_AUTHORITY_SELF_TEST=0
 APPLE_CURSOR_ONLY=0
+APPLE_FILE_MODE_ONLY=0
 case "$#" in
   0) ;;
   1)
     if [ "$1" = --cursor-compile ]; then
       APPLE_CURSOR_ONLY=1
+    elif [ "$1" = --file-mode-compile ]; then
+      APPLE_FILE_MODE_ONLY=1
     else
       [ "$1" = --self-test-vm-authority ] \
         || die "unknown argument: $1"
       APPLE_VM_AUTHORITY_SELF_TEST=1
     fi
     ;;
-  *) die 'accepts only --self-test-vm-authority or --cursor-compile' ;;
+  *) die 'accepts only --self-test-vm-authority, --cursor-compile or --file-mode-compile' ;;
 esac
 if [ "$APPLE_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
   authority_version="$(verifier_vm_docker version \
@@ -525,8 +528,7 @@ verify_apple_postconditions() {
     || die 'Apple verifier-VM authority changed during verification'
 }
 
-if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
-  CURSOR_CHECK=(verifier_vm_docker run --rm --interactive --pull=never --network=none --read-only
+COMPONENT_CHECK=(verifier_vm_docker run --rm --interactive --pull=never --network=none --read-only
     --user "$BUILD_UID:$BUILD_GID"
     --cap-drop=ALL --security-opt=no-new-privileges
     --pids-limit=128 --memory=2g --memory-swap=2g --cpus=2
@@ -539,15 +541,29 @@ if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
     --env CARGO_TARGET_DIR=/build --env CARGO_INCREMENTAL=0 --env CARGO_NET_OFFLINE=true
     --env PATH="$APPLE_CHECK_PATH" --env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
     --workdir /tmp)
+if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
   echo '== focused macOS cursor component compilation =='
   apple_check_stage cursor-compiler
-  "${CURSOR_CHECK[@]}" "$IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
+  "${COMPONENT_CHECK[@]}" "$IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
     mkdir -p "$HOME" "$CARGO_HOME"
     python3 -I -S /work/scripts/check-macos-cursor-component.py
   '
   apple_check_stage postconditions
   verify_apple_postconditions
   echo '== apple-cursor-compile PASS =='
+  exit 0
+fi
+
+echo '== macOS file-mode component compilation =='
+apple_check_stage file-mode-compiler
+"${COMPONENT_CHECK[@]}" "$IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
+  mkdir -p "$HOME" "$CARGO_HOME"
+  python3 -I -S /work/scripts/check-macos-file-mode-component.py
+'
+if [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
+  apple_check_stage postconditions
+  verify_apple_postconditions
+  echo '== apple-file-mode-compile PASS =='
   exit 0
 fi
 
@@ -3515,22 +3531,6 @@ if [ -n "$r_s11e61" ]; then
   rc=1
 else
   note "ok  R-S11e-61 signed installed-app nested code, deployed helper bytes, stale-upgrade detection/reinstall, and partial-state uninstall share one current-build authority"
-fi
-
-echo "== (2b-iii-c5b) macOS variadic file-creation ABI (R-S11av/R-S11e-62) =="
-r_s11e62=
-python3 "$REPO/scripts/verify-macos-variadic-open-mode.py" --repo "$REPO" \
-  || r_s11e62="$r_s11e62 macos-variadic-open-mode-semantic-invalid"
-python3 "$REPO/scripts/verify-macos-variadic-open-mode.py" --repo "$REPO" --self-test \
-  || r_s11e62="$r_s11e62 macos-variadic-open-mode-mutations-invalid"
-python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
-  "$REPO/scripts/verify-macos-variadic-open-mode.py" \
-  || r_s11e62="$r_s11e62 validator-python-syntax-invalid"
-if [ -n "$r_s11e62" ]; then
-  echo "  FAIL R-S11e-62 macOS variadic file-creation ABI:$r_s11e62"
-  rc=1
-else
-  note "ok  R-S11e-62 macOS-reachable variadic creation modes are ABI-promoted while fixed-prototype mode_t calls remain exact"
 fi
 
 echo "== (2b-iv-a) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="

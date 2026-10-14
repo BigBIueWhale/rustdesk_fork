@@ -25,6 +25,7 @@ RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
 HBB_FUSE_READ_TESTS=0
 APPLE_CURSOR_ONLY=0
+APPLE_FILE_MODE_ONLY=0
 X11_CLIPBOARD_ONLY=0
 X11_KEY_INPUT_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
@@ -296,12 +297,16 @@ case "$#:${1:-}" in
         MODE=apple-conform
         ;;
     2:--apple-conform)
-        [ "$2" = --cursor-compile ] \
+        [[ "$2" = --cursor-compile || "$2" = --file-mode-compile ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'invalid focused Apple compile arguments or overrides' >&2; exit 2; }
         MODE=apple-conform
-        APPLE_CURSOR_ONLY=1
+        if [ "$2" = --cursor-compile ]; then
+            APPLE_CURSOR_ONLY=1
+        else
+            APPLE_FILE_MODE_ONLY=1
+        fi
         ;;
     1:--dart-audit)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -370,6 +375,7 @@ case "$#:${1:-}" in
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
         printf 'Focused macOS cursor adapter compilation: %s --apple-conform --cursor-compile\n' "${0##*/}" >&2
+        printf 'Focused macOS file-mode compilation: %s --apple-conform --file-mode-compile\n' "${0##*/}" >&2
         printf 'Current-source CM file replay: %s --cm-file-replay\n' "${0##*/}" >&2
         printf 'Focused production frame-queue runtime: %s --flutter-model-tests --frame-queue\n' "${0##*/}" >&2
         printf 'Focused direct-address validation: %s --flutter-model-tests --direct-address\n' "${0##*/}" >&2
@@ -718,7 +724,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     readonly OVERLAY_SIZE=48G
     readonly VM_MEMORY=24576
 elif [ "$MODE" = apple-conform ]; then
-    if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
+    if [ "$APPLE_CURSOR_ONLY" -eq 1 ] || [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly OVERLAY_SIZE=12G
         readonly VM_MEMORY=4096
@@ -4211,6 +4217,8 @@ elif [ "$MODE" = apple-conform ]; then
     guest_invocation+=" --apple-conform /mnt/rustdesk-verifier-inputs/source.tar $APPLE_SOURCE_COMMIT $APPLE_SOURCE_TREE $APPLE_SOURCE_ARCHIVE_SHA256"
     if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
         guest_invocation+=" --cursor-compile"
+    elif [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
+        guest_invocation+=" --file-mode-compile"
     fi
 elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
@@ -5703,6 +5711,15 @@ elif [ "$MODE" = apple-conform ]; then
         require_exact_fixed_receipt \
             "APPLE_CURSOR_COMPILE_VM=pass commit=$APPLE_SOURCE_COMMIT tree=$APPLE_SOURCE_TREE targets=2 image=$APPLE_CHECK_IMAGE_ID runtime=$APPLE_CHECK_IMAGE_CONFIG_ID vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined" \
             'macOS cursor compile VM receipt'
+    elif [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
+        require_exact_fixed_receipt \
+            '== apple-file-mode-compile PASS ==' 'macOS file-mode compile verdict'
+        require_exact_fixed_receipt \
+            'MACOS_FILE_MODE_COMPONENT_COMPILE=pass targets=2 cases=8 negatives=16 libc=root-locked parser=syn sdk_shim=none linking=not-run native=false cleanup=joined' \
+            'actual two-target file-mode compiler receipt'
+        require_exact_fixed_receipt \
+            "APPLE_FILE_MODE_COMPILE_VM=pass commit=$APPLE_SOURCE_COMMIT tree=$APPLE_SOURCE_TREE targets=2 cases=8 negatives=16 image=$APPLE_CHECK_IMAGE_ID runtime=$APPLE_CHECK_IMAGE_CONFIG_ID vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined" \
+            'macOS file-mode compile VM receipt'
     else
         require_exact_fixed_receipt \
             '== apple-conform-check PASS ==' \
@@ -6696,6 +6713,10 @@ elif [ "$MODE" = android-rust-target-check ]; then
 elif [ "$MODE" = apple-conform ]; then
     if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
         printf 'APPLE_CURSOR_COMPILE_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=2 image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=component-compile-not-native cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
+            "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
+    elif [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
+        printf 'APPLE_FILE_MODE_COMPILE_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=2 cases=8 negatives=16 image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=component-compile-not-native cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
             "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
     else

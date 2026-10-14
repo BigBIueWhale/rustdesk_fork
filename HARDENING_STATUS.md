@@ -6126,6 +6126,22 @@ or helper principal boundary, release artifact, memory/latency soak, independent
 reproduction or external review follows. Those broader obligations remain OPEN;
 R-S11b/R-S11c and the overall release remain STOP-SHIP.
 
+**Terminal UTF-8 packet boundaries — SOURCE CORRECTED; DART/NATIVE EXECUTION OPEN.**
+The server's bounded live/replay batches may split a character after PTY accumulation.
+`TerminalModel` now owns one `TerminalOutputDecoder` across data packets instead of
+decoding each packet independently. Complete text is emitted immediately; incomplete
+UTF-8 stays in the decoder until continuation or stream completion. Successful open
+replaces the decoder, close flushes an incomplete tail once, and
+disposed models reject events. Empty decoded fragments consume no pre-layout buffer
+entries. Six production-decoder regressions cover every two-packet split of mixed
+Hebrew/accented/CJK/emoji/ANSI output, bytewise continuation, malformed bytes, EOF,
+independent terminals and replacement isolation. They are included in the existing
+model checkpoint (24 suites/264 cases); tests and model integration are UNEXECUTED.
+Diff review/check, Bash syntax and Python AST inspection are preparatory checks only.
+Available RAM is below unchanged VM admission, so no test/count launcher ran; the
+current ledger token count remains PENDING. Real terminal rendering, reconnect/replay,
+platform behavior and all installed/service/release obligations remain OPEN.
+
 **R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the
 VP8/VP9 viewer decoder. The prior decoder characterization was incorrect.

@@ -10,6 +10,7 @@ import 'package:xterm/xterm.dart';
 
 import 'model.dart';
 import 'platform_model.dart';
+import 'terminal_output_decoder.dart';
 
 class TerminalModel with ChangeNotifier {
   final String id; // peer id
@@ -22,6 +23,7 @@ class TerminalModel with ChangeNotifier {
   bool get terminalOpened => _terminalOpened;
 
   bool _disposed = false;
+  TerminalOutputDecoder _outputDecoder = TerminalOutputDecoder();
 
   final _inputBuffer = <String>[];
   // Buffer for output data received before terminal view has valid dimensions.
@@ -248,6 +250,7 @@ class TerminalModel with ChangeNotifier {
   }
 
   void handleTerminalResponse(Map<String, dynamic> evt) {
+    if (_disposed) return;
     final String? type = evt['type'];
     final int evtTerminalId = getTerminalIdFromEvt(evt);
 
@@ -283,6 +286,8 @@ class TerminalModel with ChangeNotifier {
         '[TerminalModel] Terminal opened response: success=$success, message=$message, service_id=$serviceId');
 
     if (success) {
+      _finishTerminalOutput();
+      _outputDecoder = TerminalOutputDecoder();
       _terminalOpened = true;
 
       // On reconnect, the server may replay recent output. That replay can include
@@ -352,25 +357,25 @@ class TerminalModel with ChangeNotifier {
       final suppressTerminalOutput = _suppressNextTerminalDataOutput;
       _suppressNextTerminalDataOutput = false;
       try {
-        String text = '';
+        List<int> bytes;
         if (data is String) {
           // Try to decode as base64 first
           try {
-            final bytes = base64Decode(data);
-            text = utf8.decode(bytes, allowMalformed: true);
-          } catch (e) {
+            bytes = base64Decode(data);
+          } on FormatException {
             // If base64 decode fails, treat as plain text
-            text = data;
+            bytes = utf8.encode(data);
           }
         } else if (data is List) {
           // Handle if data comes as byte array
-          text = utf8.decode(List<int>.from(data), allowMalformed: true);
+          bytes = List<int>.from(data);
         } else {
           debugPrint('[TerminalModel] Unknown data type: ${data.runtimeType}');
           return;
         }
 
-        _writeToTerminal(text, suppressTerminalOutput: suppressTerminalOutput);
+        _writeToTerminal(_outputDecoder.add(bytes),
+            suppressTerminalOutput: suppressTerminalOutput);
       } catch (e) {
         debugPrint('[TerminalModel] Failed to process terminal data: $e');
       }
@@ -384,6 +389,7 @@ class TerminalModel with ChangeNotifier {
     String text, {
     bool suppressTerminalOutput = false,
   }) {
+    if (text.isEmpty) return;
     if (!_terminalViewReady) {
       // If a single chunk exceeds the cap, keep only its tail.
       // Note: truncation may split a multi-byte ANSI escape sequence,
@@ -469,6 +475,7 @@ class TerminalModel with ChangeNotifier {
   }
 
   void _handleTerminalClosed(Map<String, dynamic> evt) {
+    _finishTerminalOutput();
     final int exitCode = evt['exit_code'] ?? 0;
     _writeToTerminal('\r\nTerminal closed with exit code: $exitCode\r\n');
     _terminalOpened = false;
@@ -480,10 +487,15 @@ class TerminalModel with ChangeNotifier {
     _writeToTerminal('\r\nTerminal error: $message\r\n');
   }
 
+  void _finishTerminalOutput() {
+    _writeToTerminal(_outputDecoder.finish(), suppressTerminalOutput: true);
+  }
+
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _outputDecoder.finish();
     // Clear buffers to free memory
     _inputBuffer.clear();
     _pendingOutputChunks.clear();

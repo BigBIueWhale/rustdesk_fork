@@ -1,18 +1,21 @@
-# GitHub-hosted automation — DISABLED (this fork builds locally)
+# GitHub-hosted automation — DISABLED (verifier VM only)
 
 This hardened, direct-IP-only fork does **not** use GitHub Actions for CI/CD. GitHub Actions provides
-no build, verification, or release evidence. The authoritative local release transaction is
-`scripts/build-release.sh`; it runs on the operator's own host and invokes the target-specific builders
-from authenticated private snapshots, never in the cloud (§12 of `requirements.html`):
+no build, verification, or release evidence. Product builds and verification require the authenticated,
+ordinary-user QEMU verifier VM of R-S11dh in [`requirements.html`](../../requirements.html), with no NIC,
+Unix-only control channels, immutable inputs, bounded RAM scratch, resource admission and joined cleanup.
+Container operations use only the designated guest daemon and network-isolated containers. The
+orchestration host is not a product, test, installer or builder execution environment.
 
-| Target | How (local) |
-| --- | --- |
-| Debian `.deb` | `scripts/build-debian.sh` (containerized, §12.1) |
-| Windows       | the ephemeral KVM Windows 11 VM — `scripts/provision-windows-vm.sh` + `scripts/build-windows.ps1` (§12.2) |
-| Android       | the §12 Docker flow |
+`scripts/build-release.sh` is the VM-internal release coordinator. Target-specific builders are not
+independent host entry points. A release requires the complete admitted source/input/signing/Windows
+golden transport, exact bounded artifact return, cold reproducibility and target-native acceptance;
+missing authority or inputs refuse without a host-Docker or direct-launch fallback. Release preparation
+is described in [`VERSIONING.md`](../../docs/VERSIONING.md); current transport, artifact and native
+acceptance is tracked in [`HARDENING_STATUS.md`](../../HARDENING_STATUS.md).
 
-The target-specific scripts are not independent release entry points. The upstream RustDesk workflows are
-retained for reference but **disabled twice**. The `.disabled` suffix keeps GitHub Actions from loading them,
+The upstream RustDesk workflows are retained for reference but **disabled twice**. The `.disabled` suffix
+keeps GitHub Actions from loading them,
 and every retained file schema-demotes its top-level `on` and `jobs` keys to `historical_on` and
 `historical_jobs`. Renaming a reference alone cannot enable it: it still has neither a workflow trigger nor an
 executable job graph. This means the references trigger **nothing** (no push / PR / tag / schedule, no reusable

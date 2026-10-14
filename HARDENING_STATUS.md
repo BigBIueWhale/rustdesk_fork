@@ -10791,6 +10791,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `DesktopUrlIpcRequest` (OpenUrl/Activate/CloseAll), with 8-KiB frames, one-second I/O
   deadlines, one sequential request, 1,024-byte links and 512-byte direct addresses.
   Invalid requests never reach Flutter or encode activation/close as sentinel strings.
+  Startup no longer logs the raw argument list, which can include subwindow password
+  and connection-token fields; cold/warm link handlers no longer log incoming URLs or
+  exception text. Link failures emit fixed diagnostics because
+  parse/platform errors may contain the original credential-bearing input. This is
+  a source correction; final-artifact cold/warm and malformed-link log-capture
+  acceptance is still OPEN.
   Android retains its custom-scheme launcher entry, private service/boot components,
   merged-manifest permission/backup/network limits and foreground-service conditions.
   iOS now deletes both the bundled plugin's web-activity callback and declaration;

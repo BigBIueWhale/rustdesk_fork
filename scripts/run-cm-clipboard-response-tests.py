@@ -53,7 +53,7 @@ def main():
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
             '[dependencies]\nbytes = { version = "=1.11.1", features = ["serde"] }\n'
-            'serde = { version = "=1.0.228", features = ["derive"] }\n'
+            'serde = "=1.0.228"\nserde_derive = "=1.0.228"\n'
             '[dev-dependencies]\nserde_json = "=1.0.118"\n'
             '[lib]\nname = "rustdesk_cm_clipboard_response"\npath = "lib.rs"\n')
         (fixture / "lib.rs").write_text(

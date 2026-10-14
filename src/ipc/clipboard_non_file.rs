@@ -1,5 +1,5 @@
 use bytes::{Bytes, BytesMut};
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use std::io;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

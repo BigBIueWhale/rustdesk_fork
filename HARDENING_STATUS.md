@@ -2110,7 +2110,7 @@ Current normative specification SHA-256: `5c603741c7af7a6137988ed139069d0c23e228
 
 ### Current authority and source closure
 
-**Resolution mutation and Linux command lifetime (R-T4/R-S11c-10c): source implemented; execution pending.**
+**Resolution mutation and Linux command lifetime (R-T4/R-S11c-10c): production components accepted; integration OPEN.**
 The connection retains one resolution-work ticket and awaits off-runtime enumeration,
 mode validation and mutation. Pending ticket retirement revokes native admission;
 admitted work retains only an exact shared final-cleanup lease through native completion,
@@ -2120,9 +2120,14 @@ Linux queries and setters use one retained-child/pidfd runner with a five-second
 deadline and one-MiB stdout ceiling; errors/unwind retain termination and reap before
 return. The setter accepts only successful terminal status. Missing pidfd acquisition
 fails the operation and retains natural wait without numeric-PID signaling fallback.
-`--linux-resolution-lifetime-tests` targets 20 production-component checks: five real
+`--linux-resolution-lifetime-tests` passed 20 production-component checks at source
+`2fcdbf6e` in 78 VM seconds: five real
 child-process cases, seven task/owner/runtime cases and eight query regressions, with
-root-locked Tokio/libc/log/regex. Actual parent/application integration, real monitor/peer,
+root-locked Tokio/libc/log/regex. Executed artifact SHA-256
+`d7aa345c1b6fef0e013f5aa5127cd53fa2eacd309c04f7dcbbf755a7a776adbf`;
+`.harness-state/verifier-vm/resolution-lifetime-accepted-2fcdbf6e.json` binds exact source,
+compiler/dependencies, raw outcomes, freezes, endpoint snapshots, limits and joined cleanup.
+Actual parent/application integration, real monitor/peer,
 syscall-failure retirement, other synchronous discovery callers and native Windows/macOS
 remain OPEN; no installed or LPE closure follows from these component checks.
 

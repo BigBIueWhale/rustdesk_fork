@@ -89,6 +89,14 @@ PASSWORD_FIELD_TESTS = {
     "ordinary obscured field is a keyboard learning control",
     "password field retains focused obscured semantics",
 }
+TERMINAL_OUTPUT_TESTS = {
+    "terminal UTF-8 survives every two-packet split",
+    "terminal UTF-8 emits complete text while retaining only a partial tail",
+    "terminal invalid UTF-8 has the same replacement policy across packets",
+    "terminal end of stream flushes an incomplete character exactly once",
+    "terminal decoders keep concurrent terminal byte streams separate",
+    "replacement terminal stream cannot complete its predecessor tail",
+}
 CREDENTIAL_DIALOG_TESTS = {
     "connect_password_dialog_lifecycle_test.dart": {
         "connect prompt is present before its saved preference resolves",
@@ -175,7 +183,7 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -190,6 +198,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"password_text_field_test.dart"}
         expected_tests = len(PASSWORD_FIELD_TESTS)
         expected_names = PASSWORD_FIELD_TESTS
+    elif profile == "terminal-output":
+        expected_suites = {"terminal_output_decoder_test.dart"}
+        expected_tests = len(TERMINAL_OUTPUT_TESTS)
+        expected_names = TERMINAL_OUTPUT_TESTS
     elif profile == "credential-dialog":
         expected_by_suite = CREDENTIAL_DIALOG_TESTS
         expected_suites = set(expected_by_suite)
@@ -287,7 +299,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -300,6 +312,7 @@ def main():
         "frame-queue": "FLUTTER_FRAME_QUEUE_TEST_JSON",
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
+        "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",
         "credential-dialog": "FLUTTER_CREDENTIAL_DIALOG_TEST_JSON",
     }[arguments.profile]
     print("{}=pass suites={} tests={}".format(prefix, suites, tests))

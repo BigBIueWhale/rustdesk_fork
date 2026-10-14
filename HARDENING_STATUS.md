@@ -6136,7 +6136,13 @@ disposed models reject events. Empty decoded fragments consume no pre-layout buf
 entries. Six production-decoder regressions cover every two-packet split of mixed
 Hebrew/accented/CJK/emoji/ANSI output, bytewise continuation, malformed bytes, EOF,
 independent terminals and replacement isolation. They are included in the existing
-model checkpoint (24 suites/264 cases); tests and model integration are UNEXECUTED.
+model checkpoint (24 suites/264 cases). The focused command
+`scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --terminal-output`
+runs the same six tests with exact suite/name/completion checks. It inherits the
+existing 4-GiB guest, 2-GiB networkless container, 90-second test and 300-second VM
+budgets, read-only authenticated source/inputs and joined cleanup. No bridge or
+release build is needed for this decoder component. The focused shard, parser
+regressions, tests and model integration are UNEXECUTED.
 Diff review/check, Bash syntax and Python AST inspection are preparatory checks only.
 Available RAM is below unchanged VM admission, so no test/count launcher ran; the
 current ledger token count remains PENDING. Real terminal rendering, reconnect/replay,

@@ -127,7 +127,7 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --password-fields || "${13}" = --credential-dialog ]] || exit 2
+        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --password-fields || "${13}" = --credential-dialog || "${13}" = --terminal-output ]] || exit 2
         MODE=flutter-model-tests
         FLUTTER_TEST_PROFILE=${13#--}
         ;;
@@ -211,6 +211,7 @@ case "$#:${8:-}" in
         echo 'The focused Flutter address shard appends --direct-address to that same source-bound invocation.' >&2
         echo 'The focused password input shard appends --password-fields to that same source-bound invocation.' >&2
         echo 'The credential dialog shard appends --credential-dialog and generates its exact bridge in private guest scratch.' >&2
+        echo 'The terminal UTF-8 shard appends --terminal-output to that same source-bound invocation.' >&2
         echo 'The focused Rust clipboard shard appends --clipboard to --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused whiteboard state shard appends --whiteboard-presentation to that same source-bound invocation.' >&2
         echo 'The focused whiteboard client state shard appends --whiteboard-client to that same source-bound invocation.' >&2
@@ -7243,6 +7244,9 @@ run_flutter_model_tests() {
         elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
             result_prefix=FLUTTER_PASSWORD_FIELD_TEST_JSON
             expected_result='suites=1 tests=4'
+        elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
+            result_prefix=FLUTTER_TERMINAL_OUTPUT_TEST_JSON
+            expected_result='suites=1 tests=6'
         elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
             memory=3g
             memory_bytes=3221225472
@@ -7258,6 +7262,8 @@ run_flutter_model_tests() {
             printf 'FLUTTER_FRAME_QUEUE_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
             printf 'FLUTTER_PASSWORD_FIELD_STAGE=verify-source-and-inputs\n'
+        elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
+            printf 'FLUTTER_TERMINAL_OUTPUT_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
             printf 'FLUTTER_CREDENTIAL_DIALOG_STAGE=verify-source-and-inputs\n'
         else
@@ -7574,6 +7580,8 @@ run_flutter_model_tests() {
                     format_paths=(lib/common/formatter/direct_address.dart test/address_validator_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
                     format_paths=(lib/common/widgets/password_text_field.dart test/password_text_field_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
+                    format_paths=(lib/models/terminal_output_decoder.dart test/terminal_output_decoder_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
                     format_paths=(
                         lib/common/widgets/connect_password_dialog.dart
@@ -7656,6 +7664,8 @@ run_flutter_model_tests() {
                     tests=(test/address_validator_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
                     tests=(test/password_text_field_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
+                    tests=(test/terminal_output_decoder_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
                     tests=(
                         test/connect_password_dialog_lifecycle_test.dart
@@ -7722,6 +7732,9 @@ run_flutter_model_tests() {
                     elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
                         cmp /source/flutter/lib/common/widgets/password_text_field.dart lib/common/widgets/password_text_field.dart
                         cmp /source/flutter/test/password_text_field_test.dart test/password_text_field_test.dart
+                    elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
+                        cmp /source/flutter/lib/models/terminal_output_decoder.dart lib/models/terminal_output_decoder.dart
+                        cmp /source/flutter/test/terminal_output_decoder_test.dart test/terminal_output_decoder_test.dart
                     elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
                         diff -r --exclude=generated_bridge.dart \
                             --exclude=generated_bridge.freezed.dart /source/flutter/lib lib
@@ -7775,6 +7788,8 @@ run_flutter_model_tests() {
         printf 'FLUTTER_PASSWORD_FIELD_STAGE=run-production-input-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
         printf 'FLUTTER_CREDENTIAL_DIALOG_STAGE=run-production-dialog-tests\n'
+    elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
+        printf 'FLUTTER_TERMINAL_OUTPUT_STAGE=run-production-decoder-tests\n'
     fi
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
@@ -7838,6 +7853,14 @@ run_flutter_model_tests() {
         printf 'FLUTTER_PASSWORD_FIELD_TESTS_VM=pass commit=%s tree=%s suites=1 tests=4 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-password-field-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$password_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+            "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
+        local decoder_sha256
+        decoder_sha256="$(sha256sum "$source_root/flutter/lib/models/terminal_output_decoder.dart" | awk '{print $1}')"
+        tests_sha256="$(sha256sum "$source_root/flutter/test/terminal_output_decoder_test.dart" | awk '{print $1}')"
+        printf 'FLUTTER_TERMINAL_OUTPUT_TESTS_VM=pass commit=%s tree=%s suites=1 tests=6 flutter=3.24.5 decoder=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-terminal-decoder-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+            "$decoder_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
         printf 'FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=%s tree=%s suites=7 tests=45 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined\n' \

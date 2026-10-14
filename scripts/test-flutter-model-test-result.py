@@ -30,6 +30,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "password-fields":
             suites = ["password_text_field_test.dart"]
             names = sorted(result.PASSWORD_FIELD_TESTS)
+        elif profile == "terminal-output":
+            suites = ["terminal_output_decoder_test.dart"]
+            names = sorted(result.TERMINAL_OUTPUT_TESTS)
         elif profile == "credential-dialog":
             suites = sorted(result.CREDENTIAL_DIALOG_TESTS)
             names = sorted(set().union(*result.CREDENTIAL_DIALOG_TESTS.values()))
@@ -74,6 +77,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("frame-queue"), "frame-queue"), (1, 24))
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
+        self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (1, 6))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (7, 45))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"
@@ -108,7 +112,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address", "password-fields", "credential-dialog"):
+        for profile in ("frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output"):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
@@ -132,7 +136,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_and_incomplete_are_rejected(self):
-        for profile in ("models", "frame-queue", "direct-address", "password-fields", "credential-dialog"):
+        for profile in ("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output"):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

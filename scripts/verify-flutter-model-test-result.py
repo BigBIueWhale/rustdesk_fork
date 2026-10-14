@@ -119,6 +119,9 @@ CREDENTIAL_DIALOG_TESTS = {
         "obscured dialog field exposes enabled focused semantics",
     },
     "dialog_close_ownership_test.dart": {
+        "image wait cancel retires its entry and dispatches once",
+        "superseded image wait cancel cannot act before unmount",
+        "dismissed image wait cancel cannot act before unmount",
         "message submit retires only its entry and dispatches once",
         "retired message submit cannot act before unmount",
         "retired message cancel and close cannot dismiss a replacement",

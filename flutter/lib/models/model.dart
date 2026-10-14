@@ -1227,21 +1227,21 @@ class FfiModel with ChangeNotifier {
 
   void showConnectedWaitingForImage(OverlayDialogManager dialogManager,
       SessionID sessionId, String type, String title, String text) {
-    onClose() {
-      closeConnection();
-    }
-
-    if (waitForFirstImage.isFalse) return;
-    dialogManager.show(
-      (setState, close, context) => CustomAlertDialog(
-          title: null,
-          content: SelectionArea(child: msgboxContent(type, title, text)),
-          actions: [
-            dialogButton("Cancel", onPressed: onClose, isOutline: true)
-          ],
-          onCancel: onClose),
-      tag: '$sessionId-waiting-for-image',
-    );
+    final owner = parent.target;
+    if (owner == null ||
+        !owner.isCurrentSession(sessionId) ||
+        waitForFirstImage.isFalse) return;
+    dialogManager.showWaitingForImage(sessionId, type, title, text,
+        onCancel: () {
+      if (!owner.isCurrentSession(sessionId)) return;
+      if (isDesktop) {
+        if (!Get.isRegistered<FFI>(tag: owner.id) ||
+            !identical(ffi(owner.id), owner)) return;
+      } else if (!identical(gFFI, owner)) {
+        return;
+      }
+      closeConnection(id: owner.id);
+    });
     waitForImageDialogShow.value = true;
     waitForImageTimer = Timer(Duration(milliseconds: 1500), () {
       if (!_isCurrentSession(sessionId)) return;

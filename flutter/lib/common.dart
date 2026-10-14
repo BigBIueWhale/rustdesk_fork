@@ -988,6 +988,30 @@ class OverlayDialogManager {
     return tag;
   }
 
+  String showWaitingForImage(
+      SessionID sessionId, String type, String title, String text,
+      {required VoidCallback onCancel}) {
+    final tag = '$sessionId-waiting-for-image';
+    show<void>((setState, close, context) {
+      cancel() {
+        if (!close()) return;
+        onCancel();
+      }
+
+      return CustomAlertDialog(
+        title: null,
+        content: SelectionArea(
+            child: msgboxContent(type, title, text, translateText: _translate)),
+        actions: [
+          dialogButton('Cancel',
+              onPressed: cancel, isOutline: true, translateText: _translate)
+        ],
+        onCancel: cancel,
+      );
+    }, tag: tag);
+    return tag;
+  }
+
   void resetMobileActionsOverlay({FFI? ffi}) {
     if (_mobileActionsOverlayEntry == null) return;
     hideMobileActionsOverlay();

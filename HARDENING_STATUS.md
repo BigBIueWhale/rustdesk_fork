@@ -2251,10 +2251,18 @@ The message callback `dismissAll()` paths are removed; publication retains its
 explicit replacement of prior dialog state. Message rendering/countdown labels use
 the manager's existing translator. The unused automatic-submit option and private
 callback branch are deleted; the supported reconnect countdown only renders time.
-The focused dialog shard targets 47 named tests across seven suites, including
+The focused dialog shard targets 50 named tests across seven suites, including
 six real message-widget cases for current one-shot
 submit/reconnect, stale submit/cancel/Close/reconnect before unmount, and display-only
 reconnect expiry. The real overlay and affected file-dialog mocks are retained.
+Image-wait cancellation now belongs to the manager's exact current dialog entry:
+button and keyboard callbacks must retire that entry before dispatch. The connection
+callback captures its FFI owner, rechecks the session UUID and current FFI registration
+(or exact mobile/web global owner), and passes that owner's peer ID rather than
+selecting the active desktop tab. Three production-overlay regressions cover current
+one-shot cancellation, supersession and dismissal before unmount, including retained
+button/keyboard callbacks and unrelated-entry survival. They are uncompiled and
+unexecuted; actual session/registration/tab routing and native acceptance remain OPEN.
 Mobile `closeConnection()` now retires chat/main-page state synchronously and
 passes the selected `NavigatorState` to `closeMobileConnectionRoute`; route
 dismissal does not await the system-UI request. Its late result can only report

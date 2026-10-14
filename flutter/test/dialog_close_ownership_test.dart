@@ -26,6 +26,107 @@ VoidCallback _messageButton(WidgetTester tester, String label) => tester
     .onPressed!;
 
 void main() {
+  testWidgets('image wait cancel retires its entry and dispatches once',
+      (tester) async {
+    final manager = await _manager(tester);
+    final session = const Uuid().v4obj();
+    var cancels = 0;
+    late final String tag;
+    try {
+      tag = manager.showWaitingForImage(session, 'success', 'waiting', 'image',
+          onCancel: () {
+        expect(manager.existing(tag), isFalse);
+        cancels++;
+      });
+      await tester.pump();
+      final escape = tester
+          .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onCancel!;
+      final button = _messageButton(tester, 'Cancel');
+      final unrelated = manager.show<void>(
+          (_, __, ___) => const Text('unrelated'),
+          tag: 'unrelated');
+      button();
+      escape();
+      button();
+      expect(cancels, 1);
+      await tester.pump();
+      expect(find.text('waiting'), findsNothing);
+      expect(manager.existing('unrelated'), isTrue);
+      expect(find.text('unrelated'), findsOneWidget);
+      manager.dismissByTag('unrelated');
+      await unrelated;
+    } finally {
+      manager.dismissAll();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('superseded image wait cancel cannot act before unmount',
+      (tester) async {
+    for (final useButton in [false, true]) {
+      final manager = await _manager(tester);
+      final session = const Uuid().v4obj();
+      var cancels = 0;
+      try {
+        manager.showWaitingForImage(session, 'success', 'old wait', 'image',
+            onCancel: () => cancels++);
+        await tester.pump();
+        final oldElement = tester.element(find.byType(CustomAlertDialog));
+        final cancel = useButton
+            ? _messageButton(tester, 'Cancel')
+            : tester
+                .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+                .onCancel!;
+        final tag = manager.showWaitingForImage(
+            session, 'success', 'new wait', 'image',
+            onCancel: () => cancels += 10);
+        expect(oldElement.mounted, isTrue);
+        cancel();
+        expect(cancels, 0);
+        expect(manager.existing(tag), isTrue);
+        await tester.pump();
+        expect(find.text('new wait'), findsOneWidget);
+        _messageButton(tester, 'Cancel')();
+        expect(cancels, 10);
+      } finally {
+        manager.dismissAll();
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    }
+  });
+
+  testWidgets('dismissed image wait cancel cannot act before unmount',
+      (tester) async {
+    final manager = await _manager(tester);
+    final session = const Uuid().v4obj();
+    var cancels = 0;
+    try {
+      final tag = manager.showWaitingForImage(
+          session, 'success', 'old wait', 'image',
+          onCancel: () => cancels++);
+      await tester.pump();
+      final oldElement = tester.element(find.byType(CustomAlertDialog));
+      final cancel = _messageButton(tester, 'Cancel');
+      manager.dismissByTag(tag);
+      final presented = manager.show<void>(
+          (_, __, ___) => const Text('image presented'),
+          tag: 'presented');
+      expect(oldElement.mounted, isTrue);
+      cancel();
+      expect(cancels, 0);
+      await tester.pump();
+      expect(find.text('old wait'), findsNothing);
+      expect(manager.existing('presented'), isTrue);
+      expect(find.text('image presented'), findsOneWidget);
+      manager.dismissByTag('presented');
+      await presented;
+    } finally {
+      manager.dismissAll();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   testWidgets('message submit retires only its entry and dispatches once',
       (tester) async {
     final manager = await _manager(tester);

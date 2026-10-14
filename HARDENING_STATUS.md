@@ -5541,9 +5541,9 @@ exists only to make the current source disposition discoverable.
   `e0231bf4300a192ab6019784ccd56705666590ebba6b9dc8de1841e9f1741c08`;
   `.harness-state/verifier-vm/xrandr-query-accepted-149c9800.json` binds exact source,
   raw output, all before/live/after freezes, endpoint snapshots, limits and joined cleanup.
-  Real X-server/peer
-  resolution changes, blocking-query lifetime, the detached setter child and premature
-  restoration bookkeeping remain OPEN; this is no new LPE-closure claim.
+  Command/task ownership and restoration-record identity now have the source and component
+  corrections recorded above. Real X-server/peer changes, parent/application integration
+  and remaining synchronous discovery callers remain OPEN; this is no LPE-closure claim.
 - R-S11c-10d — Linux process-discovery `pgrep` shell probes
 - R-S11c-10g — Linux SELinux status shell probes
 - R-S11c-10h — Linux config-home correction shell probes

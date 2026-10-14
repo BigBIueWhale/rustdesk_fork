@@ -2152,23 +2152,31 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
-**Windows CM clipboard replies (R-S11c-22): source corrected; response-component tests PASS;
-Windows integration OPEN.** `src/server/clipboard_service.rs` keeps request and reply waits
+**Windows CM clipboard replies (R-S11c-22): source corrected; preceding frame-component tests PASS;
+current typed-component tests PENDING; Windows integration OPEN.** `src/server/clipboard_service.rs` keeps request and reply waits
 inside one two-second initiating timeout, accepts at most one MonitorReady prelude, and
 retains the cached stream only after a successful complete response. Errors and timeouts
 discard the stream; failed/empty CM reads cannot substitute the service process's own
 clipboard. `src/ipc/clipboard_non_file.rs` retains the existing serialized response type
 and checks inline lengths, exclusive raw/inline placement, checked aggregate raw length,
-and exact received-frame length before splitting any bytes. No incomplete reply is returned
-as success and no uncertain request is retried in the same operation.
-Exact source `3f1a48f1` passed `--cm-clipboard-response-tests` in 72 VM seconds:
+and exact received-frame length before splitting any bytes. `7083c707` additionally rejects
+unknown formats before raw reads and returns typed `Clipboard` entries, removing the
+unknown-format-to-text fallback. No incomplete reply is returned as success and no uncertain
+request is retried in the same operation.
+The preceding source `3f1a48f1` passed `--cm-clipboard-response-tests` in 72 VM seconds:
 eight production-type/Bytes/serde tests cover mixed exact zero-copy bytes, short and trailing
 replies, overflow, inline mismatch, conflicting placement, empty/inline-only replies and
 the unchanged JSON shape. Root-locked dependencies, stable artifact, frozen source and
 joined zero-NIC VM cleanup are bound in
 `.harness-state/verifier-vm/cm-clipboard-response-accepted-3f1a48f1.json`.
 Artifact SHA-256 `829a2edc4dac46a1e78d05ba326e5d771622ca7f4ac9dea6f6a535b9b63fbde6`.
-This executes the response component on Linux. The Windows handler/parent compilation,
+The current eleven-test component uses the exact common build script, both production
+protobuf schemas and generated-module facade. It adds whole-reply unknown-format refusal,
+all declared formats and JSON/raw-to-protobuf round-trip checks. Compilation/execution of
+this changed component is PENDING: RAM admission refused before VM creation at 25,592 and
+25,586 MiB against the required 25,600 MiB. The preceding eight-test pass does not validate
+the changed source. The expected pinned Windows golden image and ISO are also absent.
+The accepted preceding run executes only the response component on Linux. The Windows handler/parent compilation,
 real named-pipe truncation/stall/error, deadline and stream retirement, native clipboard
 nonpublication, fresh authorized reconnect and live/stale/disabled/wrong-type/principal
 transactions remain OPEN. No installed-service or LPE closure follows from these tests.

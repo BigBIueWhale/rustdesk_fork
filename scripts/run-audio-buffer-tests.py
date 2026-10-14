@@ -54,7 +54,7 @@ def main():
         fixture = Path(temporary)
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
-            '[dependencies]\nringbuf = "=0.3.3"\nlog = "=0.4.22"\n'
+            '[dependencies]\nringbuf = "=0.3.3"\nlog = "=0.4.22"\ndasp_sample = "=0.11.0"\n'
             '[[test]]\nname = "audio_buffer"\n'
             f'path = "{repo}/scripts/test-audio-buffer.rs"\n')
         run(["cargo", "generate-lockfile", "--offline", *config], fixture, timeout=30)
@@ -86,7 +86,7 @@ def main():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"audio-buffer source changed: {name}")
             print(f"AUDIO_BUFFER_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"AUDIO_BUFFER_ARTIFACT=pass sha256={artifact_sha} tests=8 unchanged=before-after", flush=True)
+        print(f"AUDIO_BUFFER_ARTIFACT=pass sha256={artifact_sha} tests=16 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

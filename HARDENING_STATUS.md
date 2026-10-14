@@ -12248,6 +12248,26 @@ and active markers. Linux executes the portable component directly;
 Windows/Android/Apple CPAL compilation, device playback,
 actual trim timing, concurrent deployed sessions and whole-app acceptance remain OPEN.
 
+The CPAL output callback now publishes initial readiness through an atomic flag and
+calls the portable buffer's `fill_output` directly. Its blocking readiness/ring locks,
+timestamp-derived sleep of up to roughly 2.5 seconds, per-callback temporary `Vec`,
+and platform-specific underflow branches are removed. Normal filling uses `try_lock`,
+converts available PCM straight into the output slice, and fills a short or contended
+quantum with converted silence. Contention preserves the ring for a later callback;
+poisoned acquisition remains fatal. This does not establish universal real-time safety,
+continuous stream health, backend allocation behavior or native device latency.
+
+The expanded portable-buffer fixture has sixteen tests: the prior eight clock/ring
+cases, six fill/underflow/FIFO/held-producer/poison cases, and two fixture tests for
+CPAL's actual dasp_sample conversions across all ten supported sample types and a
+thread-local allocation counter with a positive control. It checks 1000 warmed fill
+calls plus a contended fill for Rust allocations on the calling thread. The fixture
+uses the root-locked dasp_sample 0.11.0 dependency; no product dependency changes.
+Execution is pending. Full CPAL/parent/target compilation, native callback cadence,
+backend memory/locking, playback, installed/device performance and teardown remain OPEN.
+Linux PulseAudio write errors are still ignored by `AudioHandler::handle_frame` and
+remain a separate error-finality issue; this callback slice does not close that path.
+
 `OwnedMediaThread` retains the non-cloneable sender and exact decoder handle; the existing bounded
 completion pool owns final joining after close or hard Drop. Viewer and controlled callers retain
 native Opus packet/rate/channel limits and typed outcomes. Controlled playback retains the

@@ -1,7 +1,7 @@
 use hbb_common::log;
 use ringbuf::{ring_buffer::RbBase, Rb};
 use std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, TryLockError},
     time::{Duration, Instant},
 };
 
@@ -128,6 +128,25 @@ impl AudioBuffer {
     pub(super) fn append_pcm(&mut self, buffer: &[f32]) {
         let having = self.append_pcm2(buffer);
         self.try_shrink(having, Instant::now());
+    }
+}
+
+pub(super) fn fill_output<T>(
+    samples: &Mutex<ringbuf::HeapRb<f32>>,
+    output: &mut [T],
+    convert: fn(f32) -> T,
+) {
+    let mut samples = match samples.try_lock() {
+        Ok(samples) => Some(samples),
+        Err(TryLockError::WouldBlock) => None,
+        Err(TryLockError::Poisoned(error)) => panic!("audio PCM ring was poisoned: {error}"),
+    };
+    for output in output {
+        let sample = samples
+            .as_mut()
+            .and_then(|samples| samples.pop())
+            .unwrap_or(0.);
+        *output = convert(sample);
     }
 }
 
@@ -271,5 +290,92 @@ mod tests {
                 Some(start + Duration::from_secs(index as u64) + SHRINK_INTERVAL * 200)
             );
         }
+    }
+
+    #[test]
+    fn output_fill_consumes_fifo_and_pads_a_short_quantum() {
+        let mut buffer = AudioBuffer::default();
+        buffer.resize(4, 1);
+        buffer.append_pcm2(&[0.5, -0.25, 0.75]);
+        let mut output = [9.; 5];
+        fill_output(&buffer.samples, &mut output, |sample| sample);
+        assert_eq!(output, [0.5, -0.25, 0.75, 0., 0.]);
+        assert_eq!(queued(&buffer), 0);
+    }
+
+    #[test]
+    fn empty_output_fill_is_all_silence() {
+        let buffer = AudioBuffer::default();
+        let mut output = [9.; 64];
+        fill_output(&buffer.samples, &mut output, |sample| sample);
+        assert_eq!(output, [0.; 64]);
+    }
+
+    #[test]
+    fn output_fill_preserves_next_quantum_order() {
+        let buffer = full_buffer();
+        let mut empty = [];
+        fill_output(&buffer.samples, &mut empty, |_| -> f32 {
+            panic!("empty output converted")
+        });
+        assert_eq!(queued(&buffer), 8);
+        let mut first = [9.; 3];
+        let mut second = [9.; 5];
+        fill_output(&buffer.samples, &mut first, |sample| sample);
+        fill_output(&buffer.samples, &mut second, |sample| sample);
+        assert_eq!(first, [0., 1., 2.]);
+        assert_eq!(second, [3., 4., 5., 6., 7.]);
+        assert_eq!(queued(&buffer), 0);
+    }
+
+    #[test]
+    fn output_fill_passes_silence_through_the_converter() {
+        let mut buffer = AudioBuffer::default();
+        buffer.resize(4, 1);
+        buffer.append_pcm2(&[1., 2.]);
+        let mut output = [0.; 4];
+        fill_output(&buffer.samples, &mut output, |sample| sample + 10.);
+        assert_eq!(output, [11., 12., 10., 10.]);
+    }
+
+    #[test]
+    fn output_fill_returns_while_the_producer_holds_the_ring() {
+        let buffer = full_buffer();
+        let ring = Arc::clone(&buffer.samples);
+        let producer = buffer.samples.lock().unwrap();
+        let (finished, result) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let mut output = [9.; 8];
+            fill_output(&ring, &mut output, |sample| sample);
+            finished.send(output).unwrap();
+        });
+        let outcome = result.recv_timeout(Duration::from_secs(2));
+        drop(producer);
+        worker.join().unwrap();
+        assert_eq!(
+            outcome.unwrap(),
+            [0.; 8],
+            "fill must return before producer release"
+        );
+        assert_eq!(queued(&buffer), 8);
+        let mut output = [9.; 8];
+        fill_output(&buffer.samples, &mut output, |sample| sample);
+        assert_eq!(output, [0., 1., 2., 3., 4., 5., 6., 7.]);
+    }
+
+    #[test]
+    fn output_fill_refuses_a_poisoned_ring() {
+        let buffer = full_buffer();
+        let poisoned = std::panic::catch_unwind(|| {
+            let _held = buffer.samples.lock().unwrap();
+            panic!("test producer failure");
+        });
+        assert!(poisoned.is_err());
+        let mut output = [9.; 8];
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            fill_output(&buffer.samples, &mut output, |sample| sample);
+        }));
+        assert!(outcome.is_err());
+        assert_eq!(output, [9.; 8]);
     }
 }

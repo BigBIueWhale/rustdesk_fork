@@ -989,7 +989,7 @@ pub struct AudioHandler {
     #[cfg(not(target_os = "linux"))]
     device_channel: u16,
     #[cfg(not(target_os = "linux"))]
-    ready: Arc<std::sync::Mutex<bool>>,
+    ready: Arc<AtomicBool>,
 }
 
 
@@ -1132,7 +1132,7 @@ impl AudioHandler {
             return;
         }
         #[cfg(not(target_os = "linux"))]
-        if self.audio_stream.is_none() || !self.ready.lock().unwrap().clone() {
+        if self.audio_stream.is_none() || !self.ready.load(Ordering::Acquire) {
             return;
         }
         #[cfg(target_os = "linux")]
@@ -1210,53 +1210,9 @@ impl AudioHandler {
         let timeout = None;
         let stream = device.build_output_stream(
             config,
-            move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
-                if !*ready.lock().unwrap() {
-                    *ready.lock().unwrap() = true;
-                }
-
-                let mut n = data.len();
-                let mut lock = audio_buffer.lock().unwrap();
-                let mut having = lock.occupied_len();
-                // android two timestamps, one from zero, another not
-                #[cfg(not(target_os = "android"))]
-                if having < n {
-                    let tms = info.timestamp();
-                    let how_long = tms
-                        .playback
-                        .duration_since(&tms.callback)
-                        .unwrap_or(Duration::from_millis(0));
-
-                    // must long enough to fight back scheuler delay
-                    if how_long > Duration::from_millis(6) && how_long < Duration::from_millis(3000)
-                    {
-                        drop(lock);
-                        std::thread::sleep(how_long.div_f32(1.2));
-                        lock = audio_buffer.lock().unwrap();
-                        having = lock.occupied_len();
-                    }
-
-                    if having < n {
-                        n = having;
-                    }
-                }
-                #[cfg(target_os = "android")]
-                if having < n {
-                    n = having;
-                }
-                let mut elems = vec![0.0f32; n];
-                if n > 0 {
-                    lock.pop_slice(&mut elems);
-                }
-                drop(lock);
-
-                let mut input = elems.into_iter();
-                for sample in data.iter_mut() {
-                    *sample = match input.next() {
-                        Some(x) => T::from_sample(x),
-                        _ => T::from_sample(0.),
-                    };
-                }
+            move |data: &mut [T], _info: &cpal::OutputCallbackInfo| {
+                ready.store(true, Ordering::Release);
+                audio_buffer::fill_output(&audio_buffer, data, T::from_sample);
             },
             err_fn,
             timeout,

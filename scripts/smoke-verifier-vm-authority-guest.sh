@@ -3113,6 +3113,14 @@ run_focused_rust_tests() {
                 scripts/test-audio-buffer.rs scripts/run-audio-buffer-tests.py
             )
             required_tests=(
+                audio_buffer::tests::output_fill_consumes_fifo_and_pads_a_short_quantum
+                audio_buffer::tests::empty_output_fill_is_all_silence
+                audio_buffer::tests::output_fill_preserves_next_quantum_order
+                audio_buffer::tests::output_fill_passes_silence_through_the_converter
+                audio_buffer::tests::output_fill_returns_while_the_producer_holds_the_ring
+                audio_buffer::tests::output_fill_refuses_a_poisoned_ring
+                fill_converts_all_cpal_sample_types_with_correct_silence
+                fill_has_no_allocations_in_the_warmed_normal_path
                 audio_buffer::tests::first_observation_arms_only_its_own_window
                 audio_buffer::tests::exact_interval_trims_without_early_retirement
                 audio_buffer::tests::independently_started_buffers_do_not_postpone_each_other
@@ -4030,7 +4038,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
-        printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=8 bridge=absent\n'
+        printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=16 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
@@ -4167,7 +4175,7 @@ PY
             || fail 'compiled UID-policy test artifact digest is malformed'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-buffer summary count differs'
-        [ "$(grep -Ec '^AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=16 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'AUDIO_BUFFER_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'audio-buffer artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then

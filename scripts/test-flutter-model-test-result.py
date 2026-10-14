@@ -74,7 +74,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("frame-queue"), "frame-queue"), (1, 24))
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
-        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (4, 16))
+        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (7, 39))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"
             path.write_bytes(b"7\n")
@@ -121,7 +121,11 @@ class ResultTests(unittest.TestCase):
                     elif edit == "suite":
                         changed[1]["suite"]["path"] = "/test/unrelated_test.dart"
                     elif edit == "wrong-suite":
-                        started[0]["suiteID"] = len(result.CREDENTIAL_DIALOG_TESTS) - 1
+                        suite_count = sum(e["type"] == "suite" for e in changed)
+                        started[0]["suiteID"] = (
+                            (started[0]["suiteID"] + 1) % suite_count
+                            if suite_count > 1 else 1
+                        )
                     else:
                         del changed[-3:-1]
                     with self.assertRaises(result.ResultError):

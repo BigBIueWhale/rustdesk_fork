@@ -2079,6 +2079,20 @@ Current normative specification SHA-256: `3ffe686d37d12f624b305c927bafa3ff71a42e
 
 ### Current authority and source closure
 
+**Dialog close authority: source corrected; focused execution pending.** The
+overlay receiver gives each entry a `DialogClose` carrying exact current-object
+identity and a result-bearing close. Replacement or dismissal revokes it before
+Flutter unmounts the old widget. Loading cancel closes only its own entry and
+dispatches once after a successful claim; password submit checks current authority
+before calling its receiver, and cancel/accepted follow-up require a successful
+close. The void closer and loading `dismissAll()` path are removed. The focused
+credential shard targets 39 named tests across seven suites, including real
+overlay replacement/cancellation before unmount and affected file-dialog mocks.
+Native execution, actual peer/session/route cancellation and installed acceptance
+remain OPEN. `closeConnection()` still selects the active desktop tab or navigates
+the global mobile route after an await; binding those actions to an exact session
+and retained tab/route, including terminal-window ownership, remains required.
+
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.
 `ConnectPasswordDialog` owns the password controller, initial preference and

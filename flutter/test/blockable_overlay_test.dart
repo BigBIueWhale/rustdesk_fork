@@ -162,7 +162,7 @@ void main() {
     final overlayState = BlockableOverlayState();
     final manager = OverlayDialogManager();
     manager.setOverlayState(overlayState);
-    late void Function([dynamic]) closeFirst;
+    late DialogClose closeFirst;
     final originalPopRoute = BackButtonInterceptor.handlePopRouteFunction;
     var defaultBackEvents = 0;
     BackButtonInterceptor.handlePopRouteFunction = () async {
@@ -188,18 +188,21 @@ void main() {
     );
     await tester.pump();
     expect(find.text('first dialog'), findsOneWidget);
+    expect(closeFirst.isCurrent, isTrue);
 
     final replacement = manager.show<String>(
       (_, __, ___) => const _TestDialog('replacement dialog'),
       tag: 'connection-state',
     );
+    expect(closeFirst.isCurrent, isFalse);
+    expect(closeFirst('stale completion'), isFalse);
     await tester.pump();
 
     expect(await first, isNull);
     expect(find.text('first dialog'), findsNothing);
     expect(find.text('replacement dialog'), findsOneWidget);
 
-    closeFirst('stale completion');
+    expect(closeFirst('stale completion'), isFalse);
     await tester.pump();
     final replacementStillOwned = manager.existing('connection-state');
 

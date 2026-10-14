@@ -19,7 +19,7 @@ class ConnectPasswordDialog extends StatefulWidget {
 
   final Future<bool?> Function() readRemember;
   final bool Function(String password, bool remember) submitPassword;
-  final VoidCallback close;
+  final DialogClose close;
   final VoidCallback onCancel;
   final VoidCallback onAccepted;
   final String reason;
@@ -42,7 +42,8 @@ class _ConnectPasswordDialogState extends State<ConnectPasswordDialog> {
   String _translate(String text) =>
       widget.translateText?.call(text) ?? translate(text);
 
-  bool get _canSubmit => _rememberReady && !_submitted && !_retired;
+  bool get _canSubmit =>
+      _rememberReady && !_submitted && !_retired && widget.close.isCurrent;
 
   @override
   void initState() {
@@ -89,7 +90,7 @@ class _ConnectPasswordDialogState extends State<ConnectPasswordDialog> {
   void _cancel() {
     if (!mounted || _retired || _submitted) return;
     _retired = true;
-    widget.close();
+    if (!widget.close()) return;
     widget.onCancel();
   }
 
@@ -113,7 +114,7 @@ class _ConnectPasswordDialogState extends State<ConnectPasswordDialog> {
       return;
     }
     _retired = true;
-    widget.close();
+    if (!widget.close()) return;
     widget.onAccepted();
   }
 

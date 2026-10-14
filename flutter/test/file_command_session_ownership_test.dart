@@ -84,9 +84,14 @@ class _DialogHarness extends OverlayDialogManager {
       bool useAnimation = true,
       bool forceGlobal = false}) {
     final result = Completer<T?>();
-    dialog = builder((callback) => callback(), ([dynamic value]) {
-      if (!result.isCompleted) result.complete(value as T?);
-    }, context) as CustomAlertDialog;
+    dialog = builder(
+      (callback) => callback(),
+      DialogClose(
+        isCurrent: () => !result.isCompleted,
+        complete: (value) => result.complete(value as T?),
+      ),
+      context,
+    ) as CustomAlertDialog;
     opened.complete();
     return result.future;
   }

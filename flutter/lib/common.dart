@@ -761,8 +761,27 @@ Future<void> windowOnTop(int? id) async {
   }
 }
 
+class DialogClose {
+  DialogClose({
+    required bool Function() isCurrent,
+    required void Function(dynamic result) complete,
+  })  : _isCurrent = isCurrent,
+        _complete = complete;
+
+  final bool Function() _isCurrent;
+  final void Function(dynamic result) _complete;
+
+  bool get isCurrent => _isCurrent();
+
+  bool call([dynamic result]) {
+    if (!isCurrent) return false;
+    _complete(result);
+    return true;
+  }
+}
+
 typedef DialogBuilder = Widget Function(
-    StateSetter setState, void Function([dynamic]) close, BuildContext context);
+    StateSetter setState, DialogClose close, BuildContext context);
 
 class Dialog<T> {
   OverlayEntry? entry;
@@ -809,6 +828,10 @@ class OverlayKeyState {
 }
 
 class OverlayDialogManager {
+  OverlayDialogManager({String Function(String text)? translateText})
+      : _translate = translateText ?? translate;
+
+  final String Function(String text) _translate;
   final Map<String, Dialog> _dialogs = {};
   var _overlayKeyState = OverlayKeyState();
   int _tagCount = 0;
@@ -876,16 +899,13 @@ class OverlayDialogManager {
     final dialog = Dialog<T>();
     _dialogs[dialogTag] = dialog;
 
-    close([res]) {
-      if (identical(_dialogs[dialogTag], dialog)) {
+    final close = DialogClose(
+      isCurrent: () => identical(_dialogs[dialogTag], dialog),
+      complete: (res) {
         _dialogs.remove(dialogTag);
-      }
-      try {
         dialog.complete(res);
-      } catch (e) {
-        debugPrint("Dialog complete catch error: $e");
-      }
-    }
+      },
+    );
 
     dialog.entry = OverlayEntry(builder: (context) {
       bool innerClicked = false;
@@ -909,6 +929,7 @@ class OverlayDialogManager {
     });
     overlayState.insert(dialog.entry!);
     bool backInterceptor(bool stopDefaultButtonEvent, RouteInfo routeInfo) {
+      if (!close.isCurrent) return false;
       if (backDismiss) {
         close();
       }
@@ -931,7 +952,7 @@ class OverlayDialogManager {
     }
     show((setState, close, context) {
       cancel() {
-        dismissAll();
+        if (!close()) return;
         if (onCancel != null) {
           onCancel();
         }
@@ -948,18 +969,19 @@ class OverlayDialogManager {
                   const Center(child: CircularProgressIndicator()),
                   const SizedBox(height: 20),
                   Center(
-                      child: Text(translate(text),
+                      child: Text(_translate(text),
                           style: const TextStyle(fontSize: 15))),
                   const SizedBox(height: 20),
                   Offstage(
                       offstage: !showCancel,
                       child: Center(
                           child: (isDesktop || isWebDesktop)
-                              ? dialogButton('Cancel', onPressed: cancel)
+                              ? dialogButton('Cancel', onPressed: cancel,
+                                  translateText: _translate)
                               : TextButton(
                                   style: flatButtonStyle,
                                   onPressed: cancel,
-                                  child: Text(translate('Cancel'),
+                                  child: Text(_translate('Cancel'),
                                       style: const TextStyle(
                                           color: MyTheme.accent)))))
                 ])),

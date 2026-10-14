@@ -20,7 +20,10 @@ Future<void> _show(
         key: ValueKey(owner),
         readRemember: readRemember,
         submitPassword: submitPassword ?? (_, __) => false,
-        close: close ?? () {},
+        close: DialogClose(
+          isCurrent: () => true,
+          complete: (_) => close?.call(),
+        ),
         onCancel: onCancel ?? () {},
         onAccepted: onAccepted ?? () {},
         translateText: (text) => text,

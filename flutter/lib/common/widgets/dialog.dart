@@ -316,7 +316,7 @@ void enterConnectPasswordDialog(
             password: password,
             remember: remember,
           ),
-          close: () => close(),
+          close: close,
           onCancel: closeConnection,
           onAccepted: () => dialogManager.showLoading(translate('Connecting...'),
               onCancel: closeConnection),

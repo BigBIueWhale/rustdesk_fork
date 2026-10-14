@@ -7594,6 +7594,7 @@ run_flutter_model_tests() {
                     format_paths+=(
                         lib/models/android_permission_request_coordinator.dart
                         lib/models/rgba_publication_order.dart
+                        lib/models/terminal_connection_pool.dart
                         lib/common/mobile_connection_navigation.dart
                         lib/common/widgets/overlay.dart
                         lib/common/remote_key_routing.dart

@@ -1,6 +1,15 @@
 import 'package:flutter_hbb/models/model.dart';
+import 'package:flutter_hbb/models/terminal_connection_pool.dart';
 import 'package:flutter_hbb/models/terminal_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class _EqualTerminalOwner {
+  @override
+  bool operator ==(Object other) => other is _EqualTerminalOwner;
+
+  @override
+  int get hashCode => 0;
+}
 
 class _TerminalParent implements FFI {
   @override
@@ -31,6 +40,90 @@ void _open(TerminalModel model) => model.handleTerminalResponse({
     });
 
 void main() {
+  test('terminal pool retains one owner until its last release', () {
+    final pool = TerminalConnectionPool<Object>();
+    final owner = Object();
+    pool.install('peer', owner);
+    expect(pool.retain('peer', owner), isTrue);
+    expect(pool.referenceCount('peer'), 2);
+    expect(pool.release('peer', owner), isNull);
+    expect(pool['peer'], same(owner));
+    expect(pool.referenceCount('peer'), 1);
+    expect(pool.release('peer', owner), same(owner));
+    expect(pool['peer'], isNull);
+    expect(pool.referenceCount('peer'), 0);
+    expect(pool.length, 0);
+  });
+
+  test('terminal pool refuses an unowned retain or release', () {
+    final pool = TerminalConnectionPool<Object>();
+    final owner = Object();
+    final foreign = Object();
+    pool.install('peer', owner);
+    expect(pool.retain('peer', foreign), isFalse);
+    expect(pool.release('peer', foreign), isNull);
+    expect(pool['peer'], same(owner));
+    expect(pool.referenceCount('peer'), 1);
+    expect(pool.length, 1);
+  });
+
+  test('terminal pool replacement survives old page releases', () {
+    final pool = TerminalConnectionPool<Object>();
+    final oldOwner = Object();
+    final newOwner = Object();
+    pool.install('peer', oldOwner);
+    expect(pool.retain('peer', oldOwner), isTrue);
+    pool.install('peer', newOwner);
+    expect(pool.release('peer', oldOwner), isNull);
+    expect(pool.release('peer', oldOwner), isNull);
+    expect(pool['peer'], same(newOwner));
+    expect(pool.referenceCount('peer'), 1);
+    expect(pool.release('peer', newOwner), same(newOwner));
+  });
+
+  test('terminal pool authority uses identity rather than equality', () {
+    final pool = TerminalConnectionPool<_EqualTerminalOwner>();
+    final owner = _EqualTerminalOwner();
+    final equalOwner = _EqualTerminalOwner();
+    expect(owner, equalOwner);
+    pool.install('peer', owner);
+    expect(pool.retain('peer', equalOwner), isFalse);
+    expect(pool.release('peer', equalOwner), isNull);
+    expect(pool['peer'], same(owner));
+    expect(pool.referenceCount('peer'), 1);
+    pool.install('peer', equalOwner);
+    expect(pool.release('peer', owner), isNull);
+    expect(pool['peer'], same(equalOwner));
+    expect(pool.referenceCount('peer'), 1);
+  });
+
+  test('terminal pool retires its slot before external cleanup', () {
+    final pool = TerminalConnectionPool<Object>();
+    final owner = Object();
+    final successor = Object();
+    final independent = Object();
+    pool.install('peer', owner);
+    pool.install('other', independent);
+    final retired = pool.release('peer', owner);
+    expect(retired, same(owner));
+    expect(pool['peer'], isNull);
+    pool.install('peer', successor);
+    expect(pool.release('peer', retired!), isNull);
+    expect(pool['peer'], same(successor));
+    expect(pool['other'], same(independent));
+    expect(pool.length, 2);
+  });
+
+  test('terminal pool cannot reset a live owner reference count', () {
+    final pool = TerminalConnectionPool<Object>();
+    final owner = Object();
+    pool.install('peer', owner);
+    expect(pool.retain('peer', owner), isTrue);
+    expect(() => pool.install('peer', owner), throwsStateError);
+    expect(pool.referenceCount('peer'), 2);
+    expect(pool['peer'], same(owner));
+  });
+
   testWidgets('current terminal open completion notifies once', (tester) async {
     final parent = _TerminalParent();
     final model = _install(parent);

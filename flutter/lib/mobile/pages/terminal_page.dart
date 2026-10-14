@@ -101,7 +101,7 @@ class _TerminalPageState extends State<TerminalPage>
     _keyboardDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-    TerminalConnectionManager.releaseConnection(widget.id);
+    TerminalConnectionManager.releaseConnection(widget.id, _ffi);
   }
 
   @override

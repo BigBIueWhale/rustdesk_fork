@@ -304,6 +304,7 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
       lib/models/session_event_queue.dart \
       lib/models/session_stream_finality.dart \
       lib/models/presentation_recovery.dart \
+      lib/models/terminal_connection_pool.dart \
       lib/common/mobile_connection_navigation.dart \
       lib/models/rgba_publication_order.dart \
       lib/desktop/pages/remote_page.dart \

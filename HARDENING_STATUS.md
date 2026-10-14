@@ -2282,7 +2282,7 @@ a type-only error, and failed restoration cannot prevent route dismissal.
 Two production-helper widget regressions use a real Navigator and hold the
 platform-channel reply through replacement-route publication, then deliver
 success or failure. They are prepared, uncompiled and unexecuted; the full
-model inventory is 25 suites/271 cases. Native execution, actual peer/session/
+model inventory is 25 suites/277 cases. Native execution, actual peer/session/
 route cancellation and installed acceptance remain OPEN. Binding every close
 caller to its initiating session and retained tab/route/window, including the
 terminal window, remains required. Focused isolation still requires 4 GiB guest
@@ -6167,7 +6167,7 @@ disposed models reject events. Empty decoded fragments consume no pre-layout buf
 entries. Six production-decoder regressions cover every two-packet split of mixed
 Hebrew/accented/CJK/emoji/ANSI output, bytewise continuation, malformed bytes, EOF,
 independent terminals and replacement isolation. They are included in the existing
-model checkpoint (25 suites/271 cases). The focused command
+model checkpoint (25 suites/277 cases). The focused command
 `scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --terminal-output`
 runs the same six tests with exact suite/name/completion checks. It inherits the
 existing 4-GiB guest, 2-GiB networkless container, 90-second test and 300-second VM
@@ -6193,6 +6193,23 @@ included in the model checkpoint above and remain UNEXECUTED. Admitted native co
 completion, actual input/resize delivery, page replacement/unmount, transport/native
 terminal generations and resource bounds remain OPEN. Diff/syntax/AST/catalog checks
 are preparatory; no VM/compiler/test/count ran while RAM admission was unavailable.
+
+**Terminal connection pool — SOURCE CORRECTED; MODEL/NATIVE EXECUTION OPEN.**
+The shared desktop/mobile terminal pool keeps each FFI and its reference count
+in one entry. Retain/release requires that exact object; a late old page cannot
+decrement or retire a replacement under the same peer ID. Both page disposers
+pass their own FFI. Last release removes the pool entry before registration
+retirement and native close. Get registration deletion is exact-object checked,
+and a closed predecessor's owned registration is removed before replacement;
+foreign or failed registration retirement refuses admission. Native close errors
+have type-only diagnostics. Six actual production-pool regressions cover retained
+references, wrong owners, same-ID replacement, value-equal distinct objects,
+retirement before later publication and rejection of a same-owner count reset.
+They are prepared, uncompiled and unexecuted in the existing model checkpoint.
+Real FFI/Get adapter, page disposal/reentry, close completion, terminal I/O,
+platform/resource/installed and release acceptance remain OPEN. Mobile terminal
+view closing still needs an exact route owner; it is not the global mobile FFI.
+Loading/credential migration remains open until that route authority is correct.
 
 **R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the

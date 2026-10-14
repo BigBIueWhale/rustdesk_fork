@@ -123,7 +123,7 @@ class _TerminalPageState extends State<TerminalPage>
     _terminalModel.dispose();
     _terminalFocusNode.dispose();
     // Release connection reference instead of closing directly
-    TerminalConnectionManager.releaseConnection(widget.id);
+    TerminalConnectionManager.releaseConnection(widget.id, _ffi);
     super.dispose();
   }
 

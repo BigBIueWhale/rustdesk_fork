@@ -1,11 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import '../../models/model.dart';
+import '../../models/terminal_connection_pool.dart';
 
 /// Manages terminal connections to ensure one FFI instance per peer
 class TerminalConnectionManager {
-  static final Map<String, FFI> _connections = {};
-  static final Map<String, int> _connectionRefCount = {};
+  static final _connections = TerminalConnectionPool<FFI>();
   
   // Track service IDs per peer
   static final Map<String, String> _serviceIds = {};
@@ -17,12 +19,23 @@ class TerminalConnectionManager {
     required bool? isSharedPassword,
     required String? connToken,
   }) {
+    final tag = 'terminal_$peerId';
     final existingFfi = _connections[peerId];
     if (existingFfi != null && !existingFfi.closed) {
-      // Increment reference count
-      _connectionRefCount[peerId] = (_connectionRefCount[peerId] ?? 0) + 1;
-      debugPrint('[TerminalConnectionManager] Reusing existing connection for peer $peerId. Reference count: ${_connectionRefCount[peerId]}');
+      if (!Get.isRegistered<FFI>(tag: tag) ||
+          !identical(Get.find<FFI>(tag: tag), existingFfi) ||
+          !_connections.retain(peerId, existingFfi)) {
+        throw StateError('Terminal connection admission is not owned');
+      }
+      debugPrint('[TerminalConnectionManager] Reusing existing connection for peer $peerId. Reference count: ${_connections.referenceCount(peerId)}');
       return existingFfi;
+    }
+
+    if (Get.isRegistered<FFI>(tag: tag)) {
+      if (!identical(Get.find<FFI>(tag: tag), existingFfi) ||
+          !GetInstance().delete<FFI>(tag: tag)) {
+        throw StateError('Terminal connection registration is not owned');
+      }
     }
 
     // Create new FFI instance for first terminal
@@ -36,35 +49,30 @@ class TerminalConnectionManager {
       isTerminal: true,
     );
     
-    _connections[peerId] = ffi;
-    _connectionRefCount[peerId] = 1;
+    _connections.install(peerId, ffi);
     
     // Register the FFI instance with Get for dependency injection
-    Get.put<FFI>(ffi, tag: 'terminal_$peerId');
+    Get.put<FFI>(ffi, tag: tag);
     
     debugPrint('[TerminalConnectionManager] New connection created. Total connections: ${_connections.length}');
     return ffi;
   }
 
-  /// Release a connection reference
-  static void releaseConnection(String peerId) {
-    final refCount = _connectionRefCount[peerId] ?? 0;
-    debugPrint('[TerminalConnectionManager] Releasing connection for peer $peerId. Current ref count: $refCount');
-    
-    if (refCount <= 1) {
-      // Last reference, close the connection
-      final ffi = _connections[peerId];
-      if (ffi != null) {
-        debugPrint('[TerminalConnectionManager] Closing connection for peer $peerId (last reference)');
-        ffi.close();
-        _connections.remove(peerId);
-        _connectionRefCount.remove(peerId);
-        Get.delete<FFI>(tag: 'terminal_$peerId');
+  /// Release only the connection retained by this page.
+  static void releaseConnection(String peerId, FFI owner) {
+    final retired = _connections.release(peerId, owner);
+    if (retired == null) return;
+    final tag = 'terminal_$peerId';
+    try {
+      if (Get.isRegistered<FFI>(tag: tag) &&
+          identical(Get.find<FFI>(tag: tag), retired) &&
+          !GetInstance().delete<FFI>(tag: tag)) {
+        throw StateError('Terminal connection registration did not retire');
       }
-    } else {
-      // Decrement reference count
-      _connectionRefCount[peerId] = refCount - 1;
-      debugPrint('[TerminalConnectionManager] Connection still in use. New ref count: ${_connectionRefCount[peerId]}');
+    } finally {
+      unawaited(retired.close().catchError((Object error, StackTrace _) {
+        debugPrint('Terminal connection close failed: ${error.runtimeType}');
+      }));
     }
   }
 
@@ -83,7 +91,8 @@ class TerminalConnectionManager {
   static int getConnectionCount() => _connections.length;
   
   /// Get terminal count for a peer
-  static int getTerminalCount(String peerId) => _connectionRefCount[peerId] ?? 0;
+  static int getTerminalCount(String peerId) =>
+      _connections.referenceCount(peerId);
   
   /// Get service ID for a peer
   static String? getServiceId(String peerId) => _serviceIds[peerId];

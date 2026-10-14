@@ -215,10 +215,25 @@ def validate(repo: Path) -> None:
             "verifier_vm_image_provenance verify-local",
             '--image-ref "$IMAGE_ID" "${APPLE_IMAGE_SPEC[@]}"',
             'archive_current_source >"$APPLE_SOURCE_ARCHIVE"',
-            "snapshot-subtree-create",
+            'readonly APPLE_VENDOR_IDENTITY=',
+            'findmnt -n -o OPTIONS --mountpoint "$APPLE_VENDOR"',
+            'verify-subtree \\\n  --tree "$APPLE_VENDOR"',
         ),
         "image proof before source execution",
     )
+    for value in (
+        'readonly APPLE_VENDOR="$REPO/online/cargo-vendor"',
+        'for option in ro nodev nosuid noexec;',
+        '"$APPLE_VENDOR_IDENTITY"',
+        '"$APPLE_VENDOR_MOUNT_OPTIONS"',
+    ):
+        require(apple, value, "sealed private vendor projection")
+    for value in (
+        'cp -a --reflink=never -- "$vendor" "$private_vendor"',
+        'mount --bind "$private_vendor" "$projected_vendor"',
+        'mount -o remount,bind,ro,nodev,nosuid,noexec "$projected_vendor"',
+    ):
+        require(guest_apple, value, "independent read-only guest vendor snapshot")
 
     image_preflight = section(
         apple,

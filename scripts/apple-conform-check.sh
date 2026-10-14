@@ -382,8 +382,7 @@ verifier_vm_image_provenance verify-local \
 
 readonly APPLE_SOURCE_ARCHIVE="$APPLE_CHECK_TMP/source.tar"
 readonly APPLE_SOURCE="$APPLE_CHECK_TMP/source"
-readonly APPLE_VENDOR_PARENT="$APPLE_CHECK_TMP/vendor-input"
-readonly APPLE_VENDOR="$APPLE_VENDOR_PARENT/subtree"
+readonly APPLE_VENDOR="$REPO/online/cargo-vendor"
 readonly APPLE_TARGET="$APPLE_CHECK_TMP/target"
 readonly APPLE_CARGO_CONFIG="$APPLE_CHECK_TMP/cargo-config.toml"
 install -d -m 0700 "$APPLE_SOURCE" "$APPLE_TARGET"
@@ -397,11 +396,22 @@ if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
   apple_check_stage snapshot-self-test
   /usr/bin/python3 -I -S scripts/online-input-provenance.py --self-test
 fi
-apple_check_stage vendor-snapshot
-/usr/bin/python3 scripts/online-input-provenance.py snapshot-subtree-create \
-  --source online/cargo-vendor \
-  --destination "$APPLE_VENDOR_PARENT" \
-  --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+apple_check_stage vendor-admission
+[ -d "$APPLE_VENDOR" ] && [ ! -L "$APPLE_VENDOR" ] \
+  && [ "$(stat -c '%u:%g:%a' -- "$APPLE_VENDOR")" = "$BUILD_UID:$BUILD_GID:500" ] \
+  || die 'private projected Apple Cargo vendor metadata differs'
+readonly APPLE_VENDOR_IDENTITY="$(stat -c '%d:%i' -- "$APPLE_VENDOR")"
+APPLE_VENDOR_MOUNT_OPTIONS="$(findmnt -n -o OPTIONS --mountpoint "$APPLE_VENDOR")" \
+  || die 'private projected Apple Cargo vendor mount is absent'
+for option in ro nodev nosuid noexec; do
+  case ",$APPLE_VENDOR_MOUNT_OPTIONS," in
+    *,"$option",*) ;;
+    *) die "private projected Apple Cargo vendor lacks $option" ;;
+  esac
+done
+/usr/bin/python3 -I -S scripts/online-input-provenance.py verify-subtree \
+  --tree "$APPLE_VENDOR" --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+  || die 'private projected Apple Cargo vendor closure differs'
 {
   printf '[net]\noffline = true\n'
   sed 's#directory = .*#directory = "/vendor"#' online/cargo-vendor-config.toml
@@ -514,6 +524,9 @@ COMMON_CHECK=(verifier_vm_docker run --rm --interactive --pull=never --network=n
 verify_apple_postconditions() {
   [ ! -e "$REPO/src/version.rs" ] \
     || die 'Apple verification created source-tree version output'
+  [ "$(stat -c '%d:%i' -- "$APPLE_VENDOR")" = "$APPLE_VENDOR_IDENTITY" ] \
+    && [ "$(findmnt -n -o OPTIONS --mountpoint "$APPLE_VENDOR")" = "$APPLE_VENDOR_MOUNT_OPTIONS" ] \
+    || die 'private projected Apple Cargo vendor identity or mount changed'
   /usr/bin/python3 scripts/online-input-provenance.py verify-subtree \
     --tree "$APPLE_VENDOR" --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
     || die 'private Cargo vendor snapshot changed during Apple verification'

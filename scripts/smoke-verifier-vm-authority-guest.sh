@@ -114,7 +114,8 @@ case "$#:${8:-}" in
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
-            || "${13}" = --audio-buffer || "${13}" = --fusermount-fd ]] || exit 2
+            || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
+            || "${13}" = --fusermount-process ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -3103,6 +3104,40 @@ run_focused_rust_tests() {
             [ "${#clipboard_tests[@]}" -eq 13 ] \
                 || fail 'focused clipboard test inventory differs'
             required_tests=("${clipboard_tests[@]}")
+        elif [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
+            container_name=rustdesk-fusermount-process-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=64m
+            source_fingerprints=(
+                Cargo.lock libs/hbb_common/src/platform/linux.rs
+                libs/clipboard/src/platform/unix/fuse/mod.rs
+                libs/clipboard/src/platform/unix/fuse/fusermount_fd.rs
+                libs/clipboard/src/platform/unix/fuse/fusermount_fd_tests.rs
+                libs/clipboard/src/platform/unix/fuse/fusermount_process.rs
+                libs/clipboard/src/platform/unix/fuse/fusermount_process_tests.rs
+                scripts/run-fusermount-process-tests.py
+            )
+            required_tests=(
+                fusermount_process::tests::normal_completion_drains_output_and_retains_the_original
+                fusermount_process::tests::failed_exit_is_preserved_after_reaping
+                fusermount_process::tests::absent_descriptor_deadline_kills_and_reaps_the_actual_child
+                fusermount_process::tests::output_exhaustion_closes_admission_and_reaps
+                fusermount_process::tests::admitted_mount_cleanup_follows_exact_child_retirement
+                fusermount_process::tests::malformed_rights_never_publish_a_mount_owner
+                fusermount_process::tests::guard_construction_unwind_retires_the_actual_child
+                fusermount_process::tests::missing_pipe_refuses_and_reaps_before_return
+                fusermount_process::tests::unmount_uses_the_same_owned_output_boundary
+                fusermount_fd::tests::receives_exact_native_object_and_closes_on_drop
+                fusermount_fd::tests::received_descriptor_is_cloexec
+                fusermount_fd::tests::extra_descriptor_is_refused_and_all_handles_close
+                fusermount_fd::tests::truncated_rights_close_every_delivered_handle
+                fusermount_fd::tests::payload_without_rights_refuses
+                fusermount_fd::tests::peer_eof_refuses
+                fusermount_fd::tests::duplicated_descriptor_is_cloexec_and_retains_object
+                fusermount_fd::tests::duplicate_bad_descriptor_refuses
+                fusermount_fd::tests::descriptors_do_not_survive_exec
+            )
         elif [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
             container_name=rustdesk-fusermount-fd-tests
             memory=1g
@@ -3751,6 +3786,11 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        if [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
+                            python3 -I -S /source/scripts/run-fusermount-process-tests.py \
+                                /source /tmp/cargo-home/config.toml
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
                             python3 -I -S /source/scripts/run-fusermount-fd-tests.py \
                                 /source /tmp/cargo-home/config.toml
@@ -4065,6 +4105,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
+        printf 'FUSE_PROCESS_PROFILE=fusermount-process stage=container-start tests=18 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
         printf 'FUSE_FD_PROFILE=fusermount-fd stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
@@ -4203,6 +4245,11 @@ PY
         uid_test_artifact_sha="$(sha256sum "$target_root/uid-policy-tests" | awk '{ print $1 }')"
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'FUSE process summary count differs'
+        [ "$(grep -Ec '^FUSE_PROCESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=18 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'FUSE_PROCESS_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'FUSE process artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'FUSE fd summary count differs'
         [ "$(grep -Ec '^FUSE_FD_ARTIFACT=pass sha256=[0-9a-f]{64} tests=9 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -4492,7 +4539,12 @@ PY
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        if [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
+        if [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
+            grep -E '^test (fusermount_fd|fusermount_process)::tests::.* \.\.\. ok$|^FUSE_PROCESS_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            printf 'FUSE_PROCESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-helper-loop-and-extracted-owner rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
             grep -E '^test fusermount_fd::tests::.* \.\.\. ok$|^FUSE_FD_(ARTIFACT|DEPENDENCIES|INPUT|BASELINE)=' "$output"
             printf 'FUSE_FD_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-descriptor-transfer rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

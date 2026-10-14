@@ -57,7 +57,7 @@ obligations and remaining document-role cleanup stay open.
 Current normative specification identity:
 
 ```text
-159defca7018bd87611a16b4e0aacffea99cf7b49c566bd6ce798271bb78c033  requirements.html
+560a0d4efb1752481ecb65d0ac936e7e75058846202c315434b884ac3ef0e58f  requirements.html
 ```
 
 ## Current Verdict
@@ -1329,6 +1329,18 @@ RAM refusal and failed fixture-target selection remain unaccepted, separately re
 serial, storage, retirement and prior attempts. This runs the private descriptor module; native
 helper launch/wait/failure, device identity, directory/principal/race, mounted FUSE, complete parent
 compilation, installed and release acceptance remain OPEN.
+The mount and unmount call sites now use one private helper IO loop with the existing
+`OwnedAuthorizationChild`: stdout/stderr are drained alongside the descriptor reply, their combined
+captured bytes are capped at 1 MiB, and a five-second initiating deadline requests exact child
+retirement. Reply-channel closure precedes child retirement, which precedes mount cleanup on error
+or unwind. The guard retains the original received descriptor; session duplication occurs only
+after successful helper completion. Consuming `wait_with_output` and direct unmount `output` paths
+are removed. Two opaque-owner pipe accessors expose IO without transferring child wait authority.
+**Focused execution pending:** `--fusermount-process-tests` compiles the unchanged extracted child
+owner plus its new IO accessors, the actual private helper loop and 18 tests (nine process scenarios
+and nine nearest descriptor regressions). Process actors and cleanup callbacks are fixtures;
+actual setuid helper/device/mount, descendant lifetime, principal/permission failures, full parent
+compilation, async caller placement, installed and sustained resource/latency acceptance remain OPEN.
 The global OPEN tables remain authoritative for exact-current native packages,
 cross-platform peer behavior, focus/background freshness, latency, reconnect, concurrency, soak, resource
 bounds, cleanup, cold artifacts, independent reproduction, and external review.

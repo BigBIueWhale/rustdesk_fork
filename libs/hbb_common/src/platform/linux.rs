@@ -7,7 +7,7 @@ use std::{
         unix::{fs::MetadataExt, process::CommandExt},
     },
     path::{Component, Path, PathBuf},
-    process::{Child, Command, ExitStatus, Stdio},
+    process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio},
 };
 use users::{get_current_uid, get_effective_uid, get_user_by_uid, os::unix::UserExt};
 
@@ -184,6 +184,14 @@ impl OwnedAuthorizationChild {
             self.reaped = true;
         }
         Ok(result)
+    }
+
+    pub fn take_stdout(&mut self) -> Option<ChildStdout> {
+        self.child.stdout.take()
+    }
+
+    pub fn take_stderr(&mut self) -> Option<ChildStderr> {
+        self.child.stderr.take()
     }
 
     pub fn terminate_and_reap(&mut self) -> io::Result<()> {

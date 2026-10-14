@@ -7287,19 +7287,19 @@ check_r_s11e32_helper_contract "$loginctl_helper" 'configure_command_close_nonst
 check_r_s11e32_helper_contract "$xrandr_query_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'xrandr_command::run(command)?'
 check_r_s11e32_helper_contract "$xrandr_change_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'xrandr_command::run(command)?'
 check_r_s11e32_helper_contract "$systemctl_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
-check_r_s11e32_helper_contract "$fuse_unmount_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
+check_r_s11e32_helper_contract "$fuse_unmount_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'fusermount_process::unmount(&mut command)'
 check_r_s11e32_helper_contract "$hwcodec_check_helper" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 for fuse_binding in \
   'communication_fd: child_socket.as_raw_fd()' \
   'configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])' \
-  'let child = command.spawn()'; do
+  'fusermount_process::mount('; do
   grep -qF "$fuse_binding" <<<"$fuse_mount_helper" || r_s11e32="$r_s11e32 fusermount-explicit-descriptor-contract-missing"
 done
 if grep -qF 'set_fd_cloexec(child_socket.as_raw_fd(), false)' libs/clipboard/src/platform/unix/fuse/mod.rs; then
   r_s11e32="$r_s11e32 fusermount-parent-inheritability-window-present"
 fi
 fuse_policy_line=$(grep -nF 'configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])' <<<"$fuse_mount_helper" | head -n1 | cut -d: -f1)
-fuse_spawn_line=$(grep -nF 'let child = command.spawn()' <<<"$fuse_mount_helper" | head -n1 | cut -d: -f1)
+fuse_spawn_line=$(grep -nF 'fusermount_process::mount(' <<<"$fuse_mount_helper" | head -n1 | cut -d: -f1)
 if [ -z "$fuse_policy_line" ] || [ -z "$fuse_spawn_line" ] \
   || [ "$fuse_policy_line" -ge "$fuse_spawn_line" ]; then
   r_s11e32="$r_s11e32 fusermount-descriptor-policy-order-invalid"
@@ -10437,6 +10437,7 @@ fi
 echo "== (3c-iii-b) Linux FUSE clipboard mount-component byte validation (R-S11a/R-S8) =="
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fuse_mount_component --color never
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fusermount_fd::tests:: --color never -- --test-threads=1
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fusermount_process::tests:: --color never -- --test-threads=1
 
 # (3c-iii-c) Linux FUSE FileContentsResponse delivery is peer-driven after
 # PAKE. Each response is byte-capped before protobuf conversion, but the local

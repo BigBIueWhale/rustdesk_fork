@@ -1,11 +1,12 @@
 mod cs;
 mod fusermount_fd;
+mod fusermount_process;
 
 use super::filetype::FileDescription;
 use crate::{ClipboardFile, CliprdrError};
 use cs::{FuseFileContentResponse, FuseFileContentResponseRouter, FuseServer};
 use fuser::MountOption;
-use fusermount_fd::{duplicate_owned_fd, receive_fusermount_fd};
+use fusermount_fd::duplicate_owned_fd;
 use hbb_common::{
     config::APP_NAME,
     log,
@@ -336,43 +337,16 @@ fn mount_with_fixed_fusermount(
                 "failed to constrain trusted fusermount helper descriptors: {e}"
             ))
         })?;
-    let child = command.spawn().map_err(|e| {
+    let retained_path = mount_point.to_path_buf();
+    let (output, mount_guard) = fusermount_process::mount(
+        &mut command,
+        child_socket,
+        receive_socket,
+        move |fd| ClipboardFuseMountGuard::new(retained_path, fd),
+    )
+    .map_err(|e| {
         fuse_common_error(format!(
-            "failed to start trusted fusermount helper {}: {e}",
-            helper.display()
-        ))
-    })?;
-    drop(child_socket);
-
-    let fuse_fd = match receive_fusermount_fd(&receive_socket) {
-        Ok(fuse_fd) => fuse_fd,
-        Err(err) => {
-            drop(receive_socket);
-            let output = child.wait_with_output().map_err(|wait_err| {
-                fuse_common_error(format!(
-                    "failed to wait for trusted fusermount helper after fd receive error ({err}): {wait_err}"
-                ))
-            })?;
-            log_fusermount_output("mount", &output);
-            return Err(fuse_common_error(format!(
-                "trusted fusermount helper did not return a FUSE fd: {err}"
-            )));
-        }
-    };
-    drop(receive_socket);
-    let mount_guard = match duplicate_owned_fd(fuse_fd.as_raw_fd()) {
-        Ok(fd) => ClipboardFuseMountGuard::new(mount_point.to_path_buf(), fd),
-        Err(err) => {
-            unmount_clipboard_fuse_mount(mount_point);
-            return Err(fuse_common_error(format!(
-                "failed to duplicate FUSE fd: {err}"
-            )));
-        }
-    };
-
-    let output = child.wait_with_output().map_err(|e| {
-        fuse_common_error(format!(
-            "failed to wait for trusted fusermount helper {}: {e}",
+            "trusted fusermount mount transaction {} failed: {e}",
             helper.display()
         ))
     })?;
@@ -385,7 +359,9 @@ fn mount_with_fixed_fusermount(
             String::from_utf8_lossy(&output.stderr)
         )));
     }
-
+    let fuse_fd = duplicate_owned_fd(mount_guard.fuse_fd.as_raw_fd()).map_err(|err| {
+        fuse_common_error(format!("failed to duplicate completed FUSE fd: {err}"))
+    })?;
     Ok((fuse_fd, mount_guard))
 }
 
@@ -667,9 +643,9 @@ fn fixed_fusermount_unmount(mount_point: &Path) -> Result<(), CliprdrError> {
             "failed to constrain trusted fusermount unmount helper descriptors: {e}"
         ))
     })?;
-    let output = command.output().map_err(|e| {
+    let output = fusermount_process::unmount(&mut command).map_err(|e| {
         fuse_common_error(format!(
-            "failed to start trusted fusermount unmount helper {}: {e}",
+            "trusted fusermount unmount transaction {} failed: {e}",
             helper.display()
         ))
     })?;

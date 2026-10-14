@@ -21,20 +21,13 @@ pub(super) fn receive_fusermount_fd(socket: &UnixStream) -> io::Result<OwnedFd> 
     message.msg_iov = &mut iov;
     message.msg_iovlen = 1;
     message.msg_control = control.as_mut_ptr().cast();
-    let received_bytes = loop {
-        message.msg_controllen = control_len;
-        message.msg_flags = 0;
-        let result = unsafe {
-            libc::recvmsg(socket.as_raw_fd(), &mut message, libc::MSG_CMSG_CLOEXEC)
-        };
-        if result >= 0 {
-            break result;
-        }
-        let error = io::Error::last_os_error();
-        if error.kind() != io::ErrorKind::Interrupted {
-            return Err(error);
-        }
+    message.msg_controllen = control_len;
+    let received_bytes = unsafe {
+        libc::recvmsg(socket.as_raw_fd(), &mut message, libc::MSG_CMSG_CLOEXEC)
     };
+    if received_bytes < 0 {
+        return Err(io::Error::last_os_error());
+    }
 
     let header_len = unsafe { libc::CMSG_LEN(0) } as usize;
     let expected_len = unsafe { libc::CMSG_LEN(mem::size_of::<RawFd>() as _) } as usize;

@@ -76,7 +76,7 @@ def main():
         fixture = Path(temporary)
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
-            '[dependencies]\nlibc = "=0.2.171"\n[lib]\npath = "lib.rs"\n')
+            '[dependencies]\nlibc = "=0.2.171"\n[lib]\nname = "rustdesk_fusermount_fd"\npath = "lib.rs"\n')
         (fixture / "lib.rs").write_text(f'#[path = "{repo / MODULE}"] mod fusermount_fd;\n')
         run(["cargo", "generate-lockfile", "--offline", *config], fixture, timeout=30)
         lock_bytes = (fixture / "Cargo.lock").read_bytes()

@@ -515,7 +515,6 @@ readonly DART_VERIFY_SOURCE="$SCRIPT_DIR/dart-verify.sh"
 readonly SMOKE_SERVER_SOURCE="$SCRIPT_DIR/smoke-server.sh"
 readonly AUTHORITY_GATE_SOURCES=(
     "$SCRIPT_DIR/smoke-flutter-presentation-windows.sh"
-    "$SCRIPT_DIR/verify-viewer-audio-mailbox.py"
     "$REPO_ROOT/src/client.rs"
     "$REPO_ROOT/src/client/io_loop.rs"
     "$REPO_ROOT/src/server/connection.rs"

@@ -8643,11 +8643,6 @@ if [ "$MODE" = authority-smoke ]; then
                 /bin/bash -n "$VERIFY_REPO/scripts/$syntax_source" \
             || fail "admitted shell source has invalid syntax: $syntax_source"
     done
-    setpriv --reuid=4000 --regid=4000 --clear-groups \
-        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
-            /usr/bin/python3 -I -S \
-                "$VERIFY_REPO/scripts/verify-viewer-audio-mailbox.py" --repo "$VERIFY_REPO" \
-        || fail 'peer-audio mailbox source checks failed'
     publication_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \

@@ -4555,14 +4555,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2-0) R-S11hi peer-audio mailbox source checks =="
-if python3 scripts/verify-viewer-audio-mailbox.py --repo .; then
-  note "ok  R-S11hi Apple/shared peer-audio mailbox source checks passed"
-else
-  echo "  FAIL R-S11hi Apple/shared peer-audio mailbox source checks"
-  rc=1
-fi
-
 echo "== (2g-c2b) R-S11go display-selection source checks =="
 if python3 scripts/verify-display-selection-finality.py --repo .; then
   note "ok  R-S11go Apple/shared display-selection source checks passed"

@@ -14076,12 +14076,28 @@ explicit write failure rather than a successful empty block.
 **Current library disposition — source corrected; named ordinary-user Linux behavior PASSED,
 native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.
 
+**Filesystem-only job authority — source implemented; compilation/native execution PENDING.**
+All production constructors use filesystem paths. `TransferJob` now accepts and retains a
+private immutable `PathBuf` plus an optional owned Tokio `File`; the path getter borrows,
+and the unused `DataSource`/`DataStream` enums,
+`MemoryCursor`, buffer extractor and memory-only read/write/resume/completion branches are
+deleted. Every job uses admitted file-list/index/length checks and native file ownership.
+Write flush, sync, close-before-publication and exact sidecar cleanup remain explicit.
+Viewer, CM and controlled-side callers use the path directly; metadata-scan admission is
+unconditional. The `dataSource` JSON path field consumed by Flutter CM remains explicit.
+The existing encrypted writer-receipt test now reads actual `.zip` files and requires exact
+raw bytes/file index while back-pressured. The obsolete memory-receive test is removed;
+the focused filesystem gate retains both file-block tests and requires a real job-serialization
+test for the CM field. Current library/app compilation, those tests and native/platform
+transactions remain PENDING. No live memory-backend constructor or newly proven LPE was
+found; this removes an obsolete production abstraction rather than claiming an exploit.
+
 **Per-block resource admission — production codec component PASSED; integration OPEN.** Sending and
 receiving share the 128-KiB size from private `fs/file_block.rs`. Its `decode` admits raw
 bytes by borrowing and compressed bytes only through a 128-KiB zstd history-window limit
 and one fixed 128-KiB-plus-one-byte output buffer. Input/output excess, malformed/truncated
 content and larger advertised windows refuse before `TransferJob::write` opens a stream,
-changes files, writes bytes or publishes progress; memory receive uses the same boundary.
+changes files, writes bytes or publishes progress.
 The general decoder path is removed from file writes. `--file-block-tests` compiles the
 actual decoder and production compressor with root-locked zstd 0.13.1 and the extracted
 actual compression-level declaration. Six cases cover raw backing identity, production
@@ -14094,7 +14110,7 @@ remained unchanged before/after. The accepted zero-NIC, guest-only networkless/n
 run retained all outcomes and source/dependency bindings, added no host endpoint and joined
 cleanup; `.harness-state/verifier-vm/file-block-accepted-a9a4774a.json` binds its receipts.
 These controls execute the prior output-only helper, not a historical whole-app A/B.
-The three `--hbb-common-fs` filesystem/memory tests and whole-parent compilation
+The current `--hbb-common-fs` filesystem/serialization tests and whole-parent compilation
 also remain unexecuted after RAM admission refusal; the component lane will not replace
 them. Earlier library acceptance does not cover these changes. Installed/native integration,
 whole-process allocation/resource measurements and other-platform acceptance remain OPEN.
@@ -14104,7 +14120,7 @@ whole-process allocation/resource measurements and other-platform acceptance rem
 | File-list ownership | `new_read_with_budget` admits the send list at construction. `set_files_with_limit` admits a receive list once, including an empty list, after all validation succeeds; refused first admission remains retryable. Every duplicate or replacement list refuses before changing entries, sizes, indexes, flags, streams or claims. Completion and byte limits keep their original admitted authority. |
 | Send starting index | `new_read_with_budget` and its `new_read` wrapper admit filesystem indexes only in the inclusive range zero through the exact list length. An invalid index fails before job publication rather than becoming an empty successful transfer. |
 | Whole-list receive completion | `finalize_write` requires the active file's exact next index to equal the whole admitted list length before consuming the stream or publishing the claim. Empty and explicitly skipped lists retain their no-stream completion path. |
-| Send length and EOF | `read` owns a per-file position and probes at most the admitted remainder plus one byte, capped at 128 KiB. Short EOF or overrun closes the stream and fails before publishing the affected block or changing counters/file number. Successful seek establishes the position; skip, retirement, fresh open and exact EOF reset it. Memory-cursor behavior is unchanged. |
+| Send length and EOF | `read` owns a per-file position and probes at most the admitted remainder plus one byte, capped at 128 KiB. Short EOF or overrun closes the stream and fails before publishing the affected block or changing counters/file number. Successful seek establishes the position; skip, retirement, fresh open and exact EOF reset it. |
 | Direct read-step retirement | `handle_read_jobs` uses one selected vector entry through initialization, reading and terminal retirement, and returns at most one exact writer receipt. The separate initializer and numeric-ID finished list are deleted. |
 | Send resume source ownership | `set_stream_offset` checks metadata and seeks on the retained send `FileStream`; it does not reopen the pathname to replace an active stream. A first open remains provisional until length validation and seek succeed. Refused offsets preserve confirmation and accounting. |
 | Resume admitted size | Both roles reject offsets beyond the admitted entry size before path resolution, open, seek or accounting. Send also checks the retained object's actual length; in-place growth does not enlarge the admitted authority. |

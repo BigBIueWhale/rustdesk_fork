@@ -2674,7 +2674,7 @@ async fn handle_fs(
                 id,
                 fs::JobType::Generic,
                 "".to_string(),
-                fs::DataSource::FilePath(PathBuf::from(&path)),
+                PathBuf::from(&path),
                 file_num,
                 false,
                 false,
@@ -2878,9 +2878,9 @@ async fn handle_fs(
                         file_size,
                         ..Default::default()
                     };
-                    match (job.job.files().get(file_num as usize), &job.job.data_source) {
-                        (Some(file), fs::DataSource::FilePath(base)) => {
-                            let path = get_string(&fs::TransferJob::join(base, &file.name));
+                    match job.job.files().get(file_num as usize) {
+                        Some(file) => {
+                            let path = get_string(&fs::TransferJob::join(job.job.path(), &file.name));
                             match inspect_write_destination(is_resume, &path, &digest) {
                                 Ok(DigestCheckResult::NoSuchFile) => {
                                     job.job.set_digest(file_size, last_modified);
@@ -3138,12 +3138,12 @@ async fn start_read_job(
     let budget = file_transfer_enumeration_budget();
     let path_clone = path.clone();
     let result = spawn_blocking(move || -> ResultType<fs::TransferJob> {
-        let data_source = fs::DataSource::FilePath(PathBuf::from(&path));
+        let source_path = PathBuf::from(&path);
         fs::TransferJob::new_read_with_budget(
             id,
             fs::JobType::Generic,
             "".to_string(),
-            data_source,
+            source_path,
             file_num,
             include_hidden,
             true,

@@ -9129,12 +9129,11 @@ impl Connection {
                                             }
                                         } else {
                                             // Handle file reading in Connection on non-Windows
-                                            let data_source =
-                                                fs::DataSource::FilePath(PathBuf::from(&path));
+                                            let source_path = PathBuf::from(&path);
                                             self.create_and_start_read_job(
                                                 id,
                                                 job_type,
-                                                data_source,
+                                                source_path,
                                                 s.file_num,
                                                 s.include_hidden,
                                                 od,
@@ -11999,7 +11998,7 @@ impl Connection {
         &mut self,
         id: i32,
         job_type: fs::JobType,
-        data_source: fs::DataSource,
+        source_path: PathBuf,
         file_num: i32,
         include_hidden: bool,
         overwrite_detection: bool,
@@ -12010,23 +12009,19 @@ impl Connection {
             self.send(fs::new_error(id, msg, -1)).await;
             return;
         }
-        let _metadata_scan_permit = if matches!(&data_source, fs::DataSource::FilePath(_)) {
-            match crate::ui_cm_interface::try_acquire_file_metadata_scan() {
-                Ok(permit) => Some(permit),
-                Err(msg) => {
-                    self.send(fs::new_error(id, msg, -1)).await;
-                    return;
-                }
+        let _metadata_scan_permit = match crate::ui_cm_interface::try_acquire_file_metadata_scan() {
+            Ok(permit) => permit,
+            Err(msg) => {
+                self.send(fs::new_error(id, msg, -1)).await;
+                return;
             }
-        } else {
-            None
         };
         let budget = crate::ui_cm_interface::file_transfer_enumeration_budget();
         match fs::TransferJob::new_read_with_budget(
             id,
             job_type,
             "".to_string(),
-            data_source,
+            source_path,
             file_num,
             include_hidden,
             false,

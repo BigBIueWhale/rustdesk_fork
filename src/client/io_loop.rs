@@ -558,10 +558,7 @@ fn inspect_viewer_download_digest(
             digest.file_size, file.size
         ));
     }
-    let fs::DataSource::FilePath(base) = &job.data_source else {
-        return Err("download digest has no filesystem destination".to_owned());
-    };
-    let write_path = get_string(&fs::TransferJob::join(base, &file.name));
+    let write_path = get_string(&fs::TransferJob::join(job.path(), &file.name));
     let result =
         fs::inspect_write_destination(peer_supports_resume && job.is_resume, &write_path, digest)
             .map_err(|error| error.to_string())?;
@@ -1987,7 +1984,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 let od = can_enable_overwrite_detection(self.handler.lc.read().unwrap().version);
                 if is_remote {
                     log::debug!("New job {}, write to {} from remote {}", id, to, path);
-                    let to = fs::DataSource::FilePath(PathBuf::from(&to));
+                    let to = PathBuf::from(&to);
                     let job = fs::TransferJob::new_write(
                         id,
                         r#type,
@@ -2008,7 +2005,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         id,
                         r#type,
                         to.clone(),
-                        fs::DataSource::FilePath(PathBuf::from(&path)),
+                        PathBuf::from(&path),
                         file_num,
                         include_hidden,
                         is_remote,
@@ -2065,7 +2062,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         id,
                         r#type,
                         path.clone(),
-                        fs::DataSource::FilePath(PathBuf::from(&to)),
+                        PathBuf::from(&to),
                         file_num,
                         include_hidden,
                         is_remote,
@@ -2078,7 +2075,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         id,
                         r#type,
                         to.clone(),
-                        fs::DataSource::FilePath(PathBuf::from(&path)),
+                        PathBuf::from(&path),
                         file_num,
                         include_hidden,
                         is_remote,
@@ -2128,36 +2125,28 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 } else {
                     if let Some(job) = get_job(id, &mut self.read_jobs) {
-                        match &job.data_source {
-                            fs::DataSource::FilePath(_p) => {
-                                job.is_last_job = false;
-                                job.is_resume = true;
-                                job.set_finished_size_on_resume();
-                                #[cfg(not(windows))]
-                                let files = job.files().clone();
-                                #[cfg(windows)]
-                                let mut files = job.files().clone();
-                                #[cfg(windows)]
-                                if self.handler.peer_platform() != "Windows" {
-                                    // peer is not windows, need transform \ to /
-                                    fs::transform_windows_path(&mut files);
-                                }
-                                let file_num = job.file_num;
-                                let message = fs::new_receive(
-                                    id,
-                                    job.remote.clone(),
-                                    file_num,
-                                    files,
-                                    job.total_size(),
-                                );
-                                if !self.send_tracked_file_action(peer, &message).await {
-                                    return false;
-                                }
-                            }
-                            fs::DataSource::MemoryCursor(_) => {
-                                // unreachable!()
-                                log::error!("Resume job with memory cursor");
-                            }
+                        job.is_last_job = false;
+                        job.is_resume = true;
+                        job.set_finished_size_on_resume();
+                        #[cfg(not(windows))]
+                        let files = job.files().clone();
+                        #[cfg(windows)]
+                        let mut files = job.files().clone();
+                        #[cfg(windows)]
+                        if self.handler.peer_platform() != "Windows" {
+                            // peer is not windows, need transform \ to /
+                            fs::transform_windows_path(&mut files);
+                        }
+                        let file_num = job.file_num;
+                        let message = fs::new_receive(
+                            id,
+                            job.remote.clone(),
+                            file_num,
+                            files,
+                            job.total_size(),
+                        );
+                        if !self.send_tracked_file_action(peer, &message).await {
+                            return false;
                         }
                     }
                 }
@@ -3182,59 +3171,57 @@ impl<T: InvokeUiSession> Remote<T> {
                             if digest.is_upload {
                                 if let Some(job) = fs::get_job(digest.id, &mut self.read_jobs) {
                                     if let Some(file) = job.files().get(digest.file_num as usize) {
-                                        if let fs::DataSource::FilePath(p) = &job.data_source {
-                                            let read_path =
-                                                get_string(&fs::TransferJob::join(p, &file.name));
-                                            let mut overwrite_strategy =
-                                                job.default_overwrite_strategy();
-                                            let mut offset = 0;
-                                            if digest.is_identical && job.is_resume {
-                                                if digest.transferred_size > 0 {
-                                                    overwrite_strategy = Some(true);
-                                                    offset = digest.transferred_size as _;
-                                                }
+                                        let read_path =
+                                            get_string(&fs::TransferJob::join(job.path(), &file.name));
+                                        let mut overwrite_strategy =
+                                            job.default_overwrite_strategy();
+                                        let mut offset = 0;
+                                        if digest.is_identical && job.is_resume {
+                                            if digest.transferred_size > 0 {
+                                                overwrite_strategy = Some(true);
+                                                offset = digest.transferred_size as _;
                                             }
-                                            if let Some(overwrite) = overwrite_strategy {
-                                                let req = FileTransferSendConfirmRequest {
-                                                    id: digest.id,
-                                                    file_num: digest.file_num,
-                                                    union: Some(if overwrite {
-                                                        file_transfer_send_confirm_request::Union::OffsetBlk(offset)
-                                                    } else {
-                                                        file_transfer_send_confirm_request::Union::Skip(
-                                                            true,
-                                                        )
-                                                    }),
-                                                    ..Default::default()
-                                                };
-                                                if let Err(error) = job.confirm(&req).await {
-                                                    let _ = fs::remove_job(
-                                                        digest.id,
-                                                        &mut self.read_jobs,
-                                                    );
-                                                    return self.record_file_flow_failure(
-                                                        ViewerFileWriteContext::control(
-                                                            Some(digest.id),
-                                                            digest.file_num,
-                                                            "confirm peer download",
-                                                        ),
-                                                        error.to_string(),
-                                                    );
-                                                }
-                                                let msg = new_send_confirm(req);
-                                                if !self.send_tracked_file_action(peer, &msg).await
-                                                {
-                                                    return false;
-                                                }
-                                            } else {
-                                                self.handler.override_file_confirm(
+                                        }
+                                        if let Some(overwrite) = overwrite_strategy {
+                                            let req = FileTransferSendConfirmRequest {
+                                                id: digest.id,
+                                                file_num: digest.file_num,
+                                                union: Some(if overwrite {
+                                                    file_transfer_send_confirm_request::Union::OffsetBlk(offset)
+                                                } else {
+                                                    file_transfer_send_confirm_request::Union::Skip(
+                                                        true,
+                                                    )
+                                                }),
+                                                ..Default::default()
+                                            };
+                                            if let Err(error) = job.confirm(&req).await {
+                                                let _ = fs::remove_job(
                                                     digest.id,
-                                                    digest.file_num,
-                                                    read_path,
-                                                    true,
-                                                    digest.is_identical,
+                                                    &mut self.read_jobs,
+                                                );
+                                                return self.record_file_flow_failure(
+                                                    ViewerFileWriteContext::control(
+                                                        Some(digest.id),
+                                                        digest.file_num,
+                                                        "confirm peer download",
+                                                    ),
+                                                    error.to_string(),
                                                 );
                                             }
+                                            let msg = new_send_confirm(req);
+                                            if !self.send_tracked_file_action(peer, &msg).await
+                                            {
+                                                return false;
+                                            }
+                                        } else {
+                                            self.handler.override_file_confirm(
+                                                digest.id,
+                                                digest.file_num,
+                                                read_path,
+                                                true,
+                                                digest.is_identical,
+                                            );
                                         }
                                     }
                                 }
@@ -4449,7 +4436,7 @@ mod tests {
             73,
             fs::JobType::Generic,
             "remote.bin".to_owned(),
-            fs::DataSource::FilePath(temp.path.clone()),
+            temp.path.clone(),
             0,
             false,
             true,
@@ -4521,7 +4508,7 @@ mod tests {
             76,
             fs::JobType::Generic,
             "remote".to_owned(),
-            fs::DataSource::FilePath(temp.path.clone()),
+            temp.path.clone(),
             0,
             false,
             true,
@@ -4536,7 +4523,7 @@ mod tests {
             77,
             fs::JobType::Generic,
             "other remote".to_owned(),
-            fs::DataSource::FilePath(temp.path.clone()),
+            temp.path.clone(),
             0,
             false,
             true,
@@ -4635,7 +4622,7 @@ mod tests {
             75,
             fs::JobType::Generic,
             "remote.bin".to_owned(),
-            fs::DataSource::FilePath(temp.path.clone()),
+            temp.path.clone(),
             0,
             false,
             true,
@@ -4707,7 +4694,7 @@ mod tests {
             74,
             fs::JobType::Generic,
             "remote.bin".to_owned(),
-            fs::DataSource::FilePath(temp.path.clone()),
+            temp.path.clone(),
             0,
             false,
             true,
@@ -4788,7 +4775,7 @@ mod tests {
             75,
             fs::JobType::Generic,
             "remote.bin".to_owned(),
-            fs::DataSource::FilePath(temp.path.clone()),
+            temp.path.clone(),
             0,
             false,
             true,
@@ -4822,7 +4809,7 @@ mod tests {
             76,
             fs::JobType::Generic,
             "remote.bin".to_owned(),
-            fs::DataSource::FilePath(temp.path.clone()),
+            temp.path.clone(),
             0,
             false,
             true,
@@ -4856,7 +4843,7 @@ mod tests {
             77,
             fs::JobType::Generic,
             "remote.bin".to_owned(),
-            fs::DataSource::FilePath(temp.path.clone()),
+            temp.path.clone(),
             0,
             false,
             true,

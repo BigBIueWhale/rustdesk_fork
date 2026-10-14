@@ -1,8 +1,6 @@
 #[cfg(windows)]
 use std::os::windows::prelude::*;
 use std::{
-    fmt::{Debug, Display},
-    io::Cursor,
     path::{Path, PathBuf},
     sync::atomic::{AtomicI32, Ordering},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -12,15 +10,12 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{
     fs::File,
-    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufStream as TokioBufStream},
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
 };
 
 use crate::{anyhow::anyhow, bail, get_version_number, message_proto::*, ResultType, Stream};
 // https://doc.rust-lang.org/std/os/windows/fs/trait.MetadataExt.html
-use crate::{
-    compress::compress,
-    config::Config,
-};
+use crate::{compress::compress, config::Config};
 
 mod file_block;
 use file_block::SIZE as FILE_TRANSFER_BLOCK_SIZE;
@@ -553,53 +548,6 @@ impl JobType {
     }
 }
 
-#[derive(Debug)]
-pub enum DataSource {
-    FilePath(PathBuf),
-    MemoryCursor(Cursor<Vec<u8>>),
-}
-
-impl Default for DataSource {
-    fn default() -> Self {
-        DataSource::FilePath(PathBuf::new())
-    }
-}
-
-impl serde::Serialize for DataSource {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            DataSource::FilePath(p) => serializer.serialize_str(p.to_str().unwrap_or("")),
-            DataSource::MemoryCursor(_) => serializer.serialize_str(""),
-        }
-    }
-}
-
-impl Display for DataSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DataSource::FilePath(p) => write!(f, "File: {}", p.to_string_lossy().to_string()),
-            DataSource::MemoryCursor(_) => write!(f, "Bytes"),
-        }
-    }
-}
-
-impl DataSource {
-    fn to_meta(&self) -> String {
-        match self {
-            DataSource::FilePath(p) => p.to_string_lossy().to_string(),
-            DataSource::MemoryCursor(_) => "".to_string(),
-        }
-    }
-}
-
-enum DataStream {
-    FileStream(File),
-    BufStream(TokioBufStream<Cursor<Vec<u8>>>),
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TransferRole {
     Send,
@@ -609,36 +557,6 @@ enum TransferRole {
 impl Default for TransferRole {
     fn default() -> Self {
         Self::Send
-    }
-}
-
-impl Debug for DataStream {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DataStream::FileStream(fs) => write!(f, "{:?}", fs),
-            DataStream::BufStream(_) => write!(f, "BufStream"),
-        }
-    }
-}
-
-impl DataStream {
-    async fn write_all(&mut self, buf: &[u8]) -> ResultType<()> {
-        match self {
-            DataStream::FileStream(fs) => {
-                fs.write_all(buf).await?;
-                // Native writes must finish within the owning receive operation.
-                fs.flush().await?;
-            }
-            DataStream::BufStream(bs) => bs.write_all(buf).await?,
-        }
-        Ok(())
-    }
-
-    async fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        match self {
-            DataStream::FileStream(fs) => fs.read(buf).await,
-            DataStream::BufStream(bs) => bs.read(buf).await,
-        }
     }
 }
 
@@ -654,7 +572,8 @@ pub struct TransferJob {
     pub id: i32,
     pub r#type: JobType,
     pub remote: String,
-    pub data_source: DataSource,
+    #[serde(rename = "dataSource")]
+    path: PathBuf,
     pub show_hidden: bool,
     pub is_remote: bool,
     pub is_last_job: bool,
@@ -669,7 +588,7 @@ pub struct TransferJob {
     #[serde(skip_serializing)]
     role: TransferRole,
     #[serde(skip_serializing)]
-    data_stream: Option<DataStream>,
+    data_stream: Option<File>,
     #[serde(skip_serializing)]
     receive_write_claim: Option<ReceiveWriteClaim>,
     #[serde(skip_serializing)]
@@ -3209,18 +3128,18 @@ impl TransferJob {
         id: i32,
         r#type: JobType,
         remote: String,
-        data_source: DataSource,
+        path: PathBuf,
         file_num: i32,
         show_hidden: bool,
         is_remote: bool,
         enable_overwrite_detection: bool,
     ) -> Self {
-        log::info!("new write {}", data_source);
+        log::info!("new write File: {}", path.display());
         Self {
             id,
             r#type,
             remote,
-            data_source,
+            path,
             file_num,
             show_hidden,
             is_remote,
@@ -3241,7 +3160,7 @@ impl TransferJob {
         id: i32,
         r#type: JobType,
         remote: String,
-        data_source: DataSource,
+        path: PathBuf,
         file_num: i32,
         show_hidden: bool,
         is_remote: bool,
@@ -3251,7 +3170,7 @@ impl TransferJob {
             id,
             r#type,
             remote,
-            data_source,
+            path,
             file_num,
             show_hidden,
             is_remote,
@@ -3265,35 +3184,29 @@ impl TransferJob {
         id: i32,
         r#type: JobType,
         remote: String,
-        data_source: DataSource,
+        path: PathBuf,
         file_num: i32,
         show_hidden: bool,
         is_remote: bool,
         enable_overwrite_detection: bool,
         budget: FileEnumerationBudget,
     ) -> ResultType<Self> {
-        log::info!("new read {}", data_source);
-        let (files, total_size) = match &data_source {
-            DataSource::FilePath(p) => {
-                let p = p.to_str().ok_or(anyhow!("Invalid path"))?;
-                let files = get_recursive_files_with_budget(p, show_hidden, budget)?;
-                if file_num < 0 || file_num as usize > files.len() {
-                    bail!(
-                        "initial file number {} is outside the admitted file list ({} files)",
-                        file_num,
-                        files.len()
-                    );
-                }
-                let total_size = checked_file_total_size(&files)?;
-                (files, total_size)
-            }
-            DataSource::MemoryCursor(c) => (Vec::new(), c.get_ref().len() as u64),
-        };
+        log::info!("new read File: {}", path.display());
+        let source = path.to_str().ok_or(anyhow!("Invalid path"))?;
+        let files = get_recursive_files_with_budget(source, show_hidden, budget)?;
+        if file_num < 0 || file_num as usize > files.len() {
+            bail!(
+                "initial file number {} is outside the admitted file list ({} files)",
+                file_num,
+                files.len()
+            );
+        }
+        let total_size = checked_file_total_size(&files)?;
         Ok(Self {
             id,
             r#type,
             remote,
-            data_source,
+            path,
             file_num,
             show_hidden,
             is_remote,
@@ -3306,19 +3219,14 @@ impl TransferJob {
         })
     }
 
-    pub async fn get_buf_data(self) -> ResultType<Option<Vec<u8>>> {
-        match self.data_stream {
-            Some(DataStream::BufStream(mut bs)) => {
-                bs.flush().await?;
-                Ok(Some(bs.into_inner().into_inner()))
-            }
-            _ => Ok(None),
-        }
-    }
-
     #[inline]
     pub fn files(&self) -> &Vec<FileEntry> {
         &self.files
+    }
+
+    #[inline]
+    pub fn path(&self) -> &PathBuf {
+        &self.path
     }
 
     #[inline]
@@ -3335,11 +3243,7 @@ impl TransferJob {
         if self.files_admitted {
             bail!("file list has already been admitted");
         }
-        let base = match &self.data_source {
-            DataSource::FilePath(base) => Some(base),
-            DataSource::MemoryCursor(_) => None,
-        };
-        validate_transfer_file_list(base, &files, max_files)?;
+        validate_transfer_file_list(Some(&self.path), &files, max_files)?;
         if self.file_num < 0 || self.file_num as usize > files.len() {
             bail!(
                 "initial file number {} is outside the admitted file list ({} files)",
@@ -3399,9 +3303,7 @@ impl TransferJob {
     }
 
     async fn finish_current_write_file(&mut self) -> ResultType<()> {
-        let DataSource::FilePath(base) = &self.data_source else {
-            return Ok(());
-        };
+        let base = &self.path;
         if self.file_num < 0 || self.file_num as usize >= self.files.len() {
             bail!("invalid active write file number {}", self.file_num);
         }
@@ -3430,19 +3332,13 @@ impl TransferJob {
                 self.file_num
             );
         }
-        let stream = self
+        let mut file = self
             .data_stream
             .take()
             .ok_or_else(|| anyhow!("write file {} has no admitted data stream", self.file_num))?;
-        match stream {
-            DataStream::FileStream(mut file) => {
-                file.flush().await?;
-                file.sync_all().await?;
-            }
-            DataStream::BufStream(_) => {
-                bail!("file-backed write job owns an in-memory data stream")
-            }
-        }
+        file.flush().await?;
+        file.sync_all().await?;
+        drop(file);
         let claim = self
             .receive_write_claim
             .take()
@@ -3545,31 +3441,24 @@ impl TransferJob {
         if block.id != self.id {
             bail!("Wrong id");
         }
-        let file_backed = matches!(&self.data_source, DataSource::FilePath(_));
-        if file_backed {
-            if block.file_num < 0 {
-                bail!("Wrong file number");
-            }
-            let file_num = block.file_num as usize;
-            if file_num >= self.files.len() {
-                bail!("Wrong file number");
-            }
-            if block.file_num != self.file_num {
-                let expected = self
-                    .file_num
-                    .checked_add(1)
-                    .ok_or_else(|| anyhow!("write file number overflow"))?;
-                if block.file_num != expected {
-                    bail!(
-                        "unexpected write file transition from {} to {}",
-                        self.file_num,
-                        block.file_num
-                    );
-                }
+        if block.file_num < 0 || block.file_num as usize >= self.files.len() {
+            bail!("Wrong file number");
+        }
+        if block.file_num != self.file_num {
+            let expected = self
+                .file_num
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("write file number overflow"))?;
+            if block.file_num != expected {
+                bail!(
+                    "unexpected write file transition from {} to {}",
+                    self.file_num,
+                    block.file_num
+                );
             }
         }
         let bytes = file_block::decode(&block.data, block.compressed)?;
-        let receive_file_offset = if file_backed && block.file_num != self.file_num {
+        let receive_file_offset = if block.file_num != self.file_num {
             0
         } else {
             self.receive_file_offset
@@ -3577,15 +3466,13 @@ impl TransferJob {
         let receive_file_offset = receive_file_offset
             .checked_add(bytes.len() as u64)
             .ok_or_else(|| anyhow!("received file byte counter overflow"))?;
-        if file_backed {
-            let expected_size = self.files[block.file_num as usize].size;
-            if receive_file_offset > expected_size {
-                bail!(
-                    "received file {} exceeds declared size {}",
-                    block.file_num,
-                    expected_size
-                );
-            }
+        let expected_size = self.files[block.file_num as usize].size;
+        if receive_file_offset > expected_size {
+            bail!(
+                "received file {} exceeds declared size {}",
+                block.file_num,
+                expected_size
+            );
         }
         let finished_size = self
             .finished_size
@@ -3596,45 +3483,31 @@ impl TransferJob {
             .checked_add(block.data.len() as u64)
             .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
 
-        if file_backed {
-            if block.file_num != self.file_num {
-                self.finish_current_write_file().await?;
-                self.file_num = block.file_num;
-            }
-            if self.data_stream.is_none() {
-                if self.receive_write_claim.is_some() {
-                    bail!("receive write claim exists without its data stream");
-                }
-                let base = match &self.data_source {
-                    DataSource::FilePath(base) => base,
-                    DataSource::MemoryCursor(_) => {
-                        bail!("file-path write branch changed data-source variant")
-                    }
-                };
-                let entry = &self.files[block.file_num as usize];
-                let final_path = join_validated_path(base, &entry.name)?;
-                let digest = self.digest;
-                let (stream_file, claim) = tokio::task::spawn_blocking(move || {
-                    ReceiveWriteClaim::start_new(final_path, digest)
-                })
-                .await??;
-                self.data_stream = Some(DataStream::FileStream(File::from_std(stream_file)));
-                self.receive_write_claim = Some(claim);
-            }
-        } else if self.data_stream.is_none() {
-            let cursor = match &self.data_source {
-                DataSource::MemoryCursor(cursor) => cursor.clone(),
-                DataSource::FilePath(_) => {
-                    bail!("in-memory write branch changed data-source variant")
-                }
-            };
-            self.data_stream = Some(DataStream::BufStream(TokioBufStream::new(cursor)));
+        if block.file_num != self.file_num {
+            self.finish_current_write_file().await?;
+            self.file_num = block.file_num;
         }
-        self.data_stream
+        if self.data_stream.is_none() {
+            if self.receive_write_claim.is_some() {
+                bail!("receive write claim exists without its data stream");
+            }
+            let entry = &self.files[block.file_num as usize];
+            let final_path = join_validated_path(&self.path, &entry.name)?;
+            let digest = self.digest;
+            let (stream_file, claim) = tokio::task::spawn_blocking(move || {
+                ReceiveWriteClaim::start_new(final_path, digest)
+            })
+            .await??;
+            self.data_stream = Some(File::from_std(stream_file));
+            self.receive_write_claim = Some(claim);
+        }
+        let file = self
+            .data_stream
             .as_mut()
-            .ok_or(anyhow!("data stream is None"))?
-            .write_all(&bytes)
-            .await?;
+            .ok_or(anyhow!("data stream is None"))?;
+        file.write_all(&bytes).await?;
+        // Native writes must finish within the owning receive operation.
+        file.flush().await?;
         self.receive_file_offset = receive_file_offset;
         self.finished_size = finished_size;
         self.transferred = transferred;
@@ -3654,42 +3527,28 @@ impl TransferJob {
     /// Returns Ok(true) if job is done, Ok(false) otherwise.
     async fn open_data_stream(&mut self) -> ResultType<bool> {
         let file_num = self.file_num as usize;
-        match &mut self.data_source {
-            DataSource::FilePath(p) => {
-                if file_num >= self.files.len() {
-                    // job done
-                    self.data_stream.take();
-                    return Ok(true);
-                };
-                if self.data_stream.is_none() {
-                    match File::open(Self::join(p, &self.files[file_num].name)).await {
-                        Ok(file) => {
-                            self.data_stream = Some(DataStream::FileStream(file));
-                            self.send_file_offset = 0;
-                            self.file_confirmed = false;
-                            self.file_is_waiting = false;
-                        }
-                        Err(err) => return Err(err.into()),
-                    }
-                }
-            }
-            DataSource::MemoryCursor(c) => {
-                if self.data_stream.is_none() {
-                    let mut t = std::io::Cursor::new(Vec::new());
-                    std::mem::swap(&mut t, c);
-                    self.data_stream = Some(DataStream::BufStream(TokioBufStream::new(t)));
-                }
-            }
+        if file_num >= self.files.len() {
+            self.data_stream.take();
+            return Ok(true);
+        }
+        if self.data_stream.is_none() {
+            let file = File::open(Self::join(&self.path, &self.files[file_num].name)).await?;
+            self.data_stream = Some(file);
+            self.send_file_offset = 0;
+            self.file_confirmed = false;
+            self.file_is_waiting = false;
         }
         Ok(false)
     }
 
     /// Get current file's digest (last_modified, file_size) for overwrite detection.
     async fn get_current_digest(&self) -> ResultType<(u64, u64)> {
-        let meta = match self.data_stream.as_ref().ok_or(anyhow!("file is None"))? {
-            DataStream::FileStream(file) => file.metadata().await?,
-            DataStream::BufStream(_) => bail!("No digest for buf stream"),
-        };
+        let meta = self
+            .data_stream
+            .as_ref()
+            .ok_or(anyhow!("file is None"))?
+            .metadata()
+            .await?;
         let last_modified = meta
             .modified()?
             .duration_since(SystemTime::UNIX_EPOCH)?
@@ -3748,36 +3607,27 @@ impl TransferJob {
         }
 
         let file_num = self.file_num as usize;
-        let (name, expected_size) = match &self.data_source {
-            DataSource::FilePath(p) => {
-                if file_num >= self.files.len() {
-                    self.data_stream.take();
-                    return Ok(None);
-                };
-                let name = if self.files.len() == 1 && self.files[file_num].name.is_empty() {
-                    p.file_name()
-                        .map(|p| p.to_str().unwrap_or(""))
-                        .unwrap_or("")
-                } else {
-                    &self.files[file_num].name
-                };
-                (name, Some(self.files[file_num].size))
-            }
-            DataSource::MemoryCursor(..) => ("", None),
+        if file_num >= self.files.len() {
+            self.data_stream.take();
+            return Ok(None);
+        }
+        let name = if self.files.len() == 1 && self.files[file_num].name.is_empty() {
+            self.path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("")
+        } else {
+            &self.files[file_num].name
         };
-        let read_limit = match expected_size {
-            Some(size) => {
-                let remaining = size
-                    .checked_sub(self.send_file_offset)
-                    .ok_or_else(|| anyhow!("send position exceeds declared file size"))?;
-                if remaining < FILE_TRANSFER_BLOCK_SIZE as u64 {
-                    // A nonempty probe distinguishes exact EOF from an oversized source.
-                    remaining as usize + 1
-                } else {
-                    FILE_TRANSFER_BLOCK_SIZE
-                }
-            }
-            None => FILE_TRANSFER_BLOCK_SIZE,
+        let expected_size = self.files[file_num].size;
+        let remaining = expected_size
+            .checked_sub(self.send_file_offset)
+            .ok_or_else(|| anyhow!("send position exceeds declared file size"))?;
+        let read_limit = if remaining < FILE_TRANSFER_BLOCK_SIZE as u64 {
+            // A nonempty probe distinguishes exact EOF from an oversized source.
+            remaining as usize + 1
+        } else {
+            FILE_TRANSFER_BLOCK_SIZE
         };
         let mut buf: Vec<u8> = vec![0; read_limit];
         let mut compressed = false;
@@ -3802,31 +3652,23 @@ impl TransferJob {
                 }
             }
         }
-        let next_send_offset = match expected_size {
-            Some(size) => {
-                let next = self
-                    .send_file_offset
-                    .checked_add(offset as u64)
-                    .ok_or_else(|| anyhow!("send position overflow"))?;
-                if next > size || (offset < read_limit && next < size) {
-                    self.data_stream = None;
-                    bail!(
-                        "source length changed at file {}: read position {}, declared size {}",
-                        file_num,
-                        next,
-                        size
-                    );
-                }
-                Some(next)
-            }
-            None => None,
-        };
+        let next_send_offset = self
+            .send_file_offset
+            .checked_add(offset as u64)
+            .ok_or_else(|| anyhow!("send position overflow"))?;
+        if next_send_offset > expected_size
+            || (offset < read_limit && next_send_offset < expected_size)
+        {
+            self.data_stream = None;
+            bail!(
+                "source length changed at file {}: read position {}, declared size {}",
+                file_num,
+                next_send_offset,
+                expected_size
+            );
+        }
         buf.truncate(offset);
         if offset == 0 {
-            if matches!(self.data_source, DataSource::MemoryCursor(_)) {
-                self.data_stream.take();
-                return Ok(None);
-            }
             self.file_num += 1;
             self.data_stream = None;
             self.send_file_offset = 0;
@@ -3837,7 +3679,7 @@ impl TransferJob {
                 .finished_size
                 .checked_add(offset as u64)
                 .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
-            if matches!(self.data_source, DataSource::FilePath(_)) && !is_compressed_file(name) {
+            if !is_compressed_file(name) {
                 let tmp = compress(&buf)?;
                 if tmp.len() < buf.len() {
                     buf = tmp;
@@ -3850,9 +3692,7 @@ impl TransferJob {
                 .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
             self.finished_size = finished_size;
             self.transferred = transferred;
-            if let Some(next) = next_send_offset {
-                self.send_file_offset = next;
-            }
+            self.send_file_offset = next_send_offset;
         }
         Ok(Some(FileTransferBlock {
             id: self.id,
@@ -3963,74 +3803,68 @@ impl TransferJob {
     }
 
     async fn set_stream_offset(&mut self, file_num: usize, offset: u64) -> ResultType<()> {
-        if let DataSource::FilePath(p) = &self.data_source {
-            if file_num >= self.files.len() {
-                bail!("confirmation file number {} is out of range", file_num);
-            }
-            let entry = &self.files[file_num];
-            if offset > entry.size {
-                bail!(
-                    "confirmed offset {} exceeds declared file size {}",
-                    offset,
-                    entry.size
-                );
-            }
-            let path = self
-                .resolve_entry_path(p, &entry.name)
-                .ok_or_else(|| anyhow!("invalid confirmation path for file {}", file_num))?;
-            let transferred = self
-                .transferred
-                .checked_add(offset)
-                .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
-            let finished_size = self
-                .finished_size
-                .checked_add(offset)
-                .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
-            match self.role {
-                TransferRole::Receive => {
-                    if self.receive_write_claim.is_some() {
-                        bail!("receive write job already owns a destination claim");
-                    }
-                    let digest = self.digest;
-                    let (stream_file, claim) = tokio::task::spawn_blocking(move || {
-                        ReceiveWriteClaim::resume(path, digest, offset)
-                    })
-                    .await??;
-                    self.data_stream = Some(DataStream::FileStream(File::from_std(stream_file)));
-                    self.receive_write_claim = Some(claim);
-                }
-                TransferRole::Send => {
-                    let mut opened_file = None;
-                    let file = match self.data_stream.as_mut() {
-                        Some(DataStream::FileStream(file)) => file,
-                        Some(DataStream::BufStream(_)) => {
-                            bail!("cannot seek an in-memory stream to a confirmed file offset")
-                        }
-                        None => opened_file.insert(File::open(&path).await?),
-                    };
-                    let available = file.metadata().await?.len();
-                    if offset > available {
-                        bail!(
-                            "confirmed offset {} exceeds file length {}",
-                            offset,
-                            available
-                        );
-                    }
-                    file.seek(std::io::SeekFrom::Start(offset)).await?;
-                    if let Some(file) = opened_file {
-                        self.data_stream = Some(DataStream::FileStream(file));
-                    }
-                }
-            }
-            self.transferred = transferred;
-            self.finished_size = finished_size;
-            match self.role {
-                TransferRole::Receive => self.receive_file_offset = offset,
-                TransferRole::Send => self.send_file_offset = offset,
-            }
-            return Ok(());
+        if file_num >= self.files.len() {
+            bail!("confirmation file number {} is out of range", file_num);
         }
-        bail!("cannot seek an in-memory transfer to a confirmed file offset")
+        let entry = &self.files[file_num];
+        if offset > entry.size {
+            bail!(
+                "confirmed offset {} exceeds declared file size {}",
+                offset,
+                entry.size
+            );
+        }
+        let path = self
+            .resolve_entry_path(&self.path, &entry.name)
+            .ok_or_else(|| anyhow!("invalid confirmation path for file {}", file_num))?;
+        let transferred = self
+            .transferred
+            .checked_add(offset)
+            .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
+        let finished_size = self
+            .finished_size
+            .checked_add(offset)
+            .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
+        match self.role {
+            TransferRole::Receive => {
+                if self.receive_write_claim.is_some() {
+                    bail!("receive write job already owns a destination claim");
+                }
+                let digest = self.digest;
+                let (stream_file, claim) = tokio::task::spawn_blocking(move || {
+                    ReceiveWriteClaim::resume(path, digest, offset)
+                })
+                .await??;
+                self.data_stream = Some(File::from_std(stream_file));
+                self.receive_write_claim = Some(claim);
+            }
+            TransferRole::Send => {
+                let mut opened_file = None;
+                let file = match self.data_stream.as_mut() {
+                    Some(file) => file,
+                    None => opened_file.insert(File::open(&path).await?),
+                };
+                let available = file.metadata().await?.len();
+                if offset > available {
+                    bail!(
+                        "confirmed offset {} exceeds file length {}",
+                        offset,
+                        available
+                    );
+                }
+                file.seek(std::io::SeekFrom::Start(offset)).await?;
+                if let Some(file) = opened_file {
+                    self.data_stream = Some(file);
+                }
+            }
+        }
+        self.transferred = transferred;
+        self.finished_size = finished_size;
+        match self.role {
+            TransferRole::Receive => self.receive_file_offset = offset,
+            TransferRole::Send => self.send_file_offset = offset,
+        }
+        Ok(())
     }
 
     pub async fn confirm(&mut self, r: &FileTransferSendConfirmRequest) -> ResultType<()> {
@@ -4048,9 +3882,7 @@ impl TransferJob {
                 self.file_num()
             );
         }
-        if matches!(&self.data_source, DataSource::FilePath(_))
-            && (r.file_num < 0 || self.files.get(r.file_num as usize).is_none())
-        {
+        if r.file_num < 0 || self.files.get(r.file_num as usize).is_none() {
             bail!("confirmation file number {} is out of range", r.file_num);
         }
         if self.file_confirmed() {
@@ -4084,7 +3916,7 @@ impl TransferJob {
         TransferJobMeta {
             id: self.id,
             remote: self.remote.to_string(),
-            to: self.data_source.to_meta(),
+            to: self.path.to_string_lossy().into_owned(),
             file_num: self.file_num,
             show_hidden: self.show_hidden,
             is_remote: self.is_remote,
@@ -4449,6 +4281,12 @@ mod tests {
 
     #[tokio::test]
     async fn r_s11fg_read_step_returns_the_exact_file_frame_receipt() {
+        let tmp = TestTempDir::new("rustdesk_file_receipt");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        let first = tmp.join("first.zip");
+        let second = tmp.join("second.zip");
+        std::fs::write(&first, vec![0x7a; 4_096]).expect("write first uncompressed source");
+        std::fs::write(&second, vec![0x6b; 4_096]).expect("write second uncompressed source");
         let (sender_side, receiver_side) = tokio::io::duplex(64);
         let local_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
         let mut sender_tcp = crate::tcp::FramedStream::from(sender_side, local_addr);
@@ -4470,24 +4308,24 @@ mod tests {
                 41,
                 JobType::Generic,
                 "remote.bin".to_owned(),
-                DataSource::MemoryCursor(Cursor::new(vec![0x7a; 4_096])),
-                3,
+                first,
+                0,
                 false,
                 false,
                 false,
             )
-            .expect("the first in-memory transfer job must be valid"),
+            .expect("the first filesystem transfer job must be valid"),
             TransferJob::new_read(
                 42,
                 JobType::Generic,
                 "later.bin".to_owned(),
-                DataSource::MemoryCursor(Cursor::new(vec![0x6b; 4_096])),
-                4,
+                second,
+                0,
                 false,
                 false,
                 false,
             )
-            .expect("the second in-memory transfer job must be valid"),
+            .expect("the second filesystem transfer job must be valid"),
         ];
 
         let (_log, receipt) = handle_read_jobs(&mut jobs, &mut sender)
@@ -4514,6 +4352,8 @@ mod tests {
                 if matches!(
                     &response.union,
                     Some(file_response::Union::Block(block)) if block.id == 41
+                        && block.file_num == 0 && !block.compressed
+                        && block.data.as_ref() == vec![0x7a; 4_096].as_slice()
                 )
         ));
         assert_eq!(jobs[1].transferred, 0);
@@ -4599,7 +4439,7 @@ mod tests {
         let mut jobs = Vec::new();
         for (id, path) in [(211, failed_source.clone()), (212, survivor_source.clone())] {
             jobs.push(TransferJob::new_read(
-                id, JobType::Generic, id.to_string(), DataSource::FilePath(path),
+                id, JobType::Generic, id.to_string(), path,
                 0, false, false, false,
             ).expect("admit real-file read job"));
         }
@@ -4660,7 +4500,7 @@ mod tests {
             184,
             JobType::Generic,
             "paused".to_owned(),
-            DataSource::FilePath(paused_source.clone()),
+            paused_source.clone(),
             0,
             false,
             false,
@@ -4673,7 +4513,7 @@ mod tests {
             184,
             JobType::Generic,
             "active".to_owned(),
-            DataSource::FilePath(active_source.clone()),
+            active_source.clone(),
             0,
             false,
             false,
@@ -5605,7 +5445,7 @@ mod tests {
             id,
             JobType::Generic,
             "/fake/remote".to_string(),
-            DataSource::FilePath(std::env::temp_dir().join(format!("rustdesk_validation_{id}"))),
+            std::env::temp_dir().join(format!("rustdesk_validation_{id}")),
             0,
             false,
             true,
@@ -5629,7 +5469,7 @@ mod tests {
             id,
             JobType::Generic,
             "/fake/remote".to_string(),
-            DataSource::FilePath(download_dir),
+            download_dir,
             0,
             false,
             true,
@@ -5960,7 +5800,7 @@ mod tests {
         })
         .await
         .expect("write the declared bytes");
-        let Some(DataStream::FileStream(stream)) = job.data_stream.as_mut() else {
+        let Some(stream) = job.data_stream.as_mut() else {
             panic!("receive job must retain its admitted file stream");
         };
         stream
@@ -6023,7 +5863,7 @@ mod tests {
             .await
             .expect("admit the first byte and exact receive claim");
             match job.data_stream.as_mut() {
-                Some(DataStream::FileStream(file)) => file.flush().await.expect("drain setup IO"),
+                Some(file) => file.flush().await.expect("drain setup IO"),
                 _ => panic!("receive job must own a native stream"),
             }
             let staged = std::fs::metadata(&staged_path).expect("identify the staged inode");
@@ -6431,10 +6271,7 @@ mod tests {
                 })
                 .await
                 .expect("admit the first process-owned partial download");
-                let ready_path = match &job.data_source {
-                    DataSource::FilePath(path) => path.join("receive-owner-ready"),
-                    DataSource::MemoryCursor(_) => panic!("receive owner must use a filesystem"),
-                };
+                let ready_path = job.path.join("receive-owner-ready");
                 std::fs::write(ready_path, b"ready")
                     .expect("publish receive-owner readiness marker");
                 std::thread::sleep(std::time::Duration::from_secs(60));
@@ -6881,7 +6718,7 @@ mod tests {
             82,
             JobType::Generic,
             "/fake/remote".to_owned(),
-            DataSource::FilePath(tmp.path.clone()),
+            tmp.path.clone(),
             0,
             false,
             true,
@@ -7024,38 +6861,27 @@ mod tests {
         let mut encoded = compress(&oversized[..LIMIT]).expect("encode the first frame");
         encoded.extend(compress(&oversized[LIMIT..]).expect("encode the excess-output frame"));
         assert!(encoded.len() < LIMIT, "fixture must cross only the decoded limit");
-
-        for file_backed in [true, false] {
-            let mut job = if file_backed {
-                let mut entry = new_file_entry("incoming.bin");
-                entry.size = oversized.len() as u64;
-                new_write_job_with_files(214, tmp.path.clone(), vec![entry])
-                    .expect("admit a file large enough for the refused block")
-            } else {
-                TransferJob::new_write(
-                    214, JobType::Generic, String::new(),
-                    DataSource::MemoryCursor(Cursor::new(Vec::new())),
-                    0, false, false, false,
-                )
-            };
-            for (data, compressed, reason) in [
-                (oversized.clone(), false, "file block exceeds"),
-                (encoded.clone(), true, "decompressed output exceeds limit"),
-                (oversized.clone(), true, "file block exceeds"),
-            ] {
-                let error = job.write(FileTransferBlock {
-                    id: 214, file_num: 0, data: data.into(), compressed,
-                    ..Default::default()
-                }).await.expect_err("oversized block must refuse before opening a stream");
-                assert!(error.to_string().contains(reason), "unexpected refusal: {error}");
-                assert_eq!(job.file_num(), 0);
-                assert_eq!(job.receive_file_offset, 0);
-                assert_eq!(job.finished_size(), 0);
-                assert_eq!(job.transferred(), 0);
-                assert!(job.data_stream.is_none());
-                assert!(job.receive_write_claim.is_none());
-                assert_eq!(std::fs::read_dir(&tmp.path).expect("inspect receive directory").count(), 0);
-            }
+        let mut entry = new_file_entry("incoming.bin");
+        entry.size = oversized.len() as u64;
+        let mut job = new_write_job_with_files(214, tmp.path.clone(), vec![entry])
+            .expect("admit a file large enough for the refused block");
+        for (data, compressed, reason) in [
+            (oversized.clone(), false, "file block exceeds"),
+            (encoded, true, "decompressed output exceeds limit"),
+            (oversized, true, "file block exceeds"),
+        ] {
+            let error = job.write(FileTransferBlock {
+                id: 214, file_num: 0, data: data.into(), compressed,
+                ..Default::default()
+            }).await.expect_err("oversized block must refuse before opening a stream");
+            assert!(error.to_string().contains(reason), "unexpected refusal: {error}");
+            assert_eq!(job.file_num(), 0);
+            assert_eq!(job.receive_file_offset, 0);
+            assert_eq!(job.finished_size(), 0);
+            assert_eq!(job.transferred(), 0);
+            assert!(job.data_stream.is_none());
+            assert!(job.receive_write_claim.is_none());
+            assert_eq!(std::fs::read_dir(&tmp.path).expect("inspect receive directory").count(), 0);
         }
     }
 
@@ -7072,7 +6898,7 @@ mod tests {
                 let content = vec![0x5a; size];
                 std::fs::write(&path, &content).expect("create actual source file");
                 let mut sender = TransferJob::new_read(
-                    215, JobType::Generic, String::new(), DataSource::FilePath(path),
+                    215, JobType::Generic, String::new(), path,
                     0, false, false, false,
                 ).expect("admit actual source");
                 let mut receiver = new_write_job_with_files(
@@ -7103,34 +6929,17 @@ mod tests {
         assert_eq!(std::fs::read_dir(destination).expect("inspect committed files").count(), 6);
     }
 
-    #[tokio::test]
-    async fn memory_receive_block_limit_accepts_exact_boundary_and_next_block() {
-        const LIMIT: usize = 128 * 1024;
-        let mut expected = vec![0x5a; LIMIT];
-        expected.extend_from_slice(b"tail");
-        for compressed in [false, true] {
-            let mut job = TransferJob::new_write(
-                216, JobType::Generic, String::new(),
-                DataSource::MemoryCursor(Cursor::new(Vec::new())),
-                0, false, false, false,
-            );
-            let mut transferred = 0;
-            for bytes in [&expected[..LIMIT], &expected[LIMIT..]] {
-                let data = if compressed {
-                    compress(bytes).expect("encode the admitted block")
-                } else {
-                    bytes.to_vec()
-                };
-                transferred += data.len() as u64;
-                job.write(FileTransferBlock {
-                    id: 216, file_num: 0, data: data.into(), compressed,
-                    ..Default::default()
-                }).await.expect("receive an in-limit block");
-            }
-            assert_eq!(job.finished_size(), expected.len() as u64);
-            assert_eq!(job.transferred(), transferred);
-            assert_eq!(job.get_buf_data().await.expect("flush actual memory stream"), Some(expected.clone()));
-        }
+    #[test]
+    fn file_job_serialization_preserves_the_live_cm_path_field() {
+        let path = PathBuf::from("folder/δ-data.txt");
+        let job = TransferJob::new_write(
+            216, JobType::Generic, String::new(), path,
+            0, false, false, false,
+        );
+        let value = serde_json::to_value(&job).expect("serialize the actual transfer job");
+        assert_eq!(value["dataSource"], "folder/δ-data.txt");
+        assert!(value.get("path").is_none(), "CM consumes the dataSource field");
+        assert_eq!(job.gen_meta().to, "folder/δ-data.txt");
     }
 
     #[tokio::test]
@@ -7184,7 +6993,7 @@ mod tests {
         })
         .await
         .expect("stage the complete first file");
-        let Some(DataStream::FileStream(stream)) = job.data_stream.as_mut() else {
+        let Some(stream) = job.data_stream.as_mut() else {
             panic!("receive fixture must retain its file stream");
         };
         stream.flush().await.expect("finish the fixture's pending write");
@@ -7311,7 +7120,7 @@ mod tests {
                     174,
                     JobType::Generic,
                     String::new(),
-                    DataSource::FilePath(path.clone()),
+                    path.clone(),
                     file_num,
                     false,
                     false,
@@ -7362,7 +7171,7 @@ mod tests {
                     175,
                     JobType::Generic,
                     String::new(),
-                    DataSource::FilePath(path.clone()),
+                    path.clone(),
                     start,
                     false,
                     false,
@@ -7428,7 +7237,7 @@ mod tests {
             84,
             JobType::Generic,
             "remote.bin".to_owned(),
-            DataSource::FilePath(source),
+            source,
             0,
             false,
             false,
@@ -7469,7 +7278,7 @@ mod tests {
             172,
             JobType::Generic,
             String::new(),
-            DataSource::FilePath(source.clone()),
+            source.clone(),
             0,
             false,
             false,
@@ -7526,7 +7335,7 @@ mod tests {
             173,
             JobType::Generic,
             String::new(),
-            DataSource::FilePath(source.clone()),
+            source.clone(),
             0,
             false,
             false,
@@ -7599,7 +7408,7 @@ mod tests {
             177,
             JobType::Generic,
             String::new(),
-            DataSource::FilePath(source.clone()),
+            source.clone(),
             0,
             false,
             false,
@@ -7681,7 +7490,7 @@ mod tests {
                     178,
                     JobType::Generic,
                     String::new(),
-                    DataSource::FilePath(source.clone()),
+                    source.clone(),
                     0,
                     false,
                     false,
@@ -7743,7 +7552,7 @@ mod tests {
             179,
             JobType::Generic,
             String::new(),
-            DataSource::FilePath(tmp.path.clone()),
+            tmp.path.clone(),
             0,
             false,
             false,
@@ -7800,7 +7609,7 @@ mod tests {
             176,
             JobType::Generic,
             String::new(),
-            DataSource::FilePath(source.clone()),
+            source.clone(),
             0,
             false,
             false,
@@ -7846,7 +7655,7 @@ mod tests {
         assert_eq!(job.total_size(), 5);
         assert_eq!(job.files()[0].size, 5);
         assert!(job.receive_write_claim.is_none());
-        if let Some(DataStream::FileStream(file)) = job.data_stream.as_mut() {
+        if let Some(file) = job.data_stream.as_mut() {
             assert_eq!(
                 file.stream_position().await.expect("read retained position"),
                 0
@@ -7899,7 +7708,7 @@ mod tests {
             171,
             JobType::Generic,
             String::new(),
-            DataSource::FilePath(source.clone()),
+            source.clone(),
             0,
             false,
             false,
@@ -8030,10 +7839,8 @@ mod tests {
         .await
         .expect("stage the complete first file");
 
-        match job.data_stream.as_mut().expect("retain the staged stream") {
-            DataStream::FileStream(file) => file.flush().await.expect("flush the staged prefix"),
-            DataStream::BufStream(_) => panic!("expected a file-backed stream"),
-        }
+        job.data_stream.as_mut().expect("retain the staged stream")
+            .flush().await.expect("flush the staged prefix");
         let replacement_refused = job.set_files(vec![first]).is_err();
         let early_done_refused = job.finalize_write(1).await.is_err();
         let published = tmp.join("first.bin").exists();
@@ -8091,10 +7898,8 @@ mod tests {
         })
         .await
         .expect("stage a partial file");
-        match job.data_stream.as_mut().expect("retain the staged stream") {
-            DataStream::FileStream(file) => file.flush().await.expect("flush the staged prefix"),
-            DataStream::BufStream(_) => panic!("expected a file-backed stream"),
-        }
+        job.data_stream.as_mut().expect("retain the staged stream")
+            .flush().await.expect("flush the staged prefix");
 
         entry.size = 6;
         let replacement_refused = job.set_files(vec![entry]).is_err();
@@ -8143,7 +7948,7 @@ mod tests {
             219,
             JobType::Generic,
             String::new(),
-            DataSource::FilePath(tmp.path.clone()),
+            tmp.path.clone(),
             0,
             false,
             false,
@@ -8251,7 +8056,7 @@ mod tests {
                         185,
                         JobType::Generic,
                         String::new(),
-                        DataSource::FilePath(tmp.path.clone()),
+                        tmp.path.clone(),
                         0,
                         false,
                         false,
@@ -8293,7 +8098,7 @@ mod tests {
                 186,
                 JobType::Generic,
                 String::new(),
-                DataSource::FilePath(source.clone()),
+                source.clone(),
                 0,
                 false,
                 false,
@@ -8410,7 +8215,7 @@ mod tests {
                     188,
                     JobType::Generic,
                     String::new(),
-                    DataSource::FilePath(source.clone()),
+                    source.clone(),
                     0,
                     false,
                     false,
@@ -8540,7 +8345,7 @@ mod tests {
             92,
             JobType::Generic,
             "remote".to_owned(),
-            DataSource::FilePath(tmp.path.clone()),
+            tmp.path.clone(),
             0,
             true,
             false,

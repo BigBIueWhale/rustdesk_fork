@@ -2734,7 +2734,7 @@ run_focused_rust_tests() {
             fs::tests::empty_directory_enumeration_budgets_repeated_absolute_paths
             fs::tests::receive_blocks_refuse_oversized_input_and_decoded_output
             fs::tests::file_block_limit_preserves_real_sender_receiver_roundtrips
-            fs::tests::memory_receive_block_limit_accepts_exact_boundary_and_next_block
+            fs::tests::file_job_serialization_preserves_the_live_cm_path_field
         )
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
             container_name=rustdesk-linux-logind-tests
@@ -4532,7 +4532,7 @@ PY
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
-            grep -E '^test fs::tests::(receive_blocks_refuse_oversized_input_and_decoded_output|file_block_limit_preserves_real_sender_receiver_roundtrips|memory_receive_block_limit_accepts_exact_boundary_and_next_block) \.\.\. ok$' "$output"
+            grep -E '^test fs::tests::(receive_blocks_refuse_oversized_input_and_decoded_output|file_block_limit_preserves_real_sender_receiver_roundtrips|file_job_serialization_preserves_the_live_cm_path_field) \.\.\. ok$' "$output"
         fi
         printf '%s\n' "${hbb_artifact_receipts[@]}"
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then

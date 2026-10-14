@@ -2283,70 +2283,49 @@ launchers, continuous global inventory and wider platform/release/storage covera
 remain OPEN; this acceptance covers new runs of the offline Linux verifier.
 
 **VM transient storage (R-S11cj/R-S11dh): the observed Linux VM disk-churn path is corrected.**
-The ordinary-user verification and acquisition launchers use one private existing-`/dev/shm` workspace for disposable
-overlays, input/seed ISOs, source archives/bundles and tool temporary files. Admission budgets
-16 GiB scratch, the selected guest RAM, 6 GiB host headroom and 1 GiB orchestration overhead;
-insufficient RAM refuses before VM reservation, without a disk-scratch fallback. Hard file
-ceilings are 8 GiB overlay, 5 GiB input ISO, 256 MiB source and 8 MiB seed. QEMU initializes
-shared RAM while paused, then its direct supervisor installs/read-backs the hard overlay ceiling
-before private-QMP `cont`; the unreaped child prevents PID reuse during `prlimit`. A pidfd-bound
-monitor aborts only the owned harness on scratch/headroom exhaustion. Canonical disk markers,
-bounded diagnostics and intentional artifacts retain their ownership. Transients retire only
-after exact joins; uncertain cleanup blocks another run. All helper entry points refuse root.
-QEMU output accounting belongs to its sole creating/waiting supervisor, which
-requires waitable children and publishes kernel child usage after the join.
-The monitor consumes a bounded receipt, never a PID-selected process; missing
-measurement stays unavailable. An ordinary no-NIC transaction passed in 15 seconds
-with 4,096 accounted bytes and retired scratch. Other launcher, failure/cancellation,
-malformed-receipt and native/platform/release acceptance remains OPEN.
+Verification and acquisition use the shared ordinary-user, identity-checked private workspace on the
+existing `/dev/shm` for overlays, input/seed media, source archives and tool temporary files. Admission
+reserves 16 GiB scratch, guest RAM, 6 GiB host headroom and 1 GiB overhead before VM reservation;
+insufficient resources refuse without disk scratch. Hard ceilings remain 8 GiB overlay, 5 GiB input
+ISO, 256 MiB source and 8 MiB seed. QEMU initializes shared RAM while paused; its direct supervisor
+installs and reads back the overlay ceiling before private-QMP `cont`, retaining the unreaped child
+through `prlimit` to exclude PID reuse. The pidfd-bound monitor aborts only the owned harness on
+scratch/headroom exhaustion. Canonical markers, bounded diagnostics and intentional artifacts keep
+their ownership; exact joins precede retirement, and uncertainty retains the marker and blocks reuse.
+Every helper entry refuses root.
 
-At storage core `ec79c77f`, the actual installed-layout Linux receiver passed 13 cases/11 CPace
-exchanges in 94 seconds, with zero NIC, unchanged host listeners and joined cleanup. Sampled
-RAM scratch peaked at 5,479,960,576 bytes, including a 4,245,884,928-byte overlay; the disk run
-peaked at **147,456 bytes**, and QEMU's observed block writes were **4,096 bytes**. The acquisition
-authority transaction passed in 24 seconds: 896,585,728 bytes RAM scratch, 3,338,240 bytes disk
-diagnostics/helper extraction, 4,096 bytes observed QEMU block writes, no added listener and joined
-cleanup. A real insufficient-RAM profile created no run/workspace; a forced interruption joined
-and retired its RAM scratch. Final helper `c1833c5e` also passed five actual guest-root refusals
-in a 15-second zero-NIC count transaction. Failed listener/gate attempts remain unaccepted and
-retained. Source/index/audit/ledger/specification/instruction freezes held during every run.
-The immutable acceptance bundle is `.harness-state/verifier-vm/vm-transient-storage-accepted-c1833c5e.json`
-(16,619 bytes; SHA-256 `df7e6091d2cd8214d2c53f94822c78af18a6dc914cc5107a6d1980bd8c9bd75b`).
-Cold boot-asset preparation is also corrected at `b23935f6`: RAM is reserved before derivation;
-the 3 GiB raw conversion and exact root-partition extraction use that authenticated workspace
-with hard per-file ceilings. Only the two size/digest-pinned boot assets are staged on the cache's
-filesystem for no-clobber rename. The read-only-base fixture keeps its private base copy in RAM,
-derives assets without copying an existing cache, and boots from the newly derived assets.
-The actual fixture passed three missing/disk/wrong-identity scratch refusals, five guest-root
-storage refusals, native tokenizer controls, zero-NIC boot, listener invariance and joined retirement.
-Guest execution took 14 seconds; the storage observer covered 21.961 seconds including preparation:
-RAM peak **2,417,123,328 bytes**, disk run peak **126,976 bytes**, QEMU block writes **4,096 bytes**.
-The updated acquisition transaction also passed in 23 seconds, with RAM peak **901,087,232 bytes**,
-disk run peak **3,338,240 bytes**, no listener additions and complete joined retirement.
-Source/index/audit/ledger/specification/instruction freezes held during both transactions.
-Immutable bundle `.harness-state/verifier-vm/vm-cold-storage-accepted-b23935f6.json`
-(9,871 bytes; SHA-256 `da4ab96c5096b76474508ee9b08ba036d574071884355ae7988b162659052b9d`)
-binds commands, terminal results, source context, raw logs and measurements. The cold fixture
-publishes its cache on tmpfs; persistent-cache same-filesystem publication is source-reviewed,
-without changing the canonical cache. `AGENTS.md` requires bounded RAM storage and forbids
-executing other VM launchers until they supply equivalent admission, limits, isolation and joins.
-The standalone `scripts/smoke-verifier-media.py` launcher is removed. It bypassed the shared
-RAM admission/monitor and put its overlay, tools disk, raw conversion and partition extraction
-on repository disk. Its two-phase guest fixture and historical evidence remain retained;
-future media execution must use the shared bounded RAM orchestration. No replacement launcher,
-disk fallback or override is introduced. Direct invocation returns missing-file exit2 with
-unchanged shared/RAM directory inventories and host listeners. This is execution-path removal,
-not new media behavior: media execution/storage acceptance remains OPEN.
-The Windows presentation launcher now calls the existing verifier admission before
-loading helpers/pins, inspecting ambient libvirt state or creating run state.
-The no-NIC Linux authority smoke passed actual root, foreign-principal and wrong
-descriptor-limit refusals in 95 seconds, with exact receipt cardinality, source
-freezes, bounded RAM scratch and joined cleanup. This proves early entry refusal;
-Windows storage, graphical presentation, installed and release acceptance remain OPEN.
-Complete acquisition/bootstrap closure, full-release and other-platform VM storage acceptance
-remain OPEN. Tmpfs is swappable here: no host swap/mount
-change or zero-system-I/O claim is made. Design sources:
-[Linux tmpfs](https://docs.kernel.org/filesystems/tmpfs.html),
+The sole creator/waiter publishes kernel QEMU child usage after its join. The monitor consumes that
+bounded receipt rather than selecting a process by PID; absent measurements remain unavailable.
+Cold preparation reserves the same workspace before its 3 GiB raw conversion and exact partition
+extraction, with hard file ceilings. Only the two size/digest-pinned boot assets are staged on the cache
+filesystem for no-clobber rename. The read-only-base fixture derives and boots new assets from its
+private RAM base without copying a cache. Its cache publication ran on tmpfs; persistent-cache
+same-filesystem publication remains source-reviewed.
+
+| Named evidence | Executed distinction and scope |
+| --- | --- |
+| `ec79c77f` / final `c1833c5e` | Installed-layout Linux receiver: 13 cases/11 CPace exchanges, 94s; acquisition authority: 24s. Insufficient RAM created no run/workspace; one forced interruption joined and retired scratch. Final helper: five guest-root refusals in a 15s zero-NIC count transaction. |
+| QEMU output-accounting transaction | One ordinary zero-NIC run, 15s: 4,096 accounted block-write bytes and retired scratch. This is a sample; other launchers, complete failure/cancellation and malformed-receipt coverage remain OPEN. |
+| `b23935f6` cold derivation | Three missing/disk/wrong-identity scratch refusals, five guest-root storage refusals, tokenizer controls and boot from freshly derived assets; guest 14s, preparation observer 21.961s. Updated acquisition: 23s. |
+| Windows presentation entry | Linux zero-NIC authority smoke, 95s: actual root, foreign-principal and wrong-descriptor-limit refusals with exact receipt cardinality. Entry admission precedes helpers/pins, ambient libvirt inspection and run creation; this establishes early refusal, not Windows execution/storage acceptance. |
+
+Accepted named runs retain source/control freeze comparisons, host listener observations and joined
+cleanup; failed listener/gate attempts remain unaccepted and retained. Resource samples and complete
+commands, source identities, terminal results, raw logs and scenario breakdowns are in these bundles;
+the prior full section is archived in Git at `facf345b`:
+
+- `.harness-state/verifier-vm/vm-transient-storage-accepted-c1833c5e.json` — 16,619 bytes,
+  SHA-256 `df7e6091d2cd8214d2c53f94822c78af18a6dc914cc5107a6d1980bd8c9bd75b`.
+- `.harness-state/verifier-vm/vm-cold-storage-accepted-b23935f6.json` — 9,871 bytes,
+  SHA-256 `da4ab96c5096b76474508ee9b08ba036d574071884355ae7988b162659052b9d`.
+
+The standalone `scripts/smoke-verifier-media.py` disk-scratch launcher is absent. Its two-phase guest
+fixture and historical evidence remain, but missing-file exit2 establishes path removal only.
+Media execution/storage, Windows storage/graphical/installed/release behavior, complete acquisition/
+bootstrap closure, full release and other-platform storage acceptance remain OPEN. `AGENTS.md` forbids
+other VM launchers until equivalent admission, limits, isolation and joined cleanup exist; no alternate
+launcher, disk fallback or override is supplied. Tmpfs is swappable: no host swap/mount change or
+zero-system-I/O claim is made. Design sources: [Linux tmpfs](https://docs.kernel.org/filesystems/tmpfs.html),
 [QEMU disk images](https://www.qemu.org/docs/master/system/images.html), and
 [QMP](https://www.qemu.org/docs/master/interop/qmp-spec.html).
 

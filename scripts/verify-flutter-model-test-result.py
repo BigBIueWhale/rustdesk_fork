@@ -131,6 +131,8 @@ CREDENTIAL_DIALOG_TESTS = {
         "superseded connect callbacks cannot act before unmount",
     },
     "blockable_overlay_test.dart": {
+        "mobile close precedes a held system UI reply",
+        "failed system UI reply cannot close a replacement route",
         "blockable overlay keeps one mounted owner and rebuilds its underlying route",
         "middle blocker owns the tap before revealing the route",
         "one explicit dialog tag owns one disposable overlay entry",

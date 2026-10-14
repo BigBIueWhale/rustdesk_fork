@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_hbb/common/mobile_connection_navigation.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,7 +17,77 @@ class _TestDialog extends StatelessWidget {
   Widget build(BuildContext context) => Text(label);
 }
 
+Future<void> _closeWhilePlatformReplyIsPending(WidgetTester tester,
+    {required bool failReply}) async {
+  final navigatorKey = GlobalKey<NavigatorState>();
+  final reply = Completer<void>();
+  var requests = 0;
+  final messenger = tester.binding.defaultBinaryMessenger;
+  messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+    if (call.method == 'SystemChrome.setEnabledSystemUIOverlays') {
+      requests++;
+      expect(
+        call.arguments,
+        SystemUiOverlay.values.map((overlay) => overlay.toString()).toList(),
+      );
+      await reply.future;
+    }
+    return null;
+  });
+  addTearDown(() {
+    messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+  });
+  try {
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: navigatorKey,
+      home: const Text('home'),
+    ));
+    final navigator = navigatorKey.currentState!;
+    final oldRoute = MaterialPageRoute<void>(
+      builder: (_) => const Text('old connection'),
+    );
+    unawaited(navigator.push(oldRoute));
+    await tester.pumpAndSettle();
+    expect(find.text('old connection'), findsOneWidget);
+
+    closeMobileConnectionRoute(navigator);
+    await tester.pumpAndSettle();
+    expect(requests, 1);
+    expect(reply.isCompleted, isFalse);
+    expect(find.text('old connection'), findsNothing);
+    expect(find.text('home'), findsOneWidget);
+
+    final replacement = MaterialPageRoute<void>(
+      builder: (_) => const Text('replacement connection'),
+    );
+    unawaited(navigator.push(replacement));
+    await tester.pumpAndSettle();
+    if (failReply) {
+      reply.completeError(PlatformException(code: 'restoration-refused'));
+    } else {
+      reply.complete();
+    }
+    await tester.pumpAndSettle();
+    expect(replacement.isCurrent, isTrue);
+    expect(find.text('replacement connection'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  } finally {
+    if (!reply.isCompleted) reply.complete();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
+  testWidgets('mobile close precedes a held system UI reply', (tester) async {
+    await _closeWhilePlatformReplyIsPending(tester, failReply: false);
+  });
+
+  testWidgets('failed system UI reply cannot close a replacement route',
+      (tester) async {
+    await _closeWhilePlatformReplyIsPending(tester, failReply: true);
+  });
+
   testWidgets(
       'blockable overlay keeps one mounted owner and rebuilds its underlying route',
       (tester) async {

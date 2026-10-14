@@ -2251,14 +2251,23 @@ The message callback `dismissAll()` paths are removed; publication retains its
 explicit replacement of prior dialog state. Message rendering/countdown labels use
 the manager's existing translator. The unused automatic-submit option and private
 callback branch are deleted; the supported reconnect countdown only renders time.
-The focused dialog shard targets 45 named tests across seven suites, including
+The focused dialog shard targets 47 named tests across seven suites, including
 six real message-widget cases for current one-shot
 submit/reconnect, stale submit/cancel/Close/reconnect before unmount, and display-only
 reconnect expiry. The real overlay and affected file-dialog mocks are retained.
-Native execution, actual peer/session/route cancellation and installed acceptance
-remain OPEN. `closeConnection()` still selects the active desktop tab or navigates
-the global mobile route after an await; binding those actions to an exact session
-and retained tab/route, including terminal-window ownership, remains required.
+Mobile `closeConnection()` now retires chat/main-page state synchronously and
+passes the selected `NavigatorState` to `closeMobileConnectionRoute`; route
+dismissal does not await the system-UI request. Its late result can only report
+a type-only error, and failed restoration cannot prevent route dismissal.
+Two production-helper widget regressions use a real Navigator and hold the
+platform-channel reply through replacement-route publication, then deliver
+success or failure. They are prepared, uncompiled and unexecuted; the full
+model inventory is 25 suites/271 cases. Native execution, actual peer/session/
+route cancellation and installed acceptance remain OPEN. Binding every close
+caller to its initiating session and retained tab/route/window, including the
+terminal window, remains required. Focused isolation still requires 4 GiB guest
+RAM plus 16 GiB scratch, 6 GiB host headroom and 1 GiB overhead; available host
+RAM is below admission, so no launcher, compile, formatter or runtime was run.
 
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.
@@ -6138,7 +6147,7 @@ disposed models reject events. Empty decoded fragments consume no pre-layout buf
 entries. Six production-decoder regressions cover every two-packet split of mixed
 Hebrew/accented/CJK/emoji/ANSI output, bytewise continuation, malformed bytes, EOF,
 independent terminals and replacement isolation. They are included in the existing
-model checkpoint (25 suites/269 cases). The focused command
+model checkpoint (25 suites/271 cases). The focused command
 `scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --terminal-output`
 runs the same six tests with exact suite/name/completion checks. It inherits the
 existing 4-GiB guest, 2-GiB networkless container, 90-second test and 300-second VM

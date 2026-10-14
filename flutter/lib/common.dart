@@ -31,6 +31,7 @@ import 'package:window_size/window_size.dart' as window_size;
 
 import '../consts.dart';
 import 'common/widgets/overlay.dart';
+import 'common/mobile_connection_navigation.dart';
 import 'mobile/pages/file_manager_page.dart';
 import 'mobile/pages/remote_page.dart';
 import 'mobile/pages/view_camera_page.dart';
@@ -708,13 +709,9 @@ String formatDurationToTime(Duration duration) {
 
 closeConnection({String? id}) {
   if (isAndroid || isIOS) {
-    () async {
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
-          overlays: SystemUiOverlay.values);
-      gFFI.chatModel.hideChatOverlay();
-      Navigator.popUntil(globalKey.currentContext!, ModalRoute.withName("/"));
-      stateGlobal.isInMainPage = true;
-    }();
+    gFFI.chatModel.hideChatOverlay();
+    stateGlobal.isInMainPage = true;
+    closeMobileConnectionRoute(globalKey.currentState!);
   } else {
     if (isWeb) {
       Navigator.popUntil(globalKey.currentContext!, ModalRoute.withName("/"));

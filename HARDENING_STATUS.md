@@ -14076,7 +14076,7 @@ explicit write failure rather than a successful empty block.
 **Current library disposition — source corrected; named ordinary-user Linux behavior PASSED,
 native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.
 
-**Per-block resource admission — source corrected; native execution PENDING.** Sending and
+**Per-block resource admission — production codec component PASSED; integration OPEN.** Sending and
 receiving share the 128-KiB size from private `fs/file_block.rs`. Its `decode` admits raw
 bytes by borrowing and compressed bytes only through a 128-KiB zstd history-window limit
 and one fixed 128-KiB-plus-one-byte output buffer. Input/output excess, malformed/truncated
@@ -14087,8 +14087,14 @@ actual decoder and production compressor with root-locked zstd 0.13.1 and the ex
 actual compression-level declaration. Six cases cover raw backing identity, production
 boundary round trips, total output across concatenated frames, three excessive window
 headers with the previous decoder as a positive control, frame-boundary window persistence,
-malformed/truncated input and the nearest existing generic-decoder case. Execution remains
-PENDING. The three `--hbb-common-fs` filesystem/memory tests and whole-parent compilation
+malformed/truncated input and the nearest existing generic-decoder case. Exact source
+`a9a4774a` passed all six named cases in 80 VM seconds; artifact SHA-256
+`85c7113e6ad54479a1f69fb2087211487f81188580d802df461a81dbaaa3a86f`
+remained unchanged before/after. The accepted zero-NIC, guest-only networkless/nonroot
+run retained all outcomes and source/dependency bindings, added no host endpoint and joined
+cleanup; `.harness-state/verifier-vm/file-block-accepted-a9a4774a.json` binds its receipts.
+These controls execute the prior output-only helper, not a historical whole-app A/B.
+The three `--hbb-common-fs` filesystem/memory tests and whole-parent compilation
 also remain unexecuted after RAM admission refusal; the component lane will not replace
 them. Earlier library acceptance does not cover these changes. Installed/native integration,
 whole-process allocation/resource measurements and other-platform acceptance remain OPEN.

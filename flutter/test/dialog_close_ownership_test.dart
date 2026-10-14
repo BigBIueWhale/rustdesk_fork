@@ -28,6 +28,132 @@ VoidCallback _messageButton(WidgetTester tester, String label) => tester
     .onPressed!;
 
 void main() {
+  testWidgets('screenshot choice retires only its entry and dispatches once',
+      (tester) async {
+    for (final label in ['Save as...', 'Copy to clipboard', 'Cancel']) {
+      final manager = await _manager(tester);
+      final events = <String>[];
+      late final String tag;
+      action(String name) {
+        expect(manager.existing(tag), isFalse);
+        events.add(name);
+      }
+
+      try {
+        tag = manager.showScreenshotActions(
+          onSaveAs: () => action('Save as...'),
+          onCopyToClipboard: () => action('Copy to clipboard'),
+          onCancel: () => action('Cancel'),
+        );
+        await tester.pump();
+        final choices = {
+          for (final name in ['Save as...', 'Copy to clipboard', 'Cancel'])
+            name: _messageButton(tester, name),
+        };
+        final escape = tester
+            .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+            .onCancel!;
+        final unrelated = manager.show<void>(
+            (_, __, ___) => const Text('unrelated'),
+            tag: 'unrelated');
+        choices[label]!();
+        for (final callback in choices.values) {
+          callback();
+        }
+        escape();
+        expect(events, [label]);
+        await tester.pump();
+        expect(manager.existing(tag), isFalse);
+        expect(manager.existing('unrelated'), isTrue);
+        expect(find.text('unrelated'), findsOneWidget);
+        manager.dismissByTag('unrelated');
+        await unrelated;
+      } finally {
+        manager.dismissAll();
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    }
+  });
+
+  testWidgets('superseded screenshot callbacks cannot act before unmount',
+      (tester) async {
+    final manager = await _manager(tester);
+    final events = <String>[];
+    try {
+      manager.showScreenshotActions(
+        onSaveAs: () => events.add('old save'),
+        onCopyToClipboard: () => events.add('old copy'),
+        onCancel: () => events.add('old cancel'),
+      );
+      await tester.pump();
+      final oldElement = tester.element(find.byType(CustomAlertDialog));
+      final callbacks = [
+        _messageButton(tester, 'Save as...'),
+        _messageButton(tester, 'Copy to clipboard'),
+        _messageButton(tester, 'Cancel'),
+        tester
+            .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+            .onCancel!,
+      ];
+      final tag = manager.showScreenshotActions(
+        onSaveAs: () => events.add('new save'),
+        onCopyToClipboard: () => events.add('new copy'),
+        onCancel: () => events.add('new cancel'),
+      );
+      expect(oldElement.mounted, isTrue);
+      for (final callback in callbacks) {
+        callback();
+      }
+      expect(events, isEmpty);
+      expect(manager.existing(tag), isTrue);
+      await tester.pump();
+      _messageButton(tester, 'Copy to clipboard')();
+      expect(events, ['new copy']);
+    } finally {
+      manager.dismissAll();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('dismissed screenshot callbacks preserve a later dialog',
+      (tester) async {
+    final manager = await _manager(tester);
+    final events = <String>[];
+    try {
+      final tag = manager.showScreenshotActions(
+        onSaveAs: () => events.add('save'),
+        onCopyToClipboard: () => events.add('copy'),
+        onCancel: () => events.add('cancel'),
+      );
+      await tester.pump();
+      final oldElement = tester.element(find.byType(CustomAlertDialog));
+      final callbacks = [
+        _messageButton(tester, 'Save as...'),
+        _messageButton(tester, 'Copy to clipboard'),
+        _messageButton(tester, 'Cancel'),
+        tester
+            .widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+            .onCancel!,
+      ];
+      manager.dismissByTag(tag);
+      final next = manager.show<void>((_, __, ___) => const Text('next dialog'),
+          tag: 'next');
+      expect(oldElement.mounted, isTrue);
+      for (final callback in callbacks) {
+        callback();
+      }
+      expect(events, isEmpty);
+      await tester.pump();
+      expect(manager.existing('next'), isTrue);
+      expect(find.text('next dialog'), findsOneWidget);
+      manager.dismissByTag('next');
+      await next;
+    } finally {
+      manager.dismissAll();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   testWidgets('unbound message cannot close the active desktop tab',
       (tester) async {
     final manager = await _manager(tester);

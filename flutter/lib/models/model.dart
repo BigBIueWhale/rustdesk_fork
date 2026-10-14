@@ -773,16 +773,8 @@ class FfiModel with ChangeNotifier {
     if (msg.isNotEmpty) {
       msgBox(sessionId, msgBoxType, msgBoxTitle, msg, '', dialogManager);
     } else {
-      final msgBoxText = 'screenshot-action-tip';
-
-      close() {
-        if (!_isCurrentSession(sessionId)) return;
-        dialogManager.dismissAll();
-      }
-
       saveAs() {
         if (!_isCurrentSession(sessionId)) return;
-        close();
         Future.delayed(Duration.zero, () async {
           if (!_isCurrentSession(sessionId)) return;
           final ts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -814,30 +806,18 @@ class FfiModel with ChangeNotifier {
         if (!_isCurrentSession(sessionId)) return;
         bind.sessionHandleScreenshot(
             sessionId: sessionId, screenshotId: screenshotId, action: '1');
-        close();
       }
 
       cancel() {
         if (!_isCurrentSession(sessionId)) return;
         bind.sessionHandleScreenshot(
             sessionId: sessionId, screenshotId: screenshotId, action: '2');
-        close();
       }
 
-      final List<Widget> buttons = [
-        dialogButton('${translate('Save as')}...', onPressed: saveAs),
-        dialogButton('Copy to clipboard', onPressed: copyToClipboard),
-        dialogButton('Cancel', onPressed: cancel),
-      ];
-      dialogManager.dismissAll();
-      dialogManager.show(
-        (setState, close, context) => CustomAlertDialog(
-          title: null,
-          content: SelectionArea(
-              child: msgboxContent(msgBoxType, msgBoxTitle, msgBoxText)),
-          actions: buttons,
-        ),
-        tag: '$msgBoxType-$msgBoxTitle-$msgBoxTitle',
+      dialogManager.showScreenshotActions(
+        onSaveAs: saveAs,
+        onCopyToClipboard: copyToClipboard,
+        onCancel: cancel,
       );
     }
   }

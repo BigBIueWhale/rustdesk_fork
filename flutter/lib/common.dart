@@ -1012,6 +1012,39 @@ class OverlayDialogManager {
     return tag;
   }
 
+  String showScreenshotActions({
+    required VoidCallback onSaveAs,
+    required VoidCallback onCopyToClipboard,
+    required VoidCallback onCancel,
+  }) {
+    const tag = 'screenshot-actions';
+    show<void>((setState, close, context) {
+      act(VoidCallback action) {
+        if (!close()) return;
+        action();
+      }
+
+      return CustomAlertDialog(
+        title: null,
+        content: SelectionArea(
+            child: msgboxContent('custom-nook-nocancel-hasclose',
+                'Take screenshot', 'screenshot-action-tip',
+                translateText: _translate)),
+        actions: [
+          dialogButton('${_translate('Save as')}...',
+              onPressed: () => act(onSaveAs), translateText: (text) => text),
+          dialogButton('Copy to clipboard',
+              onPressed: () => act(onCopyToClipboard),
+              translateText: _translate),
+          dialogButton('Cancel',
+              onPressed: () => act(onCancel), translateText: _translate),
+        ],
+        onCancel: () => act(onCancel),
+      );
+    }, tag: tag);
+    return tag;
+  }
+
   void resetMobileActionsOverlay({FFI? ffi}) {
     if (_mobileActionsOverlayEntry == null) return;
     hideMobileActionsOverlay();

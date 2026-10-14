@@ -119,6 +119,9 @@ CREDENTIAL_DIALOG_TESTS = {
         "obscured dialog field exposes enabled focused semantics",
     },
     "dialog_close_ownership_test.dart": {
+        "screenshot choice retires only its entry and dispatches once",
+        "superseded screenshot callbacks cannot act before unmount",
+        "dismissed screenshot callbacks preserve a later dialog",
         "unbound message cannot close the active desktop tab",
         "image wait cancel retires its entry and dispatches once",
         "superseded image wait cancel cannot act before unmount",

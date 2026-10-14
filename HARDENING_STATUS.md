@@ -2251,10 +2251,19 @@ The message callback `dismissAll()` paths are removed; publication retains its
 explicit replacement of prior dialog state. Message rendering/countdown labels use
 the manager's existing translator. The unused automatic-submit option and private
 callback branch are deleted; the supported reconnect countdown only renders time.
-The focused dialog shard targets 51 named tests across seven suites, including
+The focused dialog shard targets 54 named tests across seven suites, including
 six real message-widget cases for current one-shot
 submit/reconnect, stale submit/cancel/Close/reconnect before unmount, and display-only
 reconnect expiry. The real overlay and affected file-dialog mocks are retained.
+Screenshot Save/Copy/Cancel actions are now constructed inside the manager's
+exact screenshot entry and must retire it before dispatch. Publication replaces
+only the prior screenshot entry, and action callbacks no longer dismiss every
+dialog. Escape shares the owned Cancel action. Three production-overlay cases
+cover all current choices once, supersession and dismissal before old-widget
+unmount, retained button/keyboard callbacks and unrelated-dialog survival. They
+are prepared, uncompiled and unexecuted. Real file-picker/PNG/clipboard operations,
+admitted async-action/result lifetime and newer-request/session replacement remain
+OPEN; the source change does not claim those native or post-dispatch properties.
 Generic message submission now dismisses only its exact dialog and invokes a
 supplied action; message type strings cannot infer a connection close. The
 connection error/no-display and explicit close-confirmation owners supply their

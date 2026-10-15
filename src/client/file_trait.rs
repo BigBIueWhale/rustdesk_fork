@@ -124,7 +124,7 @@ pub trait FileManager: Interface {
     ) -> ResultType<()> {
         self.try_send(Data::SendFiles((
             id,
-            r#type.into(),
+            fs::JobType::try_from(r#type)?,
             path,
             to,
             file_num,
@@ -145,7 +145,7 @@ pub trait FileManager: Interface {
     ) -> ResultType<()> {
         self.try_send(Data::AddJob((
             id,
-            r#type.into(),
+            fs::JobType::try_from(r#type)?,
             path,
             to,
             file_num,

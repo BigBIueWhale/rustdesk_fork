@@ -9092,7 +9092,13 @@ impl Connection {
                                     return true;
                                 }
                                 let path = s.path.clone();
-                                let job_type = JobType::from_proto(s.file_type);
+                                let job_type = match JobType::try_from(s.file_type.value()) {
+                                    Ok(job_type) => job_type,
+                                    Err(error) => {
+                                        self.send(fs::new_error(id, error, s.file_num)).await;
+                                        return true;
+                                    }
+                                };
                                 match job_type {
                                     JobType::Generic => {
                                         let od = can_enable_overwrite_detection(

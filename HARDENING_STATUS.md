@@ -14237,6 +14237,20 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
+**Unsupported file-transfer types — SOURCE CORRECTED; focused native regression PENDING.**
+The schema reserves the former printer number, but both integer and protobuf `JobType`
+conversions previously mapped every unsupported value to `Generic`. One fallible integer
+conversion now accepts only zero. The controlled receiver returns a job-correlated error
+before read-job creation or CM delegation; local SendFiles/AddJob inputs fail before queueing.
+The separate infallible protobuf conversion is deleted. The ordinary proto3 zero/default
+remains valid. A required common-library test serializes and parses the actual outer
+Message/FileAction/Send request with zero, the reserved value, other unknowns, negative
+values and integer limits, then exercises production admission; an omitted field is a
+positive control. It is required by `--hbb-common-fs`, together with all prior tests.
+Current common-library execution, full application/caller compilation, native peer/CM error
+and noncreation behavior, installed/platform acceptance and the broader obligations below
+remain OPEN. This closes no newly demonstrated LPE or native privilege boundary by itself.
+
 **Current library disposition — source corrected; named ordinary-user Linux behavior PASSED,
 native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.
 

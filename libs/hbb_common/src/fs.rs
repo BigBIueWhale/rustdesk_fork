@@ -525,11 +525,13 @@ impl From<JobType> for file_transfer_send_request::FileType {
     }
 }
 
-impl From<i32> for JobType {
-    fn from(value: i32) -> Self {
+impl TryFrom<i32> for JobType {
+    type Error = crate::anyhow::Error;
+
+    fn try_from(value: i32) -> ResultType<Self> {
         match value {
-            0 => JobType::Generic,
-            _ => JobType::Generic,
+            0 => Ok(JobType::Generic),
+            _ => bail!("unsupported file-transfer type {value}"),
         }
     }
 }
@@ -537,15 +539,6 @@ impl From<i32> for JobType {
 impl Into<i32> for JobType {
     fn into(self) -> i32 {
         self as i32
-    }
-}
-
-impl JobType {
-    pub fn from_proto(t: ::protobuf::EnumOrUnknown<file_transfer_send_request::FileType>) -> Self {
-        match t.enum_value() {
-            Ok(file_transfer_send_request::FileType::Generic) => JobType::Generic,
-            _ => JobType::Generic,
-        }
     }
 }
 
@@ -4305,6 +4298,46 @@ mod tests {
     use super::*;
     use crate::compress::try_decompress;
     use crate::protobuf::Message as _;
+
+    #[test]
+    fn file_transfer_type_refuses_reserved_and_unknown_wire_values() {
+        for value in [0, 1, 2, 42, 255, -1, i32::MIN, i32::MAX] {
+            let mut action = FileAction::new();
+            action.set_send(FileTransferSendRequest {
+                id: 7,
+                path: "unopened/source".to_owned(),
+                file_type: crate::protobuf::EnumOrUnknown::from_i32(value),
+                ..Default::default()
+            });
+            let mut message = Message::new();
+            message.set_file_action(action);
+            let encoded = message.write_to_bytes().expect("encode the actual request");
+            let decoded = Message::parse_from_bytes(&encoded).expect("decode the actual request");
+            let Some(message::Union::FileAction(action)) = decoded.union else {
+                panic!("the file action must survive serialization");
+            };
+            let Some(file_action::Union::Send(request)) = action.union else {
+                panic!("the send request must survive serialization");
+            };
+            assert_eq!(request.file_type.value(), value);
+            if value == 0 {
+                assert_eq!(
+                    JobType::try_from(request.file_type.value()).expect("admit ordinary transfer"),
+                    JobType::Generic
+                );
+            } else {
+                assert_eq!(request.file_type.enum_value(), Err(value));
+                assert!(JobType::try_from(request.file_type.value()).is_err());
+            }
+        }
+
+        let request = FileTransferSendRequest::parse_from_bytes(&[])
+            .expect("decode an omitted proto3 default field");
+        assert_eq!(
+            JobType::try_from(request.file_type.value()).expect("admit default ordinary transfer"),
+            JobType::Generic
+        );
+    }
 
     #[tokio::test]
     async fn r_s11fg_read_step_returns_the_exact_file_frame_receipt() {

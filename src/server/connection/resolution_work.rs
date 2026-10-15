@@ -12,15 +12,15 @@ pub(super) trait ResolutionWorkOwner: Send + 'static {
     fn fail_closed(&self, error: String);
 }
 
-pub(super) struct ResolutionWork {
+pub(super) struct ResolutionWork<T = ()> {
     admission: Arc<AtomicU8>,
-    supervisor: tokio::task::JoinHandle<Result<(), String>>,
+    supervisor: tokio::task::JoinHandle<Result<T, String>>,
 }
 
-impl ResolutionWork {
+impl<T: Send + 'static> ResolutionWork<T> {
     pub(super) fn start(
         owner: impl ResolutionWorkOwner,
-        action: impl FnOnce() -> Result<(), String> + Send + 'static,
+        action: impl FnOnce() -> Result<T, String> + Send + 'static,
     ) -> Self {
         let admission = Arc::new(AtomicU8::new(PENDING));
         let worker_admission = Arc::clone(&admission);
@@ -61,13 +61,15 @@ impl ResolutionWork {
         Self { admission, supervisor }
     }
 
-    pub(super) async fn wait(&mut self) -> Result<(), String> {
+    pub(super) async fn wait(&mut self) -> Result<T, String> {
         match (&mut self.supervisor).await {
             Ok(result) => result,
             Err(error) => Err(format!("resolution supervisor failed: {error}")),
         }
     }
+}
 
+impl<T> ResolutionWork<T> {
     pub(super) fn cancel_pending(&self) -> bool {
         self.admission.compare_exchange(
             PENDING,
@@ -78,7 +80,7 @@ impl ResolutionWork {
     }
 }
 
-impl Drop for ResolutionWork {
+impl<T> Drop for ResolutionWork<T> {
     fn drop(&mut self) {
         self.cancel_pending();
     }

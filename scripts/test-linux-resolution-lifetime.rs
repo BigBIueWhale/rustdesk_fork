@@ -20,21 +20,21 @@ mod command_tests {
     static NEXT_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
     const CHILD: &str = "import os, pathlib, signal, sys, time\nroot=pathlib.Path(sys.argv[1])\nmode=sys.argv[2]\n(root/'pid').write_text(str(os.getpid()))\nif mode=='hold':\n while not (root/'release').exists(): time.sleep(0.005)\n print('complete')\nelif mode=='fail': print('plausible stdout'); sys.exit(7)\nelif mode=='signal': os.kill(os.getpid(),signal.SIGTERM)\nelif mode=='flood':\n while True: os.write(1,b'x'*8192)\n";
 
-    struct Directory(PathBuf);
+    pub(super) struct Directory(pub(super) PathBuf);
     impl Directory {
-        fn new() -> Self {
+        pub(super) fn new() -> Self {
             let path = std::env::temp_dir().join(format!("resolution-child-{}-{}-{}",
                 std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos(),
                 NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)));
             fs::create_dir(&path).unwrap();
             Self(path)
         }
-        fn command(&self, mode: &str) -> Command {
+        pub(super) fn command(&self, mode: &str) -> Command {
             let mut command = Command::new("/usr/bin/python3");
             command.args(["-I", "-S", "-c", CHILD]).arg(&self.0).arg(mode);
             command
         }
-        fn assert_reaped(&self) {
+        pub(super) fn assert_reaped(&self) {
             let pid: libc::pid_t = fs::read_to_string(self.0.join("pid")).unwrap().parse().unwrap();
             let mut status = 0;
             assert_eq!(unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) }, -1,
@@ -199,7 +199,7 @@ mod work_tests {
     #[tokio::test(flavor = "current_thread")]
     async fn native_failure_is_reported() {
         let (owner, retired, poisoned, _) = owner();
-        let mut work = ResolutionWork::start(owner, || Err("native refusal".to_owned()));
+        let mut work: ResolutionWork = ResolutionWork::start(owner, || Err("native refusal".to_owned()));
         assert_eq!(work.wait().await, Err("native refusal".to_owned()));
         assert!(retired.load(Ordering::Acquire));
         assert!(!poisoned.load(Ordering::Acquire));
@@ -208,9 +208,54 @@ mod work_tests {
     #[tokio::test(flavor = "current_thread")]
     async fn native_panic_poison_and_release() {
         let (owner, retired, poisoned, _) = owner();
-        let mut work = ResolutionWork::start(owner, || panic!("native panic"));
+        let mut work: ResolutionWork = ResolutionWork::start(owner, || panic!("native panic"));
         assert!(work.wait().await.unwrap_err().contains("panicked"));
         assert!(retired.load(Ordering::Acquire));
         assert!(poisoned.load(Ordering::Acquire));
+    }
+
+    async fn native_query(cancel_waiter: bool) {
+        use super::{command_tests::Directory, xrandr_command};
+        let root = Directory::new();
+        let command = root.command("hold");
+        let (owner, retired, poisoned, retired_rx) = owner();
+        let mut work = ResolutionWork::start(owner, move || {
+            let output = xrandr_command::run(command).map_err(|error| error.to_string())?;
+            if !output.status.success() { return Err("query child failed".to_owned()); }
+            Ok(output.stdout)
+        });
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !root.0.join("pid").exists() {
+            assert!(std::time::Instant::now() < deadline);
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+        // This timer must run while the exact native child is still held.
+        let heartbeat = std::time::Instant::now();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(heartbeat.elapsed() < Duration::from_millis(500));
+        assert!(!retired.load(Ordering::Acquire));
+        if cancel_waiter {
+            assert!(tokio::time::timeout(Duration::from_millis(20), work.wait()).await.is_err());
+            drop(work);
+            assert!(!retired.load(Ordering::Acquire));
+            std::fs::write(root.0.join("release"), b"release").unwrap();
+            tokio::time::timeout(Duration::from_secs(2), retired_rx).await.unwrap().unwrap();
+        } else {
+            std::fs::write(root.0.join("release"), b"release").unwrap();
+            assert_eq!(work.wait().await.unwrap(), b"complete\n");
+            assert!(retired.load(Ordering::Acquire));
+        }
+        assert!(!poisoned.load(Ordering::Acquire));
+        root.assert_reaped();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn native_query_returns_value_without_blocking_runtime() {
+        native_query(false).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancelled_native_query_retains_owner_until_child_reaped() {
+        native_query(true).await;
     }
 }

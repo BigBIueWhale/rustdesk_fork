@@ -3463,6 +3463,8 @@ run_focused_rust_tests() {
                 work_tests::cancelled_waiter_keeps_the_retained_ticket
                 work_tests::native_failure_is_reported
                 work_tests::native_panic_poison_and_release
+                work_tests::native_query_returns_value_without_blocking_runtime
+                work_tests::cancelled_native_query_retains_owner_until_child_reaped
                 resolution_work::tests::r_s11iu_resolution_supervisor_abort_keeps_native_owner
                 query_regressions::tests::successful_query_preserves_geometry_and_mode_lines
                 query_regressions::tests::failed_query_refuses_plausible_stdout
@@ -4575,7 +4577,7 @@ PY
             || fail 'resolution-restoration artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution-lifetime summary count differs'
-        [ "$(grep -Ec '^LINUX_RESOLUTION_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^LINUX_RESOLUTION_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=22 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'LINUX_RESOLUTION_LIFETIME_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'resolution-lifetime artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then

@@ -7555,12 +7555,19 @@ impl Connection {
                     pi.current_display = self.display_idx as _;
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     {
+                        let resolutions = match pi.displays.get(self.display_idx) {
+                            Some(display) => match self.login_resolutions(display.name.clone()).await {
+                                Ok(resolutions) => resolutions,
+                                Err(error) => {
+                                    log::error!("Login resolution query failed: {error}");
+                                    self.send_login_error("Display resolutions are unavailable").await;
+                                    return None;
+                                }
+                            },
+                            None => vec![],
+                        };
                         pi.resolutions = Some(SupportedResolutions {
-                            resolutions: pi
-                                .displays
-                                .get(self.display_idx)
-                                .map(|d| crate::platform::resolutions(&d.name))
-                                .unwrap_or(vec![]),
+                            resolutions,
                             ..Default::default()
                         })
                         .into();
@@ -10364,6 +10371,18 @@ impl Connection {
         } else {
             self.turn_off_privacy(t.impl_key).await;
         }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn login_resolutions(&mut self, name: String) -> Result<Vec<Resolution>, String> {
+        let owner = self.authed_conn_id.as_ref()
+            .ok_or_else(|| "authenticated resolution owner is missing".to_owned())?
+            .retain_resolution_cleanup()
+            .map_err(|error| error.to_string())?;
+        let mut work = ResolutionWork::start(owner, move || {
+            Ok(crate::platform::resolutions(&name))
+        });
+        work.wait().await
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

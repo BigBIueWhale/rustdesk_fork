@@ -1,7 +1,7 @@
 #[cfg(not(target_os = "ios"))]
 use crate::client::ClientClipboardSession;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::clipboard::{update_clipboard, ClipboardSide};
+use crate::clipboard::{ClipboardSide, ClipboardWriteOwner, ClipboardWriter};
 #[cfg(not(any(target_os = "ios")))]
 use crate::{
     audio_egress_channel, audio_service, clipboard::CLIPBOARD_INTERVAL, AudioEgressReceiver,
@@ -712,6 +712,8 @@ pub struct Remote<T: InvokeUiSession> {
     sender: ViewerCommandSender,
     video_refresh: ViewerVideoRefreshReceiver,
     input_os_password_task: OwnedInputOsPasswordTask,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    clipboard_writer: Option<ClipboardWriter>,
     // Stop sending local audio to remote client.
     voice_call_audio: Option<VoiceCallAudio>,
     voice_call_request_timestamp: Option<NonZeroI64>,
@@ -1101,6 +1103,8 @@ impl<T: InvokeUiSession> Remote<T> {
             sender,
             video_refresh,
             input_os_password_task: Default::default(),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            clipboard_writer: None,
             read_jobs: Vec::new(),
             write_jobs: Vec::new(),
             remove_jobs: Default::default(),
@@ -1305,6 +1309,12 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     pub async fn io_loop(&mut self, key: &str, token: &str, round: u64) {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        let mut clipboard_writes = ClipboardWriteOwner::new();
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            self.clipboard_writer = Some(clipboard_writes.writer());
+        }
         // One UI object may own multiple network rounds. Exact video identity is scoped to one
         // authenticated connection and must never be inherited by a reconnect.
         self.video_frame_receipts_negotiated = false;
@@ -1666,6 +1676,13 @@ impl<T: InvokeUiSession> Remote<T> {
                         },
                     );
             }
+        }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            if let Err(error) = clipboard_writes.close_and_wait().await {
+                log::error!("Viewer clipboard write retirement failed: {error}");
+            }
+            self.clipboard_writer.take();
         }
         self.finish_file_flow();
         self.shutdown_workers().await;
@@ -3076,7 +3093,9 @@ impl<T: InvokeUiSession> Remote<T> {
                         && !self.handler.lc.read().unwrap().disable_clipboard.v
                     {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                        update_clipboard(vec![cb], ClipboardSide::Client);
+                        if let Some(writer) = self.clipboard_writer.as_ref() {
+                            writer.update(vec![cb], ClipboardSide::Client);
+                        }
                         #[cfg(target_os = "android")]
                         crate::clipboard::handle_msg_clipboard(cb);
                         #[cfg(target_os = "ios")]
@@ -3094,7 +3113,9 @@ impl<T: InvokeUiSession> Remote<T> {
                         && !self.handler.lc.read().unwrap().disable_clipboard.v
                     {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                        update_clipboard(_mcb.clipboards, ClipboardSide::Client);
+                        if let Some(writer) = self.clipboard_writer.as_ref() {
+                            writer.update(_mcb.clipboards, ClipboardSide::Client);
+                        }
                         #[cfg(target_os = "android")]
                         crate::clipboard::handle_msg_multi_clipboards(_mcb);
                         #[cfg(target_os = "ios")]

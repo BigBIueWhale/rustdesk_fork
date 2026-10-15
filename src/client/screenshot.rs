@@ -1,6 +1,6 @@
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::clipboard::{update_clipboard, ClipboardSide};
-use hbb_common::{message_proto::*, ResultType};
+use crate::clipboard::copy_screenshot_to_clipboard;
+use hbb_common::ResultType;
 
 pub enum ScreenshotAction {
     SaveAs(String),
@@ -50,13 +50,7 @@ fn handle_screenshot_(data: bytes::Bytes, action: String) -> ResultType<()> {
         ScreenshotAction::CopyToClipboard => {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                let clips = vec![Clipboard {
-                    compress: false,
-                    content: data,
-                    format: ClipboardFormat::ImagePng.into(),
-                    ..Default::default()
-                }];
-                update_clipboard(clips, ClipboardSide::Client);
+                copy_screenshot_to_clipboard(data);
             }
         }
         ScreenshotAction::Discard => {}

@@ -706,7 +706,8 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         readonly VM_TIMEOUT_SECONDS=2400
     fi
     readonly OVERLAY_SIZE=40G
-    if [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+    if [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller \
+        || "$RUST_TEST_PROFILE" = clipboard ]]; then
         readonly VM_MEMORY=6144
     elif [[ "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
         || "$RUST_TEST_PROFILE" = linux-resolution-lifetime || "$RUST_TEST_PROFILE" = audio-mailbox \
@@ -2226,7 +2227,7 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$M
    || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime ]]; }; then
+        && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; }; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'focused native tests require clean committed master'
@@ -3627,7 +3628,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
             "${rust_lifecycle_files[@]}"
         /usr/bin/sha256sum -- "${rust_lifecycle_files[@]}"
-        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime ]]; then
+        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
             engine_xvfb_input_inventory
         fi
     )"
@@ -5966,8 +5967,16 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     clipboard_decode_before=${clipboard_decode_before% tests=13 unchanged=before-after}
     require_exact_fixed_receipt "$clipboard_decode_before" 'clipboard decode artifact before execution'
     if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+        clipboard_write_sha=${clipboard_decode_artifacts[0]#*sha256=}
+        clipboard_write_sha=${clipboard_write_sha%% *}
         require_exact_fixed_receipt \
-            "CLIPBOARD_DECODE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=13 target=linux-x86_64 scope=production-clipboard-sanitizer rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+            "CLIPBOARD_WRITE_NATIVE=pass tests=2 artifact_sha256=$clipboard_write_sha queue=production native=x11 retired=unchanged live=published cleanup=joined" \
+            'native clipboard write ownership receipt'
+        require_exact_fixed_receipt \
+            "CLIPBOARD_WRITE_ARTIFACT=pass sha256=$clipboard_write_sha tests=5 unchanged=before-after" \
+            'clipboard write ownership artifact receipt'
+        require_exact_fixed_receipt \
+            "CLIPBOARD_DECODE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=18 target=linux-x86_64 scope=production-clipboard-sanitizer-and-write-owner rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
             'focused clipboard decode receipt'
     else
         for label in COMPRESS TERMINAL; do
@@ -6652,7 +6661,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
             "${rust_lifecycle_files[@]}"
         /usr/bin/sha256sum -- "${rust_lifecycle_files[@]}"
-        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime ]]; then
+        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
             engine_xvfb_input_inventory
         fi
     )"
@@ -7069,7 +7078,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = clipboard ]; then
-        printf 'CLIPBOARD_DECODE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-clipboard-sanitizer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'CLIPBOARD_DECODE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-clipboard-sanitizer-and-write-owner network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$vm_elapsed_seconds"
     else

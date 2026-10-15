@@ -2,7 +2,7 @@ use super::{input_service::*, *};
 #[cfg(feature = "unix-file-copy-paste")]
 use crate::clipboard::try_empty_clipboard_files;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::clipboard::{update_clipboard, ClipboardSide};
+use crate::clipboard::{ClipboardSide, ClipboardWriteOwner};
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 use crate::clipboard_file::*;
 use crate::input::{MOUSE_TYPE_MASK, MOUSE_TYPE_TRACKPAD, MOUSE_TYPE_WHEEL};
@@ -4824,6 +4824,8 @@ pub struct Connection {
     android_server_generation: u64,
     keyboard: bool,
     clipboard: bool,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    clipboard_writes: ClipboardWriteOwner,
     audio: bool,
     file: bool,
     restart: bool,
@@ -6115,6 +6117,8 @@ impl Connection {
             android_server_generation: android_generation.unwrap_or_default(),
             keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &control_permissions),
             clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &control_permissions),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            clipboard_writes: ClipboardWriteOwner::new(),
             audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &control_permissions),
             // to-do: make sure is the option correct here
             file: Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &control_permissions),
@@ -8871,7 +8875,9 @@ impl Connection {
                     // text sink without breaking the file-clipboard.
                     if self.clipboard && self.is_authed_remote_conn() {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                        update_clipboard(vec![cb], ClipboardSide::Host);
+                        self.clipboard_writes
+                            .writer()
+                            .update(vec![cb], ClipboardSide::Host);
                         #[cfg(target_os = "android")]
                         crate::clipboard::handle_msg_clipboard(cb);
                         #[cfg(target_os = "ios")]
@@ -8887,7 +8893,9 @@ impl Connection {
                     // R-S19: host clipboard-TEXT write is Remote-only (see the Clipboard arm above).
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     if self.clipboard && self.is_authed_remote_conn() {
-                        update_clipboard(_mcb.clipboards, ClipboardSide::Host);
+                        self.clipboard_writes
+                            .writer()
+                            .update(_mcb.clipboards, ClipboardSide::Host);
                     }
                     #[cfg(target_os = "android")]
                     if self.clipboard && self.is_authed_remote_conn() {
@@ -11053,6 +11061,10 @@ impl Connection {
     async fn on_close(&mut self, reason: &str, lock: bool) {
         if self.closed {
             return;
+        }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if let Err(error) = self.clipboard_writes.close_and_wait().await {
+            log::error!("Controlled clipboard write retirement failed: {error}");
         }
         drop(self.voice_call_input.take());
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -13710,6 +13722,8 @@ impl Default for PortableState {
 
 impl Drop for Connection {
     fn drop(&mut self) {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        self.clipboard_writes.close();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         drop(self.resolution_work.take());
         if !self.closed {

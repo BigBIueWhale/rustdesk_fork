@@ -6,6 +6,12 @@ use arboard::{ClipboardData, ClipboardFormat};
 use hbb_common::protobuf::Message as _;
 use hbb_common::{bail, log, message_proto::*, ResultType};
 pub(crate) mod limits;
+#[cfg(not(target_os = "android"))]
+mod write_owner;
+#[cfg(not(target_os = "android"))]
+pub(crate) use write_owner::{ClipboardWriteOwner, ClipboardWriter};
+#[cfg(all(test, target_os = "linux"))]
+mod write_native_tests;
 use limits::{
     MAX_NATIVE_CLIPBOARD_ITEMS, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES,
     MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES, MAX_NATIVE_CLIPBOARD_TOTAL_BYTES,
@@ -50,7 +56,13 @@ enum ClipboardUpdateRequest {
     SetMulti {
         multi_clipboards: Vec<Clipboard>,
         side: ClipboardSide,
+        owner: ClipboardWriter,
     },
+    SetScreenshot {
+        png: bytes::Bytes,
+    },
+    #[cfg(test)]
+    Barrier(std::sync::mpsc::SyncSender<()>),
     #[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
     SetFiles {
         files: Vec<String>,
@@ -899,29 +911,53 @@ pub fn check_clipboard_cm() -> ResultType<MultiClipboards> {
 }
 
 #[cfg(not(target_os = "android"))]
-fn update_clipboard_(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
+fn update_clipboard_(
+    multi_clipboards: Vec<Clipboard>,
+    side: ClipboardSide,
+    owner: Option<&ClipboardWriter>,
+) {
+    if owner.is_some_and(|owner| !owner.is_live()) {
+        return;
+    }
     let Some(multi_clipboards) = sanitize_multi_clipboards_for_native_proto(multi_clipboards)
     else {
         return;
     };
     let data = native_clipboard_data_from_multi_clipboards(multi_clipboards.clipboards);
-    if let Err(e) = set_native_clipboard_data(data, side) {
+    if let Err(e) = set_native_clipboard_data_(data, side, owner) {
         log::warn!("failed to set native clipboard: {}", e);
     }
 }
 
 #[cfg(not(target_os = "android"))]
 pub(crate) fn set_native_clipboard_data(
-    mut to_update_data: Vec<ClipboardData>,
+    to_update_data: Vec<ClipboardData>,
     side: ClipboardSide,
 ) -> ResultType<()> {
+    set_native_clipboard_data_(to_update_data, side, None)
+}
+
+#[cfg(not(target_os = "android"))]
+fn set_native_clipboard_data_(
+    mut to_update_data: Vec<ClipboardData>,
+    side: ClipboardSide,
+    owner: Option<&ClipboardWriter>,
+) -> ResultType<()> {
     let mut ctx = CLIPBOARD_CTX.lock().unwrap();
+    let _lock = ARBOARD_MTX.lock().unwrap();
+    let _permit = match owner {
+        Some(owner) => match owner.begin()? {
+            Some(permit) => Some(permit),
+            None => return Ok(()),
+        },
+        None => None,
+    };
     if ctx.is_none() {
         *ctx = Some(ClipboardContext::new()?);
     }
     if let Some(ctx) = ctx.as_mut() {
         to_update_data = append_owner_marker(to_update_data, side);
-        ctx.set(&to_update_data)?;
+        ctx.inner.set_formats(&to_update_data)?;
         log::debug!("{} updated on {}", CLIPBOARD_NAME, side);
         Ok(())
     } else {
@@ -945,22 +981,28 @@ fn append_owner_marker(mut data: Vec<ClipboardData>, side: ClipboardSide) -> Vec
     data
 }
 
-// R-X13 (§8): set_text_clipboard_with_owner_sync + the set_with_owner_marker_for_linux method (the
-// owner-marked clipboard SET used only by the excised Wayland uinput clipboard-paste input) are
-// removed. append_owner_marker stays — the live clipboard-sync still marks its own writes.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl ClipboardWriter {
+    pub(crate) fn update(&self, multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
+        if !self.is_live() {
+            return;
+        }
+        enqueue_clipboard_update(
+            ClipboardUpdateRequest::SetMulti {
+                multi_clipboards,
+                side,
+                owner: self.clone(),
+            },
+            "native clipboard dispatcher busy; refusing to queue peer clipboard SET",
+        )
+    }
+}
 
-#[cfg(not(target_os = "android"))]
-pub fn update_clipboard(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
-    // R-T0: peer clipboard SET is a hostile-peer path. Spawning a fresh OS
-    // thread for each peer message would be a thread-amplification DoS, so use
-    // one bounded dispatcher and shed newest excess while a previous clipboard
-    // update is still being processed.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn copy_screenshot_to_clipboard(png: bytes::Bytes) {
     enqueue_clipboard_update(
-        ClipboardUpdateRequest::SetMulti {
-            multi_clipboards,
-            side,
-        },
-        "native clipboard dispatcher busy; refusing to queue peer clipboard SET",
+        ClipboardUpdateRequest::SetScreenshot { png },
+        "native clipboard dispatcher busy; refusing to queue screenshot copy",
     )
 }
 
@@ -1004,7 +1046,23 @@ fn handle_clipboard_update_request(request: ClipboardUpdateRequest) {
         ClipboardUpdateRequest::SetMulti {
             multi_clipboards,
             side,
-        } => update_clipboard_(multi_clipboards, side),
+            owner,
+        } => update_clipboard_(multi_clipboards, side, Some(&owner)),
+        ClipboardUpdateRequest::SetScreenshot { png } => update_clipboard_(
+            vec![Clipboard {
+                content: png,
+                format: hbb_common::message_proto::ClipboardFormat::ImagePng.into(),
+                ..Default::default()
+            }],
+            ClipboardSide::Client,
+            None,
+        ),
+        #[cfg(test)]
+        ClipboardUpdateRequest::Barrier(completion) => {
+            if completion.send(()).is_err() {
+                log::debug!("clipboard test observer retired before dispatcher completion");
+            }
+        }
         #[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
         ClipboardUpdateRequest::SetFiles { files, side } => {
             match sanitize_linux_file_clipboard_urls(files, side) {
@@ -1161,12 +1219,6 @@ impl ClipboardContext {
             ClipboardData::FileUrl(urls) => Some(urls),
             _ => None,
         }))
-    }
-
-    fn set(&mut self, data: &[ClipboardData]) -> ResultType<()> {
-        let _lock = ARBOARD_MTX.lock().unwrap();
-        self.inner.set_formats(data)?;
-        Ok(())
     }
 
     // R-X13 (§8): set_with_owner_marker_for_linux removed with set_text_clipboard_with_owner_sync

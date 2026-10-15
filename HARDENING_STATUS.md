@@ -2183,11 +2183,31 @@ and twelve invalid-profile/guest refusals pass in the short control VM.
 `.harness-state/verifier-vm/resolution-query-native-a4dee86e-v2.json` binds source,
 artifact, results, controls, limits and cleanup. The earlier twenty-case receipt
 `resolution-lifetime-accepted-2fcdbf6e.json` remains retained.
-The native fixture compiles the production worker/command components, while the
-parent login helper is source-reviewed only. Actual parent/application compilation
-and login, real X-server/monitor/peer, syscall-failure retirement, other synchronous
-display discovery callers and native Windows/macOS remain OPEN. No historical
-whole-parent A/B, installed-service or LPE closure follows from this component run.
+The complete Linux parent library test build now compiles the changed login helper
+and its actual generated-protobuf result type. Source `ee89906e` passed
+`--linux-resolution-parent-tests` in 292 VM seconds: the locked
+`--lib --features linux-pkg-config` build took 226 seconds, and three named tests
+took 0.07 seconds. Two new cases move the actual `Resolution` value through a
+held native child and prove result/owner finality after exact reap, including
+cancelled wait/controller; the existing supervisor-abort case also passes.
+Artifact SHA-256 `7c48a7755e5a686f98230fd99b46af3690d79036d4e3b2835329bf1a2b1ffcc1`
+stays equal before/after. All 221 complete source/control snapshots match
+before/live/after; four native listener deltas and independent endpoint comparisons
+are empty. Exact VM, monitor, Docker and RAM/private-root retirement pass.
+The shared parent compiler retains exact Cargo target/profile/artifact selection.
+Its `linux-parent-libtest` profile retains the measured 20 GiB admission, 6 GiB
+guest, 5 GiB container, 7 GiB RAM scratch and 6 GiB hard file ceiling; current scratch
+peaks at 5,553,635,328 bytes and overlay at 5,393,485,824. The first wrapper-only
+duplicate-export rejection is retained separately; final receipts now export once.
+`.harness-state/verifier-vm/resolution-parent-native-ee89906e.json` binds source,
+native results, the earlier failure, frozen inputs, limits and cleanup.
+This accepts that complete Rust parent configuration and its three native work
+cases. Actual login, xrandr/X-server/monitor/peer, Flutter application/bridge,
+installed-service, syscall-failure retirement, other synchronous display discovery,
+native Windows/macOS and whole-parent behavioral A/B remain OPEN. The pinned
+devcheck image has XRandR libraries but lacks the native `xrandr` executable;
+its authenticated acquisition and real query execution remain required. No LPE
+or release closure follows from this parent-library result.
 
 **Resolution restoration record identity (R-T4): production component accepted; integration OPEN.**
 The registry privately retains an immutable original-resolution object for each output.

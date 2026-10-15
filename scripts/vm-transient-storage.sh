@@ -6,6 +6,8 @@ VM_STORAGE_MONITOR_PID=
 readonly VM_STORAGE_SOURCE="$SCRIPT_DIR/vm-transient-storage.py"
 if [ "${MODE:-}" = ledger-token-count ]; then
     readonly VM_STORAGE_PROFILE=ledger-token-count
+elif [ "${MODE:-}:${REQUEST:-}" = transaction:--maintenance-stage-xrandr-runtime-candidate ]; then
+    readonly VM_STORAGE_PROFILE=xrandr-acquisition
 elif [ "${MODE:-}" = cpace-recovery-tests ]; then
     readonly VM_STORAGE_PROFILE=cpace-recovery-tests
 elif [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \

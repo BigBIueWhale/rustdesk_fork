@@ -48,6 +48,9 @@ def storage_limits(profile, memory_mib):
     if profile == 'linux-resolution-lifetime':
         require(memory_mib == 2048, 'resolution storage profile requires its 2 GiB guest')
         return 6 * GIB, 4 * GIB
+    if profile == 'xrandr-acquisition':
+        require(memory_mib == 4096, 'xrandr acquisition requires its 4 GiB guest')
+        return 6 * GIB, 4 * GIB
     require(profile == 'standard', 'unknown VM storage profile')
     return SCRATCH_LIMIT, 8 * GIB
 
@@ -377,7 +380,7 @@ def main():
                         choices=('standard', 'hbb-common-fs', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
                                  'ledger-token-count', 'x11-focus', 'linux-parent-libtest',
-                                 'linux-resolution-lifetime'),
+                                 'linux-resolution-lifetime', 'xrandr-acquisition'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

@@ -3438,6 +3438,64 @@ maintenance_stage_polkit_runtime_candidate() {
         "$DEV_CHECK_IMAGE_ID" "$package_count" "$archive_size" "$archive_sha" "$candidate"
 }
 
+maintenance_stage_xrandr_runtime_candidate() {
+    require_devcheck_image_pins
+    require_image_pin XRANDR_RUNTIME_VERSION
+    require_image_pin XRANDR_RUNTIME_SIZE
+    require_image_pin XRANDR_RUNTIME_SHA256
+    local output="$ONLINE_FETCH_TMP/xrandr-runtime-output"
+    local parent="$ONLINE_CANDIDATE_ROOT/xrandr-runtime"
+    local part="$parent/.xrandr-runtime-candidate.tar.gz.part"
+    local candidate="$parent/xrandr-runtime-candidate.tar.gz"
+    local package="x11-xserver-utils_${XRANDR_RUNTIME_VERSION}_amd64.deb"
+    local archive_size archive_sha directory
+    for directory in "$ONLINE_CANDIDATE_ROOT" "$parent"; do
+        if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
+            /usr/bin/install -d -m 0700 -- "$directory"
+        fi
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' "$directory")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "xrandr candidate directory authority differs: $directory"
+    done
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        && [ ! -e "$part" ] && [ ! -L "$part" ] \
+        || die 'xrandr candidate already exists; inspect it before another acquisition'
+    /usr/bin/install -d -m 0700 -- "$output"
+    verify_or_load_devcheck_image
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$SCRIPT_DIR/stage-xrandr-runtime-candidate.sh,target=/stage-xrandr-runtime-candidate.sh,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$output,target=/outputs,bind-recursive=disabled" \
+        --env "XRANDR_UID=$ONLINE_FETCH_UID" --env "XRANDR_GID=$ONLINE_FETCH_GID" \
+        --env "XRANDR_BASE=$DEV_CHECK_IMAGE_ID" \
+        --env "XRANDR_DEBIAN_SNAPSHOT=$DEV_CHECK_DEBIAN_SNAPSHOT" \
+        --env "XRANDR_SECURITY_SNAPSHOT=$DEV_CHECK_SECURITY_SNAPSHOT" \
+        --env "XRANDR_VERSION=$XRANDR_RUNTIME_VERSION" \
+        --env "XRANDR_SIZE=$XRANDR_RUNTIME_SIZE" \
+        --env "XRANDR_SHA256=$XRANDR_RUNTIME_SHA256" \
+        "$DEV_CHECK_IMAGE_ID" \
+        /bin/bash --noprofile --norc /stage-xrandr-runtime-candidate.sh /outputs \
+        || die 'signed xrandr package candidate acquisition failed'
+    [ "$(/usr/bin/find "$output" -mindepth 1 -maxdepth 1 -printf x)" = xx ] \
+        && [ -f "$output/contract" ] && [ ! -L "$output/contract" ] \
+        && [ -f "$output/$package" ] && [ ! -L "$output/$package" ] \
+        && [ "$(/usr/bin/sha256sum "$output/$package" | /usr/bin/cut -d ' ' -f 1)" = "$XRANDR_RUNTIME_SHA256" ] \
+        || die 'xrandr candidate output differs'
+    (
+        cd "$output"
+        /usr/bin/tar --sort=name --format=gnu --mtime="@$DEV_CHECK_SOURCE_DATE_EPOCH" \
+            --owner=0 --group=0 --numeric-owner -cf - contract "$package"
+    ) | /usr/bin/gzip -n >"$part" || die 'xrandr candidate archive creation failed'
+    archive_size="$(/usr/bin/stat -c '%s' "$part")"
+    [ "$archive_size" -gt 0 ] && [ "$archive_size" -le 524288 ] \
+        || die 'xrandr candidate archive exceeds its bound'
+    archive_sha="$(/usr/bin/sha256sum "$part" | /usr/bin/cut -d ' ' -f 1)"
+    /usr/bin/chmod 0400 -- "$part"
+    online_image_provenance maintenance-rename-noreplace --source "$part" --destination "$candidate" \
+        || die 'xrandr candidate publication failed'
+    printf 'XRANDR_RUNTIME_CANDIDATE=staged base=%s files=2 bytes=%s sha256=%s path=%s\n' \
+        "$DEV_CHECK_IMAGE_ID" "$archive_size" "$archive_sha" "$candidate"
+}
+
 maintenance_stage_pa_runtime_candidate() {
     require_devcheck_image_pins
     require_image_pin PA_RUNTIME_PULSEAUDIO_VERSION
@@ -8490,6 +8548,11 @@ main() {
         --maintenance-discover-devcheck-image)
             [ "$#" -eq 1 ] || die "--maintenance-discover-devcheck-image takes no arguments"
             maintenance_discover_devcheck_image
+            return 0
+            ;;
+        --maintenance-stage-xrandr-runtime-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-stage-xrandr-runtime-candidate takes no arguments"
+            maintenance_stage_xrandr_runtime_candidate
             return 0
             ;;
         --maintenance-stage-pa-runtime-candidate)

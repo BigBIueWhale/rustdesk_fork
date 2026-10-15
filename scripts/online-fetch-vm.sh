@@ -50,6 +50,7 @@ case "$#:${1:-}" in
     1:--maintenance-promote-win-helper-certified-candidate|\
     1:--maintenance-discover-devcheck-image|1:--maintenance-stage-pa-runtime-candidate|\
     1:--maintenance-stage-polkit-runtime-candidate|1:--maintenance-stage-ledger-tokenizer|\
+    1:--maintenance-stage-xrandr-runtime-candidate|\
     1:--maintenance-build-devcheck-image-candidate|\
     1:--maintenance-promote-devcheck-image-candidate|\
     1:--maintenance-build-apple-check-image-candidate|\
@@ -114,7 +115,8 @@ elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=4096
 elif [ "$REQUEST" = --maintenance-stage-polkit-runtime-candidate ] \
-     || [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ]; then
+     || [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ] \
+     || [ "$REQUEST" = --maintenance-stage-xrandr-runtime-candidate ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=4096
@@ -647,6 +649,11 @@ if [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ]; then
     [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
         || fail 'ledger tokenizer candidate is occupied; inspect it before another acquisition'
 fi
+if [ "$REQUEST" = --maintenance-stage-xrandr-runtime-candidate ]; then
+    candidate="$REPO_ROOT/online/candidates/xrandr-runtime"
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || fail 'xrandr runtime candidate is occupied; inspect it before another acquisition'
+fi
 if [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ] \
    || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-sysroots ]; then
     candidate="$REPO_ROOT/online/candidates/flutter-linux-engine-${REQUEST##*engine-}"
@@ -721,6 +728,7 @@ for source in "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$BOOT_DERIVER" \
     "$SCRIPT_DIR/acquire-verifier-media-kernel.sh" \
     "$SCRIPT_DIR/acquire-verifier-media-kernel.py" \
     "$SCRIPT_DIR/stage-pa-runtime-candidate.sh" \
+    "$SCRIPT_DIR/stage-xrandr-runtime-candidate.sh" \
     "$SCRIPT_DIR/stage-polkit-runtime-candidate.sh" \
     "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" \
     "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" \
@@ -835,6 +843,7 @@ if [ "$MODE" != authority-smoke ]; then
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ] \
        || [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ] \
+       || [ "$REQUEST" = --maintenance-stage-xrandr-runtime-candidate ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-sysroots ] \
        || [ -e "$cache_child" ] || [ -L "$cache_child" ]; then
@@ -915,6 +924,7 @@ kernel_before="$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/sha256sum "$INITRD")"
 media_kernel_before="$(/usr/bin/sha256sum "$SCRIPT_DIR/acquire-verifier-media-kernel.sh" "$SCRIPT_DIR/acquire-verifier-media-kernel.py")"
 polkit_stage_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' "$SCRIPT_DIR/stage-polkit-runtime-candidate.sh"):$(/usr/bin/sha256sum "$SCRIPT_DIR/stage-polkit-runtime-candidate.sh")"
+xrandr_stage_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' "$SCRIPT_DIR/stage-xrandr-runtime-candidate.sh"):$(/usr/bin/sha256sum "$SCRIPT_DIR/stage-xrandr-runtime-candidate.sh")"
 source_before="$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")"
 capture_listeners >"$LISTENERS_BEFORE"
 
@@ -1211,6 +1221,8 @@ fi
     || fail 'media kernel acquisition source changed during acquisition'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' "$SCRIPT_DIR/stage-polkit-runtime-candidate.sh"):$(/usr/bin/sha256sum "$SCRIPT_DIR/stage-polkit-runtime-candidate.sh")" = "$polkit_stage_before" ] \
     || fail 'polkit runtime acquisition source changed during acquisition'
+[ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' "$SCRIPT_DIR/stage-xrandr-runtime-candidate.sh"):$(/usr/bin/sha256sum "$SCRIPT_DIR/stage-xrandr-runtime-candidate.sh")" = "$xrandr_stage_before" ] \
+    || fail 'xrandr runtime acquisition source changed during acquisition'
 [ "$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")" = "$source_before" ] \
     || fail 'live orchestration source changed during acquisition'
 [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" = "$SOURCE_COMMIT" ] \

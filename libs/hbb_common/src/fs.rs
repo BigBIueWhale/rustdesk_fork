@@ -3523,16 +3523,48 @@ impl TransferJob {
         }
     }
 
-    /// Open the data stream for the current file.
+    async fn open_send_file(path: PathBuf) -> ResultType<File> {
+        let file = tokio::task::spawn_blocking(move || -> ResultType<std::fs::File> {
+            let mut options = std::fs::OpenOptions::new();
+            options.read(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY);
+            }
+            let file = options.open(path)?;
+            #[cfg(windows)]
+            {
+                use std::os::windows::io::AsRawHandle;
+                // The owned file keeps this handle valid throughout the native type query.
+                let kind = unsafe { winapi::um::fileapi::GetFileType(file.as_raw_handle() as _) };
+                if kind != winapi::um::winbase::FILE_TYPE_DISK {
+                    bail!("send source is not a verified disk file (native type {kind})");
+                }
+            }
+            if !file.metadata()?.is_file() {
+                bail!("send source is not a regular file");
+            }
+            Ok(file)
+        })
+        .await??;
+        Ok(File::from_std(file))
+    }
+
+    /// Open the regular send source for the current file.
     /// Returns Ok(true) if job is done, Ok(false) otherwise.
     async fn open_data_stream(&mut self) -> ResultType<bool> {
+        if self.role != TransferRole::Send {
+            bail!("cannot initialize a send source for a receive job");
+        }
         let file_num = self.file_num as usize;
         if file_num >= self.files.len() {
             self.data_stream.take();
             return Ok(true);
         }
         if self.data_stream.is_none() {
-            let file = File::open(Self::join(&self.path, &self.files[file_num].name)).await?;
+            let path = Self::join(&self.path, &self.files[file_num].name);
+            let file = Self::open_send_file(path).await?;
             self.data_stream = Some(file);
             self.send_file_offset = 0;
             self.file_confirmed = false;
@@ -3842,7 +3874,7 @@ impl TransferJob {
                 let mut opened_file = None;
                 let file = match self.data_stream.as_mut() {
                     Some(file) => file,
-                    None => opened_file.insert(File::open(&path).await?),
+                    None => opened_file.insert(Self::open_send_file(path).await?),
                 };
                 let available = file.metadata().await?.len();
                 if offset > available {
@@ -7262,7 +7294,7 @@ mod tests {
                 }
             }
         };
-        assert!(prompt && result.is_err(), "prompt={prompt}, result={result:?}");
+        assert!(prompt && result.is_err(), "prompt={}, result={:?}", prompt, result);
         assert!(job.data_stream.is_none());
         assert!(!job.file_confirmed());
         assert!(!job.file_is_waiting());

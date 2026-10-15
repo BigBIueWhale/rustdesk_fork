@@ -4346,6 +4346,10 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             >"$output" 2>&1 || container_status=$?
     fi
     if [ "$container_status" -ne 0 ]; then
+        if [ "$MODE" = hbb-common-fs ]; then
+            awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
+                || printf 'Shared-library failure artifact metadata could not be read\n' >&2
+        fi
         if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
             awk '/^WHITEBOARD_HELPER_(BUILD|ARTIFACT_BEFORE)=/ { print }' "$output" >&2 \
                 || printf 'Whiteboard failure metadata could not be read\n' >&2

@@ -119,6 +119,20 @@ impl Decoder for BytesCodec {
             None => Ok(None),
         }
     }
+
+    fn decode_eof(&mut self, src: &mut BytesMut) -> io::Result<Option<BytesMut>> {
+        match self.decode(src)? {
+            Some(frame) => Ok(Some(frame)),
+            None if src.is_empty() && (self.raw || matches!(self.state, DecodeState::Head)) => {
+                Ok(None)
+            }
+            // A consumed header may leave an empty buffer while its payload is still missing.
+            None => Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "incomplete frame at end of stream",
+            )),
+        }
+    }
 }
 
 impl Encoder<Bytes> for BytesCodec {

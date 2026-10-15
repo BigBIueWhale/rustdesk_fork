@@ -78,18 +78,11 @@ impl SecretboxCodec {
     fn max_packet_length(&self) -> usize {
         self.inner.max_packet_length()
     }
-}
 
-impl Decoder for SecretboxCodec {
-    type Item = BytesMut;
-    type Error = Error;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<BytesMut>, Error> {
-        // (1) reassemble exactly ONE complete frame; a partial frame buffers as Ok(None) with no
-        // counter advance, so a dropped poll never half-consumes.
-        match self.inner.decode(src)? {
+    fn open_frame(&mut self, frame: Option<BytesMut>) -> Result<Option<BytesMut>, Error> {
+        match frame {
             Some(mut frame) => {
-                // (2) authenticate + decrypt the WHOLE frame, advancing read_seq INSIDE decode.
+                // Authenticate the whole frame before either decoder path can yield it.
                 // R-T7 (§20): authenticate EVERY frame on the keyed stream — there is no ≤1-byte
                 // passthrough. A genuine sealed frame is always >= MACBYTES (16 bytes: seal appends
                 // a 16-byte tag even to a 0-byte plaintext), so any shorter frame cannot be a valid
@@ -110,6 +103,21 @@ impl Decoder for SecretboxCodec {
             }
             None => Ok(None),
         }
+    }
+}
+
+impl Decoder for SecretboxCodec {
+    type Item = BytesMut;
+    type Error = Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<BytesMut>, Error> {
+        let frame = self.inner.decode(src)?;
+        self.open_frame(frame)
+    }
+
+    fn decode_eof(&mut self, src: &mut BytesMut) -> Result<Option<BytesMut>, Error> {
+        let frame = self.inner.decode_eof(src)?;
+        self.open_frame(frame)
     }
 }
 

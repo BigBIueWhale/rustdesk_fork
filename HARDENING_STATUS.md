@@ -6219,6 +6219,42 @@ under `.harness-state/verifier-vm/clipboard-profile-ea8bb4f1-evidence` and its v
 This establishes the named Linux development profile; broader native/platform acceptance,
 general performance, soak and release reproducibility remain OPEN.
 
+**Desktop peer clipboard SET lifetime — source corrected; Linux queue/X11 component PASS;
+connection and platform acceptance OPEN.** `19c87e28` removes the generic ownerless peer
+enqueue API. Each viewer I/O round and controlled `Connection` owns one fresh
+`src/clipboard/write_owner.rs::ClipboardWriteOwner`; queued writer copies share only its
+exact retirement state. Normal teardown closes admission and asynchronously waits for an
+already admitted native effect. Cancellation closes through RAII. The final check runs
+after both native clipboard locks and before context creation/SET, so a retired request
+cannot acquire authority while waiting for a native lock. Existing Remote/default role
+checks remain at all four peer callers. Screenshot copying has its own explicit local PNG
+request. The existing single worker and one-slot queue remain; no new worker or runtime.
+
+Strengthened test source `70eb758c` passed the complete Linux library build and all 18 focused
+`--android-rust-lifecycle-tests --clipboard` cases in 209 outer seconds (139-second build).
+Thirteen sanitizer and three owner tests cover payload refusal, RAII retirement, cancelled
+async drain, admitted-effect completion and independent fresh owners. Two further cases
+use the actual production dispatcher and a private Xvfb: while the native lock is held,
+a test-only FIFO barrier proves SET was dequeued, and observing the worker's held context
+mutex proves it passed the early liveness check and is waiting at the native lock. Retirement preserves
+the OS clipboard sentinel, while the live-owner control publishes peer text. The barrier
+observes completion and supplies no authorization or substitute clipboard. An old native
+baseline was not executed; the first candidate stopped at a missing test import before
+any test ran. Accepted artifact SHA-256
+`54cdfa6b31c7348533091dd82aa3bac3cd69ef775890c40c4ef7308207a16a5f`
+remained unchanged across all three groups. Immutable
+`.harness-state/verifier-vm/clipboard-write-native-70eb758c.json` binds the source, exact
+results, all 419 equal before/live/after control hashes, unchanged host endpoints and
+joined cleanup. The 6 GiB guest used bounded RAM scratch, with no disk fallback.
+
+This executes the production Linux library/owner/queue and native X11 clipboard, not
+full `Remote`/`Connection` teardown, authenticated peer or installed-service behavior.
+Permission-epoch revocation, file-clipboard SET/empty ownership, native in-flight failure
+and drain, screenshot publication, process-global dispatcher shutdown, Windows/macOS/mobile,
+sustained resource/latency behavior, release artifacts and independent acceptance remain OPEN.
+The event-registration ownership issue and native WindowChannel lifetime issue remain
+explicitly user-parked and OPEN.
+
 **R-S7 terminal/cursor decompression — shared infallible APIs deleted; Linux Rust bridge handoff PASS; native presentation OPEN.**
 Product `b77edafe385cba850165fb3f88e9225ca81e4f29` deletes the two
 `hbb_common::compress` wrappers that converted errors to empty vectors.

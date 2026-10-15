@@ -33,6 +33,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:vector_math/vector_math.dart' show Vector2;
 
 import '../common.dart';
+import '../common/mobile_connection_navigation.dart';
 import '../desktop/widgets/tabbar_widget.dart';
 import '../utils/image.dart' as img;
 import '../common/widgets/dialog.dart';
@@ -1073,7 +1074,9 @@ class FfiModel with ChangeNotifier {
       // (There is no post-keying `input-password`/`re-input-password` re-prompt: CPace is the sole
       // authenticator — R-A1 — so the responder never asks to re-enter a login password.)
       enterConnectPasswordDialog(
-          sessionId, promptRound, dialogManager, text);
+          sessionId, promptRound, dialogManager,
+          reason: text,
+          onCancel: parent.target!.viewCloseCallback(sessionId));
     } else if (type == 'restarting') {
       showMsgBox(sessionId, type, title, text, link, false, dialogManager,
           hasCancel: false);
@@ -1186,7 +1189,7 @@ class FfiModel with ChangeNotifier {
         onSubmit: type.contains('custom') ||
                 owner.connType == ConnType.portForward
             ? null
-            : () => owner.closeView(sessionId),
+            : owner.viewCloseCallback(sessionId),
         reconnect: retryGeneration == null ? null : retry,
         reconnectTimeout: retryGeneration == null ? null : _reconnects);
     if (retryGeneration != null) {
@@ -1203,13 +1206,14 @@ class FfiModel with ChangeNotifier {
   void _performReconnect(
       OverlayDialogManager dialogManager, SessionID sessionId) {
     if (!_isCurrentSession(sessionId)) return;
+    final closeView = parent.target!.viewCloseCallback(sessionId);
     // Disable relative mouse mode before reconnecting to ensure cursor is released.
     parent.target?.inputModel.setRelativeMouseMode(false);
     bind.sessionReconnect(sessionId: sessionId);
     clearPermissions();
     dialogManager.dismissAll();
     dialogManager.showLoading(translate('Connecting...'),
-        onCancel: closeConnection);
+        onCancel: closeView);
   }
 
   void showConnectedWaitingForImage(OverlayDialogManager dialogManager,
@@ -1219,7 +1223,7 @@ class FfiModel with ChangeNotifier {
         !owner.isCurrentSession(sessionId) ||
         waitForFirstImage.isFalse) return;
     dialogManager.showWaitingForImage(sessionId, type, title, text,
-        onCancel: () => owner.closeView(sessionId));
+        onCancel: owner.viewCloseCallback(sessionId));
     waitForImageDialogShow.value = true;
     waitForImageTimer = Timer(Duration(milliseconds: 1500), () {
       if (!_isCurrentSession(sessionId)) return;
@@ -1634,7 +1638,7 @@ class FfiModel with ChangeNotifier {
             if (owner == null) return;
             msgBox(sessionId, 'nocancel-error', 'Prompt', 'No Displays', '',
                 owner.dialogManager,
-                onSubmit: () => owner.closeView(sessionId));
+                onSubmit: owner.viewCloseCallback(sessionId));
           }
         }
       }
@@ -4478,6 +4482,7 @@ class FFI {
       _webCursorShapes;
   Future<bool>? _firstImageInitialization;
   bool _presentationStageCommitted = false;
+  final _mobileView = MobileConnectionView();
 
   // Terminal model registry for multiple terminals
   final Map<int, TerminalModel> _terminalModels = {};
@@ -4493,7 +4498,40 @@ class FFI {
       isCurrentSession(expectedSessionId) &&
       clientOwnerId == expectedClientOwnerId;
 
-  void closeView(SessionID expectedSessionId) {
+  MobileConnectionRoute? bindMobileConnectionRoute(
+      SessionID expectedSessionId, ModalRoute<dynamic> route) {
+    if (sessionId != expectedSessionId || connType != ConnType.terminal) {
+      return null;
+    }
+    final navigator = route.navigator;
+    return _mobileView.bind(route,
+        isCurrentSession: () => sessionId == expectedSessionId,
+        onClosed: (atRoot) {
+          chatModel.hideChatOverlay();
+          if (identical(navigator, globalKey.currentState)) {
+            stateGlobal.isInMainPage = atRoot;
+          }
+        });
+  }
+
+  void unbindMobileConnectionRoute(MobileConnectionRoute owner) {
+    _mobileView.unbind(owner);
+  }
+
+  VoidCallback viewCloseCallback(SessionID expectedSessionId,
+      {MobileConnectionRoute? mobileRoute}) {
+    final closeMobileView = _mobileView.closeCallback(route: mobileRoute);
+    return () {
+      if (sessionId != expectedSessionId) return;
+      if (!isDesktop && connType == ConnType.terminal) {
+        closeMobileView();
+        return;
+      }
+      _closeView(expectedSessionId);
+    };
+  }
+
+  void _closeView(SessionID expectedSessionId) {
     if (!isCurrentSession(expectedSessionId)) return;
     if (isDesktop) {
       final view = switch (connType) {

@@ -10,6 +10,7 @@ import 'package:flutter_hbb/models/terminal_model.dart';
 import 'package:xterm/xterm.dart';
 import '../../desktop/pages/terminal_connection_manager.dart';
 import '../../consts.dart';
+import '../../common/mobile_connection_navigation.dart';
 
 class TerminalPage extends StatefulWidget {
   const TerminalPage({
@@ -32,6 +33,8 @@ class TerminalPage extends StatefulWidget {
 class _TerminalPageState extends State<TerminalPage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   late FFI _ffi;
+  late final SessionID _sessionId;
+  MobileConnectionRoute? _routeOwner;
   late TerminalModel _terminalModel;
   double? _cellHeight;
   double _sysKeyboardHeight = 0;
@@ -47,7 +50,7 @@ class _TerminalPageState extends State<TerminalPage>
   // not depend on an implicit network font fetch.
   static const _terminalFontFamily = 'monospace';
 
-  SessionID get sessionId => _ffi.sessionId;
+  SessionID get sessionId => _sessionId;
 
   @override
   void initState() {
@@ -64,6 +67,7 @@ class _TerminalPageState extends State<TerminalPage>
       isSharedPassword: widget.isSharedPassword,
       connToken: widget.connToken,
     );
+    _sessionId = _ffi.sessionId;
 
     // Create terminal model with specific terminal ID
     _terminalModel = TerminalModel(_ffi, widget.terminalId);
@@ -83,18 +87,37 @@ class _TerminalPageState extends State<TerminalPage>
         mainGetLocalBoolOptionSync(kOptionEnableShowTerminalExtraKeys);
     // Initialize terminal connection
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = _routeOwner;
+      if (!mounted || route == null || !route.isCurrent) return;
       _ffi.dialogManager
-          .showLoading(translate('Connecting...'), onCancel: closeConnection);
+          .showLoading(translate('Connecting...'),
+              onCancel: _ffi.viewCloseCallback(sessionId, mobileRoute: route));
 
       if (_showTerminalExtraKeys) {
         _updateKeyboardHeight();
       }
     });
-    _ffi.ffiModel.updateEventListener(_ffi.sessionId, widget.id);
+    _ffi.ffiModel.updateEventListener(sessionId, widget.id);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isCurrent) return;
+    _routeOwner = _ffi.bindMobileConnectionRoute(sessionId, route);
+  }
+
+  void _confirmCloseConnection() {
+    final route = _routeOwner;
+    if (route == null || !route.isCurrent) return;
+    clientClose(sessionId, _ffi, mobileRoute: route);
   }
 
   @override
   void dispose() {
+    final route = _routeOwner;
+    if (route != null) _ffi.unbindMobileConnectionRoute(route);
     // Unregister terminal model from FFI
     _ffi.unregisterTerminalModel(widget.terminalId, _terminalModel);
     _terminalModel.dispose();
@@ -140,7 +163,7 @@ class _TerminalPageState extends State<TerminalPage>
     super.build(context);
     return WillPopScope(
       onWillPop: () async {
-        clientClose(sessionId, _ffi);
+        _confirmCloseConnection();
         return false; // Prevent default back behavior
       },
       child: buildBody(),
@@ -234,7 +257,7 @@ class _TerminalPageState extends State<TerminalPage>
                     ..onEnd = (details) {
                       // Check if swipe started from left edge and moved right
                       if (_swipeStartX < edgeThreshold && (_swipeCurrentX - _swipeStartX) > swipeThreshold) {
-                        clientClose(sessionId, _ffi);
+                        _confirmCloseConnection();
                       }
                       _swipeStartX = 0;
                       _swipeCurrentX = 0;
@@ -281,7 +304,7 @@ class _TerminalPageState extends State<TerminalPage>
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: () {
-                  clientClose(sessionId, _ffi);
+                  _confirmCloseConnection();
                 },
                 child: Tooltip(
                   message: translate('Close'),

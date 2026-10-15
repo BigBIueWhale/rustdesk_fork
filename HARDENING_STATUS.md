@@ -2251,10 +2251,26 @@ Screenshot publication replaces only the prior screenshot entry. Save/Copy/Cance
 retire that entry once before dispatch and cannot dismiss unrelated entries. Generic message
 submission invokes only an explicit supplied action; type strings cannot infer connection
 closure. General connection-error/no-display and explicit close-confirmation callbacks capture
-their FFI/session and call `FFI::closeView`. That receiver requires the live matching UUID and
+their FFI/session through `FFI::viewCloseCallback`. The desktop receiver requires the live matching UUID and
 exact FFI registration/window role (`remoteScreen`, camera, `ft_`, `pf_`, `terminal_`), or the
-exact mobile/web global owner. Image-wait cancellation uses the same receiver. Remaining loading/
-credential/direct-close callers and exact retained route/tab/window binding remain OPEN.
+exact mobile/web global owner outside the terminal view. Image-wait cancellation uses the same
+receiver. Credential cancel/accepted-loading and reconnect-loading callbacks now capture that
+same action before publication. Remaining direct-close callers and exact retained desktop
+tab/window binding remain OPEN.
+
+**Mobile terminal route ownership — SOURCE CORRECTED; WIDGET/DEVICE EXECUTION PENDING.**
+The page captures its session UUID and binds an exact `ModalRoute` in `didChangeDependencies`.
+One `MobileConnectionView` owns the current route record; replacement and exact unbinding revoke
+old actions before widget disposal, and foreign/unbound records confer no authority. Loading,
+close confirmation, credential/reconnect and generic error callbacks capture that record.
+A terminal uses its own per-peer FFI instead of the global mobile FFI. Only its current route
+may close, and the pop predicate drains that route's local history without popping another page.
+Native connection closure does not revoke the still-visible route's own close action. System UI
+restoration remains independent of navigation; main-page state updates only for the root
+Navigator. Six new real-Navigator regressions and both held SystemChrome schedules are prepared.
+The existing focused dialog command now requires seven suites/60 cases plus three parser controls;
+none has run on this candidate. Actual FFI/Get/page admission, early-start failure, same-peer
+terminal-model restoration, native terminal I/O and physical Android/iOS execution remain OPEN.
 
 Mobile connection close retires chat/main-page state synchronously, then passes the selected
 `NavigatorState` to `closeMobileConnectionRoute`. Route dismissal does not await SystemChrome;
@@ -2267,8 +2283,8 @@ current bridge in a private guest copy. The selected production Dart imports com
 typed file-dialog builders and explicit `close.call` callback references. Widget cases cover
 current one-shot actions, replacement/dismissal before old-widget unmount, retained button and
 keyboard callbacks, unrelated-dialog survival, a real desktop controller's unrelated selected
-tab, image-wait/screenshot choices, and mobile route lifetime. The exact 54-case set remains
-mandatory on success; `--fail-fast` only stops a failed dialog run sooner.
+tab, image-wait/screenshot choices, and mobile route lifetime. The historical 54-case set is
+retained within the current 60-case inventory; `--fail-fast` only stops a failed dialog run sooner.
 
 All 97 before/during/after source/index/audit/spec/ledger/instruction hashes matched. The source
 and input mounts were read-only, original non-generated Flutter libraries matched after the
@@ -2292,7 +2308,7 @@ used authenticated cached boot assets; cold preparation under this cap remains O
 
 Real file-picker/PNG/native clipboard actions, admitted asynchronous-result/request/session
 replacement, actual FFI registration/session/route/tab/window races and remaining close-caller
-migration remain OPEN. The declared whole model checkpoint (25 suites/277 cases), terminal
+migration remain OPEN. The declared whole model checkpoint (25 suites/283 cases), terminal
 pool/decoder tests, native Rust application/FFI and full-peer compilation/execution, installed
 and other-platform/device behavior, persistent-service lifecycle, presentation/resource soak,
 release/cold equality, independent reproduction and external review remain OPEN.
@@ -2843,7 +2859,7 @@ The model checkpoint's test total is one reviewed data file,
 `scripts/flutter-model-test-count.txt`, shared by the parser, parser fixtures, guest
 summary and outer receipt check. The guest copies it beside the immutable validator
 before giving the test process its source workspace; both receive read-only mounts.
-The 23-suite inventory, successful non-skipped completion and terminal checks remain
+The current 25-suite/283-case inventory, successful non-skipped completion and terminal checks remain
 mandatory; the fixed queue shard still requires its exact 24 named tests. This removes
 the stale-summary duplication that rejected an otherwise successful native run.
 At `1b9f1d0c` (tree `3b573a19`), both source-bound zero-NIC transactions passed:
@@ -6257,8 +6273,8 @@ retirement before later publication and rejection of a same-owner count reset.
 They are prepared, uncompiled and unexecuted in the existing model checkpoint.
 Real FFI/Get adapter, page disposal/reentry, close completion, terminal I/O,
 platform/resource/installed and release acceptance remain OPEN. Mobile terminal
-view closing still needs an exact route owner; it is not the global mobile FFI.
-Loading/credential migration remains open until that route authority is correct.
+view closing now has a source-owned route record and captured session/action as detailed above;
+its six new Navigator regressions and loading/credential migration remain execution-pending.
 
 **R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the

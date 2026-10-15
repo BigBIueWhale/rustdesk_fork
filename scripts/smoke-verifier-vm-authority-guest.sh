@@ -7255,7 +7255,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_CREDENTIAL_DIALOG_TEST_JSON
-            expected_result='suites=7 tests=54'
+            expected_result='suites=7 tests=60'
         else
             result_prefix=FLUTTER_DIRECT_ADDRESS_TEST_JSON
             expected_result='suites=1 tests=19'
@@ -7593,6 +7593,7 @@ run_flutter_model_tests() {
                         test/permanent_password_dialog_lifecycle_test.dart
                         test/dialog_close_ownership_test.dart
                         lib/common/mobile_connection_navigation.dart
+                        test/blockable_overlay_test.dart
                     )
                 elif [ "$FLUTTER_TEST_PROFILE" = models ]; then
                     format_paths+=(
@@ -7875,7 +7876,7 @@ run_flutter_model_tests() {
             "$decoder_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
-        printf 'FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=%s tree=%s suites=7 tests=54 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined\n' \
+        printf 'FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=%s tree=%s suites=7 tests=60 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

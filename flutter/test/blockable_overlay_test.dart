@@ -18,7 +18,7 @@ class _TestDialog extends StatelessWidget {
 }
 
 Future<void> _closeWhilePlatformReplyIsPending(WidgetTester tester,
-    {required bool failReply}) async {
+    {required bool failReply, required bool ownedRoute}) async {
   final navigatorKey = GlobalKey<NavigatorState>();
   final reply = Completer<void>();
   var requests = 0;
@@ -50,7 +50,16 @@ Future<void> _closeWhilePlatformReplyIsPending(WidgetTester tester,
     await tester.pumpAndSettle();
     expect(find.text('old connection'), findsOneWidget);
 
-    closeMobileConnectionRoute(navigator);
+    if (ownedRoute) {
+      final view = MobileConnectionView();
+      expect(
+          view.bind(oldRoute,
+              isCurrentSession: () => true, onClosed: (_) {}),
+          isNotNull);
+      view.closeCallback()();
+    } else {
+      closeMobileConnectionRoute(navigator);
+    }
     await tester.pumpAndSettle();
     expect(requests, 1);
     expect(reply.isCompleted, isFalse);
@@ -78,14 +87,173 @@ Future<void> _closeWhilePlatformReplyIsPending(WidgetTester tester,
   }
 }
 
+Future<NavigatorState> _mobileNavigator(WidgetTester tester) async {
+  final key = GlobalKey<NavigatorState>();
+  final messenger = tester.binding.defaultBinaryMessenger;
+  messenger.setMockMethodCallHandler(SystemChannels.platform, (_) async => null);
+  addTearDown(() {
+    messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+  });
+  await tester.pumpWidget(MaterialApp(
+    navigatorKey: key,
+    home: const Text('home'),
+  ));
+  return key.currentState!;
+}
+
+Future<MaterialPageRoute<void>> _pushMobileRoute(
+    WidgetTester tester, NavigatorState navigator, String label) async {
+  final route = MaterialPageRoute<void>(builder: (_) => Text(label));
+  unawaited(navigator.push(route));
+  await tester.pumpAndSettle();
+  return route;
+}
+
 void main() {
   testWidgets('mobile close precedes a held system UI reply', (tester) async {
-    await _closeWhilePlatformReplyIsPending(tester, failReply: false);
+    for (final owned in [false, true]) {
+      await _closeWhilePlatformReplyIsPending(tester,
+          failReply: false, ownedRoute: owned);
+    }
   });
 
   testWidgets('failed system UI reply cannot close a replacement route',
       (tester) async {
-    await _closeWhilePlatformReplyIsPending(tester, failReply: true);
+    for (final owned in [false, true]) {
+      await _closeWhilePlatformReplyIsPending(tester,
+          failReply: true, ownedRoute: owned);
+    }
+  });
+
+  testWidgets('mobile terminal close owns one route and completes once',
+      (tester) async {
+    final navigator = await _mobileNavigator(tester);
+    await _pushMobileRoute(tester, navigator, 'previous page');
+    final route = await _pushMobileRoute(tester, navigator, 'terminal');
+    final view = MobileConnectionView();
+    final closed = <bool>[];
+    final owner = view.bind(route,
+        isCurrentSession: () => true, onClosed: closed.add)!;
+    var completed = false;
+    unawaited(route.popped.then<void>((_) {
+      completed = true;
+    }));
+    final close = view.closeCallback();
+    close();
+    close();
+    expect(owner.isCurrent, isFalse);
+    await tester.pumpAndSettle();
+    expect(completed, isTrue);
+    expect(closed, [false]);
+    expect(find.text('previous page'), findsOneWidget);
+    expect(find.text('terminal'), findsNothing);
+  });
+
+  testWidgets('retired mobile terminal callback cannot close a replacement route',
+      (tester) async {
+    final navigator = await _mobileNavigator(tester);
+    final oldRoute = await _pushMobileRoute(tester, navigator, 'old terminal');
+    final oldElement = tester.element(find.text('old terminal'));
+    final view = MobileConnectionView();
+    final oldOwner = view.bind(oldRoute,
+        isCurrentSession: () => true, onClosed: (_) {})!;
+    final oldClose = view.closeCallback();
+    final replacement = MaterialPageRoute<void>(
+        builder: (_) => const Text('replacement terminal'));
+    unawaited(navigator.pushReplacement(replacement));
+    final current = view.bind(replacement,
+        isCurrentSession: () => true, onClosed: (_) {})!;
+    expect(oldElement.mounted, isTrue);
+    oldClose();
+    view.unbind(oldOwner);
+    expect(current.isCurrent, isTrue);
+    await tester.pumpAndSettle();
+    expect(find.text('replacement terminal'), findsOneWidget);
+    view.closeCallback()();
+    await tester.pumpAndSettle();
+    expect(find.text('home'), findsOneWidget);
+  });
+
+  testWidgets('hidden mobile terminal callback cannot pop a different route',
+      (tester) async {
+    final navigator = await _mobileNavigator(tester);
+    final route = await _pushMobileRoute(tester, navigator, 'terminal');
+    final view = MobileConnectionView();
+    view.bind(route, isCurrentSession: () => true, onClosed: (_) {});
+    final close = view.closeCallback();
+    final different = await _pushMobileRoute(tester, navigator, 'different');
+    close();
+    expect(different.isCurrent, isTrue);
+    await tester.pumpAndSettle();
+    expect(find.text('different'), findsOneWidget);
+    navigator.pop();
+    await tester.pumpAndSettle();
+    close();
+    await tester.pumpAndSettle();
+    expect(find.text('home'), findsOneWidget);
+  });
+
+  testWidgets('mobile terminal session replacement revokes captured close',
+      (tester) async {
+    final navigator = await _mobileNavigator(tester);
+    final route = await _pushMobileRoute(tester, navigator, 'terminal');
+    final view = MobileConnectionView();
+    var session = Object();
+    final oldSession = session;
+    view.bind(route,
+        isCurrentSession: () => identical(session, oldSession),
+        onClosed: (_) {});
+    final oldClose = view.closeCallback();
+    session = Object();
+    oldClose();
+    expect(route.isCurrent, isTrue);
+    final currentSession = session;
+    view.bind(route,
+        isCurrentSession: () => identical(session, currentSession),
+        onClosed: (_) {});
+    oldClose();
+    expect(route.isCurrent, isTrue);
+    view.closeCallback()();
+    await tester.pumpAndSettle();
+    expect(find.text('home'), findsOneWidget);
+  });
+
+  testWidgets('mobile terminal route rejects foreign and unbound callbacks',
+      (tester) async {
+    final navigator = await _mobileNavigator(tester);
+    final route = await _pushMobileRoute(tester, navigator, 'terminal');
+    final view = MobileConnectionView();
+    final unbound = view.closeCallback();
+    final other = MobileConnectionView();
+    final foreign = other.bind(route,
+        isCurrentSession: () => true, onClosed: (_) {})!;
+    view.closeCallback(route: foreign)();
+    view.unbind(foreign);
+    expect(foreign.isCurrent, isTrue);
+    other.unbind(foreign);
+    view.bind(route, isCurrentSession: () => true, onClosed: (_) {});
+    unbound();
+    expect(route.isCurrent, isTrue);
+    view.closeCallback()();
+    await tester.pumpAndSettle();
+    expect(find.text('home'), findsOneWidget);
+  });
+
+  testWidgets('mobile terminal close drains local route history only',
+      (tester) async {
+    final navigator = await _mobileNavigator(tester);
+    final route = await _pushMobileRoute(tester, navigator, 'terminal');
+    final removed = <int>[];
+    route.addLocalHistoryEntry(LocalHistoryEntry(onRemove: () => removed.add(1)));
+    route.addLocalHistoryEntry(LocalHistoryEntry(onRemove: () => removed.add(2)));
+    final view = MobileConnectionView();
+    final closed = <bool>[];
+    view.bind(route, isCurrentSession: () => true, onClosed: closed.add);
+    view.closeCallback()();
+    await tester.pumpAndSettle();
+    expect(removed, [2, 1]);
+    expect(closed, [true]);
+    expect(find.text('home'), findsOneWidget);
   });
 
   testWidgets(

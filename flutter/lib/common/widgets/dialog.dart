@@ -16,13 +16,15 @@ import 'package:get/get.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../common.dart';
+import '../mobile_connection_navigation.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
 
-void clientClose(SessionID sessionId, FFI ffi) async {
+void clientClose(SessionID sessionId, FFI ffi,
+    {MobileConnectionRoute? mobileRoute}) async {
   msgBox(sessionId, 'info', 'Close', 'Are you sure to close the connection?', '',
       ffi.dialogManager,
-      onSubmit: () => ffi.closeView(sessionId));
+      onSubmit: ffi.viewCloseCallback(sessionId, mobileRoute: mobileRoute));
 }
 
 abstract class ValidationRule {
@@ -304,7 +306,8 @@ void enterConnectPasswordDialog(
     SessionID sessionId,
     int credentialPromptRound,
     OverlayDialogManager dialogManager,
-    [String reason = '']) async {
+    {String reason = '',
+    required VoidCallback onCancel}) async {
   dialogManager.dismissAll();
   try {
     await dialogManager.show((setState, close, context) => ConnectPasswordDialog(
@@ -318,9 +321,9 @@ void enterConnectPasswordDialog(
             remember: remember,
           ),
           close: close,
-          onCancel: closeConnection,
+          onCancel: onCancel,
           onAccepted: () => dialogManager.showLoading(translate('Connecting...'),
-              onCancel: closeConnection),
+              onCancel: onCancel),
         ));
   } catch (error) {
     debugPrint('Connect password dialog failed: ${error.runtimeType}');

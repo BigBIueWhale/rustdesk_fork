@@ -140,6 +140,12 @@ CREDENTIAL_DIALOG_TESTS = {
     "blockable_overlay_test.dart": {
         "mobile close precedes a held system UI reply",
         "failed system UI reply cannot close a replacement route",
+        "mobile terminal close owns one route and completes once",
+        "retired mobile terminal callback cannot close a replacement route",
+        "hidden mobile terminal callback cannot pop a different route",
+        "mobile terminal session replacement revokes captured close",
+        "mobile terminal route rejects foreign and unbound callbacks",
+        "mobile terminal close drains local route history only",
         "blockable overlay keeps one mounted owner and rebuilds its underlying route",
         "middle blocker owns the tap before revealing the route",
         "one explicit dialog tag owns one disposable overlay entry",

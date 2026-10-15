@@ -6535,7 +6535,7 @@ else
         decoder_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/terminal_output_decoder.dart" | /usr/bin/awk '{print $1}')"
         decoder_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/terminal_output_decoder_test.dart" | /usr/bin/awk '{print $1}')"
         require_exact_fixed_receipt \
-            "FLUTTER_TERMINAL_OUTPUT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=2 tests=21 flutter=$FLUTTER_VERSION decoder=$decoder_sha256 tests_source=$decoder_tests_sha256 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-terminal-tests cleanup=joined" \
+            "FLUTTER_TERMINAL_OUTPUT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=2 tests=26 flutter=$FLUTTER_VERSION decoder=$decoder_sha256 tests_source=$decoder_tests_sha256 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-terminal-tests cleanup=joined" \
             'focused Flutter terminal output/lifetime receipt'
     else
         require_exact_fixed_receipt \

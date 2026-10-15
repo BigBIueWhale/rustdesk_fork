@@ -7605,7 +7605,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_TERMINAL_OUTPUT_TEST_JSON
-            expected_result='suites=2 tests=21'
+            expected_result='suites=2 tests=26'
         elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
             memory=3g
             memory_bytes=3221225472
@@ -8235,7 +8235,7 @@ run_flutter_model_tests() {
         local decoder_sha256
         decoder_sha256="$(sha256sum "$source_root/flutter/lib/models/terminal_output_decoder.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/terminal_output_decoder_test.dart" | awk '{print $1}')"
-        printf 'FLUTTER_TERMINAL_OUTPUT_TESTS_VM=pass commit=%s tree=%s suites=2 tests=21 flutter=3.24.5 decoder=%s tests_source=%s frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-terminal-tests cleanup=joined\n' \
+        printf 'FLUTTER_TERMINAL_OUTPUT_TESTS_VM=pass commit=%s tree=%s suites=2 tests=26 flutter=3.24.5 decoder=%s tests_source=%s frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-terminal-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$decoder_sha256" "$tests_sha256" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \

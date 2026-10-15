@@ -100,6 +100,11 @@ TERMINAL_OUTPUT_TESTS = {
         "replacement terminal stream cannot complete its predecessor tail",
     },
     "terminal_model_lifecycle_test.dart": {
+        "terminal CSI parser resets across reopen ready=false",
+        "terminal CSI parser resets across reopen ready=true",
+        "terminal OSC parser resets across reopen ready=false",
+        "terminal OSC parser resets across reopen ready=true",
+        "terminal parser preserves current splits and presented state",
         "terminal pool retains one owner until its last release",
         "terminal pool refuses an unowned retain or release",
         "terminal pool replacement survives old page releases",

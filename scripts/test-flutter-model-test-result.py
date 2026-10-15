@@ -79,7 +79,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("frame-queue"), "frame-queue"), (1, 24))
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
-        self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 21))
+        self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 26))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (7, 60))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"

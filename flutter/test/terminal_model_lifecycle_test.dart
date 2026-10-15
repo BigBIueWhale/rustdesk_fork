@@ -58,6 +58,79 @@ void _close(TerminalModel model) => model.handleTerminalResponse({
     });
 
 void main() {
+  for (final viewReady in [false, true]) {
+    testWidgets('terminal CSI parser resets across reopen ready=$viewReady',
+        (tester) async {
+      final parent = _TerminalParent();
+      final sent = <String>[];
+      final model = _install(parent, sendInput: (data) async => sent.add(data));
+      addTearDown(model.dispose);
+      _open(model);
+      if (viewReady) await tester.pump();
+      _data(model, '\x1b[5');
+      _open(model);
+      _data(model, 'n');
+      await tester.pump();
+      expect(sent, isEmpty);
+      _data(model, '\x1b[5n');
+      expect(sent, ['\x1b[0n']);
+      expect(parent.unexpectedAccess, isEmpty);
+    });
+
+    testWidgets('terminal OSC parser resets across reopen ready=$viewReady',
+        (tester) async {
+      final parent = _TerminalParent();
+      final sent = <String>[];
+      final titles = <String>[];
+      final model = _install(parent, sendInput: (data) async => sent.add(data));
+      addTearDown(model.dispose);
+      model.terminal.onTitleChange = titles.add;
+      _open(model);
+      if (viewReady) await tester.pump();
+      _data(model, '\x1b]2;old title');
+      _open(model);
+      _data(model, '\x07');
+      await tester.pump();
+      expect(titles, isEmpty);
+      _data(model, '\x1b]2;current title\x07');
+      expect(titles, ['current title']);
+      _data(model, '\x1b[5n');
+      expect(sent, ['\x1b[0n']);
+      expect(parent.unexpectedAccess, isEmpty);
+    });
+  }
+
+  testWidgets('terminal parser preserves current splits and presented state',
+      (tester) async {
+    final parent = _TerminalParent();
+    final sent = <String>[];
+    final titles = <String>[];
+    final model = _install(parent, sendInput: (data) async => sent.add(data));
+    addTearDown(model.dispose);
+    final terminal = model.terminal;
+    final screen = terminal.buffer;
+    terminal.onTitleChange = titles.add;
+    _open(model);
+    _data(model, 'visible text');
+    _data(model, '\x1b[5');
+    _data(model, 'n');
+    _data(model, '\x1b]2;current');
+    _data(model, ' title\x07');
+    await tester.pump();
+    expect(sent, ['\x1b[0n']);
+    expect(titles, ['current title']);
+    final cursorX = screen.cursorX;
+    final cursorY = screen.cursorY;
+    _open(model);
+    expect(model.terminal, same(terminal));
+    expect(terminal.buffer, same(screen));
+    expect(screen.cursorX, cursorX);
+    expect(screen.cursorY, cursorY);
+    _data(model, '\x1b[5n');
+    expect(sent, ['\x1b[0n', '\x1b[0n']);
+    expect(parent.unexpectedAccess, isEmpty);
+  });
+
   testWidgets('reopened terminal cannot answer a queued predecessor query',
       (tester) async {
     final parent = _TerminalParent();

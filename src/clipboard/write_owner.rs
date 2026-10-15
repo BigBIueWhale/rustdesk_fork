@@ -111,6 +111,7 @@ impl Drop for ClipboardWritePermit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hbb_common::tokio;
     use std::time::Duration;
 
     #[test]

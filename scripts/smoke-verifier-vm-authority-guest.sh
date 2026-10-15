@@ -4228,7 +4228,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             exit 0
                         fi
                         if [ "$RUST_TEST_PROFILE" = clipboard ]; then
-                            export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 \
+                            export CARGO_BUILD_JOBS=4 CARGO_INCREMENTAL=0 \
                                 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
                         fi
                         cargo test --offline --locked --lib --features linux-pkg-config \

@@ -11417,19 +11417,24 @@ observer receipt `.harness-state/verifier-vm/route-retirement-2a373f25-evidence/
 This is historical library/wire evidence without a final-product digest or independent reproduction;
 it does not prove direct-address grammar conformance. The focused predicate evidence follows.
 
-**Initial saved-address restoration — focused Flutter tests PASSED; native page integration OPEN.**
+**Connection address ownership/restoration — source corrected; focused controller tests PASSED;
+native page integration OPEN.**
 The controller owns one initial lookup; explicit address writes, text changes, Clear or disposal
 retire it, including writes that normalize to unchanged empty text. Selection-only changes preserve
-restoration. At `6f42d76c`, the isolated direct-address shard passed all nineteen named production
-controller/widget tests and three result-parser controls on pinned Flutter 3.24.5 in 134 VM seconds.
-Read-only source, offline-tools freshness, exact JSON completion inventory, source/index/audit/spec/
-instruction freezes and joined cleanup passed. The host process tree cannot create IP sockets;
-complete endpoint deltas remain unattributed. Earlier admission and formatter failures are retained.
-Raw serial `flutter-model-tests-run.fD71sIhPQU.serial.log`, SHA-256
-`320ccf266187b952635a7071f13b77bc89ab523ece009f1230e291e11c8c239c`.
-This is the actual controller/TextField test layer, without Rust bridge generation or whole desktop/
-mobile pages, sockets/peers, installed/package artifacts, current production engine or independent
-native platform reproduction; those acceptance obligations remain OPEN.
+restoration. Both connection pages now bind that same controller to autocomplete and its field;
+the duplicate editor, generic editor registration, onChanged copies and build-time text copier are
+deleted. Autocomplete selection writes the peer address directly. This removes the source path that
+reset selection/composition during builds; whole-page behavior has not been reproduced or validated.
+At `1f5ec5e4`, the unchanged nineteen production controller/TextField and grammar tests plus three
+result-parser controls passed on pinned Flutter 3.24.5 in 103 outer seconds. The focused shard now
+uses the existing 7-GiB RAM scratch/6-GiB hard-overlay profile, with unchanged admission headroom,
+live monitoring and joined retirement. Scratch peaked at 4,028,821,504 bytes. All 395 complete
+source/control freezes and endpoint sets matched before/during/after. Exact source, raw serial,
+endpoint and cleanup evidence is retained in
+`.harness-state/verifier-vm/connection-editor-component-1f5ec5e4.json`.
+This is controller/TextField evidence, without compilation or execution of the whole pages,
+RawAutocomplete, AutoSizeTextField, real IMEs, screen readers, sockets/peers or installed artifacts.
+Native page/platform, current production engine, release and independent reproduction remain OPEN.
 
 **SOURCE CORRECTED — direct-address grammar; focused Rust/Dart tests PASSED, native integration OPEN.**
 `hbb_common::is_direct_address` owns the IPv4/IPv4:port/qualified-ASCII-hostname:port predicate used by

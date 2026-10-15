@@ -35,7 +35,12 @@ class Peer {
         note = json['note'] is String ? json['note'] : '';
 
   Peer.loading()
-      : this.fromJson({'id': '...', 'username': '...', 'hostname': '...'});
+      : this.fromJson({
+          'id': '...',
+          'username': '...',
+          'hostname': '...',
+          'platform': '...',
+        });
 }
 
 typedef GetInitPeers = RxList<Peer> Function();

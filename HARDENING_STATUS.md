@@ -2780,7 +2780,8 @@ storage and complete endpoint records. The `ef3f51b7` whole binary predates this
 correction; its intact capsule is retained at
 `.harness-state/retained-peer-artifact-ef3f51b7/linux-x86_64-peer`.
 
-Current binary `bf2ef7fd` (`51eb6e87`, manifest `9ed447c2`) and harness `e34bbb42`
+Retained binary `bf2ef7fd` (`51eb6e87`, manifest `9ed447c2`) at
+`.harness-state/retained-peer-artifact-bf2ef7fd/linux-x86_64-peer` and harness `e34bbb42`
 pass a real installed notification-channel fault in 660 VM seconds. Guest root
 uses the retained supervisor pidfd to duplicate its sole connected notification
 socket and applies SHUT_WR to that same kernel object; actual EPIPE persists.
@@ -14237,7 +14238,7 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
-**Unsupported file-transfer types — LINUX LIBRARY REGRESSION ACCEPTED; application integration OPEN.**
+**Unsupported file-transfer types — LINUX LIBRARY AND AUTHENTICATED PEER ACCEPTED; installed/platform acceptance OPEN.**
 The schema reserves the former printer number, but both integer and protobuf `JobType`
 conversions previously mapped every unsupported value to `Generic`. One fallible integer
 conversion now accepts only zero. The controlled receiver returns a job-correlated error
@@ -14257,25 +14258,42 @@ unchanged endpoint inventories, live limits and joined private/RAM workspace ret
 Raw serial is 69,906 bytes, SHA-256
 `91959bd60c32d6ac0a3cd6a66de1cff71768b427bd9b814d12f70e9b4ed27aec`.
 Successful individual test stdout and executable bytes were ephemeral; the result has no
-independent attestation or historical A/B. Full application/caller compilation, native
-peer/CM error and noncreation behavior, installed/platform acceptance and the broader
-obligations below remain OPEN. No newly demonstrated LPE or native privilege boundary closes.
+independent attestation or historical A/B. This library result does not supply application
+or native peer/CM acceptance; the Linux follow-up is recorded below. Installed/platform
+acceptance and the broader obligations remain OPEN. No newly demonstrated LPE closes.
 
-**Application follow-up — SOURCE PREPARED; native build/replay PENDING.** The existing
-`--linux-service-build` lane now requires an actual CPace/FileTransfer peer replay before
-publishing its source-bound artifact. Seven reserved/unknown signed enum values must
-produce exact job-correlated errors; the same connection and job ID must then receive
-150,001 exact bytes after digest confirmation, one Done and a later directory barrier.
-The server/probe artifacts and source bytes are checked, and the exact server is joined.
-This builds the Linux Rust application/callers with `linux-pkg-config`; it does not build
-Flutter GUI, Windows or Apple artifacts. The bounded lane retains its 8 GiB guest,
-6 GiB container/two build jobs, 600-second integration deadline, 8 GiB overlay ceiling,
-6 GiB headroom and 1 GiB overhead. Its dedicated 9 GiB scratch budget leaves at most
-1 GiB prepared allocation, for 24 GiB total admission. The previous generic reservation
-refused at 31 GiB; an initial dedicated-profile preflight also refused below 24 GiB.
-No guest/headroom limit, native assertion or disk fallback is relaxed to force admission.
-The new profile/replay has not executed; the earlier library pass is unchanged, and
-application, local queue, installed/platform and broader release acceptance remain OPEN.
+**Application follow-up — LINUX CORE BUILD AND USER-MODE PEER ACCEPTED; installed/platform acceptance OPEN.**
+Exact source `aa214843`, with the production conversion/callers byte-identical to `ba1fc090`,
+passed `--linux-service-build` in **353 VM seconds**. The real Linux Rust application and
+callers compiled with `linux-pkg-config`. A CPace-authenticated FileTransfer peer received
+the exact error for each of seven reserved/unknown signed enum values, then reused the
+same connection and job ID for **150,001 exact bytes in two blocks**, digest confirmation,
+one Done and a later CM directory barrier. Fixture bytes, the initial seven-file manifest
+and every artifact hash remained unchanged through execution, and the exact server joined.
+This is an uninstalled UID/GID-1000 server/container replay; it supplies no root-service
+privilege, local UI queue, Flutter GUI, Windows CM delegation or Apple/Windows execution.
+
+The inert capsule at `.harness-state/android-peer-artifacts/aa214843bacbda169c7ce80ae63f66143934d8c1/linux-x86_64-peer`
+retains server SHA-256 `9758a70356605768631bf4d5e8ba36aba6644b65a7c1210c3e306cd00a80701d`
+and manifest `643ed90164fb626ab59b08a96190693a75862f82987edf892857e611ee10d9f9`.
+`.harness-state/verifier-vm/file-type-peer-accepted-aa214843.json` binds the pinned Rust 1.75/
+builder/vendor context, native results, artifact identities, all **111** matching source/index/
+audit/specification/ledger/instruction/archive before/during/after freezes, complete unchanged
+native-window endpoint snapshots, limits and joined RAM/private-root retirement. An unattributed
+loopback endpoint appeared between the first refusal and the later baseline; it was preserved.
+Raw serial is 317,065 bytes, SHA-256
+`1af92aef3d268815943ba62acb54da445d1702da3cb4dd8c7551c1e5b26a5b06`.
+
+The profile retains its 8 GiB guest/6 GiB container/two jobs, 600-second integration deadline,
+9 GiB scratch/8 GiB overlay, 6 GiB headroom and 1 GiB overhead: 24 GiB admission, at most
+1 GiB prepared allocation. Scratch/overlay peaks were 6,229,397,504/6,069,555,200 bytes;
+minimum host available RAM was 12,750,761,984 bytes. QEMU's waited child wrote 4,096 block
+bytes; transient durable-run allocation peaked at 3,563,520 bytes. Separately, the intentional
+inert capsule occupies 114,982,912 allocated bytes. Earlier resource/capsule refusals are
+retained; the prior `bf2ef7fd` capsule was archived with identical bytes/inodes, no data copy
+or deletion, and existing refusal/no-clobber rules remain. Boot assets were authenticated
+cache reuse and tmpfs is swappable; no whole-host/zero-I/O, historical A/B, independent
+attestation, cold/release, native installed/platform or broader completion is claimed.
 
 **Current library disposition — source corrected; named ordinary-user Linux behavior PASSED,
 native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.

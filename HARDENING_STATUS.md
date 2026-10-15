@@ -11405,6 +11405,14 @@ name resolution. Required next evidence is a source-bound isolated viewer/connec
 literal IPv4 controls, qualified hostnames, single/multiple A/AAAA and hosts-file results, default/TCP
 DNS, transient socket creation, failure, cancellation and exact resolver drain. Hostname support and
 the zero-UDP contract remain binding; the product correction and all target-native acceptance are OPEN.
+The shared-library VM fixture includes an instrumented `FramedStream::new` diagnostic
+for literal, single/multiple hosts-file, UDP/TCP DNS and cancelled-future cases.
+It denies and counts actual IP-datagram socket syscalls and forwards to real libc
+`getaddrinfo`; its cancellation case holds native entry behind a controlled gate.
+Each process validates both socket traps and real-function interposition first.
+This diagnostic is prepared, not yet compiled or executed; its result is observation,
+not a product correction or zero-UDP acceptance. Natural DNS stall/drain, actual viewer,
+other platforms and the complete correction remain OPEN.
 Primary references: [Rust 1.75 lookup](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys_common/net.rs#L181),
 [glibc 2.27 sorting](https://github.com/bminor/glibc/blob/glibc-2.27/sysdeps/posix/getaddrinfo.c#L2187),
 [glibc DNS sockets](https://github.com/bminor/glibc/blob/glibc-2.27/resolv/res_send.c#L858).

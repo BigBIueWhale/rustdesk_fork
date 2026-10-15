@@ -5441,6 +5441,10 @@ elif [ "$MODE" = hbb-common-fs ]; then
     HBB_COMMON_FS_ARTIFACT_SHA256=${hbb_common_fs_receipts[0]#*artifact_sha256=}
     HBB_COMMON_FS_ARTIFACT_SHA256=${HBB_COMMON_FS_ARTIFACT_SHA256%% *}
     printf '%s\n' "${hbb_common_fs_receipts[0]}"
+    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then
+        /usr/bin/python3 -B -I -S "$SCRIPT_DIR/verify-hostname-resolution-probe.py" "$SERIAL_LOG" "$REPO_ROOT" \
+            || fail 'production connector observation is absent or source binding differs'
+    fi
     if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         require_exact_fixed_receipt \
             "LINUX_LOGINCTL_NATIVE=pass cases=7 artifact_sha256=$HBB_COMMON_FS_ARTIFACT_SHA256 fixture=systemd-pam scope=logind-session-selection installed=unexecuted uid=1000 caps=none nnp=on cleanup=joined" \

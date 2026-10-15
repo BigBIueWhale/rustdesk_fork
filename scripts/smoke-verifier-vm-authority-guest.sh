@@ -2647,7 +2647,7 @@ run_focused_rust_tests() {
     local input_provider_installed=$ROOT/input-provider-installed
     local input_provider_sha
     local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs clipboard_tests
-    local -a pa_mounts=() pa_env=() dependency_mounts=() whiteboard_mounts=()
+    local -a pa_mounts=() pa_env=() dependency_mounts=() whiteboard_mounts=() hostname_options=()
 
     [ "$(stat -c '%u:%g:%a' -- "$SOCK")" = 0:1000:660 ] \
         || fail 'focused Rust-test Docker socket lacks the exact nonroot guest group'
@@ -2790,6 +2790,20 @@ run_focused_rust_tests() {
                 platform::linux::tests::r_s11e40_loginctl_child_excludes_inherited_environment
             )
             source_fingerprints+=(scripts/test-linux-logind-session-selection.py)
+        fi
+        if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then
+            source_fingerprints+=(
+                libs/hbb_common/src/tcp.rs
+                libs/hbb_common/examples/hostname_resolution_probe.rs
+                scripts/run-hostname-resolution-probe.py
+                scripts/verify-hostname-resolution-probe.py
+            )
+            hostname_options=(
+                --dns=127.0.0.1 --dns-option=attempts:1 --dns-option=timeout:1
+                --add-host=single.resolver-audit.invalid:127.0.0.1
+                --add-host=multi.resolver-audit.invalid:127.0.0.1
+                --add-host=multi.resolver-audit.invalid:127.0.0.2
+            )
         fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
             source_fingerprints+=(
@@ -3760,6 +3774,7 @@ run_focused_rust_tests() {
             --env "RUST_TEST_PROFILE=$RUST_TEST_PROFILE" \
             --env "HBB_LOGIND_NATIVE=$HBB_LOGIND_NATIVE" \
             --env "HBB_FUSE_READ_TESTS=$HBB_FUSE_READ_TESTS" \
+            "${hostname_options[@]}" \
             --env "RUST_TOOLCHAIN_MODE=$toolchain_mode" \
             --env RUSTDESK_CANARY_OFFLINE=1 \
             --mount "type=bind,source=$source_root,target=/source,readonly" \
@@ -3864,6 +3879,7 @@ run_focused_rust_tests() {
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             "$test_executable" socket_client::tests:: --color never --test-threads=1
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            python3 -I -S /source/scripts/run-hostname-resolution-probe.py
                         fi
                         printf "HBB_COMMON_FS_ARTIFACT=pass sha256=%s executable=%s unchanged=before-between-after\n" \
                             "$artifact_sha" "$test_executable"
@@ -4626,6 +4642,8 @@ PY
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
             grep -E '^test fs::tests::(receive_blocks_refuse_oversized_input_and_decoded_output|file_block_limit_preserves_real_sender_receiver_roundtrips|file_job_serialization_preserves_the_live_cm_path_field|file_transfer_type_refuses_reserved_and_unknown_wire_values) \.\.\. ok$' "$output"
+            python3 -I -S "$source_root/scripts/verify-hostname-resolution-probe.py" "$output" "$source_root" \
+                || fail 'hostname connector observation or source binding differs'
         fi
         printf '%s\n' "${hbb_artifact_receipts[@]}"
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then

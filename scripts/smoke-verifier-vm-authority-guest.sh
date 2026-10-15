@@ -122,7 +122,7 @@ case "$#:${8:-}" in
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
-            || "${13}" = --resolution-parent \
+            || "${13}" = --resolution-parent || "${13}" = --file-receive-caller \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
             || "${13}" = --fusermount-process || "${13}" = --file-block \
             || "${13}" = --clipboard-response ]] || exit 2
@@ -3445,6 +3445,23 @@ run_focused_rust_tests() {
                 resolution_restore::tests::r_s11iu_r_t4_removed_and_republished_record_survives_old_completion
                 resolution_restore::tests::r_s11iu_r_t4_callback_unwind_retains_record_without_poisoning
             )
+        elif [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
+            container_name=rustdesk-file-receive-caller-tests
+            memory=5g
+            memory_bytes=5368709120
+            source_fingerprints=(
+                Cargo.lock Cargo.toml src/lib.rs src/client/io_loop.rs src/ui_cm_interface.rs
+                src/ipc.rs libs/hbb_common/src/fs.rs libs/hbb_common/src/fs/file_block.rs
+                libs/hbb_common/protos/message.proto
+                scripts/run-file-receive-caller-tests.sh scripts/linux-parent-test-build.sh
+            )
+            required_tests=(
+                client::io_loop::tests::r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts
+                client::io_loop::tests::r_s11fi_receive_cleanup_identity_failure_is_terminal_and_visible
+                client::io_loop::tests::r_s11fi_incoming_nofollow_open_failure_preserves_older_sidecars
+                client::io_loop::tests::r_s11fi_next_file_setup_failure_retires_only_the_viewer_job
+                ui_cm_interface::tests::r_s11fi_cm_next_file_setup_failure_emits_exact_failure_and_refuses_done
+            )
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             container_name=rustdesk-resolution-parent-tests
             memory=5g
@@ -4063,6 +4080,10 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        if [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
+                            /bin/bash /source/scripts/run-file-receive-caller-tests.sh
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
                             /bin/bash /source/scripts/run-resolution-parent-tests.sh
                             exit 0
@@ -4421,17 +4442,18 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
-    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
+    if [ "$MODE" = android-rust-lifecycle-tests ] \
+        && [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
-            | awk '/^RESOLUTION_PARENT_BUILD=started / { print; fflush() }'; then
+            | awk '/^(RESOLUTION_PARENT|FILE_RECEIVE_PARENT)_BUILD=started / { print; fflush() }'; then
             parent_start_status=("${PIPESTATUS[@]}")
         else
             parent_start_status=("${PIPESTATUS[@]}")
         fi
         [ "${parent_start_status[1]}" -eq 0 ] && [ "${parent_start_status[2]}" -eq 0 ] \
-            || fail 'cannot retain resolution parent output and live progress'
+            || fail 'cannot retain parent-test output and live progress'
         container_status=${parent_start_status[0]}
     elif [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
         local -a fuse_start_status
@@ -4612,6 +4634,12 @@ PY
         [ "$(grep -Ec '^RESOLUTION_RESTORATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'RESOLUTION_RESTORATION_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'resolution-restoration artifact receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
+        [ "${#result_lines[@]}" -eq 2 ] || fail 'file-receive parent summary count differs'
+        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=5 groups=2 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'FILE_RECEIVE_PARENT_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$' "$output")" -eq 5 ] \
+            || fail 'file-receive parent artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution parent summary count differs'
         [ "$(grep -Ec '^RESOLUTION_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -4947,6 +4975,12 @@ PY
             printf 'RESOLUTION_RESTORATION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-record-identity-with-callback-fixtures rust=1.75.0 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
+            [ "$tests_passed" -eq 5 ] || fail 'file-receive parent total differs'
+            grep -E '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$|^FILE_RECEIVE_PARENT_BUILD=pass |^FILE_RECEIVE_PARENT_ARTIFACT=' "$output"
+            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=5 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             [ "$tests_passed" -eq 3 ] || fail 'resolution parent total differs'
             grep -E '^test server::connection::resolution_work::tests::.* \.\.\. ok$|^RESOLUTION_PARENT_BUILD=pass |^RESOLUTION_PARENT_ARTIFACT=' "$output"

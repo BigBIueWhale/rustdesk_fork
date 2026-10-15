@@ -3,8 +3,9 @@
 build_linux_parent_test() {
     [ "$#" -eq 2 ] || return 1
     local work=$1 receipt_prefix=$2
-    [[ "$work" = /tmp/pa-runtime || "$work" = /tmp/resolution-parent ]] \
-        && [[ "$receipt_prefix" = PA_RUNTIME || "$receipt_prefix" = RESOLUTION_PARENT ]] \
+    [[ "$work:$receipt_prefix" = /tmp/pa-runtime:PA_RUNTIME \
+        || "$work:$receipt_prefix" = /tmp/resolution-parent:RESOLUTION_PARENT \
+        || "$work:$receipt_prefix" = /tmp/file-receive-caller:FILE_RECEIVE_PARENT ]] \
         && [ "$PWD" = /source ] && [ "$(id -u):$(id -g)" = 1000:1000 ] \
         && [ "${CARGO_TARGET_DIR:-}" = /cargo-target ] \
         && [ -d "$work" ] && [ ! -L "$work" ] \

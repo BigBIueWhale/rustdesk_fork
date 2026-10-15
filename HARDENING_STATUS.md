@@ -14298,6 +14298,30 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
+**Send-source acquisition — Linux native library regressions ACCEPTED; application/platform acceptance OPEN.**
+Source `e9dfe4af` uses one private `open_send_file` for initial acquisition and first-resume
+opens. One off-runtime operation opens read-only and verifies regular-file metadata on the
+exact owned object before publishing a Tokio file. Unix uses `O_NONBLOCK | O_NOCTTY`;
+Windows additionally requires `GetFileType == FILE_TYPE_DISK`. Source initialization requires
+the immutable Send role before any open or state mutation. Active resumes retain their
+existing source. Explicit source-file/parent links and the full-filesystem mode remain supported.
+At baseline `e7f04464`, four new cases failed: initial/resume FIFO replacement after enumeration,
+nonregular source replacement and Receive-role initialization. The ordinary/link control passed;
+retained filesystem summary is 113 passed/four failed. The bounded failure tail omitted its
+artifact-start digest, so there is no retained exact baseline executable identity. A FIFO failure
+message printed literally under Rust 2018; correcting that formatting was the only test-module
+change, with fixtures, schedules and assertion conditions unchanged.
+The correction passed all **162 focused Linux tests in 169 VM seconds**, including all five
+named new cases, prompt FIFO refusal without a writer, unchanged refused state, restored-source
+retry/resume, exact bytes, source links and a real receive publication after refused read setup.
+Stable artifact SHA-256 `b40f4fa75e7a9ab61c1f07ca3242dfa152851b45d454b670c64b1911111150c0`.
+`.harness-state/verifier-vm/send-source-corrected-e9dfe4af.json` binds the baseline, exact source,
+all named results, pinned inputs, 151 matching before/during/after controls, unchanged endpoints,
+limits and joined cleanup. Windows type-query compilation/native behavior and other target OS
+acceptance remain open. This does not establish a general filesystem I/O deadline, prevention
+of pre-open device effects, regular-file namespace/content snapshotting, installed privilege,
+whole-application, sustained-resource or release acceptance.
+
 **Special-file enumeration — Linux library A/B ACCEPTED; integration/platform acceptance OPEN.**
 The directory scanner previously labeled every non-directory, non-link as a regular `File`.
 A real FIFO was advertised with size zero and entered the recursive file list. Source

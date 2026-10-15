@@ -27,6 +27,10 @@ def storage_limits(profile, memory_mib):
     if profile == 'flutter-credential-dialog':
         require(memory_mib == 4096, 'dialog storage profile requires its 4 GiB guest')
         return 7 * GIB, 6 * GIB
+    if profile == 'linux-service-build':
+        require(memory_mib == 8192, 'service build storage profile requires its 8 GiB guest')
+        # Prepared inputs share one GiB beside the unchanged eight-GiB overlay ceiling.
+        return 9 * GIB, 8 * GIB
     require(profile == 'standard', 'unknown VM storage profile')
     return SCRATCH_LIMIT, 8 * GIB
 
@@ -353,7 +357,8 @@ def main():
     parser.add_argument('operation', choices=('preflight', 'reserve', 'check', 'watch', 'run'))
     parser.add_argument('--memory-mib', type=int, required=True)
     parser.add_argument('--storage-profile',
-                        choices=('standard', 'hbb-common-fs', 'flutter-credential-dialog'),
+                        choices=('standard', 'hbb-common-fs', 'flutter-credential-dialog',
+                                 'linux-service-build'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

@@ -9,6 +9,8 @@ if [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \
     readonly VM_STORAGE_PROFILE=hbb-common-fs
 elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-dialog ]; then
     readonly VM_STORAGE_PROFILE=flutter-credential-dialog
+elif [ "${MODE:-}:${PEER_BUILD_PROFILE:-}" = android-peer-build:bounded ]; then
+    readonly VM_STORAGE_PROFILE=linux-service-build
 else
     readonly VM_STORAGE_PROFILE=standard
 fi

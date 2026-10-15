@@ -46,11 +46,13 @@
 //!   - `ftreadfailure` : an unreadable direct-send source gives one terminal error for the
 //!                failed file, then the same connection confirms and reads a second file to
 //!                exact bytes and one terminal Done.
+//!   - `ftfiletype` : reserved/unknown file types receive exact errors, then the same keyed
+//!                connection reuses their job ID for an ordinary digest-confirmed file read.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfilestop|cmfileauthority|cmfilereconnect|cmfilebusyowner|cmfilebusycontender|cmfilesamepeersuccessor|cmfilecollision|cmfilecleanupfailure|cmfiledigestcleanupfailure|ftreadfailure] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfilestop|cmfileauthority|cmfilereconnect|cmfilebusyowner|cmfilebusycontender|cmfilesamepeersuccessor|cmfilecollision|cmfilecleanupfailure|cmfiledigestcleanupfailure|ftreadfailure|ftfiletype] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -1490,6 +1492,70 @@ async fn probe_cm_receive_cleanup_failure(
     false
 }
 
+async fn probe_file_type_refusal(stream: &mut FramedStream, report: &mut String) -> bool {
+    use hbb_common::message_proto::{file_response, FileAction, FileTransferSendRequest};
+
+    for value in [1, 2, 42, 255, -1, i32::MIN, i32::MAX] {
+        let mut action = FileAction::new();
+        action.set_send(FileTransferSendRequest {
+            id: FT_READ_SUCCESS_ID,
+            path: "/tmp/rd-cm-file-replay/allowed-after-login/readable-source.jpg".to_owned(),
+            file_type: hbb_common::protobuf::EnumOrUnknown::from_i32(value),
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_file_action(action);
+        if let Err(error) = send_probe_message(stream, message).await {
+            report.push_str(&format!("[FT-TYPE-SEND-ERROR {error}] "));
+            return false;
+        }
+
+        let mut refused = false;
+        for _ in 0..8 {
+            let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+                report.push_str("[FT-TYPE-NO-RESPONSE] ");
+                return false;
+            };
+            let response = match Message::parse_from_bytes(&bytes) {
+                Ok(response) => response,
+                Err(error) => {
+                    report.push_str(&format!("[FT-TYPE-PARSE-ERROR {error}] "));
+                    return false;
+                }
+            };
+            match response.union {
+                Some(message::Union::FileResponse(response)) => {
+                    match response.union {
+                        Some(file_response::Union::Error(error))
+                            if error.id == FT_READ_SUCCESS_ID
+                                && error.file_num == 0
+                                && error.error == format!("unsupported file-transfer type {value}") =>
+                        {
+                            refused = true;
+                            break;
+                        }
+                        other => {
+                            report.push_str(&format!("[FT-TYPE-UNEXPECTED value={value} response={other:?}] "));
+                            return false;
+                        }
+                    }
+                }
+                Some(message::Union::LoginResponse(_)) => {
+                    report.push_str("[FT-TYPE-UNEXPECTED-LOGIN] ");
+                    return false;
+                }
+                _ => {}
+            }
+        }
+        if !refused {
+            report.push_str(&format!("[FT-TYPE-REFUSAL-MISSING value={value}] "));
+            return false;
+        }
+        report.push_str(&format!("[FT-TYPE-REFUSED value={value} id=17013] "));
+    }
+    true
+}
+
 async fn probe_direct_read_failure(stream: &mut FramedStream, report: &mut String) -> bool {
     use hbb_common::message_proto::{file_response, FileAction, FileTransferSendRequest, ReadDir};
 
@@ -1855,7 +1921,8 @@ fn main() {
         || mode == "cmfilecollision"
         || mode == "cmfilecleanupfailure"
         || mode == "cmfiledigestcleanupfailure"
-        || mode == "ftreadfailure";
+        || mode == "ftreadfailure"
+        || mode == "ftfiletype";
     // Optional local source address (6th arg) — e.g. 127.0.0.2:0 to connect as a DIFFERENT source,
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
     let local = a
@@ -2011,6 +2078,7 @@ fn main() {
                         || mode == "cmfilecleanupfailure"
                         || mode == "cmfiledigestcleanupfailure"
                         || mode == "ftreadfailure"
+                        || mode == "ftfiletype"
                     {
                         // R-F1/R-F2 END-TO-END against a headless unix --server. Before the fix this box
                         // (no logind/console session) reported an EMPTY PeerInfo.username and the viewer
@@ -2094,6 +2162,7 @@ fn main() {
                                         if !sent_readdir
                                             && mode != "cmfileauthority"
                                             && mode != "ftreadfailure"
+                                            && mode != "ftfiletype"
                                             && mode != "cmfilestop"
                                             && mode != "cmfilesamepeersuccessor"
                                         {
@@ -2203,7 +2272,8 @@ fn main() {
                                 || mode == "cmfilecollision"
                                 || mode == "cmfilecleanupfailure"
                                 || mode == "cmfiledigestcleanupfailure"
-                                || mode == "ftreadfailure")
+                                || mode == "ftreadfailure"
+                                || mode == "ftfiletype")
                                 && !received_directory)
                             || (mode == "cmfileauthority" && (!received_directory || !created))
                         {
@@ -2256,6 +2326,11 @@ fn main() {
                                 || !probe_direct_read_success(&mut stream, &mut pk).await)
                         {
                             return (true, pk, false, true);
+                        } else if mode == "ftfiletype"
+                            && (!probe_file_type_refusal(&mut stream, &mut pk).await
+                                || !probe_direct_read_success(&mut stream, &mut pk).await)
+                        {
+                            return (true, pk, false, true);
                         }
                     }
                     // The generic post-key frame dump is for read/login/inject only; a port-forward
@@ -2275,6 +2350,7 @@ fn main() {
                             || mode == "cmfilecleanupfailure"
                             || mode == "cmfiledigestcleanupfailure"
                             || mode == "ftreadfailure"
+                            || mode == "ftfiletype"
                         {
                             break;
                         }
@@ -2374,7 +2450,8 @@ fn main() {
             && mode != "cmfilecollision"
             && mode != "cmfilecleanupfailure"
             && mode != "cmfiledigestcleanupfailure"
-            && mode != "ftreadfailure")
+            && mode != "ftreadfailure"
+            && mode != "ftfiletype")
             || file_transfer_ok)
         && (mode != "login" || remote_login_ok);
     if pass {

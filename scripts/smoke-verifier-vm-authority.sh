@@ -5910,6 +5910,11 @@ elif [ "$MODE" = android-owner-tests ]; then
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Android owner-state cloud-init completion marker'
 elif [ "$MODE" = android-peer-build ]; then
+    if [ "$PEER_BUILD_PROFILE" = bounded ]; then
+        require_exact_fixed_receipt \
+            'FILE_TYPE_REPLAY=pass auth=cpace session=filetransfer unsupported=7 job=17013 generic=150001-bytes digest=confirmed done=once barrier=passed network=container-loopback cleanup=server-joined' \
+            'Linux service peer file-type admission and same-ID recovery'
+    fi
     mapfile -t peer_artifact_receipts < <(
         /usr/bin/grep -Eo \
             "ANDROID_PEER_ARTIFACT_PREPARED=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE pending=[.]android-peer-pending-[0-9a-f]{64} manifest_sha256=[0-9a-f]{64} builder=$DEV_CHECK_IMAGE_CONFIG_ID vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 rust=1[.]75[.]0 files=7 network=none cleanup=joined" \

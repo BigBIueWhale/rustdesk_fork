@@ -5540,13 +5540,20 @@ LAYOUT
 
 run_android_peer_build() {
     local build_memory=12g build_memory_bytes=12884901888 build_cpus=4 build_jobs=4
+    local build_stage=android-peer-build
     local -a profile_environment=()
+    local -a runtime_mounts=()
     if [ "$PEER_BUILD_PROFILE" = bounded ]; then
         build_memory=6g
         build_memory_bytes=6442450944
         build_cpus=2
         build_jobs=2
+        build_stage=linux-service-build
         profile_environment+=(--env CARGO_PROFILE_DEV_DEBUG=0)
+        printf '%s\n' 727573746465736b2d73657276657231 > "$ROOT/service-check.machine-id"
+        chown 1000:1000 "$ROOT/service-check.machine-id"
+        chmod 0400 "$ROOT/service-check.machine-id"
+        runtime_mounts+=(--mount "type=bind,source=$ROOT/service-check.machine-id,target=/etc/machine-id,readonly,bind-recursive=disabled")
     fi
     local inputs=/mnt/rustdesk-sealed-inputs
     local artifact_output=/mnt/rustdesk-android-artifact-output
@@ -5645,8 +5652,9 @@ run_android_peer_build() {
         --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$inputs,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$target,target=/smoke-target,bind-recursive=disabled" \
+        "${runtime_mounts[@]}" \
         --workdir /work "$DEV_CHECK_IMAGE_CONFIG_ID" \
-        /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh android-peer-build)"
+        /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh "$build_stage")"
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'Android peer build container ID is malformed'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' "$CONTAINER_ID")"
@@ -5661,6 +5669,10 @@ run_android_peer_build() {
         || { tail -n 200 "$output" >&2; fail "Android peer build failed: $status"; }
     [ "$(grep -Fc 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=7 network=none' "$output")" -eq 1 ] \
         || fail 'Android peer build receipt differs'
+    if [ "$PEER_BUILD_PROFILE" = bounded ]; then
+        [ "$(grep -Fxc 'FILE_TYPE_REPLAY=pass auth=cpace session=filetransfer unsupported=7 job=17013 generic=150001-bytes digest=confirmed done=once barrier=passed network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
+            || fail 'Linux service peer file-type admission result differs'
+    fi
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'Android peer build did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null

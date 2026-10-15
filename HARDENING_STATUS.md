@@ -14261,6 +14261,22 @@ independent attestation or historical A/B. Full application/caller compilation, 
 peer/CM error and noncreation behavior, installed/platform acceptance and the broader
 obligations below remain OPEN. No newly demonstrated LPE or native privilege boundary closes.
 
+**Application follow-up — SOURCE PREPARED; native build/replay PENDING.** The existing
+`--linux-service-build` lane now requires an actual CPace/FileTransfer peer replay before
+publishing its source-bound artifact. Seven reserved/unknown signed enum values must
+produce exact job-correlated errors; the same connection and job ID must then receive
+150,001 exact bytes after digest confirmation, one Done and a later directory barrier.
+The server/probe artifacts and source bytes are checked, and the exact server is joined.
+This builds the Linux Rust application/callers with `linux-pkg-config`; it does not build
+Flutter GUI, Windows or Apple artifacts. The bounded lane retains its 8 GiB guest,
+6 GiB container/two build jobs, 600-second integration deadline, 8 GiB overlay ceiling,
+6 GiB headroom and 1 GiB overhead. Its dedicated 9 GiB scratch budget leaves at most
+1 GiB prepared allocation, for 24 GiB total admission. The previous generic reservation
+refused at 31 GiB; an initial dedicated-profile preflight also refused below 24 GiB.
+No guest/headroom limit, native assertion or disk fallback is relaxed to force admission.
+The new profile/replay has not executed; the earlier library pass is unchanged, and
+application, local queue, installed/platform and broader release acceptance remain OPEN.
+
 **Current library disposition — source corrected; named ordinary-user Linux behavior PASSED,
 native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.
 

@@ -87,7 +87,7 @@ start_server() {
 }
 
 case "$1" in
-  android-peer-build|cm-file-build)
+  android-peer-build|linux-service-build|cm-file-build)
     # Build the production peer and only the fixtures needed by the selected runtime replay.
     # The CM file replay also builds its production Session test artifact.
     verify_smoke_build_inputs
@@ -152,6 +152,70 @@ case "$1" in
       chmod 0444 /smoke-target/android-peer-manifest.sha256
       printf 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=7 network=none\n'
     fi
+    if [ "$1" = linux-service-build ]; then
+      /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh file-type-replay
+    fi
+    ;;
+  file-type-replay)
+    [ "${HOME:-}" = /tmp/android-peer-build ]
+    mkdir -p -m 0700 "$HOME"
+    [ ! -L "$HOME" ] && [ "$(stat -c '%u:%g:%a' -- "$HOME")" = 1000:1000:700 ]
+    file_type_root=/tmp/rd-cm-file-replay
+    mkdir -m 0700 "$file_type_root" "$file_type_root/allowed-after-login"
+    readable_source=$file_type_root/allowed-after-login/readable-source.jpg
+    /usr/bin/python3 -I -S - "$readable_source" <<'PY'
+import sys
+with open(sys.argv[1], 'xb') as output:
+    output.write(b'A' * 150001)
+PY
+    readable_sha=$(sha256sum "$readable_source" | cut -d ' ' -f 1)
+    cleanup_file_type_replay() {
+      local status=$?
+      trap - EXIT HUP INT TERM
+      if [ -n "$SRV" ] && [ -n "$SRV_START" ]; then
+        "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/file-type-server.log || status=1
+        wait "$SRV" || status=1
+      fi
+      exit "$status"
+    }
+    trap cleanup_file_type_replay EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    peer_manifest_sha=$(sha256sum /smoke-target/android-peer-manifest.sha256 | cut -d ' ' -f 1)
+    (cd /smoke-target && sha256sum -c android-peer-manifest.sha256)
+    if ! /smoke-target/debug/examples/seed_password 'Str0ng-Test-Pw-123' > /tmp/file-type-seed.log 2>&1 \
+      || ! grep -Fxq 'seed_password: set_permanent_password ok=true, prs_empty=false, prs_is_plaintext=false' \
+        /tmp/file-type-seed.log; then
+      tail -n 40 /tmp/file-type-seed.log >&2
+      exit 1
+    fi
+    start_server /smoke-target/debug/rustdesk /tmp/file-type-server.log
+    "$READY" --wait-server "$SRV" "$SRV_START" /tmp/file-type-server.log \
+      /smoke-target/debug/examples/smoke_readiness "$(id -u)"
+    probe_status=0
+    probe_output=$(timeout --signal=TERM --kill-after=5s 60s \
+      /smoke-target/debug/examples/probe_client '127.0.0.1:21118' \
+      'Str0ng-Test-Pw-123' ok ftfiletype 2>&1) || probe_status=$?
+    printf '%s\n' "$probe_output"
+    if [ "$probe_status" -ne 0 ]; then
+      tail -n 120 /tmp/file-type-server.log >&2
+      exit "$probe_status"
+    fi
+    for value in 1 2 42 255 -1 -2147483648 2147483647; do
+      [ "$(grep -Fc "[FT-TYPE-REFUSED value=$value id=17013]" <<<"$probe_output")" -eq 1 ]
+    done
+    [ "$(grep -oF '[FT-TYPE-REFUSED ' <<<"$probe_output" | wc -l)" -eq 7 ]
+    [ "$(grep -Ec '\[FT-READ-SUCCESS id=17013 bytes=150001 blocks=[2-9][0-9]* digest=confirmed done=once barrier=passed\]' <<<"$probe_output")" -eq 1 ]
+    [ "$(grep -Fxc 'probe_client: PASS' <<<"$probe_output")" -eq 1 ]
+    [ "$(sha256sum "$readable_source" | cut -d ' ' -f 1)" = "$readable_sha" ]
+    "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/file-type-server.log
+    wait "$SRV"
+    SRV=
+    SRV_START=
+    [ "$(sha256sum /smoke-target/android-peer-manifest.sha256 | cut -d ' ' -f 1)" = "$peer_manifest_sha" ]
+    (cd /smoke-target && sha256sum -c android-peer-manifest.sha256)
+    printf 'FILE_TYPE_REPLAY=pass auth=cpace session=filetransfer unsupported=7 job=17013 generic=150001-bytes digest=confirmed done=once barrier=passed network=container-loopback cleanup=server-joined\n'
     ;;
   build)
     verify_smoke_build_inputs

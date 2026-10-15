@@ -34,7 +34,7 @@ Whole-document role classification and compression of redundant history remain *
 Current normative specification identity:
 
 ```text
-50a6e37aec6085f726b2395854a4b6d2ee338c76d213c22d2088a2278f134a25  requirements.html
+313c3d2788c55a078112f078b7d3e1aed9a0e394e04c30a79ab490b1ae864fc2  requirements.html
 ```
 
 ## Current Verdict
@@ -120,6 +120,13 @@ narratives and size comparisons remain in Git history.
 | R-P5/R-P11 CPace | `.harness-state/verifier-vm/cpace-specification-role-8903ad60.json` |
 | §13 risk register | `.harness-state/verifier-vm/debt-register-document-role-28c2e775.json` |
 | Verification clauses | `.harness-state/verifier-vm/verification-clause-classification-a5946201.json` |
+| R-A6 audit evidence and sole authentication authority | `.harness-state/verifier-vm/audit-contract-document-role-313c3d27.json` |
+
+R-A6 excludes CM operator-accept authority under R-S2/R-S18 and distinguishes source checks,
+artifact inspection and native acceptance. Its direct-startup check preserves credential-unavailable
+parking and socket retirement; Apple requirements carry no transient platform-build status.
+The classification retains the earlier wording and its source comparisons. Product and verifier
+code are unchanged; no native or release obligation is closed by this document correction.
 
 Whole-document/test classification, exact-current builders/artifacts, installed/native authority,
 scanner acceptance, complete inputs/signing, upstream baseline reproduction, fork-delta accounting,

@@ -6214,7 +6214,7 @@ or helper principal boundary, release artifact, memory/latency soak, independent
 reproduction or external review follows. Those broader obligations remain OPEN;
 R-S11b/R-S11c and the overall release remain STOP-SHIP.
 
-**Terminal UTF-8, callbacks and buffered replies — DART COMPONENT PASS; NATIVE I/O OPEN.**
+**Terminal UTF-8, callbacks and parser lifetime — DART COMPONENT PASS; NATIVE I/O OPEN.**
 The server's bounded live/replay batches may split a character after PTY accumulation.
 `TerminalModel` owns one `TerminalOutputDecoder` across packets. Complete text emits
 immediately; an incomplete UTF-8 tail remains until continuation or stream completion.
@@ -6223,21 +6223,36 @@ reject events, and empty decoded fragments allocate no pre-layout buffer entries
 Only the exact currently registered model admits input, resize, open/close, event,
 output and layout work. Buffered-input iterations and asynchronous completions retain
 the exact open object. Closed events discard pending input; desktop/mobile unregistration
-requires the exact model. Each pre-layout output chunk now retains text, its originating
+requires the exact model. Each pre-layout output chunk retains text, its originating
 open object and replay suppression together, within the existing limit of 8,192 UTF-16 code units.
-Flush permits xterm-generated input only while that exact open remains current; stale
-or closed output renders with replies suppressed. The separate flag array is deleted.
+Flush permits xterm-generated input only while that exact open remains current.
+Output retirement finalizes the UTF-8 decoder, discards unfinished escape-parser state
+and unpresented chunks, and resets size/replay flags. Successful open replacement,
+matching local close, peer close and disposal use that one operation. Parser reset preserves
+the Terminal object, presented screen, cursor, dimensions and callbacks. The finish-only helper
+and separate output-flag array are deleted.
+
+`flutter/third_party/xterm` is the sole path dependency for the pinned 4.0.0 library.
+Its narrow `resetOutputParser()` API drops the current parser; the next write creates
+a fresh one. The authenticated offline-cache import retains the MIT license, original
+file inventory and recorded local deviations in `UPSTREAM.md`; no other dependency
+version changes. No synthetic cancellation bytes or Terminal/View replacement is used.
 
 Two unchanged production-model/xterm regressions failed on `0042daff`: an old queued
 status query dispatched `ESC[0n` after reopen, directly or through closed-state input
-buffering. Correction `38ed45e9` passed the complete focused command
+buffering. Four additional CSI/OSC regressions then failed on `baeef78c`: a later open's
+suffix completed an old control sequence, before and after layout. The other 22 cases
+passed. The complete regression module is byte-identical for correction `af0d691f` at
+exact source `089a14aa`, which passed the focused command
 `scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --terminal-output`
-in 280 VM seconds: two suites/21 cases, with fresh pinned bindings and strict
+in 274 VM seconds: two suites/26 cases, with fresh pinned bindings and strict
 suite/name/completion validation. Six decoder cases cover every two-packet split of
 mixed Hebrew/accented/CJK/emoji/ANSI text, continuation, malformed bytes, EOF and
-independent/replacement streams. Nine real-model/Flutter cases cover current completion,
+independent/replacement streams. Fourteen real-model/Flutter cases cover current completion,
 disposal, replacement, close/reopen, stale queued replies, mixed old/current queries,
-current input and replay suppression. The input sink is injected; it is not a native
+CSI/OSC state across opens, current-stream split controls, retained presented state,
+current input and replay suppression. Input and title effects are observed through
+an injected sink and the real xterm callback; this is not a native
 ABI or peer transaction. Six production-pool cases prove exact retain/release, replacement,
 value-equal foreign-owner refusal, retirement before publication and count-reset refusal.
 
@@ -6246,15 +6261,16 @@ registration retirement/native close. Both page disposers pass their own FFI; Ge
 is exact-object checked, and foreign or failed registration retirement refuses admission.
 Native close errors have type-only diagnostics.
 Source/baseline/result/resource bindings are retained in
-`.harness-state/verifier-vm/terminal-output-baseline-0042daff.json` and
-`.harness-state/verifier-vm/terminal-output-corrected-38ed45e9.json`.
+`.harness-state/verifier-vm/terminal-parser-baseline-baeef78c.json`,
+`.harness-state/verifier-vm/terminal-parser-corrected-089a14aa.json` and
+`.harness-state/verifier-vm/xterm-source-import-baeef78c.json`.
 The accepted zero-NIC transaction used a 4-GiB guest, 3-GiB networkless nonroot container,
 7-GiB bounded RAM scratch, 120-second test and 300-second VM budgets, read-only source/inputs,
 kernel-denied owned host IP sockets, complete unattributed endpoint snapshots and joined
 VM/RAM retirement. Successful serial retains the strict result summary, not per-case JSON.
-The full 25-suite/287-case model checkpoint was not rerun.
+The full 25-suite/292-case model checkpoint was not rerun.
 
-Partial escape-sequence state/size isolation across opens remains OPEN. Real native
+Parser retained-input and CPU-work bounds within one live stream remain OPEN. Real native
 input/resize/close, FFI/Get/page admission and disposal/reentry, early-start failure,
 same-peer model restoration, TerminalView rendering, reconnect/replay, transport/native
 generations, sustained resources and installed/platform/release acceptance remain OPEN.

@@ -1,4 +1,5 @@
 import 'package:flutter_hbb/models/peer_model.dart';
+import 'package:flutter_hbb/models/platform_model.dart' show platformFFI;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -60,6 +61,33 @@ void main() {
       () => peer.device_group_name,
     ]) {
       expect(read, throwsA(isA<NoSuchMethodError>()));
+    }
+  });
+
+  test('disposing owned peers releases their registration', () {
+    const event = 'test-peer-registration-control';
+    const owner = 'control';
+    final peers = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    peers.dispose();
+    try {
+      expect(platformFFI.registerEventHandler(event, owner, (_) async {}),
+          isTrue);
+    } finally {
+      platformFFI.unregisterEventHandler(event, owner);
+    }
+  });
+
+  test('disposed duplicate peers cannot retire the incumbent', () {
+    const event = 'test-peer-registration-duplicate';
+    const owner = 'incumbent';
+    final incumbent = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    final duplicate = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    duplicate.dispose();
+    try {
+      expect(platformFFI.registerEventHandler(event, owner, (_) async {}),
+          isFalse);
+    } finally {
+      incumbent.dispose();
     }
   });
 }

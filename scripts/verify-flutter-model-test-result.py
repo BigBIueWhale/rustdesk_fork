@@ -133,11 +133,27 @@ TERMINAL_OUTPUT_TESTS = {
         "current terminal query replies preserve replay suppression",
     },
 }
+GLOBAL_EVENT_TESTS = {
+    "runs admitted events in FIFO order without handler overlap",
+    "replacement retires old pending work without migrating its event",
+    "active old work settles before replacement work and never overlaps",
+    "fallback overflow fails once, retires pending work, and recovers",
+    "byte and message bounds fail the exact fallback visibly",
+    "registered handler inventory is finite and reusable after retirement",
+    "registered handlers are captured and retired by exact registration",
+    "registered-only routing never falls through to session fallback",
+    "configured latest-state events hand off synchronously outside FIFO",
+    "configured synchronous handoff fails closed on an async callback",
+    "handler and malformed-input failures remain visible and drainable",
+}
 CREDENTIAL_DIALOG_TESTS = {
+    "global_event_dispatcher_test.dart": GLOBAL_EVENT_TESTS,
     "peer_model_test.dart": {
         "direct peers retain their address and local display metadata",
         "retired account metadata cannot prevent a direct peer from loading",
         "direct peers expose no retired credential or group fields",
+        "disposing owned peers releases their registration",
+        "disposed duplicate peers cannot retire the incumbent",
     },
     "connect_password_dialog_lifecycle_test.dart": {
         "connect prompt is present before its saved preference resolves",

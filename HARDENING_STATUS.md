@@ -1028,167 +1028,93 @@ receipts; it is not current provider or release acceptance.
 
 ### Linux window focus — request ownership and native cancellation; integration OPEN
 
-The live `get_focused_display` path installed a process-global Xlib handler and
-shared error flags around XDO geometry reads. Errors from another Xlib connection
-could therefore be swallowed and contaminate the focus result. The primary
-[Xlib implementation](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/src/ErrHndlr.c)
-binds that handler to `_XErrorFunction`, not the queried display.
+**Complete focus components ACCEPTED at source `25c661c1`; whole-app/installed acceptance OPEN.**
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --x11-display-tests --focus`
+passed in **79 VM seconds**, using pinned Rust 1.75, real Xvfb/XCB/Xlib/XDM,
+readonly source and networkless UID/GID 4000 containers in the zero-NIC VM.
+The exact authentication-file correction is `a824ba14`; the later commits add
+the focused execution path and its explicit storage-CLI profile.
 
-`src/platform/linux/window_focus.rs` replaces that path with one thread-owned XCB
-connection and request-specific reply/error ownership. Active-window support and
-property type/format/count are checked; malformed setup layout is rejected before
-any native iterator walk. Window disappearance is no result, other errors are
-explicit, and a failed transport is retired before a later retry. Screen-relative
-coordinates include nesting/borders and display matching uses non-overflowing sums.
-There is no Xlib handler swap, shared error flag or XDO geometry fallback.
+`window_focus.rs` owns one thread-local XCB connection and request-specific
+reply/error allocations. It validates setup layout before native iteration and
+checks active-window support, property type/format/count and reply geometry.
+Window disappearance is no result; other failures are explicit. Coordinates
+include nesting/borders and use non-overflowing display sums. There is no
+process-global Xlib error-handler swap, shared error flag or XDO fallback.
 
-Each focus connection owns one retained deadline worker
-and an owned duplicate of its socket. A single 100 ms monotonic observation budget
-initiates read-side socket shutdown, waking the native reader/read-write wait
-without changing process signal policy. Deadline, transport failure and missing
-completion retire the connection and pending requests after the call drains; the
-worker joins before native disconnect. Healthy queries reuse the same worker.
-The timer is owned before native setup begins and is reused for later queries.
-There is no polling fallback, detached retry, new Cargo dependency or authority change.
+A retained worker and owned duplicate socket enforce one 100 ms monotonic
+observation budget across native setup or an established query. Cancellation
+shuts down the read side, then drains the call and joins the worker before
+disconnecting; healthy queries retain the same worker. Only bounded local
+`:<display>[.<screen>]` selectors and nonblocking abstract/filesystem Unix
+sockets are admitted, with no localhost TCP fallback or invented display.
+The [XCB descriptor constructor](https://xcb.freedesktop.org/manual/group__XCB__Core__API.html#ga6a5bf0156ada8c8863461073adefc7e2)
+receives explicit owned authentication data after the deadline owner exists.
+Separate capture/Xlib/XDO routes retain their own obligations.
 
-The constructor accepts only local `:<display>[.<screen>]` values within the
-native signed-integer range and opens only nonblocking Linux abstract/filesystem
-Unix sockets. Native
-[libxcb 1.15's connector](https://github.com/gitlab-freedesktop-mirrors/libxcb/blob/libxcb-1.15/src/xcb_util.c)
-otherwise retries localhost TCP after a missing/refused Unix socket for a plain
-local display. The focus path no longer permits that route or a hostname/path/
-protocol override. Public Xau selection and Xdmcp transformation preserve both
-supported authentication protocols; no display is
-invented after refusal. This does not alter the separate capture/Xlib/XDO paths.
+`window_focus_auth.rs` replaces Xau's pre-deadline `fopen`/scan with one
+nonblocking/no-controlling-terminal open, exact regular-file validation and a
+1 MiB bound on both metadata and bytes, including a growth sentinel. Checked
+counted fields reject truncated records and malformed tails. Selection retains
+XDM-before-cookie preference, first match at a rank, local/wildcard family,
+empty display number, explicit XAUTHORITY (including empty), HOME fallback,
+non-UTF8 paths and regular-file symlinks. Missing/no matching credentials retain
+empty-auth behavior; other file/read failures and selected invalid data are
+explicit errors. Differing real/effective UID or GID refuses acquisition.
+Owned input, selected credentials and XDM working buffers wipe on retirement;
+fixed read capacity avoids unwiped growth. XDM uses fresh OS randomness for its
+Unix client identifier. There is no file-reading or weaker-auth fallback.
 
-`--x11-display-tests` passed at `95b4989f` (tree `ed5007fc`, outer exit 0,
-125 VM seconds; product correction `1274f6b5`):
+| Native focus scenarios at the named source | Observed result |
+| --- | --- |
+| Exact earlier authentication module and actual private FIFO reader | A nonblocking writer open proved reader admission; the empty FIFO held the old native call for 305 ms until that owned writer supplied EOF. The child joined with descriptors retired and no deadline worker. |
+| Ten invalid file kinds/shapes per cookie/XDM protocol | Twenty refusals, each followed by real `164,92` geometry through the same focus owner. FIFO, directory, Unix socket, device, oversized, truncated family/field, malformed tail, empty credential and unreadable file cases returned in observed 0–2 ms; descriptors and workers retired. |
+| Authentication selection and boundary | Twenty cases: fifteen admitted, five refused. Wildcard family/display, unrelated records, first-record wins, protocol preference, exact 1 MiB input, non-UTF8 filename, HOME default, regular symlink and empty explicit override passed. Eight retained valid/wrong/missing/valid cookie/XDM cases also passed. |
+| Established and setup lifetime | Four each of stalled, dead, partial-reply, full-send-buffer and initial-constructor cases retired and recovered through the same owner on fresh connections. The old partial-reply/send-wait controls remained blocked until their controlled release. Default SIGPIPE, actual kernel backpressure, owned relay/server joins and socket retirement were retained. |
+| Query/error ownership | Twelve cases repeated sixteen times retained one timer TID across 192 queries. Real window destruction, independent Xlib error delivery, seven setup-layout refusals, eighteen display selectors, canonical screen selection, sixteen constructor refusals/retries and sixteen joined calling threads passed. Header/FFI ABI checks compiled against native headers. |
 
-- The exact historical complete module made one actual TCP connection when
-  its local Unix display was absent. The current module refused with no TCP
-  connection. A retained `127.0.0.1:6097` listener existed only inside the
-  network-none guest container; the accepted old peer was closed without an
-  X11 response or session grant. Both children and the listener retired.
-- Eighteen malformed/remote/oversized/missing/non-UTF8 display selectors were
-  refused with no descriptor/thread growth. Leading-zero display/screen names
-  normalized correctly; actual Xvfb screen 1 was selected instead of screen 0.
-- A guest Unix-only relay forwarded a real Xvfb property-reply header and held
-  its last four bytes. The exact previous `1f4a01b3` polling module stayed blocked
-  throughout a 300 ms hold and returned only after release, at 301 ms. This
-  demonstrates a native partial-packet wait, not a model or old whole-app run.
-- The exact old module also stayed blocked throughout a 300 ms full-send-buffer
-  hold, returning at 301 ms after Xvfb resumed. A bounded private fixture observed
-  kernel `EAGAIN` and absent write readiness before the production atom request.
-  Four current full-send-buffer cases returned Deadline at observed 100 ms,
-  retired, and recovered on fresh connections. The private child kept default
-  SIGPIPE throughout; no ignored-signal policy hid a native termination.
-- Four corrected incomplete-reply cases and four actual paused-server cases
-  returned Deadline at observed 100 ms; four dead-server cases returned explicit
-  connection errors at observed 0 ms. All 16 retired the exact connection and
-  worker, then recovered through the same owner with a fresh connection and real
-  center `164,92`. Relay/server owners joined and their private sockets retired.
-- Four paused-server initial constructors returned Deadline at observed 100 ms,
-  retired their descriptor/timer owners, and recovered through the same owner
-  with a fresh connection and actual center `164,92` after the server resumed.
-  The earlier exact `1a9dc16c` source remained blocked for the independent
-  two-second observation before the fixture stopped/joined its child.
-- Eight real authenticated-Xvfb cases covered valid/wrong/missing/valid records
-  for MIT-MAGIC-COOKIE-1 and XDM-AUTHORIZATION-1. Valid cases opened both the
-  independent Xlib fixture and production focus connection and queried real
-  geometry; wrong/missing cases were refused. Own descriptors/tasks returned
-  to baseline and exact servers/sockets retired. This is native local-cookie/XDM
-  behavior, not installed-principal or every Xauthority selection/file-failure case.
-- Twelve native window/property cases repeated 16 times retained one identical
-  timer TID across all 192 queries. Real destruction between geometry/translation,
-  independent Xlib error delivery, seven setup-layout refusals, 16 constructor
-  refusals/retry and 16 joined calling threads passed. Own descriptors/tasks
-  returned to baseline; tracked returned reply/error buffers were freed. This
-  does not measure internal native packet-reader allocations or the whole heap.
-- Actual C-header/Rust ABI checks, previous native context/capture cases and
-  three production byte-cache tests passed. Complete focus components compiled
-  and ran, not the parent Cargo application or installed service.
+Executed query, historical and corrected lifecycle artifact digests were unchanged
+before/after use. Corrected lifecycle SHA-256:
+`f0dd25e0cc1e422406203b40f665d962320e1f3d190d24cd00a65c185d1abbaf`.
+`.harness-state/verifier-vm/focus-auth-native-25c661c1.json` binds all artifact,
+source, library, raw, case, storage and cleanup observations. Raw serial
+`x11-display-tests-run.j2NLCPeMrQ.serial.log` is 92,692 bytes, SHA-256
+`7baded12312fb1edf79717bf81fbbaadba2ec9b8d905394abaeda210dccb9279`.
+These are assistant observations, not independent attestation.
 
-Retained `.harness-state/verifier-vm/x11-display-tests-run.12SCggZ5cJ.serial.log`
-(132,729 bytes; SHA-256 `f9ed248082bd8dccdb674866c409fb61ae49546f72307be66fb572dfcf29e1a5`)
-binds exact source/artifacts/libraries, scope and finality. These are assistant-observed,
-not independent attestation. No added host endpoint; readonly inputs unchanged;
-exact runtime owners joined and owned disk/media/run root retired. Existing
-zero-NIC VM/guest-only unprivileged-container limits and isolation are unchanged.
-Earlier request-error and idle-wait evidence remains in the `iTMfrCqrEQ` and
-`Rdx1CAaq9i` serials/receipts and Git history; the latter never proved a partial-
-packet deadline and is superseded for current cancellation behavior. The prior
-`TQnOjS8dmj` cancellation receipt lacked the write-pressure case, and the
-`aymDWEYgCi` receipt predates the local-route correction. The `vjvfQZWqod`
-serial/receipt retains the earlier `7f5e80ee` local-route result; it did not exercise
-initial-setup cancellation or authenticated focus construction.
+The explicit focus profile admits **20 GiB**: unchanged 4 GiB guest, 8 GiB QEMU
+hard file ceiling, 6 GiB headroom and 1 GiB overhead, with 9 GiB aggregate RAM
+scratch. The prelaunch check permits at most 1 GiB prepared media; overflow
+refuses execution. Live monitoring and the shared lock through exact joins remain.
+Actual peak scratch was 4,074,586,112 bytes, overlay 3,288,010,752 bytes, and minimum
+available memory 19,456,274,432 bytes. All 181 before/during/after source/control
+snapshots and complete external endpoint sets matched; three native listener deltas
+were empty. Docker, QEMU, private roots and RAM scratch retired. Child rusage
+accounted 4,096 block-write bytes; tmpfs can swap, so this is not whole-host zero I/O.
+The full X11 command keeps its standard 27 GiB profile and broader suite.
+Seven function-profile/eight invalid-profile controls are retained in
+`focus-shard-storage-controls-1d03902e.json`; that result preceded the CLI-entry
+correction and did not by itself prove CLI selection. The named native run executes
+the corrected CLI and observes its actual profile and limits.
 
-**Authentication-file admission — source implemented; native validation PENDING.**
-`a824ba14` replaces the unbounded Xau `fopen`/scan before socket-deadline creation
-with one nonblocking/no-controlling-terminal open, exact regular-file validation and
-a 1 MiB input limit checked against both metadata and actual bytes. Counted fields
-are checked before slicing; malformed input fails rather than retaining a partial
-selection. XDM precedes cookie, the first match at a rank wins, and local/wildcard
-family, empty display number, explicit XAUTHORITY and HOME fallback retain their
-selection semantics. Owned input, selected credential and XDM working buffers wipe
-on retirement; fixed read capacity avoids unwiped growth. Differing real/effective
-UID or GID refuses file acquisition. There is no Xau file-reading fallback.
+Earlier full X11 source `95b4989f` and its native context/capture/cache evidence
+remain bound to `x11-display-tests-run.12SCggZ5cJ.serial.log` (SHA-256
+`f9ed248082bd8dccdb674866c409fb61ae49546f72307be66fb572dfcf29e1a5`).
+The earlier two-second setup-constructor negative remains in `qZNqFW4iyd`
+(SHA-256 `2df9f035bb0417c5d7ccb09b80109bf621ae657a466ce28073c275dbf0b799be`).
+Git history retains superseded intermediate receipts and the initial resource/CLI
+refusals; this focused pass does not refresh unrelated full-suite results.
 
-The native fixture compares the exact earlier authentication module against a real
-FIFO wait and adds twenty file refusals with same-owner geometry recovery plus
-twenty selection/boundary cases across cookie and XDM. These cases have **not run**.
-The first `--x11-display-tests` invocation refused before QEMU or scratch creation:
-27,648 MiB required, 26,174 MiB available. The unchanged profile, headroom and checks
-remain mandatory. `.harness-state/verifier-vm/focus-auth-preflight-a824ba14.json`
-retains terminal status and 178 unchanged source/control snapshots and endpoints;
-it is resource-refusal evidence only. Retry the exact native command when admitted.
-
-The byte/type bounds do not impose a wall-clock limit on pathname resolution or
-regular-file I/O. Whole-app, installed-service/LPE and native evidence remain open.
-
-**OPEN:** whole-app/service integration, native authentication-file/timer-startup bounds,
-fresh connected Unix peer/session binding, broader Xauthority selection/file failures,
-full-backlog admission, setup write-pressure/partial-packet/late-completion races,
-shutdown/worker-creation failure, query unwind, broader write-pressure/late-
-completion/cancellation races, heap/resource/performance/
-soak, current platform artifacts and reported Android/Windows delay causation.
-The deadline initiates cancellation; OS scheduling and exact owned drain can exceed
-it. The observed 100 ms returns are not a universal wall-clock guarantee or proof
-that all connection deadlines, local privilege boundaries or release evidence close.
-
-The write-pressure fixture changes only a private connection's send-buffer limit
-and adds bounded no-reply traffic to that connection before retiring it. It is
-controlled native fault injection, not a production traffic/throughput schedule
-or evidence for capture's separate XCB connection and native constructor paths.
-
-Constructor preparation bounds and separate Xlib/XDO routes remain OPEN; capture's local
-route correction is tracked above. A component route refusal is not installed-
-session/principal proof.
-
-The old focus constructor called `xcb_connect` before it obtained the descriptor or
-created `SocketDeadline`; libxcb performs setup write/read synchronously in that call.
-The negative `qZNqFW4iyd` serial under `.harness-state/verifier-vm/` retains the
-two-second constructor stall (129,026 bytes, SHA-256
-`2df9f035bb0417c5d7ccb09b80109bf621ae657a466ce28073c275dbf0b799be`).
-Its host endpoint snapshots were independently byte-equal; exact failed-run owners,
-disks and private root were retired. The current positive transaction closes that
-named native setup-stall/recovery gap, not Android/Windows symptom causation.
-The [XCB descriptor-constructor contract](https://xcb.freedesktop.org/manual/group__XCB__Core__API.html#ga6a5bf0156ada8c8863461073adefc7e2)
-requires explicit authentication data: `NULL` selects an unauthenticated connection.
-The current constructor opens only a nonblocking local Unix socket, retains its
-deadline owner before transferring that exact descriptor to `xcb_connect_to_fd`,
-and joins the timer before native retirement on constructor errors as well as normal
-drop. It shares the existing display/screen parser and uses public Xau selection
-and Xdmcp transformation for both supported authentication protocols; selected invalid
-records fail explicitly. XDM's Unix client identifier uses fresh OS randomness rather
-than a private counter that could collide with Xlib's use of libxcb. Xau's no-record
-result preserves the native empty-auth behavior; selected invalid data or failures
-in hostname, randomness or transformation preparation do not retry with weaker auth.
-Xau's public getter does not distinguish file/read/allocation failure from no match;
-that lookup/failure boundary remains OPEN. Four setup-stall/recovery and eight authentication cases
-passed alongside established-connection controls in the named transaction above.
-No universal authentication-file, timer-startup, OS-scheduling or whole-app bound is
-claimed; native Xauthority file lookup, backlog refusals/races, heap/performance/soak,
-installed identity, other platforms and original-symptom causation remain OPEN.
+**OPEN:** whole-app/service integration and current full X11 integration; pathname
+resolution/regular-file I/O wall time and timer-startup bounds; fresh connected Unix
+peer/session/principal binding; broader authentication-file I/O/replacement faults;
+full-backlog admission; setup write-pressure/partial-packet/late-completion races;
+shutdown/worker-creation failure; query unwind; broader write-pressure/cancellation
+races; internal native packet-reader/whole-heap/resource/performance/soak evidence;
+current installed/platform artifacts; Android/Windows symptom causation.
+The 100 ms budget initiates cancellation; scheduling and exact drain can exceed it.
+Private send-buffer/no-reply fault injection is not production throughput or proof
+for capture's separate connection. No installed identity, LPE or release closure follows.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

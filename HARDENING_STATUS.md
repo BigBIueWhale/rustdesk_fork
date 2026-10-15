@@ -2155,20 +2155,39 @@ mode validation and mutation. Pending ticket retirement revokes native admission
 admitted work retains only an exact shared final-cleanup lease through native completion,
 while the authenticated registry can revoke helper authority immediately. Native task
 ownership survives async-supervisor cancellation, and panic poisons cleanup authority.
+The Remote login supported-mode query now uses the same owner and native worker.
+`ResolutionWork<T>` returns its owned result; mutation keeps the unit default.
+The former inline login query is removed. Missing/poisoned authority or worker
+failure refuses login. A cancelled query guard revokes queued admission; an admitted
+query retains its Remote cleanup lease through native completion. Existing Remote
+lease admission counts retained generations toward the sixteen-owner limit.
 Linux queries and setters use one retained-child/pidfd runner with a five-second initiating
 deadline and one-MiB stdout ceiling; errors/unwind retain termination and reap before
 return. The setter accepts only successful terminal status. Missing pidfd acquisition
 fails the operation and retains natural wait without numeric-PID signaling fallback.
-`--linux-resolution-lifetime-tests` passed 20 production-component checks at source
-`2fcdbf6e` in 78 VM seconds: five real
-child-process cases, seven task/owner/runtime cases and eight query regressions, with
-root-locked Tokio/libc/log/regex. Executed artifact SHA-256
-`d7aa345c1b6fef0e013f5aa5127cd53fa2eacd309c04f7dcbbf755a7a776adbf`;
-`.harness-state/verifier-vm/resolution-lifetime-accepted-2fcdbf6e.json` binds exact source,
-compiler/dependencies, raw outcomes, freezes, endpoint snapshots, limits and joined cleanup.
-Actual parent/application integration, real monitor/peer,
-syscall-failure retirement, other synchronous discovery callers and native Windows/macOS
-remain OPEN; no installed or LPE closure follows from these component checks.
+`--linux-resolution-lifetime-tests` passed all 22 named component tests at source
+`a4dee86e` in 85 VM seconds; execution took 5.26 seconds. The two added cases run
+the actual generic worker and pidfd command runner around a held real child: a
+current-thread Tokio timer progresses, the typed result arrives after release,
+and cancelled wait/controller retirement keeps the owner until exact child reap.
+Existing command, cancellation, panic, owner and query regressions remain required.
+Artifact SHA-256 `6b872f273a4a95a5aa2efc8a355902eedce316124e60c394ecae9a182e23220b`
+stays equal before/after. Ten source-input receipts and root-locked dependencies
+match; all 216 complete source/control captures match before/live/after. The zero-NIC
+VM uses guest-only networkless, nonroot, capability-free Docker. Four native listener
+deltas and independent endpoint comparisons are empty; exact joins and RAM/private
+root retirement pass. The measured profile admits 15 GiB: 2 GiB guest, 6 GiB RAM
+scratch, 6 GiB headroom and 1 GiB overhead, with a 4 GiB hard file ceiling. Scratch
+peaks at 3,557,425,152 bytes and overlay at 3,397,324,800. Nine profile-limit controls
+and twelve invalid-profile/guest refusals pass in the short control VM.
+`.harness-state/verifier-vm/resolution-query-native-a4dee86e-v2.json` binds source,
+artifact, results, controls, limits and cleanup. The earlier twenty-case receipt
+`resolution-lifetime-accepted-2fcdbf6e.json` remains retained.
+The native fixture compiles the production worker/command components, while the
+parent login helper is source-reviewed only. Actual parent/application compilation
+and login, real X-server/monitor/peer, syscall-failure retirement, other synchronous
+display discovery callers and native Windows/macOS remain OPEN. No historical
+whole-parent A/B, installed-service or LPE closure follows from this component run.
 
 **Resolution restoration record identity (R-T4): production component accepted; integration OPEN.**
 The registry privately retains an immutable original-resolution object for each output.

@@ -12754,8 +12754,17 @@ endpoint freezes, raw serial and joined bounded-RAM cleanup are retained in
 `.harness-state/verifier-vm/peer-metadata-corrected-730bb9b0.json`.
 This proves Dart metadata behavior, import compilation and that named generated-API absence;
 it does not execute the Rust mapper, whole connection pages, real platform IMEs or installed peers.
-Malformed-peer diagnostic secrecy remains OPEN. Runner bootstrap now follows explicit offline
-tools finalization; the 286/284-second observations establish no causal performance improvement.
+The peer-list decode error path emits a fixed diagnostic instead of rendering the caught exception.
+Exact source `9910152a` passed `--flutter-model-tests --peer-data` in 274 VM seconds on pinned
+Flutter 3.24.5, with a fresh bridge and four named tests. A real Dart `FormatException` positive
+control includes synthetic private input; the actual production model callback logs only the fixed
+diagnostic. Invalid root/entry/field shapes, valid metadata, error clearing and recovery, remaining-ID
+state, listener notifications and quiet empty input also pass. The strict result-parser controls,
+source/control and endpoint freezes, raw serial and joined RAM cleanup are retained in
+`.harness-state/verifier-vm/peer-decode-runtime-9910152a.json`. This is Dart/model execution;
+actual Rust event-stream delivery, full app/peer/installed-platform diagnostics and broader log
+secrecy remain OPEN. The initial formatting refusal ran no behavioral test. Prepared-runtime
+reuse and faster focused setup remain OPEN; these runs establish no performance improvement.
 
 Exact-current Rust application compilation, complete fresh bridge absence inspection, built-package asset/symbol inventories,
 installed-platform checks, cold R-B2/R-B10 equality, independent reproduction, and external review

@@ -2555,6 +2555,7 @@ generate_focused_rust_flutter_bridge() {
                 export GIT_OPTIONAL_LOCKS=0
                 export LIBCLANG_PATH="$LLVM_ROOT/lib"
                 export PATH=/work/toolchain/flutter/bin:/work/toolchain/flutter/bin/cache/dart-sdk/bin:/work/toolchain/rustinstall/bin:/usr/bin:/bin
+                [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
                 {
                     printf "[net]\noffline = true\n"
                     sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
@@ -2572,7 +2573,6 @@ generate_focused_rust_flutter_bridge() {
                     /work/toolchain/flutter \
                     "$RUSTDESK_FLUTTER_VERSION" \
                     "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
-                [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
                 "$REAL_FLUTTER" config --no-analytics >/work/flutter-config.out
                 (cd /source/flutter && flutter pub get --offline --enforce-lockfile)
                 [ "$tools_lock" = "$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
@@ -7888,7 +7888,6 @@ run_flutter_model_tests() {
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     export PATH=/work/toolchain/rustinstall/bin:$PATH
                 fi
-                [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     {
                         printf "[net]\noffline = true\n"
@@ -7923,6 +7922,7 @@ run_flutter_model_tests() {
                     /work/toolchain/flutter \
                     "$RUSTDESK_FLUTTER_VERSION" \
                     "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
+                [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
                 if ! "$REAL_FLUTTER" config --no-analytics \
                     >/work/flutter-config.out 2>/work/flutter-config.err; then
                     tail -n 120 /work/flutter-config.out /work/flutter-config.err >&2

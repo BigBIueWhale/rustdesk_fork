@@ -122,6 +122,7 @@ case "$#:${8:-}" in
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
+            || "${13}" = --resolution-parent \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
             || "${13}" = --fusermount-process || "${13}" = --file-block \
             || "${13}" = --clipboard-response ]] || exit 2
@@ -841,7 +842,7 @@ for profile, memory, scratch, overlay in (
         ('flutter-credential-dialog', 4096, 7, 6),
         ('linux-service-build', 8192, 9, 8),
         ('x11-focus', 4096, 9, 8),
-        ('linux-pa-playback', 6144, 7, 6),
+        ('linux-parent-libtest', 6144, 7, 6),
         ('linux-resolution-lifetime', 2048, 6, 4),
         ('ledger-token-count', 2048, 4, 1)):
     if limits(profile, memory) != (scratch * gib, overlay * gib):
@@ -850,7 +851,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('ledger-token-count', 8192), ('unknown', 2048),
                         ('cpace-recovery-tests', 6144), ('cpace-recovery-tests', 8193),
                         ('x11-focus', 4095), ('x11-focus', 8192),
-                        ('linux-pa-playback', 4096), ('linux-pa-playback', 8192),
+                        ('linux-parent-libtest', 4096), ('linux-parent-libtest', 8192),
                         ('linux-resolution-lifetime', 2047), ('linux-resolution-lifetime', 4096)):
     try:
         limits(profile, memory)
@@ -2960,6 +2961,7 @@ run_focused_rust_tests() {
         source_fingerprints=(
             Cargo.lock
             scripts/run-pa-runtime-tests.sh
+            scripts/linux-parent-test-build.sh
             scripts/verify-pa-runtime-candidate.py
             src/ipc.rs
             src/ipc/pulse_audio.rs
@@ -3440,6 +3442,21 @@ run_focused_rust_tests() {
                 resolution_restore::tests::r_s11iu_r_t4_identical_republication_survives_inflight_restore
                 resolution_restore::tests::r_s11iu_r_t4_removed_and_republished_record_survives_old_completion
                 resolution_restore::tests::r_s11iu_r_t4_callback_unwind_retains_record_without_poisoning
+            )
+        elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
+            container_name=rustdesk-resolution-parent-tests
+            memory=5g
+            memory_bytes=5368709120
+            source_fingerprints=(
+                Cargo.lock Cargo.toml src/lib.rs src/server/connection.rs
+                src/server/connection/resolution_work.rs src/platform/linux.rs
+                src/platform/linux/xrandr_command.rs src/platform/linux/xrandr_query.rs
+                scripts/run-resolution-parent-tests.sh scripts/linux-parent-test-build.sh
+            )
+            required_tests=(
+                server::connection::resolution_work::tests::r_s11iu_resolution_supervisor_abort_keeps_native_owner
+                server::connection::resolution_work::tests::native_parent_tests::actual_resolution_result_returns_after_native_child_reap
+                server::connection::resolution_work::tests::native_parent_tests::cancelled_resolution_result_keeps_native_child_and_owner
             )
         elif [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
             container_name=rustdesk-linux-resolution-lifetime-tests
@@ -4044,6 +4061,10 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        if [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
+                            /bin/bash /source/scripts/run-resolution-parent-tests.sh
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
                             python3 -I -S /source/scripts/run-cm-clipboard-response-tests.py \
                                 /source /tmp/cargo-home/config.toml
@@ -4398,14 +4419,15 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
-    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
+    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ] \
+       || { [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; }; then
         local -a fuse_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 | tee "$output"; then
             fuse_start_status=("${PIPESTATUS[@]}")
         else
             fuse_start_status=("${PIPESTATUS[@]}")
         fi
-        [ "${fuse_start_status[1]}" -eq 0 ] || fail 'cannot retain the live FUSE test output'
+        [ "${fuse_start_status[1]}" -eq 0 ] || fail 'cannot retain the live focused test output'
         container_status=${fuse_start_status[0]}
     else
         "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
@@ -4577,6 +4599,12 @@ PY
         [ "$(grep -Ec '^RESOLUTION_RESTORATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'RESOLUTION_RESTORATION_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'resolution-restoration artifact receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution parent summary count differs'
+        [ "$(grep -Ec '^RESOLUTION_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'RESOLUTION_PARENT_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^test server::connection::resolution_work::tests::.* \.\.\. ok$' "$output")" -eq 3 ] \
+            || fail 'resolution parent artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution-lifetime summary count differs'
         [ "$(grep -Ec '^LINUX_RESOLUTION_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=22 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -4906,6 +4934,12 @@ PY
             printf 'RESOLUTION_RESTORATION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-record-identity-with-callback-fixtures rust=1.75.0 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
+            [ "$tests_passed" -eq 3 ] || fail 'resolution parent total differs'
+            grep -E '^test server::connection::resolution_work::tests::.* \.\.\. ok$|^RESOLUTION_PARENT_(BUILD|ARTIFACT)=' "$output"
+            printf 'RESOLUTION_PARENT_VM=pass commit=%s tree=%s tests=3 target=linux-x86_64 scope=complete-parent-library-and-owned-result rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
             grep -E '^test (command_tests|work_tests|resolution_work::tests|query_regressions::tests)::.* \.\.\. ok$|^LINUX_RESOLUTION_LIFETIME_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'LINUX_RESOLUTION_LIFETIME_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-command-and-owned-work-components rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \

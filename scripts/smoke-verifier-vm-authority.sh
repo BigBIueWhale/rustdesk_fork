@@ -151,6 +151,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=linux-resolution-lifetime
         ;;
+    1:--linux-resolution-parent-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'resolution parent-test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=resolution-parent
+        ;;
     1:--linux-xrandr-query-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'xrandr-query input/run overrides are forbidden' >&2; exit 2; }
@@ -685,13 +691,17 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    if [ "$RUST_TEST_PROFILE" != integration ]; then
+    if [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
+        readonly VM_TIMEOUT_SECONDS=900
+    elif [ "$RUST_TEST_PROFILE" != integration ]; then
         readonly VM_TIMEOUT_SECONDS=300
     else
         readonly VM_TIMEOUT_SECONDS=2400
     fi
     readonly OVERLAY_SIZE=40G
-    if [[ "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
+    if [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
+        readonly VM_MEMORY=6144
+    elif [[ "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
         || "$RUST_TEST_PROFILE" = linux-resolution-lifetime || "$RUST_TEST_PROFILE" = audio-mailbox \
         || "$RUST_TEST_PROFILE" = audio-buffer || "$RUST_TEST_PROFILE" = fusermount-fd \
         || "$RUST_TEST_PROFILE" = fusermount-process || "$RUST_TEST_PROFILE" = file-block \
@@ -5868,6 +5878,18 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = reso
         "RESOLUTION_RESTORATION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=6 target=linux-x86_64 scope=production-record-identity-with-callback-fixtures rust=1.75.0 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused resolution-restoration receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'resolution-restoration cloud-init completion'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
+    mapfile -t resolution_parent_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'RESOLUTION_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after execution_seconds=[0-9]+$'
+    )
+    [ "${#resolution_parent_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'RESOLUTION_PARENT_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'resolution parent artifact receipt differs'
+    require_exact_fixed_receipt \
+        "RESOLUTION_PARENT_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=3 target=linux-x86_64 scope=complete-parent-library-and-owned-result rust=1.75.0 features=linux-pkg-config vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'resolution parent compilation and native result'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'resolution parent cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
     mapfile -t lifetime_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -6977,6 +6999,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
         printf 'RESOLUTION_RESTORATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=6 scope=production-record-identity-with-callback-fixtures network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
+        printf 'RESOLUTION_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=complete-parent-library-and-owned-result network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
         printf 'LINUX_RESOLUTION_LIFETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=22 scope=production-command-and-owned-work-components network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

@@ -73,61 +73,8 @@ if [ "${2:-}" != --product-pair ]; then
     if [ "${2:-}" = --playback ]; then
         export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
     fi
-    printf 'PA_RUNTIME_BUILD=started target=linux-libtest budget_seconds=600\n'
-    build_started=$SECONDS
-    build_status=0
-    timeout --signal=TERM --kill-after=5s 600s \
-        cargo test --offline --locked --lib --features linux-pkg-config --no-run \
-        --message-format=json-render-diagnostics --color never >"$WORK/build.json" || build_status=$?
-    if [ "$build_status" -ne 0 ]; then
-        cat /sys/fs/cgroup/memory.events >&2
-        exit "$build_status"
-    fi
-    test_executable="$(python3 -I -S - "$WORK/build.json" <<'PY'
-import json
-import os
-import re
-import sys
-
-with open(sys.argv[1], 'rb') as stream:
-    output = stream.read(4 * 1024 * 1024 + 1)
-if len(output) > 4 * 1024 * 1024:
-    sys.exit('PulseAudio Cargo metadata exceeds 4 MiB')
-artifacts = []
-finished = []
-for line in output.splitlines():
-    if not line.startswith(b'{'):
-        continue
-    message = json.loads(line)
-    if message.get('reason') == 'build-finished':
-        finished.append(message.get('success'))
-    if (message.get('reason') == 'compiler-artifact'
-            and message.get('manifest_path') == '/source/Cargo.toml'
-            and message.get('target', {}).get('name') == 'librustdesk'
-            and message.get('target', {}).get('src_path') == '/source/src/lib.rs'
-            and message.get('profile', {}).get('test') is True):
-        if os.environ.get('LINUX_PA_PLAYBACK') == '1':
-            profile = message['profile']
-            if (profile.get('debuginfo') != 0 or profile.get('opt_level') != '0'
-                    or profile.get('debug_assertions') is not True
-                    or profile.get('overflow_checks') is not True):
-                sys.exit('playback artifact compiler profile differs')
-        artifacts.append(message.get('executable'))
-if finished != [True] or len(artifacts) != 1 or not isinstance(artifacts[0], str):
-    sys.exit('PulseAudio build lacks one exact completed library test artifact')
-if not re.fullmatch(r'/cargo-target/debug/deps/librustdesk-[0-9a-f]{16}', artifacts[0]):
-    sys.exit('PulseAudio test artifact is outside its private target directory')
-print(artifacts[0])
-PY
-)"
-    [ -f "$test_executable" ] && [ ! -L "$test_executable" ] \
-        && [ -x "$test_executable" ] \
-        && [ "$(stat -c '%u:%g:%h' -- "$test_executable")" = 1000:1000:1 ] \
-        || { echo 'PulseAudio test artifact metadata differs' >&2; exit 1; }
-    artifact_sha="$(sha256sum "$test_executable" | cut -d ' ' -f 1)"
-    [[ "$artifact_sha" =~ ^[0-9a-f]{64}$ ]]
-    printf 'PA_RUNTIME_BUILD=pass seconds=%s artifact_sha256=%s\n' \
-        "$((SECONDS - build_started))" "$artifact_sha"
+    source /source/scripts/linux-parent-test-build.sh
+    build_linux_parent_test "$WORK" PA_RUNTIME
 fi
 
 "$DAEMON" -n --daemonize=no --exit-idle-time=-1 --log-target=stderr \

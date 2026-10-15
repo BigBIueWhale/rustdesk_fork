@@ -113,4 +113,72 @@ mod tests {
         release_tx.send(()).unwrap();
         assert!(tokio::time::timeout(std::time::Duration::from_secs(2), owner_rx).await.unwrap().is_err());
     }
+
+    #[cfg(all(target_os = "linux", feature = "linux-pkg-config"))]
+    mod native_parent_tests {
+        use super::*;
+        use hbb_common::{message_proto::Resolution, protobuf::Message};
+        use std::{io::Write, process::{Command, Stdio}, time::Duration};
+
+        async fn query(cancel: bool) {
+            assert_eq!(std::env::var("RUSTDESK_RESOLUTION_PARENT_TEST").as_deref(), Ok("1"));
+            let expected = Resolution { width: 1920, height: 1080, ..Default::default() };
+            let bytes = expected.write_to_bytes().unwrap();
+            let (owner_tx, mut owner_rx) = tokio::sync::oneshot::channel();
+            let (input_tx, input_rx) = tokio::sync::oneshot::channel();
+            let mut work = ResolutionWork::start(Owner(owner_tx), move || {
+                let mut child = Command::new("/bin/cat")
+                    .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null())
+                    .spawn().map_err(|error| error.to_string())?;
+                let pid = child.id();
+                let input = child.stdin.take().ok_or_else(|| "child stdin missing".to_owned());
+                let sent = match input {
+                    Ok(input) => input_tx.send((pid, input)).is_ok(),
+                    Err(_) => false,
+                };
+                // Failed publication drops the last writer; wait still owns exact retirement.
+                let output = child.wait_with_output().map_err(|error| error.to_string())?;
+                if !sent || !output.status.success() {
+                    return Err("native query child did not complete".to_owned());
+                }
+                Resolution::parse_from_bytes(&output.stdout)
+                    .map(|resolution| vec![resolution])
+                    .map_err(|error| error.to_string())
+            });
+            let (pid, mut input) = tokio::time::timeout(Duration::from_secs(2), input_rx)
+                .await.unwrap().unwrap();
+            let heartbeat = std::time::Instant::now();
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            assert!(heartbeat.elapsed() < Duration::from_millis(500));
+            assert!(matches!(owner_rx.try_recv(), Err(tokio::sync::oneshot::error::TryRecvError::Empty)));
+            if cancel {
+                assert!(tokio::time::timeout(Duration::from_millis(20), work.wait()).await.is_err());
+                drop(work);
+                assert!(matches!(owner_rx.try_recv(), Err(tokio::sync::oneshot::error::TryRecvError::Empty)));
+                input.write_all(&bytes).unwrap();
+                drop(input);
+                assert!(tokio::time::timeout(Duration::from_secs(2), owner_rx).await.unwrap().is_err());
+            } else {
+                input.write_all(&bytes).unwrap();
+                drop(input);
+                assert_eq!(work.wait().await.unwrap(), vec![expected]);
+                assert!(owner_rx.await.is_err());
+            }
+            let mut status = 0;
+            assert_eq!(unsafe { hbb_common::libc::waitpid(pid as _, &mut status, hbb_common::libc::WNOHANG) }, -1);
+            assert_eq!(std::io::Error::last_os_error().raw_os_error(), Some(hbb_common::libc::ECHILD));
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        #[ignore = "requires the owned Linux parent-test VM"]
+        async fn actual_resolution_result_returns_after_native_child_reap() {
+            query(false).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        #[ignore = "requires the owned Linux parent-test VM"]
+        async fn cancelled_resolution_result_keeps_native_child_and_owner() {
+            query(true).await;
+        }
+    }
 }

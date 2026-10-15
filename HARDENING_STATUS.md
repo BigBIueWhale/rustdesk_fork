@@ -11392,27 +11392,41 @@ validators and shared-library behavior, not a final product artifact or privileg
 client/URL/login dispatch, rendered UI, installed/platform artifacts, full-verifier integration and independent
 reproduction remain OPEN; listener IPv4-only binding is a separate R-D5 property.
 
-**OPEN — hostname resolution transport and lifetime (R-SV5/R-SV10).**
+**NATIVE COMPONENT EXPOSURE CONFIRMED; CORRECTION OPEN — hostname resolution transport and lifetime (R-SV5/R-SV10).**
 The actual viewer path is `Client::_start` → `connect_tcp_local` → `FramedStream::new`
-(`src/client.rs:499`, `libs/hbb_common/src/socket_client.rs:79`, `tcp.rs:466`). String targets
+(`src/client.rs:510`, `libs/hbb_common/src/socket_client.rs:79`, `tcp.rs:466`). String targets
 use Tokio 1.44.2's blocking standard-library resolver; Rust 1.75 calls libc `getaddrinfo`
 with a stream hint. Resolution precedes the per-address TCP-connect timeout. Reviewed glibc 2.27
 source creates datagram sockets for ordinary DNS and, with multiple returned addresses, for
 source-address sorting probes. TCP DNS configuration alone does not remove the latter path.
-This is a source/upstream-library finding, without an exact-current product syscall trace or
-demonstrated local privilege escalation. The nineteen Dart controller/grammar tests do not exercise
-name resolution. Required next evidence is a source-bound isolated viewer/connector replay covering
+The nineteen Dart controller/grammar tests do not exercise name resolution. Whole-viewer
+syscall tracing and a demonstrated local privilege escalation are not established. Required
+remaining evidence includes a source-bound isolated viewer/connector replay covering
 literal IPv4 controls, qualified hostnames, single/multiple A/AAAA and hosts-file results, default/TCP
 DNS, transient socket creation, failure, cancellation and exact resolver drain. Hostname support and
 the zero-UDP contract remain binding; the product correction and all target-native acceptance are OPEN.
-The shared-library VM fixture includes an instrumented `FramedStream::new` diagnostic
-for literal, single/multiple hosts-file, UDP/TCP DNS and cancelled-future cases.
-It denies and counts actual IP-datagram socket syscalls and forwards to real libc
-`getaddrinfo`; its cancellation case holds native entry behind a controlled gate.
-Each process validates both socket traps and real-function interposition first.
-This diagnostic compiles; runtime observations are pending. Its result is observation,
-not a product correction or zero-UDP acceptance. Natural DNS stall/drain, actual viewer,
-other platforms and the complete correction remain OPEN.
+The named Linux shared-library transaction at `8367f58b` executed the real
+`FramedStream::new` in seven instrumented processes. Literal IPv4 and one hosts-file
+address connected with zero IP-datagram attempts; the literal also bypassed libc lookup.
+Two hosts-file addresses connected while attempting two datagram sockets, both with
+default DNS and with `RES_OPTIONS=use-vc`. A missing DNS name attempted two datagram
+sockets by default and none with TCP DNS; both failed against the closed loopback resolver.
+In the controlled cancellation case, native entry remained active across a 50 ms gate
+despite the 5 ms per-connect budget and after async-future cancellation; it drained after
+gate release. This establishes constructor/native-entry behavior, not a natural DNS stall.
+
+Each process first proved IPv4/IPv6 syscall traps and real-libc forwarding. The observer
+denied the measured datagram syscalls; no datagram creation or packet transmission is claimed.
+The exact private executable was hash-stable, singly linked and separate from Cargo's
+two-link build output: SHA-256
+`d1c020425daff741420bc15a015003b98383f682dfe13e494d21ee85723f3df3`.
+All 128 existing library regressions also passed. The 188-second zero-NIC transaction
+kept source/input bindings, added no observed host endpoint and joined cleanup. Raw
+`hbb-common-fs-run.M555mfWUXj.serial.log` and the scoped record
+`.harness-state/verifier-vm/hostname-probe-observed-8367f58b.json` retain the evidence.
+This is an observed defect baseline, not a product correction or zero-UDP acceptance.
+Successful DNS A/AAAA, natural stall/drain, whole viewer, other platforms and the complete
+transport/lifetime correction remain OPEN; literal-only input is not a substitute.
 Primary references: [Rust 1.75 lookup](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys_common/net.rs#L181),
 [glibc 2.27 sorting](https://github.com/bminor/glibc/blob/glibc-2.27/sysdeps/posix/getaddrinfo.c#L2187),
 [glibc DNS sockets](https://github.com/bminor/glibc/blob/glibc-2.27/resolv/res_send.c#L858).

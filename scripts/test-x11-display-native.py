@@ -908,6 +908,7 @@ def build_focus(root, environment, binary, fixture, historical=False):
 def window_focus(root, environment):
     binary = Path("/build/window-focus")
     build_focus(root, environment, binary, root / "scripts/test-x11-window-focus.rs")
+    binary_sha = hashlib.sha256(binary.read_bytes()).hexdigest()
     print("X11_FOCUS_BUILD " + " ".join(
         f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
             ("source", root / "src/platform/linux/window_focus.rs"),
@@ -929,6 +930,9 @@ def window_focus(root, environment):
             "native focus library identity differs")
     print(f"{lines[0]} sha256={hashlib.sha256(Path(library).read_bytes()).hexdigest()}", flush=True)
     print(receipt, flush=True)
+    require(hashlib.sha256(binary.read_bytes()).hexdigest() == binary_sha,
+            "executed query focus artifact changed")
+    print(f"X11_FOCUS_ARTIFACT=pass variant=query sha256={binary_sha} unchanged=before-after", flush=True)
     binary.unlink()
 
 
@@ -1509,6 +1513,7 @@ def focus_lifecycle(root, environment):
             for variant in ("historical", "corrected"):
                 binary = Path("/build/focus-lifecycle")
                 build_focus(root, environment, binary, fixture, historical=variant == "historical")
+                binary_sha = hashlib.sha256(binary.read_bytes()).hexdigest()
                 source = baseline if variant == "historical" else root / "src/platform/linux/window_focus.rs"
                 print(f"X11_FOCUS_LIFECYCLE_BUILD variant={variant} " + " ".join(
                     f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
@@ -1530,6 +1535,9 @@ def focus_lifecycle(root, environment):
                     for _ in range(4):
                         case(binary, variant, "constructor")
                     authenticated_focus(binary, environment)
+                require(hashlib.sha256(binary.read_bytes()).hexdigest() == binary_sha,
+                        "executed lifecycle focus artifact changed")
+                print(f"X11_FOCUS_ARTIFACT=pass variant={variant} sha256={binary_sha} unchanged=before-after", flush=True)
                 binary.unlink()
         finally:
             route_listener.close()
@@ -1661,6 +1669,48 @@ def key_input_main():
     print("XDO_KEY_INPUT_SHARD=pass source=production-components provider=current-only "
           "parser=absent real_events=observed maps=restored network=none uid=4000 cleanup=joined "
           "whole_app=false", flush=True)
+
+
+def focus_main():
+    require(os.getuid() == 4000 and os.getgid() == 4000, "nonroot focus principal differs")
+    root = Path("/work")
+    environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C",
+                   "HOME": "/tmp", "DISPLAY": ":98", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
+                   "RUSTUP_HOME": "/usr/local/rustup", "CARGO_HOME": "/usr/local/cargo",
+                   "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}
+    version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
+                             check=True, capture_output=True, text=True, timeout=5)
+    require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
+    require(not Path("/tmp/.X11-unix/X98").exists(), "focus query display already exists")
+    with open("/tmp/focus-query-xvfb.log", "xb") as log:
+        server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "640x480x24",
+                                   "-screen", "1", "800x600x24", "-nolisten", "tcp", "-ac", "-noreset"],
+                                  env=environment, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            until = time.monotonic() + 5
+            while not Path("/tmp/.X11-unix/X98").is_socket():
+                require(server.poll() is None and time.monotonic() < until, "focus query Xvfb not ready")
+                time.sleep(0.01)
+            window_focus(root, environment)
+            require(server.poll() is None, "focus query Xvfb exited during checks")
+        finally:
+            if server.poll() is None:
+                server.terminate()
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait(timeout=5)
+        require(server.returncode == 0 and not Path("/tmp/.X11-unix/X98").exists()
+                and not Path("/tmp/.X98-lock").exists(), "focus query server/socket/lock retirement differs")
+    focus_lifecycle(root, environment)
+    for name in ("tcp", "tcp6"):
+        require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
+                "focus shard retained a TCP listener")
+    for name in ("udp", "udp6"):
+        require(len(Path("/proc/net", name).read_text().splitlines()) == 1, "focus shard retained UDP")
+    print("X11_FOCUS_SHARD=pass source=complete-focus-modules query=real deadline=owned "
+          "authentication=bounded network=none uid=4000 cleanup=joined whole_app=false", flush=True)
 
 
 def main():
@@ -1942,8 +1992,11 @@ def main():
 
 
 if __name__ == "__main__":
-    require(sys.argv in ([sys.argv[0]], [sys.argv[0], "--key-input"]), "unknown native shard")
-    if len(sys.argv) == 2:
+    require(sys.argv in ([sys.argv[0]], [sys.argv[0], "--key-input"], [sys.argv[0], "--focus"]),
+            "unknown native shard")
+    if sys.argv[1:] == ["--focus"]:
+        focus_main()
+    elif len(sys.argv) == 2:
         key_input_main()
     else:
         main()

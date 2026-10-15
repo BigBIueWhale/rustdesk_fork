@@ -28,6 +28,7 @@ APPLE_CURSOR_ONLY=0
 APPLE_FILE_MODE_ONLY=0
 X11_CLIPBOARD_ONLY=0
 X11_KEY_INPUT_ONLY=0
+X11_FOCUS_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
 LIFECYCLE_ARTIFACT=
@@ -283,6 +284,7 @@ case "$#:${1:-}" in
         case "$2" in
             --clipboard-listener) X11_CLIPBOARD_ONLY=1 ;;
             --key-input) X11_KEY_INPUT_ONLY=1 ;;
+            --focus) X11_FOCUS_ONLY=1 ;;
             *) echo 'unknown X11 shard' >&2; exit 2 ;;
         esac
         ;;
@@ -4254,6 +4256,8 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         guest_invocation+=' --clipboard-listener'
     elif [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         guest_invocation+=' --key-input'
+    elif [ "$X11_FOCUS_ONLY" -eq 1 ]; then
+        guest_invocation+=' --focus'
     fi
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
@@ -4851,7 +4855,7 @@ elif [ "$MODE" = host-network-tests ]; then
         'host network test guest cleanup'
     /usr/bin/grep -Eo 'VM_HOST_NETWORK_NATIVE=\{.*\}' "$SERIAL_LOG"
 elif [ "$MODE" = ledger-token-count ]; then
-    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=6 refusals=6 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=7 refusals=8 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
         'VM storage profile limits and guest binding'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'
@@ -5015,6 +5019,32 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'XDO_KEY_INPUT_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
         'key-input guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
+elif [ "$MODE" = x11-display-tests ] && [ "$X11_FOCUS_ONLY" -eq 1 ]; then
+    require_exact_fixed_receipt \
+        'X11_FOCUS_ROUTE_NATIVE=pass old=tcp-fallback current=unix-only old_accepts=1 current_accepts=0 listener=container-loopback-only peer=closed children=joined scope=focus-component' \
+        'focus native local-route exclusion'
+    require_exact_fixed_receipt \
+        'X11_FOCUS_LIFECYCLE_NATIVE=pass old=fragmented-and-send-wait source=complete-module deadline_ms=100 stalled=4 dead=4 fragmented=4 backpressure=4 constructor=4 recovery=same-owner-fresh-connection allocations=paired descriptors=retired deadline_workers=joined relay=owned-and-joined server=owned-and-joined network=none scope=focus-component' \
+        'focus native setup and established cancellation, retirement and recovery'
+    require_exact_fixed_receipt \
+        'X11_FOCUS_AUTH_NATIVE=pass protocols=MIT-MAGIC-COOKIE-1,XDM-AUTHORIZATION-1 cases=8 valid=4 wrong=2 missing=2 geometry=server-real descriptors=retired workers=joined server=owned-and-joined scope=focus-component' \
+        'focus native authentication protocols'
+    require_exact_fixed_receipt \
+        'X11_FOCUS_AUTH_FILE_BASELINE=pass old=fifo-wait reader=actual hold_ms=300 release=owned-writer-eof child=joined scope=focus-component' \
+        'old focus authentication actual FIFO wait'
+    require_exact_fixed_receipt \
+        'X11_FOCUS_AUTH_FILE_NATIVE=pass protocols=2 refusals=20 recovery=same-owner selection_cases=20 max_bytes=1048576 geometry=server-real descriptors=retired workers=joined scope=focus-component' \
+        'focus authentication-file refusal, same-owner recovery and exact selection'
+    require_exact_fixed_receipt \
+        'X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 setup_faults=7 selectors_refused=18 canonical=normalized screen=selected constructors_refused=16 thread_exits=16 allocations=paired descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component' \
+        'focus native request ownership and complete query module'
+    require_exact_fixed_receipt \
+        'X11_FOCUS_SHARD=pass source=complete-focus-modules query=real deadline=owned authentication=bounded network=none uid=4000 cleanup=joined whole_app=false' \
+        'complete focus shard outcome'
+    require_exact_fixed_receipt \
+        'X11_FOCUS_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
+        'focus guest finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'focus guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
         'X11_ENIGO_RETIREMENT_NATIVE=pass retry_cases=16 abort_cases=4 unwind_cases=10 refused_free_calls=24 failed_owners=retained retry_owners=retired servers=joined sockets=absent scope=backend-provider-retirement whole_app=false' \
@@ -6846,6 +6876,9 @@ elif [ "$MODE" = x11-display-tests ]; then
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
     elif [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         printf 'XDO_KEY_INPUT_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=xdo-key-components full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+    elif [ "$X11_FOCUS_ONLY" -eq 1 ]; then
+        printf 'X11_FOCUS_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-focus-components full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
     else
         printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-native-owner-and-capture-components full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \

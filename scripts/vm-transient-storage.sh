@@ -15,6 +15,8 @@ elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-di
     readonly VM_STORAGE_PROFILE=flutter-credential-dialog
 elif [ "${MODE:-}:${PEER_BUILD_PROFILE:-}" = android-peer-build:bounded ]; then
     readonly VM_STORAGE_PROFILE=linux-service-build
+elif [ "${MODE:-}:${X11_FOCUS_ONLY:-0}" = x11-display-tests:1 ]; then
+    readonly VM_STORAGE_PROFILE=x11-focus
 else
     readonly VM_STORAGE_PROFILE=standard
 fi

@@ -18,6 +18,7 @@ HBB_FUSE_READ_TESTS=0
 APPLE_CURSOR_ONLY=0
 APPLE_FILE_MODE_ONLY=0
 X11_KEY_INPUT_ONLY=0
+X11_FOCUS_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
 case "$#:${8:-}" in
@@ -71,6 +72,7 @@ case "$#:${8:-}" in
         case "${9}" in
             --clipboard-listener) X11_CLIPBOARD_ONLY=1 ;;
             --key-input) X11_KEY_INPUT_ONLY=1 ;;
+            --focus) X11_FOCUS_ONLY=1 ;;
             *) exit 2 ;;
         esac
         ;;
@@ -832,12 +834,14 @@ for profile, memory, scratch, overlay in (
         ('cpace-recovery-tests', 8192, 6, 4),
         ('flutter-credential-dialog', 4096, 7, 6),
         ('linux-service-build', 8192, 9, 8),
+        ('x11-focus', 4096, 9, 8),
         ('ledger-token-count', 2048, 4, 1)):
     if limits(profile, memory) != (scratch * gib, overlay * gib):
         raise SystemExit('VM storage profile limits differ')
 for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 4096),
                         ('ledger-token-count', 8192), ('unknown', 2048),
-                        ('cpace-recovery-tests', 6144), ('cpace-recovery-tests', 8193)):
+                        ('cpace-recovery-tests', 6144), ('cpace-recovery-tests', 8193),
+                        ('x11-focus', 4095), ('x11-focus', 8192)):
     try:
         limits(profile, memory)
     except ValueError:
@@ -846,7 +850,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=6 refusals=6 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=7 refusals=8 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -1332,11 +1336,17 @@ run_android_frame_tests() {
     if [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         native_receipt='XDO_KEY_INPUT_SHARD=pass source=production-components provider=current-only parser=absent real_events=observed maps=restored network=none uid=4000 cleanup=joined whole_app=false'
     fi
+    if [ "$X11_FOCUS_ONLY" -eq 1 ]; then
+        native_receipt='X11_FOCUS_SHARD=pass source=complete-focus-modules query=real deadline=owned authentication=bounded network=none uid=4000 cleanup=joined whole_app=false'
+    fi
     local -a mounts command phases=(prepare native)
     local loader_installed=$ROOT/xdo-loader-installed loader_variant loader_source loader_digest
     local stage_profile_output stage_profile_expected
     if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
         phases=(prepare loader-build loader-complete loader-no-xtest loader-missing-mouse-up loader-missing-key-input loader-wrong-version loader-writable loader-absent loader-reject-text loader-runtime-stage native)
+        if [ "$X11_FOCUS_ONLY" -eq 1 ]; then
+            phases=(prepare loader-build native)
+        fi
     fi
     load_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -1441,6 +1451,8 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
                 mounts+=(--mount "type=bind,src=$work/loader-build/liblibc.rlib,dst=/focus-input/liblibc.rlib,readonly,bind-recursive=disabled")
                 if [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
                     command+=(--key-input)
+                elif [ "$X11_FOCUS_ONLY" -eq 1 ]; then
+                    command+=(--focus)
                 fi
             fi
         fi
@@ -1477,7 +1489,7 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
             [ "$(grep -Fxc "$native_receipt" "$output")" -eq 1 ] \
                 || fail 'Android native frame-test result is absent or duplicated'
             if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ] \
-                && [ "$X11_KEY_INPUT_ONLY" -eq 0 ]; then
+                && [ "$X11_KEY_INPUT_ONLY" -eq 0 ] && [ "$X11_FOCUS_ONLY" -eq 0 ]; then
                 [ "$(grep -Fxc 'X11_LAYOUT_NATIVE=pass xvfb_depths=24,16 stride_16_odd=1284 pixels=actual capture=production-shm public=production-buffer network=none uid=4000 cleanup=joined' "$output")" -eq 1 ] \
                     || fail 'X11 capture-layout native result is absent or duplicated'
             fi
@@ -1490,6 +1502,8 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
         printf 'CLIPBOARD_LISTENER_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     elif [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         printf 'XDO_KEY_INPUT_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
+    elif [ "$X11_FOCUS_ONLY" -eq 1 ]; then
+        printf 'X11_FOCUS_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     elif [ "$MODE" = x11-display-tests ]; then
         printf 'X11_DISPLAY_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     else

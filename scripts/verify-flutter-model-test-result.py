@@ -101,6 +101,12 @@ PASSWORD_FIELD_TESTS = {
     "ordinary obscured field is a keyboard learning control",
     "password field retains focused obscured semantics",
 }
+PEER_DATA_TESTS = {
+    "peer decode redacts malformed JSON exception content",
+    "peer decode redacts invalid shapes and field values",
+    "peer decode preserves valid metadata and recovers after refusal",
+    "peer decode accepts empty input without a diagnostic",
+}
 TERMINAL_OUTPUT_TESTS = {
     "terminal_output_decoder_test.dart": {
         "terminal UTF-8 survives every two-packet split",
@@ -255,7 +261,7 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -274,6 +280,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"desktop_window_dispatch_test.dart"}
         expected_tests = len(WINDOW_DISPATCH_TESTS)
         expected_names = WINDOW_DISPATCH_TESTS
+    elif profile == "peer-data":
+        expected_suites = {"peer_decode_test.dart"}
+        expected_tests = len(PEER_DATA_TESTS)
+        expected_names = PEER_DATA_TESTS
     elif profile == "terminal-output":
         expected_by_suite = TERMINAL_OUTPUT_TESTS
         expected_suites = set(expected_by_suite)
@@ -376,7 +386,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -390,6 +400,7 @@ def main():
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
+        "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
         "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",
         "credential-dialog": "FLUTTER_CREDENTIAL_DIALOG_TEST_JSON",
     }[arguments.profile]

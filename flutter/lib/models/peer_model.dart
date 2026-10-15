@@ -61,7 +61,7 @@ class Peers extends ChangeNotifier {
       required this.loadEvent}) {
     peers = getInitPeers?.call() ?? [];
     platformFFI.registerEventHandler(loadEvent, name, (evt) async {
-      _updatePeers(evt);
+      updatePeers(evt);
     });
   }
 
@@ -83,7 +83,8 @@ class Peers extends ChangeNotifier {
     return peers.length;
   }
 
-  void _updatePeers(Map<String, dynamic> evt) {
+  @visibleForTesting
+  void updatePeers(Map<String, dynamic> evt) {
     if (getInitPeers != null) {
       peers = getInitPeers?.call() ?? [];
     } else {

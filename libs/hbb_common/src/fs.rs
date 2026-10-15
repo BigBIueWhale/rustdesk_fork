@@ -8653,6 +8653,86 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn directory_enumeration_refuses_special_files() {
+        use std::os::unix::{ffi::OsStrExt, fs::FileTypeExt, net::UnixDatagram};
+
+        for kind in ["fifo", "socket"] {
+            let tmp = TestTempDir::new("rustdesk_enum_special");
+            std::fs::create_dir_all(&tmp.path).expect("create directory");
+            std::fs::write(tmp.join("ordinary.txt"), b"ordinary").expect("create regular sibling");
+            let special = tmp.join(kind);
+            let socket = if kind == "fifo" {
+                let path = std::ffi::CString::new(special.as_os_str().as_bytes()).unwrap();
+                assert_eq!(unsafe { crate::libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+                None
+            } else {
+                Some(UnixDatagram::bind(&special).expect("create filesystem socket"))
+            };
+            let file_type = std::fs::symlink_metadata(&special).unwrap().file_type();
+            assert!(if kind == "fifo" { file_type.is_fifo() } else { file_type.is_socket() });
+            let budget = FileEnumerationBudget::for_max_entries(8);
+            let error = read_dir_with_budget(&tmp.path, true, budget)
+                .expect_err("a special file must not be advertised as an ordinary file");
+            assert_err_contains(error, "unsupported file type");
+            assert_eq!(std::fs::read(tmp.join("ordinary.txt")).unwrap(), b"ordinary");
+            drop(socket);
+            std::fs::remove_file(&special).expect("remove the exact special fixture");
+            let directory = read_dir_with_budget(&tmp.path, true, budget)
+                .expect("the remaining regular file must still be listed");
+            assert_eq!(directory.entries.len(), 1);
+            assert_eq!(directory.entries[0].name, "ordinary.txt");
+            assert_eq!(directory.entries[0].entry_type.enum_value(), Ok(FileType::File));
+            assert_eq!(directory.entries[0].size, 8);
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn recursive_enumeration_refuses_special_files_before_job_admission() {
+        use std::os::unix::{ffi::OsStrExt, net::UnixDatagram};
+
+        for kind in ["fifo", "socket"] {
+            for nested in [false, true] {
+                let tmp = TestTempDir::new("rustdesk_enum_special_job");
+                let parent = if nested { tmp.join("child") } else { tmp.path.clone() };
+                std::fs::create_dir_all(&parent).expect("create special-file parent");
+                std::fs::write(tmp.join("ordinary.txt"), b"ordinary").expect("create regular sibling");
+                let special = parent.join(kind);
+                let socket = if kind == "fifo" {
+                    let path = std::ffi::CString::new(special.as_os_str().as_bytes()).unwrap();
+                    assert_eq!(unsafe { crate::libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+                    None
+                } else {
+                    Some(UnixDatagram::bind(&special).expect("create filesystem socket"))
+                };
+                let budget = FileEnumerationBudget::for_max_entries(8);
+                let path = get_string(&tmp.path);
+                let files = get_recursive_files_with_budget(&path, true, budget);
+                let empty_dirs = get_empty_dirs_recursive_with_budget(&path, true, budget);
+                let job = TransferJob::new_read_with_budget(
+                    219, JobType::Generic, String::new(), tmp.path.clone(),
+                    0, true, false, false, budget,
+                );
+                for result in [files.map(|_| ()), empty_dirs.map(|_| ()), job.map(|_| ())] {
+                    let error = result.expect_err("a special file must refuse the complete scan/job");
+                    assert_err_contains(error, "unsupported file type");
+                }
+                assert_eq!(std::fs::read(tmp.join("ordinary.txt")).unwrap(), b"ordinary");
+                drop(socket);
+                std::fs::remove_file(&special).expect("remove the exact special fixture");
+                let job = TransferJob::new_read_with_budget(
+                    219, JobType::Generic, String::new(), tmp.path.clone(),
+                    0, true, false, false, budget,
+                ).expect("regular-file job admission must recover");
+                assert_eq!(job.files().len(), 1);
+                assert_eq!(job.files()[0].name, "ordinary.txt");
+                assert_eq!(job.total_size(), 8);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn recursive_enumeration_refuses_unreadable_children_before_job_admission() {
         use std::os::unix::fs::PermissionsExt;
 

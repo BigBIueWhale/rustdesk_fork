@@ -2701,6 +2701,8 @@ run_focused_rust_tests() {
             test::direct_address_shared_vectors
             socket_client::tests::test_check_port
             fs::tests::directory_enumeration_refuses_metadata_permission_failure
+            fs::tests::directory_enumeration_refuses_special_files
+            fs::tests::recursive_enumeration_refuses_special_files_before_job_admission
             fs::tests::recursive_enumeration_refuses_unreadable_children_before_job_admission
             fs::tests::directory_enumeration_refuses_unrepresentable_file_names
             fs::tests::directory_enumeration_budgets_excluded_hidden_entries

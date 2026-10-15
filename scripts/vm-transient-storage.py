@@ -370,7 +370,7 @@ def main():
     parser.add_argument('--storage-profile',
                         choices=('standard', 'hbb-common-fs', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
-                                 'ledger-token-count'),
+                                 'ledger-token-count', 'x11-focus'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

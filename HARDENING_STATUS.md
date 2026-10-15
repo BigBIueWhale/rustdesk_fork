@@ -1948,7 +1948,7 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   behavior. Full native typed/generic admission, complete caller error propagation and read/write/digest/
   cancel/error, saturation, interruption, reconnect and resource/latency acceptance remain required and OPEN.
 - **R-S11fi/R-S11e-196 receive-file failure and cleanup finality** — **PARTIAL; NORMAL IO/PUBLICATION
-  CORRECTED; LINUX LIBRARY ACCEPTED; CALLER/PEER/INSTALLED/CROSS-OS ACCEPTANCE OPEN.**
+  CORRECTED; NAMED LINUX LIBRARY/CALLER CASES ACCEPTED; PEER/INSTALLED/CROSS-OS ACCEPTANCE OPEN.**
   Exact-file retirement reports uncertainty and preserves replacements; CM cancellation retains its
   generation through finality, without false Done. Publication requires the admitted-list end.
   `DataStream::write_all` awaits native write/flush before progress/completion; buffering and final
@@ -1966,25 +1966,28 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   Raw `hbb-common-fs-run.phatqsH40b.serial.log` (66,852 bytes), SHA-256
   `19c6f2028f727d1c047c6774cb5eb824533c90c425dfb7805c85c78f91f90cb2`; stable executable
   `4ae2ad69e3f4478ab2d59a31c9baf333f3e1d2e912dcc7b7b10730d99b0c9f6b`.
-  `c38ef5d1` adds real viewer/CM caller regressions. On `ac51cdcd`,
-  the `--android-rust-lifecycle-tests` profile observed 17 Linux
-  groups/101 tests, zero failed/ignored, fresh bridge and Rust/Flutter compilation. Viewer helper
-  refusal retires only its job, preserves a survivor/predecessor and ignores late blocks; the real peer
-  dispatcher remains round-terminal. CM emits exact conn/token/job/generation/file failure and refuses
-  late Done; both preserve foreign digest bytes/inode. Raw
-  `android-rust-lifecycle-tests-run.N8V2VdtbhS.serial.log` (74,424 bytes), SHA-256
-  `59d8e59ed08bdc5e11f820f090e44847c9fbe268ec328521225946418389a2e1`, retains both caller names and
-  unchanged executable `e6cb6b4beb0558e41753dace334c29e1b86fa151c908140eef62931cacb6d91d`.
-  **Unaccepted:** outer count 99 rejected it. `eb421119` fixes only that count; its rerun's
-  VM owner exited 137 before tests, cause unproved. Raw
-  `android-rust-lifecycle-tests-run.nAdaLM2LVY.serial.log` (55,604 bytes), SHA-256
-  `49e05a2b813b6a8894bd1b411755d698fd89f52db530f4e1958ff281e8642496`.
-  Accepted library runs: pinned offline inputs, zero-NIC VM, UID/GID1000 read-only/networkless
-  guest, caps none/NNP/AppArmor, stable artifact, no added host endpoint, joined cleanup.
-  Receipts are assistant-observed, not independent; named caller pass lines survive, full stdout/binaries
-  were ephemeral. Rejected/partial runs: audit/Git. OPEN: accepted caller integration,
-  peer/UI/installed failure propagation, forced cancellation/owner-loss drain, cross-OS behavior,
-  resource/latency soak, artifacts/reproduction/review and complete receive-error closure.
+  Source `9a7f04b1` passed all five named production viewer/CM receive-caller cases in
+  `--linux-file-receive-caller-tests`: 304 VM seconds, including a 233-second complete
+  Linux parent build with `linux-pkg-config`; two native groups report four and one passes,
+  zero failed/ignored. Real files, symlinks and inode replacement prove exact failed-job
+  retirement, visible primary/cleanup errors, preserved replacement/older sidecars and
+  committed predecessor, survivor completion, inert late blocks and exact CM
+  connection/token/job/generation/file failure with late Done refusal.
+  Artifact SHA-256 `7c48a7755e5a686f98230fd99b46af3690d79036d4e3b2835329bf1a2b1ffcc1`
+  remains equal before/between/after both groups. All 223 complete source/control captures
+  match before/live/after; four native endpoint deltas are empty. Pinned offline inputs,
+  a zero-NIC VM and nonroot networkless/read-only/capability-free/NNP guest container
+  retain the 6 GiB guest, 7 GiB RAM scratch and 6 GiB hard file ceiling. Scratch peaks
+  at 5,589,635,072 bytes; overlay at 5,429,596,160. Exact VM, monitor, Docker and RAM/private
+  roots retire. The first RAM-admission refusal started no VM and is retained separately.
+  `.harness-state/verifier-vm/file-receive-callers-native-9a7f04b1.json` binds source,
+  required names, artifact, raw serial, limits and cleanup. Receipts are assistant-observed;
+  executable bytes and full inner stdout were ephemeral. Earlier `ac51cdcd` outer-count
+  rejection and `eb421119` exit 137 remain unaccepted in audit/Git.
+  This accepts the five headless Linux caller/filesystem cases. Complete peer/socket/UI/FFI/
+  installed failure propagation, CM admitted-sidecar replacement-error composition,
+  forced cancellation/owner-loss drain, cross-OS behavior, resource/latency soak,
+  artifacts/reproduction/review and complete receive-error closure remain OPEN.
 - **R-S11fj/R-S11e-197 viewer download digest inspection failure** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION
   PARTIAL, FAILURE PATHS OPEN.** One exact-current headless Linux production-`Session` download completed through
   the ordinary absent-destination digest path and committed exact bytes. A second source-bound Linux replay

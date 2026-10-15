@@ -97,8 +97,8 @@ def main():
     observations = []
     for case in ("literal", "hosts-single", "hosts-multi", "hosts-multi-tcp",
                  "dns-udp", "dns-tcp", "cancel"):
-        result = subprocess.run([str(artifact), case], cwd=source, capture_output=True,
-                                text=True, timeout=10)
+        result = subprocess.run([str(artifact), case], cwd=source, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, universal_newlines=True, timeout=10)
         lines = result.stdout.splitlines()
         if (result.returncode or len(lines) != 1
                 or not lines[0].startswith("HOSTNAME_RESOLUTION_OBSERVATION=")

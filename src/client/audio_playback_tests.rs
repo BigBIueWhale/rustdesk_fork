@@ -21,6 +21,36 @@ fn sink_inputs() -> BTreeSet<String> {
         .map(|line| line.split_whitespace().next().unwrap().to_owned()).collect()
 }
 
+fn remove_sink_input(index: &str) {
+    use pulse::{context::{Context, FlagSet, State}, mainloop::standard::{IterateResult, Mainloop}};
+    use std::{cell::Cell, rc::Rc};
+
+    struct ControlContext(Context);
+    impl Drop for ControlContext {
+        fn drop(&mut self) { self.0.disconnect(); }
+    }
+    let mut mainloop = Mainloop::new().unwrap();
+    let mut context = ControlContext(Context::new(&mainloop, "rustdesk-playback-test-control").unwrap());
+    context.0.connect(None, FlagSet::NOAUTOSPAWN, None).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let drive = |mainloop: &mut Mainloop| {
+        assert!(Instant::now() < deadline, "native playback control timed out");
+        assert!(matches!(mainloop.iterate(false), IterateResult::Success(_)));
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    while context.0.get_state() != State::Ready {
+        assert!(!matches!(context.0.get_state(), State::Failed | State::Terminated));
+        drive(&mut mainloop);
+    }
+    let result = Rc::new(Cell::new(None));
+    let callback_result = Rc::clone(&result);
+    let _operation = context.0.introspect().kill_sink_input(index.parse().unwrap(), move |success| {
+        callback_result.set(Some(success));
+    });
+    while result.get().is_none() { drive(&mut mainloop); }
+    assert_eq!(result.get(), Some(true), "native stream removal was refused");
+}
+
 fn tasks() -> BTreeSet<String> {
     std::fs::read_dir("/proc/self/task").unwrap().map(|entry|
         entry.unwrap().file_name().into_string().unwrap()).collect()
@@ -90,7 +120,7 @@ fn real_write_and_decode_failures_retire_audio_resources() {
     handler.simple.as_ref().unwrap().drain().unwrap();
 
     // Kill only the exact stream created by this handler; the private daemon stays live.
-    pactl(&["kill-sink-input", &added[0]]);
+    remove_sink_input(&added[0]);
     let deadline = Instant::now() + Duration::from_secs(2);
     while handler.simple.as_ref().unwrap().get_latency().is_ok() {
         assert!(Instant::now() < deadline, "native stream did not observe removal");
@@ -159,4 +189,3 @@ fn real_setup_failure_is_terminal_and_a_fresh_owner_recovers() {
     assert_tasks_retired(&before_tasks);
     println!("PA_PLAYBACK_SETUP_FINALITY=pass native_open=failed decoder=retired replay=refused fresh_owner=recovered threads=retired");
 }
-

@@ -54,7 +54,10 @@ void main() {
       {'note': secret},
       [secret],
       [
-        {'id': '192.0.2.7:21118', 'username': [secret]}
+        {
+          'id': '192.0.2.7:21118',
+          'username': [secret]
+        }
       ],
       [
         {'id': '192.0.2.7:21118', 'tags': secret}
@@ -66,8 +69,8 @@ void main() {
     }
 
     expect(notifications, invalid.length);
-    expect(diagnostics,
-        List.filled(invalid.length, 'peers(): invalid peer data'));
+    expect(
+        diagnostics, List.filled(invalid.length, 'peers(): invalid peer data'));
     expect(diagnostics.join(), isNot(contains(secret)));
   });
 

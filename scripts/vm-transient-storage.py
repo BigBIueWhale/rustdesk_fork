@@ -28,6 +28,9 @@ def storage_limits(profile, memory_mib):
     if profile == 'hbb-common-fs':
         require(memory_mib == 6144, 'filesystem storage profile requires its 6 GiB guest')
         return 6 * GIB, 4 * GIB
+    if profile == 'cpace-recovery-tests':
+        require(memory_mib == 8192, 'CPace storage profile requires its 8 GiB guest')
+        return 6 * GIB, 4 * GIB
     if profile == 'flutter-credential-dialog':
         require(memory_mib == 4096, 'dialog storage profile requires its 4 GiB guest')
         return 7 * GIB, 6 * GIB
@@ -361,8 +364,9 @@ def main():
     parser.add_argument('operation', choices=('preflight', 'reserve', 'check', 'watch', 'run'))
     parser.add_argument('--memory-mib', type=int, required=True)
     parser.add_argument('--storage-profile',
-                        choices=('standard', 'hbb-common-fs', 'flutter-credential-dialog',
-                                 'linux-service-build', 'ledger-token-count'),
+                        choices=('standard', 'hbb-common-fs', 'cpace-recovery-tests',
+                                 'flutter-credential-dialog', 'linux-service-build',
+                                 'ledger-token-count'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

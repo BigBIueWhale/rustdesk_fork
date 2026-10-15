@@ -829,13 +829,15 @@ gib = 1024 ** 3
 for profile, memory, scratch, overlay in (
         ('standard', 2048, 16, 8),
         ('hbb-common-fs', 6144, 6, 4),
+        ('cpace-recovery-tests', 8192, 6, 4),
         ('flutter-credential-dialog', 4096, 7, 6),
         ('linux-service-build', 8192, 9, 8),
         ('ledger-token-count', 2048, 4, 1)):
     if limits(profile, memory) != (scratch * gib, overlay * gib):
         raise SystemExit('VM storage profile limits differ')
 for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 4096),
-                        ('ledger-token-count', 8192), ('unknown', 2048)):
+                        ('ledger-token-count', 8192), ('unknown', 2048),
+                        ('cpace-recovery-tests', 6144), ('cpace-recovery-tests', 8193)):
     try:
         limits(profile, memory)
     except ValueError:
@@ -844,7 +846,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=5 refusals=4 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=6 refusals=6 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -2879,13 +2881,33 @@ run_focused_rust_tests() {
             libs/cpace_it/tests/handshake.rs
             libs/hbb_common/protos/message.proto
             libs/hbb_common/src/cpace.rs
+            libs/hbb_common/src/bytes_codec.rs
             libs/hbb_common/src/tcp.rs
             libs/pake/src/lib.rs
+            scripts/select-hbb-common-test-artifact.py
+            scripts/test-hbb-common-test-artifact.py
         )
         required_tests=(
+            handshake_round_trip_and_two_key_cipher
+            directional_cipher_rejects_replay_and_reorder
+            matching_password_streams_can_exchange_after_keying
+            framed_stream_encrypts_after_session_keys_installed
+            responder_many_frames_decrypt_in_strict_fifo_order
+            r_t5_dropped_next_does_not_advance_read_seq
+            r_s7_large_frame_flows_only_after_keying_raises_the_cap
+            responder_rejects_oversize_pre_pake_frame
+            partial_prekey_frame_times_out_without_key_or_guess_charge
+            initiator_rejects_oversize_pre_pake_frame
             wrong_password_aborts_at_confirmation
             initiator_eof_before_step2_remains_plain_io
             initiator_invalid_step4_tag_remains_confirmation
+            guess_limiter_blocks_after_threshold
+            directional_cipher_refuses_identical_keys
+            r_t3_full_writer_channel_drops_not_blocks
+            responder_rejects_out_of_order_first_frame
+            responder_rejects_duplicate_first_frame
+            responder_rejects_malformed_length_field
+            r_a9_port_forward_relay_bytes_are_ciphertext_on_the_wire
         )
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         container_name=rustdesk-linux-pa-authority-tests
@@ -3914,8 +3936,25 @@ run_focused_rust_tests() {
                         fi
                         ;;
                     cpace-recovery-tests)
+                        python3 -I -S /source/scripts/test-hbb-common-test-artifact.py
                         cargo test --offline --locked -p cpace_it --test handshake \
-                            --color never -- --test-threads=1
+                            --no-run --message-format=json-render-diagnostics --color never \
+                            >/cargo-target/cpace-build.json
+                        test_executable="$(python3 -I -S \
+                            /source/scripts/select-hbb-common-test-artifact.py \
+                            /cargo-target/cpace-build.json cpace_it)"
+                        [ -f "$test_executable" ] && [ ! -L "$test_executable" ] \
+                            && [ -x "$test_executable" ] \
+                            && [ "$(stat -c "%u:%g:%h" -- "$test_executable")" = 1000:1000:1 ] \
+                            || exit 95
+                        artifact_sha="$(sha256sum "$test_executable" | cut -d " " -f 1)"
+                        printf "CPACE_WIRE_ARTIFACT_START=observed sha256=%s executable=%s\n" \
+                            "$artifact_sha" "$test_executable"
+                        cd /source/libs/cpace_it
+                        "$test_executable" --color never --test-threads=1
+                        [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                        printf "CPACE_WIRE_ARTIFACT=pass sha256=%s tests=20 unchanged=before-after\n" \
+                            "$artifact_sha"
                         ;;
                     linux-pa-authority-tests)
                         /bin/bash /source/scripts/run-pa-runtime-tests.sh /inputs/pa-runtime.tar.gz
@@ -4361,6 +4400,9 @@ PY
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
+        [ "$(grep -Ec '^CPACE_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'CPACE_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'CPace wire artifact identity or stability is absent'
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         [ "${#result_lines[@]}" -eq 5 ] \
             || { tail -n 200 "$output" >&2; fail 'focused Linux PulseAudio summary count differs'; }
@@ -4688,6 +4730,7 @@ PY
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "$tests_passed" -eq 20 ] \
             || fail "CPace recovery test count differs: $tests_passed"
+        grep -E '^test [a-z0-9_]+ \.\.\. ok$|^CPACE_WIRE_ARTIFACT(_START)?=' "$output"
         printf 'CPACE_RECOVERY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \

@@ -85,6 +85,31 @@ class ArtifactSelectionTests(unittest.TestCase):
             with self.subTest(package=package, source=source), self.assertRaises(ValueError):
                 select_artifact(output, package, source)
 
+    def test_cpace_handshake_target_is_exact(self):
+        artifact = copy.deepcopy(ARTIFACT)
+        artifact["manifest_path"] = "/source/libs/cpace_it/Cargo.toml"
+        artifact["target"] = {"name": "handshake", "kind": ["test"],
+                              "src_path": "/source/libs/cpace_it/tests/handshake.rs"}
+        artifact["executable"] = "/cargo-target/debug/deps/handshake-0123456789abcdef"
+        self.assertEqual(select_artifact(encode(artifact, FINISHED), "cpace_it"),
+                         artifact["executable"])
+        for field, value in [
+                ("manifest_path", "/source/libs/hbb_common/Cargo.toml"),
+                ("target", dict(artifact["target"], kind=["lib"])),
+                ("target", dict(artifact["target"], name="other")),
+                ("target", dict(artifact["target"], src_path="/source/other.rs")),
+                ("profile", {"test": False}), ("profile", {"test": 1}),
+                ("executable", EXECUTABLE), ("executable", "/tmp/handshake-0123456789abcdef")]:
+            candidate = dict(artifact, **{field: value})
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                select_artifact(encode(candidate, FINISHED), "cpace_it")
+        for output in (encode(FINISHED), encode(artifact, artifact, FINISHED),
+                       encode(artifact), encode(artifact, FINISHED, FINISHED)):
+            with self.assertRaises(ValueError):
+                select_artifact(output, "cpace_it")
+        with self.assertRaises(ValueError):
+            select_artifact(encode(artifact, FINISHED), "cpace_it", "/cargo-target/fuse-test-source")
+
 
 if __name__ == "__main__":
     unittest.main()

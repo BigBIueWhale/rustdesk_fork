@@ -4849,7 +4849,7 @@ elif [ "$MODE" = host-network-tests ]; then
         'host network test guest cleanup'
     /usr/bin/grep -Eo 'VM_HOST_NETWORK_NATIVE=\{.*\}' "$SERIAL_LOG"
 elif [ "$MODE" = ledger-token-count ]; then
-    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=5 refusals=4 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=6 refusals=6 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
         'VM storage profile limits and guest binding'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'
@@ -5454,6 +5454,13 @@ elif [ "$MODE" = hbb-common-fs ]; then
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Rust-test cloud-init completion marker'
 elif [ "$MODE" = cpace-recovery-tests ]; then
+    mapfile -t cpace_wire_artifacts < <(
+        /usr/bin/grep -Eo 'CPACE_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 unchanged=before-after' "$SERIAL_LOG"
+    )
+    [ "${#cpace_wire_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fo 'CPACE_WIRE_ARTIFACT=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
+        || fail 'CPace wire artifact receipt is absent, malformed or duplicated'
+    printf '%s\n' "${cpace_wire_artifacts[0]}"
     require_exact_fixed_receipt \
         "CPACE_RECOVERY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=20 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused CPace recovery receipt'

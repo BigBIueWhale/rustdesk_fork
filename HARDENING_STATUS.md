@@ -6219,41 +6219,49 @@ under `.harness-state/verifier-vm/clipboard-profile-ea8bb4f1-evidence` and its v
 This establishes the named Linux development profile; broader native/platform acceptance,
 general performance, soak and release reproducibility remain OPEN.
 
-**Desktop peer clipboard SET lifetime — source corrected; Linux queue/X11 component PASS;
-connection and platform acceptance OPEN.** `19c87e28` removes the generic ownerless peer
-enqueue API. Each viewer I/O round and controlled `Connection` owns one fresh
-`src/clipboard/write_owner.rs::ClipboardWriteOwner`; queued writer copies share only its
-exact retirement state. Normal teardown closes admission and asynchronously waits for an
-already admitted native effect. Cancellation closes through RAII. The final check runs
-after both native clipboard locks and before context creation/SET, so a retired request
-cannot acquire authority while waiting for a native lock. Existing Remote/default role
-checks remain at all four peer callers. Screenshot copying has its own explicit local PNG
-request. The existing single worker and one-slot queue remain; no new worker or runtime.
+**Desktop peer clipboard SET authority — source corrected; Linux config/queue/X11 component
+PASS; full connection and platform acceptance OPEN.** Each viewer I/O round and controlled
+`Connection` owns one fresh `src/clipboard/write_owner.rs::ClipboardWriteOwner`.
+Retirement cancels unselected native work; normal teardown asynchronously drains an
+already admitted effect, and cancellation closes through RAII. Explicit controlled/viewer
+enqueue methods derive the clipboard side and replace the generic direction-selected API.
+Screenshots retain their separate local PNG operation; the single worker and one-slot
+queue remain unchanged.
 
-Strengthened test source `70eb758c` passed the complete Linux library build and all 18 focused
-`--android-rust-lifecycle-tests --clipboard` cases in 209 outer seconds (139-second build).
-Thirteen sanitizer and three owner tests cover payload refusal, RAII retirement, cancelled
-async drain, admitted-effect completion and independent fresh owners. Two further cases
-use the actual production dispatcher and a private Xvfb: while the native lock is held,
-a test-only FIFO barrier proves SET was dequeued, and observing the worker's held context
-mutex proves it passed the early liveness check and is waiting at the native lock. Retirement preserves
-the OS clipboard sentinel, while the live-owner control publishes peer text. The barrier
-observes completion and supplies no authorization or substitute clipboard. An old native
-baseline was not executed; the first candidate stopped at a missing test import before
-any test ran. Accepted artifact SHA-256
-`54cdfa6b31c7348533091dd82aa3bac3cd69ef775890c40c4ef7308207a16a5f`
+`21afb345` also binds viewer requests to the exact login-config permission source and a
+captured, checked revision. `LoginConfigHandler::queue_peer_clipboard` checks default role
+and local `disable_clipboard` under its caller's read guard. Init advances the revision;
+save advances before publishing a changed disable flag. Reenable cannot revive an old
+request. The final native check holds both native clipboard locks, the round-state mutex
+and the revision mutex through admission, then releases authority locks before native I/O.
+All revisions retain the same round's active-effect ownership and drain. Revision exhaustion
+is terminal; a wrong source refuses without retiring the legitimate owner. No enabled-state
+replica, extra queue, task, runtime, timer or dependency is introduced. The mutable config
+borrower is test-only, closing that production mutation bypass.
+
+The identical two-case config/X11 fixture failed on `cc6740e2`: both disable and
+disable/reenable allowed old peer text to replace the actual OS clipboard sentinel.
+The other 18 cases passed. Corrected `21afb345` passed all 23 cases in 205 outer seconds
+(137-second Linux library-test build): 13 sanitizer, six owner/revision and four actual
+production-queue/private-X11 cases, with zero failures or ignores. The two permission
+fixture bytes and native runner match the baseline; three owner guard tests are additional,
+and old control calls adapt to the explicit API. The real worker is observed holding the
+context while the test holds the native lock, establishing it passed the early check
+before permission changes. FIFO completion precedes OS readback; a fresh write after
+reenable must publish. Accepted artifact SHA-256
+`4158805e53c3600d2b68394fa1478c7915b24fc690e8ed861f5c5985c3f8d7fa`
 remained unchanged across all three groups. Immutable
-`.harness-state/verifier-vm/clipboard-write-native-70eb758c.json` binds the source, exact
-results, all 419 equal before/live/after control hashes, unchanged host endpoints and
-joined cleanup. The 6 GiB guest used bounded RAM scratch, with no disk fallback.
+`.harness-state/verifier-vm/clipboard-permission-corrected-21afb345.json` binds the baseline,
+exact source/results, all 425 equal before/live/after control hashes, unchanged host
+endpoints and joined retirement. The 6 GiB guest used bounded RAM scratch without disk fallback.
 
-This executes the production Linux library/owner/queue and native X11 clipboard, not
-full `Remote`/`Connection` teardown, authenticated peer or installed-service behavior.
-Permission-epoch revocation, file-clipboard SET/empty ownership, native in-flight failure
-and drain, screenshot publication, process-global dispatcher shutdown, Windows/macOS/mobile,
-sustained resource/latency behavior, release artifacts and independent acceptance remain OPEN.
-The event-registration ownership issue and native WindowChannel lifetime issue remain
-explicitly user-parked and OPEN.
+This is real Linux config/owner/queue/X11 component evidence, not full UI, authenticated
+peer, `Remote`/`Connection` teardown, installed receiver or LPE acceptance. Outgoing
+clipboard capture/send permission epochs, server PermissionInfo and controlled-overlay
+semantics, file-clipboard SET/empty authority, native in-flight failure/drain, screenshots,
+global dispatcher shutdown, Windows/macOS/mobile, sustained resources/latency, release
+artifacts and independent acceptance remain OPEN. Event-registration ownership, native
+WindowChannel lifetime and earlier user-parked items remain explicitly parked and OPEN.
 
 **R-S7 terminal/cursor decompression — shared infallible APIs deleted; Linux Rust bridge handoff PASS; native presentation OPEN.**
 Product `b77edafe385cba850165fb3f88e9225ca81e4f29` deletes the two

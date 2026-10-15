@@ -14237,7 +14237,7 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
-**Unsupported file-transfer types — SOURCE CORRECTED; focused native regression PENDING.**
+**Unsupported file-transfer types — LINUX LIBRARY REGRESSION ACCEPTED; application integration OPEN.**
 The schema reserves the former printer number, but both integer and protobuf `JobType`
 conversions previously mapped every unsupported value to `Generic`. One fallible integer
 conversion now accepts only zero. The controlled receiver returns a job-correlated error
@@ -14247,9 +14247,19 @@ remains valid. A required common-library test serializes and parses the actual o
 Message/FileAction/Send request with zero, the reserved value, other unknowns, negative
 values and integer limits, then exercises production admission; an omitted field is a
 positive control. It is required by `--hbb-common-fs`, together with all prior tests.
-Current common-library execution, full application/caller compilation, native peer/CM error
-and noncreation behavior, installed/platform acceptance and the broader obligations below
-remain OPEN. This closes no newly demonstrated LPE or native privilege boundary by itself.
+Exact source `ba1fc090` passed all **128 tests** in **162 VM seconds**: 110 filesystem,
+eight Linux child-process, four configuration, five address and one socket-helper case.
+The generated-protobuf/common-library artifact SHA-256 is
+`68961ded54f9599f00040b9c28f4c085fb1d0d6a0de6f38cdb48353e88649f31`.
+`.harness-state/verifier-vm/file-type-accepted-ba1fc090.json` binds the strict summaries,
+new exact result, pinned inputs, all 87 matching before/during/after freezes, complete
+unchanged endpoint inventories, live limits and joined private/RAM workspace retirement.
+Raw serial is 69,906 bytes, SHA-256
+`91959bd60c32d6ac0a3cd6a66de1cff71768b427bd9b814d12f70e9b4ed27aec`.
+Successful individual test stdout and executable bytes were ephemeral; the result has no
+independent attestation or historical A/B. Full application/caller compilation, native
+peer/CM error and noncreation behavior, installed/platform acceptance and the broader
+obligations below remain OPEN. No newly demonstrated LPE or native privilege boundary closes.
 
 **Current library disposition — source corrected; named ordinary-user Linux behavior PASSED,
 native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.

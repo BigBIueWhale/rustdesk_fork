@@ -13,26 +13,6 @@ pub trait FileManager: Interface {
         fs::get_home_as_string()
     }
 
-    #[cfg(not(any(
-        target_os = "android",
-        target_os = "ios",
-        feature = "cli",
-        feature = "flutter"
-    )))]
-    fn get_next_job_id(&self) -> i32 {
-        fs::get_next_job_id()
-    }
-
-    #[cfg(not(any(
-        target_os = "android",
-        target_os = "ios",
-        feature = "cli",
-        feature = "flutter"
-    )))]
-    fn update_next_job_id(&self, id: i32) {
-        fs::update_next_job_id(id);
-    }
-
     // R-B6/R-R2: the Sciter-only `read_dir(...) -> sciter::Value` FileManager method is DELETED with
     // the Sciter UI — its sole callers were the deleted src/ui/file_transfer.tis, and it linked the
     // `sciter-rs` fork (via `sciter::Value` + `crate::ui::remote::make_fd`). The Flutter file manager

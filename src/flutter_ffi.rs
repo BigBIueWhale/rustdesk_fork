@@ -2247,10 +2247,25 @@ pub fn main_audio_support_loopback() -> SyncReturn<bool> {
     SyncReturn(is_surpport)
 }
 
+pub fn main_next_file_job_id() -> Result<SyncReturn<i32>> {
+    Ok(SyncReturn(hbb_common::fs::get_next_job_id()?))
+}
+
+#[cfg(test)]
+mod file_job_id_tests {
+    use super::*;
+
+    #[test]
+    fn typed_file_job_ids_use_the_process_allocator() {
+        let first = main_next_file_job_id().expect("allocate the first native file-job ID").0;
+        let second = main_next_file_job_id().expect("allocate the next native file-job ID").0;
+        assert!(first > 0);
+        assert_eq!(second, first + 1);
+    }
+}
+
 pub fn main_get_common(key: String) -> String {
-    if key == "transfer-job-id" {
-        return hbb_common::fs::get_next_job_id().to_string();
-    } else if key == "has-gnome-shortcuts-inhibitor-permission" {
+    if key == "has-gnome-shortcuts-inhibitor-permission" {
         #[cfg(target_os = "linux")]
         return crate::platform::linux::has_gnome_shortcuts_inhibitor_permission().to_string();
         #[cfg(not(target_os = "linux"))]

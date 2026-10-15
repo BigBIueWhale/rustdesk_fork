@@ -12,10 +12,14 @@ build_linux_parent_test() {
         && [ "$(stat -c '%u:%g:%a' -- "$work")" = 1000:1000:700 ] \
         || { echo 'Linux parent compiler entry authority differs' >&2; return 1; }
     printf '%s_BUILD=started target=linux-libtest budget_seconds=600\n' "$receipt_prefix"
+    local features=linux-pkg-config
+    if [ "$receipt_prefix" = FILE_RECEIVE_PARENT ]; then
+        features=linux-pkg-config,flutter
+    fi
     local build_started=$SECONDS
     local build_status=0
     timeout --signal=TERM --kill-after=5s 600s \
-        cargo test --offline --locked --lib --features linux-pkg-config --no-run \
+        cargo test --offline --locked --lib --features "$features" --no-run \
         --message-format=json-render-diagnostics --color never >"$work/build.json" || build_status=$?
     if [ "$build_status" -ne 0 ]; then
         python3 -I -S - "$work/build.json" <<'PY'

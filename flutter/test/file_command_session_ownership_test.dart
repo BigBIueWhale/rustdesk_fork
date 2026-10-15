@@ -111,10 +111,10 @@ void main() {
     final ids = JobID(nativeNext: () {
       allocations++;
       if (allocations == 2) throw StateError('bridge unavailable');
-      if (allocations == 3) return 'malformed';
-      if (allocations == 4) return '0';
-      if (allocations == 5) return '2147483648';
-      return allocations == 1 ? '31' : '32';
+      if (allocations == 3) throw StateError('file-job ID space is exhausted');
+      if (allocations == 4) return 0;
+      if (allocations == 5) return 2147483648;
+      return allocations == 1 ? 31 : 32;
     });
     final dispatched = <int>[];
     final jobController = JobController(() => session, () => null,
@@ -149,7 +149,7 @@ void main() {
     expect(dispatched, [31]);
     for (final failure in <Matcher>[
       isA<StateError>(),
-      isA<FormatException>(),
+      isA<StateError>(),
       isA<StateError>(),
       isA<StateError>(),
     ]) {

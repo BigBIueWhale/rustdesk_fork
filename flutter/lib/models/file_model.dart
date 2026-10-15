@@ -28,15 +28,14 @@ enum SortBy {
 }
 
 class JobID {
-  JobID({String Function()? nativeNext})
-      : _nativeNext = nativeNext ??
-            (() => bind.mainGetCommonSync(key: 'transfer-job-id'));
+  JobID({int Function()? nativeNext})
+      : _nativeNext = nativeNext ?? (() => bind.mainNextFileJobId());
 
-  final String Function() _nativeNext;
+  final int Function() _nativeNext;
   int _count = 0;
   int next() {
     if (!isWeb) {
-      return int.parse(_nativeNext());
+      return _nativeNext();
     }
     _count++;
     return _count;

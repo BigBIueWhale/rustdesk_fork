@@ -171,12 +171,18 @@ impl FileEnumerationUsage {
     }
 }
 
-pub fn get_next_job_id() -> i32 {
-    NEXT_JOB_ID.fetch_add(1, Ordering::SeqCst)
-}
-
-pub fn update_next_job_id(id: i32) {
-    NEXT_JOB_ID.store(id, Ordering::SeqCst);
+pub fn get_next_job_id() -> ResultType<i32> {
+    NEXT_JOB_ID
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |id| {
+            if id == i32::MAX {
+                Some(0)
+            } else if id > 0 {
+                Some(id + 1)
+            } else {
+                None
+            }
+        })
+        .map_err(|_| anyhow!("file-transfer job ID space is exhausted"))
 }
 
 pub fn read_dir(path: &Path, include_hidden: bool) -> ResultType<FileDirectory> {

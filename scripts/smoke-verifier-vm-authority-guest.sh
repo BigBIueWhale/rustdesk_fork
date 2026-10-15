@@ -2439,6 +2439,8 @@ generate_focused_rust_flutter_bridge() {
     local output=$ROOT/focused-rust-codegen.out
     local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
     local load_output container_status=0 inspect namespace_inspect freshness_line
+    local codegen_memory=8g
+    if [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then codegen_memory=3g; fi
 
     rm -rf -- "$codegen_source" "$codegen_work" "$bridge_root"
     mkdir "$codegen_source" "$codegen_work" "$bridge_root"
@@ -2478,8 +2480,8 @@ generate_focused_rust_flutter_bridge() {
             --network=none \
             --read-only \
             --pids-limit=1024 \
-            --memory=8g \
-            --memory-swap=8g \
+            --memory="$codegen_memory" \
+            --memory-swap="$codegen_memory" \
             --cpus=4 \
             --ulimit nofile=8192:8192 \
             --ulimit core=0:0 \
@@ -3454,6 +3456,7 @@ run_focused_rust_tests() {
             source_fingerprints=(
                 Cargo.lock Cargo.toml src/lib.rs src/client/io_loop.rs src/ui_cm_interface.rs
                 src/ipc.rs libs/hbb_common/src/fs.rs libs/hbb_common/src/fs/file_block.rs
+                src/flutter_ffi.rs src/client/file_trait.rs
                 libs/hbb_common/protos/message.proto
                 scripts/run-file-receive-caller-tests.sh scripts/linux-parent-test-build.sh
             )
@@ -3464,6 +3467,7 @@ run_focused_rust_tests() {
                 client::io_loop::tests::r_s11fi_next_file_setup_failure_retires_only_the_viewer_job
                 ui_cm_interface::tests::r_s11fi_cm_next_file_setup_failure_emits_exact_failure_and_refuses_done
                 ui_cm_interface::tests::r_s11fi_cm_replaced_sidecars_preserve_foreign_files_and_report_cleanup
+                flutter_ffi::file_job_id_tests::typed_file_job_ids_use_the_process_allocator
             )
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             container_name=rustdesk-resolution-parent-tests
@@ -3640,7 +3644,8 @@ run_focused_rust_tests() {
         -C "$source_root" \
         || fail 'cannot extract the exact focused-test source archive'
     chown -R 1000:1000 "$source_root"
-    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
+    if [ "$MODE" = android-rust-lifecycle-tests ] \
+        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
         install -o 1000 -g 1000 -m 0444 /dev/null \
             "$source_root/src/bridge_generated.rs"
         install -o 1000 -g 1000 -m 0444 /dev/null \
@@ -3757,7 +3762,8 @@ run_focused_rust_tests() {
         [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
             || fail "Debian-builder image receipt differs: $load_output"
     else
-        if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
+        if [ "$MODE" = android-rust-lifecycle-tests ] \
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
             bridge_inputs=(
                 "$rust_archive:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
                 "$flutter_archive:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
@@ -3777,7 +3783,8 @@ run_focused_rust_tests() {
                 && [ "$(sha256sum "$path" | awk '{ print $1 }')" = "$digest" ] \
                 || fail "sealed Android Rust bridge input differs: $path"
         done
-        if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
+        if [ "$MODE" = android-rust-lifecycle-tests ] \
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
             [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
               "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
                 && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
@@ -3794,6 +3801,17 @@ run_focused_rust_tests() {
             )" || fail 'sealed Android Rust Pub-cache closure validation failed'
             [ "$pub_receipt" = "sha256=$SHA256_PUB_CACHE_CLOSURE_V1" ] \
                 || fail "sealed Android Rust Pub-cache receipt differs: $pub_receipt"
+        fi
+        local file_bridge_sources_before=
+        if [ "$MODE" = android-rust-lifecycle-tests ] \
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+            generate_focused_rust_flutter_bridge
+            bridge_mounts=(
+                --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.rs,target=/source/src/bridge_generated.rs,readonly"
+                --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.io.rs,target=/source/src/bridge_generated.io.rs,readonly"
+            )
+            file_bridge_sources_before=$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" \
+                "$ROOT/focused-rust-bridge/bridge_generated.io.rs")
         fi
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$image_archive")" = \
           "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
@@ -3823,13 +3841,6 @@ run_focused_rust_tests() {
         )" || fail 'development-check image verification/load failed'
         [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
             || fail "development-check image receipt differs: $load_output"
-        if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
-            generate_focused_rust_flutter_bridge
-            bridge_mounts=(
-                --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.rs,target=/source/src/bridge_generated.rs,readonly"
-                --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.io.rs,target=/source/src/bridge_generated.io.rs,readonly"
-            )
-        fi
     fi
 
     if [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -4638,8 +4649,8 @@ PY
             && [ "$(grep -Fc 'RESOLUTION_RESTORATION_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'resolution-restoration artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
-        [ "${#result_lines[@]}" -eq 2 ] || fail 'file-receive parent summary count differs'
-        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=6 groups=2 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 3 ] || fail 'file-receive parent summary count differs'
+        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=7 groups=3 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FILE_RECEIVE_PARENT_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$' "$output")" -eq 6 ] \
             || fail 'file-receive parent artifact or named outcomes differ'
@@ -4856,7 +4867,8 @@ PY
           sha256sum "${source_fingerprints[@]}"
       )" ] \
         || fail 'focused Rust-test source inputs changed during execution'
-    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
+    if [ "$MODE" = android-rust-lifecycle-tests ] \
+        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
         post_pub_receipt="$(
             setpriv --reuid=1000 --regid=1000 --clear-groups \
                 env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
@@ -4865,6 +4877,15 @@ PY
         )" || fail 'sealed Android Rust Pub-cache postcondition validation failed'
         [ "$post_pub_receipt" = "$pub_receipt" ] \
             || fail 'sealed Android Rust Pub-cache closure changed during execution'
+        [ "$file_bridge_sources_before" = "$(sha256sum \
+            "$ROOT/focused-rust-bridge/bridge_generated.rs" \
+            "$ROOT/focused-rust-bridge/bridge_generated.io.rs")" ] \
+            || fail 'generated Rust bridge changed during parent execution'
+        if [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
+            printf 'FILE_RECEIVE_PARENT_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
+                "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
+                "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
+        fi
     fi
     stop_docker_authority
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
@@ -4979,9 +5000,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
-            [ "$tests_passed" -eq 6 ] || fail 'file-receive parent total differs'
-            grep -E '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$|^FILE_RECEIVE_PARENT_BUILD=pass |^FILE_RECEIVE_PARENT_ARTIFACT=' "$output"
-            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=6 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 7 ] || fail 'file-receive parent total differs'
+            grep -E '^test ((client::io_loop|ui_cm_interface)::tests::r_s11fi_.*|flutter_ffi::file_job_id_tests::.*) \.\.\. ok$|^FILE_RECEIVE_PARENT_BUILD=pass |^FILE_RECEIVE_PARENT_ARTIFACT=' "$output"
+            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=7 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then

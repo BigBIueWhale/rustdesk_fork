@@ -7726,8 +7726,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   probe; and exact root-owned-cache compatibility. The first cache fixture was refused
   because it crossed filesystems; the corrected same-filesystem fixture passed while
   preserving the real archive. That host-container evidence is not current R-S11cj
-  acquisition-VM acceptance. Source/mutation checks are supplementary only; the focused
-  source gate and executable transaction self-test remain wired in `scripts/verify.sh`.
+  acquisition-VM acceptance. Historical source/mutation checks are supplementary only.
+  The source checker’s 24 in-memory replacement cases and `--self-test` entry point are
+  deleted; its validation predicates are unchanged apart from the updated gate command.
+  It reports `SOURCE CHECK PASS`. The executable filesystem transaction self-test and
+  source check remain separately wired in `scripts/verify.sh`; their combined success
+  message no longer claims execution of the networked Git producer. Python AST comparison,
+  Bash syntax and diff review/check are preparatory evidence only; neither executable
+  was rerun for this deletion.
   Detailed recipes, builder identities, cached-archive digest and superseded counts
   remain in Git history at the named commit.
 
@@ -7736,9 +7742,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   independent reproduction and R-V3 external review remain OPEN. R-S11cp and R-S11cq
   separately govern vcpkg native outputs and NDK extraction; host downloads, SDK/other
   archives, Windows packagers and maintenance-image publication retain their own open
-  obligations. The documentation cleanup changes no product, transaction, gate or pin
-  and supplies no fresh runtime evidence. Whole-document cleanup and the fresh ledger
-  token count remain OPEN.
+  obligations. Production, transaction, self-test and pin bytes are unchanged; removing
+  the supplementary mutation catalog supplies no fresh runtime evidence. Whole-document
+  cleanup and the fresh ledger token count remain OPEN.
 - **R-S11cp/R-S11e-108 — native vcpkg output authority: source and historical filesystem
   transaction evidence; current cold rebuild/release/platform acceptance OPEN.** The
   release triplets are `x64-linux` and `arm64-android`. Their immutable numeric-nonroot

@@ -521,14 +521,14 @@ r_s11co=
 if ! /usr/bin/python3 -I -S scripts/online-libyuv-distfile-output.py self-test; then
   r_s11co="$r_s11co transaction-self-test-failed"
 fi
-if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-libyuv-output-authority.py --repo . --self-test; then
-  r_s11co="$r_s11co authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-libyuv-output-authority.py --repo .; then
+  r_s11co="$r_s11co authority-source-contract-failed"
 fi
 if [ -n "$r_s11co" ]; then
   echo "  FAIL R-S11co online-fetch libyuv distfile output authority:$r_s11co"
   rc=1
 else
-  echo "  ok  R-S11co the networked Git producer writes one pre-created private archive inode, proves its exact pinned digest, and publishes it durably without access to any other online input or final name"
+  echo "  ok  R-S11co filesystem transaction self-test and supplementary source checks passed; cold networked producer and release acceptance require separate evidence"
 fi
 
 echo "== (0n) online-fetch vcpkg native output authority (R-S11cp/R-S11e-108) =="

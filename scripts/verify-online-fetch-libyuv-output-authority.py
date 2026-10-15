@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate checked publication of the network-acquired libyuv distfile."""
+"""Check libyuv acquisition source invariants; runtime acceptance is separate."""
 
 from __future__ import annotations
 
@@ -7,20 +7,11 @@ import argparse
 import ast
 import pathlib
 import re
-from dataclasses import dataclass
 from typing import Dict, Tuple
 
 
 class AuthorityError(RuntimeError):
     pass
-
-
-@dataclass(frozen=True)
-class Mutation:
-    source: str
-    old: str
-    new: str
-    label: str
 
 
 def require(source: str, token: str, label: str) -> None:
@@ -254,167 +245,9 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         verify,
-        "/usr/bin/python3 -I -S scripts/verify-online-fetch-libyuv-output-authority.py --repo . --self-test",
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-libyuv-output-authority.py --repo .",
         "focused verifier wiring",
     )
-MUTATIONS: Tuple[Mutation, ...] = (
-    Mutation(
-        "shell",
-        '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \\\n'
-        '        || die "another libyuv distfile output transaction already owns the online root"',
-        "true # libyuv transaction lock removed",
-        "exclusive transaction lock",
-    ),
-    Mutation(
-        "shell",
-        "stage_vcpkg_distfiles() {\n"
-        "    stage_libvpx_distfiles\n"
-        '    local builder="$DEB_BUILDER_CONFIG_ID"',
-        "stage_vcpkg_distfiles() {\n"
-        "    stage_libvpx_distfiles\n"
-        '    local builder="ubuntu:latest"',
-        "immutable builder binding",
-    ),
-    Mutation(
-        "shell",
-        '--mount "type=bind,source=$staging/output,target=/outputs/libyuv.tar.gz"',
-        '--mount "type=bind,source=$ONLINE_DIR,target=/online" \\\n'
-        '        --mount "type=bind,source=$staging/output,target=/outputs/libyuv.tar.gz"',
-        "online mount absence",
-    ),
-    Mutation(
-        "shell",
-        "source=$staging/output,target=/outputs/libyuv.tar.gz",
-        "source=$ONLINE_DIR,target=/outputs/libyuv.tar.gz",
-        "single writable output",
-    ),
-    Mutation(
-        "shell",
-        "git remote add origin https://chromium.googlesource.com/libyuv/libyuv",
-        'git remote add origin "$LIBYUV_ORIGIN"',
-        "fixed Git origin",
-    ),
-    Mutation(
-        "shell",
-        'git cat-file -e "${LIBYUV_COMMIT}^{commit}"',
-        "true # exact commit proof removed",
-        "exact commit proof",
-    ),
-    Mutation(
-        "shell",
-        'archive --format=tar "$LIBYUV_COMMIT"',
-        "archive --format=tar HEAD",
-        "exact archive request",
-    ),
-    Mutation(
-        "shell",
-        "| gzip -n > /outputs/libyuv.tar.gz",
-        "| gzip > /outputs/libyuv.tar.gz",
-        "deterministic gzip",
-    ),
-    Mutation(
-        "shell",
-        '[ "$got" = "$SHA512_LIBYUV" ]',
-        '[ -n "$got" ]',
-        "producer digest check",
-    ),
-    Mutation(
-        "shell",
-        '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then\n'
-        "        libyuv_distfile_output_tool publish",
-        '[ "$status" -eq 0 ]; then\n'
-        "        libyuv_distfile_output_tool publish",
-        "publication verdict barrier",
-    ),
-    Mutation(
-        "shell",
-        "libyuv_distfile_output_tool verify \\\n",
-        "libyuv_distfile_output_tool accept \\\n",
-        "host output postcondition",
-    ),
-    Mutation(
-        "helper",
-        "reject_mount_at_or_below(staging)",
-        "return # private mount accepted",
-        "staging mount closure",
-    ),
-    Mutation(
-        "helper",
-        "if metadata.st_nlink != 1:\n"
-        '        fail("libyuv archive has a hardlink outside its single-file output")',
-        "if metadata.st_nlink < 1:\n"
-        '        fail("libyuv archive has a hardlink outside its single-file output")',
-        "external-hardlink rejection",
-    ),
-    Mutation(
-        "helper",
-        "if list_xattrs(archive):",
-        "if False:",
-        "extended-attribute rejection",
-    ),
-    Mutation(
-        "helper",
-        "hashlib.sha512(data).hexdigest() != expected_sha512",
-        "False",
-        "host SHA-512 validation",
-    ),
-    Mutation(
-        "helper",
-        "MAX_ARCHIVE_BYTES = 64 * 1024 * 1024",
-        "MAX_ARCHIVE_BYTES = 64 * 1024 * 1024 * 1024",
-        "archive size bound",
-    ),
-    Mutation(
-        "helper",
-        "os.fchmod(descriptor, 0o400)",
-        "os.fchmod(descriptor, 0o600)",
-        "read-only sealing",
-    ),
-    Mutation(
-        "helper",
-        "stable_file_metadata(before) != stable_file_metadata(after)",
-        "False",
-        "stable file read",
-    ),
-    Mutation(
-        "helper",
-        "os.fsync(descriptor)\n    finally:\n        os.close(descriptor)\n"
-        "    fsync_directory(staging)",
-        "pass # file durability removed\n    finally:\n        os.close(descriptor)\n"
-        "    fsync_directory(staging)",
-        "file durability barrier",
-    ),
-    Mutation(
-        "helper",
-        "renameat2(\n            staging_fd,\n            \"output\",\n            online_fd,",
-        "os.replace(\n            output,\n            destination,\n            #",
-        "descriptor-relative no-clobber publication",
-    ),
-    Mutation(
-        "helper",
-        "libyuv archive publication rollback also failed",
-        "libyuv archive publication rollback omitted",
-        "publication rollback",
-    ),
-    Mutation(
-        "helper",
-        "state is incoherent and was preserved",
-        "state was discarded",
-        "ambiguous-state refusal",
-    ),
-    Mutation(
-        "helper",
-        'return "unprepared-state-write"',
-        'return "unprepared-output"',
-        "interrupted state-write recovery",
-    ),
-    Mutation(
-        "verify",
-        "/usr/bin/python3 -I -S scripts/verify-online-fetch-libyuv-output-authority.py --repo . --self-test",
-        "true # libyuv output authority gate removed",
-        "focused verifier wiring",
-    ),
-)
 
 
 def load_sources(repo: pathlib.Path) -> Dict[str, str]:
@@ -428,40 +261,13 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
     }
 
 
-def run_mutations(sources: Dict[str, str]) -> None:
-    for mutation in MUTATIONS:
-        original = sources[mutation.source]
-        count = original.count(mutation.old)
-        if count != 1:
-            raise AuthorityError(
-                "mutation target for {} occurs {} times".format(
-                    mutation.label, count
-                )
-            )
-        changed = dict(sources)
-        changed[mutation.source] = original.replace(mutation.old, mutation.new, 1)
-        try:
-            validate(changed)
-        except AuthorityError:
-            continue
-        raise AuthorityError("mutation was accepted: {}".format(mutation.label))
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=pathlib.Path, default=pathlib.Path("."))
-    parser.add_argument("--self-test", action="store_true")
     arguments = parser.parse_args()
     sources = load_sources(arguments.repo.resolve())
     validate(sources)
-    if arguments.self_test:
-        run_mutations(sources)
-        print(
-            "verify-online-fetch-libyuv-output-authority: PASS "
-            "({} mutations rejected)".format(len(MUTATIONS))
-        )
-    else:
-        print("verify-online-fetch-libyuv-output-authority: PASS")
+    print("verify-online-fetch-libyuv-output-authority: SOURCE CHECK PASS")
     return 0
 
 

@@ -2146,6 +2146,22 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
+**Frame EOF handling — Linux common codec/TCP component ACCEPTED; installed/platform evidence OPEN.**
+`libs/hbb_common/src/bytes_codec.rs` reports `UnexpectedEof` for an unfinished header or
+payload, including an empty buffer after the header has moved into decoder state.
+`SecretboxCodec` in `libs/hbb_common/src/tcp.rs` delegates EOF to that stateful validator
+and shares whole-frame authentication with normal decoding. Truncation reaches the existing
+fatal stream path, closing keyed writer admission and aborting its exact writer; complete,
+empty and coalesced messages still finish cleanly, and raw decoding still drains its bytes.
+The unchanged real-loopback TCP tests failed on `ee63be0d` for both keyed and unkeyed
+header-without-payload input. Exact correction `c809dacd` passed 144 focused Linux library tests
+in the bounded zero-NIC VM in 194 seconds, including four TCP/EOF and twelve codec cases.
+The guest validates each required test name; serial exports retain their group summaries.
+Source/artifact/raw bindings, unchanged controls/endpoints, baseline and joined RAM/VM cleanup
+are retained in `.harness-state/verifier-vm/framed-eof-corrected-c809dacd.json`.
+This component result does not establish a new LPE closure, installed IPC/helper behavior,
+full viewer recovery, a CPace handshake run or native execution on other platforms.
+
 **Windows CM clipboard replies (R-S11c-22): source corrected; response-component tests PASS;
 Windows integration OPEN.** `src/ipc/clipboard_non_file.rs` converts the existing numeric/tagged
 helper response into typed `Clipboard` entries. It checks recognized production formats

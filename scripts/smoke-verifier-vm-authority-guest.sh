@@ -7973,8 +7973,11 @@ run_flutter_model_tests() {
                 fi
                 for format_path in "${format_paths[@]}"; do
                     formatted=/work/$(basename "$format_path").formatted
-                    dart format --output=show "$format_path" \
-                        >"$formatted" 2>>/work/format.err
+                    if ! dart format --output=show "$format_path" \
+                        >"$formatted" 2>>/work/format.err; then
+                        tail -c 1048576 /work/format.err >&2
+                        exit 1
+                    fi
                     format_summary="$(tail -n 1 "$formatted")"
                     [[ "$format_summary" =~ ^Formatted\ 1\ file\ \([01]\ changed\)\ in\ [0-9.]+\ seconds\.$ ]]
                     sed -i "\$d" "$formatted"

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/terminal_connection_pool.dart';
 import 'package:flutter_hbb/models/terminal_model.dart';
@@ -281,4 +283,3 @@ void main() {
     model.dispose();
   });
 }
-import 'dart:convert';

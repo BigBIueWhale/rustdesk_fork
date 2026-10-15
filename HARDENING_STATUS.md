@@ -27,33 +27,6 @@ capabilities, with no-new-privileges, in the authenticated zero-NIC VM. The firs
 14-second transaction added no host listener and joined scratch/Docker/VM cleanup.
 Whole-document role classification and compression of redundant history remain **OPEN**.
 
-**Appendix C disposition cleanup:** findings #2, #14, #15, #23, #83, #84, #86,
-#121, #127, #173, #219–#221, #223, #224 and #247 now state required security
-behavior and acceptance instead of completed repairs, gate passes or platform status.
-The 16 edited rows retain all prior requirement references; all other specification
-bytes, HTML anchors, links and table-row identities are unchanged. The specification
-shrinks from 1,830,993 to 1,823,342 bytes. The review retains typed PRS state, secret
-provisioning, exact helper/credential generations, nondumpability, pidfd-only recovery,
-package ownership, voice/FUSE confinement, tunnel limits and guest acquisition authority.
-It also removes stale global voice-reset and two-profile acquisition reports. Classification
-and comparison are retained in `appendix-disposition-classification-a22e5d80-v2.json`
-under `.harness-state/verifier-vm` (9,981 bytes; SHA-256
-`2b644aa35d7b5dcc35d0e57deb52c4bda383c7f2f9b8ecc7b4f025e4c54fd960`).
-Git history preserves removed reports. This is document/source review, with no new
-product or native behavior acceptance; existing status and all broader OPEN obligations remain.
-
-**Acquisition document-role correction:** R-S11cs/R-S11ct/R-S11cu and Appendix C
-#246/#248 now scope admission to each exact pinned profile and name R-S11cj's
-acquisition-VM coordinator as the independent verifier/publisher. Universal two/three-profile
-enumerations, supersession history, implementation/gate narration and incident disclaimers
-are removed. Profile-specific names, pins, namespaces, response bounds, producer confinement,
-consumer hashes, metadata, no-clobber publication and recovery remain required. Current
-R-S11ct/R-S11cu status separates historical host-container evidence from current VM acceptance
-and incorporates the already accepted cold 0444 consumption. Classification/comparison is
-retained in `acquisition-document-roles-951a4a8e.json` under the verifier root; Git preserves
-the deleted history. This slice changes documentation only. All broader OPEN/STOP-SHIP
-obligations and remaining document-role cleanup stay open.
-
 Current normative specification identity:
 
 ```text
@@ -126,29 +99,23 @@ Classification is in `.harness-state/verifier-vm/deployment-guide-source-7e735cf
 and the normative specification are unchanged; current installed/native and fresh token-count
 acceptance remain OPEN.
 
-Current specification/source disposition is recorded below; repair chronology remains in Git.
-These documentation corrections supply no compiler, artifact, scanner or native execution evidence.
+Retained documentation classifications are indexed below. They establish document/source
+comparisons, not compiler, artifact, scanner, native or release acceptance. Completed repair
+narratives and size comparisons remain in Git history.
 
-| Scope | Retained contract and current disposition |
+| Documentation scope | Retained classification |
 | --- | --- |
-| R-S19 session capabilities | The clause states the session-type contract without the obsolete scattered-flag diagnosis, platform implementation inventory or unproved class-closure claim. All five session types, eight capability fields, derivation-before-options, dispatcher/action-sink restrictions, file-clipboard and active-voice distinctions, Remote display-cleanup ownership, every-platform scope and R-A6 checks remain. It shrinks 4,849→3,152 bytes; all other specification bytes, declarations, anchors, links and original references are unchanged. Classification is in `.harness-state/verifier-vm/capability-contract-document-role-d9a3e80c.json`. Product/tests and existing evidence are unchanged; current native, whole-document and fresh ledger-count acceptance remain OPEN. |
-| R-S15 viewer configuration | The clause now states receiver-owned persistence requirements without the old audit witness, repair chronology or completion/no-RCE claim. Viewer scope, one validated allowlist, supported privacy implementations, both pending local privacy-request forms/default remote session, metadata bounds, terminal service-ID write control, runtime-only keyboard compatibility and R-A6 setter/persistence checks remain. The clause shrinks 2,756→2,293 bytes; all other specification bytes, declarations, anchors, links and references are unchanged. Existing product/regression/gate bytes are unchanged and no fresh execution is claimed. Classification is in `.harness-state/verifier-vm/viewer-config-document-role-6f5a56bf.json`. Current native, whole-document and fresh ledger-count acceptance remain OPEN. |
-| R-S16 controlled-side policy | The clause states the unconditional artifact policy and its read funnels without upstream fail-open history, migration instructions or the claim that the table covers every security key automatically. All 30 policy assignments are identical. The complete write, alternate-route, credential-scope and acceptance suffix is byte-identical; separate namespaces, single-key receiver acknowledgements and native acceptance remain required. The clause shrinks 12,668→9,210 bytes; all other specification bytes, 409 declarations/levels, 36 anchors and 214 links are unchanged. Every prior reference remains, with R-R2b added for the existing every-build rule. Classification is in `.harness-state/verifier-vm/policy-funnel-document-role-f88494a4.json`. Product/tests and existing evidence are unchanged; whole-document, native and fresh token-count acceptance remain OPEN. |
-| R-S10 rate limiting | The clause now states the constant-time, source-isolated, pre-PAKE admission, confirmation-only accounting, bounded-memory, per-minute/finite-decay and logging contract. Obsolete login/2FA map layouts, deleted authentication-site migration, historical thresholds and the incompatible relay/application-identity fallback are removed. The clause shrinks 7,116→3,383 bytes; all other specification bytes, requirement declarations, anchors, links and references are unchanged. Current production's 10-failure/60-second/8192-entry behavior remains status here, not a substituted normative threshold or fresh pass. Classification is in `.harness-state/verifier-vm/rate-limiter-document-role-a3abdd97.json`. Product/tests are unchanged; whole-document cleanup, current native acceptance and fresh ledger token count remain OPEN. |
-| Appendix C #107 | Windows CM clipboard risk is timeless; historical bare-request/repair narration is removed. The complete required disposition is byte-identical: live subscribed Remote tuple, main-server validation before the read, response-only rejection, disable refresh and all positive/negative native acceptance cases remain. All other specification bytes, 406 requirement ID/levels, 36 anchors and 214 links are unchanged. Classification is in `.harness-state/verifier-vm/clipboard-authority-document-role-481712e2.json`. The named Linux eleven-case component passes; current Windows native acceptance remains OPEN. |
-| R-S9 credential contract | Upstream storage-change narration, the legacy `PeerConfig.password` field presented as the active CPace cache, and repeated balanced-PAKE rationale are removed. Twenty obligations retain policy pins, NFC/Argon2id/fixed salt, sole durable PRS, legacy/preset exclusion, live reads/rotation, remembered PRS/manual provisioning, independent box passwords, desktop/mobile secrecy and the accepted connect-equivalent residual. The clause shrinks 5,756→3,382 bytes; all other specification bytes, 406 requirement ID/levels, 36 anchors and its reference set remain equal. Classification is in `.harness-state/verifier-vm/rs9-credential-contract-5753c573.json`. This changes documentation only; native/installed and whole-document acceptance remain OPEN. |
-| R-P5 / R-P11 | Password-only authentication, fixed viewer/server roles, the complete reflection/explicit-AD contract and accepted self-loopback residual remain. The unsupported server-assisted exception, superseded choice of role defenses, and dated standards-status report are removed. The exact draft-21/vector pin and deliberate version-change requirement remain binding. The two clauses shrink 4,236→3,247 bytes; all other specification bytes, 406 requirement ID/levels, 36 anchors and 214 links are unchanged. Classification is in `.harness-state/verifier-vm/cpace-specification-role-8903ad60.json`. The fresh ledger token count is pending resource admission; no current budget or native acceptance is claimed. |
-| §13 / §10.2 effort estimate | The 34-row historical debt/inventory table is consolidated into 14 continuing-risk entries. Package/function/permission/line counts, effort estimates, obsolete mediator/submodule/Sciter descriptions, Apple-drop/Rust-bump instructions and the unqualified no-other-pre-auth-defect claim are removed. All 33 existing requirement references remain; R-R1/R-R2d/R-S19/R-X12 resolve current source ownership, automation, capability and capture scope. Filesystem/full-control, credential, parser, capture, terminal, native-codec and arithmetic obligations remain; the complete memory-safety and host-isolation rows are byte-identical. All other specification bytes, 406 requirement ID/levels, 36 anchors and 214 links are unchanged. Classification is in `.harness-state/verifier-vm/debt-register-document-role-28c2e775.json`. Fresh token count and whole-document/native acceptance remain OPEN. |
-| R-S11b-3q / Appendix C #241 | The typed-PRS availability, sole receiver-derived status, preset/local-surface exclusion and startup-refusal contract is intact. R-S11b-3q's obsolete-API repair narrative is removed; the full normative opening and required suffix and Appendix disposition are unchanged. |
-| Appendix C #118 | Repair narration is removed; the full Windows terminal principal, token/lease identity, cancellation, pipe rights, output/finality bounds, teardown and referenced contract remain. |
-| Appendix C #354–#362 | Findings retain timeless refresh, native display/cursor ownership, service/CM/writer bounds, clipboard routing and terminal-log risks. Source-repair narration and symptom theories are deleted; all nine complete dispositions, requirement bodies, IDs and references are unchanged. |
-| Appendix C #182/#183 | Scanner-failure, freshness, mutable-input and verdict-authority risks replace chronology and obsolete advisory dates; both required dispositions and references remain. |
-| §12.1 | Debian/Android compilation and separate Android signing require the admitted no-NIC verifier VM and sole R-S11cj acquisition. Direct-host Docker, per-builder fetching and host-forwarded control recipes are deleted. Target/toolchain pins, complete offline closure, software codecs, stable certificate/content verification, independent generated state, epoch and cold equality remain binding. |
-| R-B7 / §15 | Every release target requires a reproduced pinned upstream baseline and complete fork-delta accounting. False two-delta/verbatim-build claims are removed from the specification and three builder headers; Windows bridge commentary names the VM. FRB 1.80.1, authenticated offline code generation, pass-private state, VM authority and native/cold acceptance remain; builder command bytes are unchanged. |
-| R-A6 UDP/probe / R-SV4 / R-SV10 | Both roles and all targets exclude first-party actuators and startup/UI/CLI/FFI/JNI/IPC/Drop routes; direct TCP/capture bootstrap and distinct credential-park, serving, viewer/helper and iOS socket scopes remain. Linked-UDP/ordinary-IPC narration, Wake-on-LAN alternatives, disabled-WebRTC descriptions and every-process TCP-listener claims are removed. Driven-session native connect observation remains required for transitive egress. |
-| Appendix C #339/#340 / R-S11gd/R-S11ge | Runner exit status and Linux plugin/window teardown are required behavior, not repair reports. Failed-run chronology, run ordinals, a successful-commit receipt and wording/self-mutation acceptance are removed. Loader failures, handled-command success, UI continuation, exact plugin provenance, native positive/negative regressions, paired GTK-hook retirement, destroyed-window refusal, delayed-query cancellation and clean full-peer teardown remain required. The named historical CLI/full-peer evidence below is unchanged; exact-current native, installed and release acceptance remains OPEN. |
-| 22 verification clauses | Mandatory ledger/documentation and complete source-mutation-catalog coupling is removed from R-S11af–ao, R-S11au/av/az/ba/be/bf/by/bz/cg, R-S11b-3q, R-SV6c and R-S11ga. Principal/role/lifetime, helper, scanner, package and bridge checks retain concrete behavioral and refusal cases plus source topology review. Actual-child environments, compiler ABI checks, emitted-package/installed ownership, existing signing-identity preservation and severe-generator-output refusal remain required. Every requirement body outside the classified clauses, native/artifact evidence limit, ID, level, link and original API element is unchanged. Classification is retained in `.harness-state/verifier-vm/verification-clause-classification-a5946201.json`. This is document review; current native/installed/release acceptance and whole-test classification remain OPEN. |
-| §18 / R-SV1–3, R-SV4a, R-SV5–9 | Nine entries now state stable sovereignty obligations. The stale running-app inventory and duplicate completion box are deleted, along with obsolete widget diagnosis, repair causation, link counts and platform-clean assertions. Source deletion follows R-SV1/R-SV6a/R-SV10, preserving direct TCP and authenticated owner port forwarding, the explicit Apple entitlement exception, and R-SV9's SHOULD marketing/MUST plaintext-link distinction. All requirement IDs, levels, anchors and other requirement bodies are unchanged; this is specification cleanup, not native acceptance. |
+| Appendix C dispositions | `.harness-state/verifier-vm/appendix-disposition-classification-a22e5d80-v2.json` |
+| Acquisition authority | `.harness-state/verifier-vm/acquisition-document-roles-951a4a8e.json` |
+| R-S19 session capabilities | `.harness-state/verifier-vm/capability-contract-document-role-d9a3e80c.json` |
+| R-S15 viewer configuration | `.harness-state/verifier-vm/viewer-config-document-role-6f5a56bf.json` |
+| R-S16 controlled policy | `.harness-state/verifier-vm/policy-funnel-document-role-f88494a4.json` |
+| R-S10 rate limiting | `.harness-state/verifier-vm/rate-limiter-document-role-a3abdd97.json` |
+| Appendix C #107 clipboard authority | `.harness-state/verifier-vm/clipboard-authority-document-role-481712e2.json` |
+| R-S9 credentials | `.harness-state/verifier-vm/rs9-credential-contract-5753c573.json` |
+| R-P5/R-P11 CPace | `.harness-state/verifier-vm/cpace-specification-role-8903ad60.json` |
+| §13 risk register | `.harness-state/verifier-vm/debt-register-document-role-28c2e775.json` |
+| Verification clauses | `.harness-state/verifier-vm/verification-clause-classification-a5946201.json` |
 
 Whole-document/test classification, exact-current builders/artifacts, installed/native authority,
 scanner acceptance, complete inputs/signing, upstream baseline reproduction, fork-delta accounting,
@@ -11039,7 +11006,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   checks are not behavioral coverage. Retaining these executable tests is not a fresh
   test pass, native or current-release acceptance, or external review; R-V3 remains open.
   **R-S10 limiter scope:** production uses a ten-confirmation-failure, 60-second
-  tumbling window per source; roughly twice that count can straddle a boundary.
+  tumbling window per source and an 8192-entry source-map ceiling; roughly twice
+  the failure count can straddle a boundary.
   This is flood shedding, not a stronger credential guarantee.
 - **Local IPC/CM authorization audit — ⚠️ SUPERSEDED 2026-07-08 by R-S11b/R-S11c.** The
   2026-07-01 pass remains useful only for its transport facts: owner-only channels are

@@ -15,6 +15,7 @@ EXPECTED_SUITES = {
     "custom_cursor_registry_test.dart",
     "desktop_tab_retirement_test.dart",
     "desktop_texture_lifecycle_test.dart",
+    "desktop_window_dispatch_test.dart",
     "display_selection_queue_test.dart",
     "file_command_session_ownership_test.dart",
     "file_dialog_event_loop_test.dart",
@@ -84,6 +85,16 @@ DIRECT_ADDRESS_TESTS = {
     "hostname label and complete name bounds",
 }
 MAXIMUM_BYTES = 8 * 1024 * 1024
+WINDOW_DISPATCH_TESTS = {
+    "window dispatch preserves valid payload and sender",
+    "window dispatch preserves null and successful event replies",
+    "window dispatch removes its registered handler",
+    "window dispatch redacts synchronous handler failure",
+    "window dispatch redacts asynchronous JSON failure",
+    "window dispatch redacts platform error fields",
+    "window dispatch refuses a malformed sender envelope",
+    "window dispatch joins event failure before replying",
+}
 PASSWORD_FIELD_TESTS = {
     "password keyboard policy survives reveal on android",
     "password keyboard policy survives reveal on iOS",
@@ -223,7 +234,7 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -238,6 +249,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"password_text_field_test.dart"}
         expected_tests = len(PASSWORD_FIELD_TESTS)
         expected_names = PASSWORD_FIELD_TESTS
+    elif profile == "window-dispatch":
+        expected_suites = {"desktop_window_dispatch_test.dart"}
+        expected_tests = len(WINDOW_DISPATCH_TESTS)
+        expected_names = WINDOW_DISPATCH_TESTS
     elif profile == "terminal-output":
         expected_by_suite = TERMINAL_OUTPUT_TESTS
         expected_suites = set(expected_by_suite)
@@ -340,7 +355,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -353,6 +368,7 @@ def main():
         "frame-queue": "FLUTTER_FRAME_QUEUE_TEST_JSON",
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
+        "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
         "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",
         "credential-dialog": "FLUTTER_CREDENTIAL_DIALOG_TEST_JSON",
     }[arguments.profile]

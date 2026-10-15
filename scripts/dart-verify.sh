@@ -332,6 +332,7 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
       test/password_field_semantics_test.dart \
       test/password_text_field_test.dart \
       test/connect_password_dialog_lifecycle_test.dart \
+      test/desktop_window_dispatch_test.dart \
       test/dialog_close_ownership_test.dart
     set +e
     out="$(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/ 2>&1)"
@@ -402,6 +403,7 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/password_field_semantics_test.dart
     flutter test --no-pub test/password_text_field_test.dart
     flutter test --no-pub test/connect_password_dialog_lifecycle_test.dart
+    flutter test --no-pub test/desktop_window_dispatch_test.dart
     flutter test --no-pub test/dialog_close_ownership_test.dart
     echo "  == permanent-password dialog owns one mutation through retirement =="
     flutter test --no-pub test/permanent_password_dialog_lifecycle_test.dart

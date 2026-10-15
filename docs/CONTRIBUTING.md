@@ -1,46 +1,24 @@
-# Contributing to RustDesk
+# Contributing to the hardened fork
 
-RustDesk welcomes contribution from everyone. Here are the guidelines if you are
-thinking of helping us:
+Use this fork's repository for issues, pull requests, and review requests. Comment
+on an existing issue before starting work so contributors can coordinate.
 
-## Contributions
+Read [the project rules](../AGENTS.md), [the normative requirements](../requirements.html),
+and [the current hardening ledger](../HARDENING_STATUS.md) before changing behavior.
+The [verification guide](../scripts/README.md) describes the available checks.
 
-Contributions to RustDesk or its dependencies should be made in the form of GitHub
-pull requests. Each pull request will be reviewed by a core contributor
-(someone with permission to land patches) and either landed in the main tree or
-given feedback for changes that would be required. All contributions should
-follow this format, even those from core contributors.
+Keep each pull request focused on one problem and base it on the fork's current
+`master`. Each commit should compile and pass the checks relevant to its change.
+Include a Developer Certificate of Origin sign-off with `git commit -s`, and
+preserve the [project license](../LICENCE) and required attribution.
 
-Should you wish to work on an issue, please claim it first by commenting on
-the GitHub issue that you want to work on it. This is to prevent duplicated
-efforts from contributors on the same issue.
+Describe the behavior before and after the change, the affected authority or
+lifetime boundary, and how it was verified. Security fixes need focused tests
+that distinguish the unsafe behavior from the required result. Run product,
+build, and test payloads only in the owned isolated environment required by the
+project rules. State the exact platform and scope of the evidence; source checks
+and component tests cannot establish installed-service or release acceptance.
 
-## Pull Request Checklist
-
-- Branch from the master branch and, if needed, rebase to the current master
-  branch before submitting your pull request. If it doesn't merge cleanly with
-  master you may be asked to rebase your changes.
-
-- Commits should be as small as possible, while ensuring that each commit is
-  correct independently (i.e., each commit should compile and pass tests).
-
-- Commits should be accompanied by a Developer Certificate of Origin
-  (http://developercertificate.org) sign-off, which indicates that you (and
-  your employer if applicable) agree to be bound by the terms of the
-  [project license](../LICENCE). In git, this is the `-s` option to `git commit`
-
-- If your patch is not getting reviewed or you need a specific person to review
-  it, you can @-reply a reviewer asking for a review in the pull request or a
-  comment, or you can ask for a review via [email](mailto:info@rustdesk.com).
-
-- Add tests relevant to the fixed bug or new feature.
-
-For specific git instructions, see [GitHub workflow 101](https://github.com/servo/servo/wiki/GitHub-workflow).
-
-## Conduct
-
-https://github.com/rustdesk/rustdesk/blob/master/docs/CODE_OF_CONDUCT.md
-
-## Communication
-
-RustDesk contributors frequent the [Discord](https://discord.gg/nDceKgxnkV).
+Keep timeless requirements in `requirements.html` and implementation status in
+`HARDENING_STATUS.md`. Record unresolved risks and missing native evidence there
+instead of describing partial work as complete.

@@ -107,6 +107,13 @@ Retained documentation classifications are indexed below. They establish documen
 comparisons, not compiler, artifact, scanner, native or release acceptance. Completed repair
 narratives and size comparisons remain in Git history.
 
+`docs/CONTRIBUTING.md` is the fork's single contribution guide. The thirteen inherited
+translations and upstream review email/Discord routing are removed. Focused commits,
+review, relevant behavioral tests, DCO sign-off, license and attribution remain; the
+guide links to the local rules, specification, ledger and isolated verification entry
+points. The inherited conduct documents remain unreviewed; this cleanup does not
+establish a fork moderation contact or native/release acceptance.
+
 | Documentation scope | Retained classification |
 | --- | --- |
 | Appendix C dispositions | `.harness-state/verifier-vm/appendix-disposition-classification-a22e5d80-v2.json` |
@@ -12519,6 +12526,9 @@ Stalled synchronous PulseAudio construction/write/drain and worker shutdown duri
 such a stall remain OPEN, along with whole-app/installed/device playback, continuous
 backend health, CPAL callback-error handling and native non-Linux execution.
 No new installed-service or LPE closure follows from these component tests.
+The user has parked cancellation work. Uncompiled and unexecuted mainloop/mailbox
+and native-test changes are preserved in stash `fe211f322d1f9ff258a6d72784e9304bbd9c9231`
+from parent `8bfe9336`; incomplete harness wiring has no acceptance claim.
 
 `OwnedMediaThread` retains the non-cloneable sender and exact decoder handle; the existing bounded
 completion pool owns final joining after close or hard Drop. Viewer and controlled callers retain

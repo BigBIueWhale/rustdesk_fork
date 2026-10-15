@@ -42,6 +42,8 @@ It requires an independently authenticated manifest digest, full source commit, 
 For the existing Android package identity, follow the [signing-key recovery procedure](docs/ANDROID-SIGNING-RECOVERY.md);
 a newly generated key cannot replace the committed signing identity.
 
+Contribution and review instructions are in [the contribution guide](docs/CONTRIBUTING.md).
+
 ## Attribution & license
 
 A fork of [RustDesk](https://github.com/rustdesk/rustdesk), licensed under the **GNU AGPL-3.0**

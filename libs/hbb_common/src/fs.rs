@@ -269,16 +269,18 @@ fn read_dir_entries_with_usage(
         }
         let (entry_type, size) = {
             let is_link = is_symlink_or_reparse_point(&meta);
-            if p.is_dir() {
-                if is_link {
+            if is_link {
+                if p.is_dir() {
                     (FileType::DirLink.into(), 0)
                 } else {
-                    (FileType::Dir.into(), 0)
+                    (FileType::FileLink.into(), 0)
                 }
-            } else if is_link {
-                (FileType::FileLink.into(), 0)
-            } else {
+            } else if meta.is_dir() {
+                (FileType::Dir.into(), 0)
+            } else if meta.is_file() {
                 (FileType::File.into(), meta.len())
+            } else {
+                bail!("unsupported file type: {}", p.display());
             }
         };
         let modified_time = meta.modified()?.duration_since(UNIX_EPOCH)?.as_secs();

@@ -32,7 +32,8 @@ void main() {
     expect(Peer.loading().id, '...');
   });
 
-  test('retired account metadata cannot prevent a direct peer from loading', () {
+  test('retired account metadata cannot prevent a direct peer from loading',
+      () {
     final peer = Peer.fromJson(<String, dynamic>{
       ...metadata,
       'hash': <String, String>{'secret': 'SyntheticHash'},

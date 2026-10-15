@@ -8111,6 +8111,16 @@ run_flutter_model_tests() {
                 printf "FLUTTER_TEST_RESULT_PARSER=pass tests=3\n"
                 /usr/bin/python3 -I -S /authority/result.py \
                     /work/test.json --profile "$FLUTTER_TEST_PROFILE"
+                if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                    if grep -Eq "mainLoadRecentPeersForAb|main_load_recent_peers_for_ab" \
+                        lib/generated_bridge.dart \
+                        "$codegen_source/src/bridge_generated.rs" \
+                        "$codegen_source/src/bridge_generated.io.rs"; then
+                        echo "Retired address-book loader remains in a fresh bridge" >&2
+                        exit 1
+                    fi
+                    printf "FLUTTER_PEER_METADATA_BRIDGE=pass retired_loader=absent dart=fresh rust=fresh\n"
+                fi
                 if [ "$FLUTTER_TEST_PROFILE" != models ]; then
                     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
                         cmp /source/flutter/lib/models/latest_frame_queue.dart lib/models/latest_frame_queue.dart
@@ -8204,6 +8214,10 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc "$result_prefix=" "$output")" -eq 1 ] \
         || fail 'focused Flutter-test result summary is duplicated'
+    if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+        [ "$(grep -Fxc 'FLUTTER_PEER_METADATA_BRIDGE=pass retired_loader=absent dart=fresh rust=fresh' "$output")" -eq 1 ] \
+            || fail 'fresh peer-metadata bridge absence receipt differs'
+    fi
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'focused Flutter-test container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
@@ -8226,6 +8240,9 @@ run_flutter_model_tests() {
     printf '%s\n' "$tools_freshness_line"
     printf 'FLUTTER_TEST_RESULT_PARSER=pass tests=3\n'
     printf '%s\n' "$result_line"
+    if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+        printf 'FLUTTER_PEER_METADATA_BRIDGE=pass retired_loader=absent dart=fresh rust=fresh\n'
+    fi
     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
         queue_sha256="$(sha256sum "$source_root/flutter/lib/models/latest_frame_queue.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/latest_frame_queue_test.dart" | awk '{print $1}')"

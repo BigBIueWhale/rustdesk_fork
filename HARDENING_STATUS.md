@@ -11931,8 +11931,8 @@ R-V3 external review; causation; and complete connection-flow correctness and pe
 
 ### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership (2026-08-17)
 
-**SOURCE IMPLEMENTED; FOUR EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED; SOURCE/MUTATION
-THEATER DELETED; EXACT CURRENT NATIVE, PERFORMANCE, ARTIFACT, AND EXTERNAL EVIDENCE OPEN.**
+**KEYED WRITER COMPONENT CORRECTED; LINUX LIBRARY/TCP REGRESSIONS PASS;
+WHOLE-APPLICATION, OTHER-PLATFORM AND RELEASE EVIDENCE OPEN.**
 
 **Evidence boundary for R-S11gx–R-S11hd.** Historical inspection receipts established
 parser/syntax, focused source-gate, and document-size results only; they executed none of the
@@ -11957,15 +11957,21 @@ with cleanup-mediated recovery, but source review does not establish that an uni
 artifact exercised it or that it caused the reported display delay.
 
 The current design creates one `WriterAdmission` from the exact codec ceiling at keying. Before
-sealing, both keyed send paths checked-add secretbox `MACBYTES`, reject overflow and oversize, and
+protobuf encoding or sealing, keyed sends add secretbox `MACBYTES` with overflow checking,
+reject oversized frames, and
 nonblockingly reserve one of 512 active-plus-queued frame permits plus exact ciphertext bytes from
 a two-maximum-packet budget. Those owned permits travel in `WriterFrameReservation` through the
 sole sink await. Sink failure drops encoded sink state before releasing the reservation; all fatal
 send, drain, receive, admission, and hard-drop paths close admission before aborting the exact
 writer. No retry, reconnect, alternate writer, queue, timer, task, runtime, listener, dependency,
-privilege transition, or Android persistent-service change is part of this design.
+privilege transition, or Android persistent-service change is part of this design. One private
+`send_payload` path serves ordinary protobuf, receipt-bearing protobuf and existing byte payloads.
+It reserves against the checked computed size before invoking the protobuf encoder, validates
+the encoded length, then seals/enqueues. Encoding errors close admission and abort the exact
+writer. This bounds admission of the serialized copy; caller-owned messages and total process
+memory are separate obligations.
 
-Four executable Rust regressions remain in `libs/hbb_common/src/tcp.rs`:
+Four original writer-admission regressions remain in `libs/hbb_common/src/tcp.rs`:
 
 - `r_s11gx_writer_admission_checks_size_count_and_bytes_before_ownership`
 - `r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort`
@@ -11974,7 +11980,19 @@ Four executable Rust regressions remain in `libs/hbb_common/src/tcp.rs`:
 
 The shared gate retains the direct command
 `cargo test -p hbb_common --lib r_s11gx_ --color never`. This is the relevant executable regression
-entry point; its actual execution remains an evidence obligation and is not inferred from source.
+entry point. The bounded `--hbb-common-fs` VM lane also runs the complete writer-receipt module.
+At `8944cdfa`, the real generated encoder ran before oversize refusal on both protobuf APIs,
+and injected encoding failure left the stream reusable: all three new regressions failed.
+Exact correction `ec94f87b` passed 155 focused Linux library tests in 188 VM seconds, including
+all eleven writer cases. The unchanged tests exercise five ordinary-send and six receipt-send
+refusal states, encoding failure on both APIs, exact writer join, returned permits and no peer
+bytes. An instrumented wrapper delegates to the generated protobuf encoder; it does not measure
+all allocations. The real TCP positive control delivers ordinary and receipt-bearing messages
+in sequence, while the existing cases cover active/queued ownership, sink failure and receipts.
+Source, artifact, all named writer results, baseline, raw serial, controls and joined cleanup
+are retained in `.harness-state/verifier-vm/protobuf-admission-corrected-ec94f87b.json`.
+This is Linux component evidence; no full application, installed principal, CPace handshake,
+other-platform, process-wide memory/latency, sustained socket-backpressure or LPE closure follows.
 
 Remaining STOP-SHIP evidence includes exact-current native execution on every supported target;
 real `FramedStream` socket backpressure, sink-failure, drain, abort, nonce/non-delivery, latency, and

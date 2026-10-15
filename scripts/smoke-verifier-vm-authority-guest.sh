@@ -817,9 +817,39 @@ run_ledger_token_count() {
     local input=$VERIFY_REPO/HARDENING_STATUS.md
     local archive=/mnt/rustdesk-verifier-inputs/ledger-tokenizer-inputs.tar.gz
     local output=$ROOT/ledger-token-count.out
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        /usr/bin/python3 -B -I -S - "$storage_helper" <<'PY'
+import runpy
+import sys
+
+module = runpy.run_path(sys.argv[1])
+limits = module['storage_limits']
+gib = 1024 ** 3
+for profile, memory, scratch, overlay in (
+        ('standard', 2048, 16, 8),
+        ('hbb-common-fs', 6144, 6, 4),
+        ('flutter-credential-dialog', 4096, 7, 6),
+        ('linux-service-build', 8192, 9, 8),
+        ('ledger-token-count', 2048, 4, 1)):
+    if limits(profile, memory) != (scratch * gib, overlay * gib):
+        raise SystemExit('VM storage profile limits differ')
+for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 4096),
+                        ('ledger-token-count', 8192), ('unknown', 2048)):
+    try:
+        limits(profile, memory)
+    except ValueError:
+        pass
+    else:
+        raise SystemExit('VM storage profile accepted an invalid guest/profile')
+if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
+    raise SystemExit('VM storage headroom or overhead differs')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=5 refusals=4 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+PY
     for operation in preflight reserve check watch run; do
         root_status=0
         /usr/bin/python3 -B -I -S "$storage_helper" "$operation" --memory-mib 2048 \
+            --storage-profile ledger-token-count \
             >"$ROOT/storage-root-$operation.out" 2>&1 || root_status=$?
         [ "$root_status" -eq 1 ] \
             && [ "$(stat -c '%s' "$ROOT/storage-root-$operation.out")" -le 4096 ] \
@@ -833,7 +863,7 @@ run_ledger_token_count() {
 import os, signal, sys
 signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
-         "run", "--memory-mib", "2048", "--run", "/tmp",
+         "run", "--memory-mib", "2048", "--storage-profile", "ledger-token-count", "--run", "/tmp",
          "--qmp", "/tmp/qmp.sock", "--qemu", "/usr/bin/qemu-system-x86_64")
 ' "$storage_helper" >"$ROOT/storage-no-wait.out" 2>"$ROOT/storage-no-wait.err" || wait_status=$?
     [ "$wait_status" -eq 1 ] && [ ! -s "$ROOT/storage-no-wait.out" ] \

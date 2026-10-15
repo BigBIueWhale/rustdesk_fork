@@ -21,6 +21,10 @@ OVERHEAD = GIB
 
 
 def storage_limits(profile, memory_mib):
+    if profile == 'ledger-token-count':
+        require(memory_mib == 2048, 'ledger storage profile requires its 2 GiB guest')
+        # Preparation may provision the boot cache; the counting guest builds no artifacts.
+        return 4 * GIB, GIB
     if profile == 'hbb-common-fs':
         require(memory_mib == 6144, 'filesystem storage profile requires its 6 GiB guest')
         return 6 * GIB, 4 * GIB
@@ -358,7 +362,7 @@ def main():
     parser.add_argument('--memory-mib', type=int, required=True)
     parser.add_argument('--storage-profile',
                         choices=('standard', 'hbb-common-fs', 'flutter-credential-dialog',
-                                 'linux-service-build'),
+                                 'linux-service-build', 'ledger-token-count'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

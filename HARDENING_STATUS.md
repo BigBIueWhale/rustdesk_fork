@@ -12,6 +12,10 @@ The reproducible ledger metric is fixed `tiktoken 0.12.0` / `cl100k_base` /
 treating special-token spellings literally. It is a named document metric, not a
 universal model count. Reproduce it with
 `/bin/bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count`.
+Its storage profile admits the unchanged 2 GiB guest, 4 GiB RAM scratch,
+6 GiB host headroom and 1 GiB overhead. QEMU has a 1 GiB hard file ceiling;
+prepared inputs must leave that capacity free. Memory/storage monitoring and
+joined retirement remain mandatory; the profile has no disk-scratch fallback.
 The first admitted count at source `6b331fd1` was **272,407 tokens** / 1,202,445 bytes,
 within the approximate 400,000-token budget. Exact input identity, method, environment,
 controls and raw evidence are in `.harness-state/verifier-vm/ledger-token-count-6b331fd1.json`.

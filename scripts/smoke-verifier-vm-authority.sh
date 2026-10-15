@@ -4849,6 +4849,12 @@ elif [ "$MODE" = host-network-tests ]; then
         'host network test guest cleanup'
     /usr/bin/grep -Eo 'VM_HOST_NETWORK_NATIVE=\{.*\}' "$SERIAL_LOG"
 elif [ "$MODE" = ledger-token-count ]; then
+    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=5 refusals=4 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
+        'VM storage profile limits and guest binding'
+    require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
+        'VM storage root refusal'
+    require_exact_fixed_receipt 'VM_TRANSIENT_WAIT_REFUSAL=pass principal=4000 sigchld=ignored qemu=not-started' \
+        'VM storage child-wait refusal'
     ledger_vm_receipt="LEDGER_TOKEN_COUNT_VM=pass uid=4000 gid=4000 caps=none nnp=yes input_sha256=$ledger_input_sha recipe_sha256=$ledger_recipe_sha source=readonly network=none docker=retired scratch=retired cleanup=joined"
     require_exact_fixed_receipt "$ledger_vm_receipt" 'actual ledger token count execution and finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'ledger token-count guest completion'

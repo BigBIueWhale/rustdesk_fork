@@ -4907,7 +4907,7 @@ PY
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests)|bytes_codec::tests)::.* \.\.\. ok$' "$output"
-            grep -E '^test fs::tests::(receive_blocks_refuse_oversized_input_and_decoded_output|file_block_limit_preserves_real_sender_receiver_roundtrips|file_job_serialization_preserves_the_live_cm_path_field|file_transfer_type_refuses_reserved_and_unknown_wire_values) \.\.\. ok$' "$output"
+            grep -E '^test fs::tests::(receive_blocks_refuse_oversized_input_and_decoded_output|file_block_limit_preserves_real_sender_receiver_roundtrips|file_job_serialization_preserves_the_live_cm_path_field|file_job_id_allocator_never_reuses_or_wraps|file_transfer_type_refuses_reserved_and_unknown_wire_values) \.\.\. ok$' "$output"
             grep -E '^test fs::tests::(send_open_refuses_a_fifo_replaced_after_enumeration|send_resume_refuses_a_fifo_replaced_after_enumeration|send_open_refuses_nonregular_replacements|send_source_open_preserves_regular_files_and_source_links|receive_job_cannot_initialize_a_send_source) \.\.\. ok$' "$output"
             grep -E '^test tests::(redirected_probe_password_is_bounded_and_line_framed|remote_login_admission_requires_current_protocol_or_exact_headless_error|peer_source_swap_.*) \.\.\. ok$|^FILE_PEER_PROBE_ARTIFACT(_START)?=' "$output"
             python3 -I -S "$source_root/scripts/verify-hostname-resolution-probe.py" "$output" "$source_root" \

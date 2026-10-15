@@ -1539,6 +1539,10 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetCommonSync");
   }
 
+  int mainNextFileJobId({dynamic hint}) {
+    throw UnsupportedError('Native file-job allocation is unavailable on web');
+  }
+
   Future<void> mainSetCommon(
       {required String key, required String value, dynamic hint}) {
     throw UnimplementedError("mainSetCommon");

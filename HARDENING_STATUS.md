@@ -2304,19 +2304,41 @@ the full 25-suite/283-case model checkpoint, native Rust/full-peer/application b
 installed/platform/service behavior, sustained resources/presentation, release/cold equality,
 independent reproduction/external review and whole-document/fresh token-count acceptance remain OPEN.
 
-**Desktop window credential diagnostics: source corrected; native log-capture acceptance OPEN.**
+**Desktop window credential diagnostics: source corrected; shared Dart dispatcher A/B accepted;
+native window log-capture acceptance OPEN.**
 The six desktop window receivers no longer log incoming method payloads. The shared
 window manager serializes `password` and optional `connToken` fields for session
 handoff; the main, file-transfer and tunnel receivers previously printed those
 payloads, while remote/camera receivers used method-specific redaction and the
 terminal receiver printed arbitrary payloads. Both raw logging and those conditional
 redaction branches are removed. Restore-session JSON errors report only their type,
-without the decoder's source excerpt. Dispatch, credential arguments and receiver
-authority checks are unchanged. Review and whitespace checks establish this narrow
-source deletion; no new app, native window, release-log capture or LPE result is
-claimed. Target-native valid/malformed handoff log capture across all five session
-types remains OPEN. The terminal parser's retained-input and CPU-work limits are a
-separate OPEN item, parked at the user's request.
+without the decoder's source excerpt. Credential arguments and receiver authority
+checks are unchanged.
+
+The shared `DesktopMultiWindow.setMethodHandler` adapter additionally owns envelope
+extraction and callback failure through one fixed `window_request_failed` error
+reply with a constant message and null details. Its diagnostic reports only the
+exception type. The window-event dispatcher is awaited before replying; its error
+cannot escape as a detached future. This removes Flutter's ordinary exception-text
+reply and verbatim `PlatformException` field propagation from these callback paths.
+At unchanged production source `751d0f44`, the real plugin/framework binary-message
+tests passed three controls and failed all five refusal/error cases, exposing the
+synthetic secrets and an uncaught event error. Exact correction `aea22bc7` passed
+the same eight cases plus three result-parser controls in 106 VM seconds using
+`--flutter-model-tests --window-dispatch`. Valid payload/sender, null/event reply and
+handler-removal behavior remains covered. The isolated profile compiles no Rust
+bridge and runs no unrelated model shard; full inventory is now 26 suites/300 cases.
+`window-dispatch-baseline-751d0f44.json` and
+`window-dispatch-corrected-aea22bc7.json` under `.harness-state/verifier-vm/`
+bind identical tests, exact source, strict results, unchanged inputs/endpoints,
+resource limits and joined VM/RAM retirement.
+
+This is shared Dart/plugin/Flutter component execution with controlled callbacks,
+not actual GTK/Win32/Cocoa application windows, a native peer/IPC transaction,
+release-log capture or an LPE result. Target-native valid/malformed handoff capture
+across all five session types and the current full model checkpoint remain OPEN.
+The terminal parser's retained-input and CPU-work limits remain a separate OPEN
+item, parked at the user's request.
 
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.

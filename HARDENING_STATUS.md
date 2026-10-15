@@ -12408,7 +12408,7 @@ artifacts; cold R-B2/R-B10 equality; independent reproduction; and external revi
 
 ### R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox (2026-08-22)
 
-**PRODUCTION MAILBOX/PCM BUFFER COMPONENTS ACCEPTED; WHOLE-APP, NATIVE PLAYBACK AND RELEASE EVIDENCE OPEN.**
+**PRODUCTION MAILBOX/PCM BUFFER AND LINUX PLAYBACK-FAILURE COMPONENTS ACCEPTED; WHOLE-APP, DEVICE PLAYBACK AND RELEASE EVIDENCE OPEN.**
 The shared outgoing viewer on Android/iOS/Windows/Linux/macOS and accepted controlled-call playback
 use the private `src/client/audio_mailbox.rs` boundary: one immutable first-format identity, one pending format,
 at most eight timestamped frames, and terminal state under a mutex. The sole receiver uses a
@@ -12484,10 +12484,41 @@ which was untouched; exact QEMU/monitor/guest cleanup joined and retired RAM/mar
 The initial sixteen-test pass omitted two fixture names from its serial export;
 the corrected export retains all names. One intervening RAM-admission refusal started
 no VM and used no disk fallback. Neither source-bound artifact has a cross-run byte
-equality claim. Full CPAL/parent/target compilation, native callback cadence,
+equality claim. CPAL parent/target compilation, native callback cadence,
 backend memory/locking, playback, installed/device performance and teardown remain OPEN.
-Linux PulseAudio write errors are still ignored by `AudioHandler::handle_frame` and
-remain a separate error-finality issue; this callback slice does not close that path.
+`AudioHandler::fail_audio` now makes decoder construction/decode, output setup and
+Linux PulseAudio write failure terminal for that owner. It latches failure, releases
+the decoder and native output, and preserves the first-format identity. Further
+frames return before warnings or native work; duplicate or changed formats cannot
+recreate playback. The former ignored write result and retained-output error paths
+are removed. The field-assignment wording check is deleted in favor of actual
+failure and recovery behavior; mailbox, voice authority and worker ownership stay unchanged.
+
+Exact source `fac93f54` passed `--linux-pa-authority-tests --playback` in the
+bounded zero-NIC VM: the complete Linux parent library test artifact uses a private
+PulseAudio 16.1 null sink in networkless UID/GID1000 Docker. Identical tests against
+the exact `c3114e43` handler block fail twice: setup retains its decoder and native
+stream removal leaves its dead output retained. The corrected two tests pass:
+valid Opus playback drains; the exact newly created stream is removed through
+libpulse and the native failure observed; output/decoder retire; replay is refused;
+malformed Opus also retires output; a fresh owner recovers; and native task-ID sets
+return to their baseline. Build took246s, behavioral execution11s, outer VM326s.
+Artifact SHA-256 `62697c3d7f97d4e69bc4ec2f846726d7ac437c3dcdf5da488ca5c760433715ba`
+is unchanged before/between/after both versions. Source/control captures199 match
+before/live/after. Native host endpoint changes are recorded as unattributed and
+preserved; owned harness IP sockets are kernel-denied. QEMU/monitor/Docker join and
+RAM/private-root retirement passed. The accepted playback profile admits20GiB:
+6GiB guest,7GiB aggregate RAM scratch,6GiB headroom,1GiB overhead; its5GiB container
+and6GiB hard file ceiling stayed within bounds. Earlier compile, cgroup-OOM,
+control-command and summary-export failures remain bounded failed receipts, not
+acceptance. Exact identities, outcomes, controls and limits are retained in
+`.harness-state/verifier-vm/audio-playback-native-fac93f54.json`.
+
+This accepts Linux playback-error resource finality and that parent test build.
+Stalled synchronous PulseAudio construction/write/drain and worker shutdown during
+such a stall remain OPEN, along with whole-app/installed/device playback, continuous
+backend health, CPAL callback-error handling and native non-Linux execution.
+No new installed-service or LPE closure follows from these component tests.
 
 `OwnedMediaThread` retains the non-cloneable sender and exact decoder handle; the existing bounded
 completion pool owns final joining after close or hard Drop. Viewer and controlled callers retain

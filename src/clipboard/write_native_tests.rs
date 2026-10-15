@@ -34,6 +34,19 @@ fn queued_write(retire: bool) {
             Err(TrySendError::Disconnected(_)) => panic!("clipboard worker stopped"),
         }
     }
+    // Only the SET worker can own this context here. Observe that it has
+    // passed payload decoding and the early liveness check, and is blocked
+    // behind our native lock. A dequeue observation alone would leave a race
+    // in which retirement happens before that early check.
+    loop {
+        match CLIPBOARD_CTX.try_lock() {
+            Err(std::sync::TryLockError::WouldBlock) => break,
+            Err(std::sync::TryLockError::Poisoned(_)) => panic!("clipboard context poisoned"),
+            Ok(context) => drop(context),
+        }
+        assert!(Instant::now() < deadline, "clipboard worker did not reach the native lock");
+        std::thread::yield_now();
+    }
     if retire {
         owner.close();
     }

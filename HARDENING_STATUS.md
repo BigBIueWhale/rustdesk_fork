@@ -2238,82 +2238,66 @@ and installed/platform acceptance remain OPEN. Command/task ownership is covered
 Credential provisioning and Android CM work
 remain parked under the user's pivot.
 
-**Dialog close authority — LINUX FLUTTER WIDGET PASS; BROADER NATIVE/INSTALLED ACCEPTANCE OPEN.**
-The overlay receiver gives each entry a `DialogClose` bound to its exact current object.
-Replacement or dismissal revokes it before Flutter unmounts the old widget. Loading, password,
-message, image-wait and screenshot actions check that authority; retiring actions require a
-successful close before dispatch. The password receiver also retains its session/prompt-round
-check. Message helper links require current ownership. Automatic message submission is absent;
-the supported reconnect countdown only renders time. Rendering uses the manager's translator.
-Message publication retains its explicit replacement of prior dialog state.
+**Dialog close authority — LINUX FLUTTER WIDGET PASS; DEVICE/FFI/INSTALLED ACCEPTANCE OPEN.**
+The overlay receiver binds each `DialogClose` to one exact entry. Replacement or dismissal
+revokes it before unmount; loading, password, message, image-wait and screenshot actions
+must retire their entry before dispatch. Screenshot choices replace only screenshot state,
+and generic messages invoke only an explicitly supplied action. Password submission retains
+its session/prompt-round check. Reconnect countdowns render time without submitting actions.
 
-Screenshot publication replaces only the prior screenshot entry. Save/Copy/Cancel and Escape
-retire that entry once before dispatch and cannot dismiss unrelated entries. Generic message
-submission invokes only an explicit supplied action; type strings cannot infer connection
-closure. General connection-error/no-display and explicit close-confirmation callbacks capture
-their FFI/session through `FFI::viewCloseCallback`. The desktop receiver requires the live matching UUID and
-exact FFI registration/window role (`remoteScreen`, camera, `ft_`, `pf_`, `terminal_`), or the
-exact mobile/web global owner outside the terminal view. Image-wait cancellation uses the same
-receiver. Credential cancel/accepted-loading and reconnect-loading callbacks now capture that
-same action before publication. Remaining direct-close callers and exact retained desktop
-tab/window binding remain OPEN.
+`FFI::viewCloseCallback` captures the view action before publication. Desktop actions retain
+live UUID, exact Get registration and window-role checks. Other mobile/web views retain the
+global-owner check. Credential cancel/accepted-loading, reconnect loading, errors, no-display,
+image-wait and explicit close confirmation use the captured action.
 
-**Mobile terminal route ownership — SOURCE CORRECTED; WIDGET/DEVICE EXECUTION PENDING.**
-The page captures its session UUID and binds an exact `ModalRoute` in `didChangeDependencies`.
-One `MobileConnectionView` owns the current route record; replacement and exact unbinding revoke
-old actions before widget disposal, and foreign/unbound records confer no authority. Loading,
-close confirmation, credential/reconnect and generic error callbacks capture that record.
-A terminal uses its own per-peer FFI instead of the global mobile FFI. Only its current route
-may close, and the pop predicate drains that route's local history without popping another page.
-Native connection closure does not revoke the still-visible route's own close action. System UI
-restoration remains independent of navigation; main-page state updates only for the root
-Navigator. Six new real-Navigator regressions and both held SystemChrome schedules are prepared.
-The existing focused dialog command now requires seven suites/60 cases plus three parser controls;
-none has run on this candidate. Actual FFI/Get/page admission, early-start failure, same-peer
-terminal-model restoration, native terminal I/O and physical Android/iOS execution remain OPEN.
-The first candidate stopped at pinned formatting before compilation; its emitted diff was
-applied, with the failed transaction retained as `mobile-terminal-format-failed-2be335d1.json`.
+Mobile terminals use their own per-peer FFI and a page-captured session UUID. The FFI-owned
+`MobileConnectionView` binds the exact current `ModalRoute` in `didChangeDependencies`.
+Replacement and exact unbinding revoke predecessor records before unmount; foreign, unbound,
+wrong-session and hidden routes cannot close another view. Only the owned route and its
+local history pop; its pop future completes and other pages survive. Native connection
+retirement does not revoke the still-visible view's own close action. SystemChrome is not
+awaited, and its late completion can only emit a type-only error. Main-page state updates
+only for the actual global Navigator.
 
-Mobile connection close retires chat/main-page state synchronously, then passes the selected
-`NavigatorState` to `closeMobileConnectionRoute`. Route dismissal does not await SystemChrome;
-a late reply can only report a type-only error. The two real-Navigator widget schedules hold
-that reply through publication of a replacement route, then deliver success or failure.
+Exact source `8243b218` passed **60 cases in seven suites plus three parser controls in
+299 VM seconds**, including all prior 54 cases and six added real-Navigator regressions.
+The new cases exercise one-shot close/future completion, replacement before old unmount,
+hidden-route refusal/recovery, same-route session replacement, foreign/unbound records and
+local-history drain. Both held SystemChrome success/failure schedules run the legacy and
+exact-owned paths. Existing dialog, password, screenshot, unrelated desktop-tab and file-command
+cases remain required; fail-fast never relaxes successful completion or exact inventory.
+Pinned Flutter 3.24.5, Rust 1.75, LLVM 15.0.6 and FRB 1.80.1 generate the exact bridge in private
+guest scratch. The selected Dart imports and generated bridge compile; this is not native
+Rust application, real FFI/Get/page admission, terminal peer or Android/iOS execution.
 
-Exact source `bca72101` passed all 54 tests in seven suites plus three result-parser controls in
-292 VM seconds. Pinned Flutter 3.24.5, Rust 1.75, LLVM 15.0.6 and FRB 1.80.1 generated the
-current bridge in a private guest copy. The selected production Dart imports compile, including
-typed file-dialog builders and explicit `close.call` callback references. Widget cases cover
-current one-shot actions, replacement/dismissal before old-widget unmount, retained button and
-keyboard callbacks, unrelated-dialog survival, a real desktop controller's unrelated selected
-tab, image-wait/screenshot choices, and mobile route lifetime. The historical 54-case set is
-retained within the current 60-case inventory; `--fail-fast` only stops a failed dialog run sooner.
+All **101** before/during/after source/index/audit/specification/ledger/instruction/stash hashes
+match. Source/input mounts are read-only, nongenerated library comparisons pass, all owned
+processes join, and exact private/RAM roots retire. Controller and independent protocol/endpoint
+inventories have no delta; the host process tree is kernel-denied IP sockets and no foreign
+process inventory occurs. Retained `.harness-state/verifier-vm/mobile-terminal-route-accepted-8243b218.json`
+binds source/tree/pins, freezes, full endpoint records, limits, storage and raw serial
+68,251 bytes, SHA-256 `1e5254b2de82cd1a888ce1fc32a4882eabff255ae8b27dbb6ce9565e422e2996`.
+Successful individual test JSON and generated executables were ephemeral; strict summaries
+remain. These are assistant-observed results without independent artifact attestation or a
+new historical A/B. The earlier 54-case `bca72101` receipt remains; the current first attempt
+failed pinned formatting before compilation and is retained in
+`mobile-terminal-format-failed-2be335d1.json`. An earlier entry refusal caught launcher mode
+0775 after Git recreated it; only that exact owned descriptor's permissions were restored.
 
-All 97 before/during/after source/index/audit/spec/ledger/instruction hashes matched. The source
-and input mounts were read-only, original non-generated Flutter libraries matched after the
-private bridge generation, exact processes joined and the run/RAM workspace retired. Controller
-listener snapshots added no endpoint and observed one removed UDP endpoint. A separate later
-post-terminal observation saw two additions/one removal; all deltas remain unattributed and
-untouched. The inherited kernel restriction denied owned IP-socket creation.
-`.harness-state/verifier-vm/credential-dialog-accepted-bca72101.json` binds the source/tree,
-pinned execution, complete endpoint and limit/storage observations and raw serial SHA-256
-`975790c83d34bc4da3d66c35ae57b71182b822e1cf3ca582aad31831ace93603`.
-Successful individual test JSON and generated executable artifacts were ephemeral; the retained
-serial contains the strict result summary. This is corrected-source execution, not a new A/B.
-Earlier formatter and compiler failures remain in `credential-format-failed-e333f4af.json` and
-`credential-compile-failed-db5b6ae3.json` in the same evidence directory.
+The focused profile keeps its 4 GiB guest/3 GiB container, 7 GiB scratch, 6 GiB overlay ceiling,
+6 GiB host headroom and 1 GiB overhead: 18 GiB admission with at most 1 GiB prepared allocation.
+VM/test budgets remain 300/120 seconds. Current peaks are 6,379,520,000 scratch bytes and
+6,219,698,176 overlay bytes; minimum available host RAM is 17,144,274,944 bytes. QEMU's waited
+child accounts for 4,096 block-write bytes and durable run allocation peaks at 3,301,376 bytes.
+Tmpfs is swappable; this is not a whole-host or zero-I/O claim. Boot assets were authenticated
+cache reuse; cold preparation under this cap remains OPEN.
 
-The dialog profile uses a 4 GiB guest, 7 GiB scratch, 6 GiB overlay ceiling, 6 GiB host headroom
-and 1 GiB overhead (18 GiB admission). Prepared input allocation must stay at or below 1 GiB
-before launch, reserving the full overlay ceiling. Named peaks were 6,375,006,208 scratch bytes
-and 6,215,176,192 overlay bytes; minimum available host RAM was 9,380,626,432 bytes. This run
-used authenticated cached boot assets; cold preparation under this cap remains OPEN.
-
-Real file-picker/PNG/native clipboard actions, admitted asynchronous-result/request/session
-replacement, actual FFI registration/session/route/tab/window races and remaining close-caller
-migration remain OPEN. The declared whole model checkpoint (25 suites/283 cases), terminal
-pool/decoder tests, native Rust application/FFI and full-peer compilation/execution, installed
-and other-platform/device behavior, persistent-service lifecycle, presentation/resource soak,
-release/cold equality, independent reproduction and external review remain OPEN.
+Early-start failure publication, same-peer terminal-model restoration, actual FFI/Get/page and
+native I/O, remaining mobile direct-close callers and retained desktop tab/window ownership,
+file-picker/PNG/native clipboard and admitted asynchronous-result/request replacement,
+the full 25-suite/283-case model checkpoint, native Rust/full-peer/application builds, devices/
+installed/platform/service behavior, sustained resources/presentation, release/cold equality,
+independent reproduction/external review and whole-document/fresh token-count acceptance remain OPEN.
 
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.
@@ -6234,7 +6218,7 @@ disposed models reject events. Empty decoded fragments consume no pre-layout buf
 entries. Six production-decoder regressions cover every two-packet split of mixed
 Hebrew/accented/CJK/emoji/ANSI output, bytewise continuation, malformed bytes, EOF,
 independent terminals and replacement isolation. They are included in the existing
-model checkpoint (25 suites/277 cases). The focused command
+model checkpoint (25 suites/283 cases). The focused command
 `scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --terminal-output`
 runs the same six tests with exact suite/name/completion checks. It inherits the
 existing 4-GiB guest, 2-GiB networkless container, 90-second test and 300-second VM
@@ -6275,8 +6259,10 @@ retirement before later publication and rejection of a same-owner count reset.
 They are prepared, uncompiled and unexecuted in the existing model checkpoint.
 Real FFI/Get adapter, page disposal/reentry, close completion, terminal I/O,
 platform/resource/installed and release acceptance remain OPEN. Mobile terminal
-view closing now has a source-owned route record and captured session/action as detailed above;
-its six new Navigator regressions and loading/credential migration remain execution-pending.
+view closing now has a source-owned route record and captured session/action as detailed above.
+Its six new Navigator regressions pass at `8243b218`; selected production callback imports
+compile. Actual FFI/Get/page admission, early-start failure and same-peer terminal-model
+restoration remain OPEN, alongside native I/O and broader platform acceptance.
 
 **R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the

@@ -7952,8 +7952,6 @@ run_flutter_model_tests() {
                     format_paths=(
                         lib/models/peer_model.dart
                         test/peer_model_test.dart
-                        lib/models/global_event_dispatcher.dart
-                        test/global_event_dispatcher_test.dart
                         lib/common/widgets/connect_password_dialog.dart
                         test/connect_password_dialog_lifecycle_test.dart
                         test/permanent_password_dialog_lifecycle_test.dart

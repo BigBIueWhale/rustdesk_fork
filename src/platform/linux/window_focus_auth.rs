@@ -1,70 +1,62 @@
-use super::{FocusError, NativeContext};
-use std::{ffi::{c_char, c_int}, io, time::{SystemTime, UNIX_EPOCH}};
+use super::FocusError;
+use std::{ffi::{c_char, c_int}, fs::OpenOptions, io::{self, Read},
+          os::unix::fs::OpenOptionsExt, time::{SystemTime, UNIX_EPOCH}};
 
 const COOKIE: &[u8] = b"MIT-MAGIC-COOKIE-1";
 const XDM: &[u8] = b"XDM-AUTHORIZATION-1";
+const MAX_AUTH_BYTES: u64 = 1024 * 1024;
 
-// These are the public Xau and XCB ABIs, checked against the native headers.
-#[repr(C)]
-struct Xauth {
-    family: u16, address_length: u16, address: *mut c_char,
-    number_length: u16, number: *mut c_char,
-    name_length: u16, name: *mut c_char,
-    data_length: u16, data: *mut c_char,
-}
+// Public XCB ABI, checked against the native headers.
 #[repr(C)]
 pub(super) struct AuthInfo {
     namelen: c_int, name: *mut c_char,
     datalen: c_int, data: *mut c_char,
 }
 
-/// Retains the native-selected record until XCB has consumed the setup data.
+/// Retains the selected protocol and bytes until synchronous XCB setup drains.
 pub(super) struct Authentication {
-    record: Option<NativeContext<Xauth>>,
-    xdm: Option<[u8; 24]>,
+    name: Option<&'static [u8]>,
+    data: AuthBytes,
+}
+
+struct AuthBytes(Vec<u8>);
+impl Drop for AuthBytes {
+    fn drop(&mut self) {
+        for byte in &mut self.0 {
+            unsafe { std::ptr::write_volatile(byte, 0); }
+        }
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 impl Authentication {
     pub(super) fn local(display: c_int) -> Result<Self, FocusError> {
-        let mut hostname = [0 as c_char; 256];
-        if unsafe { hbb_common::libc::gethostname(hostname.as_mut_ptr(), hostname.len()) } != 0 {
+        let mut hostname = [0u8; 256];
+        if unsafe { hbb_common::libc::gethostname(hostname.as_mut_ptr().cast(), hostname.len()) } != 0 {
             return Err(FocusError::Transport(std::io::Error::last_os_error()));
         }
         let length = hostname.iter().position(|byte| *byte == 0)
             .ok_or(FocusError::InvalidAuthentication)?;
         let number = display.to_string();
-        // Match libxcb's native protocol preference, including XDM, rather than
-        // replacing its auth selection with a cookie-only implementation.
-        let mut names = [XDM.as_ptr() as *mut c_char, COOKIE.as_ptr() as *mut c_char];
-        let lengths = [XDM.len() as c_int, COOKIE.len() as c_int];
-        let record = unsafe { NativeContext::from_raw(XauGetBestAuthByAddr(
-            256, length as u16, hostname.as_ptr(), number.len() as u16,
-            number.as_ptr().cast(), 2, names.as_mut_ptr(), lengths.as_ptr()),
-            |record| XauDisposeAuth(record)) };
-        let mut owner = Self { record, xdm: None };
-        let Some(record) = owner.record.as_ref() else {
-            // As in the native connector, only absence of a matching record
-            // selects empty auth; a selected but invalid record is an error.
-            return Ok(owner);
-        };
-        let record = unsafe { &*record.as_ptr() };
-        if record.name.is_null() || record.data.is_null() || record.data_length == 0 {
+        let hostname = &hostname[..length];
+        let mut owner = Self::read(hostname, number.as_bytes())?;
+        let Some(name) = owner.name else { return Ok(owner); };
+        if owner.data.0.is_empty() {
             return Err(FocusError::InvalidAuthentication);
         }
-        let name = unsafe { std::slice::from_raw_parts(record.name.cast::<u8>(), record.name_length as usize) };
         if name == COOKIE {
             return Ok(owner);
         }
-        if name != XDM || record.data_length != 16 {
+        if name != XDM || owner.data.0.len() != 16 {
             return Err(FocusError::InvalidAuthentication);
         }
-        let data = unsafe { std::slice::from_raw_parts(record.data.cast::<u8>(), 16) };
+        let data = &owner.data.0;
         // The server compares the six Unix client bytes for replay, not a socket
         // address. A private copy of libxcb's counter would collide with Xlib's
         // independent use of that library in this same process.
-        let mut plain = [0u8; 24];
-        plain[..8].copy_from_slice(&data[..8]);
-        let mut remaining = &mut plain[8..14];
+        let mut plain = AuthBytes(vec![0; 24]);
+        plain.0[..8].copy_from_slice(&data[..8]);
+        let mut remaining = &mut plain.0[8..14];
         while !remaining.is_empty() {
             let count = unsafe { hbb_common::libc::getrandom(remaining.as_mut_ptr().cast(),
                 remaining.len(), hbb_common::libc::GRND_NONBLOCK) };
@@ -82,30 +74,100 @@ impl Authentication {
         let seconds = u32::try_from(SystemTime::now().duration_since(UNIX_EPOCH)
             .map_err(|_| FocusError::InvalidAuthentication)?.as_secs())
             .map_err(|_| FocusError::InvalidAuthentication)?;
-        plain[14..18].copy_from_slice(&seconds.to_be_bytes());
-        let mut wrapped = [0u8; 24];
-        unsafe { XdmcpWrap(plain.as_ptr(), data[8..].as_ptr(), wrapped.as_mut_ptr(), 24); }
-        owner.xdm = Some(wrapped);
+        plain.0[14..18].copy_from_slice(&seconds.to_be_bytes());
+        let mut wrapped = AuthBytes(vec![0; 24]);
+        unsafe { XdmcpWrap(plain.0.as_ptr(), data[8..].as_ptr(), wrapped.0.as_mut_ptr(), 24); }
+        owner.data = wrapped;
         Ok(owner)
     }
 
-    pub(super) fn info(&mut self) -> Option<AuthInfo> {
-        let record = unsafe { &*self.record.as_ref()?.as_ptr() };
-        let (data, length) = match self.xdm.as_mut() {
-            Some(data) => (data.as_mut_ptr().cast(), data.len() as c_int),
-            None => (record.data, c_int::from(record.data_length)),
+    fn read(hostname: &[u8], number: &[u8]) -> Result<Self, FocusError> {
+        let empty = Self { name: None, data: AuthBytes(Vec::new()) };
+        // Do not acquire file authority from a set-ID effective principal.
+        if unsafe { hbb_common::libc::getuid() != hbb_common::libc::geteuid()
+            || hbb_common::libc::getgid() != hbb_common::libc::getegid() }
+        {
+            return Err(FocusError::InvalidAuthentication);
+        }
+        let path = match std::env::var_os("XAUTHORITY") {
+            Some(path) => path,
+            None => match std::env::var_os("HOME") {
+                Some(mut home) => { home.push("/.Xauthority"); home }
+                None => return Ok(empty),
+            },
         };
-        Some(AuthInfo { namelen: c_int::from(record.name_length), name: record.name,
-                        datalen: length, data })
+        // A FIFO must not wait for a writer, and a device must not become the
+        // controlling terminal. Validate the exact opened object before reading.
+        let mut file = match OpenOptions::new().read(true)
+            .custom_flags(hbb_common::libc::O_NONBLOCK | hbb_common::libc::O_NOCTTY).open(path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(empty),
+            Err(error) => return Err(FocusError::Transport(error)),
+        };
+        let metadata = file.metadata().map_err(FocusError::Transport)?;
+        if !metadata.is_file() || metadata.len() > MAX_AUTH_BYTES {
+            return Err(FocusError::InvalidAuthentication);
+        }
+        // Fixed capacity avoids freeing un-wiped credential bytes on growth.
+        let mut bytes = AuthBytes(vec![0; (MAX_AUTH_BYTES + 1) as usize]);
+        let mut length = 0;
+        while length < bytes.0.len() {
+            match file.read(&mut bytes.0[length..]) {
+                Ok(0) => break,
+                Ok(count) => length += count,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(FocusError::Transport(error)),
+            }
+        }
+        if length as u64 > MAX_AUTH_BYTES {
+            return Err(FocusError::InvalidAuthentication);
+        }
+        let mut remaining = &bytes.0[..length];
+        let mut best: Option<(u8, &'static [u8], &[u8])> = None;
+        while !remaining.is_empty() {
+            let family = word(&mut remaining)?;
+            let address = field(&mut remaining)?;
+            let display = field(&mut remaining)?;
+            let name = field(&mut remaining)?;
+            let data = field(&mut remaining)?;
+            if !(family == 65535 || (family == 256 && address == hostname))
+                || !(display.is_empty() || display == number)
+            {
+                continue;
+            }
+            // Xau's first matching record at the best protocol rank wins.
+            let (rank, name) = if name == XDM { (0, XDM) }
+                else if name == COOKIE { (1, COOKIE) } else { continue; };
+            if best.as_ref().map_or(true, |(prior, _, _)| rank < *prior) {
+                best = Some((rank, name, data));
+            }
+        }
+        match best {
+            Some((_, name, data)) => Ok(Self { name: Some(name), data: AuthBytes(data.to_vec()) }),
+            None => Ok(empty),
+        }
+    }
+
+    pub(super) fn info(&mut self) -> Option<AuthInfo> {
+        let name = self.name?;
+        Some(AuthInfo { namelen: name.len() as c_int, name: name.as_ptr() as *mut c_char,
+                        datalen: self.data.0.len() as c_int, data: self.data.0.as_mut_ptr().cast() })
     }
 }
 
-#[link(name = "Xau")]
-extern "C" {
-    fn XauGetBestAuthByAddr(family: u16, address_length: u16, address: *const c_char,
-                           number_length: u16, number: *const c_char, types_length: c_int,
-                           names: *mut *mut c_char, lengths: *const c_int) -> *mut Xauth;
-    fn XauDisposeAuth(auth: *mut Xauth);
+fn word(input: &mut &[u8]) -> Result<u16, FocusError> {
+    let bytes = input.get(..2).ok_or(FocusError::InvalidAuthentication)?;
+    let value = u16::from_be_bytes([bytes[0], bytes[1]]);
+    *input = &input[2..];
+    Ok(value)
+}
+
+fn field<'a>(input: &mut &'a [u8]) -> Result<&'a [u8], FocusError> {
+    let length = usize::from(word(input)?);
+    let value = input.get(..length).ok_or(FocusError::InvalidAuthentication)?;
+    *input = &input[length..];
+    Ok(value)
 }
 #[link(name = "Xdmcp")]
 extern "C" {

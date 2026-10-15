@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run production X11 owner and capture checks against isolated Xvfb."""
 import hashlib
+import errno
 import importlib.util
 import json
 import os
@@ -1098,6 +1099,169 @@ def local_route(binary, variant, environment, listener, component):
             stream.close()
 
 
+def focus_auth_file_baseline(root, environment):
+    source = root / "scripts/fixtures/x11-focus-auth-before-bounded-file.rs"
+    source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    require(source_sha == "cbd57c228f9faf40634e6b5e9e6f3e8a1206cf09f3d48d5846128f0ccdeaef9a",
+            "exact pre-correction focus authentication source differs")
+    directory = Path("/build/focus-auth-before")
+    directory.mkdir(mode=0o700)
+    native = None
+    writer = None
+    try:
+        for name in ("window_focus.rs", "window_focus_deadline.rs"):
+            shutil.copyfile(root / "src/platform/linux" / name, directory / name)
+        shutil.copyfile(source, directory / "window_focus_auth.rs")
+        fixture_source = (root / "scripts/test-x11-focus-lifecycle.rs").read_text()
+        original = "/work/src/platform/linux/window_focus.rs"
+        require(fixture_source.count(original) == 1, "focus baseline fixture path differs")
+        fixture = directory / "fixture.rs"
+        fixture.write_text(fixture_source.replace(original, str(directory / "window_focus.rs")))
+        binary = directory / "focus-lifecycle"
+        build_focus(root, environment, binary, fixture)
+        binary_sha = hashlib.sha256(binary.read_bytes()).hexdigest()
+        print(f"X11_FOCUS_AUTH_FILE_BUILD variant=before source_sha256={source_sha} "
+              f"binary_sha256={binary_sha} scope=complete-focus-module", flush=True)
+        fifo = directory / "authority"
+        os.mkfifo(fifo, 0o600)
+        native = subprocess.Popen([str(binary), "auth-file-old"],
+                                  env=dict(environment, DISPLAY=":97", XAUTHORITY=str(fifo)),
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        until = time.monotonic() + 5
+        while writer is None:
+            require(native.poll() is None and time.monotonic() < until,
+                    "old native authentication did not enter FIFO open")
+            try:
+                writer = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+            except OSError as error:
+                if error.errno != errno.ENXIO:
+                    raise
+                time.sleep(0.005)
+        # Successful writer admission proves that this exact native reader has
+        # entered the FIFO. Hold it empty, then provide EOF through this owner.
+        time.sleep(0.3)
+        require(native.poll() is None, "old authentication unexpectedly escaped the empty FIFO")
+        os.close(writer)
+        writer = None
+        output, errors = native.communicate(timeout=5)
+        require(native.returncode == 0 and not errors and len(output) <= 4096
+                and re.fullmatch(rb"X11_FOCUS_AUTH_FILE_ENTERING source=complete-module\n"
+                                 rb"X11_FOCUS_AUTH_FILE_OLD elapsed_ms=[0-9]+ "
+                                 rb"fifo=writer-release-required descriptors=retired workers=absent\n", output),
+                f"old authentication FIFO observation differs: {output!r} {errors!r}")
+        require(hashlib.sha256(binary.read_bytes()).hexdigest() == binary_sha,
+                "old executed focus artifact changed")
+        print(output.decode(), end="", flush=True)
+    finally:
+        if writer is not None:
+            os.close(writer)
+        if native is not None:
+            if native.poll() is None:
+                native.kill()
+            native.wait(timeout=5)
+            native.stdout.close()
+            native.stderr.close()
+        shutil.rmtree(directory)
+    print("X11_FOCUS_AUTH_FILE_BASELINE=pass old=fifo-wait reader=actual hold_ms=300 "
+          "release=owned-writer-eof child=joined scope=focus-component", flush=True)
+
+
+def focus_auth_file_cases(binary, environment, directory, valid_record, protocol):
+    hostname = socket.gethostname().encode("ascii")
+
+    def record(family, address, number, name, data):
+        return struct.pack(">H", family) + b"".join(
+            struct.pack(">H", len(field)) + field for field in (address, number, name, data))
+
+    work = directory / "files"
+    work.mkdir(mode=0o700)
+    endpoint = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        os.mkfifo(work / "fifo", 0o600)
+        (work / "directory").mkdir(mode=0o700)
+        endpoint.bind(str(work / "socket"))
+        faults = {"oversized": b"\0" * (1024 * 1024 + 1), "truncated-family": b"\1",
+                  "truncated-field": b"\1\0\xff\xff", "trailing": valid_record + b"\0",
+                  "empty-credential": valid_record[:-18] + b"\0\0", "unreadable": valid_record}
+        for name, data in faults.items():
+            (work / name).write_bytes(data)
+        (work / "unreadable").chmod(0)
+        cases = [(name, work / name) for name in ("fifo", "directory", "socket", *faults)]
+        cases.append(("device", Path("/dev/zero")))
+        for name, path in cases:
+            result = subprocess.run([str(binary), "auth-file-refuse", str(directory / "valid")],
+                                    env=dict(environment, DISPLAY=":92", XAUTHORITY=str(path)),
+                                    capture_output=True, timeout=5)
+            require(result.returncode == 0 and not result.stderr and re.fullmatch(
+                rb"X11_FOCUS_AUTH_FILE_REFUSED elapsed_ms=[0-9]+ recovery=same-owner "
+                rb"geometry=server-real descriptors=retired workers=joined\n", result.stdout),
+                f"focus authentication file refusal/recovery differs: {protocol} {name} {result}")
+            print(result.stdout.decode().strip() + f" protocol={protocol} case={name}", flush=True)
+
+        cookie = bytes(range(16))
+        xdm = bytearray(range(16))
+        xdm[8] = 0
+        selectors = {
+            "wild-family": record(65535, b"other", b"92", protocol.encode(), valid_record[-16:]),
+            "wild-number": record(256, hostname, b"", protocol.encode(), valid_record[-16:]),
+            "unrelated": (record(0, hostname, b"92", protocol.encode(), b"wrong")
+                          + record(256, b"other", b"92", protocol.encode(), b"wrong")
+                          + record(256, hostname, b"93", protocol.encode(), b"wrong")
+                          + record(256, hostname, b"92", b"unsupported", b"wrong") + valid_record),
+            "first-record": valid_record[:-16] + bytes(reversed(valid_record[-16:])) + valid_record,
+            "preference": (record(256, hostname, b"92", b"MIT-MAGIC-COOKIE-1", cookie)
+                           + record(256, hostname, b"92", b"XDM-AUTHORIZATION-1", bytes(xdm))),
+            "non-utf8-\udcff": valid_record,
+            "home": valid_record,
+            "symlink": None,
+            "empty-override": valid_record,
+        }
+        maximum = bytearray(valid_record)
+        while 1024 * 1024 - len(maximum) > 65545:
+            maximum.extend(record(0, b"", b"", b"", bytes(65535)))
+        maximum.extend(record(0, b"", b"", b"", bytes(1024 * 1024 - len(maximum) - 10)))
+        require(len(maximum) == 1024 * 1024, "exact authority-file limit fixture differs")
+        selectors["maximum"] = maximum
+        for name, data in selectors.items():
+            path = work / name
+            env = dict(environment, DISPLAY=":92", XAUTHORITY=str(path))
+            if name == "symlink":
+                path.symlink_to(directory / "valid")
+            elif name in ("home", "empty-override"):
+                (work / ".Xauthority").write_bytes(data)
+                env["HOME"] = str(work)
+                if name == "home":
+                    env.pop("XAUTHORITY")
+                else:
+                    env["XAUTHORITY"] = ""
+            else:
+                path.write_bytes(data)
+            admitted = name not in ("first-record", "empty-override") and (
+                name != "preference" or protocol == "XDM-AUTHORIZATION-1")
+            credential = "valid" if admitted else "wrong"
+            result = subprocess.run([str(binary), f"auth-{credential}"],
+                                    env=env,
+                                    capture_output=True, text=True, timeout=5)
+            receipt = (f"X11_FOCUS_AUTH_NATIVE credential={credential} "
+                       f"result={'admitted' if admitted else 'refused'} "
+                       f"geometry={'server-real' if admitted else 'unavailable'} "
+                       "descriptors=retired workers=joined")
+            require(result.returncode == 0 and result.stdout.splitlines() == [receipt]
+                    and bool(result.stderr) == (not admitted),
+                    f"focus authentication selection differs: {protocol} {name} {result}")
+            print(f"X11_FOCUS_AUTH_SELECTION protocol={protocol} case={ascii(name)} "
+                  f"result={'admitted' if admitted else 'refused'} "
+                  f"geometry={'server-real' if admitted else 'unavailable'}", flush=True)
+    finally:
+        endpoint.close()
+        for path in work.iterdir():
+            if path.is_dir():
+                path.rmdir()
+            else:
+                path.unlink()
+        work.rmdir()
+
+
 def authenticated_focus(binary, environment):
     directory = Path("/tmp/x11-focus-auth")
     directory.mkdir(mode=0o700)
@@ -1137,6 +1301,8 @@ def authenticated_focus(binary, environment):
                                 and len(result.stdout) + len(result.stderr) <= 4096 and server.poll() is None,
                                 f"native focus authentication differs: {protocol} {result}")
                         print(receipt + f" protocol={protocol}", flush=True)
+                    focus_auth_file_cases(binary, environment, directory,
+                                          (directory / "valid").read_bytes(), protocol)
                 except BaseException:
                     log.flush()
                     print((directory / "server.log").read_text()[:4096], flush=True)
@@ -1162,6 +1328,9 @@ def authenticated_focus(binary, environment):
     print("X11_FOCUS_AUTH_NATIVE=pass protocols=MIT-MAGIC-COOKIE-1,XDM-AUTHORIZATION-1 cases=8 "
           "valid=4 wrong=2 missing=2 geometry=server-real descriptors=retired workers=joined "
           "server=owned-and-joined scope=focus-component", flush=True)
+    print("X11_FOCUS_AUTH_FILE_NATIVE=pass protocols=2 refusals=20 recovery=same-owner "
+          "selection_cases=20 max_bytes=1048576 geometry=server-real descriptors=retired "
+          "workers=joined scope=focus-component", flush=True)
 
 
 def focus_lifecycle(root, environment):
@@ -1354,6 +1523,7 @@ def focus_lifecycle(root, environment):
                     case(binary, variant, "fragmented")
                     case(binary, variant, "backpressure")
                 else:
+                    focus_auth_file_baseline(root, environment)
                     for _ in range(4):
                         for scenario in ("stalled", "dead", "fragmented", "backpressure"):
                             case(binary, variant, scenario)

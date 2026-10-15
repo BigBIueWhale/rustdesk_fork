@@ -1513,6 +1513,7 @@ android_frame_input_inventory() {
             "$SCRIPT_DIR/test-x11-window-focus.rs" "$SCRIPT_DIR/test-x11-window-focus.c"
             "$SCRIPT_DIR/test-x11-focus-lifecycle.rs"
             "$SCRIPT_DIR/fixtures/x11-window-focus-before-deadline.rs"
+            "$SCRIPT_DIR/fixtures/x11-focus-auth-before-bounded-file.rs"
             "$REPO_ROOT/src/platform/linux.rs" "$REPO_ROOT/src/platform/linux/native_context.rs"
             "$REPO_ROOT/src/platform/linux/x11_context.rs"
             "$REPO_ROOT/src/platform/linux/x11_cursor.rs" "$REPO_ROOT/src/platform/mod.rs"
@@ -4017,6 +4018,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/test-x11-window-focus.c=$SCRIPT_DIR/test-x11-window-focus.c"
             "repo/scripts/test-x11-focus-lifecycle.rs=$SCRIPT_DIR/test-x11-focus-lifecycle.rs"
             "repo/scripts/fixtures/x11-window-focus-before-deadline.rs=$SCRIPT_DIR/fixtures/x11-window-focus-before-deadline.rs"
+            "repo/scripts/fixtures/x11-focus-auth-before-bounded-file.rs=$SCRIPT_DIR/fixtures/x11-focus-auth-before-bounded-file.rs"
             "repo/src/platform/linux.rs=$REPO_ROOT/src/platform/linux.rs"
             "repo/src/platform/linux/native_context.rs=$REPO_ROOT/src/platform/linux/native_context.rs"
             "repo/src/platform/linux/x11_context.rs=$REPO_ROOT/src/platform/linux/x11_context.rs"
@@ -5104,6 +5106,12 @@ elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
         'X11_FOCUS_AUTH_NATIVE=pass protocols=MIT-MAGIC-COOKIE-1,XDM-AUTHORIZATION-1 cases=8 valid=4 wrong=2 missing=2 geometry=server-real descriptors=retired workers=joined server=owned-and-joined scope=focus-component' \
         'production focus preserves valid native authentication and refuses wrong/missing credentials'
+    require_exact_fixed_receipt \
+        'X11_FOCUS_AUTH_FILE_BASELINE=pass old=fifo-wait reader=actual hold_ms=300 release=owned-writer-eof child=joined scope=focus-component' \
+        'historical complete focus module waits for the actual authentication FIFO reader'
+    require_exact_fixed_receipt \
+        'X11_FOCUS_AUTH_FILE_NATIVE=pass protocols=2 refusals=20 recovery=same-owner selection_cases=20 max_bytes=1048576 geometry=server-real descriptors=retired workers=joined scope=focus-component' \
+        'production focus rejects invalid authentication files and preserves protocol selection with same-owner recovery'
     require_exact_fixed_receipt \
         'X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 setup_faults=7 selectors_refused=18 canonical=normalized screen=selected constructors_refused=16 thread_exits=16 allocations=paired descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component' \
         'production request-scoped XCB focus with real window lifetime and unrelated Xlib error delivery'

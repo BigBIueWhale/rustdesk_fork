@@ -36,6 +36,46 @@ fn marker(line: &str) {
 }
 fn main() {
     let scenario = std::env::args().nth(1).unwrap();
+    if scenario == "auth-file-old" {
+        let baseline = descriptors();
+        let baseline_threads = threads();
+        let mut focus = WindowFocus::default();
+        marker("X11_FOCUS_AUTH_FILE_ENTERING source=complete-module");
+        let began = Instant::now();
+        let result = focus.center();
+        let elapsed = began.elapsed();
+        assert!(matches!(result, Err(FocusError::Connection(error)) if error != 0), "{result:?}");
+        assert!(elapsed >= Duration::from_millis(250), "{elapsed:?}");
+        drop(focus);
+        assert_eq!(descriptors(), baseline);
+        assert_eq!(threads(), baseline_threads);
+        marker(&format!("X11_FOCUS_AUTH_FILE_OLD elapsed_ms={} fifo=writer-release-required descriptors=retired workers=absent", elapsed.as_millis()));
+        return;
+    }
+    #[cfg(not(historical))]
+    if scenario == "auth-file-refuse" {
+        let baseline = descriptors();
+        let baseline_threads = threads();
+        let mut focus = WindowFocus::default();
+        let began = Instant::now();
+        let result = focus.center();
+        let elapsed = began.elapsed();
+        assert!(matches!(result, Err(FocusError::InvalidAuthentication | FocusError::Transport(_))), "{result:?}");
+        assert!(elapsed < Duration::from_secs(1), "{elapsed:?}");
+        assert_eq!(descriptors(), baseline);
+        assert_eq!(threads(), baseline_threads);
+        std::env::set_var("XAUTHORITY", std::env::args_os().nth(2).unwrap());
+        unsafe { focus_fixture_init(); focus_fixture_case(1); }
+        assert_eq!(focus.center().unwrap(), Some((164, 92)));
+        assert_eq!(descriptors(), baseline + 3);
+        assert_eq!(threads(), baseline_threads + 1);
+        drop(focus);
+        unsafe { focus_fixture_close(); focus_fixture_balanced(); }
+        assert_eq!(descriptors(), baseline);
+        assert_eq!(threads(), baseline_threads);
+        marker(&format!("X11_FOCUS_AUTH_FILE_REFUSED elapsed_ms={} recovery=same-owner geometry=server-real descriptors=retired workers=joined", elapsed.as_millis()));
+        return;
+    }
     if scenario.starts_with("auth-") {
         assert!(!cfg!(historical));
         let admitted = scenario == "auth-valid";

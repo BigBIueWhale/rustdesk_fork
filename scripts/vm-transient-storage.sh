@@ -19,6 +19,8 @@ elif [ "${MODE:-}:${X11_FOCUS_ONLY:-0}" = x11-display-tests:1 ]; then
     readonly VM_STORAGE_PROFILE=x11-focus
 elif [ "${MODE:-}:${LINUX_PA_PLAYBACK:-0}" = linux-pa-authority-tests:1 ]; then
     readonly VM_STORAGE_PROFILE=linux-pa-playback
+elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:linux-resolution-lifetime ]; then
+    readonly VM_STORAGE_PROFILE=linux-resolution-lifetime
 else
     readonly VM_STORAGE_PROFILE=standard
 fi

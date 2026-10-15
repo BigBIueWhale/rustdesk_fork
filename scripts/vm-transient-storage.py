@@ -45,6 +45,9 @@ def storage_limits(profile, memory_mib):
     if profile == 'linux-pa-playback':
         require(memory_mib == 6144, 'playback storage profile requires its 6 GiB guest')
         return 7 * GIB, 6 * GIB
+    if profile == 'linux-resolution-lifetime':
+        require(memory_mib == 2048, 'resolution storage profile requires its 2 GiB guest')
+        return 6 * GIB, 4 * GIB
     require(profile == 'standard', 'unknown VM storage profile')
     return SCRATCH_LIMIT, 8 * GIB
 
@@ -373,7 +376,8 @@ def main():
     parser.add_argument('--storage-profile',
                         choices=('standard', 'hbb-common-fs', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
-                                 'ledger-token-count', 'x11-focus', 'linux-pa-playback'),
+                                 'ledger-token-count', 'x11-focus', 'linux-pa-playback',
+                                 'linux-resolution-lifetime'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

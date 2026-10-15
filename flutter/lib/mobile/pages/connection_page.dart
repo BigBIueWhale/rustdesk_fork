@@ -282,6 +282,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
               Obx(() => Offstage(
                     offstage: _addressEmpty.value,
                     child: IconButton(
+                        tooltip: translate('Clear'),
                         onPressed: () {
                           setState(() {
                             _addressController.clear();
@@ -293,6 +294,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                 width: 60,
                 height: 60,
                 child: IconButton(
+                  tooltip: translate('Connect'),
                   icon: const Icon(Icons.arrow_forward,
                       color: MyTheme.darkGray, size: 45),
                   onPressed: onConnect,

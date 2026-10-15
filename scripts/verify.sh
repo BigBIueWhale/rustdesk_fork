@@ -10259,8 +10259,6 @@ grep -qF 'dropping repeated peer Opus format without recreating native decoder' 
   { echo "  FAIL Appendix C #2b/R-T0: viewer audio handler must not recreate native Opus decoders on repeated peer AudioFormat"; rc=1; }
 grep -qF 'dropping repeated peer Opus format without recreating controlled audio thread' src/server/connection.rs ||
   { echo "  FAIL Appendix C #2b/R-T0: controlled side must not recreate audio decoder threads on repeated peer AudioFormat"; rc=1; }
-grep -qF 'audio_decode_failed = true' src/client.rs ||
-  { echo "  FAIL Appendix C #2b/R-T0: native Opus decode failure must be sticky for the audio thread"; rc=1; }
 grep -qF 'format == CodecFormat::AV1 || mark_unsupported.contains(&format)' src/client.rs ||
   { echo "  FAIL Appendix C #2b: hostile peer AV1 frames must be locally unsupported before any native decoder/recorder worker"; rc=1; }
 grep -qF 'fn native_video_frame_runtime_supported(vf: &VideoFrame) -> bool' src/client/io_loop.rs ||

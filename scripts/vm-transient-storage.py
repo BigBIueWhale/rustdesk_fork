@@ -42,6 +42,9 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 4096, 'focus storage profile requires its 4 GiB guest')
         # The unchanged 8 GiB QEMU ceiling leaves at most 1 GiB for prepared media.
         return 9 * GIB, 8 * GIB
+    if profile == 'linux-pa-playback':
+        require(memory_mib == 4096, 'playback storage profile requires its 4 GiB guest')
+        return 9 * GIB, 8 * GIB
     require(profile == 'standard', 'unknown VM storage profile')
     return SCRATCH_LIMIT, 8 * GIB
 
@@ -370,7 +373,7 @@ def main():
     parser.add_argument('--storage-profile',
                         choices=('standard', 'hbb-common-fs', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
-                                 'ledger-token-count', 'x11-focus'),
+                                 'ledger-token-count', 'x11-focus', 'linux-pa-playback'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

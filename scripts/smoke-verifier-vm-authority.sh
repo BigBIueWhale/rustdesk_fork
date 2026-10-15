@@ -24,6 +24,7 @@ FLUTTER_TEST_PROFILE=models
 RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
 HBB_FUSE_READ_TESTS=0
+LINUX_PA_PLAYBACK=0
 APPLE_CURSOR_ONLY=0
 APPLE_FILE_MODE_ONLY=0
 X11_CLIPBOARD_ONLY=0
@@ -83,6 +84,13 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Linux PulseAudio input/run overrides are forbidden' >&2; exit 2; }
         MODE=linux-pa-authority-tests
+        ;;
+    2:--linux-pa-authority-tests)
+        [ "$2" = --playback ] && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'invalid playback shard or input/run override' >&2; exit 2; }
+        MODE=linux-pa-authority-tests
+        LINUX_PA_PLAYBACK=1
         ;;
     1:--linux-service-uid-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -719,7 +727,11 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
 elif [ "$MODE" = linux-pa-authority-tests ]; then
     readonly VM_TIMEOUT_SECONDS=900
     readonly OVERLAY_SIZE=16G
-    readonly VM_MEMORY=12288
+    if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+        readonly VM_MEMORY=4096
+    else
+        readonly VM_MEMORY=12288
+    fi
 elif [ "$MODE" = flutter-model-tests ]; then
     if [ "$FLUTTER_TEST_PROFILE" != models ]; then
         readonly VM_TIMEOUT_SECONDS=300
@@ -4270,6 +4282,9 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
     guest_invocation+=" --cpace-recovery-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = linux-pa-authority-tests ]; then
     guest_invocation+=" --linux-pa-authority-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
+    if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+        guest_invocation+=' --playback'
+    fi
 elif [ "$MODE" = linux-service-uid-tests ]; then
     guest_invocation+=" --linux-service-uid-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = linux-systemd-notification-tests ]; then
@@ -4855,7 +4870,7 @@ elif [ "$MODE" = host-network-tests ]; then
         'host network test guest cleanup'
     /usr/bin/grep -Eo 'VM_HOST_NETWORK_NATIVE=\{.*\}' "$SERIAL_LOG"
 elif [ "$MODE" = ledger-token-count ]; then
-    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=7 refusals=8 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=8 refusals=10 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
         'VM storage profile limits and guest binding'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'
@@ -5516,9 +5531,20 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused CPace recovery cloud-init completion marker'
 elif [ "$MODE" = linux-pa-authority-tests ]; then
+    if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+        require_exact_fixed_receipt \
+            "LINUX_PA_PLAYBACK_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=2 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID pa_candidate=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256 scope=production-audio-handler native=setup-write-decode-finality vm_network=none container_network=none uid=1000 gid=1000 source=readonly cleanup=joined" \
+            'native Linux playback finality receipt'
+        require_exact_fixed_receipt \
+            'PA_PLAYBACK_BASELINE=pass old_exit=101 failed_tests=2 block_sha256=402f1f1ec861a8e9fac810e30072f70a6fbeffa0d2d0a3f62c2c4b366d7d4db5' \
+            'old native playback resource failures'
+        require_exact_fixed_receipt 'PA_PLAYBACK_NATIVE=pass daemon=16.1 playback=null-sink network=none uid=1000 cleanup=joined' \
+            'native playback daemon retirement'
+    else
     require_exact_fixed_receipt \
         "LINUX_PA_AUTHORITY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=11 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID pa_candidate=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256 pa_native=monitor-capture-revocation-and-same-uid-peer-refusal uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Linux PulseAudio authority receipt'
+    fi
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Linux PulseAudio authority cloud-init completion marker'

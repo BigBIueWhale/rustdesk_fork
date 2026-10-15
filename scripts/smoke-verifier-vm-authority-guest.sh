@@ -15,6 +15,7 @@ FLUTTER_TEST_PROFILE=models
 RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
 HBB_FUSE_READ_TESTS=0
+LINUX_PA_PLAYBACK=0
 APPLE_CURSOR_ONLY=0
 APPLE_FILE_MODE_ONLY=0
 X11_KEY_INPUT_ONLY=0
@@ -99,6 +100,11 @@ case "$#:${8:-}" in
         ;;
     12:--linux-pa-authority-tests)
         MODE=linux-pa-authority-tests
+        ;;
+    13:--linux-pa-authority-tests)
+        [ "${13}" = --playback ] || exit 2
+        MODE=linux-pa-authority-tests
+        LINUX_PA_PLAYBACK=1
         ;;
     12:--linux-service-uid-tests)
         MODE=linux-service-uid-tests
@@ -835,13 +841,15 @@ for profile, memory, scratch, overlay in (
         ('flutter-credential-dialog', 4096, 7, 6),
         ('linux-service-build', 8192, 9, 8),
         ('x11-focus', 4096, 9, 8),
+        ('linux-pa-playback', 4096, 9, 8),
         ('ledger-token-count', 2048, 4, 1)):
     if limits(profile, memory) != (scratch * gib, overlay * gib):
         raise SystemExit('VM storage profile limits differ')
 for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 4096),
                         ('ledger-token-count', 8192), ('unknown', 2048),
                         ('cpace-recovery-tests', 6144), ('cpace-recovery-tests', 8193),
-                        ('x11-focus', 4095), ('x11-focus', 8192)):
+                        ('x11-focus', 4095), ('x11-focus', 8192),
+                        ('linux-pa-playback', 4095), ('linux-pa-playback', 8192)):
     try:
         limits(profile, memory)
     except ValueError:
@@ -850,7 +858,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=7 refusals=8 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=8 refusals=10 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -2957,6 +2965,12 @@ run_focused_rust_tests() {
             src/server/connection.rs
             src/server/service.rs
         )
+        if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+            memory=3g
+            memory_bytes=3221225472
+            source_fingerprints+=(src/client.rs src/client/audio_mailbox.rs
+                src/client/audio_playback_tests.rs scripts/fixtures/audio-playback-before-finality.rs)
+        fi
         required_tests=(
             ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol
             ipc::test::r_s11iu_pa_capture_peer_comes_from_the_kernel_socket
@@ -2970,6 +2984,12 @@ run_focused_rust_tests() {
             ipc::pulse_audio::tests::real_monitor_capture_revokes_after_audio_stops
             ipc::pulse_audio::tests::real_kernel_pa_admission_refuses_same_uid_child_with_token
         )
+        if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+            required_tests=(
+                client::audio_playback_tests::real_write_and_decode_failures_retire_audio_resources
+                client::audio_playback_tests::real_setup_failure_is_terminal_and_a_fresh_owner_recovers
+            )
+        fi
     elif [ "$MODE" = linux-systemd-notification-tests ]; then
         container_name=rustdesk-linux-systemd-notification-tests
         memory=512m
@@ -3845,6 +3865,7 @@ run_focused_rust_tests() {
             --env "RUST_TEST_PROFILE=$RUST_TEST_PROFILE" \
             --env "HBB_LOGIND_NATIVE=$HBB_LOGIND_NATIVE" \
             --env "HBB_FUSE_READ_TESTS=$HBB_FUSE_READ_TESTS" \
+            --env "LINUX_PA_PLAYBACK=$LINUX_PA_PLAYBACK" \
             "${hostname_options[@]}" \
             --env "RUST_TOOLCHAIN_MODE=$toolchain_mode" \
             --env RUSTDESK_CANARY_OFFLINE=1 \
@@ -4001,7 +4022,11 @@ run_focused_rust_tests() {
                             "$artifact_sha"
                         ;;
                     linux-pa-authority-tests)
-                        /bin/bash /source/scripts/run-pa-runtime-tests.sh /inputs/pa-runtime.tar.gz
+                        if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+                            /bin/bash /source/scripts/run-pa-runtime-tests.sh /inputs/pa-runtime.tar.gz --playback
+                        else
+                            /bin/bash /source/scripts/run-pa-runtime-tests.sh /inputs/pa-runtime.tar.gz
+                        fi
                         ;;
                     linux-systemd-notification-tests)
                         rustc --edition=2021 --test /source/scripts/test-linux-systemd-notifications.rs \
@@ -4457,6 +4482,16 @@ PY
             && [ "$(grep -Fc 'CPACE_PENDING_READ_CANCEL=' "$output")" -eq 1 ] \
             || fail 'CPace pending-read cancellation observation is absent or differs'
     elif [ "$MODE" = linux-pa-authority-tests ]; then
+        if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+            [ "${#result_lines[@]}" -eq 1 ] || fail 'playback result summary differs'
+            [ "$(grep -Ec '^PA_PLAYBACK_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} baseline_failed=2 corrected_passed=2 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+                || fail 'playback artifact identity differs'
+            grep -Fxq 'PA_PLAYBACK_FINALITY=pass native_write=failed decoder=retired output=retired replay=refused decode_failure=retired fresh_owner=recovered threads=retired' "$output" \
+                && grep -Fxq 'PA_PLAYBACK_SETUP_FINALITY=pass native_open=failed decoder=retired replay=refused fresh_owner=recovered threads=retired' "$output" \
+                && grep -Fxq 'PA_PLAYBACK_BASELINE=pass old_exit=101 failed_tests=2 block_sha256=402f1f1ec861a8e9fac810e30072f70a6fbeffa0d2d0a3f62c2c4b366d7d4db5' "$output" \
+                && grep -Fxq 'PA_PLAYBACK_NATIVE=pass daemon=16.1 playback=null-sink network=none uid=1000 cleanup=joined' "$output" \
+                || fail 'native playback failure, recovery or retirement observation is absent'
+        else
         [ "${#result_lines[@]}" -eq 5 ] \
             || { tail -n 200 "$output" >&2; fail 'focused Linux PulseAudio summary count differs'; }
         local -a pa_artifact_receipts pa_retirement_receipts
@@ -4478,6 +4513,7 @@ PY
             || { tail -n 200 "$output" >&2; fail 'native PulseAudio monitor probe receipt is absent'; }
         grep -Fxq 'PA_RUNTIME_NATIVE=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 revocation=after-unload same_uid_stolen_token=refused network=none uid=1000 cleanup=joined' "$output" \
             || { tail -n 200 "$output" >&2; fail 'native PulseAudio capture receipt is absent'; }
+        fi
     elif [ "$MODE" = linux-systemd-notification-tests ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'Linux notification summary count differs'
         [ "$(grep -Ec '^test systemd::tests::.* \.\.\. ok$' "$output")" -eq "${#required_tests[@]}" ] \
@@ -4793,12 +4829,20 @@ PY
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Linux PulseAudio authority test count differs: $tests_passed"
+        if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+            grep -E '^test client::audio_playback_tests::.* \.\.\. ok$|^PA_PLAYBACK_|^PA_RUNTIME_BUILD=' "$output"
+            printf 'LINUX_PA_PLAYBACK_VM=pass commit=%s tree=%s tests=2 rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s pa_candidate=%s scope=production-audio-handler native=setup-write-decode-finality vm_network=none container_network=none uid=1000 gid=1000 source=readonly cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config" \
+                "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+        else
         printf '%s\n' "${pa_artifact_receipts[@]}" "${pa_retirement_receipts[@]}"
         grep -E '^PA_RUNTIME_BUILD=(started|pass) ' "$output"
         printf 'LINUX_PA_AUTHORITY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s pa_candidate=%s pa_native=monitor-capture-revocation-and-same-uid-peer-refusal uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config" \
             "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+        fi
     elif [ "$MODE" = linux-systemd-notification-tests ]; then
         [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'Linux notification test total differs'
         printf 'LINUX_NOTIFICATION_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s target=linux-x86_64 scope=production-notification-kernel-datagrams rust=1.75.0 edition=2021 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \

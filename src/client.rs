@@ -85,6 +85,11 @@ pub mod io_loop;
 pub mod screenshot;
 
 mod audio_mailbox;
+#[cfg(all(test, target_os = "linux"))]
+mod audio_playback_tests;
+#[cfg(all(test, target_os = "linux"))]
+#[path = "../scripts/fixtures/audio-playback-before-finality.rs"]
+mod audio_playback_before;
 #[cfg(any(not(target_os = "linux"), test))]
 mod audio_buffer;
 #[cfg(not(target_os = "linux"))]
@@ -977,7 +982,7 @@ pub(crate) fn native_video_format_locally_unsupported(
 pub struct AudioHandler {
     audio_decoder: Option<(AudioDecoder, Vec<f32>)>,
     audio_format: Option<(u32, u32)>,
-    audio_decode_failed: bool,
+    audio_failed: bool,
     #[cfg(target_os = "linux")]
     simple: Option<psimple::Simple>,
     #[cfg(not(target_os = "linux"))]
@@ -994,6 +999,19 @@ pub struct AudioHandler {
 
 
 impl AudioHandler {
+    fn fail_audio(&mut self) {
+        self.audio_failed = true;
+        self.audio_decoder = None;
+        #[cfg(target_os = "linux")]
+        {
+            self.simple = None;
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            self.audio_stream = None;
+        }
+    }
+
     #[cfg(target_os = "linux")]
     fn start_audio(&mut self, format0: AudioFormat) -> ResultType<()> {
         use psimple::Simple;
@@ -1076,9 +1094,9 @@ impl AudioHandler {
 
     /// Handle audio format and create an audio decoder.
     pub fn handle_format(&mut self, f: AudioFormat) {
-        if self.audio_decode_failed {
+        if self.audio_failed {
             log::warn!(
-                "dropping peer Opus format after native decoder failure; audio decode is failed closed"
+                "dropping peer Opus format after audio failure; playback is closed"
             );
             return;
         }
@@ -1111,10 +1129,13 @@ impl AudioHandler {
                 let buffer = vec![0.; f.sample_rate as usize * f.channels as usize];
                 self.audio_decoder = Some((d, buffer));
                 self.channels = f.channels as _;
-                allow_err!(self.start_audio(f));
+                if let Err(err) = self.start_audio(f) {
+                    log::error!("Failed to start audio playback: {err}");
+                    self.fail_audio();
+                }
             }
             Err(err) => {
-                self.audio_decode_failed = true;
+                self.fail_audio();
                 log::error!("Failed to create audio decoder: {}", err);
             }
         }
@@ -1123,6 +1144,9 @@ impl AudioHandler {
     /// Handle audio frame and play it.
     #[inline]
     pub fn handle_frame(&mut self, frame: AudioFrame) {
+        if self.audio_failed {
+            return;
+        }
         if !native_opus_packet_within_limit(frame.data.len()) {
             log::warn!(
                 "dropping oversized Opus packet before native decode: {} > {}",
@@ -1138,9 +1162,6 @@ impl AudioHandler {
         #[cfg(target_os = "linux")]
         if self.simple.is_none() {
             log::debug!("PulseAudio simple binding does not exists");
-            return;
-        }
-        if self.audio_decode_failed {
             return;
         }
         if let Some((d, buffer)) = self.audio_decoder.as_mut() {
@@ -1177,15 +1198,19 @@ impl AudioHandler {
                         let data_u8 = unsafe {
                             std::slice::from_raw_parts::<u8>(buffer.as_ptr() as _, n * 4)
                         };
-                        self.simple.as_mut().map(|x| x.write(data_u8));
+                        if let Some(simple) = self.simple.as_mut() {
+                            if let Err(err) = simple.write(data_u8) {
+                                log::warn!("PulseAudio playback failed; closing audio: {err}");
+                                self.fail_audio();
+                            }
+                        }
                     }
                 }
                 Err(err) => {
                     log::warn!(
                         "native Opus decode failed; refusing further audio decoder recreation: {err}"
                     );
-                    self.audio_decoder = None;
-                    self.audio_decode_failed = true;
+                    self.fail_audio();
                 }
             }
         }

@@ -161,14 +161,16 @@ case "$1" in
     mkdir -p -m 0700 "$HOME"
     [ ! -L "$HOME" ] && [ "$(stat -c '%u:%g:%a' -- "$HOME")" = 1000:1000:700 ]
     file_type_root=/tmp/rd-cm-file-replay
-    mkdir -m 0700 "$file_type_root" "$file_type_root/allowed-after-login"
+    mkdir -m 0700 "$file_type_root" "$file_type_root/allowed-after-login" "$file_type_root/source-swap"
     readable_source=$file_type_root/allowed-after-login/readable-source.jpg
-    /usr/bin/python3 -I -S - "$readable_source" <<'PY'
+    /usr/bin/python3 -I -S - "$readable_source" "$file_type_root/source-swap/a.jpg" "$file_type_root/source-swap/b.jpg" <<'PY'
 import sys
-with open(sys.argv[1], 'xb') as output:
-    output.write(b'A' * 150001)
+for path in sys.argv[1:]:
+    with open(path, 'xb') as output:
+        output.write(b'A' * 150001)
 PY
     readable_sha=$(sha256sum "$readable_source" | cut -d ' ' -f 1)
+    source_swap_hashes=$(sha256sum "$file_type_root/source-swap/a.jpg" "$file_type_root/source-swap/b.jpg")
     cleanup_file_type_replay() {
       local status=$?
       trap - EXIT HUP INT TERM
@@ -206,9 +208,12 @@ PY
       [ "$(grep -Fc "[FT-TYPE-REFUSED value=$value id=17013]" <<<"$probe_output")" -eq 1 ]
     done
     [ "$(grep -oF '[FT-TYPE-REFUSED ' <<<"$probe_output" | wc -l)" -eq 7 ]
+    [ "$(grep -Ec '\[FT-SOURCE-REFUSED id=17017 file=1 bytes=150001 blocks=[2-9][0-9]* restored=2 barrier=passed\]' <<<"$probe_output")" -eq 1 ]
     [ "$(grep -Ec '\[FT-READ-SUCCESS id=17013 bytes=150001 blocks=[2-9][0-9]* digest=confirmed done=once barrier=passed\]' <<<"$probe_output")" -eq 1 ]
     [ "$(grep -Fxc 'probe_client: PASS' <<<"$probe_output")" -eq 1 ]
     [ "$(sha256sum "$readable_source" | cut -d ' ' -f 1)" = "$readable_sha" ]
+    [ "$(sha256sum "$file_type_root/source-swap/a.jpg" "$file_type_root/source-swap/b.jpg")" = "$source_swap_hashes" ]
+    [ ! -e "$file_type_root/source-swap/.source-before-swap" ] && [ ! -L "$file_type_root/source-swap/.source-before-swap" ]
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/file-type-server.log
     wait "$SRV"
     SRV=
@@ -216,6 +221,7 @@ PY
     [ "$(sha256sum /smoke-target/android-peer-manifest.sha256 | cut -d ' ' -f 1)" = "$peer_manifest_sha" ]
     (cd /smoke-target && sha256sum -c android-peer-manifest.sha256)
     printf 'FILE_TYPE_REPLAY=pass auth=cpace session=filetransfer unsupported=7 job=17013 generic=150001-bytes digest=confirmed done=once barrier=passed network=container-loopback cleanup=server-joined\n'
+    printf 'FILE_SOURCE_REPLAY=pass auth=cpace session=filetransfer swap=after-admission first=150001-bytes error=once file=1 false_done=absent restored=2 barrier=passed recovery=150001-bytes cleanup=server-joined\n'
     ;;
   build)
     verify_smoke_build_inputs

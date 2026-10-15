@@ -5444,6 +5444,13 @@ elif [ "$MODE" = hbb-common-fs ]; then
     if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then
         /usr/bin/python3 -B -I -S "$SCRIPT_DIR/verify-hostname-resolution-probe.py" "$SERIAL_LOG" "$REPO_ROOT" \
             || fail 'production connector observation is absent or source binding differs'
+        mapfile -t peer_probe_artifacts < <(
+            /usr/bin/grep -Eo 'FILE_PEER_PROBE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/examples/probe_client-[0-9a-f]{16} tests=5 unchanged=before-after' "$SERIAL_LOG"
+        )
+        [ "${#peer_probe_artifacts[@]}" -eq 1 ] \
+            && [ "$(/usr/bin/grep -Fo 'FILE_PEER_PROBE_ARTIFACT=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
+            || fail 'file-peer probe artifact receipt differs'
+        printf '%s\n' "${peer_probe_artifacts[0]}"
     fi
     if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         require_exact_fixed_receipt \
@@ -5934,6 +5941,9 @@ elif [ "$MODE" = android-peer-build ]; then
         require_exact_fixed_receipt \
             'FILE_TYPE_REPLAY=pass auth=cpace session=filetransfer unsupported=7 job=17013 generic=150001-bytes digest=confirmed done=once barrier=passed network=container-loopback cleanup=server-joined' \
             'Linux service peer file-type admission and same-ID recovery'
+        require_exact_fixed_receipt \
+            'FILE_SOURCE_REPLAY=pass auth=cpace session=filetransfer swap=after-admission first=150001-bytes error=once file=1 false_done=absent restored=2 barrier=passed recovery=150001-bytes cleanup=server-joined' \
+            'Linux service peer source replacement and same-connection recovery'
     fi
     mapfile -t peer_artifact_receipts < <(
         /usr/bin/grep -Eo \

@@ -110,6 +110,33 @@ class ArtifactSelectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             select_artifact(encode(artifact, FINISHED), "cpace_it", "/cargo-target/fuse-test-source")
 
+    def test_probe_example_target_is_exact(self):
+        artifact = copy.deepcopy(ARTIFACT)
+        artifact["target"] = {"name": "probe_client", "kind": ["example"],
+                              "src_path": "/source/examples/probe_client.rs"}
+        artifact["executable"] = "/cargo-target/debug/examples/probe_client-0123456789abcdef"
+        for source in ("/source/examples/probe_client.rs",
+                       "/source/libs/hbb_common/../../examples/probe_client.rs"):
+            artifact["target"]["src_path"] = source
+            self.assertEqual(select_artifact(encode(artifact, FINISHED), "probe_client"),
+                             artifact["executable"])
+        for field, value in [
+                ("manifest_path", "/source/Cargo.toml"),
+                ("target", dict(artifact["target"], kind=["bin"])),
+                ("target", dict(artifact["target"], name="other")),
+                ("target", dict(artifact["target"], src_path="/source/other.rs")),
+                ("profile", {"test": False}), ("profile", {"test": 1}),
+                ("executable", EXECUTABLE),
+                ("executable", "/cargo-target/debug/examples/probe_client")]:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                select_artifact(encode(dict(artifact, **{field: value}), FINISHED), "probe_client")
+        for output in (encode(FINISHED), encode(artifact, artifact, FINISHED),
+                       encode(artifact), encode(artifact, FINISHED, FINISHED)):
+            with self.assertRaises(ValueError):
+                select_artifact(output, "probe_client")
+        with self.assertRaises(ValueError):
+            select_artifact(encode(artifact, FINISHED), "probe_client", "/cargo-target/fuse-test-source")
+
 
 if __name__ == "__main__":
     unittest.main()

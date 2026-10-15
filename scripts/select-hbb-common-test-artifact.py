@@ -10,8 +10,13 @@ MAX_OUTPUT = 4 * 1024 * 1024
 
 
 def select_artifact(output, package="hbb_common", source_root="/source"):
+    manifest_package, executable_dir = package, "/cargo-target/debug/deps"
     if package == "cpace_it" and source_root == "/source":
         name, kind, source = "handshake", ["test"], "tests/handshake.rs"
+    elif package == "probe_client" and source_root == "/source":
+        manifest_package = "hbb_common"
+        name, kind, source = "probe_client", ["example"], "../../examples/probe_client.rs"
+        executable_dir = "/cargo-target/debug/examples"
     elif package in ("hbb_common", "clipboard") and source_root in (
             "/source", "/cargo-target/fuse-test-source"):
         name, kind, source = package, ["lib"], "src/lib.rs"
@@ -34,11 +39,14 @@ def select_artifact(output, package="hbb_common", source_root="/source"):
             continue
         target = message.get("target")
         profile = message.get("profile")
-        if (message.get("manifest_path") == f"{source_root}/libs/{package}/Cargo.toml"
+        sources = (f"{source_root}/libs/{manifest_package}/{source}",)
+        if package == "probe_client":
+            sources += (f"{source_root}/examples/probe_client.rs",)
+        if (message.get("manifest_path") == f"{source_root}/libs/{manifest_package}/Cargo.toml"
                 and isinstance(target, dict) and isinstance(profile, dict)
                 and target.get("name") == name
                 and target.get("kind") == kind
-                and target.get("src_path") == f"{source_root}/libs/{package}/{source}"
+                and target.get("src_path") in sources
                 and profile.get("test") is True):
             artifacts.append(message.get("executable"))
     if len(finished) != 1 or finished[0] is not True:
@@ -46,7 +54,7 @@ def select_artifact(output, package="hbb_common", source_root="/source"):
     if len(artifacts) != 1 or not isinstance(artifacts[0], str):
         raise ValueError(f"Cargo build lacks one exact {package} libtest artifact")
     executable = artifacts[0]
-    if not re.fullmatch(rf"/cargo-target/debug/deps/{name}-[0-9a-f]{{16}}", executable):
+    if not re.fullmatch(rf"{executable_dir}/{name}-[0-9a-f]{{16}}", executable):
         raise ValueError(f"{package} executable is outside the private test target")
     return executable
 

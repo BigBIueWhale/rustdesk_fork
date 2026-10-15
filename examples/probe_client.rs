@@ -47,7 +47,8 @@
 //!                failed file, then the same connection confirms and reads a second file to
 //!                exact bytes and one terminal Done.
 //!   - `ftfiletype` : reserved/unknown file types receive exact errors, then the same keyed
-//!                connection reuses their job ID for an ordinary digest-confirmed file read.
+//!                connection rejects a post-enumeration FIFO replacement and reuses the
+//!                refused type's job ID for an ordinary digest-confirmed file read.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
@@ -73,6 +74,8 @@ const CM_DIGEST_COLLISION_ID: i32 = 17010;
 const CM_CLEANUP_FAILURE_ID: i32 = 17011;
 const FT_READ_FAILURE_ID: i32 = 17012;
 const FT_READ_SUCCESS_ID: i32 = 17013;
+const FT_SOURCE_SWAP_ID: i32 = 17017;
+const FT_SOURCE_SWAP_PATH: &str = "/tmp/rd-cm-file-replay/source-swap";
 const CM_SHORT_WRITE_ID: i32 = 17014;
 const CM_BUSY_WRITE_ID: i32 = 17015;
 const CM_DIGEST_CLEANUP_FAILURE_ID: i32 = 17016;
@@ -1716,6 +1719,165 @@ async fn probe_direct_read_failure(stream: &mut FramedStream, report: &mut Strin
     true
 }
 
+async fn next_probe_file_response(
+    stream: &mut FramedStream,
+) -> hbb_common::ResultType<hbb_common::message_proto::file_response::Union> {
+    use hbb_common::{anyhow::anyhow, bail};
+    for _ in 0..8 {
+        let bytes = stream.next_timeout(4000).await
+            .ok_or_else(|| anyhow!("file response timed out or closed"))??;
+        let message = Message::parse_from_bytes(&bytes)?;
+        match message.union {
+            Some(message::Union::FileResponse(response)) => {
+                return response.union.ok_or_else(|| anyhow!("empty file response"));
+            }
+            Some(message::Union::LoginResponse(response))
+                if matches!(response.union, Some(login_response::Union::Error(_))) =>
+            {
+                bail!("file login failed");
+            }
+            _ => {}
+        }
+    }
+    bail!("file response missing after unrelated messages")
+}
+
+#[cfg(unix)]
+async fn run_source_swap_probe(
+    stream: &mut FramedStream,
+    source: &std::path::Path,
+) -> hbb_common::ResultType<usize> {
+    use hbb_common::{anyhow::{anyhow, ensure}, message_proto::*};
+    use std::os::unix::{ffi::OsStrExt, fs::FileTypeExt};
+
+    let source_text = source.to_str().ok_or_else(|| anyhow!("non-UTF8 fixture path"))?;
+    let mut action = FileAction::new();
+    action.set_send(FileTransferSendRequest {
+        id: FT_SOURCE_SWAP_ID, path: source_text.to_owned(), ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    send_probe_message(stream, message).await.map_err(|error| anyhow!(error))?;
+    let directory = match next_probe_file_response(stream).await? {
+        file_response::Union::Dir(directory) => directory,
+        _ => return Err(anyhow!("source list missing")),
+    };
+    ensure!(directory.id == FT_SOURCE_SWAP_ID && directory.path == source_text
+        && directory.entries.len() == 2, "source list identity or length differs");
+    let mut names: Vec<_> = directory.entries.iter().map(|entry| entry.name.as_str()).collect();
+    names.sort_unstable();
+    ensure!(names == ["a.jpg", "b.jpg"], "source list names differ");
+    ensure!(directory.entries.iter().all(|entry|
+        entry.entry_type.enum_value() == Ok(FileType::File)
+            && entry.size == FT_READ_SUCCESS_LEN as u64), "source list metadata differs");
+    match next_probe_file_response(stream).await? {
+        file_response::Union::Digest(digest) => {
+            ensure!(digest.id == FT_SOURCE_SWAP_ID && digest.file_num == 0
+                && digest.file_size == FT_READ_SUCCESS_LEN as u64
+                && !digest.is_upload && !digest.is_resume, "first source digest differs");
+        }
+        _ => return Err(anyhow!("first source digest missing")),
+    }
+
+    // The announced second entry is not opened while the first waits for confirmation.
+    // Choose it from the actual list; filesystem iteration order is not a test dependency.
+    let future_source = source.join(&directory.entries[1].name);
+    let backup = source.join(".source-before-swap");
+    hbb_common::tokio::fs::hard_link(&future_source, &backup).await?;
+    hbb_common::tokio::fs::remove_file(&future_source).await?;
+    let fifo_name = std::ffi::CString::new(future_source.as_os_str().as_bytes())?;
+    hbb_common::tokio::task::spawn_blocking(move || {
+        if unsafe { hbb_common::libc::mkfifo(fifo_name.as_ptr(), 0o600) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+    }).await??;
+    ensure!(hbb_common::tokio::fs::symlink_metadata(&future_source).await?
+        .file_type().is_fifo(), "replacement is not a real FIFO");
+    let mut action = FileAction::new();
+    action.set_send_confirm(FileTransferSendConfirmRequest {
+        id: FT_SOURCE_SWAP_ID, file_num: 0,
+        union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(0)),
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    send_probe_message(stream, message).await.map_err(|error| anyhow!(error))?;
+
+    let mut received = 0usize;
+    let mut blocks = 0usize;
+    let mut refused = false;
+    for _ in 0..12 {
+        match next_probe_file_response(stream).await? {
+            file_response::Union::Block(block) => {
+                ensure!(block.id == FT_SOURCE_SWAP_ID && block.file_num == 0
+                    && !block.compressed, "unexpected source block identity or encoding");
+                received = received.checked_add(block.data.len())
+                    .ok_or_else(|| anyhow!("source byte count overflow"))?;
+                ensure!(received <= FT_READ_SUCCESS_LEN
+                    && block.data.iter().all(|byte| *byte == b'A'), "source bytes differ");
+                if !block.data.is_empty() { blocks += 1; }
+            }
+            file_response::Union::Error(error) => {
+                ensure!(error.id == FT_SOURCE_SWAP_ID && error.file_num == 1
+                    && error.error == "send source is not a regular file"
+                    && received == FT_READ_SUCCESS_LEN && blocks >= 2,
+                    "source refusal identity, reason or completed prefix differs");
+                refused = true;
+                break;
+            }
+            _ => return Err(anyhow!("source job emitted an unexpected response or false Done")),
+        }
+    }
+    ensure!(refused, "source refusal missing");
+    ensure!(hbb_common::tokio::fs::symlink_metadata(&future_source).await?
+        .file_type().is_fifo(), "source FIFO changed before restoration");
+    hbb_common::tokio::fs::remove_file(&future_source).await?;
+    hbb_common::tokio::fs::rename(&backup, &future_source).await?;
+    let mut action = FileAction::new();
+    action.set_read_dir(ReadDir {
+        path: source_text.to_owned(), include_hidden: true, ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    send_probe_message(stream, message).await.map_err(|error| anyhow!(error))?;
+    match next_probe_file_response(stream).await? {
+        file_response::Union::Dir(directory) => {
+            ensure!(directory.id == 0 && directory.path == source_text
+                && directory.entries.len() == 2, "source barrier identity or length differs");
+            let mut names: Vec<_> = directory.entries.iter().map(|entry| entry.name.as_str()).collect();
+            names.sort_unstable();
+            ensure!(names == ["a.jpg", "b.jpg"] && directory.entries.iter().all(|entry|
+                entry.entry_type.enum_value() == Ok(FileType::File)
+                    && entry.size == FT_READ_SUCCESS_LEN as u64), "restored source barrier differs");
+        }
+        _ => return Err(anyhow!("source job emitted a duplicate or late result before its barrier")),
+    }
+    Ok(blocks)
+}
+
+async fn probe_source_swap(stream: &mut FramedStream, report: &mut String) -> bool {
+    #[cfg(unix)]
+    {
+        match run_source_swap_probe(stream, std::path::Path::new(FT_SOURCE_SWAP_PATH)).await {
+            Ok(blocks) => {
+                report.push_str(&format!("[FT-SOURCE-REFUSED id=17017 file=1 bytes=150001 blocks={blocks} restored=2 barrier=passed] "));
+                true
+            }
+            Err(error) => {
+                report.push_str(&format!("[FT-SOURCE-ERROR {error}] "));
+                false
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = stream;
+        report.push_str("[FT-SOURCE-UNSUPPORTED] ");
+        false
+    }
+}
+
 async fn probe_direct_read_success(stream: &mut FramedStream, report: &mut String) -> bool {
     use hbb_common::message_proto::{
         file_response, file_transfer_send_confirm_request, FileAction,
@@ -2328,6 +2490,7 @@ fn main() {
                             return (true, pk, false, true);
                         } else if mode == "ftfiletype"
                             && (!probe_file_type_refusal(&mut stream, &mut pk).await
+                                || !probe_source_swap(&mut stream, &mut pk).await
                                 || !probe_direct_read_success(&mut stream, &mut pk).await)
                         {
                             return (true, pk, false, true);
@@ -2467,6 +2630,170 @@ mod tests {
     use super::*;
     use hbb_common::message_proto::PeerInfo;
     use std::io::Cursor;
+
+    #[cfg(unix)]
+    struct SourceFixture(std::path::PathBuf);
+
+    #[cfg(unix)]
+    impl SourceFixture {
+        fn new() -> Self {
+            let root = std::env::temp_dir().join(format!("peer-source-{}-{}",
+                std::process::id(), std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+            std::fs::create_dir(&root).unwrap();
+            for name in ["a.jpg", "b.jpg"] {
+                std::fs::write(root.join(name), vec![b'A'; FT_READ_SUCCESS_LEN]).unwrap();
+            }
+            Self(root)
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for SourceFixture {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).expect("remove only this test's source fixture");
+        }
+    }
+
+    #[cfg(unix)]
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    enum SourceFault {
+        None, ErrorId, ErrorFile, ErrorReason, PrematureError, FalseDone,
+        BlockFile, Bytes, DuplicateError, LateDone, Barrier,
+    }
+
+    #[cfg(unix)]
+    async fn source_probe_exchange(fault: SourceFault) -> (hbb_common::ResultType<usize>, SourceFixture) {
+        use hbb_common::{cpace::run_responder, message_proto::*, tokio::net::{TcpListener, TcpStream}};
+        use std::os::unix::fs::FileTypeExt;
+
+        let fixture = SourceFixture::new();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (client, accepted) = hbb_common::tokio::join!(TcpStream::connect(address), listener.accept());
+        let mut client = FramedStream::from(client.unwrap(), address);
+        let mut server = FramedStream::from(accepted.unwrap().0, address);
+        let (initiator, responder) = hbb_common::tokio::join!(
+            run_initiator(&mut client, "source-probe-fixture"),
+            run_responder(&mut server, "source-probe-fixture"));
+        client.set_session_keys(initiator.unwrap());
+        server.set_session_keys(responder.unwrap());
+        let root = &fixture.0;
+        let producer = async {
+            let request = Message::parse_from_bytes(&server.next_timeout(2000).await.unwrap().unwrap()).unwrap();
+            let Some(message::Union::FileAction(action)) = request.union else { panic!("missing send request") };
+            let Some(file_action::Union::Send(send)) = action.union else { panic!("wrong request") };
+            assert_eq!(send.id, FT_SOURCE_SWAP_ID);
+            assert_eq!(send.path, root.to_str().unwrap());
+            let entries = || ["b.jpg", "a.jpg"].iter().map(|name| FileEntry {
+                name: (*name).to_owned(), size: FT_READ_SUCCESS_LEN as u64,
+                entry_type: FileType::File.into(), ..Default::default()
+            }).collect::<Vec<_>>();
+            send_probe_message(&mut server, hbb_common::fs::new_dir(
+                FT_SOURCE_SWAP_ID, send.path.clone(), entries())).await.unwrap();
+            let mut response = FileResponse::new();
+            response.set_digest(FileTransferDigest {
+                id: FT_SOURCE_SWAP_ID, file_num: 0, file_size: FT_READ_SUCCESS_LEN as u64,
+                ..Default::default()
+            });
+            let mut message = Message::new();
+            message.set_file_response(response);
+            send_probe_message(&mut server, message).await.unwrap();
+            server.flush_writer().await.unwrap();
+            let request = Message::parse_from_bytes(&server.next_timeout(2000).await.unwrap().unwrap()).unwrap();
+            let Some(message::Union::FileAction(action)) = request.union else { panic!("missing confirmation") };
+            let Some(file_action::Union::SendConfirm(confirm)) = action.union else { panic!("wrong confirmation") };
+            assert_eq!(confirm.id, FT_SOURCE_SWAP_ID);
+            assert_eq!(confirm.file_num, 0);
+            assert_eq!(confirm.union, Some(file_transfer_send_confirm_request::Union::OffsetBlk(0)));
+            assert!(std::fs::symlink_metadata(root.join("a.jpg")).unwrap().file_type().is_fifo());
+            assert_eq!(std::fs::read(root.join("b.jpg")).unwrap(), vec![b'A'; FT_READ_SUCCESS_LEN]);
+            assert_eq!(std::fs::read(root.join(".source-before-swap")).unwrap(), vec![b'A'; FT_READ_SUCCESS_LEN]);
+            if fault != SourceFault::PrematureError {
+                for (index, size) in [128 * 1024, FT_READ_SUCCESS_LEN - 128 * 1024].iter().enumerate() {
+                    let mut data = vec![b'A'; *size];
+                    if fault == SourceFault::Bytes && index == 0 { data[0] = b'B'; }
+                    send_probe_message(&mut server, hbb_common::fs::new_block(FileTransferBlock {
+                        id: FT_SOURCE_SWAP_ID,
+                        file_num: if fault == SourceFault::BlockFile { 1 } else { 0 },
+                        data: data.into(), ..Default::default()
+                    })).await.unwrap();
+                }
+            }
+            let error = || hbb_common::fs::new_error(
+                if fault == SourceFault::ErrorId { FT_SOURCE_SWAP_ID + 1 } else { FT_SOURCE_SWAP_ID },
+                if fault == SourceFault::ErrorReason { "unrelated failure" } else { "send source is not a regular file" },
+                if fault == SourceFault::ErrorFile { 0 } else { 1 });
+            send_probe_message(&mut server, if fault == SourceFault::FalseDone {
+                hbb_common::fs::new_done(FT_SOURCE_SWAP_ID, 2)
+            } else { error() }).await.unwrap();
+            server.flush_writer().await.unwrap();
+            if !matches!(fault, SourceFault::None | SourceFault::DuplicateError | SourceFault::LateDone | SourceFault::Barrier) {
+                return;
+            }
+            let request = Message::parse_from_bytes(&server.next_timeout(2000).await.unwrap().unwrap()).unwrap();
+            let Some(message::Union::FileAction(action)) = request.union else { panic!("missing barrier") };
+            let Some(file_action::Union::ReadDir(directory)) = action.union else { panic!("wrong barrier") };
+            assert_eq!(directory.path, send.path);
+            assert!(std::fs::metadata(root.join("a.jpg")).unwrap().is_file());
+            assert!(!root.join(".source-before-swap").exists());
+            let mut restored = entries();
+            restored.reverse();
+            if fault == SourceFault::Barrier { restored.pop(); }
+            let response = match fault {
+                SourceFault::DuplicateError => error(),
+                SourceFault::LateDone => hbb_common::fs::new_done(FT_SOURCE_SWAP_ID, 2),
+                _ => hbb_common::fs::new_dir(0, directory.path, restored),
+            };
+            send_probe_message(&mut server, response).await.unwrap();
+            server.flush_writer().await.unwrap();
+        };
+        // This is a controlled encrypted transcript peer, not the production Connection receiver.
+        let (result, ()) = hbb_common::tokio::join!(run_source_swap_probe(&mut client, root), producer);
+        drop(client);
+        (result, fixture)
+    }
+
+    #[cfg(unix)]
+    #[hbb_common::tokio::test]
+    async fn peer_source_swap_accepts_valid_exchange_and_restores_exact_files() {
+        let (result, fixture) = source_probe_exchange(SourceFault::None).await;
+        assert_eq!(result.unwrap(), 2);
+        for name in ["a.jpg", "b.jpg"] {
+            assert_eq!(std::fs::read(fixture.0.join(name)).unwrap(), vec![b'A'; FT_READ_SUCCESS_LEN]);
+        }
+        assert_eq!(std::fs::read_dir(&fixture.0).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[hbb_common::tokio::test]
+    async fn peer_source_swap_rejects_invalid_refusal_and_payload() {
+        for fault in [SourceFault::ErrorId, SourceFault::ErrorFile, SourceFault::ErrorReason,
+            SourceFault::PrematureError, SourceFault::FalseDone, SourceFault::BlockFile, SourceFault::Bytes] {
+            let (result, _fixture) = source_probe_exchange(fault).await;
+            let expected = match fault {
+                SourceFault::FalseDone => "unexpected response or false Done",
+                SourceFault::BlockFile => "unexpected source block identity or encoding",
+                SourceFault::Bytes => "source bytes differ",
+                _ => "source refusal identity, reason or completed prefix differs",
+            };
+            let error = result.expect_err("the injected transcript fault must be refused");
+            assert!(error.to_string().contains(expected), "wrong refusal for {:?}: {}", fault, error);
+        }
+    }
+
+    #[cfg(unix)]
+    #[hbb_common::tokio::test]
+    async fn peer_source_swap_rejects_duplicate_and_late_terminal_results() {
+        for fault in [SourceFault::DuplicateError, SourceFault::LateDone, SourceFault::Barrier] {
+            let (result, _fixture) = source_probe_exchange(fault).await;
+            let expected = if fault == SourceFault::Barrier {
+                "source barrier identity or length differs"
+            } else { "duplicate or late result before its barrier" };
+            let error = result.expect_err("the injected terminal fault must be refused");
+            assert!(error.to_string().contains(expected), "wrong refusal for {:?}: {}", fault, error);
+        }
+    }
 
     #[test]
     fn redirected_probe_password_is_bounded_and_line_framed() {

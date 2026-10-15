@@ -2807,6 +2807,7 @@ run_focused_rust_tests() {
                 libs/hbb_common/examples/hostname_resolution_probe.rs
                 scripts/run-hostname-resolution-probe.py
                 scripts/verify-hostname-resolution-probe.py
+                examples/probe_client.rs
             )
             required_tests+=(
                 tcp::eof_tests::unkeyed_tcp_truncation_is_fatal
@@ -2828,6 +2829,11 @@ run_focused_rust_tests() {
                 tcp::writer_receipt_tests::r_s11fb_receipt_reports_the_exact_sink_failure
                 tcp::writer_receipt_tests::r_s11fb_tracked_keyed_send_round_trips_the_exact_frame
                 tcp::writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read
+                tests::redirected_probe_password_is_bounded_and_line_framed
+                tests::remote_login_admission_requires_current_protocol_or_exact_headless_error
+                tests::peer_source_swap_accepts_valid_exchange_and_restores_exact_files
+                tests::peer_source_swap_rejects_invalid_refusal_and_payload
+                tests::peer_source_swap_rejects_duplicate_and_late_terminal_results
             )
             hostname_options=(
                 --dns=127.0.0.1 --dns-option=attempts:1 --dns-option=timeout:1
@@ -3937,6 +3943,23 @@ run_focused_rust_tests() {
                             "$test_executable" socket_client::tests:: --color never --test-threads=1
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             python3 -I -S /source/scripts/run-hostname-resolution-probe.py
+                            cargo test --offline --locked -p hbb_common --example probe_client \
+                                --no-run --message-format=json-render-diagnostics --color never \
+                                >/cargo-target/peer-probe-build.json
+                            probe_executable="$(python3 -I -S \
+                                /source/scripts/select-hbb-common-test-artifact.py \
+                                /cargo-target/peer-probe-build.json probe_client)"
+                            [ -f "$probe_executable" ] && [ ! -L "$probe_executable" ] \
+                                && [ -x "$probe_executable" ] \
+                                && [ "$(stat -c "%u:%g:%h" -- "$probe_executable")" = 1000:1000:1 ]
+                            probe_sha="$(sha256sum "$probe_executable" | cut -d " " -f 1)"
+                            printf "FILE_PEER_PROBE_ARTIFACT_START=observed sha256=%s executable=%s\n" \
+                                "$probe_sha" "$probe_executable"
+                            "$probe_executable" --color never --test-threads=1
+                            [ "$(sha256sum "$probe_executable" | cut -d " " -f 1)" = "$probe_sha" ]
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            printf "FILE_PEER_PROBE_ARTIFACT=pass sha256=%s executable=%s tests=5 unchanged=before-after\n" \
+                                "$probe_sha" "$probe_executable"
                         fi
                         printf "HBB_COMMON_FS_ARTIFACT=pass sha256=%s executable=%s unchanged=before-between-after\n" \
                             "$artifact_sha" "$test_executable"
@@ -4349,6 +4372,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$MODE" = hbb-common-fs ]; then
             awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'Shared-library failure artifact metadata could not be read\n' >&2
+            awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
+                || printf 'File-peer probe failure artifact metadata could not be read\n' >&2
         fi
         if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
             awk '/^WHITEBOARD_HELPER_(BUILD|ARTIFACT_BEFORE)=/ { print }' "$output" >&2 \
@@ -4368,7 +4393,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output"
     )
     if [ "$MODE" = hbb-common-fs ]; then
-        expected_groups=8
+        expected_groups=9
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
@@ -4728,6 +4753,7 @@ PY
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests)|bytes_codec::tests)::.* \.\.\. ok$' "$output"
             grep -E '^test fs::tests::(receive_blocks_refuse_oversized_input_and_decoded_output|file_block_limit_preserves_real_sender_receiver_roundtrips|file_job_serialization_preserves_the_live_cm_path_field|file_transfer_type_refuses_reserved_and_unknown_wire_values) \.\.\. ok$' "$output"
             grep -E '^test fs::tests::(send_open_refuses_a_fifo_replaced_after_enumeration|send_resume_refuses_a_fifo_replaced_after_enumeration|send_open_refuses_nonregular_replacements|send_source_open_preserves_regular_files_and_source_links|receive_job_cannot_initialize_a_send_source) \.\.\. ok$' "$output"
+            grep -E '^test tests::(redirected_probe_password_is_bounded_and_line_framed|remote_login_admission_requires_current_protocol_or_exact_headless_error|peer_source_swap_.*) \.\.\. ok$|^FILE_PEER_PROBE_ARTIFACT(_START)?=' "$output"
             python3 -I -S "$source_root/scripts/verify-hostname-resolution-probe.py" "$output" "$source_root" \
                 || fail 'hostname connector observation or source binding differs'
         fi
@@ -5807,6 +5833,8 @@ run_android_peer_build() {
     if [ "$PEER_BUILD_PROFILE" = bounded ]; then
         [ "$(grep -Fxc 'FILE_TYPE_REPLAY=pass auth=cpace session=filetransfer unsupported=7 job=17013 generic=150001-bytes digest=confirmed done=once barrier=passed network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
             || fail 'Linux service peer file-type admission result differs'
+        [ "$(grep -Fxc 'FILE_SOURCE_REPLAY=pass auth=cpace session=filetransfer swap=after-admission first=150001-bytes error=once file=1 false_done=absent restored=2 barrier=passed recovery=150001-bytes cleanup=server-joined' "$output")" -eq 1 ] \
+            || fail 'Linux service peer source-replacement result differs'
     fi
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'Android peer build did not exit cleanly'

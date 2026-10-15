@@ -143,8 +143,6 @@ class _ConnectionPageState extends State<ConnectionPage>
 
   final RxBool _addressInputFocused = false.obs;
   final FocusNode _addressFocusNode = FocusNode();
-  final TextEditingController _addressEditingController =
-      TextEditingController();
 
   String selectedConnectionType = 'Connect';
 
@@ -168,7 +166,6 @@ class _ConnectionPageState extends State<ConnectionPage>
           .restoreInitialAddress(() => bind.mainGetLastRemoteId());
       if (restored && mounted) setState(() {});
     });
-    Get.put<TextEditingController>(_addressEditingController);
     Get.put<DirectAddressTextEditingController>(_addressController);
     windowManager.addListener(this);
   }
@@ -180,12 +177,8 @@ class _ConnectionPageState extends State<ConnectionPage>
     _allPeersLoader.clear();
     _addressFocusNode.removeListener(onFocusChanged);
     _addressFocusNode.dispose();
-    _addressEditingController.dispose();
     if (Get.isRegistered<DirectAddressTextEditingController>()) {
       Get.delete<DirectAddressTextEditingController>();
-    }
-    if (Get.isRegistered<TextEditingController>()) {
-      Get.delete<TextEditingController>();
     }
     super.dispose();
   }
@@ -231,9 +224,9 @@ class _ConnectionPageState extends State<ConnectionPage>
         _allPeersLoader.getAllPeers();
       }
 
-      final textLength = _addressEditingController.value.text.length;
+      final textLength = _addressController.text.length;
       // Select all to facilitate removing text, just following the behavior of address input of chrome.
-      _addressEditingController.selection =
+      _addressController.selection =
           TextSelection(baseOffset: 0, extentOffset: textLength);
     }
   }
@@ -330,15 +323,14 @@ class _ConnectionPageState extends State<ConnectionPage>
                     return _autocompleteOpts;
                   },
                   focusNode: _addressFocusNode,
-                  textEditingController: _addressEditingController,
+                  textEditingController: _addressController,
+                  displayStringForOption: (peer) => peer.id,
                   fieldViewBuilder: (
                     BuildContext context,
                     TextEditingController fieldTextEditingController,
                     FocusNode fieldFocusNode,
                     VoidCallback onFieldSubmitted,
                   ) {
-                    updateTextAndPreserveSelection(
-                        fieldTextEditingController, _addressController.text);
                     return Obx(() => TextField(
                           autocorrect: false,
                           enableSuggestions: false,
@@ -361,20 +353,12 @@ class _ConnectionPageState extends State<ConnectionPage>
                               contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 15, vertical: 13)),
                           controller: fieldTextEditingController,
-                          onChanged: (v) {
-                            _addressController.address = v;
-                          },
                           onSubmitted: (_) {
                             onConnect();
                           },
                         ));
                   },
-                  onSelected: (option) {
-                    setState(() {
-                      _addressController.address = option.id;
-                      FocusScope.of(context).unfocus();
-                    });
-                  },
+                  onSelected: (_) => FocusScope.of(context).unfocus(),
                   optionsViewBuilder: (BuildContext context,
                       AutocompleteOnSelected<Peer> onSelected,
                       Iterable<Peer> options) {

@@ -40,8 +40,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
   final RxBool _addressEmpty = true.obs;
 
   final FocusNode _addressFocusNode = FocusNode();
-  final TextEditingController _addressEditingController =
-      TextEditingController();
 
   final AllPeersLoader _allPeersLoader = AllPeersLoader();
 
@@ -69,7 +67,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
           .restoreInitialAddress(() => bind.mainGetLastRemoteId());
       if (restored && mounted) setState(() {});
     });
-    Get.put<TextEditingController>(_addressEditingController);
   }
 
   @override
@@ -97,15 +94,15 @@ class _ConnectionPageState extends State<ConnectionPage> {
   }
 
   void onFocusChanged() {
-    _addressEmpty.value = _addressEditingController.text.isEmpty;
+    _addressEmpty.value = _addressController.text.isEmpty;
     if (_addressFocusNode.hasFocus) {
       if (_allPeersLoader.needLoad) {
         _allPeersLoader.getAllPeers();
       }
 
-      final textLength = _addressEditingController.value.text.length;
+      final textLength = _addressController.text.length;
       // Select all to facilitate removing text, just following the behavior of address input of chrome.
-      _addressEditingController.selection =
+      _addressController.selection =
           TextSelection(baseOffset: 0, extentOffset: textLength);
     }
   }
@@ -168,13 +165,12 @@ class _ConnectionPageState extends State<ConnectionPage> {
                       return _autocompleteOpts;
                     },
                     focusNode: _addressFocusNode,
-                    textEditingController: _addressEditingController,
+                    textEditingController: _addressController,
+                    displayStringForOption: (peer) => peer.id,
                     fieldViewBuilder: (BuildContext context,
                         TextEditingController fieldTextEditingController,
                         FocusNode fieldFocusNode,
                         VoidCallback onFieldSubmitted) {
-                      updateTextAndPreserveSelection(
-                          fieldTextEditingController, _addressController.text);
                       return AutoSizeTextField(
                         controller: fieldTextEditingController,
                         focusNode: fieldFocusNode,
@@ -183,9 +179,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
                         enableSuggestions: false,
                         keyboardType: TextInputType.visiblePassword,
                         // keyboardType: TextInputType.number,
-                        onChanged: (String text) {
-                          _addressController.address = text;
-                        },
                         style: const TextStyle(
                           fontFamily: 'WorkSans',
                           fontWeight: FontWeight.bold,
@@ -213,12 +206,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                         },
                       );
                     },
-                    onSelected: (option) {
-                      setState(() {
-                        _addressController.address = option.id;
-                        FocusScope.of(context).unfocus();
-                      });
-                    },
+                    onSelected: (_) => FocusScope.of(context).unfocus(),
                     optionsViewBuilder: (BuildContext context,
                         AutocompleteOnSelected<Peer> onSelected,
                         Iterable<Peer> options) {
@@ -323,12 +311,8 @@ class _ConnectionPageState extends State<ConnectionPage> {
     _addressFocusNode.removeListener(onFocusChanged);
     _allPeersLoader.clear();
     _addressFocusNode.dispose();
-    _addressEditingController.dispose();
     if (Get.isRegistered<DirectAddressTextEditingController>()) {
       Get.delete<DirectAddressTextEditingController>();
-    }
-    if (Get.isRegistered<TextEditingController>()) {
-      Get.delete<TextEditingController>();
     }
     super.dispose();
   }

@@ -2642,10 +2642,6 @@ connect(BuildContext context, String address,
       final addressController = Get.find<DirectAddressTextEditingController>();
       addressController.address = address;
     }
-    if (Get.isRegistered<TextEditingController>()) {
-      final fieldTextEditingController = Get.find<TextEditingController>();
-      fieldTextEditingController.text = address;
-    }
   }
   // R-G2/R-SV10: the fork is direct-IP-only — the connect target MUST be a direct address
   // (<ipv4>[:port] / <ipv6> / [<ipv6>]:port / <domain>:port), never a bare numeric RustDesk ID (the
@@ -3820,21 +3816,6 @@ Widget workaroundWindowBorder(BuildContext context, Widget child) {
       ...borders,
     ],
   );
-}
-
-void updateTextAndPreserveSelection(
-    TextEditingController controller, String text) {
-  // Only care about select all for now.
-  final isSelected = controller.selection.isValid &&
-      controller.selection.end > controller.selection.start;
-
-  // Set text will make the selection invalid.
-  controller.text = text;
-
-  if (isSelected) {
-    controller.selection = TextSelection(
-        baseOffset: 0, extentOffset: controller.value.text.length);
-  }
 }
 
 String _appName = '';

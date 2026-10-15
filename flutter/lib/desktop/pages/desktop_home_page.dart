@@ -601,22 +601,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           'scaleFactor': screen.scaleFactor,
         };
 
-    bool isChattyMethod(String methodName) {
-      switch (methodName) {
-        case kWindowBumpMouse: return true;
-      }
-
-      return false;
-    }
-
     rustDeskWinManager.setMethodHandler((call, fromWindowId) async {
-      if (!isChattyMethod(call.method)) {
-        final loggedArguments = call.method == kWindowEventMoveTabToNewWindow
-            ? '<redacted tab-transfer authority>'
-            : call.arguments;
-        debugPrint(
-          "[Main] call ${call.method} with args $loggedArguments from window $fromWindowId");
-      }
       if (call.method == kWindowMainWindowOnTop) {
         windowOnTop(null);
       } else if (call.method == kWindowGetWindowInfo) {

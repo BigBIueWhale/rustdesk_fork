@@ -300,8 +300,6 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
 
     rustDeskWinManager.setMethodHandler((call, fromWindowId) async {
-      print(
-          "[Remote Terminal] call ${call.method} with args ${call.arguments} from window $fromWindowId");
       if (call.method == kWindowEventNewTerminal) {
         final args = jsonDecode(call.arguments);
         final id = args['id'];
@@ -354,8 +352,8 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
     Map<String, dynamic>? args;
     try {
       args = jsonDecode(arguments) as Map<String, dynamic>;
-    } catch (e) {
-      debugPrint("Error parsing JSON arguments in _restoreSessions: $e");
+    } catch (error) {
+      debugPrint('Terminal session restoration failed: ${error.runtimeType}');
       return;
     }
     final persistentSessions =

@@ -2304,6 +2304,20 @@ the full 25-suite/283-case model checkpoint, native Rust/full-peer/application b
 installed/platform/service behavior, sustained resources/presentation, release/cold equality,
 independent reproduction/external review and whole-document/fresh token-count acceptance remain OPEN.
 
+**Desktop window credential diagnostics: source corrected; native log-capture acceptance OPEN.**
+The six desktop window receivers no longer log incoming method payloads. The shared
+window manager serializes `password` and optional `connToken` fields for session
+handoff; the main, file-transfer and tunnel receivers previously printed those
+payloads, while remote/camera receivers used method-specific redaction and the
+terminal receiver printed arbitrary payloads. Both raw logging and those conditional
+redaction branches are removed. Restore-session JSON errors report only their type,
+without the decoder's source excerpt. Dispatch, credential arguments and receiver
+authority checks are unchanged. Review and whitespace checks establish this narrow
+source deletion; no new app, native window, release-log capture or LPE result is
+claimed. Target-native valid/malformed handoff log capture across all five session
+types remains OPEN. The terminal parser's retained-input and CPU-work limits are a
+separate OPEN item, parked at the user's request.
+
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.
 `ConnectPasswordDialog` owns the password controller, initial preference and

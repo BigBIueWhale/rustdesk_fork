@@ -3121,6 +3121,7 @@ run_focused_rust_tests() {
             client::io_loop::tests::r_s11fi_incoming_nofollow_open_failure_preserves_older_sidecars
             client::io_loop::tests::r_s11fi_next_file_setup_failure_retires_only_the_viewer_job
             ui_cm_interface::tests::r_s11fi_cm_next_file_setup_failure_emits_exact_failure_and_refuses_done
+            ui_cm_interface::tests::r_s11fi_cm_replaced_sidecars_preserve_foreign_files_and_report_cleanup
             client::io_loop::tests::r_s11fj_download_digest_metadata_failure_is_explicit
             client::io_loop::tests::r_s11fj_download_digest_requires_the_exact_active_file
             client::io_loop::tests::r_s11fj_download_digest_refuses_size_changed_after_listing
@@ -3461,6 +3462,7 @@ run_focused_rust_tests() {
                 client::io_loop::tests::r_s11fi_incoming_nofollow_open_failure_preserves_older_sidecars
                 client::io_loop::tests::r_s11fi_next_file_setup_failure_retires_only_the_viewer_job
                 ui_cm_interface::tests::r_s11fi_cm_next_file_setup_failure_emits_exact_failure_and_refuses_done
+                ui_cm_interface::tests::r_s11fi_cm_replaced_sidecars_preserve_foreign_files_and_report_cleanup
             )
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             container_name=rustdesk-resolution-parent-tests
@@ -4636,9 +4638,9 @@ PY
             || fail 'resolution-restoration artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
         [ "${#result_lines[@]}" -eq 2 ] || fail 'file-receive parent summary count differs'
-        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=5 groups=2 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=6 groups=2 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FILE_RECEIVE_PARENT_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$' "$output")" -eq 5 ] \
+            && [ "$(grep -Ec '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$' "$output")" -eq 6 ] \
             || fail 'file-receive parent artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution parent summary count differs'
@@ -4976,9 +4978,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
-            [ "$tests_passed" -eq 5 ] || fail 'file-receive parent total differs'
+            [ "$tests_passed" -eq 6 ] || fail 'file-receive parent total differs'
             grep -E '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$|^FILE_RECEIVE_PARENT_BUILD=pass |^FILE_RECEIVE_PARENT_ARTIFACT=' "$output"
-            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=5 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=6 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then

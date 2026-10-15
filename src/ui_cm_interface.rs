@@ -6306,104 +6306,333 @@ mod tests {
         assert!(!temp.join("failed.bin.digest").exists());
     }
 
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "ios")))]
     #[tokio::test(flavor = "current_thread")]
-    async fn r_s11c_4d_cm_write_cancellation_cleanup_identity_failure_is_explicit() {
-        let temp = CmFileTestDir::new("cleanup_identity");
-        let download = temp.join("failed.bin.download");
-        let displaced = temp.join("displaced.download");
-        let digest = temp.join("failed.bin.digest");
-        let lock = temp.join("failed.bin.download.lock");
-        let (tx, mut rx) = cm_egress_channel();
-        let responder = CmFileResponder {
-            tx: &tx,
-            conn_id: 55,
-            cm_auth_token: "token-55",
-        };
-        let mut write_jobs = Vec::new();
-        let mut read_jobs = Vec::new();
+    async fn r_s11fi_cm_replaced_sidecars_preserve_foreign_files_and_report_cleanup() {
+        use std::os::unix::fs::MetadataExt;
 
-        handle_fs(
-            ipc::FS::NewWrite {
-                path: temp.path.to_string_lossy().into_owned(),
-                id: 76,
-                file_num: 0,
-                files: vec![ipc::CmReceiveFile {
-                    name: "failed.bin".to_owned(),
-                    size: 13,
-                    modified_time: 0,
-                }],
-                overwrite_detection: false,
-                total_size: 13,
-                conn_id: 55,
-                generation: 15,
-            },
-            &mut write_jobs,
-            &mut read_jobs,
-            responder,
-            false,
-        )
-        .await
-        .expect("admit exact CM receive job");
-        handle_fs(
-            ipc::FS::WriteBlock {
-                id: 76,
-                file_num: 0,
-                conn_id: 55,
-                data: bytes::Bytes::from_static(b"owned-payload"),
-                compressed: false,
-                generation: 15,
-            },
-            &mut write_jobs,
-            &mut read_jobs,
-            responder,
-            false,
-        )
-        .await
-        .expect("write exact CM receive generation");
-        std::fs::rename(&download, &displaced).expect("displace admitted CM staging inode");
-        std::fs::write(&download, b"replacement-must-survive")
-            .expect("install a different CM staging generation");
-
-        handle_fs(
-            ipc::FS::CancelWrite {
-                id: 76,
-                conn_id: 55,
-                generation: 15,
-            },
-            &mut write_jobs,
-            &mut read_jobs,
-            responder,
-            false,
-        )
-        .await
-        .expect("cleanup uncertainty must produce an exact CM failure response");
-
-        match next_cm_file_test_response(&mut rx).await {
-            ipc::CmFileResponseKind::WriteCancelled {
-                id,
-                generation,
-                file_num,
-                result,
-            } => {
-                assert_eq!((id, generation, file_num), (76, 15, 0));
-                let error = result.expect_err("replacement generation must fail exact cleanup");
-                assert!(error.contains("partial receive cleanup failed"));
-                assert!(error.contains("generation changed"));
-            }
-            response => panic!("unexpected cleanup-identity response: {response:?}"),
+        #[derive(Clone, Copy, Debug)]
+        enum Operation {
+            Block,
+            Confirmation,
+            Done,
+            PeerError,
+            Cancellation,
         }
-        assert!(write_jobs.is_empty());
-        assert_eq!(
-            fs::read(&download).expect("read replacement CM staging generation"),
-            b"replacement-must-survive"
-        );
-        assert_eq!(
-            fs::read(&displaced).expect("read displaced admitted CM generation"),
-            b"owned-payload"
-        );
-        assert!(!digest.exists());
-        assert!(lock.exists());
+
+        async fn next_response(rx: &mut CmEgressReceiver) -> ipc::CmFileResponseKind {
+            let item = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+                .await
+                .expect("CM cleanup response must be bounded")
+                .expect("CM cleanup response must be present");
+            let CmEgressItem::Data(Data::CmFileResponse(response)) = item else {
+                panic!("expected an exact CM file response");
+            };
+            assert_eq!(response.conn_id, 59);
+            assert_eq!(response.cm_auth_token, "token-59");
+            *response.response
+        }
+
+        fn identity(path: &std::path::Path) -> (u64, u64) {
+            let metadata = std::fs::metadata(path).expect("inspect exact CM artifact");
+            (metadata.dev(), metadata.ino())
+        }
+
+        for suffix in [".download", ".digest"] {
+            for operation in [
+                Operation::Block,
+                Operation::Confirmation,
+                Operation::Done,
+                Operation::PeerError,
+                Operation::Cancellation,
+            ] {
+                let temp = CmFileTestDir::new(&format!("replacement_{operation:?}{suffix}"));
+                let (tx, mut rx) = cm_egress_channel();
+                let responder = CmFileResponder {
+                    tx: &tx,
+                    conn_id: 59,
+                    cm_auth_token: "token-59",
+                };
+                let mut write_jobs = Vec::new();
+                let mut read_jobs = Vec::new();
+                for (id, name, bytes, size) in [
+                    (81, "target.bin", b"owned-payload".as_slice(), 13),
+                    (82, "survivor.bin", b"D".as_slice(), 2),
+                ] {
+                    handle_fs(
+                        ipc::FS::NewWrite {
+                            path: temp.path.to_string_lossy().into_owned(),
+                            id,
+                            file_num: 0,
+                            files: vec![ipc::CmReceiveFile {
+                                name: name.to_owned(),
+                                size,
+                                modified_time: 0,
+                            }],
+                            overwrite_detection: false,
+                            total_size: size,
+                            conn_id: 59,
+                            generation: 23,
+                        },
+                        &mut write_jobs,
+                        &mut read_jobs,
+                        responder,
+                        false,
+                    )
+                    .await
+                    .expect("admit independent CM receive jobs");
+                    handle_fs(
+                        ipc::FS::WriteBlock {
+                            id,
+                            file_num: 0,
+                            conn_id: 59,
+                            data: bytes::Bytes::copy_from_slice(bytes),
+                            compressed: false,
+                            generation: 23,
+                        },
+                        &mut write_jobs,
+                        &mut read_jobs,
+                        responder,
+                        false,
+                    )
+                    .await
+                    .expect("persist the admitted CM file generation");
+                }
+
+                let replaced = temp.join(&format!("target.bin{suffix}"));
+                let displaced = temp.join("displaced");
+                let lock = temp.join("target.bin.download.lock");
+                let admitted_identity = identity(&replaced);
+                let admitted_bytes = std::fs::read(&replaced).expect("read admitted artifact");
+                let lock_identity = identity(&lock);
+                std::fs::rename(&replaced, &displaced).expect("displace the admitted CM sidecar");
+                std::fs::write(&replaced, b"replacement-must-survive")
+                    .expect("install a foreign CM sidecar");
+                let replacement_identity = identity(&replaced);
+                assert_ne!(replacement_identity, admitted_identity);
+                assert_eq!(identity(&displaced), admitted_identity);
+
+                let (request, primary_error) = match operation {
+                    Operation::Block => (
+                        ipc::FS::WriteBlock {
+                            id: 81,
+                            file_num: 1,
+                            conn_id: 59,
+                            data: bytes::Bytes::from_static(b"invalid-next-file"),
+                            compressed: false,
+                            generation: 23,
+                        },
+                        "Wrong file number",
+                    ),
+                    Operation::Confirmation => (
+                        ipc::FS::SendConfirm {
+                            id: 81,
+                            file_num: 1,
+                            skip: false,
+                            offset_blk: 0,
+                            conn_id: 59,
+                            generation: 23,
+                        },
+                        "confirmation file 1 does not match active write file 0",
+                    ),
+                    Operation::Done => (
+                        ipc::FS::WriteDone {
+                            id: 81,
+                            file_num: 1,
+                            conn_id: 59,
+                            generation: 23,
+                        },
+                        "generation changed",
+                    ),
+                    Operation::PeerError => (
+                        ipc::FS::WriteError {
+                            id: 81,
+                            file_num: 0,
+                            conn_id: 59,
+                            err: "fixture peer failure".to_owned(),
+                            generation: 23,
+                        },
+                        "peer file transfer failed: fixture peer failure",
+                    ),
+                    Operation::Cancellation => (
+                        ipc::FS::CancelWrite {
+                            id: 81,
+                            conn_id: 59,
+                            generation: 23,
+                        },
+                        "partial receive cleanup failed",
+                    ),
+                };
+                handle_fs(
+                    request,
+                    &mut write_jobs,
+                    &mut read_jobs,
+                    responder,
+                    false,
+                )
+                .await
+                .expect("cleanup uncertainty must reach the exact typed CM response");
+                let error = match next_response(&mut rx).await {
+                    ipc::CmFileResponseKind::WriteFailed {
+                        id,
+                        generation,
+                        file_num,
+                        error,
+                    } => {
+                        assert!(matches!(operation, Operation::Block | Operation::Confirmation));
+                        assert_eq!((id, generation, file_num), (81, 23, 1));
+                        error
+                    }
+                    ipc::CmFileResponseKind::WriteFinalized {
+                        id,
+                        generation,
+                        result,
+                    } => {
+                        assert!(matches!(operation, Operation::Done | Operation::PeerError));
+                        assert_eq!((id, generation), (81, 23));
+                        result.expect_err("uncertain finalization must not report success")
+                    }
+                    ipc::CmFileResponseKind::WriteCancelled {
+                        id,
+                        generation,
+                        file_num,
+                        result,
+                    } => {
+                        assert!(matches!(operation, Operation::Cancellation));
+                        assert_eq!((id, generation, file_num), (81, 23, 0));
+                        result.expect_err("uncertain cancellation must not report success")
+                    }
+                    response => panic!("unexpected replacement response: {:?}", response),
+                };
+                let cleanup_error = if matches!(operation, Operation::Cancellation) {
+                    error
+                        .strip_prefix("partial receive cleanup failed: ")
+                        .expect("cancellation must report its exact cleanup error")
+                } else {
+                    let (primary, cleanup) = error
+                        .split_once("; partial receive cleanup failed: ")
+                        .expect("primary and cleanup errors must both reach the CM response");
+                    assert!(
+                        primary.contains(primary_error),
+                        "missing primary error: {}",
+                        error
+                    );
+                    cleanup
+                };
+                assert!(
+                    cleanup_error.contains("generation changed"),
+                    "missing generation refusal: {}",
+                    error
+                );
+                assert_eq!(write_jobs.len(), 1);
+                assert_eq!(write_jobs[0].job.id(), 82);
+                assert_eq!(write_jobs[0].generation, 23);
+                assert_eq!(write_jobs[0].job.finished_size(), 1);
+                assert_eq!(write_jobs[0].job.transferred(), 1);
+                assert!(read_jobs.is_empty());
+
+                handle_fs(
+                    ipc::FS::WriteBlock {
+                        id: 81,
+                        file_num: 0,
+                        conn_id: 59,
+                        data: bytes::Bytes::from_static(b"late"),
+                        compressed: false,
+                        generation: 23,
+                    },
+                    &mut write_jobs,
+                    &mut read_jobs,
+                    responder,
+                    false,
+                )
+                .await
+                .expect("late blocks must produce an explicit refusal");
+                match next_response(&mut rx).await {
+                    ipc::CmFileResponseKind::WriteFailed {
+                        id,
+                        generation,
+                        file_num,
+                        error,
+                    } => {
+                        assert_eq!((id, generation, file_num), (81, 23, 0));
+                        assert!(error.contains("unknown write job"));
+                    }
+                    response => panic!("unexpected late-block response: {:?}", response),
+                }
+                for id in [81, 82] {
+                    if id == 82 {
+                        handle_fs(
+                            ipc::FS::WriteBlock {
+                                id,
+                                file_num: 0,
+                                conn_id: 59,
+                                data: bytes::Bytes::from_static(b"E"),
+                                compressed: false,
+                                generation: 23,
+                            },
+                            &mut write_jobs,
+                            &mut read_jobs,
+                            responder,
+                            false,
+                        )
+                        .await
+                        .expect("the independent transfer must remain writable");
+                    }
+                    handle_fs(
+                        ipc::FS::WriteDone {
+                            id,
+                            file_num: 1,
+                            conn_id: 59,
+                            generation: 23,
+                        },
+                        &mut write_jobs,
+                        &mut read_jobs,
+                        responder,
+                        false,
+                    )
+                    .await
+                    .expect("finalization must return an exact CM response");
+                    match next_response(&mut rx).await {
+                        ipc::CmFileResponseKind::WriteFinalized {
+                            id: actual_id,
+                            generation,
+                            result,
+                        } => {
+                            assert_eq!((actual_id, generation), (id, 23));
+                            if id == 81 {
+                                assert!(result
+                                    .expect_err("late Done must fail")
+                                    .contains("unknown write job"));
+                            } else {
+                                result.expect("the independent transfer must finish");
+                            }
+                        }
+                        response => panic!("unexpected finalization response: {:?}", response),
+                    }
+                }
+
+                assert!(write_jobs.is_empty());
+                assert!(read_jobs.is_empty());
+                assert_eq!(std::fs::read(&replaced).unwrap(), b"replacement-must-survive");
+                assert_eq!(identity(&replaced), replacement_identity);
+                assert_eq!(std::fs::read(&displaced).unwrap(), admitted_bytes);
+                assert_eq!(identity(&displaced), admitted_identity);
+                assert_eq!(identity(&lock), lock_identity);
+                let exact_suffix = if suffix == ".download" {
+                    ".digest"
+                } else {
+                    ".download"
+                };
+                assert!(!temp.join(&format!("target.bin{exact_suffix}")).exists());
+                assert!(!temp.join("target.bin").exists());
+                assert_eq!(std::fs::read(temp.join("survivor.bin")).unwrap(), b"DE");
+                for suffix in [".download", ".digest", ".download.lock"] {
+                    assert!(!temp.join(&format!("survivor.bin{suffix}")).exists());
+                }
+                assert_eq!(std::fs::read_dir(&temp.path).unwrap().count(), 4);
+                assert!(matches!(rx.take_next(), Ok(None)));
+            }
+        }
     }
 
     #[cfg(not(target_os = "ios"))]

@@ -14317,9 +14317,12 @@ and every artifact hash remained unchanged through execution, and the exact serv
 This is an uninstalled UID/GID-1000 server/container replay; it supplies no root-service
 privilege, local UI queue, Flutter GUI, Windows CM delegation or Apple/Windows execution.
 
-The inert capsule at `.harness-state/android-peer-artifacts/aa214843bacbda169c7ce80ae63f66143934d8c1/linux-x86_64-peer`
+The historical inert capsule at `.harness-state/retained-peer-artifact-aa214843/linux-x86_64-peer`
 retains server SHA-256 `9758a70356605768631bf4d5e8ba36aba6644b65a7c1210c3e306cd00a80701d`
 and manifest `643ed90164fb626ab59b08a96190693a75862f82987edf892857e611ee10d9f9`.
+The source-parent and all eight file identities, modes and hashes were preserved by a
+descriptor-relative no-clobber rename. The mapping is retained in
+`.harness-state/verifier-vm/core-peer-archive-aa214843-at-56ed3a9c.json`.
 `.harness-state/verifier-vm/file-type-peer-accepted-aa214843.json` binds the pinned Rust 1.75/
 builder/vendor context, native results, artifact identities, all **111** matching source/index/
 audit/specification/ledger/instruction/archive before/during/after freezes, complete unchanged

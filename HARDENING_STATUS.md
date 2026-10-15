@@ -12690,7 +12690,7 @@ user requests and release obligations.
 
 ### R-S11hj/R-S11e-247 — complete account storage and presentation authority excision
 
-**SOURCE IMPLEMENTED; EXACT COMPILATION, GENERATED-BRIDGE ABSENCE INSPECTION, PACKAGE,
+**SOURCE CORRECTED; FOCUSED DART/LOADER-BRIDGE CHECKS PASS; APPLICATION, PACKAGE,
 AND INSTALLED-ARTIFACT EVIDENCE OPEN.** The direct-only fork has no live account/address-book/group
 UI or control plane. Its inherited record types, encrypted raw stores, FFI/web save/load/clear
 surface, account options, password-provenance flag, main-status variants, recursive asset packaging,
@@ -12698,7 +12698,22 @@ and retired icon fonts are absent rather than replaced by a worker or migration 
 Existing `*_ab`/`*_group` files remain untouched inert bytes. Live peer TOML and direct-session
 display-name/avatar, CPace, password, and connection-token state remain separate.
 
-Exact-current compilation, fresh bridge absence inspection, built-package asset/symbol inventories,
+The Recent/Favorite presentation mapper no longer exports the legacy password hash. Dart `Peer`
+has no credential/group fields, outbound serializers, copy/equality APIs or redundant constructor;
+its loading and autocomplete placeholders use the retained local-metadata parser. The unused
+address-book-specific recent-peer loader and web stub are deleted. At `b7b976ec`, a healthy peer
+loaded before a retired hash field caused the old parser's type error; fail-fast omitted later cases.
+At `730bb9b0`, the unchanged peer tests and credential cohort passed all eight suites/63 cases plus
+three result-parser controls in 284 outer seconds on pinned Flutter 3.24.5. Fresh Dart and both Rust
+bridges exclude the retired loader; inspection errors refuse success. Complete source/control and
+endpoint freezes, raw serial and joined bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/peer-metadata-corrected-730bb9b0.json`.
+This proves Dart metadata behavior, import compilation and that named generated-API absence;
+it does not execute the Rust mapper, whole connection pages, real platform IMEs or installed peers.
+Malformed-peer diagnostic secrecy remains OPEN. Runner bootstrap now follows explicit offline
+tools finalization; the 286/284-second observations establish no causal performance improvement.
+
+Exact-current Rust application compilation, complete fresh bridge absence inspection, built-package asset/symbol inventories,
 installed-platform checks, cold R-B2/R-B10 equality, independent reproduction, and external review
 remain required. R-S11gr's generated-bridge/model checkpoint is not a complete compilation or
 account-symbol/package absence inventory. Broader cross-platform connection-flow, latency,

@@ -57,7 +57,7 @@ obligations and remaining document-role cleanup stay open.
 Current normative specification identity:
 
 ```text
-989df74eb26eb94ab027d231f82559073e9d7277901c4856df9b76450184e37b  requirements.html
+212ef0908ac32a898ae44905d602f54adedc3de50147ff3952e84d2498b2cf40  requirements.html
 ```
 
 ## Current Verdict
@@ -7704,101 +7704,41 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   network acquisition, root-owned displaced-tree metadata-drift VM case, real canonical Pub-cache
   replacement, clean release artifact, Android/Windows/macOS device behavior, cross-version run,
   sustained performance/resource soak, independent reproduction, or external review is established.
-- **R-S11co/R-S11e-107 — networked libyuv distfile output authority — SOURCE AND
-  TRANSACTION SELF-TEST, EXACT-CACHE COMPATIBILITY, AND FOCUSED/INDEPENDENT MUTATION
-  EVIDENCE VERIFIED 2026-07-24; COLD NETWORK ACQUISITION AND RELEASE EVIDENCE REMAIN OPEN.**
-  Platform: the unprivileged Linux acquisition host and immutable Debian-builder container. Endpoint/action:
-  `scripts/online-fetch.sh::stage_vcpkg_distfiles`, which fetches one pinned libyuv Git commit and
-  publishes its deterministic tar/gzip distfile. Boundary: remote Git/archive processing ↔ the
-  complete offline-input closure and durable `online/libyuv-<commit>.tar.gz` name.
+- **R-S11co/R-S11e-107 — libyuv distfile authority: source implemented; historical
+  filesystem fixtures only; current acquisition-VM, cold and release acceptance OPEN.**
+  Owners are `scripts/online-fetch.sh::stage_vcpkg_distfiles` and
+  `scripts/online-libyuv-distfile-output.py`. The producer receives one recorded private
+  archive inode, with no online-root, source-tree, directory or final-name mount.
+  Exclusive locking and reserved-state reconciliation precede reuse or staging. Exact
+  commit/origin, ambient-Git exclusion, deterministic archive/gzip and producer SHA-512
+  checks bind the output; independent stable type/filesystem/owner/mode/link/xattr/size/
+  digest validation runs even on producer failure. Both verdicts are required to publish.
 
-  Before this slice the networked producer bind-mounted the complete `ONLINE_DIR` read-write solely
-  to write one final archive. Its Git fetch/clone/archive/gzip process therefore inherited the
-  invoking user's write/delete authority over every unrelated Cargo, Pub, SDK, NDK, vcpkg, native,
-  Windows, toolchain, and builder input. It wrote the permanent name directly and performed only an
-  in-container SHA-512 check afterward. R-S11cj's immutable numeric-nonroot execution removed
-  container-root authority but did not make that broad writable bind or direct final-name
-  publication admissible. This is source-proven acquisition-output/publication authority debt, not
-  evidence that a cached input changed, a container escaped, host root was acquired, a listener was
-  exposed, host RustDesk/service/config/firewall/network state changed, exploitation occurred, or
-  the host was compromised.
+  New output seals to 0400 before synchronized descriptor-relative no-clobber publication
+  and postcheck. Failure rolls back the exact inode; recovery preserves incoherent state.
+  Private retirement retains identity/mount/external-inode closure. Existing root:root
+  mode-0644 archives require the same complete metadata and pinned-digest validation;
+  their historical compatibility does not authorize acquisition to modify them.
 
-  The libyuv stage now holds a nonblocking exclusive lock over the canonical current-user-private
-  online root and reconciles every reserved `.rustdesk-libyuv-distfile.*` transaction before
-  inspecting the final name. A cold run creates unpredictable mode-0700 same-filesystem staging.
-  `scripts/online-libyuv-distfile-output.py` pre-creates one mode-0600 regular output file and writes
-  a bounded, mode-0600, fsynced state record that binds the exact online/staging/output identities,
-  UID/GID, full lowercase commit, lowercase SHA-512, and final destination. The networked container
-  receives no online-root, source-tree, directory, or final-name mount. Its only writable host
-  object is that pre-created inode at `/outputs/libyuv.tar.gz`.
+  Historical evidence at `a8286ef54` includes confined Linux filesystem self-tests for
+  publication/recovery, wrong digest, occupied destination, symlink, external hardlink,
+  xattr and interrupted state-record writes; a production-shaped single-file mount
+  probe; and exact root-owned-cache compatibility. The first cache fixture was refused
+  because it crossed filesystems; the corrected same-filesystem fixture passed while
+  preserving the real archive. That host-container evidence is not current R-S11cj
+  acquisition-VM acceptance. Source/mutation checks are supplementary only; the focused
+  source gate and executable transaction self-test remain wired in `scripts/verify.sh`.
+  Detailed recipes, builder identities, cached-archive digest and superseded counts
+  remain in Git history at the named commit.
 
-  The producer retains the immutable Debian builder and the R-S11cj no-pull/nonroot/read-only-root/
-  capability-free/no-new-privileges/resource-bounded acquisition floor. It fixes the HTTPS libyuv
-  origin, excludes system/global Git configuration and replacement objects, disables hooks and
-  external attributes, proves the exact named object is a commit, archives that full commit, uses
-  `gzip -n`, and verifies the pinned SHA-512 before exit. The host independently validates the
-  recorded output inode even if the producer fails: same filesystem, current ownership, exact mode,
-  regular type, single link, no extended attributes, nonempty bounded stable read, and exact
-  SHA-512. Success seals the candidate mode 0400.
-
-  Producer and output verdicts remain independent. Only both green permit publication. The file and
-  staging namespace are fsynced before descriptor-relative `renameat2(RENAME_NOREPLACE)` installs
-  the still-absent exact final name; both directories are fsynced and the live identity, mode, and
-  digest are rechecked. A later failure moves that exact inode back without clobber. Restart
-  recovery accepts only bounded unprepared, unpublished, occupied-destination, or exact-published
-  arrangements; every incoherent arrangement is preserved. Exact owner/mount-bound directory-mode
-  restoration and external-inode-closure removal retire reconciled staging. An existing output is
-  not presence-trusted: it receives the same complete validation. Historical root-owned mode-0644
-  output is accepted only with root:root ownership, one link, no xattrs, same filesystem, bounded
-  stable bytes, and the exact digest; new output is necessarily current-user-owned mode 0400.
-
-  The current cached archive was inspected read-only: it is a 566,889-byte root:root mode-0644
-  single-link regular file with SHA-512
-  `be6b343ab6c62e8f2d1571fedf25f5facbf7cd7fe8e1cc4949dab7549ad15f962c91ea43bf567785e54382d7689514f6b66d61bd56b3f38ba54ef51c5fd0da9b`.
-  It was not chmodded, copied, replaced, removed, or otherwise changed. The executable transaction
-  self-test passed in immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as UID/GID 1000:1000 with no pull/network, read-only root/script, zero capabilities,
-  no-new-privileges, and bounded resources. It covers successful publication/recovery,
-  wrong-digest rejection, occupied-destination no-clobber behavior, symlink, external-hardlink,
-  extended-attribute rejection where supported, empty pre-state preparation, and a process
-  interruption while the temporary state record is being written. A separate disposable
-  production-shaped probe prepared the recorded candidate through the helper container, gave exact
-  Debian-builder image
-  `sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776`
-  only that pre-created file under the full nonroot/networkless/read-only-root runtime floor, and
-  then used the helper container to validate, seal, publish, and recheck it. The result was the exact
-  current-user-owned mode-0400 final file; the complete disposable host fixture was removed.
-
-  Exact historical-cache compatibility was then exercised without modifying the real archive. The
-  first disposable probe mounted the real file below a private tmpfs online root; the helper
-  correctly rejected that artificial cross-filesystem topology before digest acceptance. A second
-  disposable current-user-owned mode-0700 online root was created on the same host filesystem, with
-  an empty same-name placeholder overlaid read-only by the real archive at the exact final path.
-  `check-complete` accepted the real root:root mode-0644 inode and exact digest. The disposable
-  fixture and placeholder were removed; the real archive remained read-only throughout.
-
-  `scripts/verify-online-fetch-libyuv-output-authority.py` binds the fixed image/pins/origin,
-  complete transaction and no-online-mount topology, Git object/archive/gzip/digest command,
-  independent verdict barrier, helper metadata/durability/recovery invariants, shared gate,
-  R-S11co, Appendix C #242, this ledger, and independent workspace ownership through deliberate
-  mutations. It passes and rejects all 27 focused mutations; the workspace validator passes
-  normally and its complete source-mutation matrix rejects the independent libyuv mutations.
-  Adjacent online-container, Gradle-source, Gradle-output, Cargo-output, and Pub-output gates reject
-  30, 38, 30, 36, and 40 mutations respectively. The dependency inventory normal/self-test passes.
-  Native-codec normal/self-test,
-  Bash/Python syntax, requirements HTML parsing, requirements hash
-  `db631b7b58f70c331c1dab21d0219afbaeab094e90559735f27c13c83bb760ce`, and diff hygiene pass.
-
-  No real networked Git acquisition was run, so this is source and negative transaction evidence
-  rather than cold acquisition reproduction. Both x64-linux and arm64-android vcpkg native
-  producers are closed by R-S11cp/R-S11e-108 immediately below, and Android NDK extraction is
-  closed by R-S11cq/R-S11e-109 after that. Host-side downloads, Android SDK extraction, Windows
-  archive packagers, maintenance
-  candidate-image publication, exact cold R-B2 artifacts, native/device evidence, and external
-  R-V3 review remain open. No online acquisition, image pull/build/tag, release build, root command,
-  or host RustDesk process/service/config/listener/firewall/network operation was executed for this
-  slice.
+  No real networked Git acquisition or cold reproduction was demonstrated. Exact-current
+  acquisition-VM execution, cold R-B2/R-B10 artifacts, native/device acceptance,
+  independent reproduction and R-V3 external review remain OPEN. R-S11cp and R-S11cq
+  separately govern vcpkg native outputs and NDK extraction; host downloads, SDK/other
+  archives, Windows packagers and maintenance-image publication retain their own open
+  obligations. The documentation cleanup changes no product, transaction, gate or pin
+  and supplies no fresh runtime evidence. Whole-document cleanup and the fresh ledger
+  token count remain OPEN.
 - **R-S11cp/R-S11e-108 — native vcpkg output authority: source and historical filesystem
   transaction evidence; current cold rebuild/release/platform acceptance OPEN.** The
   release triplets are `x64-linux` and `arm64-android`. Their immutable numeric-nonroot

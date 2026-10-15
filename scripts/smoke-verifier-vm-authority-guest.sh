@@ -2555,7 +2555,6 @@ generate_focused_rust_flutter_bridge() {
                 export GIT_OPTIONAL_LOCKS=0
                 export LIBCLANG_PATH="$LLVM_ROOT/lib"
                 export PATH=/work/toolchain/flutter/bin:/work/toolchain/flutter/bin/cache/dart-sdk/bin:/work/toolchain/rustinstall/bin:/usr/bin:/bin
-                [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
                 {
                     printf "[net]\noffline = true\n"
                     sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
@@ -2573,6 +2572,7 @@ generate_focused_rust_flutter_bridge() {
                     /work/toolchain/flutter \
                     "$RUSTDESK_FLUTTER_VERSION" \
                     "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
+                [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
                 "$REAL_FLUTTER" config --no-analytics >/work/flutter-config.out
                 (cd /source/flutter && flutter pub get --offline --enforce-lockfile)
                 [ "$tools_lock" = "$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
@@ -8118,6 +8118,8 @@ run_flutter_model_tests() {
                         "$codegen_source/src/bridge_generated.io.rs"; then
                         echo "Retired address-book loader remains in a fresh bridge" >&2
                         exit 1
+                    else
+                        [ "$?" -eq 1 ] || exit 1
                     fi
                     printf "FLUTTER_PEER_METADATA_BRIDGE=pass retired_loader=absent dart=fresh rust=fresh\n"
                 fi

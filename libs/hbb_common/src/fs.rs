@@ -4334,6 +4334,109 @@ mod tests {
     use crate::protobuf::Message as _;
 
     #[test]
+    fn file_job_id_allocator_never_reuses_or_wraps() {
+        // Normalize the historical integer API and the fallible API so the same native
+        // regression can observe a reissued positive ID on the earlier implementation.
+        trait AllocationOutcome {
+            fn positive_id(self) -> Option<i32>;
+        }
+        impl AllocationOutcome for i32 {
+            fn positive_id(self) -> Option<i32> {
+                (self > 0).then_some(self)
+            }
+        }
+        impl<E> AllocationOutcome for std::result::Result<i32, E> {
+            fn positive_id(self) -> Option<i32> {
+                self.ok().filter(|id| *id > 0)
+            }
+        }
+
+        fn concurrent_ids(start: i32) -> Vec<i32> {
+            use std::sync::{Arc, Barrier};
+
+            NEXT_JOB_ID.store(start, Ordering::SeqCst);
+            let barrier = Arc::new(Barrier::new(9));
+            let mut threads = Vec::new();
+            for _ in 0..8 {
+                let barrier = Arc::clone(&barrier);
+                threads.push(std::thread::spawn(move || {
+                    barrier.wait();
+                    (0..32)
+                        .filter_map(|_| get_next_job_id().positive_id())
+                        .collect::<Vec<_>>()
+                }));
+            }
+            barrier.wait();
+            let mut ids = Vec::new();
+            for thread in threads {
+                ids.extend(thread.join().expect("join the exact allocator caller"));
+            }
+            ids.sort_unstable();
+            ids
+        }
+
+        if let Some(scenario) = std::env::var_os("RUSTDESK_JOB_ID_TEST_SCENARIO") {
+            match scenario.to_str().expect("allocator scenario is UTF-8") {
+                "ordinary" => assert_eq!(concurrent_ids(1), (1..=256).collect::<Vec<_>>()),
+                "last-id" => {
+                    NEXT_JOB_ID.store(i32::MAX, Ordering::SeqCst);
+                    assert_eq!(get_next_job_id().positive_id(), Some(i32::MAX));
+                    for _ in 0..64 {
+                        assert_eq!(get_next_job_id().positive_id(), None);
+                    }
+                }
+                "late-exhaustion" => {
+                    // The wrapping counter reaches this state after earlier refusals.
+                    NEXT_JOB_ID.store(-2, Ordering::SeqCst);
+                    for _ in 0..64 {
+                        assert_eq!(
+                            get_next_job_id().positive_id(),
+                            None,
+                            "an exhausted process must never grant another file-job identity"
+                        );
+                    }
+                }
+                "concurrent-exhaustion" => {
+                    assert_eq!(
+                        concurrent_ids(i32::MAX - 31),
+                        (i32::MAX - 31..=i32::MAX).collect::<Vec<_>>()
+                    );
+                    for _ in 0..64 {
+                        assert_eq!(get_next_job_id().positive_id(), None);
+                    }
+                }
+                other => panic!("unknown allocator scenario: {}", other),
+            }
+            return;
+        }
+
+        // Each child owns its actual process-global counter. Exhausting it must not
+        // poison the parent or make unrelated library tests depend on execution order.
+        for scenario in ["ordinary", "last-id", "late-exhaustion", "concurrent-exhaustion"] {
+            let output = std::process::Command::new(
+                std::env::current_exe().expect("locate the source-bound library test artifact"),
+            )
+            .args([
+                "--exact",
+                "fs::tests::file_job_id_allocator_never_reuses_or_wraps",
+                "--color",
+                "never",
+                "--test-threads=1",
+            ])
+            .env("RUSTDESK_JOB_ID_TEST_SCENARIO", scenario)
+            .output()
+            .expect("run and join the exact allocator fixture child");
+            assert!(
+                output.status.success(),
+                "allocator scenario {} failed: {}\n{}",
+                scenario,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    #[test]
     fn file_transfer_type_refuses_reserved_and_unknown_wire_values() {
         for value in [0, 1, 2, 42, 255, -1, i32::MIN, i32::MAX] {
             let mut action = FileAction::new();

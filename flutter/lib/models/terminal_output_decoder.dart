@@ -3,9 +3,8 @@ import 'dart:convert';
 /// Decodes one terminal byte stream, retaining incomplete UTF-8 between packets.
 class TerminalOutputDecoder {
   final _text = StringBuffer();
-  late final ByteConversionSink _sink =
-      const Utf8Decoder(allowMalformed: true)
-          .startChunkedConversion(_TerminalTextSink(_text));
+  late final ByteConversionSink _sink = const Utf8Decoder(allowMalformed: true)
+      .startChunkedConversion(_TerminalTextSink(_text));
   bool _finished = false;
 
   String add(List<int> bytes) {

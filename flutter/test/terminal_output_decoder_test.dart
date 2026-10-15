@@ -43,7 +43,8 @@ void main() {
     }
   });
 
-  test('terminal end of stream flushes an incomplete character exactly once', () {
+  test('terminal end of stream flushes an incomplete character exactly once',
+      () {
     final decoder = TerminalOutputDecoder();
     expect(decoder.add([0xe2, 0x82]), '');
     expect(decoder.finish(), '\uFFFD');

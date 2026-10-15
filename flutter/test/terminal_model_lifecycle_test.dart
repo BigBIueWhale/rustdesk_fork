@@ -24,7 +24,8 @@ class _TerminalParent implements FFI {
   @override
   dynamic noSuchMethod(Invocation invocation) {
     unexpectedAccess.add(invocation);
-    throw UnsupportedError('Unexpected parent access: ${invocation.memberName}');
+    throw UnsupportedError(
+        'Unexpected parent access: ${invocation.memberName}');
   }
 }
 
@@ -222,7 +223,8 @@ void main() {
     model.dispose();
   });
 
-  testWidgets('disposed terminal ignores delayed open completion', (tester) async {
+  testWidgets('disposed terminal ignores delayed open completion',
+      (tester) async {
     final parent = _TerminalParent();
     final model = _install(parent);
     _open(model);

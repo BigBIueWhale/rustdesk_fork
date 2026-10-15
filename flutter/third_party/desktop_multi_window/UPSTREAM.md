@@ -74,6 +74,13 @@ mirrors the existing Linux response-bound lifetime correction instead of
 destroying the engine while remote, camera, or terminal session cleanup is still
 awaiting.
 
+The shared Dart method adapter owns envelope extraction and callback completion,
+including the awaited window-event dispatcher. It returns one fixed error code
+and message with no details for a failed request and logs only the exception
+type. Original exception text and `PlatformException` fields cannot reach the
+method reply, since they may contain a credential-bearing JSON source. Successful
+payloads, sender IDs, replies, and explicit handler removal retain their protocol.
+
 The original Apache-2.0 license is retained in `LICENSE`. Do not refresh this
 directory from upstream without reviewing and recording the exact new commit,
 reapplying or retiring the local lifetime correction, regenerating the Flutter

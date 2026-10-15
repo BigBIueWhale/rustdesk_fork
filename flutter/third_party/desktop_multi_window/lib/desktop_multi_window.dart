@@ -67,15 +67,20 @@ class DesktopMultiWindow {
       return;
     }
     windowEventChannel.setMethodCallHandler((call) async {
-      if (call.method != 'onEvent') {
+      try {
+        if (call.method == 'onEvent') {
+          await _windowMethodCallHandler(call);
+          return null;
+        }
         final fromWindowId = call.arguments['fromWindowId'] as int;
         final arguments = call.arguments['arguments'];
-        final result =
-            await handler(MethodCall(call.method, arguments), fromWindowId);
-        return result;
-      } else {
-        // window event
-        _windowMethodCallHandler(call);
+        return await handler(MethodCall(call.method, arguments), fromWindowId);
+      } catch (error) {
+        debugPrint('Desktop window request failed: ${error.runtimeType}');
+        throw PlatformException(
+          code: 'window_request_failed',
+          message: 'Desktop window request failed',
+        );
       }
     });
   }

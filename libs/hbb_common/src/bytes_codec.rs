@@ -318,4 +318,68 @@ mod tests {
         assert_eq!(err.to_string(), "Too big packet");
         assert!(buf.capacity() < MAX_PREALLOCATED_PAYLOAD_LEN);
     }
+
+    #[test]
+    fn eof_rejects_partial_headers() {
+        for width in 2..=4 {
+            for received in 1..width {
+                let mut codec = BytesCodec::new();
+                let mut buf = BytesMut::from(&[width as u8 - 1, 1, 1][..received]);
+                assert!(codec.decode(&mut buf).unwrap().is_none());
+                assert_eq!(
+                    codec.decode_eof(&mut buf).unwrap_err().kind(),
+                    io::ErrorKind::UnexpectedEof
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn eof_rejects_partial_payloads_after_consuming_each_header_width() {
+        for (length, width) in [(1usize, 1), (64, 2), (16_384, 3), (4_194_304, 4)] {
+            for received in 0..length.min(2) {
+                let mut codec = BytesCodec::new();
+                let header = ((length << 2) as u32 | (width - 1) as u32).to_le_bytes();
+                let mut buf = BytesMut::from(&header[..width]);
+                assert!(codec.decode(&mut buf).unwrap().is_none());
+                assert!(buf.is_empty(), "the header is retained in decoder state");
+                buf.extend_from_slice(&[0x5a][..received]);
+                assert_eq!(
+                    codec.decode_eof(&mut buf).unwrap_err().kind(),
+                    io::ErrorKind::UnexpectedEof
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn eof_preserves_complete_empty_coalesced_and_raw_frames() {
+        let mut codec = BytesCodec::new();
+        let mut buf = BytesMut::new();
+        for payload in [b"".as_slice(), b"message", b""] {
+            codec
+                .encode(Bytes::copy_from_slice(payload), &mut buf)
+                .unwrap();
+        }
+        for payload in [b"".as_slice(), b"message", b""] {
+            assert_eq!(&codec.decode_eof(&mut buf).unwrap().unwrap()[..], payload);
+        }
+        assert!(codec.decode_eof(&mut buf).unwrap().is_none());
+
+        codec.set_raw();
+        buf.extend_from_slice(b"unframed");
+        assert_eq!(&codec.decode_eof(&mut buf).unwrap().unwrap()[..], b"unframed");
+        assert!(codec.decode_eof(&mut buf).unwrap().is_none());
+    }
+
+    #[test]
+    fn eof_preserves_oversized_frame_refusal() {
+        let mut codec = BytesCodec::new();
+        codec.set_max_packet_length(8);
+        let mut buf = BytesMut::from(&[9 << 2][..]);
+        assert_eq!(
+            codec.decode_eof(&mut buf).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+    }
 }

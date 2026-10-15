@@ -1017,6 +1017,149 @@ impl AsyncWrite for DynTcpStream {
 impl<R: AsyncRead + AsyncWrite + Unpin> TcpStreamTrait for R {}
 
 #[cfg(test)]
+mod eof_tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::io::AsyncWriteExt;
+
+    async fn tcp_pair(keyed: bool) -> (tokio::net::TcpStream, FramedStream) {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (peer, (incoming, _)) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::try_join!(tokio::net::TcpStream::connect(addr), listener.accept())
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        let mut stream = FramedStream::from(incoming, addr);
+        stream.set_max_packet_length(1_024);
+        if keyed {
+            stream.set_session_keys(DirectionalKeys {
+                send: [0x21; 32],
+                recv: [0x32; 32],
+            });
+        }
+        (peer, stream)
+    }
+
+    async fn join_writer(stream: &mut FramedStream, abort: bool) {
+        if let StreamState::Keyed(keyed) = &mut stream.state {
+            if abort {
+                keyed.writer.abort();
+            }
+            let error = tokio::time::timeout(Duration::from_secs(2), &mut keyed.writer)
+                .await
+                .unwrap()
+                .unwrap_err();
+            assert!(error.is_cancelled());
+        }
+    }
+
+    async fn assert_truncated_tcp_frames(keyed: bool) {
+        for prefix in [b"\x04".as_slice(), b"\x10x", b"\x01"] {
+            let (mut peer, mut stream) = tcp_pair(keyed).await;
+            peer.write_all(prefix).await.unwrap();
+            peer.shutdown().await.unwrap();
+            let result = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            // Join the exact writer even when the pre-fix result is a clean EOF.
+            join_writer(&mut stream, !matches!(result, Some(Err(_)))).await;
+            let error = result
+                .expect("a truncated TCP frame must report an error")
+                .unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
+            assert_eq!(stream.recv_counter(), 0);
+            assert!(stream.poison);
+            if let StreamState::Keyed(keyed) = &stream.state {
+                assert!(keyed.writer_admission.frames.is_closed());
+                assert!(keyed.writer_admission.ciphertext_bytes.is_closed());
+            }
+            assert!(stream.next().await.is_none());
+            assert!(stream.send_bytes(Bytes::new()).await.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn unkeyed_tcp_truncation_is_fatal() {
+        assert_truncated_tcp_frames(false).await;
+    }
+
+    #[tokio::test]
+    async fn keyed_tcp_truncation_is_fatal() {
+        assert_truncated_tcp_frames(true).await;
+    }
+
+    #[tokio::test]
+    async fn tcp_complete_frames_finish_cleanly() {
+        for keyed in [false, true] {
+            let (mut peer, mut stream) = tcp_pair(keyed).await;
+            let (mut seal, _) = split_session_keys(&DirectionalKeys {
+                send: [0x32; 32],
+                recv: [0x21; 32],
+            });
+            let mut wire = BytesMut::new();
+            let mut codec = BytesCodec::new();
+            for payload in [b"".as_slice(), b"complete", b""] {
+                let data = if keyed {
+                    seal.seal(payload)
+                } else {
+                    payload.to_vec()
+                };
+                codec.encode(data.into(), &mut wire).unwrap();
+            }
+            peer.write_all(&wire).await.unwrap();
+            peer.shutdown().await.unwrap();
+            for payload in [b"".as_slice(), b"complete", b""] {
+                let frame = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(&frame[..], payload);
+            }
+            assert!(stream.next().await.is_none());
+            assert!(!stream.poison);
+            assert_eq!(stream.recv_counter(), if keyed { 3 } else { 0 });
+            join_writer(&mut stream, true).await;
+        }
+    }
+
+    #[test]
+    fn buffered_eof_frames_require_authentication() {
+        let (mut seal, _) = split_session_keys(&DirectionalKeys {
+            send: [0x32; 32],
+            recv: [0x21; 32],
+        });
+        let (_, open) = split_session_keys(&DirectionalKeys {
+            send: [0x21; 32],
+            recv: [0x32; 32],
+        });
+        let mut codec = SecretboxCodec::new();
+        codec.open_cipher = Some(open);
+        let mut wire = BytesMut::new();
+        for payload in [b"".as_slice(), b"authenticated"] {
+            codec
+                .inner
+                .encode(seal.seal(payload).into(), &mut wire)
+                .unwrap();
+        }
+        for payload in [b"".as_slice(), b"authenticated"] {
+            assert_eq!(&codec.decode_eof(&mut wire).unwrap().unwrap()[..], payload);
+        }
+        assert!(codec.decode_eof(&mut wire).unwrap().is_none());
+        assert_eq!(codec.open_cipher.as_ref().unwrap().read_seq(), 2);
+
+        codec
+            .inner
+            .encode(Bytes::from_static(b"forged"), &mut wire)
+            .unwrap();
+        let error = codec.decode_eof(&mut wire).unwrap_err();
+        assert_eq!(error.to_string(), "decryption error");
+    }
+}
+
+#[cfg(test)]
 mod writer_receipt_tests {
     use super::*;
     use tokio::io::duplex;

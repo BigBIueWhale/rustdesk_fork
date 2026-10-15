@@ -2793,10 +2793,21 @@ run_focused_rust_tests() {
         fi
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then
             source_fingerprints+=(
+                libs/hbb_common/src/bytes_codec.rs
                 libs/hbb_common/src/tcp.rs
                 libs/hbb_common/examples/hostname_resolution_probe.rs
                 scripts/run-hostname-resolution-probe.py
                 scripts/verify-hostname-resolution-probe.py
+            )
+            required_tests+=(
+                tcp::eof_tests::unkeyed_tcp_truncation_is_fatal
+                tcp::eof_tests::keyed_tcp_truncation_is_fatal
+                tcp::eof_tests::tcp_complete_frames_finish_cleanly
+                tcp::eof_tests::buffered_eof_frames_require_authentication
+                bytes_codec::tests::eof_rejects_partial_headers
+                bytes_codec::tests::eof_rejects_partial_payloads_after_consuming_each_header_width
+                bytes_codec::tests::eof_preserves_complete_empty_coalesced_and_raw_frames
+                bytes_codec::tests::eof_preserves_oversized_frame_refusal
             )
             hostname_options=(
                 --dns=127.0.0.1 --dns-option=attempts:1 --dns-option=timeout:1
@@ -3870,6 +3881,10 @@ run_focused_rust_tests() {
                                 --color never --test-threads=1
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                         else
+                            "$test_executable" tcp::eof_tests:: --color never --test-threads=1
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            "$test_executable" bytes_codec::tests:: --color never --test-threads=1
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             "$test_executable" config::tests::config_transaction_ \
                                 --color never --test-threads=1
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
@@ -4290,7 +4305,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output"
     )
     if [ "$MODE" = hbb-common-fs ]; then
-        expected_groups=5
+        expected_groups=7
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \

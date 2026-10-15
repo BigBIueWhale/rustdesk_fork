@@ -34,7 +34,7 @@ Whole-document role classification and compression of redundant history remain *
 Current normative specification identity:
 
 ```text
-fed027199a5567b4c4394248a0439d7a210775ea4e8a28be6bf3be05d642cd72  requirements.html
+50a6e37aec6085f726b2395854a4b6d2ee338c76d213c22d2088a2278f134a25  requirements.html
 ```
 
 ## Current Verdict
@@ -11999,7 +11999,7 @@ other-platform, process-wide memory/latency, sustained socket-backpressure or LP
 production source through `ec94f87b`. The 152-second zero-NIC transaction freshly built and
 selected the exact Cargo integration-test executable, checked its digest before/after, and
 retained every named case. It exercises the real loopback TCP handshake/keying transition,
-post-key exchange, malformed/oversized frames, cancellation/nonce order, wrong-password and
+post-key exchange, malformed/oversized frames, pre-key timeout, wrong-password and
 guess classification, replay and writer refusal. This adds transport integration evidence
 to the separate library component result; it does not execute the full viewer or installed service.
 The dedicated CPace storage profile retains the 8 GiB guest, 6 GiB host headroom and 1 GiB
@@ -12008,6 +12008,15 @@ authenticated boot cache; measured peaks were 3,675,156,480 scratch bytes and 3,
 overlay bytes. Admission, prepared-input capacity, live monitoring and joined retirement
 remain mandatory, with no disk fallback. Source/artifact/raw/case/control/storage bindings are
 in `.harness-state/verifier-vm/cpace-transport-current-c3b1ac6d.json`.
+
+**Pending-read cancellation — prior claim narrowed; replacement native evidence OPEN.** The
+former `r_t5_dropped_next_does_not_advance_read_seq` put an always-ready branch first in a
+biased select, so it did not poll the read. Its pass at `c3b1ac6d` does not establish safety
+after partial socket input. R-T5/R-T14 now require retained frame/codec ownership, no nonce
+advance while incomplete, and exact later delivery; they do not require zero kernel bytes read.
+The replacement test gates and observes real TCP reads before cancelling at three prefix
+boundaries, then checks the retained frame and a following frame. Linux execution is pending;
+native acceptance on other platforms, full application behavior and all broader obligations remain open.
 
 Remaining STOP-SHIP evidence includes exact-current native execution on every supported target;
 real `FramedStream` socket backpressure, sink-failure, drain, abort, nonce/non-delivery, latency, and

@@ -13106,23 +13106,6 @@ if [ "${r_t2_guard:-0}" -ge 2 ] && [ "${r_t2_set:-0}" = 1 ] && [ "${r_t2_retire:
 else
   echo "  FAIL R-T2: poison/writer retirement incomplete (guard=$r_t2_guard need>=2, set=$r_t2_set need=1, retire=$r_t2_retire need=4)"; rc=1
 fi
-# R-T5 (§20): decryption is FOLDED INTO the Framed-owned codec (SecretboxCodec) — decode()
-# reassembles ONE frame then authenticates+decrypts it, advancing read_seq INSIDE decode, so a
-# dropped next() (select!/timeout losing the race) cannot desync the recv counter. The cipher
-# lives in the codec, inheriting tokio-util's StreamExt::next cancel-safety verbatim. Gate: the
-# codec + its Decoder/Encoder impls + the Framed<_,SecretboxCodec> type + the mandated regression
-# test (drives next() under a biased select and asserts read_seq unchanged via recv_counter).
-r_t5_missing=
-grep -q 'pub struct SecretboxCodec' libs/hbb_common/src/tcp.rs              || r_t5_missing="$r_t5_missing codec-struct"
-grep -q 'impl Decoder for SecretboxCodec' libs/hbb_common/src/tcp.rs        || r_t5_missing="$r_t5_missing decoder-impl"
-grep -q 'impl Encoder<Bytes> for SecretboxCodec' libs/hbb_common/src/tcp.rs || r_t5_missing="$r_t5_missing encoder-impl"
-grep -q 'Framed<DynTcpStream, SecretboxCodec>' libs/hbb_common/src/tcp.rs   || r_t5_missing="$r_t5_missing framed-type"
-grep -rq 'recv_counter' libs/cpace_it/tests/                               || r_t5_missing="$r_t5_missing regression-test"
-if [ -n "$r_t5_missing" ]; then
-  echo "  FAIL R-T5: decrypt-in-codec incomplete:$r_t5_missing"; rc=1
-else
-  echo "  ok  R-T5 decrypt folded into SecretboxCodec (read_seq advances in decode) + regression test"
-fi
 # R-T7/R-A1 follow-on: after AEAD succeeds, a malformed protobuf `Message` frame is still an
 # authenticated protocol violation. It MUST close/poison the session, not be silently ignored and
 # leave the keyed connection in a weird state. Gate both post-key dispatch roots: responder
@@ -13198,20 +13181,6 @@ if [ -n "$r_t9_missing" ]; then
   echo "  FAIL R-T9: graceful-shutdown machinery incomplete:$r_t9_missing"; rc=1
 else
   echo "  ok  R-T9 graceful shutdown present (retained signal/listener owner + accept-stop + drain arm + bounded status-selected exit)"
-fi
-# R-T14 (§20): the cross-backend cancellation-safety guarantee — dropping a tokio read future
-# consumes ZERO bytes on epoll/kqueue/IOCP because mio's do_io does a synchronous std recv (no
-# kernel overlapped buffer in flight) — MUST be documented WITH its mio/tokio citation at the read
-# site (the basis R-T5 relies on), so a contributor cannot "fix" it with a hand-rolled WSARecv
-# overlapped read that would reintroduce a real per-OS hazard. Presence gate on the citation.
-r_t14_missing=
-grep -q 'R-T14' libs/hbb_common/src/tcp.rs                   || r_t14_missing="$r_t14_missing anchor"
-grep -q 'mio 1.0.3 / tokio 1.44.2' libs/hbb_common/src/tcp.rs || r_t14_missing="$r_t14_missing citation"
-grep -q 'do_io' libs/hbb_common/src/tcp.rs                   || r_t14_missing="$r_t14_missing do_io-basis"
-if [ -n "$r_t14_missing" ]; then
-  echo "  FAIL R-T14: cross-backend cancellation-safety citation incomplete:$r_t14_missing"; rc=1
-else
-  echo "  ok  R-T14 cross-backend cancellation-safety guarantee documented (mio/tokio cited at read site)"
 fi
 # R-S9 / R-D2 (§20): there is NO in-app source-IP ACL — CPace is the sole gate (the bar is SSH), and
 # source-IP scoping belongs at the firewall (which sheds in the kernel before the process). The

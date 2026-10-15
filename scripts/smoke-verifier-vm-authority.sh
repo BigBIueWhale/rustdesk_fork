@@ -5462,6 +5462,9 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
         || fail 'CPace wire artifact receipt is absent, malformed or duplicated'
     printf '%s\n' "${cpace_wire_artifacts[0]}"
     require_exact_fixed_receipt \
+        'CPACE_PENDING_READ_CANCEL=pass stages=3 partial_socket_bytes=9 recv_counter=2' \
+        'actual pending TCP-read cancellation and exact recovery'
+    require_exact_fixed_receipt \
         "CPACE_RECOVERY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=20 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused CPace recovery receipt'
     require_exact_fixed_receipt \

@@ -41,11 +41,10 @@ pub struct DynTcpStream(pub Box<dyn TcpStreamTrait + Send + Sync>);
 /// inner [`BytesCodec`]) and THEN, in the same synchronous call with **no `.await` between**,
 /// authenticates + decrypts it under the recv key (advancing `read_seq` inside the [`OpenCipher`]).
 /// Because the counter lives in this `Framed`-owned codec and the decrypt is part of the value
-/// `StreamExt::next` atomically yields, a dropped `next()` (a `select!`/`timeout` losing the race)
-/// consumes zero bytes and never advances `read_seq` — inheriting tokio-util's documented
-/// cancel-safety verbatim, *structurally* rather than by the incidental ordering of an external
-/// decrypt step. A partial frame returns `Ok(None)` (buffered, no counter advance), so a dropped
-/// poll never half-consumes.
+/// `StreamExt::next` atomically yields, cancelling a pending `next()` preserves the partial frame
+/// and never advances `read_seq`. Socket bytes may already have entered the retained buffer or
+/// length-decoder state; dropping the borrowed future does not discard that state. A partial frame
+/// returns `Ok(None)` without calling the cipher. A complete authentication failure is terminal.
 ///
 /// R-T3 (§20): `encode` is the inverse-asymmetric half — it ONLY length-frames, it does NOT seal.
 /// The send-side seal (advancing `write_seq`) happens on the single-producer enqueue side
@@ -176,25 +175,20 @@ impl Encoder<Bytes> for SecretboxCodec {
 /// header split — is reassembled correctly. The `Framed` (with its partial-frame
 /// buffer) is **retained across reads, never reconstructed**.
 ///
-/// The processing order in [`FramedStream::next`] is **normative and exactly**:
-/// (1) *reassemble* — `self.0.next()` yields exactly ONE complete frame; (2)
-/// *authenticate + decrypt* — `key.dec` (R-T7) opens the WHOLE frame's AEAD,
-/// advancing the recv counter only on a frame actually delivered (R-T5); (3)
-/// *parse* — the protobuf decoder (`connection.rs`) sees ONLY the decrypted,
-/// authenticated plaintext. No validation, decryption, or application parse ever
-/// runs on a partial frame or a raw TCP segment, and no `.await` sits between a
-/// frame leaving the read buffer and the secretbox `open`. The frame-length cap
+/// The codec reassembles one complete ciphertext and synchronously authenticates/decrypts it
+/// before `next` yields plaintext. The protobuf decoder (`connection.rs`) parses only that
+/// authenticated plaintext. A partial frame does not invoke the cipher; a complete authentication
+/// failure poisons the stream. No application parse runs on a partial frame, and no `.await` sits
+/// between a frame leaving the read buffer and the secretbox `open`. The frame-length cap
 /// (`max_packet_length`, R-S7) and the speculative-allocation cap
 /// (`MAX_PREALLOCATED_PAYLOAD_LEN`, decoupled from the declared length) are
 /// enforced at the framing layer *before* reassembly completes, so an
 /// attacker-advertised huge length is rejected — and its allocation bounded —
 /// before any payload is buffered.
 ///
-/// The drop-safety this relies on — that dropping a `next()` read future (a `select!`/`timeout`
-/// losing the race) consumes zero bytes and so cannot desync the recv nonce — is a documented
-/// cross-backend property of the pinned reactor (mio 1.0.3 / tokio 1.44.2), not folklore; the
-/// citation and the "never hand-roll an overlapped read" rule live at the read site in
-/// [`FramedStream::next`] (R-T14).
+/// The same `Framed` owner preserves partial input across cancelled pending reads; cancellation
+/// does not imply that no socket bytes were read. The documented frame-preservation contract and
+/// backend acceptance obligation are referenced at [`FramedStream::next`] (R-T14).
 ///
 /// # Field layout
 /// `state` the keying-state machine — pre-key holds the whole [`Framed`]; post-key (R-T3) holds the
@@ -733,22 +727,16 @@ impl FramedStream {
         }
         // R-T5 (§20): reassembly AND decryption+`read_seq` advance happen atomically INSIDE the
         // codec's `decode` (see `SecretboxCodec`) — there is no `.await` between a frame leaving the
-        // buffer and the AEAD `open`, so the recv counter advances only on a frame actually
-        // delivered, and a decrypt/auth failure (R-T7) surfaces here as `Some(Err(_))`. Post-key the
+        // buffer and the AEAD `open`. Partial frames and cancelled pending reads cannot advance
+        // the counter; a complete decrypt/auth failure (R-T7) surfaces as `Some(Err(_))`. Post-key the
         // read half is a `SplitStream` (R-T3) that forwards the same `Framed`-owned codec `decode`,
         // so this property is unchanged by the writer-task split.
         //
-        // R-T14 (§20) — cross-backend cancellation-safety basis (the foundation R-T5 relies on):
-        // dropping THIS read future (because `select!`/`timeout` chose another branch) consumes
-        // ZERO bytes on epoll, kqueue, AND Windows IOCP alike, so a dropped read can never desync
-        // the recv nonce. By construction of the pinned reactor (mio 1.0.3 / tokio 1.44.2): mio is
-        // edge-triggered on every backend (epoll EPOLLET / kqueue EV_CLEAR / IOCP+AFD emulated),
-        // but the actual byte transfer is a SYNCHRONOUS non-blocking std `recv` inside mio's
-        // `do_io` on all of them — NO kernel-owned overlapped data buffer is ever in flight (the
-        // Windows AFD path carries only an `AfdPollInfo` handle+mask; there is no `WSARecv` in
-        // mio's TcpStream path), so dropping the future only unlinks a readiness waiter. This MUST
-        // NOT be "fixed" with a hand-rolled overlapped / `WSARecv` read: that would reintroduce the
-        // very per-OS hazard (a kernel buffer consuming bytes into a dropped future) this avoids.
+        // R-T14: tokio-util's Framed documents next() as borrowing the stream and never losing a
+        // value on cancellation. Its persistent owner may already hold partial socket input:
+        // https://github.com/tokio-rs/tokio/blob/tokio-util-0.7.15/tokio-util/src/codec/framed.rs
+        // Keep that owner and codec across reads. Backend changes, including a custom overlapped
+        // read implementation, require renewed native cancellation/buffer-lifetime evidence.
         let res = match &mut self.state {
             StreamState::Unkeyed(framed) => framed.next().await,
             StreamState::Keyed(k) => k.read.next().await,

@@ -3951,7 +3951,7 @@ run_focused_rust_tests() {
                         printf "CPACE_WIRE_ARTIFACT_START=observed sha256=%s executable=%s\n" \
                             "$artifact_sha" "$test_executable"
                         cd /source/libs/cpace_it
-                        "$test_executable" --color never --test-threads=1
+                        "$test_executable" --color never --test-threads=1 --show-output
                         [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                         printf "CPACE_WIRE_ARTIFACT=pass sha256=%s tests=20 unchanged=before-after\n" \
                             "$artifact_sha"
@@ -4403,6 +4403,9 @@ PY
         [ "$(grep -Ec '^CPACE_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CPACE_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'CPace wire artifact identity or stability is absent'
+        [ "$(grep -Fxc 'CPACE_PENDING_READ_CANCEL=pass stages=3 partial_socket_bytes=9 recv_counter=2' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'CPACE_PENDING_READ_CANCEL=' "$output")" -eq 1 ] \
+            || fail 'CPace pending-read cancellation observation is absent or differs'
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         [ "${#result_lines[@]}" -eq 5 ] \
             || { tail -n 200 "$output" >&2; fail 'focused Linux PulseAudio summary count differs'; }
@@ -4730,7 +4733,7 @@ PY
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "$tests_passed" -eq 20 ] \
             || fail "CPace recovery test count differs: $tests_passed"
-        grep -E '^test [a-z0-9_]+ \.\.\. ok$|^CPACE_WIRE_ARTIFACT(_START)?=' "$output"
+        grep -E '^test [a-z0-9_]+ \.\.\. ok$|^CPACE_WIRE_ARTIFACT(_START)?=|^CPACE_PENDING_READ_CANCEL=' "$output"
         printf 'CPACE_RECOVERY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \

@@ -9,11 +9,104 @@ use hbb_common::cpace::{
     guess_limiter_allows, record_handshake_failure, run_initiator, run_responder,
     DirectionalCipher, HandshakeError,
 };
+use hbb_common::futures::task::AtomicWaker;
 use hbb_common::message_proto::{cpace::Union as CpaceUnion, Cpace, CpaceStep1, CpaceStep3};
 use hbb_common::protobuf::Message as _;
 use hbb_common::tcp::FramedStream;
-use std::net::{IpAddr, Ipv4Addr};
+use std::{
+    io,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    pin::Pin,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    task::{Context, Poll},
+};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Notify;
+
+struct ReadControl {
+    remaining: AtomicUsize,
+    received: AtomicUsize,
+    progress: Notify,
+    waker: AtomicWaker,
+}
+
+impl ReadControl {
+    fn set_budget(&self, bytes: usize) {
+        self.remaining.store(bytes, Ordering::Release);
+        self.waker.wake();
+    }
+
+    async fn reached(&self, bytes: usize) {
+        loop {
+            let progress = self.progress.notified();
+            if self.received.load(Ordering::Acquire) >= bytes {
+                return;
+            }
+            progress.await;
+        }
+    }
+}
+
+struct ObservedTcp {
+    socket: TcpStream,
+    control: Arc<ReadControl>,
+}
+
+impl AsyncRead for ObservedTcp {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        output: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        if output.remaining() == 0 {
+            return Poll::Ready(Ok(()));
+        }
+        this.control.waker.register(cx.waker());
+        let remaining = this.control.remaining.load(Ordering::Acquire);
+        if remaining == 0 {
+            return Poll::Pending;
+        }
+        let mut bytes = [0; 256];
+        let length = remaining.min(output.remaining()).min(bytes.len());
+        let mut input = ReadBuf::new(&mut bytes[..length]);
+        match Pin::new(&mut this.socket).poll_read(cx, &mut input) {
+            Poll::Ready(Ok(())) => {
+                let received = input.filled();
+                output.put_slice(received);
+                if remaining != usize::MAX {
+                    this.control
+                        .remaining
+                        .fetch_sub(received.len(), Ordering::AcqRel);
+                    this.control
+                        .received
+                        .fetch_add(received.len(), Ordering::Release);
+                    this.control.progress.notify_one();
+                }
+                Poll::Ready(Ok(()))
+            }
+            other => other,
+        }
+    }
+}
+
+impl AsyncWrite for ObservedTcp {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, bytes: &[u8]) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.get_mut().socket).poll_write(cx, bytes)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.get_mut().socket).poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.get_mut().socket).poll_shutdown(cx)
+    }
+}
 
 /// Extract the error without requiring the `Ok` type to be `Debug` (the
 /// handshake's success type, `DirectionalKeys`, deliberately is not — it carries
@@ -66,14 +159,18 @@ fn assert_confirmation_feeds_limiter(error: HandshakeError, last_octet: u8) {
     );
 }
 
-/// A connected pair of FramedStreams over loopback TCP (127.0.0.1, ephemeral
-/// port). Dropping one end closes the socket, freeing the peer's bounded read.
-async fn loopback_pair() -> (FramedStream, FramedStream) {
+/// Connected loopback TCP sockets (127.0.0.1, ephemeral port).
+async fn loopback_sockets() -> (TcpStream, TcpStream, SocketAddr) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let (client, accepted) = tokio::join!(TcpStream::connect(addr), listener.accept());
     let client = client.unwrap();
     let (server, _) = accepted.unwrap();
+    (client, server, addr)
+}
+
+async fn loopback_pair() -> (FramedStream, FramedStream) {
+    let (client, server, addr) = loopback_sockets().await;
     (
         FramedStream::from(client, addr),
         FramedStream::from(server, addr),
@@ -214,50 +311,77 @@ async fn responder_many_frames_decrypt_in_strict_fifo_order() {
     }
 }
 
-/// R-T5 (§20): a `FramedStream::next()` that LOSES a `select!` race (a competing always-ready
-/// branch wins, so the read branch is not taken) MUST NOT advance the recv counter or consume
-/// bytes — the cancellation-safety the decrypt-in-codec (`SecretboxCodec`) makes structural by
-/// advancing `read_seq` only inside `decode`, atomically with reassembly. We put a complete keyed
-/// frame on the wire (so data genuinely IS available at the receiver), then repeatedly drive
-/// `next()` under a `biased` select whose first branch is always ready, asserting `recv_counter()`
-/// is unchanged each round; finally a real read still delivers the frame intact and advances the
-/// counter EXACTLY once — proving the dropped reads neither consumed the bytes nor desynced the
-/// recv nonce. A regression that advanced `read_seq` outside the delivered-frame path (or consumed
-/// the buffer on a dropped poll) fails here: the final frame would be lost or decrypt-fail.
+/// R-T5: cancel actually polled reads after real TCP bytes enter the persistent frame owner.
+/// A two-byte header is read in two stages, followed by part of the ciphertext. No complete
+/// frame or nonce may be consumed before cancellation; later reads must authenticate both frames.
 #[tokio::test]
 async fn r_t5_dropped_next_does_not_advance_read_seq() {
-    let (mut si, mut sr) = loopback_pair().await;
+    let (client, server, addr) = loopback_sockets().await;
+    let control = Arc::new(ReadControl {
+        remaining: AtomicUsize::new(usize::MAX),
+        received: AtomicUsize::new(0),
+        progress: Notify::new(),
+        waker: AtomicWaker::new(),
+    });
+    let mut si = FramedStream::from(client, addr);
+    let mut sr = FramedStream::from(
+        ObservedTcp {
+            socket: server,
+            control: Arc::clone(&control),
+        },
+        addr,
+    );
     let pw = "cancel-safety-test";
     let (ri, rr) = tokio::join!(run_initiator(&mut si, pw), run_responder(&mut sr, pw));
     si.set_session_keys(ri.expect("initiator keys"));
     sr.set_session_keys(rr.expect("responder keys"));
 
-    // Put a complete keyed frame on the wire toward `sr`, and let it arrive so the read branch
-    // genuinely COULD complete were it ever polled to completion.
-    si.send_raw(b"frame-that-must-survive-a-dropped-read".to_vec())
+    let payload = vec![0x7a; 128];
+    si.send_raw(payload.clone()).await.unwrap();
+    si.flush_writer().await.unwrap();
+    let budgets = [1, 1, 7];
+    let mut received = 0;
+    for budget in budgets {
+        control.set_budget(budget);
+        received += budget;
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            tokio::select! {
+                biased;
+                result = sr.next() => panic!("a partial frame became ready: {:?}", result),
+                _ = control.reached(received) => {},
+            }
+        })
         .await
-        .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-    assert_eq!(sr.recv_counter(), 0, "no frame consumed before any read");
-    for _ in 0..8 {
-        let before = sr.recv_counter();
-        tokio::select! {
-            biased;
-            _ = std::future::ready(()) => {}
-            _ = sr.next() => panic!("R-T5: the read branch must not be taken"),
-        }
+        .expect("the pending read must consume its exact native TCP byte budget");
+        assert_eq!(control.received.load(Ordering::Acquire), received);
+        assert_eq!(control.remaining.load(Ordering::Acquire), 0);
         assert_eq!(
             sr.recv_counter(),
-            before,
-            "R-T5: a dropped next() advanced read_seq — cancellation-safety violated"
+            0,
+            "partial reads must not advance the nonce"
         );
     }
 
-    // A real read still delivers the frame intact and advances the counter exactly once.
-    let got = sr.next().await.unwrap().unwrap();
-    assert_eq!(&got[..], b"frame-that-must-survive-a-dropped-read");
-    assert_eq!(sr.recv_counter(), 1, "exactly one frame consumed after the dropped reads");
+    control.set_budget(usize::MAX);
+    let got = tokio::time::timeout(std::time::Duration::from_secs(1), sr.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(&got[..], payload.as_slice());
+    assert_eq!(sr.recv_counter(), 1);
+    si.send_raw(b"next-nonce".to_vec()).await.unwrap();
+    let got = tokio::time::timeout(std::time::Duration::from_secs(1), sr.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(&got[..], b"next-nonce");
+    assert_eq!(sr.recv_counter(), 2);
+    println!(
+        "CPACE_PENDING_READ_CANCEL=pass stages={} partial_socket_bytes={} recv_counter={}",
+        budgets.len(), received, sr.recv_counter()
+    );
 }
 
 /// R-S7: the handshake caps frames at 4 KiB pre-PAKE (the only attacker-reachable

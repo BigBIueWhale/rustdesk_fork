@@ -105,8 +105,8 @@ class Peers extends ChangeNotifier {
       return peers.map((peer) {
         return Peer.fromJson(peer as Map<String, dynamic>);
       }).toList();
-    } catch (e) {
-      debugPrint('peers(): $e');
+    } catch (_) {
+      debugPrint('peers(): invalid peer data');
     }
     return [];
   }

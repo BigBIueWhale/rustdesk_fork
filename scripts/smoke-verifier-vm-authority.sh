@@ -6938,8 +6938,13 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
     printf 'CPACE_RECOVERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-pa-authority-tests ]; then
+    if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+    printf 'LINUX_PA_PLAYBACK_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-audio-handler-native-finality network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    else
     printf 'LINUX_PA_AUTHORITY_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=pa-admission-wire-native-capture network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    fi
 elif [ "$MODE" = linux-systemd-notification-tests ]; then
     printf 'LINUX_NOTIFICATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s scope=production-notification-kernel-datagrams network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \

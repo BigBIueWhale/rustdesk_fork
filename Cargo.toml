@@ -269,6 +269,7 @@ chrono = "0.4"
 os-version = "0.2"
 
 [dev-dependencies]
+ringbuf = "0.3"
 hound = "3.5"
 docopt = "1.1"
 plist = "1.6.1"

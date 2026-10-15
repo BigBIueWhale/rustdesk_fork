@@ -71,7 +71,7 @@ trap 'exit 143' TERM
 
 if [ "${2:-}" != --product-pair ]; then
     if [ "${2:-}" = --playback ]; then
-        export CARGO_BUILD_JOBS=1
+        export CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
     fi
     printf 'PA_RUNTIME_BUILD=started target=linux-libtest budget_seconds=600\n'
     build_started=$SECONDS
@@ -80,6 +80,7 @@ if [ "${2:-}" != --product-pair ]; then
         --message-format=json-render-diagnostics --color never >"$WORK/build.json"
     test_executable="$(python3 -I -S - "$WORK/build.json" <<'PY'
 import json
+import os
 import re
 import sys
 
@@ -100,6 +101,12 @@ for line in output.splitlines():
             and message.get('target', {}).get('name') == 'librustdesk'
             and message.get('target', {}).get('src_path') == '/source/src/lib.rs'
             and message.get('profile', {}).get('test') is True):
+        if os.environ.get('LINUX_PA_PLAYBACK') == '1':
+            profile = message['profile']
+            if (profile.get('debuginfo') != 0 or profile.get('opt_level') != '0'
+                    or profile.get('debug_assertions') is not True
+                    or profile.get('overflow_checks') is not True):
+                sys.exit('playback artifact compiler profile differs')
         artifacts.append(message.get('executable'))
 if finished != [True] or len(artifacts) != 1 or not isinstance(artifacts[0], str):
     sys.exit('PulseAudio build lacks one exact completed library test artifact')

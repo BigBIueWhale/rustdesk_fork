@@ -2968,7 +2968,7 @@ run_focused_rust_tests() {
         if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
             memory=3g
             memory_bytes=3221225472
-            source_fingerprints+=(src/client.rs src/client/audio_mailbox.rs
+            source_fingerprints+=(Cargo.toml src/client.rs src/client/audio_mailbox.rs
                 src/client/audio_playback_tests.rs scripts/fixtures/audio-playback-before-finality.rs)
         fi
         required_tests=(

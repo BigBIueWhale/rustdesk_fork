@@ -2744,6 +2744,11 @@ run_focused_rust_tests() {
             fs::tests::receive_done_requires_successful_file_list_admission
             fs::tests::receive_write_completes_empty_and_explicitly_skipped_file_lists
             fs::tests::send_open_failure_keeps_the_failed_file_number
+            fs::tests::send_open_refuses_a_fifo_replaced_after_enumeration
+            fs::tests::send_resume_refuses_a_fifo_replaced_after_enumeration
+            fs::tests::send_open_refuses_nonregular_replacements
+            fs::tests::send_source_open_preserves_regular_files_and_source_links
+            fs::tests::receive_job_cannot_initialize_a_send_source
             fs::tests::send_file_job_refuses_a_start_index_outside_its_native_list
             fs::tests::send_file_job_preserves_valid_start_resume_and_exact_end
             fs::tests::send_resume_keeps_the_announced_source_after_path_replacement
@@ -4718,6 +4723,7 @@ PY
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests)|bytes_codec::tests)::.* \.\.\. ok$' "$output"
             grep -E '^test fs::tests::(receive_blocks_refuse_oversized_input_and_decoded_output|file_block_limit_preserves_real_sender_receiver_roundtrips|file_job_serialization_preserves_the_live_cm_path_field|file_transfer_type_refuses_reserved_and_unknown_wire_values) \.\.\. ok$' "$output"
+            grep -E '^test fs::tests::(send_open_refuses_a_fifo_replaced_after_enumeration|send_resume_refuses_a_fifo_replaced_after_enumeration|send_open_refuses_nonregular_replacements|send_source_open_preserves_regular_files_and_source_links|receive_job_cannot_initialize_a_send_source) \.\.\. ok$' "$output"
             python3 -I -S "$source_root/scripts/verify-hostname-resolution-probe.py" "$output" "$source_root" \
                 || fail 'hostname connector observation or source binding differs'
         fi

@@ -7221,6 +7221,171 @@ mod tests {
         assert!(digest.exists());
     }
 
+    #[cfg(target_os = "linux")]
+    async fn send_fifo_replacement_is_refused(resume: bool) {
+        use std::os::unix::{ffi::OsStrExt, fs::OpenOptionsExt};
+
+        let tmp = TestTempDir::new("rustdesk_send_fifo_swap");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let source = tmp.join("source.zip");
+        let original = tmp.join("original.zip");
+        std::fs::write(&source, b"ordinary").unwrap();
+        let mut job = TransferJob::new_read(
+            220, JobType::Generic, String::new(), source.clone(),
+            0, false, false, true,
+        ).expect("admit a real regular source before replacement");
+        std::fs::rename(&source, &original).unwrap();
+        let name = std::ffi::CString::new(source.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { crate::libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+
+        let (prompt, result) = {
+            let step = async {
+                if resume {
+                    job.confirm_with_offset(0, 2).await.map(|_| ())
+                } else {
+                    job.init_data_stream_for_cm().await.map(|_| ())
+                }
+            };
+            tokio::pin!(step);
+            match tokio::time::timeout(Duration::from_millis(200), &mut step).await {
+                Ok(result) => (true, result),
+                Err(_) => {
+                    // Linux permits O_RDWR on a FIFO without a peer. Release the old blocking
+                    // open and await its exact result before failing; do not abandon its worker.
+                    let release = std::fs::OpenOptions::new().read(true).write(true)
+                        .custom_flags(crate::libc::O_NONBLOCK).open(&source)
+                        .expect("release a blocked old source open");
+                    let result = tokio::time::timeout(Duration::from_secs(2), &mut step)
+                        .await.expect("released source operation must finish");
+                    drop(release);
+                    (false, result)
+                }
+            }
+        };
+        assert!(prompt && result.is_err(), "prompt={prompt}, result={result:?}");
+        assert!(job.data_stream.is_none());
+        assert!(!job.file_confirmed());
+        assert!(!job.file_is_waiting());
+        assert_eq!(job.send_file_offset, 0);
+        assert_eq!(job.file_num(), 0);
+        assert_eq!(job.finished_size(), 0);
+        assert_eq!(job.transferred(), 0);
+        assert_eq!(std::fs::read(&original).unwrap(), b"ordinary");
+
+        std::fs::remove_file(&source).unwrap();
+        std::fs::rename(&original, &source).unwrap();
+        assert_eq!(job.init_data_stream_for_cm().await.unwrap().unwrap().1, 8);
+        let offset = if resume { 2 } else { 0 };
+        job.confirm_with_offset(0, offset).await.expect("confirm restored regular source");
+        let block = job.read().await.unwrap().unwrap();
+        assert_eq!(block.data.as_ref(), &b"ordinary"[offset as usize..]);
+        assert_eq!(job.finished_size(), 8);
+        assert_eq!(job.transferred(), 8);
+        assert!(job.read().await.unwrap().unwrap().data.is_empty());
+        assert_eq!(job.file_num(), 1);
+        assert!(job.data_stream.is_none());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn send_open_refuses_a_fifo_replaced_after_enumeration() {
+        send_fifo_replacement_is_refused(false).await;
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn send_resume_refuses_a_fifo_replaced_after_enumeration() {
+        send_fifo_replacement_is_refused(true).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn send_open_refuses_nonregular_replacements() {
+        use std::os::unix::fs::symlink;
+
+        for kind in ["directory", "device"] {
+            let tmp = TestTempDir::new("rustdesk_send_nonregular_swap");
+            std::fs::create_dir_all(&tmp.path).unwrap();
+            let source = tmp.join("source.zip");
+            std::fs::write(&source, b"ordinary").unwrap();
+            let mut job = TransferJob::new_read(
+                221, JobType::Generic, String::new(), source.clone(),
+                0, false, false, false,
+            ).unwrap();
+            std::fs::remove_file(&source).unwrap();
+            if kind == "directory" {
+                std::fs::create_dir(&source).unwrap();
+            } else {
+                symlink("/dev/null", &source).unwrap();
+            }
+            job.init_data_stream_for_cm().await
+                .expect_err("the opened source object must be a regular file");
+            assert!(job.data_stream.is_none());
+            assert_eq!(job.file_num(), 0);
+            assert_eq!(job.finished_size(), 0);
+            assert_eq!(job.transferred(), 0);
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn send_source_open_preserves_regular_files_and_source_links() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TestTempDir::new("rustdesk_send_source_links");
+        let directory = tmp.join("files");
+        std::fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("source.zip");
+        std::fs::write(&source, b"ordinary").unwrap();
+        let file_link = tmp.join("file.zip");
+        let parent_link = tmp.join("directory");
+        symlink(&source, &file_link).unwrap();
+        symlink(&directory, &parent_link).unwrap();
+        for path in [source, file_link, parent_link.join("source.zip")] {
+            for offset in [0, 2] {
+                let mut job = TransferJob::new_read(
+                    222, JobType::Generic, String::new(), path.clone(),
+                    0, false, false, true,
+                ).unwrap();
+                if offset == 0 {
+                    assert_eq!(job.init_data_stream_for_cm().await.unwrap().unwrap().1, 8);
+                }
+                job.confirm_with_offset(0, offset).await.unwrap();
+                let block = job.read().await.unwrap().unwrap();
+                assert_eq!(block.data.as_ref(), &b"ordinary"[offset as usize..]);
+                assert_eq!(job.finished_size(), 8);
+                assert!(job.read().await.unwrap().unwrap().data.is_empty());
+                assert_eq!(job.file_num(), 1);
+                assert!(job.data_stream.is_none());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn receive_job_cannot_initialize_a_send_source() {
+        let tmp = TestTempDir::new("rustdesk_receive_send_open");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let destination = tmp.join("incoming.zip");
+        std::fs::write(&destination, b"old").unwrap();
+        let mut entry = new_file_entry("");
+        entry.size = 3;
+        let mut job = new_write_job_with_files(223, destination.clone(), vec![entry]).unwrap();
+        job.init_data_stream_for_cm().await
+            .expect_err("a receive job cannot open a send source");
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
+        assert_eq!(job.finished_size(), 0);
+        assert_eq!(job.transferred(), 0);
+        assert_eq!(std::fs::read(&destination).unwrap(), b"old");
+        job.write(FileTransferBlock {
+            id: 223, file_num: 0, data: b"new".to_vec().into(),
+            ..Default::default()
+        }).await.expect("the refused read must preserve receive admission");
+        job.finalize_write(1).await.unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap(), b"new");
+        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1);
+    }
+
     #[test]
     fn send_file_job_refuses_a_start_index_outside_its_native_list() {
         let tmp = TestTempDir::new("rustdesk_send_index_admission");

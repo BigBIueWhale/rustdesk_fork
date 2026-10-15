@@ -111,8 +111,11 @@ narratives and size comparisons remain in Git history.
 translations and upstream review email/Discord routing are removed. Focused commits,
 review, relevant behavioral tests, DCO sign-off, license and attribution remain; the
 guide links to the local rules, specification, ledger and isolated verification entry
-points. The inherited conduct documents remain unreviewed; this cleanup does not
-establish a fork moderation contact or native/release acceptance.
+points. `docs/CODE_OF_CONDUCT.md` retains the conduct standards and attribution,
+links to GitHub's abuse-reporting tools, and removes upstream's reporting mailbox
+and unsupported prompt-investigation promise. Eleven duplicate inherited
+translations are removed. A fork-owned private moderation contact remains OPEN;
+GitHub's platform reporting is distinct. No native/release acceptance follows.
 
 | Documentation scope | Retained classification |
 | --- | --- |

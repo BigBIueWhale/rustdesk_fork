@@ -59,10 +59,11 @@ representative at an online or offline event.
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-[info@rustdesk.com](mailto:info@rustdesk.com).
-All complaints will be reviewed and investigated promptly and fairly.
+To report abusive content on GitHub, use
+[GitHub's abuse-reporting tools](https://docs.github.com/en/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam).
+GitHub handles reports made through those tools under its own policies. This fork
+does not currently publish a private moderation contact. Do not post incident
+reports containing personal information in public issues or pull requests.
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.

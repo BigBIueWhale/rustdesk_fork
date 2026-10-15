@@ -3,6 +3,8 @@
 Use this fork's repository for issues, pull requests, and review requests. Comment
 on an existing issue before starting work so contributors can coordinate.
 
+Follow the [Code of Conduct](CODE_OF_CONDUCT.md) when participating in this project.
+
 Read [the project rules](../AGENTS.md), [the normative requirements](../requirements.html),
 and [the current hardening ledger](../HARDENING_STATUS.md) before changing behavior.
 The [verification guide](../scripts/README.md) describes the available checks.

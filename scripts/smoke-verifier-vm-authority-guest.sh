@@ -4419,8 +4419,19 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
-    if [ "$HBB_FUSE_READ_TESTS" -eq 1 ] \
-       || { [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; }; then
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
+        local -a parent_start_status
+        if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
+            | tee "$output" \
+            | awk '/^RESOLUTION_PARENT_BUILD=started / { print; fflush() }'; then
+            parent_start_status=("${PIPESTATUS[@]}")
+        else
+            parent_start_status=("${PIPESTATUS[@]}")
+        fi
+        [ "${parent_start_status[1]}" -eq 0 ] && [ "${parent_start_status[2]}" -eq 0 ] \
+            || fail 'cannot retain resolution parent output and live progress'
+        container_status=${parent_start_status[0]}
+    elif [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
         local -a fuse_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 | tee "$output"; then
             fuse_start_status=("${PIPESTATUS[@]}")
@@ -4936,7 +4947,7 @@ PY
                 "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             [ "$tests_passed" -eq 3 ] || fail 'resolution parent total differs'
-            grep -E '^test server::connection::resolution_work::tests::.* \.\.\. ok$|^RESOLUTION_PARENT_(BUILD|ARTIFACT)=' "$output"
+            grep -E '^test server::connection::resolution_work::tests::.* \.\.\. ok$|^RESOLUTION_PARENT_BUILD=pass |^RESOLUTION_PARENT_ARTIFACT=' "$output"
             printf 'RESOLUTION_PARENT_VM=pass commit=%s tree=%s tests=3 target=linux-x86_64 scope=complete-parent-library-and-owned-result rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

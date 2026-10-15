@@ -1122,6 +1122,29 @@ packet deadline and is superseded for current cancellation behavior. The prior
 serial/receipt retains the earlier `7f5e80ee` local-route result; it did not exercise
 initial-setup cancellation or authenticated focus construction.
 
+**Authentication-file admission — source implemented; native validation PENDING.**
+`a824ba14` replaces the unbounded Xau `fopen`/scan before socket-deadline creation
+with one nonblocking/no-controlling-terminal open, exact regular-file validation and
+a 1 MiB input limit checked against both metadata and actual bytes. Counted fields
+are checked before slicing; malformed input fails rather than retaining a partial
+selection. XDM precedes cookie, the first match at a rank wins, and local/wildcard
+family, empty display number, explicit XAUTHORITY and HOME fallback retain their
+selection semantics. Owned input, selected credential and XDM working buffers wipe
+on retirement; fixed read capacity avoids unwiped growth. Differing real/effective
+UID or GID refuses file acquisition. There is no Xau file-reading fallback.
+
+The native fixture compares the exact earlier authentication module against a real
+FIFO wait and adds twenty file refusals with same-owner geometry recovery plus
+twenty selection/boundary cases across cookie and XDM. These cases have **not run**.
+The first `--x11-display-tests` invocation refused before QEMU or scratch creation:
+27,648 MiB required, 26,174 MiB available. The unchanged profile, headroom and checks
+remain mandatory. `.harness-state/verifier-vm/focus-auth-preflight-a824ba14.json`
+retains terminal status and 178 unchanged source/control snapshots and endpoints;
+it is resource-refusal evidence only. Retry the exact native command when admitted.
+
+The byte/type bounds do not impose a wall-clock limit on pathname resolution or
+regular-file I/O. Whole-app, installed-service/LPE and native evidence remain open.
+
 **OPEN:** whole-app/service integration, native authentication-file/timer-startup bounds,
 fresh connected Unix peer/session binding, broader Xauthority selection/file failures,
 full-backlog admission, setup write-pressure/partial-packet/late-completion races,

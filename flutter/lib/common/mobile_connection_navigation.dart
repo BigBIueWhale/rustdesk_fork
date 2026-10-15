@@ -34,8 +34,7 @@ class MobileConnectionView {
     current?._retired = true;
     late final MobileConnectionRoute owner;
     owner = MobileConnectionRoute._(route,
-        isCurrentOwner: () =>
-            identical(_current, owner) && isCurrentSession(),
+        isCurrentOwner: () => identical(_current, owner) && isCurrentSession(),
         onClosed: onClosed);
     _current = owner;
     return owner;
@@ -73,7 +72,10 @@ class MobileConnectionRoute {
 
   bool close() {
     final navigator = _route.navigator;
-    if (!isCurrent || navigator == null || !navigator.mounted || _route.isFirst) {
+    if (!isCurrent ||
+        navigator == null ||
+        !navigator.mounted ||
+        _route.isFirst) {
       return false;
     }
     _retired = true;

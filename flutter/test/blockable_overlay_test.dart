@@ -53,8 +53,7 @@ Future<void> _closeWhilePlatformReplyIsPending(WidgetTester tester,
     if (ownedRoute) {
       final view = MobileConnectionView();
       expect(
-          view.bind(oldRoute,
-              isCurrentSession: () => true, onClosed: (_) {}),
+          view.bind(oldRoute, isCurrentSession: () => true, onClosed: (_) {}),
           isNotNull);
       view.closeCallback()();
     } else {
@@ -90,7 +89,8 @@ Future<void> _closeWhilePlatformReplyIsPending(WidgetTester tester,
 Future<NavigatorState> _mobileNavigator(WidgetTester tester) async {
   final key = GlobalKey<NavigatorState>();
   final messenger = tester.binding.defaultBinaryMessenger;
-  messenger.setMockMethodCallHandler(SystemChannels.platform, (_) async => null);
+  messenger.setMockMethodCallHandler(
+      SystemChannels.platform, (_) async => null);
   addTearDown(() {
     messenger.setMockMethodCallHandler(SystemChannels.platform, null);
   });
@@ -132,8 +132,8 @@ void main() {
     final route = await _pushMobileRoute(tester, navigator, 'terminal');
     final view = MobileConnectionView();
     final closed = <bool>[];
-    final owner = view.bind(route,
-        isCurrentSession: () => true, onClosed: closed.add)!;
+    final owner =
+        view.bind(route, isCurrentSession: () => true, onClosed: closed.add)!;
     var completed = false;
     unawaited(route.popped.then<void>((_) {
       completed = true;
@@ -149,20 +149,21 @@ void main() {
     expect(find.text('terminal'), findsNothing);
   });
 
-  testWidgets('retired mobile terminal callback cannot close a replacement route',
+  testWidgets(
+      'retired mobile terminal callback cannot close a replacement route',
       (tester) async {
     final navigator = await _mobileNavigator(tester);
     final oldRoute = await _pushMobileRoute(tester, navigator, 'old terminal');
     final oldElement = tester.element(find.text('old terminal'));
     final view = MobileConnectionView();
-    final oldOwner = view.bind(oldRoute,
-        isCurrentSession: () => true, onClosed: (_) {})!;
+    final oldOwner =
+        view.bind(oldRoute, isCurrentSession: () => true, onClosed: (_) {})!;
     final oldClose = view.closeCallback();
     final replacement = MaterialPageRoute<void>(
         builder: (_) => const Text('replacement terminal'));
     unawaited(navigator.pushReplacement(replacement));
-    final current = view.bind(replacement,
-        isCurrentSession: () => true, onClosed: (_) {})!;
+    final current =
+        view.bind(replacement, isCurrentSession: () => true, onClosed: (_) {})!;
     expect(oldElement.mounted, isTrue);
     oldClose();
     view.unbind(oldOwner);
@@ -225,8 +226,8 @@ void main() {
     final view = MobileConnectionView();
     final unbound = view.closeCallback();
     final other = MobileConnectionView();
-    final foreign = other.bind(route,
-        isCurrentSession: () => true, onClosed: (_) {})!;
+    final foreign =
+        other.bind(route, isCurrentSession: () => true, onClosed: (_) {})!;
     view.closeCallback(route: foreign)();
     view.unbind(foreign);
     expect(foreign.isCurrent, isTrue);
@@ -244,8 +245,10 @@ void main() {
     final navigator = await _mobileNavigator(tester);
     final route = await _pushMobileRoute(tester, navigator, 'terminal');
     final removed = <int>[];
-    route.addLocalHistoryEntry(LocalHistoryEntry(onRemove: () => removed.add(1)));
-    route.addLocalHistoryEntry(LocalHistoryEntry(onRemove: () => removed.add(2)));
+    route.addLocalHistoryEntry(
+        LocalHistoryEntry(onRemove: () => removed.add(1)));
+    route.addLocalHistoryEntry(
+        LocalHistoryEntry(onRemove: () => removed.add(2)));
     final view = MobileConnectionView();
     final closed = <bool>[];
     view.bind(route, isCurrentSession: () => true, onClosed: closed.add);

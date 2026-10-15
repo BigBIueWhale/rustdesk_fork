@@ -2271,6 +2271,8 @@ Navigator. Six new real-Navigator regressions and both held SystemChrome schedul
 The existing focused dialog command now requires seven suites/60 cases plus three parser controls;
 none has run on this candidate. Actual FFI/Get/page admission, early-start failure, same-peer
 terminal-model restoration, native terminal I/O and physical Android/iOS execution remain OPEN.
+The first candidate stopped at pinned formatting before compilation; its emitted diff was
+applied, with the failed transaction retained as `mobile-terminal-format-failed-2be335d1.json`.
 
 Mobile connection close retires chat/main-page state synchronously, then passes the selected
 `NavigatorState` to `closeMobileConnectionRoute`. Route dismissal does not await SystemChrome;

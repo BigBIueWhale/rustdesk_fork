@@ -9,7 +9,12 @@ pub(crate) mod limits;
 #[cfg(not(target_os = "android"))]
 mod write_owner;
 #[cfg(not(target_os = "android"))]
-pub(crate) use write_owner::{ClipboardWriteOwner, ClipboardWriter};
+pub(crate) use write_owner::{
+    ClipboardWriteOwner, ClipboardWriter, ViewerClipboardPermission,
+    ViewerClipboardPermissionRevision,
+};
+#[cfg(not(target_os = "android"))]
+use write_owner::ClipboardWriteRequest;
 #[cfg(all(test, target_os = "linux"))]
 mod write_native_tests;
 #[cfg(all(test, target_os = "linux"))]
@@ -58,7 +63,7 @@ enum ClipboardUpdateRequest {
     SetMulti {
         multi_clipboards: Vec<Clipboard>,
         side: ClipboardSide,
-        owner: ClipboardWriter,
+        owner: ClipboardWriteRequest,
     },
     SetScreenshot {
         png: bytes::Bytes,
@@ -916,7 +921,7 @@ pub fn check_clipboard_cm() -> ResultType<MultiClipboards> {
 fn update_clipboard_(
     multi_clipboards: Vec<Clipboard>,
     side: ClipboardSide,
-    owner: Option<&ClipboardWriter>,
+    owner: Option<&ClipboardWriteRequest>,
 ) {
     if owner.is_some_and(|owner| !owner.is_live()) {
         return;
@@ -943,7 +948,7 @@ pub(crate) fn set_native_clipboard_data(
 fn set_native_clipboard_data_(
     mut to_update_data: Vec<ClipboardData>,
     side: ClipboardSide,
-    owner: Option<&ClipboardWriter>,
+    owner: Option<&ClipboardWriteRequest>,
 ) -> ResultType<()> {
     let mut ctx = CLIPBOARD_CTX.lock().unwrap();
     let _lock = ARBOARD_MTX.lock().unwrap();
@@ -985,15 +990,39 @@ fn append_owner_marker(mut data: Vec<ClipboardData>, side: ClipboardSide) -> Vec
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl ClipboardWriter {
-    pub(crate) fn update(&self, multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
-        if !self.is_live() {
+    pub(crate) fn update_controlled(&self, multi_clipboards: Vec<Clipboard>) {
+        Self::enqueue(
+            multi_clipboards,
+            ClipboardSide::Host,
+            ClipboardWriteRequest::controlled(self),
+        );
+    }
+
+    pub(crate) fn update_viewer(
+        &self,
+        multi_clipboards: Vec<Clipboard>,
+        permission: ViewerClipboardPermission,
+    ) {
+        Self::enqueue(
+            multi_clipboards,
+            ClipboardSide::Client,
+            ClipboardWriteRequest::viewer(self, permission),
+        );
+    }
+
+    fn enqueue(
+        multi_clipboards: Vec<Clipboard>,
+        side: ClipboardSide,
+        owner: ClipboardWriteRequest,
+    ) {
+        if !owner.is_live() {
             return;
         }
         enqueue_clipboard_update(
             ClipboardUpdateRequest::SetMulti {
                 multi_clipboards,
                 side,
-                owner: self.clone(),
+                owner,
             },
             "native clipboard dispatcher busy; refusing to queue peer clipboard SET",
         )

@@ -6118,7 +6118,7 @@ impl Connection {
             keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &control_permissions),
             clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &control_permissions),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            clipboard_writes: ClipboardWriteOwner::new(),
+            clipboard_writes: ClipboardWriteOwner::controlled(),
             audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &control_permissions),
             // to-do: make sure is the option correct here
             file: Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &control_permissions),
@@ -8877,7 +8877,7 @@ impl Connection {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         self.clipboard_writes
                             .writer()
-                            .update(vec![cb], ClipboardSide::Host);
+                            .update_controlled(vec![cb]);
                         #[cfg(target_os = "android")]
                         crate::clipboard::handle_msg_clipboard(cb);
                         #[cfg(target_os = "ios")]
@@ -8895,7 +8895,7 @@ impl Connection {
                     if self.clipboard && self.is_authed_remote_conn() {
                         self.clipboard_writes
                             .writer()
-                            .update(_mcb.clipboards, ClipboardSide::Host);
+                            .update_controlled(_mcb.clipboards);
                     }
                     #[cfg(target_os = "android")]
                     if self.clipboard && self.is_authed_remote_conn() {

@@ -8,14 +8,14 @@ fn queued_write(retire: bool) {
         ClipboardSide::Client,
     ).unwrap();
 
-    let owner = ClipboardWriteOwner::new();
+    let owner = ClipboardWriteOwner::controlled();
     let writer = owner.writer();
     let native_lock = ARBOARD_MTX.lock().unwrap();
-    writer.update(vec![Clipboard {
+    writer.update_controlled(vec![Clipboard {
         format: hbb_common::message_proto::ClipboardFormat::Text.into(),
         content: b"clipboard-from-peer".to_vec().into(),
         ..Default::default()
-    }], ClipboardSide::Client);
+    }]);
 
     let receiver = wait_for_native_lock();
     if retire {

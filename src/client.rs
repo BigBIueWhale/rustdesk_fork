@@ -1506,6 +1506,8 @@ pub struct LoginConfigHandler {
     pub connect_password: String,
     pub remember: bool,
     config: PeerConfig,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    clipboard_permission_revision: crate::clipboard::ViewerClipboardPermissionRevision,
     pub version: i64,
     features: Option<Features>,
     pub session_id: u64, // used for local <-> server communication
@@ -1534,7 +1536,7 @@ impl Deref for LoginConfigHandler {
 impl LoginConfigHandler {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub(crate) fn clipboard_write_owner(&self) -> crate::clipboard::ClipboardWriteOwner {
-        crate::clipboard::ClipboardWriteOwner::new()
+        crate::clipboard::ClipboardWriteOwner::viewer(&self.clipboard_permission_revision)
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1544,7 +1546,9 @@ impl LoginConfigHandler {
         clipboards: Vec<Clipboard>,
     ) {
         if self.conn_type == ConnType::DEFAULT_CONN && !self.config.disable_clipboard.v {
-            writer.update(clipboards, ClipboardSide::Client);
+            if let Some(permission) = self.clipboard_permission_revision.capture() {
+                writer.update_viewer(clipboards, permission);
+            }
         }
     }
 
@@ -1561,6 +1565,8 @@ impl LoginConfigHandler {
         shared_password: Option<String>,
         conn_token: Option<String>,
     ) {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        self.clipboard_permission_revision.advance();
         self.id = id;
         self.conn_type = conn_type;
         let config = self.load_config();
@@ -1609,6 +1615,10 @@ impl LoginConfigHandler {
     ///
     /// * `config` - [`PeerConfig`] to save.
     pub fn save_config(&mut self, config: PeerConfig) {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if self.config.disable_clipboard.v != config.disable_clipboard.v {
+            self.clipboard_permission_revision.advance();
+        }
         config.store(&self.id);
         self.config = config;
     }
@@ -1896,6 +1906,7 @@ impl LoginConfigHandler {
     /// Get [`PeerConfig`] of the current [`LoginConfigHandler`].
     ///
     /// # Arguments
+    #[cfg(test)]
     pub fn get_config(&mut self) -> &mut PeerConfig {
         &mut self.config
     }

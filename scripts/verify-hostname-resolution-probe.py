@@ -15,6 +15,7 @@ def verify(log, source):
     record = json.loads(records[0])
     if (record.get("execution") != "production-FramedStream-new"
             or record.get("product_correction") is not False or record.get("instrumented") is not True
+            or record.get("private_executable_links") != 1
             or record.get("processes") != "exited-and-waited"
             or not re.fullmatch(r"[0-9a-f]{64}", record.get("artifact_sha256", ""))):
         raise ValueError("Connector observation scope differs")

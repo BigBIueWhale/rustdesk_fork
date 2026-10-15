@@ -11410,7 +11410,7 @@ for literal, single/multiple hosts-file, UDP/TCP DNS and cancelled-future cases.
 It denies and counts actual IP-datagram socket syscalls and forwards to real libc
 `getaddrinfo`; its cancellation case holds native entry behind a controlled gate.
 Each process validates both socket traps and real-function interposition first.
-This diagnostic is prepared, not yet compiled or executed; its result is observation,
+This diagnostic compiles; runtime observations are pending. Its result is observation,
 not a product correction or zero-UDP acceptance. Natural DNS stall/drain, actual viewer,
 other platforms and the complete correction remain OPEN.
 Primary references: [Rust 1.75 lookup](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys_common/net.rs#L181),

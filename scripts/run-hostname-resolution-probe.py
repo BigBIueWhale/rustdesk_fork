@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 
@@ -55,12 +56,43 @@ def main():
         raise ValueError("Expected exactly one connector observation artifact")
     artifact = Path(matches[0]["executable"])
     metadata = artifact.lstat()
-    if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+    if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink not in (1, 2)
             or (metadata.st_uid, metadata.st_gid) != (1000, 1000)
             or artifact.resolve() != artifact
-            or artifact != target / "debug/examples/hostname_resolution_probe"
+            or artifact.parent != target / "debug/examples"
+            or not re.fullmatch(r"hostname_resolution_probe(?:-[0-9a-f]{16})?", artifact.name)
+            or not 0 < metadata.st_size <= 256 * 1024 * 1024
             or not metadata.st_mode & 0o100):
-        raise ValueError("Connector observation artifact authority differs")
+        raise ValueError(f"Connector observation build input differs: {artifact} {metadata}")
+    producer = {"path": str(artifact), "links": metadata.st_nlink, "bytes": metadata.st_size}
+    # Cargo can hard-link its public example name to the hashed build output.
+    # Execute an exclusive copy, so those producer aliases cannot mutate it.
+    private = target / "hostname-resolution-probe.native"
+    source_fd = os.open(artifact, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(source_fd, "rb") as original:
+        current = os.fstat(original.fileno())
+        if (current.st_dev, current.st_ino, current.st_size) != (metadata.st_dev, metadata.st_ino, metadata.st_size):
+            raise ValueError("Cargo output identity changed before sealing")
+        output_fd = os.open(private, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(output_fd, "wb") as output:
+            copied = 0
+            while True:
+                chunk = original.read(1024 * 1024)
+                if not chunk:
+                    break
+                copied += len(chunk)
+                if copied > metadata.st_size:
+                    raise ValueError("Cargo output grew while sealing")
+                output.write(chunk)
+            if copied != metadata.st_size:
+                raise ValueError("Cargo output was truncated while sealing")
+            output.flush()
+            os.fchmod(output.fileno(), 0o500)
+            os.fsync(output.fileno())
+    producer_sha = digest(artifact)
+    if private.lstat().st_nlink != 1 or digest(private) != producer_sha:
+        raise ValueError("Sealed executable bytes or link authority differ")
+    artifact = private
     artifact_sha = digest(artifact)
     observations = []
     for case in ("literal", "hosts-single", "hosts-multi", "hosts-multi-tcp",
@@ -78,8 +110,11 @@ def main():
         observations.append(observation)
     if {p: digest(source / p) for p in paths} != sources:
         raise ValueError("Connector observation sources changed")
+    if digest(Path(producer["path"])) != producer_sha:
+        raise ValueError("Cargo build output changed during observation")
     print("HOSTNAME_RESOLUTION_COMPONENT=" + json.dumps({
         "artifact_sha256": artifact_sha, "sources": sources, "observations": observations,
+        "producer": producer, "private_executable_links": private.lstat().st_nlink,
         "product_correction": False, "instrumented": True,
         "execution": "production-FramedStream-new", "processes": "exited-and-waited"
     }, sort_keys=True, separators=(",", ":")))

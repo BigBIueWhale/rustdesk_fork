@@ -4734,7 +4734,16 @@ PY
             && [ "$(grep -Fxc 'test platform::unix::serv_files::tests::file_contents_reads_unsigned_offset_words_from_sparse_file ... FAILED' "$output")" -eq 1 ] \
             || { cat "$output" >&2; fail 'earlier FUSE implementation did not fail only the exact regression'; }
     fi
-    [ "$(grep -Ec '^test result: ' "$output")" -eq "$((${#result_lines[@]} + HBB_FUSE_READ_TESTS * 2))" ] \
+    local playback_failed_summaries=0
+    if [ "$MODE" = linux-pa-authority-tests ] && [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+        [ "$(grep -Ec '^test result: FAILED\. 0 passed; 2 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^test .* \.\.\. FAILED$' "$output")" -eq 2 ] \
+            && [ "$(grep -Fxc 'test client::audio_playback_before::audio_playback_tests::real_setup_failure_is_terminal_and_a_fresh_owner_recovers ... FAILED' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'test client::audio_playback_before::audio_playback_tests::real_write_and_decode_failures_retire_audio_resources ... FAILED' "$output")" -eq 1 ] \
+            || { tail -n 200 "$output" >&2; fail 'old playback did not fail only the two exact regressions'; }
+        playback_failed_summaries=1
+    fi
+    [ "$(grep -Ec '^test result: ' "$output")" -eq "$((${#result_lines[@]} + HBB_FUSE_READ_TESTS * 2 + playback_failed_summaries))" ] \
         || fail 'focused Rust-test output contains a non-success result summary'
     for result_line in "${result_lines[@]}"; do
         passed="$(printf '%s\n' "$result_line" | sed -E 's/^test result: ok\. ([0-9]+) passed;.*/\1/')"
@@ -4830,6 +4839,7 @@ PY
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Linux PulseAudio authority test count differs: $tests_passed"
         if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
+            grep -E '^test client::audio_playback_before::.* \.\.\. FAILED$|^test result: FAILED\.|^failed playback must release' "$output"
             grep -E '^test client::audio_playback_tests::.* \.\.\. ok$|^PA_PLAYBACK_|^PA_RUNTIME_BUILD=' "$output"
             printf 'LINUX_PA_PLAYBACK_VM=pass commit=%s tree=%s tests=2 rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s pa_candidate=%s scope=production-audio-handler native=setup-write-decode-finality vm_network=none container_network=none uid=1000 gid=1000 source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \

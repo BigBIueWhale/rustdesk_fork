@@ -53,7 +53,7 @@ def main():
                 require(server.poll() is None and time.monotonic() < deadline, "Xvfb readiness failed")
                 time.sleep(0.05)
             result = subprocess.run(
-                [str(executable), "clipboard::write_native_tests::", "--ignored",
+                [str(executable), "clipboard::write_", "--ignored",
                  "--color", "never", "--test-threads=1"],
                 env=environment, capture_output=True, timeout=20)
             require(len(result.stdout) + len(result.stderr) <= 65536, "native clipboard output too large")
@@ -65,13 +65,15 @@ def main():
             expected = {
                 "clipboard::write_native_tests::live_owner_publishes_a_queued_peer_write_to_x11",
                 "clipboard::write_native_tests::retired_owner_cannot_publish_a_dequeued_write_after_the_native_lock",
+                "clipboard::write_permission_native_tests::disabling_viewer_clipboard_retires_a_write_waiting_for_native_admission",
+                "clipboard::write_permission_native_tests::reenabling_viewer_clipboard_does_not_resurrect_an_old_queued_write",
             }
             observed = re.findall(r"^test (\S+) \.\.\. ok$", output, re.MULTILINE)
-            require(len(observed) == 2 and set(observed) == expected,
+            require(len(observed) == 4 and set(observed) == expected,
                     "native clipboard test inventory differs")
             summaries = re.findall(r"^test result: .*", output, re.MULTILINE)
             require(len(summaries) == 1 and re.fullmatch(
-                r"test result: ok\. 2 passed; 0 failed; 0 ignored; 0 measured; \d+ filtered out; finished in [0-9.]+s",
+                r"test result: ok\. 4 passed; 0 failed; 0 ignored; 0 measured; \d+ filtered out; finished in [0-9.]+s",
                 summaries[0]), "native clipboard result differs")
             require(digest() == artifact_sha and server.poll() is None,
                     "clipboard artifact changed or Xvfb exited")
@@ -86,7 +88,7 @@ def main():
                 raise RuntimeError("Xvfb required forced retirement")
             require(server.returncode == 0 and not os.path.lexists(socket)
                     and not os.path.lexists(lock), "Xvfb retirement differs")
-    print(f"CLIPBOARD_WRITE_NATIVE=pass tests=2 artifact_sha256={artifact_sha} "
+    print(f"CLIPBOARD_WRITE_NATIVE=pass tests=4 artifact_sha256={artifact_sha} "
           "queue=production native=x11 retired=unchanged live=published cleanup=joined", flush=True)
 
 

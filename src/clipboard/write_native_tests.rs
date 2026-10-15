@@ -17,6 +17,23 @@ fn queued_write(retire: bool) {
         ..Default::default()
     }], ClipboardSide::Client);
 
+    let receiver = wait_for_native_lock();
+    if retire {
+        owner.close();
+    }
+    drop(native_lock);
+    receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+
+    assert_eq!(native_text(), if retire {
+        "clipboard-before-peer-write"
+    } else {
+        "clipboard-from-peer"
+    });
+    drop(owner);
+    assert!(!writer.is_live());
+}
+
+pub(super) fn wait_for_native_lock() -> mpsc::Receiver<()> {
     // A barrier fits only after the worker removes the SET from its one-slot
     // queue. Native SET cannot begin while this test owns ARBOARD_MTX.
     let sender = CLIPBOARD_UPDATE_TX.get().unwrap().as_ref().unwrap();
@@ -47,25 +64,16 @@ fn queued_write(retire: bool) {
         assert!(Instant::now() < deadline, "clipboard worker did not reach the native lock");
         std::thread::yield_now();
     }
-    if retire {
-        owner.close();
-    }
-    drop(native_lock);
-    receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+    receiver
+}
 
+pub(super) fn native_text() -> String {
     let mut observer = arboard::Clipboard::new().unwrap();
     let data = observer.get_formats(&[arboard::ClipboardFormat::Text]).unwrap();
-    let actual = data.into_iter().find_map(|data| match data {
+    data.into_iter().find_map(|data| match data {
         ClipboardData::Text(text) => Some(text),
         _ => None,
-    }).expect("actual X11 clipboard text");
-    assert_eq!(actual, if retire {
-        "clipboard-before-peer-write"
-    } else {
-        "clipboard-from-peer"
-    });
-    drop(owner);
-    assert!(!writer.is_live());
+    }).expect("actual X11 clipboard text")
 }
 
 #[test]

@@ -3255,6 +3255,7 @@ run_focused_rust_tests() {
             tmpfs_size=512m
             source_fingerprints+=(
                 src/clipboard/write_owner.rs src/clipboard/write_native_tests.rs
+                src/clipboard/write_permission_native_tests.rs
                 src/client/screenshot.rs scripts/run-clipboard-write-native-tests.py
                 scripts/smoke-xvfb-prepare.sh scripts/smoke-xvfb-packages.tsv scripts/smoke-xvfb-files.tsv
             )
@@ -3273,6 +3274,8 @@ run_focused_rust_tests() {
                 clipboard::write_owner::tests::stale_retirement_cannot_close_a_fresh_owner
                 clipboard::write_native_tests::live_owner_publishes_a_queued_peer_write_to_x11
                 clipboard::write_native_tests::retired_owner_cannot_publish_a_dequeued_write_after_the_native_lock
+                clipboard::write_permission_native_tests::disabling_viewer_clipboard_retires_a_write_waiting_for_native_admission
+                clipboard::write_permission_native_tests::reenabling_viewer_clipboard_does_not_resurrect_an_old_queued_write
             )
         elif [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
             container_name=rustdesk-cm-clipboard-response-tests
@@ -4348,7 +4351,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                                 --color never --test-threads=1
                             python3 -I -S /source/scripts/run-clipboard-write-native-tests.py "$clipboard_executable"
                             [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
-                            printf "CLIPBOARD_WRITE_ARTIFACT=pass sha256=%s tests=5 unchanged=before-after\n" \
+                            printf "CLIPBOARD_WRITE_ARTIFACT=pass sha256=%s tests=7 unchanged=before-after\n" \
                                 "$clipboard_artifact_sha"
                             exit 0
                         fi
@@ -4456,7 +4459,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'native whiteboard container mount authority differs'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
-        printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=18 bridge=absent native=x11\n'
+        printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=20 bridge=absent native=x11\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=29 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
@@ -4827,9 +4830,9 @@ PY
                 && [ "$(grep -Fc 'CLIPBOARD_DECODE_ARTIFACT=' "$output")" -eq 1 ] \
                 || fail 'clipboard decode test artifact receipt is absent, malformed or duplicated'
             if [ "$RUST_TEST_PROFILE" = clipboard ]; then
-                [ "$(grep -Ec '^CLIPBOARD_WRITE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=5 unchanged=before-after$' "$output")" -eq 1 ] \
+                [ "$(grep -Ec '^CLIPBOARD_WRITE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=7 unchanged=before-after$' "$output")" -eq 1 ] \
                     && [ "$(grep -Fc 'CLIPBOARD_WRITE_ARTIFACT=' "$output")" -eq 1 ] \
-                    && [ "$(grep -Ec '^CLIPBOARD_WRITE_NATIVE=pass tests=2 artifact_sha256=[0-9a-f]{64} queue=production native=x11 retired=unchanged live=published cleanup=joined$' "$output")" -eq 1 ] \
+                    && [ "$(grep -Ec '^CLIPBOARD_WRITE_NATIVE=pass tests=4 artifact_sha256=[0-9a-f]{64} queue=production native=x11 retired=unchanged live=published cleanup=joined$' "$output")" -eq 1 ] \
                     && [ "$(grep -Fc 'CLIPBOARD_WRITE_NATIVE=' "$output")" -eq 1 ] \
                     || fail 'clipboard write ownership receipt differs'
             fi
@@ -5121,7 +5124,7 @@ PY
             grep -E '^CLIPBOARD_DECODE_ARTIFACT_BEFORE=sha256=' "$output"
             grep -E '^CLIPBOARD_DECODE_ARTIFACT=pass ' "$output"
             grep -E '^CLIPBOARD_DECODE_BUILD=pass elapsed_seconds=[0-9]+ features=linux-pkg-config$' "$output"
-            grep -E '^test clipboard::(native_clipboard_limit_tests|write_owner::tests|write_native_tests)::.* \.\.\. ok$' "$output"
+            grep -E '^test clipboard::(native_clipboard_limit_tests|write_owner::tests|write_native_tests|write_permission_native_tests)::.* \.\.\. ok$' "$output"
             grep -E '^CLIPBOARD_WRITE_(ARTIFACT|NATIVE)=' "$output"
             printf 'CLIPBOARD_DECODE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-clipboard-sanitizer-and-write-owner rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

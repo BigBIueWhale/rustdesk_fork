@@ -1532,6 +1532,17 @@ impl Deref for LoginConfigHandler {
 }
 
 impl LoginConfigHandler {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) fn queue_peer_clipboard(
+        &self,
+        writer: &crate::clipboard::ClipboardWriter,
+        clipboards: Vec<Clipboard>,
+    ) {
+        if self.conn_type == ConnType::DEFAULT_CONN && !self.config.disable_clipboard.v {
+            writer.update(clipboards, ClipboardSide::Client);
+        }
+    }
+
     /// Initialize the login config handler.
     ///
     /// # Arguments

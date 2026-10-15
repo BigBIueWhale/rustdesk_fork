@@ -1966,27 +1966,35 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   Raw `hbb-common-fs-run.phatqsH40b.serial.log` (66,852 bytes), SHA-256
   `19c6f2028f727d1c047c6774cb5eb824533c90c425dfb7805c85c78f91f90cb2`; stable executable
   `4ae2ad69e3f4478ab2d59a31c9baf333f3e1d2e912dcc7b7b10730d99b0c9f6b`.
-  Source `9a7f04b1` passed all five named production viewer/CM receive-caller cases in
-  `--linux-file-receive-caller-tests`: 304 VM seconds, including a 233-second complete
-  Linux parent build with `linux-pkg-config`; two native groups report four and one passes,
+  Source `b57c4071` passed all six named production viewer/CM receive-caller cases in
+  `--linux-file-receive-caller-tests`: 295 VM seconds, including a 227-second complete
+  Linux parent build with `linux-pkg-config`; two native groups report four and two passes,
   zero failed/ignored. Real files, symlinks and inode replacement prove exact failed-job
   retirement, visible primary/cleanup errors, preserved replacement/older sidecars and
   committed predecessor, survivor completion, inert late blocks and exact CM
   connection/token/job/generation/file failure with late Done refusal.
-  Artifact SHA-256 `7c48a7755e5a686f98230fd99b46af3690d79036d4e3b2835329bf1a2b1ffcc1`
-  remains equal before/between/after both groups. All 223 complete source/control captures
+  The expanded CM case replaces the cancellation-only regression with ten real scenes:
+  block/confirmation error, completion, peer error and cancellation with either sidecar
+  replaced. It checks both primary and cleanup error halves, original/replacement bytes
+  and inode identities, the unchanged uncertainty marker, removal of the other exact
+  artifact, late block/Done refusal and another same-connection job completing exact bytes.
+  Production behavior and the total library test count are unchanged. The broader
+  integration selection now expects 102 cases; that whole transaction remains unexecuted.
+  Artifact SHA-256 `999fcf5a3bf4cece2d1e7fac70cb56286615ffdcf3930b98502d2d61b05c9283`
+  remains equal before/between/after both groups. All 225 complete source/control captures
   match before/live/after; four native endpoint deltas are empty. Pinned offline inputs,
   a zero-NIC VM and nonroot networkless/read-only/capability-free/NNP guest container
   retain the 6 GiB guest, 7 GiB RAM scratch and 6 GiB hard file ceiling. Scratch peaks
-  at 5,589,635,072 bytes; overlay at 5,429,596,160. Exact VM, monitor, Docker and RAM/private
-  roots retire. The first RAM-admission refusal started no VM and is retained separately.
-  `.harness-state/verifier-vm/file-receive-callers-native-9a7f04b1.json` binds source,
+  at 5,499,473,920 bytes; overlay at 5,339,418,624. Exact VM, monitor, Docker and RAM/private
+  roots retire. The earlier five-case run and its safe RAM refusal are retained in
+  `.harness-state/verifier-vm/file-receive-callers-native-9a7f04b1.json`.
+  `.harness-state/verifier-vm/cm-sidecar-cleanup-native-b57c4071.json` binds source,
   required names, artifact, raw serial, limits and cleanup. Receipts are assistant-observed;
   executable bytes and full inner stdout were ephemeral. Earlier `ac51cdcd` outer-count
   rejection and `eb421119` exit 137 remain unaccepted in audit/Git.
-  This accepts the five headless Linux caller/filesystem cases. Complete peer/socket/UI/FFI/
-  installed failure propagation, CM admitted-sidecar replacement-error composition,
-  forced cancellation/owner-loss drain, cross-OS behavior, resource/latency soak,
+  This accepts the six headless Linux caller/filesystem cases, including CM replacement-error
+  composition. Complete peer/socket/UI/FFI/installed failure propagation, forced
+  cancellation/owner-loss drain, cross-OS behavior, resource/latency soak,
   artifacts/reproduction/review and complete receive-error closure remain OPEN.
 - **R-S11fj/R-S11e-197 viewer download digest inspection failure** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION
   PARTIAL, FAILURE PATHS OPEN.** One exact-current headless Linux production-`Session` download completed through

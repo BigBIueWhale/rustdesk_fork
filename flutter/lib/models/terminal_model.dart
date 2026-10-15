@@ -33,8 +33,7 @@ class TerminalModel with ChangeNotifier {
   final _inputBuffer = <String>[];
   // Buffer for output data received before terminal view has valid dimensions.
   // This prevents NaN errors when writing to terminal before layout is complete.
-  final _pendingOutputChunks = <String>[];
-  final _pendingOutputSuppressFlags = <bool>[];
+  final _pendingOutputChunks = <_TerminalOutputChunk>[];
   int _pendingOutputSize = 0;
   static const int _kMaxOutputBufferChars = 8 * 1024;
   // View ready state: true when terminal has valid dimensions, safe to write
@@ -409,6 +408,7 @@ class TerminalModel with ChangeNotifier {
     bool suppressTerminalOutput = false,
   }) {
     if (!_isCurrent || text.isEmpty) return;
+    final generation = _openGeneration;
     if (!_terminalViewReady) {
       // If a single chunk exceeds the cap, keep only its tail.
       // Note: truncation may split a multi-byte ANSI escape sequence,
@@ -419,48 +419,56 @@ class TerminalModel with ChangeNotifier {
         final truncated = text.substring(text.length - _kMaxOutputBufferChars);
         _pendingOutputChunks
           ..clear()
-          ..add(truncated);
-        _pendingOutputSuppressFlags
-          ..clear()
-          ..add(suppressTerminalOutput);
+          ..add(_TerminalOutputChunk(
+            truncated,
+            generation,
+            suppressTerminalOutput,
+          ));
         _pendingOutputSize = truncated.length;
       } else {
-        _pendingOutputChunks.add(text);
-        _pendingOutputSuppressFlags.add(suppressTerminalOutput);
+        _pendingOutputChunks.add(_TerminalOutputChunk(
+          text,
+          generation,
+          suppressTerminalOutput,
+        ));
         _pendingOutputSize += text.length;
         // Drop oldest chunks if exceeds limit (whole chunks to preserve ANSI sequences)
         while (_pendingOutputSize > _kMaxOutputBufferChars &&
             _pendingOutputChunks.length > 1) {
           final removed = _pendingOutputChunks.removeAt(0);
-          _pendingOutputSuppressFlags.removeAt(0);
-          _pendingOutputSize -= removed.length;
+          _pendingOutputSize -= removed.text.length;
         }
       }
       return;
     }
-    _writeTerminalChunk(text, suppressTerminalOutput: suppressTerminalOutput);
+    _writeTerminalChunk(text,
+        openGeneration: generation,
+        suppressTerminalOutput: suppressTerminalOutput);
   }
 
   void _flushOutputBuffer() {
     if (_pendingOutputChunks.isEmpty) return;
     debugPrint(
         '[TerminalModel] Flushing $_pendingOutputSize buffered chars (${_pendingOutputChunks.length} chunks)');
-    for (var i = 0; i < _pendingOutputChunks.length; i++) {
+    for (final chunk in _pendingOutputChunks) {
       _writeTerminalChunk(
-        _pendingOutputChunks[i],
-        suppressTerminalOutput: _pendingOutputSuppressFlags[i],
+        chunk.text,
+        openGeneration: chunk.openGeneration,
+        suppressTerminalOutput: chunk.suppressTerminalOutput,
       );
     }
     _pendingOutputChunks.clear();
-    _pendingOutputSuppressFlags.clear();
     _pendingOutputSize = 0;
   }
 
   void _writeTerminalChunk(
     String text, {
+    required Object? openGeneration,
     required bool suppressTerminalOutput,
   }) {
-    if (!suppressTerminalOutput) {
+    if (!suppressTerminalOutput &&
+        _terminalOpened &&
+        identical(_openGeneration, openGeneration)) {
       terminal.write(text);
       return;
     }
@@ -521,11 +529,22 @@ class TerminalModel with ChangeNotifier {
     // Clear buffers to free memory
     _inputBuffer.clear();
     _pendingOutputChunks.clear();
-    _pendingOutputSuppressFlags.clear();
     _pendingOutputSize = 0;
     _markViewReadyScheduled = false;
     _suppressNextTerminalDataOutput = false;
     // Terminal cleanup is handled server-side when service closes
     super.dispose();
   }
+}
+
+class _TerminalOutputChunk {
+  final String text;
+  final Object? openGeneration;
+  final bool suppressTerminalOutput;
+
+  const _TerminalOutputChunk(
+    this.text,
+    this.openGeneration,
+    this.suppressTerminalOutput,
+  );
 }

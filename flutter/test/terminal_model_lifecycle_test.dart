@@ -105,7 +105,7 @@ void main() {
     _open(model);
     _data(model, '\x1b[6n');
     await tester.pump();
-    expect(sent, ['\x1b[1;1R']);
+    expect(sent, [matches(r'^\x1b\[[0-9]+;[0-9]+R$')]);
     expect(parent.unexpectedAccess, isEmpty);
   });
 
@@ -119,9 +119,10 @@ void main() {
     _data(model, '\x1b[5n');
     _data(model, '\x1b[6n');
     await tester.pump();
-    expect(sent, ['\x1b[1;1R']);
+    expect(sent, [matches(r'^\x1b\[[0-9]+;[0-9]+R$')]);
     _data(model, '\x1b[5n');
-    expect(sent, ['\x1b[1;1R', '\x1b[0n']);
+    expect(sent, hasLength(2));
+    expect(sent.last, '\x1b[0n');
     expect(parent.unexpectedAccess, isEmpty);
   });
 

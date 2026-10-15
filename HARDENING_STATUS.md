@@ -34,7 +34,7 @@ Whole-document role classification and compression of redundant history remain *
 Current normative specification identity:
 
 ```text
-313c3d2788c55a078112f078b7d3e1aed9a0e394e04c30a79ab490b1ae864fc2  requirements.html
+f719905f84e62e525d9a0d87e120fc8e1444da083c2fd3f009add3537196b44f  requirements.html
 ```
 
 ## Current Verdict
@@ -6214,61 +6214,52 @@ or helper principal boundary, release artifact, memory/latency soak, independent
 reproduction or external review follows. Those broader obligations remain OPEN;
 R-S11b/R-S11c and the overall release remain STOP-SHIP.
 
-**Terminal UTF-8 packet boundaries — SOURCE CORRECTED; DART/NATIVE EXECUTION OPEN.**
+**Terminal UTF-8, callbacks and buffered replies — DART COMPONENT PASS; NATIVE I/O OPEN.**
 The server's bounded live/replay batches may split a character after PTY accumulation.
-`TerminalModel` now owns one `TerminalOutputDecoder` across data packets instead of
-decoding each packet independently. Complete text is emitted immediately; incomplete
-UTF-8 stays in the decoder until continuation or stream completion. Successful open
-replaces the decoder, close flushes an incomplete tail once, and
-disposed models reject events. Empty decoded fragments consume no pre-layout buffer
-entries. Six production-decoder regressions cover every two-packet split of mixed
-Hebrew/accented/CJK/emoji/ANSI output, bytewise continuation, malformed bytes, EOF,
-independent terminals and replacement isolation. They are included in the existing
-model checkpoint (25 suites/283 cases). The focused command
-`scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --terminal-output`
-runs the same six tests with exact suite/name/completion checks. It inherits the
-existing 4-GiB guest, 2-GiB networkless container, 90-second test and 300-second VM
-budgets, read-only authenticated source/inputs and joined cleanup. No bridge or
-release build is needed for this decoder component. The focused shard, parser
-regressions, tests and model integration are UNEXECUTED.
-Diff review/check, Bash syntax and Python AST inspection are preparatory checks only.
-Available RAM is below unchanged VM admission, so no test/count launcher ran; the
-current ledger token count remains PENDING. Real terminal rendering, reconnect/replay,
-platform behavior and all installed/service/release obligations remain OPEN.
-
-**Terminal model callback ownership — SOURCE CORRECTED; MODEL/NATIVE EXECUTION OPEN.**
+`TerminalModel` owns one `TerminalOutputDecoder` across packets. Complete text emits
+immediately; an incomplete UTF-8 tail remains until continuation or stream completion.
+Successful open replaces the decoder, close flushes its tail once, disposed models
+reject events, and empty decoded fragments allocate no pre-layout buffer entries.
 Only the exact currently registered model admits input, resize, open/close, event,
-output and scheduled layout work. Each successful open creates a fresh object
-identity; buffered-input iterations and open/close completions retain that identity,
-so disposal, replacement, close or reopen stops later dispatch/publication. Closed
-events discard old pending input before status output. Unregistration now requires
-the exact model, and both desktop/mobile callers pass their own instance. Five
-regressions execute the real `TerminalModel`/Flutter notification path with a parent
-that supplies only ID and registry state; unexpected parent access fails. They cover
-current completion, disposal, same-ID replacement, close and repeated open. They are
-included in the model checkpoint above and remain UNEXECUTED. Admitted native command
-completion, actual input/resize delivery, page replacement/unmount, transport/native
-terminal generations and resource bounds remain OPEN. Diff/syntax/AST/catalog checks
-are preparatory; no VM/compiler/test/count ran while RAM admission was unavailable.
+output and layout work. Buffered-input iterations and asynchronous completions retain
+the exact open object. Closed events discard pending input; desktop/mobile unregistration
+requires the exact model. Each pre-layout output chunk now retains text, its originating
+open object and replay suppression together, within the existing limit of 8,192 UTF-16 code units.
+Flush permits xterm-generated input only while that exact open remains current; stale
+or closed output renders with replies suppressed. The separate flag array is deleted.
 
-**Terminal connection pool — SOURCE CORRECTED; MODEL/NATIVE EXECUTION OPEN.**
-The shared desktop/mobile terminal pool keeps each FFI and its reference count
-in one entry. Retain/release requires that exact object; a late old page cannot
-decrement or retire a replacement under the same peer ID. Both page disposers
-pass their own FFI. Last release removes the pool entry before registration
-retirement and native close. Get registration deletion is exact-object checked,
-and a closed predecessor's owned registration is removed before replacement;
-foreign or failed registration retirement refuses admission. Native close errors
-have type-only diagnostics. Six actual production-pool regressions cover retained
-references, wrong owners, same-ID replacement, value-equal distinct objects,
-retirement before later publication and rejection of a same-owner count reset.
-They are prepared, uncompiled and unexecuted in the existing model checkpoint.
-Real FFI/Get adapter, page disposal/reentry, close completion, terminal I/O,
-platform/resource/installed and release acceptance remain OPEN. Mobile terminal
-view closing now has a source-owned route record and captured session/action as detailed above.
-Its six new Navigator regressions pass at `8243b218`; selected production callback imports
-compile. Actual FFI/Get/page admission, early-start failure and same-peer terminal-model
-restoration remain OPEN, alongside native I/O and broader platform acceptance.
+Two unchanged production-model/xterm regressions failed on `0042daff`: an old queued
+status query dispatched `ESC[0n` after reopen, directly or through closed-state input
+buffering. Correction `38ed45e9` passed the complete focused command
+`scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --terminal-output`
+in 280 VM seconds: two suites/21 cases, with fresh pinned bindings and strict
+suite/name/completion validation. Six decoder cases cover every two-packet split of
+mixed Hebrew/accented/CJK/emoji/ANSI text, continuation, malformed bytes, EOF and
+independent/replacement streams. Nine real-model/Flutter cases cover current completion,
+disposal, replacement, close/reopen, stale queued replies, mixed old/current queries,
+current input and replay suppression. The input sink is injected; it is not a native
+ABI or peer transaction. Six production-pool cases prove exact retain/release, replacement,
+value-equal foreign-owner refusal, retirement before publication and count-reset refusal.
+
+The pool keeps each FFI/refcount in one entry and removes the last exact owner before
+registration retirement/native close. Both page disposers pass their own FFI; Get removal
+is exact-object checked, and foreign or failed registration retirement refuses admission.
+Native close errors have type-only diagnostics.
+Source/baseline/result/resource bindings are retained in
+`.harness-state/verifier-vm/terminal-output-baseline-0042daff.json` and
+`.harness-state/verifier-vm/terminal-output-corrected-38ed45e9.json`.
+The accepted zero-NIC transaction used a 4-GiB guest, 3-GiB networkless nonroot container,
+7-GiB bounded RAM scratch, 120-second test and 300-second VM budgets, read-only source/inputs,
+kernel-denied owned host IP sockets, complete unattributed endpoint snapshots and joined
+VM/RAM retirement. Successful serial retains the strict result summary, not per-case JSON.
+The full 25-suite/287-case model checkpoint was not rerun.
+
+Partial escape-sequence state/size isolation across opens remains OPEN. Real native
+input/resize/close, FFI/Get/page admission and disposal/reentry, early-start failure,
+same-peer model restoration, TerminalView rendering, reconnect/replay, transport/native
+generations, sustained resources and installed/platform/release acceptance remain OPEN.
+The separate mobile route's six Navigator regressions retain their named `8243b218` pass;
+they do not close those wider terminal obligations.
 
 **R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the

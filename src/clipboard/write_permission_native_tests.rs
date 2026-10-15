@@ -25,7 +25,7 @@ fn change_permission(reenable: bool) {
         ClipboardSide::Client,
     ).unwrap();
 
-    let owner = ClipboardWriteOwner::new();
+    let owner = login.clipboard_write_owner();
     let writer = owner.writer();
     let native_lock = ARBOARD_MTX.lock().unwrap();
     login.queue_peer_clipboard(&writer, text("clipboard-from-old-permission"));

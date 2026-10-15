@@ -1,7 +1,7 @@
 #[cfg(not(target_os = "ios"))]
 use crate::client::ClientClipboardSession;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::clipboard::{ClipboardSide, ClipboardWriteOwner, ClipboardWriter};
+use crate::clipboard::{ClipboardSide, ClipboardWriter};
 #[cfg(not(any(target_os = "ios")))]
 use crate::{
     audio_egress_channel, audio_service, clipboard::CLIPBOARD_INTERVAL, AudioEgressReceiver,
@@ -1310,7 +1310,7 @@ impl<T: InvokeUiSession> Remote<T> {
 
     pub async fn io_loop(&mut self, key: &str, token: &str, round: u64) {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let mut clipboard_writes = ClipboardWriteOwner::new();
+        let mut clipboard_writes = self.handler.lc.read().unwrap().clipboard_write_owner();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
             self.clipboard_writer = Some(clipboard_writes.writer());

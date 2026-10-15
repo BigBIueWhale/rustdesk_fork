@@ -1533,6 +1533,11 @@ impl Deref for LoginConfigHandler {
 
 impl LoginConfigHandler {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) fn clipboard_write_owner(&self) -> crate::clipboard::ClipboardWriteOwner {
+        crate::clipboard::ClipboardWriteOwner::new()
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub(crate) fn queue_peer_clipboard(
         &self,
         writer: &crate::clipboard::ClipboardWriter,

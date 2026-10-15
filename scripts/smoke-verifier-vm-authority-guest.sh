@@ -841,7 +841,7 @@ for profile, memory, scratch, overlay in (
         ('flutter-credential-dialog', 4096, 7, 6),
         ('linux-service-build', 8192, 9, 8),
         ('x11-focus', 4096, 9, 8),
-        ('linux-pa-playback', 4096, 9, 8),
+        ('linux-pa-playback', 6144, 7, 6),
         ('ledger-token-count', 2048, 4, 1)):
     if limits(profile, memory) != (scratch * gib, overlay * gib):
         raise SystemExit('VM storage profile limits differ')
@@ -849,7 +849,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('ledger-token-count', 8192), ('unknown', 2048),
                         ('cpace-recovery-tests', 6144), ('cpace-recovery-tests', 8193),
                         ('x11-focus', 4095), ('x11-focus', 8192),
-                        ('linux-pa-playback', 4095), ('linux-pa-playback', 8192)):
+                        ('linux-pa-playback', 4096), ('linux-pa-playback', 8192)):
     try:
         limits(profile, memory)
     except ValueError:
@@ -2966,8 +2966,8 @@ run_focused_rust_tests() {
             src/server/service.rs
         )
         if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
-            memory=3g
-            memory_bytes=3221225472
+            memory=5g
+            memory_bytes=5368709120
             source_fingerprints+=(Cargo.toml src/client.rs src/client/audio_mailbox.rs
                 src/client/audio_playback_tests.rs scripts/fixtures/audio-playback-before-finality.rs)
         fi

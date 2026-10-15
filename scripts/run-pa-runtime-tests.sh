@@ -71,13 +71,18 @@ trap 'exit 143' TERM
 
 if [ "${2:-}" != --product-pair ]; then
     if [ "${2:-}" = --playback ]; then
-        export CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+        export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
     fi
     printf 'PA_RUNTIME_BUILD=started target=linux-libtest budget_seconds=600\n'
     build_started=$SECONDS
+    build_status=0
     timeout --signal=TERM --kill-after=5s 600s \
         cargo test --offline --locked --lib --features linux-pkg-config --no-run \
-        --message-format=json-render-diagnostics --color never >"$WORK/build.json"
+        --message-format=json-render-diagnostics --color never >"$WORK/build.json" || build_status=$?
+    if [ "$build_status" -ne 0 ]; then
+        cat /sys/fs/cgroup/memory.events >&2
+        exit "$build_status"
+    fi
     test_executable="$(python3 -I -S - "$WORK/build.json" <<'PY'
 import json
 import os

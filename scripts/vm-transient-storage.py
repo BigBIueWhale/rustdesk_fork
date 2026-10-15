@@ -43,8 +43,8 @@ def storage_limits(profile, memory_mib):
         # The unchanged 8 GiB QEMU ceiling leaves at most 1 GiB for prepared media.
         return 9 * GIB, 8 * GIB
     if profile == 'linux-pa-playback':
-        require(memory_mib == 4096, 'playback storage profile requires its 4 GiB guest')
-        return 9 * GIB, 8 * GIB
+        require(memory_mib == 6144, 'playback storage profile requires its 6 GiB guest')
+        return 7 * GIB, 6 * GIB
     require(profile == 'standard', 'unknown VM storage profile')
     return SCRATCH_LIMIT, 8 * GIB
 

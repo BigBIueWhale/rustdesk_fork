@@ -728,7 +728,7 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
     readonly VM_TIMEOUT_SECONDS=900
     readonly OVERLAY_SIZE=16G
     if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
-        readonly VM_MEMORY=4096
+        readonly VM_MEMORY=6144
     else
         readonly VM_MEMORY=12288
     fi

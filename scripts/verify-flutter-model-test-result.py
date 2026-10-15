@@ -91,12 +91,31 @@ PASSWORD_FIELD_TESTS = {
     "password field retains focused obscured semantics",
 }
 TERMINAL_OUTPUT_TESTS = {
-    "terminal UTF-8 survives every two-packet split",
-    "terminal UTF-8 emits complete text while retaining only a partial tail",
-    "terminal invalid UTF-8 has the same replacement policy across packets",
-    "terminal end of stream flushes an incomplete character exactly once",
-    "terminal decoders keep concurrent terminal byte streams separate",
-    "replacement terminal stream cannot complete its predecessor tail",
+    "terminal_output_decoder_test.dart": {
+        "terminal UTF-8 survives every two-packet split",
+        "terminal UTF-8 emits complete text while retaining only a partial tail",
+        "terminal invalid UTF-8 has the same replacement policy across packets",
+        "terminal end of stream flushes an incomplete character exactly once",
+        "terminal decoders keep concurrent terminal byte streams separate",
+        "replacement terminal stream cannot complete its predecessor tail",
+    },
+    "terminal_model_lifecycle_test.dart": {
+        "terminal pool retains one owner until its last release",
+        "terminal pool refuses an unowned retain or release",
+        "terminal pool replacement survives old page releases",
+        "terminal pool authority uses identity rather than equality",
+        "terminal pool retires its slot before external cleanup",
+        "terminal pool cannot reset a live owner reference count",
+        "current terminal open completion notifies once",
+        "disposed terminal ignores delayed open completion",
+        "replacement terminal retires predecessor open notification",
+        "terminal close retires its pending open notification",
+        "terminal reopen retires the previous open completion",
+        "reopened terminal cannot answer a queued predecessor query",
+        "closed terminal cannot buffer an old query reply for reopen",
+        "queued terminal queries retain their exact open owner",
+        "current terminal query replies preserve replay suppression",
+    },
 }
 CREDENTIAL_DIALOG_TESTS = {
     "connect_password_dialog_lifecycle_test.dart": {
@@ -215,9 +234,10 @@ def parse_result(path, profile="models"):
         expected_tests = len(PASSWORD_FIELD_TESTS)
         expected_names = PASSWORD_FIELD_TESTS
     elif profile == "terminal-output":
-        expected_suites = {"terminal_output_decoder_test.dart"}
-        expected_tests = len(TERMINAL_OUTPUT_TESTS)
-        expected_names = TERMINAL_OUTPUT_TESTS
+        expected_by_suite = TERMINAL_OUTPUT_TESTS
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     elif profile == "credential-dialog":
         expected_by_suite = CREDENTIAL_DIALOG_TESTS
         expected_suites = set(expected_by_suite)

@@ -16,6 +16,7 @@ class TerminalModel with ChangeNotifier {
   final String id; // peer id
   final FFI parent;
   final int terminalId;
+  final Future<void> Function(String data) _sendInput;
   late final Terminal terminal;
   late final TerminalController terminalController;
 
@@ -63,11 +64,7 @@ class TerminalModel with ChangeNotifier {
     if (_terminalOpened) {
       // Send user input to remote terminal
       try {
-        await bind.sessionSendTerminalInput(
-          sessionId: parent.sessionId,
-          terminalId: terminalId,
-          data: data,
-        );
+        await _sendInput(data);
       } catch (e) {
         debugPrint('[TerminalModel] Error sending terminal input: $e');
       }
@@ -77,7 +74,15 @@ class TerminalModel with ChangeNotifier {
     }
   }
 
-  TerminalModel(this.parent, [this.terminalId = 0]) : id = parent.id {
+  TerminalModel(this.parent, this.terminalId,
+      {Future<void> Function(String data)? sendInput})
+      : id = parent.id,
+        _sendInput = sendInput ??
+            ((data) => bind.sessionSendTerminalInput(
+                  sessionId: parent.sessionId,
+                  terminalId: terminalId,
+                  data: data,
+                )) {
     terminal = Terminal(maxLines: 10000);
     terminalController = TerminalController();
 
@@ -357,11 +362,7 @@ class TerminalModel with ChangeNotifier {
     for (final data in buffer) {
       if (!_isCurrent || !identical(_openGeneration, generation)) return;
       try {
-        await bind.sessionSendTerminalInput(
-          sessionId: parent.sessionId,
-          terminalId: terminalId,
-          data: data,
-        );
+        await _sendInput(data);
       } catch (e) {
         debugPrint('[TerminalModel] Error sending buffered input: $e');
       }

@@ -31,8 +31,8 @@ class ResultTests(unittest.TestCase):
             suites = ["password_text_field_test.dart"]
             names = sorted(result.PASSWORD_FIELD_TESTS)
         elif profile == "terminal-output":
-            suites = ["terminal_output_decoder_test.dart"]
-            names = sorted(result.TERMINAL_OUTPUT_TESTS)
+            suites = sorted(result.TERMINAL_OUTPUT_TESTS)
+            names = sorted(set().union(*result.TERMINAL_OUTPUT_TESTS.values()))
         elif profile == "credential-dialog":
             suites = sorted(result.CREDENTIAL_DIALOG_TESTS)
             names = sorted(set().union(*result.CREDENTIAL_DIALOG_TESTS.values()))
@@ -47,9 +47,11 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
-            if profile == "credential-dialog":
+            if profile in ("credential-dialog", "terminal-output"):
+                inventory = (result.CREDENTIAL_DIALOG_TESTS if profile == "credential-dialog"
+                             else result.TERMINAL_OUTPUT_TESTS)
                 suite_id = next(i for i, suite in enumerate(suites)
-                                if name in result.CREDENTIAL_DIALOG_TESTS[suite])
+                                if name in inventory[suite])
             events.append({
                 "type": "testStart",
                 "test": {"id": test_id, "suiteID": suite_id, "name": name},
@@ -77,7 +79,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("frame-queue"), "frame-queue"), (1, 24))
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
-        self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (1, 6))
+        self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 21))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (7, 60))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"

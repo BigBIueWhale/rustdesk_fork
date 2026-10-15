@@ -26,20 +26,102 @@ class _TerminalParent implements FFI {
   }
 }
 
-TerminalModel _install(_TerminalParent parent) {
-  final model = TerminalModel(parent, 7);
+TerminalModel _install(_TerminalParent parent,
+    {Future<void> Function(String data)? sendInput}) {
+  final model = TerminalModel(parent, 7, sendInput: sendInput);
   parent.terminalModels[7] = model;
   return model;
 }
 
-void _open(TerminalModel model) => model.handleTerminalResponse({
+void _open(TerminalModel model, {bool replay = false}) =>
+    model.handleTerminalResponse({
       'type': 'opened',
       'terminal_id': 7,
       'success': true,
       'persistent_sessions': <int>[],
+      'replay_terminal_output': replay,
+    });
+
+void _data(TerminalModel model, String text) => model.handleTerminalResponse({
+      'type': 'data',
+      'terminal_id': 7,
+      'data': base64Encode(utf8.encode(text)),
+    });
+
+void _close(TerminalModel model) => model.handleTerminalResponse({
+      'type': 'closed',
+      'terminal_id': 7,
+      'exit_code': 0,
     });
 
 void main() {
+  testWidgets('reopened terminal cannot answer a queued predecessor query',
+      (tester) async {
+    final parent = _TerminalParent();
+    final sent = <String>[];
+    final model = _install(parent, sendInput: (data) async => sent.add(data));
+    addTearDown(model.dispose);
+    _open(model);
+    _data(model, '\x1b[5n');
+    _open(model);
+    await tester.pump();
+    expect(sent, isEmpty);
+    await model.sendVirtualKey('current input');
+    expect(sent, ['current input']);
+    expect(parent.unexpectedAccess, isEmpty);
+  });
+
+  testWidgets('closed terminal cannot buffer an old query reply for reopen',
+      (tester) async {
+    final parent = _TerminalParent();
+    final sent = <String>[];
+    final model = _install(parent, sendInput: (data) async => sent.add(data));
+    addTearDown(model.dispose);
+    _open(model);
+    _data(model, '\x1b[5n');
+    _close(model);
+    await tester.pump();
+    expect(sent, isEmpty);
+    _open(model);
+    await tester.pump();
+    expect(sent, isEmpty);
+    await model.sendVirtualKey('current input');
+    expect(sent, ['current input']);
+    expect(parent.unexpectedAccess, isEmpty);
+  });
+
+  testWidgets('queued terminal queries retain their exact open owner',
+      (tester) async {
+    final parent = _TerminalParent();
+    final sent = <String>[];
+    final model = _install(parent, sendInput: (data) async => sent.add(data));
+    addTearDown(model.dispose);
+    _open(model);
+    _data(model, '\x1b[5n');
+    _close(model);
+    _open(model);
+    _data(model, '\x1b[6n');
+    await tester.pump();
+    expect(sent, ['\x1b[1;1R']);
+    expect(parent.unexpectedAccess, isEmpty);
+  });
+
+  testWidgets('current terminal query replies preserve replay suppression',
+      (tester) async {
+    final parent = _TerminalParent();
+    final sent = <String>[];
+    final model = _install(parent, sendInput: (data) async => sent.add(data));
+    addTearDown(model.dispose);
+    _open(model, replay: true);
+    _data(model, '\x1b[5n');
+    _data(model, '\x1b[6n');
+    await tester.pump();
+    expect(sent, ['\x1b[1;1R']);
+    _data(model, '\x1b[5n');
+    expect(sent, ['\x1b[1;1R', '\x1b[0n']);
+    expect(parent.unexpectedAccess, isEmpty);
+  });
+
   test('terminal pool retains one owner until its last release', () {
     final pool = TerminalConnectionPool<Object>();
     final owner = Object();
@@ -199,3 +281,4 @@ void main() {
     model.dispose();
   });
 }
+import 'dart:convert';

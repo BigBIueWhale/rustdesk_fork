@@ -10,8 +10,8 @@ The 79 imported files total 344,565 bytes. Their complete path/size/SHA-256
 inventory before local changes is retained in
 `.harness-state/verifier-vm/xterm-source-import-baeef78c.json` at the repository
 root. The license and library files remain byte-identical apart from the
-parser-owner change in `lib/src/terminal.dart` and four trailing spaces removed
-from key-table lines in `lib/src/core/input/keytab/keytab_default.dart` for the
+parser-owner change in `lib/src/terminal.dart` and trailing whitespace removed
+from four key-table lines in `lib/src/core/input/keytab/keytab_default.dart` for the
 repository whitespace check. The key-table tokenizer trims each line before
 parsing, so those four line-end whitespace changes preserve every binding.
 

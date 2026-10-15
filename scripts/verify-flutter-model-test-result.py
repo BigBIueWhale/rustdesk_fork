@@ -134,6 +134,11 @@ TERMINAL_OUTPUT_TESTS = {
     },
 }
 CREDENTIAL_DIALOG_TESTS = {
+    "peer_model_test.dart": {
+        "direct peers retain their address and local display metadata",
+        "retired account metadata cannot prevent a direct peer from loading",
+        "direct peers expose no retired credential or group fields",
+    },
     "connect_password_dialog_lifecycle_test.dart": {
         "connect prompt is present before its saved preference resolves",
         "retired connect preference cannot change its replacement",

@@ -84,7 +84,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 26))
-        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (7, 60))
+        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (8, 63))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"
             path.write_bytes(b"7\n")

@@ -2,13 +2,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'platform_model.dart';
-// ignore: depend_on_referenced_packages
-import 'package:collection/collection.dart';
 
 class Peer {
   final String id;
-  String hash; // personal ab hash password
-  String password; // shared ab password
   String username; // pc username
   String hostname;
   String platform;
@@ -17,7 +13,6 @@ class Peer {
   String rdpPort;
   String rdpUsername;
   String loginName; //login username
-  String device_group_name;
   String note;
 
   String getId() {
@@ -29,8 +24,6 @@ class Peer {
 
   Peer.fromJson(Map<String, dynamic> json)
       : id = json['id'] ?? '',
-        hash = json['hash'] ?? '',
-        password = json['password'] ?? '',
         username = json['username'] ?? '',
         hostname = json['hostname'] ?? '',
         platform = json['platform'] ?? '',
@@ -39,116 +32,10 @@ class Peer {
         rdpPort = json['rdpPort'] ?? '',
         rdpUsername = json['rdpUsername'] ?? '',
         loginName = json['loginName'] ?? '',
-        device_group_name = json['device_group_name'] ?? '',
         note = json['note'] is String ? json['note'] : '';
 
-  Map<String, dynamic> toJson() {
-    return <String, dynamic>{
-      "id": id,
-      "hash": hash,
-      "password": password,
-      "username": username,
-      "hostname": hostname,
-      "platform": platform,
-      "alias": alias,
-      "tags": tags,
-      "rdpPort": rdpPort,
-      "rdpUsername": rdpUsername,
-      'loginName': loginName,
-      'device_group_name': device_group_name,
-      'note': note,
-    };
-  }
-
-  Map<String, dynamic> toCustomJson({required bool includingHash}) {
-    var res = <String, dynamic>{
-      "id": id,
-      "username": username,
-      "hostname": hostname,
-      "platform": platform,
-      "alias": alias,
-      "tags": tags,
-    };
-    if (includingHash) {
-      res['hash'] = hash;
-    }
-    return res;
-  }
-
-  Map<String, dynamic> toGroupCacheJson() {
-    return <String, dynamic>{
-      "id": id,
-      "username": username,
-      "hostname": hostname,
-      "platform": platform,
-      "login_name": loginName,
-      "device_group_name": device_group_name,
-    };
-  }
-
-  Peer({
-    required this.id,
-    required this.hash,
-    required this.password,
-    required this.username,
-    required this.hostname,
-    required this.platform,
-    required this.alias,
-    required this.tags,
-    required this.rdpPort,
-    required this.rdpUsername,
-    required this.loginName,
-    required this.device_group_name,
-    required this.note,
-  });
-
   Peer.loading()
-      : this(
-          id: '...',
-          hash: '',
-          password: '',
-          username: '...',
-          hostname: '...',
-          platform: '...',
-          alias: '',
-          tags: [],
-          rdpPort: '',
-          rdpUsername: '',
-          loginName: '',
-          device_group_name: '',
-          note: '',
-        );
-  bool equal(Peer other) {
-    return id == other.id &&
-        hash == other.hash &&
-        password == other.password &&
-        username == other.username &&
-        hostname == other.hostname &&
-        platform == other.platform &&
-        alias == other.alias &&
-        tags.equals(other.tags) &&
-        rdpPort == other.rdpPort &&
-        rdpUsername == other.rdpUsername &&
-        device_group_name == other.device_group_name &&
-        loginName == other.loginName &&
-        note == other.note;
-  }
-
-  Peer.copy(Peer other)
-      : this(
-            id: other.id,
-            hash: other.hash,
-            password: other.password,
-            username: other.username,
-            hostname: other.hostname,
-            platform: other.platform,
-            alias: other.alias,
-            tags: other.tags.toList(),
-            rdpPort: other.rdpPort,
-            rdpUsername: other.rdpUsername,
-            loginName: other.loginName,
-            device_group_name: other.device_group_name,
-            note: other.note);
+      : this.fromJson({'id': '...', 'username': '...', 'hostname': '...'});
 }
 
 typedef GetInitPeers = RxList<Peer> Function();

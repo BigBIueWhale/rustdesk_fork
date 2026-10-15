@@ -1421,23 +1421,6 @@ pub fn main_load_recent_peers() {
     }
 }
 
-pub fn main_load_recent_peers_for_ab(filter: String) -> String {
-    let id_filters = serde_json::from_str::<Vec<String>>(&filter).unwrap_or_default();
-    let id_filters = if id_filters.is_empty() {
-        None
-    } else {
-        Some(id_filters)
-    };
-    if !config::APP_DIR.read().unwrap().is_empty() {
-        let peers: Vec<HashMap<&str, String>> = PeerConfig::peers(id_filters)
-            .drain(..)
-            .map(|(id, _, p)| peer_to_map(id, p))
-            .collect();
-        return serde_json::ser::to_string(&peers).unwrap_or("".to_owned());
-    }
-    "".to_string()
-}
-
 pub fn main_load_fav_peers() {
     let push_to_flutter = |peers| {
         let data = HashMap::from([("name", "load_fav_peers".to_owned()), ("peers", peers)]);

@@ -1064,11 +1064,6 @@ class RustdeskImpl {
         () => js.context.callMethod('getByName', ['load_recent_peers']));
   }
 
-  Future<String> mainLoadRecentPeersForAb(
-      {required String filter, dynamic hint}) {
-    throw UnimplementedError("mainLoadRecentPeersForAb");
-  }
-
   Future<void> mainLoadFavPeers({dynamic hint}) {
     return Future(() => js.context.callMethod('getByName', ['load_fav_peers']));
   }

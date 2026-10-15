@@ -598,7 +598,6 @@ pub fn create_shortcut(_id: String) {
 
 #[cfg(feature = "flutter")]
 pub fn peer_to_map(id: String, p: PeerConfig) -> HashMap<&'static str, String> {
-    use hbb_common::sodiumoxide::base64;
     HashMap::<&str, String>::from_iter([
         ("id", id),
         ("username", p.info.username.clone()),
@@ -607,10 +606,6 @@ pub fn peer_to_map(id: String, p: PeerConfig) -> HashMap<&'static str, String> {
         (
             "alias",
             p.options.get("alias").unwrap_or(&"".to_owned()).to_owned(),
-        ),
-        (
-            "hash",
-            base64::encode(p.password, base64::Variant::Original),
         ),
     ])
 }

@@ -995,14 +995,13 @@ if grep -qE 'bool[[:space:]]+online([[:space:]]|=)' flutter/lib/models/peer_mode
   echo "  FAIL R-SV6c: saved-peer model regained rendezvous online state"; exit 1
 fi
 # R-G9: the account/address-book synchronizer was the only same-server provenance consumer.
-# Historical peer JSON may contain the key, but the local saved-peer DTO ignores it and never
-# reserializes it. The controlled-side Client parser likewise has no duplicate policy booleans;
+# Historical peer JSON may contain the key, but the local saved-peer DTO ignores it.
+# The controlled-side Client parser likewise has no duplicate policy booleans;
 # those live only on the authenticated Rust Connection and in the viewer Permission protocol.
 if grep -qE 'sameServer|same_server' flutter/lib/models/peer_model.dart; then
   echo "  FAIL R-G9: saved-peer model retained retired cloud provenance"; exit 1
 fi
-grep -qF "expect(serialized, isNot(contains('same_server')));" flutter/test/peer_model_test.dart \
-  || { echo "  FAIL R-G9: saved-peer legacy-key serialization regression is missing"; exit 1; }
+dg_clean 'mainLoadRecentPeersForAb|toCustomJson|toGroupCacheJson' 'R-S11hj retired peer account metadata APIs'
 for field in restart recording block_input; do
   if grep -qF "json['$field']" flutter/lib/models/server_model.dart; then
     echo "  FAIL R-G9: controlled-side Flutter Client parses duplicate $field policy"; exit 1

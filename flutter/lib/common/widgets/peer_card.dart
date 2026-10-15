@@ -412,9 +412,7 @@ class _PeerCardState extends State<_PeerCard>
       child: build_more(context));
 
   bool _shouldBuildPasswordIcon(Peer peer) {
-    // I-6: show the saved-credential lock on the recent/favorite tabs — where the fork stores a
-    // per-address CPace PRS (`mainPeerHasPassword`) — not on the structurally-disabled
-    // address-book tab, and never from the dead shared-AB `peer.password` field.
+    // The lock reflects the native per-address saved credential.
     if (widget.tab != PeerTabIndex.recent && widget.tab != PeerTabIndex.fav) {
       return false;
     }

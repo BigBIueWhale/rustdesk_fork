@@ -290,21 +290,7 @@ class _ConnectionPageState extends State<ConnectionPage>
                       _autocompleteOpts = const Iterable<Peer>.empty();
                     } else if (_allPeersLoader.peers.isEmpty &&
                         !_allPeersLoader.isPeersLoaded) {
-                      Peer emptyPeer = Peer(
-                        id: '',
-                        username: '',
-                        hostname: '',
-                        alias: '',
-                        platform: '',
-                        tags: [],
-                        hash: '',
-                        password: '',
-                        rdpPort: '',
-                        rdpUsername: '',
-                        loginName: '',
-                        device_group_name: '',
-                        note: '',
-                      );
+                      Peer emptyPeer = Peer.fromJson({'id': ''});
                       _autocompleteOpts = [emptyPeer];
                     } else {
                       final textToFind = textEditingValue.text.toLowerCase();

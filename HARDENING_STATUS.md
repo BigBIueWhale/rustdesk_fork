@@ -58,7 +58,7 @@ target OS has executed them or that every in-flight helper operation drains on c
 | Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added and cleanup joined. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
 | Exact Android/CM Rust lifecycles (`ceec168e8a25d231156e59c25b08365a29fef5d7`) | A zero-NIC VM freshly generated the Flutter bridge, compiled the complete Linux-host Rust library with `linux-pkg-config,flutter`, and executed 24 exact production tests in a networkless guest-only container. Four cover listener generation and owned-child convergence; 20 cover exact CM registry/file-log/Android-child ownership, privacy activation/retirement, final-Remote cleanup, and resolution restoration. The offline canary, pinned sub-closures, read-only source/generated bindings, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, real socket/peer, APK/device, task-swipe, Force Stop, rendered presentation, or native Windows evidence. |
-| CPace transport and named viewer-credential recovery | Current transport corrections through `ec94f87b` passed all 20 existing real-loopback TCP wire tests at harness `c3b1ac6d` in 152 VM seconds. The run used pinned Rust 1.75, sealed vendor/builder inputs, guest-only networkless Docker, an exact stable executable digest, unchanged host endpoints and joined cleanup. It covers handshake/keying, malformed/oversized input, cancellation, replay/order, guess classification and queue refusal. Earlier product `714141e9741922c64489a64f18515e49f4090b96` retains its 46-test Linux-target client-classifier/wire baseline; the older `2ab3efa0` wire pass is superseded for current transport evidence. Android/Windows UI presentation, APK/native app artifacts, device reconnect and peer display recovery remain open. |
+| CPace transport and named viewer-credential recovery | Transport corrections through `ec94f87b` passed all 20 real-loopback TCP wire tests at exact source `6133c7c7` in 143 VM seconds. The former unpolled-read case is replaced by actual pending-read cancellation after observed socket prefixes of one, two and nine bytes, followed by exact authenticated delivery at receive counters one and two. The run used pinned Rust 1.75, sealed vendor/builder inputs, guest-only networkless Docker, an exact stable executable digest, unchanged host endpoints and joined cleanup. It also covers handshake/keying, malformed/oversized input, replay/order, guess classification and queue refusal. `.harness-state/verifier-vm/cpace-pending-read-6133c7c7.json` retains the exact evidence. Earlier product `714141e9741922c64489a64f18515e49f4090b96` retains its 46-test Linux-target client-classifier/wire baseline. Android/Windows UI presentation, APK/native app artifacts, device reconnect and peer display recovery remain open. |
 | Isolated Android 14 framework boot (`a38441110283a0b6cd7875cc28c69dc0668996a2`) | The exact pinned Emulator 37.1.11 and Android 34 default x86_64 image booted in 284 seconds inside a networkless guest-only container in a zero-NIC VM. API 34, x86_64 ABI, enforcing SELinux, framework readiness, a real framebuffer PNG, bounded teardown, automatic run-root retirement, and complete host listener invariance passed. This establishes the disposable Android runtime path only; no RustDesk APK, Activity/service/JNI/peer/session/task-swipe/Force Stop behavior, signing, or app presentation was exercised. |
 | Named Android test-APK baselines (`ca569086`/`c8637d40`/`7d49e481…8737c`; harness `89a85f4b`) | A zero-NIC build/inspection/install/render transaction and one complete retained-APK peer transaction passed. Initial/background actual-pixel recovery was at most 1.50 seconds; both task relaunches recovered within 1.20 seconds; capture age was at most 175 ms; twelve required changing frames were observed while the foreground service and MediaProjection remained live. **Later replay `855a5d52` of the same APK failed the first task-relaunch pixel oracle at 8,000 ms; the intermittent defect remains OPEN.** An expanded six-replacement guest workload reported task recovery at most 7.04 seconds, freshness at most 2.00 seconds, RSS growth 2,772 KiB, and thread growth six; its wrapper and outer listener attestation failed, so it is not an accepted full transaction. Descriptor counts were unobserved. Diagnostic APK `035c9a20`/`19e061f6…bd0` has three complete corrected-observer six-replacement replays at `ec5544d6`, `f74470dd` and `eb7c8305`. The exact older `ca569086` APK also passed the corrected-observer schedule at harness `bccc02c5` without rebuilding. That comparative pass does not erase its earlier failure or establish causation; vary justified workload/lifetime conditions instead of counting identical baseline passes. Stable signing, release artifacts, physical devices, sustained resource/latency soak, network transitions, cross-version behavior, cold equality, independent reproduction, and external review remain open. |
 | Exact Android foreground-service lifecycle (artifact `48acf94e1a26bf51af1f8e697a11cfe2aa84cbd4`; harness `eeb4327e0ba5c4677ba6571f97ca95bf14beeed1`) | The retained x86_64 test APK, tree `b400f789568cd45c721cdbe5e06efc7f3a9f3760`, SHA-256 `8036056ecb5d7df1888bbfef44866bfb8b169cbcfc2b4f756ab64361a5c05774`, was admitted by exact source/tree/digest and replayed on Android 14 without rebuilding. The real app persisted its permanent password through AndroidKeyStore-backed storage, obtained MediaProjection, and published `Screen capture ready` with exactly one foreground `MainService`. Two actual Launcher3 task-card upward swipes removed the exact task; each relaunch resumed `MainActivity` in the unchanged service process with capture still ready and no duplicate service creation. Android Force Stop then removed both process and service and marked the package stopped; a subsequent launch created a new process while leaving `MainService` stopped. The 672-second zero-NIC transaction used networkless guest-only containers, added no host listener or process drift, joined every transient owner, and self-retired its run root. This is a real Activity/service/MediaProjection lifecycle baseline, not a real peer/session, raw-frame or input-callback exercise, presentation-freshness/latency result, resource soak, physical-device result, stable-signed release artifact, or causal reproduction of the reported outgoing-viewer hang. |
@@ -12009,14 +12009,21 @@ overlay bytes. Admission, prepared-input capacity, live monitoring and joined re
 remain mandatory, with no disk fallback. Source/artifact/raw/case/control/storage bindings are
 in `.harness-state/verifier-vm/cpace-transport-current-c3b1ac6d.json`.
 
-**Pending-read cancellation — prior claim narrowed; replacement native evidence OPEN.** The
+**Pending-read cancellation — replacement Linux wire evidence ACCEPTED; broader acceptance OPEN.** The
 former `r_t5_dropped_next_does_not_advance_read_seq` put an always-ready branch first in a
 biased select, so it did not poll the read. Its pass at `c3b1ac6d` does not establish safety
 after partial socket input. R-T5/R-T14 now require retained frame/codec ownership, no nonce
 advance while incomplete, and exact later delivery; they do not require zero kernel bytes read.
-The replacement test gates and observes real TCP reads before cancelling at three prefix
-boundaries, then checks the retained frame and a following frame. Linux execution is pending;
-native acceptance on other platforms, full application behavior and all broader obligations remain open.
+Exact source `6133c7c7` passed all 20 wire cases in 143 VM seconds. The replacement observes
+actual TCP prefixes of one, two and nine bytes before dropping each Pending read; the receive
+counter stays zero, then the same retained owner authenticates both exact frames at counters
+one and two. Artifact SHA-256 `87d9499e6b53f9ee2252cdf1dde0ac1ec6b5c1396b53486a08a8c12d6f22106e`
+is stable before/after. `.harness-state/verifier-vm/cpace-pending-read-6133c7c7.json` binds
+source, named outcomes, actual observation, pinned inputs, equal 146-file before/after controls,
+four unchanged native-window endpoint snapshots and joined RAM/VM cleanup. No independent
+during-file capture was taken. This corrects the test/specification evidence rather than a
+demonstrated product cancellation defect. Other platforms, full application and all broader
+obligations remain open.
 
 Remaining STOP-SHIP evidence includes exact-current native execution on every supported target;
 real `FramedStream` socket backpressure, sink-failure, drain, abort, nonce/non-delivery, latency, and
@@ -14290,6 +14297,26 @@ any action, refuses duplicates, and publishes a resumed stream only
 after the correct source or receive sidecar is opened, its actual length admits the offset, the seek
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
+
+**Special-file enumeration — Linux library A/B ACCEPTED; integration/platform acceptance OPEN.**
+The directory scanner previously labeled every non-directory, non-link as a regular `File`.
+A real FIFO was advertised with size zero and entered the recursive file list. Source
+`329dbd1a` instead classifies regular files and directories from its captured no-follow metadata,
+preserves the existing link classification, and explicitly refuses unsupported visible types.
+The complete scan/job fails rather than omitting the entry or publishing a partial result.
+Both new regressions failed on `0886496b`, with 149 earlier/existing cases passing before
+the lane stopped. The identical filesystem test module and runner passed all **157 focused
+Linux library tests** on the correction in **175 VM seconds**, including real FIFO/socket
+fixtures at immediate and nested paths, flat/recursive/empty-directory refusal, actual send-job
+admission, preserved ordinary siblings and recovery after exact fixture removal.
+The stable executed artifact SHA-256 is
+`dca907dbf1dfec7f34939d0172ff02ed7b27d9a50fb1240541c0cf47abfabed0`.
+`.harness-state/verifier-vm/special-files-corrected-329dbd1a.json` binds the baseline,
+source/artifact/raw results, pinned inputs, all 148 matching before/during/after controls,
+unchanged endpoint observations, limits and joined cleanup. The guest validates each required
+case; retained successful serial exports group summaries. This is scanner/job-admission
+evidence, not measured FIFO-open hang finality, source-open replacement-race closure, an
+installed privileged receiver, whole application or other-platform execution.
 
 **Unsupported file-transfer types — LINUX LIBRARY AND AUTHENTICATED PEER ACCEPTED; installed/platform acceptance OPEN.**
 The schema reserves the former printer number, but both integer and protobuf `JobType`

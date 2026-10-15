@@ -211,6 +211,7 @@ class TerminalModel with ChangeNotifier {
       if (!_isCurrent || !identical(_openGeneration, generation)) return;
       _openGeneration = null;
       _terminalOpened = false;
+      _retireTerminalOutput();
       notifyListeners();
     }
   }
@@ -301,7 +302,7 @@ class TerminalModel with ChangeNotifier {
         '[TerminalModel] Terminal opened response: success=$success, message=$message, service_id=$serviceId');
 
     if (success) {
-      _finishTerminalOutput();
+      _retireTerminalOutput();
       _outputDecoder = TerminalOutputDecoder();
       final generation = Object();
       _openGeneration = generation;
@@ -505,7 +506,7 @@ class TerminalModel with ChangeNotifier {
     _openGeneration = null;
     _terminalOpened = false;
     _inputBuffer.clear();
-    _finishTerminalOutput();
+    _retireTerminalOutput();
     final int exitCode = evt['exit_code'] ?? 0;
     _writeToTerminal('\r\nTerminal closed with exit code: $exitCode\r\n');
     notifyListeners();
@@ -516,8 +517,12 @@ class TerminalModel with ChangeNotifier {
     _writeToTerminal('\r\nTerminal error: $message\r\n');
   }
 
-  void _finishTerminalOutput() {
+  void _retireTerminalOutput() {
     _writeToTerminal(_outputDecoder.finish(), suppressTerminalOutput: true);
+    terminal.resetOutputParser();
+    _pendingOutputChunks.clear();
+    _pendingOutputSize = 0;
+    _suppressNextTerminalDataOutput = false;
   }
 
   @override
@@ -525,13 +530,10 @@ class TerminalModel with ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     _openGeneration = null;
-    _outputDecoder.finish();
-    // Clear buffers to free memory
+    _terminalOpened = false;
+    _retireTerminalOutput();
     _inputBuffer.clear();
-    _pendingOutputChunks.clear();
-    _pendingOutputSize = 0;
     _markViewReadyScheduled = false;
-    _suppressNextTerminalDataOutput = false;
     // Terminal cleanup is handled server-side when service closes
     super.dispose();
   }

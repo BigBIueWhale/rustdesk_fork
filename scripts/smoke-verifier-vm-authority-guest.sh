@@ -2808,6 +2808,17 @@ run_focused_rust_tests() {
                 bytes_codec::tests::eof_rejects_partial_payloads_after_consuming_each_header_width
                 bytes_codec::tests::eof_preserves_complete_empty_coalesced_and_raw_frames
                 bytes_codec::tests::eof_preserves_oversized_frame_refusal
+                tcp::writer_receipt_tests::protobuf_send_refuses_before_encoding
+                tcp::writer_receipt_tests::protobuf_receipt_refuses_before_encoding
+                tcp::writer_receipt_tests::protobuf_encoding_failure_retires_admission
+                tcp::writer_receipt_tests::r_s11gx_writer_admission_checks_size_count_and_bytes_before_ownership
+                tcp::writer_receipt_tests::r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort
+                tcp::writer_receipt_tests::r_s11gx_failed_drain_retires_writer_admission
+                tcp::writer_receipt_tests::r_s11gx_oversized_plaintext_is_rejected_before_peer_delivery
+                tcp::writer_receipt_tests::r_s11fb_receipt_waits_for_the_exact_sink_send
+                tcp::writer_receipt_tests::r_s11fb_receipt_reports_the_exact_sink_failure
+                tcp::writer_receipt_tests::r_s11fb_tracked_keyed_send_round_trips_the_exact_frame
+                tcp::writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read
             )
             hostname_options=(
                 --dns=127.0.0.1 --dns-option=attempts:1 --dns-option=timeout:1
@@ -3881,6 +3892,8 @@ run_focused_rust_tests() {
                                 --color never --test-threads=1
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                         else
+                            "$test_executable" tcp::writer_receipt_tests:: --color never --test-threads=1
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             "$test_executable" tcp::eof_tests:: --color never --test-threads=1
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             "$test_executable" bytes_codec::tests:: --color never --test-threads=1
@@ -4305,7 +4318,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output"
     )
     if [ "$MODE" = hbb-common-fs ]; then
-        expected_groups=7
+        expected_groups=8
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
@@ -4656,6 +4669,7 @@ PY
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests)|bytes_codec::tests)::.* \.\.\. ok$' "$output"
             grep -E '^test fs::tests::(receive_blocks_refuse_oversized_input_and_decoded_output|file_block_limit_preserves_real_sender_receiver_roundtrips|file_job_serialization_preserves_the_live_cm_path_field|file_transfer_type_refuses_reserved_and_unknown_wire_values) \.\.\. ok$' "$output"
             python3 -I -S "$source_root/scripts/verify-hostname-resolution-probe.py" "$output" "$source_root" \
                 || fail 'hostname connector observation or source binding differs'

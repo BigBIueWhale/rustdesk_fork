@@ -1172,6 +1172,211 @@ mod writer_receipt_tests {
     use super::*;
     use tokio::io::duplex;
 
+    #[derive(Clone, Default)]
+    struct ObservedMessage {
+        inner: crate::message_proto::Message,
+        encodes: Arc<std::sync::atomic::AtomicUsize>,
+        fail_encoding: bool,
+    }
+
+    impl PartialEq for ObservedMessage {
+        fn eq(&self, other: &Self) -> bool {
+            self.inner == other.inner && self.fail_encoding == other.fail_encoding
+        }
+    }
+
+    impl Message for ObservedMessage {
+        const NAME: &'static str = "ObservedMessage";
+
+        fn is_initialized(&self) -> bool {
+            self.inner.is_initialized()
+        }
+
+        fn merge_from(&mut self, input: &mut protobuf::CodedInputStream) -> protobuf::Result<()> {
+            self.inner.merge_from(input)
+        }
+
+        fn compute_size(&self) -> u64 {
+            self.inner.compute_size()
+        }
+
+        fn write_to_with_cached_sizes(
+            &self,
+            output: &mut protobuf::CodedOutputStream,
+        ) -> protobuf::Result<()> {
+            self.encodes.fetch_add(1, Ordering::Relaxed);
+            if self.fail_encoding {
+                return Err(io::Error::new(ErrorKind::Other, "injected encoding failure").into());
+            }
+            self.inner.write_to_with_cached_sizes(output)
+        }
+
+        fn special_fields(&self) -> &protobuf::SpecialFields {
+            self.inner.special_fields()
+        }
+
+        fn mut_special_fields(&mut self) -> &mut protobuf::SpecialFields {
+            self.inner.mut_special_fields()
+        }
+
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn default_instance() -> &'static Self {
+            static INSTANCE: std::sync::OnceLock<ObservedMessage> = std::sync::OnceLock::new();
+            INSTANCE.get_or_init(Self::default)
+        }
+    }
+
+    fn observed_message() -> ObservedMessage {
+        let mut response = crate::message_proto::ScreenshotResponse::new();
+        response.data = vec![0x5a; 1_024].into();
+        let mut inner = crate::message_proto::Message::new();
+        inner.set_screenshot_response(response);
+        ObservedMessage {
+            inner,
+            ..Default::default()
+        }
+    }
+
+    async fn join_aborted_writer(stream: &mut FramedStream) {
+        if let StreamState::Keyed(keyed) = &mut stream.state {
+            let error = tokio::time::timeout(std::time::Duration::from_secs(1), &mut keyed.writer)
+                .await
+                .unwrap()
+                .unwrap_err();
+            assert!(error.is_cancelled());
+        }
+    }
+
+    async fn assert_protobuf_refusal_before_encoding(with_receipt: bool) {
+        use tokio::io::AsyncReadExt;
+
+        for reason in ["oversize", "frames", "bytes", "closed", "poisoned", "unkeyed"] {
+            if reason == "unkeyed" && !with_receipt {
+                continue;
+            }
+            let (sender_side, mut peer) = duplex(8_192);
+            let mut stream = FramedStream::from(sender_side, SocketAddr::from(([127, 0, 0, 1], 0)));
+            stream.set_max_packet_length(if reason == "oversize" { 64 } else { 4_096 });
+            if reason != "unkeyed" {
+                stream.set_session_keys(DirectionalKeys {
+                    send: [0x13; 32],
+                    recv: [0x24; 32],
+                });
+            }
+            let admission = match &stream.state {
+                StreamState::Keyed(keyed) => Some(keyed.writer_admission.clone()),
+                _ => None,
+            };
+            let held = match (reason, admission.as_ref()) {
+                ("frames", Some(admission)) => Some(
+                    Arc::clone(&admission.frames)
+                        .try_acquire_many_owned(WRITER_CHANNEL_CAP as u32)
+                        .unwrap(),
+                ),
+                ("bytes", Some(admission)) => Some(
+                    Arc::clone(&admission.ciphertext_bytes)
+                        .try_acquire_many_owned(admission.max_retained_ciphertext_bytes as u32)
+                        .unwrap(),
+                ),
+                ("closed", Some(admission)) => {
+                    admission.close();
+                    None
+                }
+                _ => None,
+            };
+            if reason == "poisoned" {
+                stream.poison_and_retire_writer();
+            }
+            let message = observed_message();
+            let result = if with_receipt {
+                stream.send_with_receipt(&message).await.map(|_| ())
+            } else {
+                stream.send(&message).await
+            };
+            assert!(result.is_err(), "refusal must be terminal: {}", reason);
+            assert!(stream.poison);
+            join_aborted_writer(&mut stream).await;
+            drop(held);
+            if let Some(admission) = admission {
+                assert!(admission.frames.is_closed() && admission.ciphertext_bytes.is_closed());
+                assert_eq!(admission.frames.available_permits(), WRITER_CHANNEL_CAP);
+                assert_eq!(
+                    admission.ciphertext_bytes.available_permits(),
+                    admission.max_retained_ciphertext_bytes
+                );
+            }
+            drop(stream);
+            let mut received = Vec::new();
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                peer.read_to_end(&mut received),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert!(received.is_empty());
+            assert_eq!(
+                message.encodes.load(Ordering::Relaxed),
+                0,
+                "encoded before refusal: {}",
+                reason
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn protobuf_send_refuses_before_encoding() {
+        assert_protobuf_refusal_before_encoding(false).await;
+    }
+
+    #[tokio::test]
+    async fn protobuf_receipt_refuses_before_encoding() {
+        assert_protobuf_refusal_before_encoding(true).await;
+    }
+
+    #[tokio::test]
+    async fn protobuf_encoding_failure_retires_admission() {
+        for with_receipt in [false, true] {
+            let (sender_side, _peer) = duplex(8_192);
+            let mut stream = FramedStream::from(sender_side, SocketAddr::from(([127, 0, 0, 1], 0)));
+            stream.set_max_packet_length(4_096);
+            stream.set_session_keys(DirectionalKeys {
+                send: [0x35; 32],
+                recv: [0x46; 32],
+            });
+            let mut message = observed_message();
+            message.fail_encoding = true;
+            let result = if with_receipt {
+                stream.send_with_receipt(&message).await.map(|_| ())
+            } else {
+                stream.send(&message).await
+            };
+            assert!(result.is_err());
+            let poisoned = stream.poison;
+            // Join the old implementation's still-live writer before reporting its failed oracle.
+            if !poisoned {
+                if let StreamState::Keyed(keyed) = &stream.state {
+                    keyed.writer.abort();
+                }
+            }
+            join_aborted_writer(&mut stream).await;
+            assert_eq!(message.encodes.load(Ordering::Relaxed), 1);
+            assert!(poisoned, "encoding failure must retire the exact stream");
+            if let StreamState::Keyed(keyed) = &stream.state {
+                assert!(keyed.writer_admission.frames.is_closed());
+                assert!(keyed.writer_admission.ciphertext_bytes.is_closed());
+                assert_eq!(
+                    keyed.writer_admission.frames.available_permits(),
+                    WRITER_CHANNEL_CAP
+                );
+                assert_eq!(keyed.writer_admission.ciphertext_bytes.available_permits(), 8_192);
+            }
+        }
+    }
+
     fn framed<T>(stream: T) -> Framed<DynTcpStream, SecretboxCodec>
     where
         T: TcpStreamTrait + Send + Sync + 'static,
@@ -1551,10 +1756,19 @@ mod writer_receipt_tests {
             .write_to_bytes()
             .expect("test message must serialize");
 
+        let observed = ObservedMessage {
+            inner: message,
+            ..Default::default()
+        };
+        sender
+            .send(&observed)
+            .await
+            .expect("ordinary real-TCP protobuf send must be admitted");
         let receipt = sender
-            .send_with_receipt(&message)
+            .send_with_receipt(&observed)
             .await
             .expect("tracked real-TCP send must be admitted");
+        assert_eq!(observed.encodes.load(Ordering::Relaxed), 2);
         tokio::time::timeout(std::time::Duration::from_secs(1), receipt)
             .await
             .expect("local TCP writer receipt must complete without a peer read")
@@ -1566,12 +1780,14 @@ mod writer_receipt_tests {
             "writer completion must be observable before the peer authenticates or reads the frame"
         );
 
-        let actual = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.next())
-            .await
-            .expect("the peer read must complete after it is explicitly polled")
-            .expect("the exact keyed frame must arrive")
-            .expect("the exact keyed frame must authenticate");
-        assert_eq!(actual.as_ref(), expected.as_slice());
+        for _ in 0..2 {
+            let actual = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.next())
+                .await
+                .expect("the peer read must complete after it is explicitly polled")
+                .expect("the exact keyed frame must arrive")
+                .expect("the exact keyed frame must authenticate");
+            assert_eq!(actual.as_ref(), expected.as_slice());
+        }
     }
 }
 

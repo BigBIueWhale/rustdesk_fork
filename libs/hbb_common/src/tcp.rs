@@ -564,29 +564,27 @@ impl FramedStream {
 
     #[inline]
     pub async fn send(&mut self, msg: &impl Message) -> ResultType<()> {
-        self.send_raw(msg.write_to_bytes()?).await
+        self.send_payload(
+            || {
+                usize::try_from(msg.compute_size())
+                    .map_err(|_| anyhow::anyhow!("outbound protobuf size does not fit usize"))
+            },
+            || Ok(Bytes::from(msg.write_to_bytes()?)),
+            None,
+        )
+        .await
     }
 
     #[inline]
     pub async fn send_raw(&mut self, msg: Vec<u8>) -> ResultType<()> {
-        // The keyed path seals the plaintext on this single-producer side (R-T3) then enqueues it to
-        // the writer task; the unkeyed (handshake) path frames it raw. `send_bytes` is the one choke.
         self.send_bytes(bytes::Bytes::from(msg)).await
     }
 
     #[inline]
     pub async fn send_bytes(&mut self, bytes: Bytes) -> ResultType<()> {
-        // R-T2: a poisoned stream is never reused (a prior send/recv error was fatal).
-        if self.poison {
-            bail!("R-T2: refusing to send on a poisoned stream (a prior send/recv error)");
-        }
-        let r = self.send_bytes_raw(bytes).await;
-        if r.is_err() {
-            // R-T2: a send error (a write failure, or the R-T3 writer channel full/closed) is fatal
-            // — poison so a later edit cannot reuse the stream and re-flush under an advanced nonce.
-            self.poison_and_retire_writer();
-        }
-        r
+        let plaintext_bytes = bytes.len();
+        self.send_payload(|| Ok(plaintext_bytes), || Ok(bytes), None)
+            .await
     }
 
     /// Enqueue one frame and return exact writer completion ownership.
@@ -598,91 +596,73 @@ impl FramedStream {
     /// receipt changes no nonce or ordering rule.
     #[inline]
     pub async fn send_with_receipt(&mut self, msg: &impl Message) -> ResultType<WriterReceipt> {
-        let bytes = Bytes::from(msg.write_to_bytes()?);
+        let (completion, receipt) = oneshot::channel();
+        self.send_payload(
+            || {
+                usize::try_from(msg.compute_size())
+                    .map_err(|_| anyhow::anyhow!("outbound protobuf size does not fit usize"))
+            },
+            || Ok(Bytes::from(msg.write_to_bytes()?)),
+            Some(completion),
+        )
+        .await?;
+        Ok(receipt)
+    }
+
+    async fn send_payload(
+        &mut self,
+        measure: impl FnOnce() -> ResultType<usize>,
+        encode: impl FnOnce() -> ResultType<Bytes>,
+        completion: Option<oneshot::Sender<io::Result<()>>>,
+    ) -> ResultType<()> {
         if self.poison {
             bail!("R-T2: refusing to send on a poisoned stream (a prior send/recv error)");
         }
-        let result = self.send_bytes_raw_with_receipt(bytes).await;
+
+        let result: ResultType<()> = async {
+            match &mut self.state {
+                StreamState::Unkeyed(framed) => {
+                    if completion.is_some() {
+                        bail!("tracked writer completion requires a keyed stream");
+                    }
+                    framed.send(encode()?).await?;
+                }
+                StreamState::Keyed(k) => {
+                    // Reserve before allocating the serialized payload or advancing the send nonce.
+                    let plaintext_bytes = measure()?;
+                    let reservation = k.writer_admission.reserve_plaintext(plaintext_bytes)?;
+                    let bytes = encode()?;
+                    if bytes.len() != plaintext_bytes {
+                        bail!("R-T18: encoded plaintext length disagrees with declared size");
+                    }
+                    let sealed = Bytes::from(k.seal.seal(&bytes));
+                    if sealed.len() != reservation.ciphertext_bytes {
+                        bail!("R-T18: secretbox ciphertext length disagrees with reserved bytes");
+                    }
+                    k.writer_tx
+                        .try_send(WriterCommand::Frame {
+                            bytes: sealed,
+                            reservation,
+                            completion,
+                        })
+                        .map_err(|e| match e {
+                            mpsc::error::TrySendError::Full(_) => {
+                                anyhow::anyhow!("R-T3: writer channel full — dropping the back-pressured connection")
+                            }
+                            mpsc::error::TrySendError::Closed(_) => {
+                                anyhow::anyhow!("R-T3: writer task gone — connection is dead")
+                            }
+                        })?;
+                }
+                StreamState::Keying => unreachable!("send_payload observed a mid-keying stream"),
+            }
+            Ok(())
+        }
+        .await;
         if result.is_err() {
             self.poison_and_retire_writer();
         }
         result
-    }
-
-    #[inline]
-    async fn send_bytes_raw(&mut self, bytes: Bytes) -> ResultType<()> {
-        match &mut self.state {
-            StreamState::Unkeyed(framed) => {
-                // Pre-key handshake: a direct framed send (raw — the codec only length-frames). The
-                // handshake is request/response on one task and its steps are tiny, so a send never
-                // blocks; once keyed, R-T3's bounded writer channel is what bounds back-pressure.
-                framed.send(bytes).await?;
-            }
-            StreamState::Keyed(k) => {
-                // R-T18 validates and reserves count plus exact ciphertext bytes BEFORE sealing, so
-                // refusal allocates no ciphertext and advances no nonce. The owned reservation then
-                // follows the frame through the sole sink send; active and queued frames share one
-                // finite budget even though Tokio returns channel capacity at dequeue.
-                let reservation = k.writer_admission.reserve_plaintext(bytes.len())?;
-                // R-T3 (§20): seal on THIS single-producer enqueue side so nonce order remains exact
-                // channel-FIFO order, then enqueue NON-BLOCKING. Full/closed remains fatal rather
-                // than blocking the connection run-loop inside a `select!` branch.
-                let sealed = Bytes::from(k.seal.seal(&bytes));
-                if sealed.len() != reservation.ciphertext_bytes {
-                    bail!("R-T18: secretbox ciphertext length disagrees with reserved bytes");
-                }
-                k.writer_tx
-                    .try_send(WriterCommand::Frame {
-                        bytes: sealed,
-                        reservation,
-                        completion: None,
-                    })
-                    .map_err(|e| match e {
-                        mpsc::error::TrySendError::Full(_) => {
-                            anyhow::anyhow!("R-T3: writer channel full — dropping the back-pressured connection")
-                        }
-                        mpsc::error::TrySendError::Closed(_) => {
-                            anyhow::anyhow!("R-T3: writer task gone — connection is dead")
-                        }
-                    })?;
-            }
-            StreamState::Keying => unreachable!("send_bytes observed a mid-keying stream"),
-        }
-        Ok(())
-    }
-
-    async fn send_bytes_raw_with_receipt(&mut self, bytes: Bytes) -> ResultType<WriterReceipt> {
-        let (completion, receipt) = oneshot::channel();
-        match &mut self.state {
-            StreamState::Unkeyed(_) => {
-                bail!("tracked writer completion requires a keyed stream");
-            }
-            StreamState::Keyed(k) => {
-                let reservation = k.writer_admission.reserve_plaintext(bytes.len())?;
-                let sealed = Bytes::from(k.seal.seal(&bytes));
-                if sealed.len() != reservation.ciphertext_bytes {
-                    bail!("R-T18: secretbox ciphertext length disagrees with reserved bytes");
-                }
-                k.writer_tx
-                    .try_send(WriterCommand::Frame {
-                        bytes: sealed,
-                        reservation,
-                        completion: Some(completion),
-                    })
-                    .map_err(|e| match e {
-                        mpsc::error::TrySendError::Full(_) => {
-                            anyhow::anyhow!("R-T3: writer channel full — dropping the back-pressured connection")
-                        }
-                        mpsc::error::TrySendError::Closed(_) => {
-                            anyhow::anyhow!("R-T3: writer task gone — connection is dead")
-                        }
-                    })?;
-            }
-            StreamState::Keying => {
-                unreachable!("send_bytes_raw_with_receipt observed a mid-keying stream")
-            }
-        }
-        Ok(receipt)
     }
 
     /// R-T9 (§20): wait until the dedicated writer task has flushed all frames

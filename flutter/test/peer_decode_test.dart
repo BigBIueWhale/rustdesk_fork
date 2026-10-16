@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -118,5 +119,59 @@ void main() {
     expect(peers.restPeerIds, isEmpty);
     expect(notifications, 1);
     expect(diagnostics, isEmpty);
+  });
+
+  test('cached peer decode refuses data without payload diagnostics', () {
+    const secret = 'SyntheticPrivateCachedPeer';
+    const malformed = '{"peerInfo":{"username":"$secret"';
+    expect(
+      () => jsonDecode(malformed),
+      throwsA(isA<FormatException>().having(
+        (error) => error.toString(),
+        'rendered exception',
+        contains(secret),
+      )),
+    );
+    final invalid = [
+      malformed,
+      '[]',
+      jsonEncode({
+        'updatePrivacyMode': <String, dynamic>{},
+        'peerInfo': {'username': secret},
+        'permissions': {'keyboard': secret},
+        'streamType': 'TCP',
+      }),
+    ];
+    for (final input in invalid) {
+      expect(CachedPeerData.fromString(input), isNull);
+    }
+    expect(diagnostics,
+        List.filled(invalid.length, 'Failed to parse CachedPeerData'));
+    expect(diagnostics.join(), isNot(contains(secret)));
+  });
+
+  test('cached peer decode preserves snapshots and recovers after refusal', () {
+    final data = CachedPeerData()
+      ..updatePrivacyMode = {'state': 'off'}
+      ..peerInfo = {
+        'username': 'SyntheticPrivateCachedPeer',
+        'hostname': 'local-host',
+        'displays': '[]',
+      }
+      ..permissions = {'keyboard': true, 'clipboard': false}
+      ..streamType = 'TCP';
+    final encoded = data.toString();
+    final decoded = CachedPeerData.fromString(encoded);
+    expect(decoded, isNotNull);
+    expect(decoded!.updatePrivacyMode, data.updatePrivacyMode);
+    expect(decoded.peerInfo, data.peerInfo);
+    expect(decoded.permissions, data.permissions);
+    expect(decoded.streamType, data.streamType);
+    expect(jsonDecode(decoded.toString()), jsonDecode(encoded));
+    expect(diagnostics, isEmpty);
+
+    expect(CachedPeerData.fromString(''), isNull);
+    expect(CachedPeerData.fromString(encoded)!.peerInfo, data.peerInfo);
+    expect(diagnostics, ['Failed to parse CachedPeerData']);
   });
 }

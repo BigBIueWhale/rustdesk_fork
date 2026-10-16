@@ -106,6 +106,8 @@ PEER_DATA_TESTS = {
     "peer decode redacts invalid shapes and field values",
     "peer decode preserves valid metadata and recovers after refusal",
     "peer decode accepts empty input without a diagnostic",
+    "cached peer decode refuses data without payload diagnostics",
+    "cached peer decode preserves snapshots and recovers after refusal",
 }
 TERMINAL_OUTPUT_TESTS = {
     "terminal_output_decoder_test.dart": {

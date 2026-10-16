@@ -211,8 +211,7 @@ void main() {
 
     probe.controller.initDirAndHome({'value': _directory('/home')});
     final pathDuringNavigation = probe.path;
-    final selectionPreserved =
-        probe.keepsSelection(selected);
+    final selectionPreserved = probe.keepsSelection(selected);
     probe.reply('/newer');
     expect(await pending, isTrue);
 
@@ -254,17 +253,16 @@ void main() {
     final pending = probe.controller.openDirectory('');
     final value = _directory('/resolved-home');
 
-    // Exercise the production receiveFileDir order with its actual consumers.
+    // Call the two consumers in receiveFileDir order.
     probe.controller.initDirAndHome({'value': value});
-    final correlated =
-        probe.fetcher.tryCompleteTask(probe.session, value, 'false');
+    final matched = probe.fetcher.tryCompleteTask(probe.session, value, 'false');
     final publishedPath = probe.path;
     // Retire any unmatched waiter without spending its real two-second timeout.
     probe.fetcher.cancelPending();
     final completed = await pending;
 
     expect({
-      'correlated': correlated,
+      'correlated': matched,
       'completed': completed,
       'publishedPath': publishedPath,
     }, {

@@ -1,4 +1,8 @@
 use crate::ipc;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "../scripts/fixtures/cm-read-tick-before-single-job.rs"]
+mod cm_read_tick_before_single_job;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::ipc::Connection;
 use crate::ipc::Data;
@@ -3179,85 +3183,74 @@ async fn handle_read_jobs_tick(
     jobs: &mut Vec<CmTransferJob>,
     responder: CmFileResponder<'_>,
 ) -> Result<(), CmEgressAdmissionError> {
-    let mut finished = Vec::new();
+    let Some(index) = jobs.iter().position(|transfer| !transfer.job.is_last_job) else {
+        return Ok(());
+    };
+    let transfer = &mut jobs[index];
+    let generation = transfer.generation;
+    let job = &mut transfer.job;
 
-    for transfer in jobs.iter_mut() {
-        let generation = transfer.generation;
-        let job = &mut transfer.job;
-        if job.is_last_job {
-            continue;
+    match init_read_job_for_cm(job, generation).await {
+        Ok(Some(response)) => return responder.send(response),
+        Ok(None) => {}
+        Err(err) => {
+            responder.send(ipc::CmFileResponseKind::ReadError {
+                id: job.id,
+                generation,
+                file_num: job.file_num(),
+                error: err.to_string(),
+            })?;
+            drop(jobs.remove(index));
+            return Ok(());
         }
+    }
 
-        // Initialize data stream if needed (opens file and may produce a digest).
-        match init_read_job_for_cm(job, generation).await {
-            Ok(Some(response)) => responder.send(response)?,
-            Ok(None) => {}
-            Err(err) => {
-                responder.send(ipc::CmFileResponseKind::ReadError {
+    #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+    pause_cm_test_read_tick_before_block(job.id, job.conn_id).await;
+    let (response, finished) = match job.read().await {
+        Err(err) => (
+            Some(ipc::CmFileResponseKind::ReadError {
+                id: job.id,
+                generation,
+                file_num: job.file_num(),
+                error: err.to_string(),
+            }),
+            true,
+        ),
+        Ok(Some(block)) => (
+            Some(ipc::CmFileResponseKind::ReadBlock {
+                id: block.id,
+                generation,
+                file_num: block.file_num,
+                data: block.data,
+                compressed: block.compressed,
+            }),
+            false,
+        ),
+        Ok(None) if job.job_completed() => {
+            let response = match job.job_error() {
+                Some(error) => ipc::CmFileResponseKind::ReadError {
                     id: job.id,
                     generation,
                     file_num: job.file_num(),
-                    error: err.to_string(),
-                })?;
-                finished.push((job.id, generation, job.conn_id));
-                continue;
-            }
-        }
-
-        // Read a block from the file
-        #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
-        pause_cm_test_read_tick_before_block(job.id, job.conn_id).await;
-        match job.read().await {
-            Err(err) => {
-                responder.send(ipc::CmFileResponseKind::ReadError {
+                    error,
+                },
+                None => ipc::CmFileResponseKind::ReadDone {
                     id: job.id,
                     generation,
                     file_num: job.file_num(),
-                    error: err.to_string(),
-                })?;
-                finished.push((job.id, generation, job.conn_id));
-            }
-            Ok(Some(block)) => {
-                responder.send(ipc::CmFileResponseKind::ReadBlock {
-                    id: block.id,
-                    generation,
-                    file_num: block.file_num,
-                    data: block.data,
-                    compressed: block.compressed,
-                })?;
-            }
-            Ok(None) => {
-                if job.job_completed() {
-                    finished.push((job.id, generation, job.conn_id));
-                    match job.job_error() {
-                        Some(err) => {
-                            responder.send(ipc::CmFileResponseKind::ReadError {
-                                id: job.id,
-                                generation,
-                                file_num: job.file_num(),
-                                error: err,
-                            })?;
-                        }
-                        None => {
-                            responder.send(ipc::CmFileResponseKind::ReadDone {
-                                id: job.id,
-                                generation,
-                                file_num: job.file_num(),
-                            })?;
-                        }
-                    }
-                }
-                // else: waiting for confirmation from peer
-            }
+                },
+            };
+            (Some(response), true)
         }
-        // Break to handle jobs one by one.
-        break;
+        Ok(None) => (None, false),
+    };
+    if let Some(response) = response {
+        responder.send(response)?;
     }
-
-    for (id, generation, conn_id) in finished {
-        let _ = remove_transfer_job_for_connection(jobs, id, conn_id, generation);
+    if finished {
+        drop(jobs.remove(index));
     }
-
     Ok(())
 }
 
@@ -3964,6 +3957,160 @@ mod tests {
         assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
         assert!(matches!(stale_sender.send(Data::Close), Err(CmEgressAdmissionError::ReceiverGone)));
         assert!(natural, "CM stalled output required watchdog cancellation instead of terminal retirement");
+    }
+
+    #[cfg(target_os = "linux")]
+    fn cm_read_tick_source_open(path: &std::path::Path) -> bool {
+        std::fs::read_dir("/proc/self/fd").unwrap().any(|entry| {
+            match std::fs::read_link(entry.unwrap().path()) {
+                Ok(target) => target == path,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                Err(error) => panic!("inspect owned read-tick descriptor: {error}"),
+            }
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn cm_read_tick_test_jobs(
+        temp: &CmFileTestDir,
+        paused: bool,
+        missing: bool,
+    ) -> (Vec<CmTransferJob>, PathBuf, PathBuf, PathBuf) {
+        let first = temp.join("first.zip");
+        let next = temp.join("next.zip");
+        let parked = temp.join("parked.zip");
+        std::fs::write(&first, b"bad").unwrap();
+        std::fs::write(&next, b"healthy!").unwrap();
+        std::fs::write(&parked, b"paused").unwrap();
+        let make_job = |id, generation, path: &PathBuf| {
+            let mut job = fs::TransferJob::new_read(
+                id, fs::JobType::Generic, String::new(), path.clone(),
+                0, false, true, true,
+            ).unwrap();
+            job.conn_id = 42;
+            CmTransferJob { generation, job }
+        };
+        let mut jobs = Vec::new();
+        if paused {
+            let mut job = make_job(500, 3, &parked);
+            job.job.is_last_job = true;
+            jobs.push(job);
+        }
+        jobs.push(make_job(501, 7, &first));
+        jobs.push(make_job(502, 9, &next));
+        if missing {
+            std::fs::rename(&first, temp.join("displaced.zip")).unwrap();
+        } else {
+            std::fs::OpenOptions::new().write(true).open(&first).unwrap().set_len(6).unwrap();
+        }
+        (jobs, first, next, parked)
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn cm_read_tick_native_response(
+        rx: &mut CmEgressReceiver,
+        sender: &mut ipc::ConnectionTmpl<tokio::net::UnixStream>,
+        peer: &mut ipc::ConnectionTmpl<tokio::net::UnixStream>,
+    ) -> ipc::CmFileResponseKind {
+        let Some(CmEgressItem::Data(data)) = rx.take_next().expect("live bounded response queue") else {
+            panic!("selected tick did not admit a response");
+        };
+        let decoded = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            sender.send(&data).await.expect("write actual native IPC frame");
+            peer.next().await.expect("read actual native IPC frame").expect("one IPC frame")
+        }).await.expect("native IPC response deadline");
+        let Data::CmFileResponse(envelope) = decoded else { panic!("expected typed CM file response"); };
+        assert_eq!(envelope.conn_id, 42);
+        assert_eq!(envelope.cm_auth_token, "tick-token");
+        *envelope.response
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn cm_read_tick_retires_only_the_selected_failed_job_before_next_work() {
+        for paused in [false, true] {
+            for missing in [false, true] {
+                let temp = CmFileTestDir::new("one_selected_read_tick");
+                for before in [true, false] {
+                    let (mut jobs, first, next, parked) = cm_read_tick_test_jobs(&temp, paused, missing);
+                    let (tx, mut rx) = cm_egress_channel();
+                    let responder = CmFileResponder { tx: &tx, conn_id: 42, cm_auth_token: "tick-token" };
+                    if before {
+                        cm_read_tick_before_single_job::before_handle_read_jobs_tick(&mut jobs, responder)
+                            .await.expect("run the exact earlier tick");
+                    } else {
+                        handle_read_jobs_tick(&mut jobs, responder).await.expect("run the selected tick");
+                    }
+                    assert_eq!(jobs.len(), if paused { 2 } else { 1 });
+                    assert!(jobs.iter().all(|transfer| transfer.job.id() != 501));
+                    assert!(!cm_read_tick_source_open(&first), "failed source must be retired");
+                    assert!(!cm_read_tick_source_open(&parked), "paused source must remain unopened");
+                    assert_eq!(cm_read_tick_source_open(&next), before);
+                    let next_job = jobs.iter().find(|transfer| transfer.job.id() == 502).unwrap();
+                    assert_eq!(next_job.job.file_is_waiting(), before);
+                    assert_eq!((next_job.job.file_num(), next_job.job.finished_size(), next_job.job.transferred()),
+                        (0, 0, 0));
+                    let queued = lock_cm_egress(&tx.state).queue.len();
+                    assert_eq!(queued, if before { 2 } else { 1 });
+
+                    let (sender, peer) = tokio::net::UnixStream::pair().unwrap();
+                    let mut sender = ipc::ConnectionTmpl::new(sender);
+                    let mut peer = ipc::ConnectionTmpl::new(peer);
+                    match cm_read_tick_native_response(&mut rx, &mut sender, &mut peer).await {
+                        ipc::CmFileResponseKind::ReadError { id: 501, generation: 7, file_num: 0, error } => {
+                            assert!(!error.is_empty());
+                            if !missing { assert!(error.contains("source length changed")); }
+                        }
+                        response => panic!("wrong exact failed-job response: {response:?}"),
+                    }
+                    if !before {
+                        assert!(rx.take_next().unwrap().is_none(), "later work cannot share this tick");
+                        handle_read_jobs_tick(&mut jobs, responder).await.expect("run a separate next tick");
+                        assert!(cm_read_tick_source_open(&next));
+                        assert_eq!(lock_cm_egress(&tx.state).queue.len(), 1);
+                    }
+                    match cm_read_tick_native_response(&mut rx, &mut sender, &mut peer).await {
+                        ipc::CmFileResponseKind::ReadDigest { id: 502, generation: 9, file_num: 0, file_size: 8, .. } => {}
+                        response => panic!("next exact job did not admit its own digest: {response:?}"),
+                    }
+                    assert!(rx.take_next().unwrap().is_none());
+                    drop(jobs);
+                    assert!(!cm_read_tick_source_open(&next), "the exact next source must close on retirement");
+                    assert_eq!(std::fs::read(&next).unwrap(), b"healthy!");
+                    let fault = if missing { "missing" } else { "length" };
+                    if before {
+                        println!("CM_READ_TICK_BEFORE=observed fault={fault} paused={paused} responses=2 next_open=true next_waiting=true failed_retired=true");
+                    } else {
+                        println!("CM_READ_TICK_CURRENT=pass fault={fault} paused={paused} responses=1 next_open=false next_waiting=false next_tick=digest failed_retired=true");
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn cm_read_tick_response_refusal_retains_selected_ownership_until_drain() {
+        let temp = CmFileTestDir::new("read_tick_response_refusal");
+        let (mut jobs, first, next, parked) = cm_read_tick_test_jobs(&temp, true, false);
+        let (tx, mut rx) = cm_egress_channel_with_limits(CmEgressLimits {
+            max_messages: 0,
+            ..CM_EGRESS_LIMITS
+        });
+        let result = handle_read_jobs_tick(&mut jobs,
+            CmFileResponder { tx: &tx, conn_id: 42, cm_auth_token: "tick-token" }).await;
+        assert_eq!(result, Err(CmEgressAdmissionError::Failed(CmEgressFailure::MessageCapacity)));
+        assert_eq!(jobs.len(), 3, "the refusing caller retains its complete owned tree");
+        assert!(cm_read_tick_source_open(&first));
+        assert!(!cm_read_tick_source_open(&next));
+        assert!(!cm_read_tick_source_open(&parked));
+        assert!(!jobs[2].job.file_is_waiting());
+        assert!(matches!(rx.take_next().unwrap(),
+            Some(CmEgressItem::Failed(CmEgressFailure::MessageCapacity))));
+        drop(jobs);
+        assert!(!cm_read_tick_source_open(&first));
+        assert!(!cm_read_tick_source_open(&next));
+        println!("CM_READ_TICK_REFUSAL=pass cause=message-capacity selected=retained next=unopened after_drop=closed");
     }
 
     #[cfg(target_os = "linux")]

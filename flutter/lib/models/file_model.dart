@@ -874,6 +874,7 @@ class FileController {
           expectedSessionId: selectedSessionId);
       if (!_isCurrentSession(selectedSessionId)) return false;
       fd.format(isWindows, sort: sortBy.value, ascending: sortAscending);
+      selectedItems.clear();
       directory.value = fd;
       return true;
     } catch (e) {
@@ -963,6 +964,7 @@ class FileController {
       } else if (options.value.home.isEmpty) {
         options.value.home = fd.path;
         debugPrint("init remote home: ${fd.path}");
+        selectedItems.clear();
         directory.value = fd;
       }
     } catch (e) {

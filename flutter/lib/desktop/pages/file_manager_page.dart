@@ -611,7 +611,6 @@ class _FileManagerViewState extends State<FileManagerView> {
                     hoverColor: Theme.of(context).hoverColor,
                     onPressed: () {
                       if (!isCurrentSession) return;
-                      selectedItems.clear();
                       controller.goBack(
                           expectedSessionId: expectedSessionId);
                     },
@@ -630,7 +629,6 @@ class _FileManagerViewState extends State<FileManagerView> {
                     hoverColor: Theme.of(context).hoverColor,
                     onPressed: () {
                       if (!isCurrentSession) return;
-                      selectedItems.clear();
                       controller.goToParentDirectory(
                           expectedSessionId: expectedSessionId);
                     },
@@ -1212,7 +1210,6 @@ class _FileManagerViewState extends State<FileManagerView> {
             if (_checkDoubleClick(entry)) {
               controller.openDirectory(entry.path,
                   expectedSessionId: expectedSessionId);
-              items.clear();
               return;
             }
             _onSelectedChanged(items, filteredEntries, entry, isLocal);

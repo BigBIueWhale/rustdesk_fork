@@ -2542,7 +2542,12 @@ generate_focused_rust_flutter_bridge() {
                 mkdir /work/toolchain /work/home /work/cargo-home /work/flutter-shim
                 tar -C /work/toolchain -xf /inputs/rust.tar.xz
                 tar -C /work/toolchain -xf /inputs/flutter.tar.xz
-                tar -C /work/toolchain -xf /inputs/llvm.tar.xz
+                llvm_root=clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04
+                tar -C /work/toolchain -xf /inputs/llvm.tar.xz \
+                    "$llvm_root/lib/libclang.so" \
+                    "$llvm_root/lib/libclang.so.15" \
+                    "$llvm_root/lib/libclang.so.15.0.6" \
+                    "$llvm_root/lib/clang/15.0.6/include"
                 mapfile -t rust_installer < <(
                     find /work/toolchain -mindepth 2 -maxdepth 2 -type f -name install.sh -print
                 )

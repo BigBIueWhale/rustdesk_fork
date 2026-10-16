@@ -2,7 +2,10 @@
 // The binary messenger supplies controlled transport completions; no engine/window runs.
 #include "window_channel.h"
 
+#include <atomic>
+#include <cstdlib>
 #include <cstring>
+#include <dlfcn.h>
 #include <iostream>
 #include <string>
 
@@ -15,6 +18,23 @@ int created = 0;
 int retired = 0;
 int not_implemented = 0;
 int failures = 0;
+std::atomic<FlValue*> temporary_values[3]{{nullptr}, {nullptr}, {nullptr}};
+std::atomic<bool> temporary_freed[3]{{false}, {false}, {false}};
+std::atomic<int> values_freed{0};
+int argument_maps = 0;
+
+void WatchValues(FlValue* first, FlValue* second = nullptr, FlValue* third = nullptr) {
+  FlValue* values[] = {first, second, third};
+  for (int i = 0; i < 3; ++i) {
+    temporary_values[i].store(values[i]);
+    temporary_freed[i].store(false);
+  }
+}
+
+bool TemporaryValuesRetired() {
+  return temporary_freed[0].load() && temporary_freed[1].load() &&
+      temporary_freed[2].load();
+}
 
 void Check(bool condition, const char* description) {
   if (!condition) {
@@ -29,6 +49,21 @@ void Retired(gpointer data, GObject*) {
 
 void Drain() {
   while (g_main_context_iteration(nullptr, false)) {}
+}
+
+void CheckValueObserver() {
+  auto* value = fl_value_new_int(7);
+  WatchValues(value);
+  fl_value_unref(value);
+  Check(temporary_freed[0].load(), "observer-sees-final-reference-retirement");
+  value = fl_value_new_int(8);
+  WatchValues(value);
+  fl_value_ref(value);
+  fl_value_unref(value);
+  Check(!temporary_freed[0].load(), "observer-preserves-retained-reference");
+  fl_value_unref(value);
+  Check(temporary_freed[0].load(), "observer-sees-retained-reference-retirement");
+  WatchValues(nullptr);
 }
 
 struct MessengerState {
@@ -138,6 +173,7 @@ void Run(const std::string& name, int reply_kind) {
   const int start_failures = failures;
   const int start_live = created - retired;
   const int start_not_implemented = not_implemented;
+  const int start_maps = argument_maps;
   logs.clear();
   auto* source = reinterpret_cast<TestMessenger*>(g_object_new(test_messenger_get_type(), nullptr));
   auto* target = reinterpret_cast<TestMessenger*>(g_object_new(test_messenger_get_type(), nullptr));
@@ -173,11 +209,18 @@ void Run(const std::string& name, int reply_kind) {
         FL_METHOD_CODEC(codec), payload, &error);
   }
   const bool self = name == "self-error";
+  const bool self_void = name == "self-void";
   target->state->transport_error = self || name == "transport-error";
-  target->state->expected_sender = self ? 0 : 42;
+  target->state->expected_sender = self || self_void ? 0 : 42;
   source->state->refuse_response = name == "response-refused";
   int completed = 0;
-  if (self) {
+  bool temporaries_retired = true;
+  if (self_void) {
+    for (int i = 0; i < 128; ++i) {
+      window->InvokeMethodSelfVoid("onEvent", payload);
+      temporaries_retired = TemporaryValuesRetired() && temporaries_retired;
+    }
+  } else if (self) {
     window->InvokeMethodSelf("onDestroy", payload, [&completed]() { ++completed; });
   } else {
     auto* handle = FL_BINARY_MESSENGER_RESPONSE_HANDLE(g_object_new(test_handle_get_type(), nullptr));
@@ -191,8 +234,16 @@ void Run(const std::string& name, int reply_kind) {
   }
   window.reset();
   Drain();
-  Check(target->state->sends == 1, "one-outbound-send");
-  if (self) {
+  const int expected_sends = self_void ? 128 : 1;
+  Check(target->state->sends == expected_sends, "exact-outbound-send-count");
+  Check(argument_maps - start_maps == expected_sends, "all-native-argument-maps-observed");
+  Check(temporaries_retired && TemporaryValuesRetired(), "temporary-argument-values-retired");
+  if (self_void) {
+    Check(completed == 0 && source->state->responses == 0, "self-void-has-no-response");
+    Check(fl_value_get_type(payload) == FL_VALUE_TYPE_MAP &&
+        std::strcmp(fl_value_get_string(fl_value_lookup_string(payload, "password")), kPassword) == 0,
+        "borrowed-payload-remains-owned");
+  } else if (self) {
     Check(completed == 1 && source->state->responses == 0, "one-self-completion");
   } else {
     Check(source->state->responses == 1, "one-response-attempt");
@@ -247,6 +298,32 @@ void Run(const std::string& name, int reply_kind) {
 }
 }  // namespace
 
+// Observe frees of the exact native values; always delegate to real GLib.
+extern "C" void g_free(gpointer memory) {
+  using Free = void (*)(gpointer);
+  static auto real_free = reinterpret_cast<Free>(dlsym(RTLD_NEXT, "g_free"));
+  if (real_free == nullptr) std::abort();
+  for (int i = 0; i < 3; ++i) {
+    if (memory != nullptr && temporary_values[i].load() == memory &&
+        !temporary_freed[i].exchange(true)) {
+      ++values_freed;
+    }
+  }
+  real_free(memory);
+}
+
+extern "C" void __real_fl_method_channel_invoke_method(FlMethodChannel*,
+    const gchar*, FlValue*, GCancellable*, GAsyncReadyCallback, gpointer);
+extern "C" void __wrap_fl_method_channel_invoke_method(FlMethodChannel* channel,
+    const gchar* method, FlValue* args, GCancellable* cancellable,
+    GAsyncReadyCallback callback, gpointer data) {
+  Check(fl_value_get_length(args) == 2, "exact-native-argument-envelope");
+  WatchValues(fl_value_get_map_key(args, 0), fl_value_get_map_key(args, 1),
+      fl_value_lookup_string(args, "fromWindowId"));
+  ++argument_maps;
+  __real_fl_method_channel_invoke_method(channel, method, args, cancellable, callback, data);
+}
+
 // Observe actual transfer-full objects without replacing Flutter behavior.
 extern "C" FlMethodResponse* __real_fl_method_channel_invoke_method_finish(
     FlMethodChannel*, GAsyncResult*, GError**);
@@ -266,6 +343,10 @@ int main() {
   g_log_set_default_handler(+[](const gchar*, GLogLevelFlags, const gchar* message, gpointer) {
     if (message != nullptr) logs += message;
   }, nullptr);
+  CheckValueObserver();
+  if (failures != 0) return 2;
+  values_freed.store(0);
+  std::cout << "WINDOW_VALUE_OBSERVER=pass controls=2\n";
   Run("success", 0);
   Run("explicit-error", 1);
   Run("not-implemented", 2);
@@ -273,5 +354,8 @@ int main() {
   Run("transport-error", 0);
   Run("response-refused", 0);
   Run("self-error", 0);
+  Run("self-void", 0);
+  std::cout << "WINDOW_VALUE_TOTAL=observed maps=" << argument_maps
+            << " freed=" << values_freed.load() << '\n';
   return failures == 0 ? 0 : 1;
 }

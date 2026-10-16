@@ -92,8 +92,8 @@ void WindowChannel::InvokeMethod(
     FlMethodCall *method_call
 ) {
   g_autoptr(FlValue) args = fl_value_new_map();
-  fl_value_set(args, fl_value_new_string("arguments"), arguments);
-  fl_value_set(args, fl_value_new_string("fromWindowId"), fl_value_new_int(from_window_id));
+  fl_value_set_string(args, "arguments", arguments);
+  fl_value_set_string_take(args, "fromWindowId", fl_value_new_int(from_window_id));
   auto *user_data = new MethodInvokeAsyncUserData(fl_method_channel_, method_call);
 
   fl_method_channel_invoke_method(
@@ -121,8 +121,8 @@ void WindowChannel::InvokeMethod(
 
 void WindowChannel::InvokeMethodSelfVoid(const gchar* method, FlValue *arguments) {
   g_autoptr(FlValue) args = fl_value_new_map();
-  fl_value_set(args, fl_value_new_string("arguments"), arguments);
-  fl_value_set(args, fl_value_new_string("fromWindowId"), fl_value_new_int(0));
+  fl_value_set_string(args, "arguments", arguments);
+  fl_value_set_string_take(args, "fromWindowId", fl_value_new_int(0));
   fl_method_channel_invoke_method(
           fl_method_channel_, method, args, nullptr, nullptr, nullptr);
 }
@@ -132,8 +132,8 @@ void WindowChannel::InvokeMethodSelf(
     FlValue *arguments,
     CompletionHandler completion) {
   g_autoptr(FlValue) args = fl_value_new_map();
-  fl_value_set(args, fl_value_new_string("arguments"), arguments);
-  fl_value_set(args, fl_value_new_string("fromWindowId"), fl_value_new_int(0));
+  fl_value_set_string(args, "arguments", arguments);
+  fl_value_set_string_take(args, "fromWindowId", fl_value_new_int(0));
   auto *user_data =
       new SelfMethodInvokeAsyncUserData(fl_method_channel_, std::move(completion));
   fl_method_channel_invoke_method(

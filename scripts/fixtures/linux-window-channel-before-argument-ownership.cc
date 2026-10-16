@@ -1,4 +1,4 @@
-// Exact window_channel.cc from 51d376044e560a80505c434b0b54652eddd31cad.
+// Exact window_channel.cc from 90155e23b4753da8493b11a6dac0a61cc30c0e49.
 // Test-only baseline; built separately with the same driver and pinned Flutter library.
 //
 // Created by boyan on 2022/1/27.
@@ -104,12 +104,18 @@ void WindowChannel::InvokeMethod(
           GAsyncResult *res,
           gpointer user_data) {
         auto data = static_cast<MethodInvokeAsyncUserData *>(user_data);
-        GError *error = nullptr;
-        auto result = fl_method_channel_invoke_method_finish(data->channel, res, &error);
-        if (error != nullptr) {
-          g_critical("failed to get method finish response: %s", error->message);
+        g_autoptr(GError) error = nullptr;
+        g_autoptr(FlMethodResponse) response =
+            fl_method_channel_invoke_method_finish(data->channel, res, &error);
+        if (response == nullptr) {
+          g_warning("failed to finish window method call");
+          response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+              "window_request_failed", "Desktop window request failed", nullptr));
         }
-        fl_method_call_respond(data->method_call, result, nullptr);
+        g_autoptr(GError) response_error = nullptr;
+        if (!fl_method_call_respond(data->method_call, response, &response_error)) {
+          g_warning("failed to send window method response");
+        }
         delete data;
       }, user_data);
 }
@@ -140,8 +146,7 @@ void WindowChannel::InvokeMethodSelf(
         g_autoptr(FlMethodResponse) response =
             fl_method_channel_invoke_method_finish(data->channel, res, &error);
         if (response == nullptr) {
-          g_warning("failed to finish self method call: %s",
-                    error == nullptr ? "unknown error" : error->message);
+          g_warning("failed to finish self method call");
         }
         auto completion = std::move(data->completion);
         delete data;

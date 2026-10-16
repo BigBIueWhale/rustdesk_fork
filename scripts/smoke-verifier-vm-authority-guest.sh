@@ -8700,8 +8700,9 @@ run_flutter_model_tests() {
     printf '%s\n' "$result_line"
     if [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
         for native_receipt in \
-            'LINUX_WINDOW_CHANNEL_BEFORE=observed cases=7 failed=7' \
-            'LINUX_WINDOW_CHANNEL_CURRENT=pass cases=7' \
+            'LINUX_WINDOW_CHANNEL_BEFORE=observed cases=8 failed=8' \
+            'LINUX_WINDOW_CHANNEL_CURRENT=pass cases=8' \
+            'LINUX_WINDOW_VALUE_OWNERSHIP=pass paths=3 maps=135 values=405 before_retired=0 current_retired=405 controls=2' \
             'LINUX_WINDOW_CHANNEL_SCOPE=component codec=flutter-3.24.5 messenger=controlled windows=unexecuted'; do
             [ "$(grep -Fxc "$native_receipt" "$output")" -eq 1 ] \
                 || fail 'native window-channel result differs'
@@ -8709,7 +8710,7 @@ run_flutter_model_tests() {
         done
         [ "$(grep -Ec '^LINUX_WINDOW_CHANNEL_ARTIFACTS=pass before=[0-9a-f]{64} current=[0-9a-f]{64} flutter=[0-9a-f]{64} unchanged=before-after$' "$output")" -eq 1 ] \
             || fail 'native window-channel artifact binding differs'
-        grep -E '^LINUX_WINDOW_CHANNEL_ARTIFACTS=|^WINDOW_CHANNEL_CASE=' "$output"
+        grep -E '^LINUX_WINDOW_CHANNEL_ARTIFACTS=|^WINDOW_CHANNEL_CASE=|^WINDOW_VALUE_' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
         printf 'FLUTTER_PEER_METADATA_BRIDGE=pass retired_loader=absent dart=fresh rust=fresh\n'

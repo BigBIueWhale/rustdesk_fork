@@ -6695,8 +6695,9 @@ else
             'focused Flutter password-field receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
         for native_receipt in \
-            'LINUX_WINDOW_CHANNEL_BEFORE=observed cases=7 failed=7' \
-            'LINUX_WINDOW_CHANNEL_CURRENT=pass cases=7' \
+            'LINUX_WINDOW_CHANNEL_BEFORE=observed cases=8 failed=8' \
+            'LINUX_WINDOW_CHANNEL_CURRENT=pass cases=8' \
+            'LINUX_WINDOW_VALUE_OWNERSHIP=pass paths=3 maps=135 values=405 before_retired=0 current_retired=405 controls=2' \
             'LINUX_WINDOW_CHANNEL_SCOPE=component codec=flutter-3.24.5 messenger=controlled windows=unexecuted'; do
             require_exact_fixed_receipt "$native_receipt" 'native window-channel result'
         done
@@ -7388,7 +7389,7 @@ else
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" \
-            | /usr/bin/grep -Eo 'LINUX_WINDOW_CHANNEL_[A-Z]+=.*|WINDOW_CHANNEL_CASE=(pass|fail) case=[a-z-]+'
+            | /usr/bin/grep -Eo 'LINUX_WINDOW_(CHANNEL_[A-Z]+|VALUE_OWNERSHIP)=.*|WINDOW_CHANNEL_CASE=(pass|fail) case=[a-z-]+|WINDOW_VALUE_[A-Z]+=.*'
         printf 'FLUTTER_WINDOW_DISPATCH_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-and-linux-native-channel-tests cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = modifier-release ]; then

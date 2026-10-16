@@ -108,6 +108,10 @@ PEER_DATA_TESTS = {
     "peer decode accepts empty input without a diagnostic",
     "cached peer decode refuses data without payload diagnostics",
     "cached peer decode preserves snapshots and recovers after refusal",
+    "platform metadata refuses input without payload diagnostics",
+    "platform metadata preserves snapshots and quiet empty input",
+    "resolution metadata refuses partial and private input",
+    "resolution metadata preserves both formats and recovery",
 }
 TERMINAL_OUTPUT_TESTS = {
     "terminal_output_decoder_test.dart": {

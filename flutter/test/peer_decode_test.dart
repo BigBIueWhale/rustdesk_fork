@@ -174,4 +174,112 @@ void main() {
     expect(CachedPeerData.fromString(encoded)!.peerInfo, data.peerInfo);
     expect(diagnostics, ['Failed to parse CachedPeerData']);
   });
+
+  test('platform metadata refuses input without payload diagnostics', () {
+    const secret = 'SyntheticPrivatePlatform';
+    const malformed = '{"private":"$secret"';
+    expect(
+      () => jsonDecode(malformed),
+      throwsA(isA<FormatException>().having(
+        (error) => error.toString(),
+        'rendered exception',
+        contains(secret),
+      )),
+    );
+    final info = PeerInfo()..platformAdditions = {'previous': secret};
+    final previous = info.platformAdditions;
+    final invalid = [malformed, '[]', '1', 7, jsonEncode(secret)];
+    for (final input in invalid) {
+      info.setPlatformAdditions(input);
+      expect(identical(info.platformAdditions, previous), isTrue);
+    }
+    expect(diagnostics,
+        List.filled(invalid.length, 'Failed to decode platformAdditions'));
+    expect(diagnostics.join(), isNot(contains(secret)));
+  });
+
+  test('platform metadata preserves snapshots and quiet empty input', () {
+    final info = PeerInfo();
+    final fields = {
+      'private': 'SyntheticPrivatePlatform',
+      'installed': true,
+      'display': {'width': 1920, 'height': 1080},
+    };
+    info.setPlatformAdditions(jsonEncode(fields));
+    expect(info.platformAdditions, fields);
+    final previous = info.platformAdditions;
+    info.setPlatformAdditions(null);
+    info.setPlatformAdditions('');
+    expect(identical(info.platformAdditions, previous), isTrue);
+    expect(diagnostics, isEmpty);
+
+    info.setPlatformAdditions('{');
+    expect(identical(info.platformAdditions, previous), isTrue);
+    diagnostics.clear();
+    info.setPlatformAdditions('{"replacement":2}');
+    expect(info.platformAdditions, {'replacement': 2});
+    expect(diagnostics, isEmpty);
+  });
+
+  test('resolution metadata refuses partial and private input', () {
+    const secret = 'SyntheticPrivateResolution';
+    const malformed = '[{"private":"$secret"';
+    expect(
+      () => jsonDecode(malformed),
+      throwsA(isA<FormatException>().having(
+        (error) => error.toString(),
+        'rendered exception',
+        contains(secret),
+      )),
+    );
+    final info = PeerInfo()..resolutions = [Resolution(640, 480)];
+    final previous = info.resolutions;
+    final invalid = [
+      malformed,
+      jsonEncode({'missing': secret}),
+      jsonEncode([
+        {'width': 1920, 'height': 1080},
+        secret,
+      ]),
+      7,
+    ];
+    for (final input in invalid) {
+      info.setResolutions(input);
+      expect(identical(info.resolutions, previous), isTrue);
+    }
+    expect(diagnostics,
+        List.filled(invalid.length, 'Failed to parse resolutions'));
+    expect(diagnostics.join(), isNot(contains(secret)));
+  });
+
+  test('resolution metadata preserves both formats and recovery', () {
+    final info = PeerInfo();
+    final values = [
+      {'width': 1024, 'height': 768},
+      {'width': 0, 'height': 720},
+      {'width': 1920, 'height': 1080},
+      {'width': 1920, 'height': 1200},
+      {'width': -1, 'height': 720},
+      {'width': 'SyntheticPrivateResolution', 'height': 720},
+    ];
+    for (final input in [values, {'resolutions': values}]) {
+      info.setResolutions(jsonEncode(input));
+      expect(
+        info.resolutions.map((value) => [value.width, value.height]).toList(),
+        [
+          [1920, 1200],
+          [1920, 1080],
+          [1024, 768],
+        ],
+      );
+    }
+    expect(diagnostics, isEmpty);
+    final previous = info.resolutions;
+    info.setResolutions('{');
+    expect(identical(info.resolutions, previous), isTrue);
+    diagnostics.clear();
+    info.setResolutions('[]');
+    expect(info.resolutions, isEmpty);
+    expect(diagnostics, isEmpty);
+  });
 }

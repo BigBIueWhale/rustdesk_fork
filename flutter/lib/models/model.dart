@@ -1004,7 +1004,7 @@ class FfiModel with ChangeNotifier {
     }
 
     if (!_pi.isSupportMultiUiSession || _pi.currentDisplay == display) {
-      handleResolutions(peerId, evt['resolutions']);
+      _pi.setResolutions(evt['resolutions']);
     }
     notifyListeners();
   }
@@ -1417,7 +1417,7 @@ class FfiModel with ChangeNotifier {
       Map<String, dynamic> features = json.decode(evt['features']);
       _pi.features.privacyMode = features['privacy_mode'] == true;
       if (!isCache) {
-        handleResolutions(peerId, evt["resolutions"]);
+        _pi.setResolutions(evt['resolutions']);
       }
     }
     if (connType == ConnType.defaultConn) {
@@ -1429,14 +1429,7 @@ class FfiModel with ChangeNotifier {
           sessionId: expectedSessionId, arg: kOptionToggleShowMyCursor));
     }
     if (connType == ConnType.defaultConn || connType == ConnType.viewCamera) {
-      final platformAdditions = evt['platform_additions'];
-      if (platformAdditions != null && platformAdditions != '') {
-        try {
-          _pi.platformAdditions = json.decode(platformAdditions);
-        } catch (e) {
-          debugPrint('Failed to decode platformAdditions $e');
-        }
-      }
+      _pi.setPlatformAdditions(evt['platform_additions']);
     }
 
     _pi.isSet.value = true;
@@ -1526,39 +1519,6 @@ class FfiModel with ChangeNotifier {
           }
         });
       }
-    }
-  }
-
-  handleResolutions(String id, dynamic resolutions) {
-    try {
-      final resolutionsObj = json.decode(resolutions as String);
-      late List<dynamic> dynamicArray;
-      if (resolutionsObj is Map) {
-        // The web version
-        dynamicArray = (resolutionsObj as Map<String, dynamic>)['resolutions']
-            as List<dynamic>;
-      } else {
-        // The rust version
-        dynamicArray = resolutionsObj as List<dynamic>;
-      }
-      List<Resolution> arr = List.empty(growable: true);
-      for (int i = 0; i < dynamicArray.length; i++) {
-        var width = dynamicArray[i]["width"];
-        var height = dynamicArray[i]["height"];
-        if (width is int && width > 0 && height is int && height > 0) {
-          arr.add(Resolution(width, height));
-        }
-      }
-      arr.sort((a, b) {
-        if (b.width != a.width) {
-          return b.width - a.width;
-        } else {
-          return b.height - a.height;
-        }
-      });
-      _pi.resolutions = arr;
-    } catch (e) {
-      debugPrint("Failed to parse resolutions:$e");
     }
   }
 
@@ -5832,6 +5792,48 @@ class PeerInfo with ChangeNotifier {
 
   RxInt displaysCount = 0.obs;
   RxBool isSet = false.obs;
+
+  void setPlatformAdditions(dynamic data) {
+    if (data == null || data == '') return;
+    try {
+      platformAdditions = json.decode(data);
+    } catch (e) {
+      debugPrint('Failed to decode platformAdditions $e');
+    }
+  }
+
+  void setResolutions(dynamic data) {
+    try {
+      final resolutionsObj = json.decode(data as String);
+      late List<dynamic> dynamicArray;
+      if (resolutionsObj is Map) {
+        // The web version
+        dynamicArray = (resolutionsObj as Map<String, dynamic>)['resolutions']
+            as List<dynamic>;
+      } else {
+        // The rust version
+        dynamicArray = resolutionsObj as List<dynamic>;
+      }
+      List<Resolution> arr = List.empty(growable: true);
+      for (int i = 0; i < dynamicArray.length; i++) {
+        var width = dynamicArray[i]["width"];
+        var height = dynamicArray[i]["height"];
+        if (width is int && width > 0 && height is int && height > 0) {
+          arr.add(Resolution(width, height));
+        }
+      }
+      arr.sort((a, b) {
+        if (b.width != a.width) {
+          return b.width - a.width;
+        } else {
+          return b.height - a.height;
+        }
+      });
+      resolutions = arr;
+    } catch (e) {
+      debugPrint("Failed to parse resolutions:$e");
+    }
+  }
 
   bool get isWayland => platformAdditions[kPlatformAdditionsIsWayland] == true;
   bool get isHeadless => platformAdditions[kPlatformAdditionsHeadless] == true;

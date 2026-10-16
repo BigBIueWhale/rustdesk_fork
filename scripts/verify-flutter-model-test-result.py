@@ -101,6 +101,18 @@ PASSWORD_FIELD_TESTS = {
     "ordinary obscured field is a keyboard learning control",
     "password field retains focused obscured semantics",
 }
+DIRECTORY_ORDERING_TESTS = {
+    "new destination survives an older navigation response",
+    "pending destination rejects an older navigation result",
+    "failed destination does not restore an older request",
+    "old refresh cannot replace a newer destination",
+    "background refresh cannot cancel pending navigation",
+    "duplicate destination does not retire its pending read",
+    "reset retires a pending read within the same session",
+    "initial home cannot replace a pending destination",
+    "initial home cannot replace an established destination",
+    "resolved home reply completes its directory request",
+}
 FILE_NAVIGATION_TESTS = {
     "peer compatibility failure prevents transfer dispatch",
     "refresh retires the preceding directory selection",
@@ -288,7 +300,7 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -307,6 +319,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"desktop_window_dispatch_test.dart"}
         expected_tests = len(WINDOW_DISPATCH_TESTS)
         expected_names = WINDOW_DISPATCH_TESTS
+    elif profile == "directory-ordering":
+        expected_suites = {"file_navigation_ordering_test.dart"}
+        expected_tests = len(DIRECTORY_ORDERING_TESTS)
+        expected_names = DIRECTORY_ORDERING_TESTS
     elif profile == "file-navigation":
         expected_suites = {"file_navigation_sort_test.dart"}
         expected_tests = len(FILE_NAVIGATION_TESTS)
@@ -417,7 +433,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -431,6 +447,7 @@ def main():
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
+        "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
         "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",

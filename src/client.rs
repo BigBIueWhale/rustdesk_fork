@@ -54,7 +54,6 @@ use hbb_common::{
     rendezvous_proto::*,
     sha2::{Digest, Sha256},
     socket_client::connect_tcp_local,
-    sodiumoxide::base64,
     timeout,
     tokio::{
         sync::mpsc::{unbounded_channel, UnboundedReceiver},
@@ -506,7 +505,6 @@ impl Client {
                 (from_stored_prs, true, false) // persisted derived PRS: used verbatim
             } else {
                 (g.shared_password.clone().unwrap_or_default(), false, false)
-                // shared-ab plaintext: derived per connect, not persisted per-peer
             }
         };
         let derived_prs = Self::prepare_initiator_credential(&credential, credential_is_derived)?;
@@ -1371,51 +1369,10 @@ impl VideoHandler {
     }
 }
 
-// The source of sent password
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-enum PasswordSource {
-    PersonalAb(Vec<u8>),
-    SharedAb(String),
-    Undefined,
-}
-
-impl Default for PasswordSource {
-    fn default() -> Self {
-        PasswordSource::Undefined
-    }
-}
-
-impl PasswordSource {
-    // Whether the password is personal ab password
-    pub fn is_personal_ab(&self, password: &[u8]) -> bool {
-        if password.is_empty() {
-            return false;
-        }
-        match self {
-            PasswordSource::PersonalAb(p) => p == password,
-            _ => false,
-        }
-    }
-
-    // Whether the password is shared ab password.
-    // R-T15c: the legacy salt-and-compare (`equal`: SHA256(plaintext + hash.salt) == connected-hash) is
-    // gone with the `Hash` challenge -- under CPace the connecting `password` (the old salted hash) is
-    // always empty here, so this collapses to the SharedAb-variant gate (still consulted by the
-    // persistence path to avoid syncing a shared-ab secret per-peer; the AB paths are a §19/R-G2/R-G4
-    // follow-on).
-    pub fn is_shared_ab(&self, password: &[u8]) -> bool {
-        if password.is_empty() {
-            return false;
-        }
-        matches!(self, PasswordSource::SharedAb(_))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ConnToken {
-    password: Vec<u8>,
-    password_source: PasswordSource,
-    session_id: u64,
+    session_id: std::num::NonZeroU64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1487,7 +1444,6 @@ impl PortForwardTarget {
 pub struct LoginConfigHandler {
     id: String,
     pub conn_type: ConnType,
-    password: Vec<u8>, // remember password for reconnect
     // R-S16 (viewer twin) / R-S9 / R-P1: the DERIVED Argon2id CPace PRS (base64) — the memory-hard
     // hash the balanced PAKE keys from, NEVER the plaintext password (a config read yields the hash,
     // not the reusable password — Appendix C #14). Staged
@@ -1519,7 +1475,6 @@ pub struct LoginConfigHandler {
     pub mark_unsupported: Vec<CodecFormat>,
     pub selected_windows_session_id: Option<u32>,
     pub peer_info: Option<PeerInfo>,
-    password_source: PasswordSource, // where the sent password comes from
     shared_password: Option<String>, // Store the shared password
     pub record_state: bool,
     pub record_permission: bool,
@@ -1570,17 +1525,19 @@ impl LoginConfigHandler {
         self.id = id;
         self.conn_type = conn_type;
         let config = self.load_config();
-        self.remember = !config.password.is_empty();
+        self.remember = !config.password_prs.is_empty();
         self.config = config;
 
-        let conn_token = conn_token
-            .map(|x| serde_json::from_str::<ConnToken>(&x).ok())
-            .flatten();
+        let conn_token = conn_token.and_then(|value| match serde_json::from_str::<ConnToken>(&value) {
+            Ok(token) => Some(token),
+            Err(_) => {
+                log::warn!("Ignoring invalid connection correlation token");
+                None
+            }
+        });
         let mut sid = 0;
         if let Some(token) = conn_token {
-            sid = token.session_id;
-            self.password = token.password; // use as last password
-            self.password_source = token.password_source;
+            sid = token.session_id.get();
         }
         if sid == 0 {
             sid = rand::random();
@@ -2223,58 +2180,13 @@ impl LoginConfigHandler {
         };
         let mut config = self.load_config();
         config.info = serde;
-        let password = self.password.clone();
-        let password0 = config.password.clone();
-        let remember = self.remember;
-        if remember {
-            // remember is true: use PeerConfig password or ui login
-            // not sync shared password to recent
-            if !password.is_empty()
-                && password != password0
-                && !self.password_source.is_shared_ab(&password)
-            {
-                config.password = password.clone();
-                log::debug!("remember password of {}", self.id);
-            }
-            // R-S16 (viewer twin) / R-T15c: persist the captured DERIVED CPace PRS whenever the user
-            // chose to remember -- HOISTED out of the legacy salted-hash (`password`) gate above. Under
-            // the Hash-challenge collapse the proactive login carries an EMPTY `password` (CPace already
-            // authenticated this session), so that gate never runs and the freshly-onboarded PRS (staged
-            // in key_initiator) would never reach disk -> the next connect could not re-key (R-S9
-            // fail-closed). `self.password_prs` is non-empty ONLY in the onboarding case (the shared-ab
-            // and stored-PRS keying paths leave it empty, client.rs ~250-268), so this never persists a
-            // shared-ab secret per-peer; the non-empty guard still stops a no-prompt reconnect (PRS empty
-            // this session) from wiping a previously stored PRS.
+        config.password.clear();
+        if self.remember {
             if !self.password_prs.is_empty() {
                 config.password_prs = self.password_prs.clone();
             }
         } else {
-            if self.password_source.is_personal_ab(&password) {
-                // sync personal ab password to recent automatically
-                config.password = password.clone();
-                log::debug!("save ab password of {} to recent", self.id);
-            } else if !password0.is_empty() {
-                config.password = Default::default();
-                config.password_prs = Default::default(); // R-S16: clear the PRS with the password
-                log::debug!("remove password of {}", self.id);
-            }
-        }
-        #[cfg(feature = "flutter")]
-        {
-            // sync connected password to personal ab automatically if it is not shared password
-            if !config.password.is_empty()
-                && !self.password_source.is_shared_ab(&password)
-                && !self.password_source.is_personal_ab(&password)
-            {
-                let hash = base64::encode(config.password.clone(), base64::Variant::Original);
-                let evt: HashMap<&str, String> = HashMap::from([
-                    ("name", "sync_peer_hash_password_to_personal_ab".to_string()),
-                    ("id", self.id.clone()),
-                    ("hash", hash),
-                ]);
-                let evt = serde_json::ser::to_string(&evt).unwrap_or("".to_owned());
-                crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, evt);
-            }
+            config.password_prs.clear();
         }
         // no matter if change, for update file time
         self.save_config(config);
@@ -2422,15 +2334,8 @@ impl LoginConfigHandler {
     }
 
     pub fn get_conn_token(&self) -> Option<String> {
-        if self.password.is_empty() {
-            return None;
-        }
-        serde_json::to_string(&ConnToken {
-            password: self.password.clone(),
-            password_source: self.password_source.clone(),
-            session_id: self.session_id,
-        })
-        .ok()
+        let session_id = std::num::NonZeroU64::new(self.session_id)?;
+        serde_json::to_string(&ConnToken { session_id }).ok()
     }
 
     pub fn get_id(&self) -> &str {
@@ -3698,8 +3603,7 @@ pub async fn handle_login_from_ui(
     // R-T15c: CPace (at keying) is the SOLE authenticator -- no salted-hash is computed or sent. A
     // non-empty UI password is captured as the R-S16 viewer twin and `remember` recorded; the login
     // itself carries no wire password, since the keyed session is already authenticated -- mirroring
-    // the proactive login in Client::start. self.password stays empty, so the peer-info save path
-    // persists ONLY the twin (the legacy salted-hash `password` field is dead under the collapse).
+    // the proactive login in Client::start. The peer-info save path persists only the derived PRS.
     if !password.is_empty() {
         // R-S9/R-P1: stage the DERIVED Argon2id PRS (over the password alone, fixed salt), NEVER the
         // plaintext, so the persisted twin is the memory-hard hash, not the reusable password
@@ -3708,7 +3612,6 @@ pub async fn handle_login_from_ui(
         // (fail-closed) -- the credential is simply not remembered and the next connect prompts for it.
         let prs = hbb_common::config::derive_cpace_prs(&password).unwrap_or_default();
         let mut w = lc.write().unwrap();
-        w.password_source = Default::default();
         w.password_prs = prs.into_bytes();
         w.remember = remember;
     }
@@ -5344,55 +5247,6 @@ mod tests {
             "Failed: 104",
             false
         ));
-    }
-
-    // CRUX: under the collapse the proactive login carries an EMPTY legacy `password` (CPace already
-    // authenticated), so the onboarding PRS (staged in key_initiator) must still persist -- i.e. the PRS
-    // save must NOT be gated on `!password.is_empty()`. RED before the hoist, GREEN after.
-    #[test]
-    fn prs_persists_on_empty_salted_hash() {
-        isolate();
-        let id = "rt15c-prs-persist";
-        let mut h = handler(id);
-        h.password = Vec::new(); // the post-collapse empty legacy hash
-        h.password_prs = b"plaintext-prs".to_vec();
-        h.handle_peer_info(&PeerInfo::new());
-        assert_eq!(
-            PeerConfig::load(id).password_prs,
-            b"plaintext-prs".to_vec(),
-            "the onboarding PRS must persist even with an empty legacy password (else R-S9 fail-closed reconnect)"
-        );
-    }
-
-    // The non-empty guard must survive the hoist: a session that captured NO fresh PRS (a no-prompt
-    // reconnect, password_prs empty) must not wipe a previously stored PRS.
-    #[test]
-    fn prs_not_wiped_when_unset() {
-        isolate();
-        let id = "rt15c-prs-nowipe";
-        let mut pre = PeerConfig::default();
-        pre.password_prs = b"stored-prs".to_vec();
-        pre.store(id);
-        let mut h = handler(id);
-        h.password = b"legacy-hash".to_vec(); // non-empty so the legacy block runs
-        h.password_prs = Vec::new(); // none captured this session
-        h.handle_peer_info(&PeerInfo::new());
-        assert_eq!(PeerConfig::load(id).password_prs, b"stored-prs".to_vec());
-    }
-
-    // remember=false forgets the stored password AND PRS.
-    #[test]
-    fn forget_clears_prs() {
-        isolate();
-        let id = "rt15c-prs-forget";
-        let mut pre = PeerConfig::default();
-        pre.password = b"legacy-hash".to_vec();
-        pre.password_prs = b"stored-prs".to_vec();
-        pre.store(id);
-        let mut h = handler(id);
-        h.remember = false;
-        h.handle_peer_info(&PeerInfo::new());
-        assert!(PeerConfig::load(id).password_prs.is_empty());
     }
 
     #[test]

@@ -14881,6 +14881,17 @@ whole-process allocation/resource measurements and other-platform acceptance rem
 | File confirmation entry | Every filesystem-backed skip, overwrite and resume action requires a present entry at the exact matching current index before changing flags, counters, streams or cleanup state. Empty and completed lists cannot confirm an absent file; a present zero-byte file remains valid. |
 | File-list construction | `read_dir_with_budget`, both recursive scanners and `new_read_with_budget` propagate iterator, root/entry metadata and descendant failures. Unsupported UTF-8 names, unavailable modification times and pre-epoch times fail explicitly. Every scanned entry consumes quota even when hidden filtering excludes it; recursive byte accounting includes the complete relative name. Flat and empty-directory results reserve each full returned path in the shared byte counter before copying it. The private scanner returns entries without allocating a discarded directory path. Child-error string classification and partial-success branches are deleted. |
 
+**CM read-tick scheduling — OPEN/PARKED at the user's request; no automatic resumption.**
+Source `e3544227` selects and retires one exact send job per tick; initialization failure
+previously continued into the next queued job before retiring the failed one. Two focused
+real-file/Unix-frame tests and an exact earlier-function fixture are committed, but neither
+test executed. The user pivot stopped the owned VM after fresh bridge preparation, before
+a libtest artifact was produced. This change is unvalidated; no CM, installed authority or
+LPE closure is claimed. Exact pidfd stop, source freezes, unchanged endpoint observations,
+joined QEMU/storage cleanup and retired RAM/private scratch are retained in
+`.harness-state/verifier-vm/cm-read-tick-parked-e3544227.json`.
+The separate CM pre-bootstrap cancellation park and all other user parks remain unchanged.
+
 **Send-digest size admission — Linux library/file and keyed TCP component comparison ACCEPTED; caller/platform integration OPEN.**
 At `119b65c6`, the exact earlier getter from `784daba1` accepted lengths changed after enumeration;
 the corrected CM and keyed guest-loopback paths refused the same files before waiting or publishing

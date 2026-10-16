@@ -4665,6 +4665,132 @@ mod tests {
         h
     }
 
+    #[test]
+    fn r_s11hj_viewer_reconnect_preserves_remembered_prs() {
+        isolate();
+        let id = "r-s11hj-viewer-reconnect";
+        let mut config = PeerConfig::default();
+        config.password_prs = b"stored-prs".to_vec();
+        config.store(id);
+
+        let mut h = LoginConfigHandler::default();
+        h.initialize(id.to_owned(), ConnType::DEFAULT_CONN, None, None);
+        assert!(h.remember, "a remembered CPace credential must retain the preference");
+        h.handle_peer_info(&PeerInfo::new());
+        assert_eq!(PeerConfig::load(id).password_prs, b"stored-prs");
+    }
+
+    #[test]
+    fn r_s11hj_viewer_forget_retires_prs_without_legacy_hash() {
+        isolate();
+        let id = "r-s11hj-viewer-forget";
+        let mut config = PeerConfig::default();
+        config.password_prs = b"stored-prs".to_vec();
+        config.store(id);
+
+        let mut h = handler(id);
+        h.remember = false;
+        h.handle_peer_info(&PeerInfo::new());
+        let saved = PeerConfig::load(id);
+        assert!(saved.password.is_empty());
+        assert!(saved.password_prs.is_empty(), "forget must retire the actual CPace credential");
+    }
+
+    #[test]
+    fn r_s11hj_viewer_remember_persists_fresh_prs() {
+        isolate();
+        let id = "r-s11hj-viewer-remember";
+        let mut h = handler(id);
+        h.password_prs = b"new-derived-prs".to_vec();
+        h.handle_peer_info(&PeerInfo::new());
+        let saved = PeerConfig::load(id);
+        assert!(saved.password.is_empty());
+        assert_eq!(saved.password_prs, b"new-derived-prs");
+    }
+
+    #[test]
+    fn r_s11hj_viewer_metadata_retires_legacy_hash() {
+        isolate();
+        let id = "r-s11hj-viewer-legacy";
+        let mut config = PeerConfig::default();
+        config.password = b"retired-legacy-hash".to_vec();
+        config.password_prs = b"stored-prs".to_vec();
+        config.store(id);
+
+        let mut h = handler(id);
+        h.handle_peer_info(&PeerInfo::new());
+        let saved = PeerConfig::load(id);
+        assert!(saved.password.is_empty(), "peer metadata must not republish a legacy credential");
+        assert_eq!(saved.password_prs, b"stored-prs");
+    }
+
+    #[test]
+    fn r_s11hj_viewer_token_contains_only_session_correlation() {
+        isolate();
+        let mut h = LoginConfigHandler::default();
+        assert!(h.get_conn_token().is_none());
+        h.initialize("r-s11hj-viewer-token".to_owned(), ConnType::DEFAULT_CONN, None, None);
+        h.password_prs = b"session-private-prs".to_vec();
+        h.connect_password = "session-private-plaintext".to_owned();
+        let token = h.get_conn_token().expect("an initialized session owns a correlation token");
+        let value: serde_json::Value = serde_json::from_str(&token).unwrap();
+        let fields = value.as_object().unwrap();
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields["session_id"].as_u64(), Some(h.session_id));
+
+        let mut replacement = LoginConfigHandler::default();
+        replacement.initialize(
+            "r-s11hj-viewer-token-target".to_owned(),
+            ConnType::FILE_TRANSFER,
+            None,
+            Some(token),
+        );
+        assert_eq!(replacement.session_id, h.session_id);
+        assert!(replacement.password_prs.is_empty());
+        assert!(replacement.connect_password.is_empty());
+    }
+
+    #[test]
+    fn r_s11hj_viewer_token_refuses_retired_account_payload() {
+        for payload in [
+            r#"{"session_id":41,"password":[65],"password_source":{"PersonalAb":[65]}}"#,
+            r#"{"session_id":41,"password":[65]}"#,
+            r#"{"session_id":41,"password_source":{"SharedAb":"private"}}"#,
+            r#"{"session_id":41,"password_prs":"private"}"#,
+        ] {
+            assert!(serde_json::from_str::<ConnToken>(payload).is_err());
+        }
+    }
+
+    #[test]
+    fn r_s11hj_viewer_token_requires_one_nonzero_session_id() {
+        assert!(serde_json::from_str::<ConnToken>(r#"{"session_id":41}"#).is_ok());
+        for payload in [
+            "{}",
+            r#"{"session_id":0}"#,
+            r#"{"session_id":-1}"#,
+            r#"{"session_id":"41"}"#,
+            r#"{"session_id":41,"session_id":42}"#,
+            r#"{"session_id":18446744073709551616}"#,
+            r#"{"session_id":41} {}"#,
+        ] {
+            assert!(serde_json::from_str::<ConnToken>(payload).is_err());
+        }
+    }
+
+    #[test]
+    fn r_s11hj_viewer_empty_state_stays_unremembered() {
+        isolate();
+        let id = "r-s11hj-viewer-empty";
+        let mut h = LoginConfigHandler::default();
+        h.initialize(id.to_owned(), ConnType::DEFAULT_CONN, None, None);
+        assert!(!h.remember);
+        h.handle_peer_info(&PeerInfo::new());
+        let saved = PeerConfig::load(id);
+        assert!(saved.password.is_empty());
+        assert!(saved.password_prs.is_empty());
+    }
+
     fn viewer_command_test_limits(
         capacity: usize,
         max_payload_bytes: usize,

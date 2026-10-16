@@ -124,7 +124,7 @@ case "$#:${8:-}" in
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
-            || "${13}" = --resolution-parent || "${13}" = --file-receive-caller \
+            || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
             || "${13}" = --fusermount-process || "${13}" = --file-block \
             || "${13}" = --clipboard-response ]] || exit 2
@@ -3500,6 +3500,25 @@ run_focused_rust_tests() {
                 ui_cm_interface::tests::r_s11fi_cm_replaced_sidecars_preserve_foreign_files_and_report_cleanup
                 flutter_ffi::file_job_id_tests::typed_file_job_ids_use_the_process_allocator
             )
+        elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+            container_name=rustdesk-viewer-credential-tests
+            memory=5g
+            memory_bytes=5368709120
+            source_fingerprints=(
+                Cargo.lock Cargo.toml src/lib.rs src/client.rs
+                libs/hbb_common/src/config.rs libs/hbb_common/src/config/permanent_password.rs
+                scripts/run-viewer-credential-tests.sh scripts/linux-parent-test-build.sh
+            )
+            required_tests=(
+                client::tests::r_s11hj_viewer_reconnect_preserves_remembered_prs
+                client::tests::r_s11hj_viewer_forget_retires_prs_without_legacy_hash
+                client::tests::r_s11hj_viewer_remember_persists_fresh_prs
+                client::tests::r_s11hj_viewer_metadata_retires_legacy_hash
+                client::tests::r_s11hj_viewer_token_contains_only_session_correlation
+                client::tests::r_s11hj_viewer_token_refuses_retired_account_payload
+                client::tests::r_s11hj_viewer_token_requires_one_nonzero_session_id
+                client::tests::r_s11hj_viewer_empty_state_stays_unremembered
+            )
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             container_name=rustdesk-resolution-parent-tests
             memory=5g
@@ -4155,6 +4174,10 @@ run_focused_rust_tests() {
                             /bin/bash /source/scripts/run-file-receive-caller-tests.sh
                             exit 0
                         fi
+                        if [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+                            /bin/bash /source/scripts/run-viewer-credential-tests.sh
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
                             /bin/bash /source/scripts/run-resolution-parent-tests.sh
                             exit 0
@@ -4537,11 +4560,11 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+        && [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
-            | awk '/^(RESOLUTION_PARENT|FILE_RECEIVE_PARENT)_BUILD=started / { print; fflush() }'; then
+            | awk '/^(RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL)_BUILD=started / { print; fflush() }'; then
             parent_start_status=("${PIPESTATUS[@]}")
         else
             parent_start_status=("${PIPESTATUS[@]}")
@@ -4734,6 +4757,11 @@ PY
             && [ "$(grep -Fc 'FILE_RECEIVE_PARENT_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$' "$output")" -eq 6 ] \
             || fail 'file-receive parent artifact or named outcomes differ'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'viewer credential summary count differs'
+        [ "$(grep -Ec '^VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=8 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'VIEWER_CREDENTIAL_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'viewer credential artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution parent summary count differs'
         [ "$(grep -Ec '^RESOLUTION_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -5103,6 +5131,11 @@ PY
             printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=7 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+            grep -E '^test client::tests::r_s11hj_viewer_.* \.\.\. ok$|^VIEWER_CREDENTIAL_(ARTIFACT|BUILD)=' "$output"
+            [ "$tests_passed" -eq 8 ] || fail 'viewer credential total differs'
+            printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=8 target=linux-x86_64 scope=production-peer-credential-persistence-and-session-token rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             [ "$tests_passed" -eq 3 ] || fail 'resolution parent total differs'
             grep -E '^test server::connection::resolution_work::tests::.* \.\.\. ok$|^RESOLUTION_PARENT_BUILD=pass |^RESOLUTION_PARENT_ARTIFACT=' "$output"

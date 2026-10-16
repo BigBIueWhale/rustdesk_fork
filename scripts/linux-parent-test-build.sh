@@ -5,20 +5,23 @@ build_linux_parent_test() {
     local work=$1 receipt_prefix=$2
     [[ "$work:$receipt_prefix" = /tmp/pa-runtime:PA_RUNTIME \
         || "$work:$receipt_prefix" = /tmp/resolution-parent:RESOLUTION_PARENT \
-        || "$work:$receipt_prefix" = /tmp/file-receive-caller:FILE_RECEIVE_PARENT ]] \
+        || "$work:$receipt_prefix" = /tmp/file-receive-caller:FILE_RECEIVE_PARENT \
+        || "$work:$receipt_prefix" = /tmp/viewer-credentials:VIEWER_CREDENTIAL ]] \
         && [ "$PWD" = /source ] && [ "$(id -u):$(id -g)" = 1000:1000 ] \
         && [ "${CARGO_TARGET_DIR:-}" = /cargo-target ] \
         && [ -d "$work" ] && [ ! -L "$work" ] \
         && [ "$(stat -c '%u:%g:%a' -- "$work")" = 1000:1000:700 ] \
         || { echo 'Linux parent compiler entry authority differs' >&2; return 1; }
-    printf '%s_BUILD=started target=linux-libtest budget_seconds=600\n' "$receipt_prefix"
+    local build_budget=600
+    if [ "$receipt_prefix" = VIEWER_CREDENTIAL ]; then build_budget=180; fi
+    printf '%s_BUILD=started target=linux-libtest budget_seconds=%s\n' "$receipt_prefix" "$build_budget"
     local features=linux-pkg-config
     if [ "$receipt_prefix" = FILE_RECEIVE_PARENT ]; then
         features=linux-pkg-config,flutter
     fi
     local build_started=$SECONDS
     local build_status=0
-    timeout --signal=TERM --kill-after=5s 600s \
+    timeout --signal=TERM --kill-after=5s "${build_budget}s" \
         cargo test --offline --locked --lib --features "$features" --no-run \
         --message-format=json-render-diagnostics --color never >"$work/build.json" || build_status=$?
     if [ "$build_status" -ne 0 ]; then

@@ -151,6 +151,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=linux-resolution-lifetime
         ;;
+    1:--viewer-credential-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'viewer credential-test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=viewer-credentials
+        ;;
     1:--linux-resolution-parent-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'resolution parent-test input/run overrides are forbidden' >&2; exit 2; }
@@ -715,6 +721,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     fi
     readonly OVERLAY_SIZE=40G
     if [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller \
+        || "$RUST_TEST_PROFILE" = viewer-credentials \
         || "$RUST_TEST_PROFILE" = input-revocation \
         || "$RUST_TEST_PROFILE" = clipboard ]]; then
         readonly VM_MEMORY=6144
@@ -5944,6 +5951,18 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file
         "FILE_RECEIVE_PARENT_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=7 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'file-receive parent compilation and native caller results'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'file-receive parent cloud-init completion'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+    mapfile -t viewer_credential_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=8 unchanged=before-after execution_seconds=[0-9]+$'
+    )
+    [ "${#viewer_credential_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'VIEWER_CREDENTIAL_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'viewer credential artifact receipt differs'
+    require_exact_fixed_receipt \
+        "VIEWER_CREDENTIAL_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=8 target=linux-x86_64 scope=production-peer-credential-persistence-and-session-token rust=1.75.0 features=linux-pkg-config vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'viewer credential parent compilation and native component result'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'viewer credential cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
     mapfile -t resolution_parent_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -7104,6 +7123,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
         printf 'FILE_RECEIVE_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=7 scope=complete-parent-file-receive-callers network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+        printf 'VIEWER_CREDENTIAL_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=production-peer-credential-persistence-and-session-token network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
         printf 'RESOLUTION_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=complete-parent-library-and-owned-result network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

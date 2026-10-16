@@ -65,8 +65,7 @@ class _ListingHarness {
 
   _ListingHarness() {
     controller.directory.value =
-        FileDirectory.fromJson(jsonDecode(_listing('/current')))
-          ..format(false);
+        FileDirectory.fromJson(jsonDecode(_listing('/current')))..format(false);
   }
 
   Iterable<String> get names =>
@@ -82,8 +81,8 @@ class _ListingHarness {
     return entry;
   }
 
-  DirectoryData get destination => DirectoryData(
-      FileDirectory()..path = '/destination', DirectoryOptions());
+  DirectoryData get destination =>
+      DirectoryData(FileDirectory()..path = '/destination', DirectoryOptions());
 }
 
 void main() {
@@ -188,8 +187,8 @@ void main() {
     harness.reply('/current');
     expect(await refresh, isTrue);
 
-    expect(harness.controller.directory.value.entries,
-        isNot(contains(selected)));
+    expect(
+        harness.controller.directory.value.entries, isNot(contains(selected)));
     expect(harness.controller.selectedItems.items, isEmpty);
   });
 
@@ -270,8 +269,8 @@ void main() {
     final refresh = harness.controller.refresh();
     harness.reply('/current');
     expect(await refresh, isTrue);
-    await harness.controller.sendFiles(
-        harness.controller.selectedItems, harness.destination);
+    await harness.controller
+        .sendFiles(harness.controller.selectedItems, harness.destination);
 
     expect(harness.sentPaths, isEmpty);
     expect(harness.controller.jobController.jobTable, isEmpty);
@@ -281,8 +280,8 @@ void main() {
     final harness = _ListingHarness();
     harness.selectFirst();
 
-    await harness.controller.sendFiles(
-        harness.controller.selectedItems, harness.destination);
+    await harness.controller
+        .sendFiles(harness.controller.selectedItems, harness.destination);
 
     expect(harness.sentPaths, ['/current/gamma.m']);
     expect(harness.controller.jobController.jobTable, hasLength(1));
@@ -297,8 +296,8 @@ void main() {
       ..add(harness.controller.directory.value.entries[1]);
     final release = Completer<void>();
     harness.firstSendRelease = release;
-    final send = harness.controller.sendFiles(
-        harness.controller.selectedItems, harness.destination);
+    final send = harness.controller
+        .sendFiles(harness.controller.selectedItems, harness.destination);
     await harness.firstSendEntered.future;
 
     try {

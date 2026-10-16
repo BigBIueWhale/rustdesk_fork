@@ -2357,8 +2357,8 @@ the full 25-suite/283-case model checkpoint, native Rust/full-peer/application b
 installed/platform/service behavior, sustained resources/presentation, release/cold equality,
 independent reproduction/external review and whole-document/fresh token-count acceptance remain OPEN.
 
-**Desktop window credential diagnostics: source corrected; shared Dart dispatcher A/B accepted;
-native window log-capture acceptance OPEN.**
+**Desktop window credential diagnostics: Dart dispatcher and native Linux channel components accepted;
+application window log-capture acceptance OPEN.**
 The six desktop window receivers no longer log incoming method payloads. The shared
 window manager serializes `password` and optional `connToken` fields for session
 handoff; the main, file-transfer and tunnel receivers previously printed those
@@ -2386,10 +2386,22 @@ bridge and runs no unrelated model shard; full inventory is now 26 suites/300 ca
 bind identical tests, exact source, strict results, unchanged inputs/endpoints,
 resource limits and joined VM/RAM retirement.
 
-This is shared Dart/plugin/Flutter component execution with controlled callbacks,
-not actual GTK/Win32/Cocoa application windows, a native peer/IPC transaction,
-release-log capture or an LPE result. Target-native valid/malformed handoff capture
-across all five session types and the current full model checkpoint remain OPEN.
+Linux native forwarding also releases each returned response, converts missing/undecodable replies
+into the fixed error envelope, and checks the single response attempt without logging transport
+error text. Self-call completion retains its one-callback contract with a constant diagnostic.
+At exact source `3f8f4bf5`, the same driver linked the earlier `51d37604` implementation and
+corrected `cc084916` code separately against pinned Flutter 3.24.5. All seven old cases failed;
+all seven corrected cases passed: success, explicit error, not-implemented, malformed reply,
+transport failure, refused response delivery and self-call error. Actual native codec/channel,
+binary replies and weak-reference retirement are observed through a controlled messenger.
+The eight Dart dispatcher tests and three parser controls also passed in 104 VM seconds.
+`.harness-state/verifier-vm/linux-window-channel-accepted-3f8f4bf5.json` binds both artifacts,
+source freezes, three retained preparation/fixture failures, unchanged endpoints and joined RAM cleanup.
+
+These results exercise Dart/plugin and Linux native channel components. Actual GTK/Win32/Cocoa
+application-window handoff/log capture across all five session types, real peer/IPC transactions,
+release-log capture, sustained resource bounds, installed authority/LPE acceptance and the current
+full model checkpoint remain OPEN.
 The terminal parser's retained-input and CPU-work limits remain a separate OPEN
 item, parked at the user's request.
 

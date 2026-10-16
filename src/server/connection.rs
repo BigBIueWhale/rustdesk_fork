@@ -10695,7 +10695,7 @@ impl Connection {
                     &mut self.disable_keyboard, q == BoolOption::Yes, self.input_worker.as_ref(),
                 ).await?;
                 #[cfg(any(target_os = "android", target_os = "ios"))]
-                self.disable_keyboard = q == BoolOption::Yes;
+                { self.disable_keyboard = q == BoolOption::Yes; }
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 self.refresh_cm_clipboard_authority();
                 if let Some(s) = self.server.upgrade() {

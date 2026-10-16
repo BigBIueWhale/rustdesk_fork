@@ -113,6 +113,11 @@ author and license metadata and Enigo's license file remain. The existing fork
 contribution and isolated-verification guides remain the entry points. This is
 documentation/package-metadata cleanup; no native or security acceptance changes.
 
+The clipboard library guide distinguishes Linux FUSE from macOS pasteboard
+placeholders and filesystem-event paste observation, matching the platform module
+selection. The protocol overview and Linux helper constraints remain. This is a
+documentation correction; native clipboard and platform acceptance remain OPEN.
+
 `docs/CONTRIBUTING.md` is the fork's single contribution guide. The thirteen inherited
 translations and upstream review email/Discord routing are removed. Focused commits,
 review, relevant behavioral tests, DCO sign-off, license and attribution remain; the
@@ -14190,6 +14195,16 @@ causation, and external review remain STOP-SHIP.
 **State:** Source implementation and focused source gates exist. Exact Rust and
 native execution, installed desktop behavior, performance and resource evidence,
 current artifacts, independent reproduction, and external review remain pending.
+
+**OPEN/PARKED by user request:** pre-bootstrap owner-cancellation correction
+`8f5e1c4e` prioritizes an already-closed owner over a new worker poll and permits
+terminal drain only after positive bootstrap acknowledgement. Its 21-case native
+integration was stopped at the user's pivot after bridge generation, before a
+parent artifact or product test result. No native acceptance is claimed. The exact
+owned VM was joined, its RAM workspace and private run directory retired, and host
+listener observations were unchanged. The bounded record is
+`.harness-state/verifier-vm/cm-bootstrap-owner-parked-8f5e1c4e.json`.
+Leave this correction and its validation open; do not resume it automatically.
 
 **Boundary and current implementation.** This is the controlled-side Linux,
 macOS, and Windows connection-manager bridge owned by one authenticated network

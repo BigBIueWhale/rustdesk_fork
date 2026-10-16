@@ -29,10 +29,12 @@ and could be concluded as:
    clipboard files. Convert those reading requests to RPCs
 
    - on Windows, all file reading will go through the stream file API
-   - on Linux/OSX, FUSE is used for converting reading requests to RPCs
+   - on Linux, FUSE is used for converting reading requests to RPCs
      - in case of local clipboard been transferred back
        and leading to a dead loop,
        all file copy event pointing at the FUSE directory will be ignored
+   - on macOS, pasteboard placeholders and filesystem events trigger file transfers;
+     see the [macOS implementation guide](src/platform/unix/macos/README.md)
 
 6. finishing pasting all files one by one.
 
@@ -91,7 +93,7 @@ set to handle a variety of events.
 
 Detailed implementation is shown in pictures above.
 
-### Linux/OSX
+### Linux
 
 The Cliprdr Server implementation has mainly 3 parts:
 

@@ -88,7 +88,7 @@ void MessengerInterface(FlBinaryMessengerInterface* iface) {
       return FALSE;
     }
     g_clear_pointer(&state->received, g_bytes_unref);
-    state->received = g_bytes_ref(response);
+    state->received = response == nullptr ? g_bytes_new(nullptr, 0) : g_bytes_ref(response);
     return TRUE;
   };
   iface->send_on_channel = +[](FlBinaryMessenger* messenger, const gchar*,

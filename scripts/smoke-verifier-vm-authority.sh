@@ -7184,6 +7184,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     elif [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
         printf 'FILE_RECEIVE_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=21 scope=complete-parent-file-receive-callers network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = android-client-drain ]; then
+        printf '%s\n' "${android_client_drain_artifacts[@]}"
+        /usr/bin/grep -oE 'test flutter::mobile_session_lifecycle_tests::android_lifecycle_[a-z_]+ \.\.\. ok' "$SERIAL_LOG"
+        printf 'ANDROID_CLIENT_DRAIN_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=2 target=linux-x86_64 scope=production-owner-transitions-with-blocked-worker-fixtures android=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
         printf 'VIEWER_CREDENTIAL_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=11 scope=production-peer-credentials-and-exported-session-factory network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"

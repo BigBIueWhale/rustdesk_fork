@@ -12785,6 +12785,29 @@ and retired icon fonts are absent rather than replaced by a worker or migration 
 Existing `*_ab`/`*_group` files remain untouched inert bytes. Live peer TOML and direct-session
 display-name/avatar, CPace, password, and connection-token state remain separate.
 
+**Viewer remembered credentials and session correlation — Linux component A/B accepted.**
+`0295d420` initializes the remember choice from the stored CPace PRS. Peer metadata
+preserves a remembered PRS when no fresh value was staged, persists a fresh PRS only
+when chosen, clears it when remember is off, and clears the retired password hash.
+The obsolete account-provenance enum, handler hash and account credential-sync event
+are deleted. Connection tokens contain only one nonzero session correlation ID;
+unknown fields, retired credential/provenance payloads and malformed IDs refuse.
+Invalid-token diagnostics contain no supplied value.
+
+The complete Linux library with `linux-pkg-config` ran the same eight production
+handler/storage/serde cases: valid-storage baseline `7713b5c6` had six assertion
+failures and two passing controls; `0295d420` passed all eight. The fixture supplies
+one private read-only machine identity and proves real storage-key availability
+and encrypted credential readback before the affected actions. Three redundant
+legacy-hash tests are removed. Sealed `viewer-credential-baseline-7713b5c6.json`
+and `viewer-credential-corrected-0295d420.json` under `.harness-state/verifier-vm/`
+bind exact source/artifact/results, unchanged test/fixture inputs, source and
+endpoint freezes, and joined bounded-RAM cleanup. The earlier missing-key run and
+fixture-shape refusal are retained as unaccepted setup evidence.
+This is assistant-observed Linux component execution. Full Flutter-feature/bus,
+native window/token/CPace handoff, cross-version, installed/platform and independent
+acceptance remain OPEN; no production log leak or new LPE closure is claimed.
+
 The Recent/Favorite presentation mapper no longer exports the legacy password hash. Dart `Peer`
 has no credential/group fields, outbound serializers, copy/equality APIs or redundant constructor;
 its loading and autocomplete placeholders use the retained local-metadata parser. The unused

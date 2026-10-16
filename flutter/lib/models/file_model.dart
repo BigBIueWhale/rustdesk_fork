@@ -871,7 +871,7 @@ class FileController {
       final fd = await fileFetcher.fetchDirectory(path, isLocal, showHidden,
           expectedSessionId: selectedSessionId);
       if (!_isCurrentSession(selectedSessionId)) return false;
-      fd.format(isWindows, sort: sortBy.value);
+      fd.format(isWindows, sort: sortBy.value, ascending: sortAscending);
       directory.value = fd;
       return true;
     } catch (e) {
@@ -942,7 +942,8 @@ class FileController {
   void initDirAndHome(Map<String, dynamic> evt) {
     try {
       final fd = FileDirectory.fromJson(jsonDecode(evt['value']));
-      fd.format(options.value.isWindows, sort: sortBy.value);
+      fd.format(options.value.isWindows,
+          sort: sortBy.value, ascending: sortAscending);
       if (fd.id > 0) {
         final jobIndex = jobController.getJob(fd.id);
         if (jobIndex != -1) {
@@ -2385,12 +2386,12 @@ class FileDirectory {
   }
 
   // generate full path for every entry , init sort style if need.
-  format(bool isWindows, {SortBy? sort}) {
+  format(bool isWindows, {SortBy? sort, bool ascending = true}) {
     for (var entry in entries) {
       entry.path = PathUtil.join(path, entry.name, isWindows);
     }
     if (sort != null) {
-      changeSortStyle(sort);
+      changeSortStyle(sort, ascending: ascending);
     }
   }
 

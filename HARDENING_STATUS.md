@@ -12799,6 +12799,19 @@ actual Rust event-stream delivery, full app/peer/installed-platform diagnostics 
 secrecy remain OPEN. The initial formatting refusal ran no behavioral test. Prepared-runtime
 reuse and faster focused setup remain OPEN; these runs establish no performance improvement.
 
+The separate `CachedPeerData.fromString` handoff decoder also emits a fixed diagnostic and
+returns null on failure. Baseline `110cc6d3` ran the production decoder: four existing tests passed
+and two new cases failed, with a synthetic private username visible in the malformed-JSON log.
+Correction `d5c61913` passed the byte-identical six-test `--peer-data` shard plus three result-parser
+controls in 277 outer seconds. Malformed JSON, root shape and permission types refuse without
+payload diagnostics; valid privacy, peer, permission and transport snapshots round-trip silently
+and recover after refusal. Fresh bridge/import compilation, complete source/control freezes,
+unchanged endpoints and joined bounded-RAM cleanup pass. Retained
+`.harness-state/verifier-vm/cached-peer-baseline-110cc6d3.json` and
+`.harness-state/verifier-vm/cached-peer-corrected-d5c61913.json` bind the A/B result.
+This is production Dart execution on Linux; actual window transfer, Rust event delivery,
+native/platform/package log capture and broader diagnostic secrecy remain OPEN.
+
 Exact-current Rust application compilation, complete fresh bridge absence inspection, built-package asset/symbol inventories,
 installed-platform checks, cold R-B2/R-B10 equality, independent reproduction, and external review
 remain required. R-S11gr's generated-bridge/model checkpoint is not a complete compilation or

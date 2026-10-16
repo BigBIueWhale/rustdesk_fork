@@ -1878,7 +1878,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   thread; one bounded process-lifetime coordinator owns the transferred tree, and replacement admission waits
   for its exact drain ticket off-thread. The duplicate source-text lifecycle checker and its shared-verifier
   success claim are removed; the executable blocked-worker regressions in
-  `src/flutter.rs::mobile_session_lifecycle_tests` remain. APK/device lifecycle behavior remains open.
+  `src/flutter.rs::mobile_session_lifecycle_tests` remain. The isolated shared-verifier entry and shell-syntax
+  smoke passed in 94 VM seconds; `.harness-state/verifier-vm/android-lifecycle-checker-removed-0ed44700.json`
+  retains the source/cleanup bindings. This is verifier integration only; APK/device lifecycle behavior remains open.
 - **R-S11er/R-S11e-179 desktop lock-screen mechanism authority** — Source closed. Linux and macOS use their one
   connection-owned physical key chord; the external-helper and generic-fallback surfaces are absent. Windows uses
   the fallible native `LockWorkStation` request and treats success only as initiation. Installed Linux, Windows,

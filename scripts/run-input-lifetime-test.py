@@ -23,14 +23,15 @@ def digest(path):
     return value.hexdigest()
 
 
-def build():
+def build(*, plain=False):
     output = Path("/provider-build/libxdo.so.3")
     require(not os.path.lexists(output), "provider output exists")
     metadata = output.parent.lstat()
     require(stat.S_ISDIR(metadata.st_mode) and metadata.st_uid == 1000
             and metadata.st_gid == 1000 and stat.S_IMODE(metadata.st_mode) == 0o700,
             "provider output parent authority differs")
-    source = Path(__file__).resolve().parent / "test-input-lifetime-provider.c"
+    source = (Path(__file__).resolve().parent.parent / "libs/libxdo-sys-stub/native/xdo.c"
+              if plain else Path(__file__).resolve().parent / "test-input-lifetime-provider.c")
     subprocess.run([
         "/usr/bin/cc", "-std=c99", "-O2", "-g0", "-fPIC", "-Wall", "-Wextra",
         "-fstack-protector-strong", "-D_FORTIFY_SOURCE=2", "-Wformat", "-Werror=format-security",
@@ -42,8 +43,9 @@ def build():
     with output.open("rb") as library:
         require(library.read(4) == b"\x7fELF", "provider is not ELF")
     output.chmod(0o644)
+    source_kind = "checked-in-unmodified" if plain else "checked-in-with-observation-hooks"
     print(f"INPUT_LIFETIME_PROVIDER_BUILD=pass sha256={digest(output)} "
-          "source=checked-in-with-observation-hooks execution=nonroot", flush=True)
+          f"source={source_kind} execution=nonroot", flush=True)
 
 
 def run(executable):
@@ -195,7 +197,7 @@ if __name__ == "__main__":
     require(os.getuid() == 1000 and os.getgid() == 1000 and Path("/.dockerenv").is_file(),
             "native input-lifetime execution requires the isolated nonroot container")
     require(len(sys.argv) == 2, "expected build or exact artifact")
-    if sys.argv[1] == "build":
-        build()
+    if sys.argv[1] in ("build", "build-plain"):
+        build(plain=sys.argv[1] == "build-plain")
     else:
         run(Path(sys.argv[1]))

@@ -120,7 +120,7 @@ case "$#:${8:-}" in
     13:--android-rust-lifecycle-tests)
         [[ "${13}" = --clipboard || "${13}" = --whiteboard-presentation \
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
-            || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release || "${13}" = --input-lifetime \
+            || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-revocation || "${13}" = --input-release || "${13}" = --input-lifetime \
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
@@ -3588,6 +3588,19 @@ run_focused_rust_tests() {
                 server::connection::input_lifetime_native_tests::input_workers_retire_pending_text_before_the_global_display
                 server::connection::cursor_lifetime_native_tests::remote_cursor_retirement_waits_for_native_query_and_thread_context
             )
+        elif [ "$RUST_TEST_PROFILE" = input-revocation ]; then
+            memory=5g
+            memory_bytes=5368709120
+            source_fingerprints+=(
+                src/server/input_service.rs src/server/connection.rs
+                src/server/input_release_native_tests.rs scripts/run-input-revocation-test.py
+                scripts/run-input-lifetime-test.py libs/libxdo-sys-stub/native/xdo.c
+                libs/libxdo-sys-stub/native/xdo.h libs/libxdo-sys-stub/native/xdo_version.h
+                scripts/smoke-xvfb-prepare.sh scripts/smoke-xvfb-packages.tsv scripts/smoke-xvfb-files.tsv
+            )
+            required_tests=(
+                server::connection::input_release_native_tests::keyboard_disable_retires_native_ownership_before_return
+            )
         elif [ "$RUST_TEST_PROFILE" = input-release ]; then
             source_fingerprints+=(
                 src/server/input_service.rs src/server/connection.rs
@@ -3875,7 +3888,7 @@ run_focused_rust_tests() {
     fi
 
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
+       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
         prepare_engine_xvfb "$inputs/xvfb-debs" "$source_root/scripts"
         whiteboard_mounts=(
             --mount "type=bind,source=$ROOT/engine-xvfb/root,target=/xvfb-root,readonly,bind-recursive=disabled"
@@ -3883,7 +3896,12 @@ run_focused_rust_tests() {
         )
     fi
 
-    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = input-revocation ]]; then
+        local provider_build_mode=build provider_source=checked-in-with-observation-hooks
+        if [ "$RUST_TEST_PROFILE" = input-revocation ]; then
+            provider_build_mode=build-plain
+            provider_source=checked-in-unmodified
+        fi
         install -d -o 1000 -g 1000 -m 0700 "$input_provider_build"
         CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
             --name rustdesk-input-provider-build --pull=never --network=none --read-only \
@@ -3893,7 +3911,7 @@ run_focused_rust_tests() {
             --mount "type=bind,source=$source_root,target=/source,readonly,bind-recursive=disabled" \
             --mount "type=bind,source=$input_provider_build,target=/provider-build,bind-recursive=disabled" \
             --tmpfs /tmp:rw,nosuid,nodev,size=64m,mode=700,uid=1000,gid=1000 \
-            "$image_config" /usr/bin/python3 -I -S /source/scripts/run-input-lifetime-test.py build)" \
+            "$image_config" /usr/bin/python3 -I -S /source/scripts/run-input-lifetime-test.py "$provider_build_mode")" \
             || fail 'cannot create the owned nonroot input provider compiler'
         [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'provider compiler container identity differs'
         inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
@@ -3918,7 +3936,7 @@ run_focused_rust_tests() {
             || fail 'compiled input provider authority differs'
         input_provider_sha="$(sha256sum <"$input_provider_build/libxdo.so.3")"
         input_provider_sha=${input_provider_sha%% *}
-        grep -Fxq "INPUT_LIFETIME_PROVIDER_BUILD=pass sha256=$input_provider_sha source=checked-in-with-observation-hooks execution=nonroot" \
+        grep -Fxq "INPUT_LIFETIME_PROVIDER_BUILD=pass sha256=$input_provider_sha source=$provider_source execution=nonroot" \
             "$ROOT/input-provider-build.out" || fail 'compiled input provider receipt differs'
         # Only fixed-path OS preparation runs as the disposable guest supervisor.
         install -d -o 0 -g 0 -m 0755 "$input_provider_installed"
@@ -4243,7 +4261,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                                 "$helper_artifact_sha" "$helper_executable"
                             exit 0
                         fi
-                        if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+                        if [[ "$RUST_TEST_PROFILE" = clipboard || "$RUST_TEST_PROFILE" = input-revocation ]]; then
                             export CARGO_BUILD_JOBS=4 CARGO_INCREMENTAL=0 \
                                 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
                         fi
@@ -4257,6 +4275,9 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                                 "$((SECONDS - clipboard_build_started))"
                         elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
                             printf "INPUT_LIFETIME_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
+                                "$((SECONDS - clipboard_build_started))"
+                        elif [ "$RUST_TEST_PROFILE" = input-revocation ]; then
+                            printf "INPUT_REVOCATION_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
                                 "$((SECONDS - clipboard_build_started))"
                         elif [ "$RUST_TEST_PROFILE" = input-release ]; then
                             printf "INPUT_RELEASE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
@@ -4309,6 +4330,15 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             python3 -I -S /source/scripts/run-input-lifetime-test.py "$clipboard_executable"
                             [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
                             printf "INPUT_LIFETIME_ARTIFACT=pass sha256=%s executable=%s tests=3 process_exit_cases=4 unchanged=before-after\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            exit 0
+                        fi
+                        if [ "$RUST_TEST_PROFILE" = input-revocation ]; then
+                            printf "INPUT_REVOCATION_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            python3 -I -S /source/scripts/run-input-revocation-test.py "$clipboard_executable"
+                            [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                            printf "INPUT_REVOCATION_ARTIFACT=pass sha256=%s executable=%s tests=1 unchanged=before-after\n" \
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             exit 0
                         fi
@@ -4457,7 +4487,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
         || fail "focused Rust-test container namespace/device/port authority differs: $namespace_inspect"
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
+       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
         inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
             '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
         [ "$inspect" = "$( { printf '%s\n' \
@@ -4465,7 +4495,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             "bind|$vendor|/vendor|false" "bind|$vendor_config|/inputs/config.toml|false" \
             "bind|$ROOT/engine-xvfb/root|/xvfb-root|false" \
             "bind|$ROOT/engine-xvfb/root/usr/bin/xkbcomp|/usr/bin/xkbcomp|false"
-            if [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
+            if [[ "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = input-revocation ]]; then
                 printf '%s\n' "bind|$input_provider_installed|/usr/lib/rustdesk-fork|false"
             fi
             } | LC_ALL=C sort)" ] \
@@ -4821,6 +4851,13 @@ PY
                 [ "$(grep -Fxc "INPUT_LIFETIME_NATIVE=pass fault=$input_lifetime_fault generations=16 workers=2 producer=typed-queue worker=production loader=protected keys=exact-owner foreign=preserved pending=retired mapping=restored child_before_display=true descriptors=retired tasks=retired network_auth=false" "$output")" -eq 1 ] \
                     || fail 'native input-lifetime behavior receipt differs'
             done
+        elif [ "$RUST_TEST_PROFILE" = input-revocation ]; then
+            [ "$(grep -Ec '^INPUT_REVOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 unchanged=before-after$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc 'INPUT_REVOCATION_NATIVE=pass workers=2 shared_modifier=preserved foreign_key=preserved disable=before-return duplicate=inert reenable=same-worker cleanup=joined network_auth=false' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc "INPUT_REVOCATION_PROVIDER=observed sha256=$input_provider_sha source=checked-in-unmodified unchanged=before-after" "$output")" -eq 1 ] \
+                && [ "$(sha256sum <"$input_provider_installed/libxdo.so.3")" = "$input_provider_sha  -" ] \
+                && [ "$(grep -Fxc 'INPUT_REVOCATION_X11=pass server=owned network=none endpoint=absent cleanup=joined' "$output")" -eq 1 ] \
+                || fail 'native input-revocation observations differ'
         elif [ "$RUST_TEST_PROFILE" = input-release ]; then
             [ "$(grep -Ec '^INPUT_RELEASE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fxc 'INPUT_RELEASE_NATIVE=pass cases=16 shared_owners=2 prior_owner_retirement=no-events final_owner_release=exact-key foreign_key=preserved keyboard_state=unavailable ordinary_admission=refused registry=retired descriptors=retired whole_app=false' "$output")" -eq 1 ] \
@@ -5125,6 +5162,12 @@ PY
             grep -E '^CONNECTION_WAKELOCK_FAILED_START_ADMISSION_OBSERVED ' "$output"
             grep -E '^WAKELOCK_START_FAILURE_OBSERVED ' "$output"
             printf 'INPUT_LIFETIME_VM=pass commit=%s tree=%s tests=%s process_exit_cases=4 target=linux-x86_64 scope=production-input-worker-global-text-lifetime rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = input-revocation ]; then
+            grep -E '^INPUT_REVOCATION_(ARTIFACT_BEFORE|ARTIFACT|BUILD|PROVIDER|NATIVE|X11)=' "$output"
+            grep -E '^test server::connection::(input_release_native_tests::keyboard_disable_)' "$output"
+            printf 'INPUT_REVOCATION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-peer-keyboard-revocation rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = input-release ]; then

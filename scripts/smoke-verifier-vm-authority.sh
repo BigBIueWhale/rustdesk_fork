@@ -192,7 +192,7 @@ case "$#:${1:-}" in
     2:--android-rust-lifecycle-tests)
         [[ "$2" = --clipboard || "$2" = --whiteboard-presentation \
             || "$2" = --whiteboard-display-lifetime || "$2" = --whiteboard-client \
-            || "$2" = --whiteboard-helper-lifetime || "$2" = --input-release || "$2" = --input-lifetime ]] \
+            || "$2" = --whiteboard-helper-lifetime || "$2" = --input-revocation || "$2" = --input-release || "$2" = --input-lifetime ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Rust shard or input/run authority differs' >&2; exit 2; }
@@ -472,6 +472,7 @@ case "$#:${1:-}" in
         printf 'Focused whiteboard client state tests: %s --android-rust-lifecycle-tests --whiteboard-client\n' "${0##*/}" >&2
         printf 'Native Linux whiteboard display ownership: %s --android-rust-lifecycle-tests --whiteboard-display-lifetime\n' "${0##*/}" >&2
         printf 'Native Linux whiteboard CLI/helper lifetime: %s --android-rust-lifecycle-tests --whiteboard-helper-lifetime\n' "${0##*/}" >&2
+        printf 'Native Linux keyboard restriction: %s --android-rust-lifecycle-tests --input-revocation\n' "${0##*/}" >&2
         printf 'Native Linux physical-key teardown: %s --android-rust-lifecycle-tests --input-release\n' "${0##*/}" >&2
         printf 'Native Linux input-worker/global lifetime: %s --android-rust-lifecycle-tests --input-lifetime\n' "${0##*/}" >&2
         printf 'Native Linux logind session selection: %s --linux-logind-tests\n' "${0##*/}" >&2
@@ -714,6 +715,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     fi
     readonly OVERLAY_SIZE=40G
     if [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller \
+        || "$RUST_TEST_PROFILE" = input-revocation \
         || "$RUST_TEST_PROFILE" = clipboard ]]; then
         readonly VM_MEMORY=6144
     elif [[ "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
@@ -2234,7 +2236,7 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$M
    || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; }; then
+        && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; }; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'focused native tests require clean committed master'
@@ -3635,7 +3637,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
             "${rust_lifecycle_files[@]}"
         /usr/bin/sha256sum -- "${rust_lifecycle_files[@]}"
-        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
+        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
             engine_xvfb_input_inventory
         fi
     )"
@@ -5668,6 +5670,26 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = inpu
         "INPUT_LIFETIME_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=3 process_exit_cases=4 target=linux-x86_64 scope=production-input-worker-global-text-lifetime rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'native input-lifetime guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'native input-lifetime completion'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = input-revocation ]; then
+    mapfile -t input_release_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'INPUT_REVOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 unchanged=before-after$'
+    )
+    [ "${#input_release_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'INPUT_REVOCATION_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'native input-revocation artifact receipt differs'
+    input_release_before=${input_release_artifacts[0]/INPUT_REVOCATION_ARTIFACT=pass /INPUT_REVOCATION_ARTIFACT_BEFORE=}
+    input_release_before=${input_release_before% tests=1 unchanged=before-after}
+    require_exact_fixed_receipt "$input_release_before" 'input-revocation artifact before execution'
+    require_exact_fixed_receipt \
+        'INPUT_REVOCATION_NATIVE=pass workers=2 shared_modifier=preserved foreign_key=preserved disable=before-return duplicate=inert reenable=same-worker cleanup=joined network_auth=false' \
+        'native key release without ordinary keyboard planning'
+    require_exact_fixed_receipt 'INPUT_REVOCATION_X11=pass server=owned network=none endpoint=absent cleanup=joined' \
+        'native input X11 retirement'
+    require_exact_fixed_receipt \
+        "INPUT_REVOCATION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=1 target=linux-x86_64 scope=production-peer-keyboard-revocation rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'native input-revocation guest finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'native input-revocation completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = input-release ]; then
     mapfile -t input_release_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -6695,7 +6717,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
             "${rust_lifecycle_files[@]}"
         /usr/bin/sha256sum -- "${rust_lifecycle_files[@]}"
-        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
+        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
             engine_xvfb_input_inventory
         fi
     )"
@@ -7097,6 +7119,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
         printf 'INPUT_LIFETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-input-worker-global-text-lifetime network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = input-revocation ]; then
+        printf 'INPUT_REVOCATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-peer-keyboard-revocation network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = input-release ]; then
         printf 'INPUT_RELEASE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-key-lease-teardown network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

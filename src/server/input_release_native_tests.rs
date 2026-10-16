@@ -142,3 +142,139 @@ fn physical_lease_retirement_survives_unavailable_keyboard_state() {
         .open("/tmp/input-release-native.receipt").unwrap();
     receipt.write_all(b"INPUT_RELEASE_NATIVE=pass cases=16 shared_owners=2 prior_owner_retirement=no-events final_owner_release=exact-key foreign_key=preserved keyboard_state=unavailable ordinary_admission=refused registry=retired descriptors=retired whole_app=false\n").unwrap();
 }
+
+struct LiveInputWorker {
+    queue: InputQueue,
+    owner: InputWorker,
+    _responses: ControlEgressReceiver,
+}
+
+impl LiveInputWorker {
+    async fn new(id: i32) -> Self {
+        let (sender, receiver) = std_mpsc::sync_channel(INPUT_QUEUE_CAPACITY);
+        let execution = Arc::new(InputExecutionGate::default());
+        let queued_bytes = Arc::new(AtomicUsize::new(0));
+        let (join_tx, completion, admission) =
+            spawn_input_worker_supervisor(format!("input-revoke-supervisor-{id}"),
+                Arc::clone(&queued_bytes)).unwrap();
+        let (tx, responses) = control_egress_channel();
+        let native_execution = Arc::clone(&execution);
+        let join = std::thread::spawn(move || {
+            Connection::handle_input(id, receiver, tx, native_execution);
+        });
+        join_tx.try_send(join).unwrap();
+        drop(join_tx);
+        drop(admission);
+        let worker = Self {
+            queue: InputQueue { sender, queued_bytes, execution: Arc::clone(&execution) },
+            owner: InputWorker { execution, completion },
+            _responses: responses,
+        };
+        worker.barrier().await;
+        worker
+    }
+
+    async fn barrier(&self) {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        try_enqueue_input(&self.queue, MessageInput::Ready(tx)).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), rx).await.unwrap().unwrap();
+    }
+
+    async fn hold(&self, key: RdevKey) {
+        let mut event = KeyEvent::new();
+        event.mode = KeyboardMode::Map.into();
+        event.set_chr(rdev::linux_keycode_from_key(key).unwrap());
+        event.down = true;
+        try_enqueue_input(&self.queue, MessageInput::Key((event, false))).unwrap();
+        self.barrier().await;
+    }
+
+    async fn stop(&self) {
+        self.owner.execution.cancel();
+        let completion = Arc::clone(&self.owner.completion);
+        assert!(tokio::task::spawn_blocking(move || completion.wait()).await.unwrap());
+        assert_eq!(self.queue.queued_bytes.load(Ordering::Acquire), 0);
+    }
+}
+
+impl Drop for LiveInputWorker {
+    fn drop(&mut self) {
+        // The production supervisor retains the sole native JoinHandle on unwind.
+        self.owner.execution.cancel();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated plain-provider input-revocation profile"]
+async fn keyboard_disable_retires_native_ownership_before_return() {
+    assert_eq!(std::env::var("DISPLAY").unwrap(), ":96");
+    let observer = tokio::task::block_in_place(|| {
+        assert_ne!(unsafe { xlib::XInitThreads() }, 0);
+        Observer::new()
+    });
+    let control = RdevKey::ControlLeft;
+    let shared = RdevKey::ShiftLeft;
+    let foreign = RdevKey::KeyB;
+    let control_code = rdev::linux_keycode_from_key(control).unwrap();
+    let shared_code = rdev::linux_keycode_from_key(shared).unwrap();
+    let foreign_code = rdev::linux_keycode_from_key(foreign).unwrap();
+    let first = LiveInputWorker::new(9101).await;
+    let second = LiveInputWorker::new(9102).await;
+    let mut first_disabled = false;
+    let mut second_disabled = false;
+    let outcome: ResultType<_> = async {
+        first.hold(control).await;
+        first.hold(shared).await;
+        second.hold(shared).await;
+        tokio::task::block_in_place(|| {
+            rdev::simulate(&EventType::KeyPress(foreign)).unwrap();
+            assert!(observer.keys(&[control_code, shared_code, foreign_code]));
+            observer.events();
+        });
+
+        set_peer_keyboard_disabled(&mut first_disabled, true, Some(&first.owner)).await?;
+        let first_released = tokio::task::block_in_place(|| {
+            observer.keys(&[shared_code, foreign_code])
+                && observer.events() == [(xlib::KeyRelease, control_code)]
+        });
+        first.barrier().await;
+        set_peer_keyboard_disabled(&mut first_disabled, true, Some(&first.owner)).await?;
+        let duplicate_inert = tokio::task::block_in_place(|| {
+            observer.keys(&[shared_code, foreign_code]) && observer.events().is_empty()
+        });
+
+        set_peer_keyboard_disabled(&mut first_disabled, false, Some(&first.owner)).await?;
+        first.hold(control).await;
+        let fresh_press = tokio::task::block_in_place(|| {
+            observer.keys(&[control_code, shared_code, foreign_code])
+                && observer.events() == [(xlib::KeyPress, control_code)]
+        });
+        set_peer_keyboard_disabled(&mut first_disabled, true, Some(&first.owner)).await?;
+        let fresh_release = tokio::task::block_in_place(|| {
+            observer.keys(&[shared_code, foreign_code])
+                && observer.events() == [(xlib::KeyRelease, control_code)]
+        });
+        set_peer_keyboard_disabled(&mut second_disabled, true, Some(&second.owner)).await?;
+        let final_owner = tokio::task::block_in_place(|| {
+            observer.keys(&[foreign_code])
+                && observer.events() == [(xlib::KeyRelease, shared_code)]
+        });
+        Ok((first_released, duplicate_inert, fresh_press, fresh_release, final_owner))
+    }.await;
+    // Retire both actual workers and the fixture's own foreign press before
+    // reporting a product assertion, so even the baseline has joined cleanup.
+    first.stop().await;
+    second.stop().await;
+    tokio::task::block_in_place(|| {
+        rdev::simulate(&EventType::KeyRelease(foreign)).unwrap();
+        assert!(observer.keys(&[]));
+        drop(observer);
+    });
+    assert!(INPUT_KEY_OWNERS.lock().is_empty());
+    assert!(INPUT_KEY_OWNERS.lock_mouse_buttons().is_empty());
+    let actual = outcome.unwrap();
+    println!("INPUT_REVOCATION_OBSERVED first_release={} duplicate_inert={} fresh_press={} fresh_release={} final_owner={}",
+        actual.0, actual.1, actual.2, actual.3, actual.4);
+    assert_eq!(actual, (true, true, true, true, true));
+    println!("INPUT_REVOCATION_NATIVE=pass workers=2 shared_modifier=preserved foreign_key=preserved disable=before-return duplicate=inert reenable=same-worker cleanup=joined network_auth=false");
+}

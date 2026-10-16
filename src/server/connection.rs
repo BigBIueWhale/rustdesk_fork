@@ -2954,6 +2954,16 @@ struct InputWorker {
     completion: Arc<InputWorkerCompletion>,
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn set_peer_keyboard_disabled(
+    current: &mut bool,
+    disabled: bool,
+    _worker: Option<&InputWorker>,
+) -> ResultType<()> {
+    *current = disabled;
+    Ok(())
+}
+
 const INPUT_EXECUTION_CANCELLED: usize = 1;
 const INPUT_EXECUTION_ACTIVE: usize = 2;
 
@@ -10680,6 +10690,11 @@ impl Connection {
         }
         if let Ok(q) = o.disable_keyboard.enum_value() {
             if q != BoolOption::NotSet {
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                set_peer_keyboard_disabled(
+                    &mut self.disable_keyboard, q == BoolOption::Yes, self.input_worker.as_ref(),
+                ).await?;
+                #[cfg(any(target_os = "android", target_os = "ios"))]
                 self.disable_keyboard = q == BoolOption::Yes;
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 self.refresh_cm_clipboard_authority();

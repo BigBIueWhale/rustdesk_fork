@@ -14896,7 +14896,7 @@ empty-directory recursion repeated the full absolute prefix in every returned di
 scanner now returns only entries. Flat reads and empty-directory publication reserve the complete
 UTF-8 path with the existing conservative checked byte estimator before copying it into a result.
 Scanned-entry, directory and depth quotas are unchanged, including hidden-entry accounting and the
-inclusive 435-byte/refused 434-byte relative-file-path fixture. This closes the omitted-path estimate,
+inclusive 435-byte/refused 434-byte Linux relative-file-path fixture. This closes the omitted-path estimate,
 not the broader response-envelope, JSON, cloning or installed resource obligations.
 
 Baseline `22fde885614e1cf8cda639f0f77bfc6a2c7ca67e` failed both new real-directory regressions:
@@ -14923,6 +14923,27 @@ Baseline raw `hbb-common-fs-run.wDYVlb1X1c.serial.log` is 87,576 bytes, SHA-256
 summaries and source/artifact receipts; executable bytes and full container stdout were ephemeral.
 These are ordinary-user Linux production-library outcomes, not independent attestations. Every
 broader OPEN obligation above remains required; no installed receiver or LPE boundary closes here.
+
+**JSON string expansion — Linux library A/B accepted; caller resource integration OPEN.**
+`4e9cc28e` counts path/name bytes emitted by the existing JSON serializer through a
+private checked writer before committing enumeration usage. The existing 128-byte
+metadata allowance includes the emitted string quotes; plain UTF-8 charges and
+entry/directory/depth limits remain unchanged. No serialized string copy or separate
+escape table is needed. Baseline `5e26dda6` admitted real Unix names and empty-directory
+paths whose JSON encoding alone exceeded the whole allowance; all three new regressions
+failed while 118 filesystem cases passed. At `4e9cc28e`, the byte-identical three cases
+passed with all 121 filesystem cases and 171 total tests in 190 VM seconds. They cover
+all C0 escapes, quotes, backslashes, empty/plain/Unicode strings, inclusive limits,
+unchanged usage after refusal and real-file recovery. The earlier relative-path test
+now derives its allowance from platform JSON encoding, retaining 435/434 on Linux.
+Sealed `enumeration-json-baseline-5e26dda6.json` and
+`enumeration-json-corrected-4e9cc28e.json` under `.harness-state/verifier-vm/` bind the
+exact source/artifact/results, unchanged source/control and endpoint captures, and
+joined bounded-RAM cleanup. Positive full stdout and executable bytes were ephemeral;
+the guest requires each named regression before exporting its result. This corrects
+the single-string estimate. Complete response envelopes, further JSON layers, retained
+copies/process memory, CM/viewer callers, installed receivers, other platforms and
+broader resource/native/release acceptance remain OPEN; no LPE closure is claimed.
 
 Receive blocks advance files monotonically. A terminal `Done` commits only the exact next index at the
 end of the whole admitted file list, after the active stream and retained staged handle are synchronized

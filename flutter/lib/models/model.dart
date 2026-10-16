@@ -277,8 +277,8 @@ class CachedPeerData {
       });
       data.streamType = map['streamType'];
       return data;
-    } catch (e) {
-      debugPrint('Failed to parse CachedPeerData: $e');
+    } catch (_) {
+      debugPrint('Failed to parse CachedPeerData');
       return null;
     }
   }

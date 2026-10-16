@@ -40,7 +40,7 @@ GATES=(
   "android-rust-check.sh|pinned offline aarch64 Android Rust check"
   "smoke-server.sh|runtime: portable VM-guest smoke + one-TCP/zero-UDP, fail-closed, keying, full session"
   "dart-verify.sh|flutter analyze lib/ (zero errors)"
-  "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"
+  "native-codec-watch.sh|native-codec source pins + advisory ledger synchronization"
   "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"
   "audit.sh|cargo-audit + cargo-deny (Rust advisory floor)"
   "dart-audit.sh|osv-scanner (Dart advisory floor)"

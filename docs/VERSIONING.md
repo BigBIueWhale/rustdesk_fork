@@ -35,15 +35,15 @@ indistinguishable — so they are separate, and `FORK_VERSION` is the one you bu
    [`requirements.html`](../requirements.html); no release identity changes occur while architecture is moving.
 2. **Update the machine inventory expectation.** Re-run the inventory mechanism and settle its expected counts
    against the same source tree that will be released.
-3. **Finalize the requirements hash.** Compute the final `requirements.html` SHA-256 and write the identical
-   value to the active codec ledger and hardening-status ledger. Run the native-codec watcher against that state.
-4. **Bump `FORK_VERSION` last.** Increment `N` only after source, requirements, inventory, and linked hashes
+3. **Review native-codec advisories.** Refresh the advisory dispositions in
+   [`NATIVE-CODEC-WATCH.md`](./NATIVE-CODEC-WATCH.md) against the pinned native source set and run
+   `bash scripts/native-codec-watch.sh` to check package, source-pin, and advisory-ledger synchronization.
+4. **Bump `FORK_VERSION` last.** Increment `N` only after source, requirements, inventory, and advisory dispositions
    are settled; update the matching top `CHANGELOG.md` heading/date in the release-preparation change.
 5. **Verify the complete tree.** Run `bash scripts/verify-release.sh` and resolve every failure without weakening
-   a gate. Any source or requirements change returns the sequence to step 1; any requirements change also
-   invalidates the hashes from step 3.
+   a gate. Any source or requirements change returns the sequence to step 1.
 6. **Commit the complete release source.** The commit contains the settled implementation, documentation,
-   inventory expectation, linked hash, version, and changelog. The worktree must then be clean.
+   inventory expectation, advisory dispositions, version, and changelog. The worktree must then be clean.
 7. **Push the exact clean `HEAD`.** Use `git push origin HEAD:master`. The build reads live `refs/heads/master` from `origin`
    and requires that full commit ID to equal the pinned local `HEAD` before
    and after verification and target builds.

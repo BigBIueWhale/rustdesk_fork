@@ -31,12 +31,6 @@ capabilities, with no-new-privileges, in the authenticated zero-NIC VM. The firs
 14-second transaction added no host listener and joined scratch/Docker/VM cleanup.
 Whole-document role classification and compression of redundant history remain **OPEN**.
 
-Current normative specification identity:
-
-```text
-f719905f84e62e525d9a0d87e120fc8e1444da083c2fd3f009add3537196b44f  requirements.html
-```
-
 ## Current Verdict
 
 **STOP-SHIP: the source topology is substantially hardened, but native and release evidence is incomplete.**
@@ -119,6 +113,7 @@ GitHub's platform reporting is distinct. No native/release acceptance follows.
 
 | Documentation scope | Retained classification |
 | --- | --- |
+| Release specification and codec provenance | `.harness-state/verifier-vm/codec-specification-provenance-390120c4.json` |
 | Appendix C dispositions | `.harness-state/verifier-vm/appendix-disposition-classification-a22e5d80-v2.json` |
 | Acquisition authority | `.harness-state/verifier-vm/acquisition-document-roles-951a4a8e.json` |
 | R-S19 session capabilities | `.harness-state/verifier-vm/capability-contract-document-role-d9a3e80c.json` |

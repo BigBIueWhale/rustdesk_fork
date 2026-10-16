@@ -14356,7 +14356,7 @@ if grep -qF -- '--with-root-containers' "$release_gate"; then
   release_gate_bad="$release_gate_bad retired-privileged-container-dispatch-present"
 fi
 grep -qF '"dart-verify.sh|flutter analyze lib/ (zero errors)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-verify"
-grep -qF '"native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"' "$release_gate" || release_gate_bad="$release_gate_bad missing-native-codec-watch"
+grep -qF '"native-codec-watch.sh|native-codec source pins + advisory ledger synchronization"' "$release_gate" || release_gate_bad="$release_gate_bad missing-native-codec-watch"
 grep -qF '"apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"' "$release_gate" || release_gate_bad="$release_gate_bad missing-apple-conform"
 grep -qF '"audit.sh|cargo-audit + cargo-deny (Rust advisory floor)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-rust-audit"
 grep -qF '"dart-audit.sh|osv-scanner (Dart advisory floor)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-audit"
@@ -14374,7 +14374,7 @@ expected = [
     "android-rust-check.sh|pinned offline aarch64 Android Rust check",
     "smoke-server.sh|runtime: portable VM-guest smoke + one-TCP/zero-UDP, fail-closed, keying, full session",
     "dart-verify.sh|flutter analyze lib/ (zero errors)",
-    "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin",
+    "native-codec-watch.sh|native-codec source pins + advisory ledger synchronization",
     "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks",
     "audit.sh|cargo-audit + cargo-deny (Rust advisory floor)",
     "dart-audit.sh|osv-scanner (Dart advisory floor)",

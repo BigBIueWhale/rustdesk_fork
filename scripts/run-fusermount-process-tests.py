@@ -72,8 +72,8 @@ def main():
             'pub mod platform { pub mod linux {\n'
             'use std::{io, os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd}, '
             'process::{Child, ChildStdout, ChildStderr, Command, ExitStatus}};\n' + owner + '\n}}\n'
-            f'#[path = "{repo / BASE}fusermount_fd.rs"] mod fusermount_fd;\n'
-            f'#[path = "{repo / BASE}fusermount_process.rs"] mod fusermount_process;\n')
+            f'#[path = "{repo / BASE / "fusermount_fd.rs"}"] mod fusermount_fd;\n'
+            f'#[path = "{repo / BASE / "fusermount_process.rs"}"] mod fusermount_process;\n')
         run(["cargo", "generate-lockfile", "--offline", *config], fixture, 30)
         lock_bytes = (fixture / "Cargo.lock").read_bytes()
         dependencies = []

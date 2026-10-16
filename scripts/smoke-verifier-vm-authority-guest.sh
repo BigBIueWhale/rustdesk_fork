@@ -3523,6 +3523,7 @@ run_focused_rust_tests() {
                 Cargo.lock Cargo.toml src/lib.rs src/client/io_loop.rs src/ui_cm_interface.rs
                 src/ipc.rs libs/hbb_common/src/fs.rs libs/hbb_common/src/fs/file_block.rs
                 src/flutter_ffi.rs src/client/file_trait.rs
+                src/server/connection.rs scripts/fixtures/cm-owner-before-cancel.rs
                 libs/hbb_common/protos/message.proto
                 scripts/run-file-receive-caller-tests.sh scripts/linux-parent-test-build.sh
             )
@@ -3536,6 +3537,18 @@ run_focused_rust_tests() {
                 ui_cm_interface::tests::r_s11fi_cm_stalled_directory_response_retires_native_socket_owner
                 ui_cm_interface::tests::r_s11fi_cm_stalled_read_block_retires_native_source_and_recovers
                 flutter_ffi::file_job_id_tests::typed_file_job_ids_use_the_process_allocator
+                server::connection::cm_startup_lifecycle_tests::closed_desktop_readiness_is_terminal
+                server::connection::cm_startup_lifecycle_tests::desktop_readiness_signal_remains_a_wake_only
+                server::connection::cm_startup_lifecycle_tests::desktop_readiness_timeout_preserves_the_pending_wake
+                server::connection::cm_startup_lifecycle_tests::cm_stream_ready_requires_the_exact_positive_signal
+                server::connection::cm_startup_lifecycle_tests::closed_cm_stream_ready_is_terminal
+                server::connection::cm_startup_lifecycle_tests::cm_stream_ready_timeout_is_terminal
+                server::connection::cm_startup_lifecycle_tests::connection_owner_closure_cancels_pending_cm_bootstrap
+                server::connection::cm_startup_lifecycle_tests::live_connection_allows_cm_bootstrap_completion
+                server::connection::cm_startup_lifecycle_tests::completed_bootstrap_allows_bounded_terminal_completion_after_owner_closure
+                server::connection::cm_startup_lifecycle_tests::cm_command_queue_has_exact_capacity_and_recovers_after_dequeue
+                server::connection::cm_startup_lifecycle_tests::cm_closed_owner_prevents_unacknowledged_native_bootstrap_io
+                server::connection::cm_startup_lifecycle_tests::cm_positive_bootstrap_preserves_native_terminal_io
             )
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             container_name=rustdesk-viewer-credential-tests
@@ -4814,8 +4827,8 @@ PY
             && [ "$(grep -Fc 'RESOLUTION_RESTORATION_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'resolution-restoration artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
-        [ "${#result_lines[@]}" -eq 3 ] || fail 'file-receive parent summary count differs'
-        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=9 groups=3 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 4 ] || fail 'file-receive parent summary count differs'
+        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=21 groups=4 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FILE_RECEIVE_PARENT_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$' "$output")" -eq 8 ] \
             || fail 'file-receive parent artifact or named outcomes differ'
@@ -5192,9 +5205,11 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
-            [ "$tests_passed" -eq 9 ] || fail 'file-receive parent total differs'
-            grep -E '^test ((client::io_loop|ui_cm_interface)::tests::r_s11fi_.*|flutter_ffi::file_job_id_tests::.*) \.\.\. ok$|^FILE_RECEIVE_PARENT_BUILD=pass |^FILE_RECEIVE_PARENT_ARTIFACT=' "$output"
-            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=9 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 21 ] || fail 'file-receive parent total differs'
+            grep -Fxq 'CM_OWNER_BEFORE=pass source=c16ec444530f001145395c3d4974d2d5d57df960 function_sha256=a1973487bd83eed992b357615b7024bf4e96fe243250e668e15dd1c0f355be53 fixture_sha256=20420e74f04c3f443d6930651b6bf37a592a730c16d87caa01c5ec5a4dc3d71d' "$output" \
+                || fail 'CM owner counterexample receipt differs'
+            grep -E '^test ((client::io_loop|ui_cm_interface)::tests::r_s11fi_.*|flutter_ffi::file_job_id_tests::.*|server::connection::cm_startup_lifecycle_tests::.*) \.\.\. ok$|^FILE_RECEIVE_PARENT_BUILD=pass |^FILE_RECEIVE_PARENT_ARTIFACT=|^CM_OWNER_BEFORE=' "$output"
+            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=21 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then

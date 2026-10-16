@@ -5591,9 +5591,7 @@ for binding in \
   'tokio::select! {' \
   'biased;' \
   'result = &mut task => Some(result)' \
-  '_ = &mut bootstrap_complete => {' \
-  'time::timeout(CM_OWNER_TERMINAL_DRAIN_TIMEOUT, &mut task)' \
-  '_ = &mut owner_closed => None'; do
+  'time::timeout(CM_OWNER_TERMINAL_DRAIN_TIMEOUT, &mut task)'; do
   grep -qF "$binding" <<<"$cm_task_owner" || r_s11c27t="$r_s11c27t task-owner-binding-missing"
 done
 for binding in \

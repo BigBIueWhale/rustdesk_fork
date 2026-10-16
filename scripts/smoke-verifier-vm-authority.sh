@@ -5938,7 +5938,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = reso
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
     mapfile -t file_receive_parent_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=9 groups=3 unchanged=before-between-after execution_seconds=[0-9]+$'
+            'FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=21 groups=4 unchanged=before-between-after execution_seconds=[0-9]+$'
     )
     [ "${#file_receive_parent_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'FILE_RECEIVE_PARENT_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -5950,11 +5950,14 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file
         "ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN source=exact-pushed network=none outputs=readonly-publication" \
         'file-receive fresh bridge generation'
     require_exact_fixed_receipt \
-        "FILE_RECEIVE_PARENT_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=9 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "FILE_RECEIVE_PARENT_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=21 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'file-receive parent compilation and native caller results'
     require_exact_fixed_receipt \
         'FILE_RECEIVE_PARENT_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only' \
         'file-receive completed bridge phase storage retirement'
+    require_exact_fixed_receipt \
+        'CM_OWNER_BEFORE=pass source=c16ec444530f001145395c3d4974d2d5d57df960 function_sha256=a1973487bd83eed992b357615b7024bf4e96fe243250e668e15dd1c0f355be53 fixture_sha256=20420e74f04c3f443d6930651b6bf37a592a730c16d87caa01c5ec5a4dc3d71d' \
+        'native CM owner counterexample identity'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'file-receive parent cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
     mapfile -t viewer_credential_artifacts < <(
@@ -7142,7 +7145,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'RESOLUTION_RESTORATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=6 scope=production-record-identity-with-callback-fixtures network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
-        printf 'FILE_RECEIVE_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=9 scope=complete-parent-file-receive-callers network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'FILE_RECEIVE_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=21 scope=complete-parent-file-receive-callers network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
         printf 'VIEWER_CREDENTIAL_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=11 scope=production-peer-credentials-and-exported-session-factory network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

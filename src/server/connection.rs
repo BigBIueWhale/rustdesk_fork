@@ -8465,22 +8465,30 @@ impl Connection {
         F: std::future::Future<Output = T>,
     {
         let mut owner_closed = owner_closed;
-        let mut bootstrap_complete = bootstrap_complete;
+        let mut bootstrap_complete = bootstrap_complete.fuse();
         let mut task = Box::pin(task);
-        tokio::select! {
-            biased;
-            result = &mut task => Some(result),
-            _ = &mut bootstrap_complete => {
-                tokio::select! {
-                    result = &mut task => Some(result),
-                    _ = &mut owner_closed => {
-                        time::timeout(CM_OWNER_TERMINAL_DRAIN_TIMEOUT, &mut task)
-                            .await
-                            .ok()
+        loop {
+            tokio::select! {
+                biased;
+                bootstrap = &mut bootstrap_complete => {
+                    match bootstrap {
+                        Ok(()) => break,
+                        // A closed signal grants no terminal-drain authority. Its fused
+                        // receiver retires while the worker still owns its exact result.
+                        Err(_) => continue,
                     }
                 }
+                _ = &mut owner_closed => return None,
+                result = &mut task => return Some(result),
             }
-            _ = &mut owner_closed => None,
+        }
+        tokio::select! {
+            result = &mut task => Some(result),
+            _ = &mut owner_closed => {
+                time::timeout(CM_OWNER_TERMINAL_DRAIN_TIMEOUT, &mut task)
+                    .await
+                    .ok()
+            }
         }
     }
 
@@ -12999,6 +13007,83 @@ async fn wait_for_linux_cm_stream_ready(
 #[cfg(all(test, target_os = "linux"))]
 mod cm_startup_lifecycle_tests {
     use super::*;
+
+    struct BeforeConnection;
+    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/fixtures/cm-owner-before-cancel.rs"));
+
+    #[derive(Clone, Copy)]
+    enum BootstrapSignal {
+        Pending,
+        Closed,
+        Positive,
+    }
+
+    async fn native_cm_owner_observation(
+        before: bool,
+        preclosed: bool,
+        signal: BootstrapSignal,
+    ) -> (Option<u8>, Vec<u8>) {
+        use tokio::io::AsyncReadExt;
+
+        let (owner, owner_closed) = oneshot::channel();
+        let mut owner = Some(owner);
+        if preclosed {
+            owner.take();
+        }
+        let (bootstrap, bootstrap_complete) = oneshot::channel();
+        let mut bootstrap = Some(bootstrap);
+        match signal {
+            BootstrapSignal::Pending => {}
+            BootstrapSignal::Closed => { bootstrap.take(); }
+            BootstrapSignal::Positive => { bootstrap.take().unwrap().send(()).unwrap(); }
+        }
+        let (writer, mut peer) = tokio::net::UnixStream::pair().unwrap();
+        writer.writable().await.unwrap();
+        let worker = async move {
+            let mut stream = ipc::ConnectionTmpl::new(writer);
+            stream.send(&ipc::Data::Close).await.unwrap();
+            7u8
+        };
+        let result = time::timeout(Duration::from_secs(1), async {
+            if before {
+                BeforeConnection::run_cm_ipc_until_owner_closed(owner_closed, bootstrap_complete, worker).await
+            } else {
+                Connection::run_cm_ipc_until_owner_closed(owner_closed, bootstrap_complete, worker).await
+            }
+        }).await.expect("the exact guard invocation must terminate without a detached worker");
+        drop(owner);
+        drop(bootstrap);
+        let mut bytes = Vec::new();
+        time::timeout(Duration::from_secs(1), peer.read_to_end(&mut bytes))
+            .await.expect("the exact native writer must close").unwrap();
+        (result, bytes)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cm_closed_owner_prevents_unacknowledged_native_bootstrap_io() {
+        for signal in [BootstrapSignal::Pending, BootstrapSignal::Closed] {
+            let (before_result, before_bytes) = native_cm_owner_observation(true, true, signal).await;
+            assert_eq!(before_result, Some(7), "the old guard must reproduce worker-first admission");
+            assert!(!before_bytes.is_empty(), "the old guard must emit actual kernel-socket bytes");
+            let (result, bytes) = native_cm_owner_observation(false, true, signal).await;
+            assert_eq!(result, None, "closed ownership must win before worker polling");
+            assert!(bytes.is_empty(), "unacknowledged startup must emit no native frame after owner closure");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cm_positive_bootstrap_preserves_native_terminal_io() {
+        for before in [true, false] {
+            for (preclosed, signal) in [
+                (false, BootstrapSignal::Pending),
+                (true, BootstrapSignal::Positive),
+            ] {
+                let (result, bytes) = native_cm_owner_observation(before, preclosed, signal).await;
+                assert_eq!(result, Some(7));
+                assert!(!bytes.is_empty(), "a live owner or positive bootstrap must permit native completion");
+            }
+        }
+    }
 
     #[tokio::test(flavor = "current_thread")]
     async fn closed_desktop_readiness_is_terminal() {

@@ -103,6 +103,16 @@ Retained documentation classifications are indexed below. They establish documen
 comparisons, not compiler, artifact, scanner, native or release acceptance. Completed repair
 narratives and size comparisons remain in Git history.
 
+The inherited `libs/scrap/README.md` and `libs/enigo/README.md` are deleted.
+Scrap's standalone crates.io example, byte-array frame contract and platform-minimum
+claims do not describe the fork's timed `TraitCapturer` and pixel-buffer/texture
+API. Enigo's upstream CI badges, unchecked example and system-XDO installation
+instructions do not describe the private-library input backend. Its explicit
+README reference and obsolete CI badge metadata are removed. Upstream repository,
+author and license metadata and Enigo's license file remain. The existing fork
+contribution and isolated-verification guides remain the entry points. This is
+documentation/package-metadata cleanup; no native or security acceptance changes.
+
 `docs/CONTRIBUTING.md` is the fork's single contribution guide. The thirteen inherited
 translations and upstream review email/Discord routing are removed. Focused commits,
 review, relevant behavioral tests, DCO sign-off, license and attribution remain; the
@@ -12794,6 +12804,19 @@ are deleted. Connection tokens contain only one nonzero session correlation ID;
 unknown fields, retired credential/provenance payloads and malformed IDs refuse.
 Invalid-token diagnostics contain no supplied value.
 
+**Direct credential API follow-up — OPEN/PARKED by explicit user pivot.**
+The pushed candidate removes the retired shared-password routing flag from Dart,
+native and web session factories and handoffs. At `0248c624`, fresh bridge generation
+and the full Linux Flutter-feature Rust library build passed eleven focused tests,
+including twelve explicit/empty-password session-factory schedules. The Dart
+credential cohort stopped at the formatter check for `test/peer_model_test.dart`
+before behavioral execution; it is not accepted. No formatting repair or rerun was
+made after the pivot. `shared-password-native-0248c624.json` and
+`shared-password-parked-0248c624.json` under `.harness-state/verifier-vm/` retain the
+exact evidence and joined bounded-RAM/VM cleanup. Dart compilation/behavior, native
+bus/window/peer handoff and installed/platform acceptance remain open. Do not
+automatically resume this item.
+
 The complete Linux library with `linux-pkg-config` ran the same eight production
 handler/storage/serde cases: valid-storage baseline `7713b5c6` had six assertion
 failures and two passing controls; `0295d420` passed all eight. The fixture supplies
@@ -12804,9 +12827,10 @@ and `viewer-credential-corrected-0295d420.json` under `.harness-state/verifier-v
 bind exact source/artifact/results, unchanged test/fixture inputs, source and
 endpoint freezes, and joined bounded-RAM cleanup. The earlier missing-key run and
 fixture-shape refusal are retained as unaccepted setup evidence.
-This is assistant-observed Linux component execution. Full Flutter-feature/bus,
-native window/token/CPace handoff, cross-version, installed/platform and independent
-acceptance remain OPEN; no production log leak or new LPE closure is claimed.
+This is assistant-observed Linux component execution; the parked follow-up above
+separately compiles the Linux Flutter-feature parent. Actual native bus/window/token/
+CPace handoff, cross-version, installed/platform and independent acceptance remain
+OPEN; no production log leak or new LPE closure is claimed.
 
 The Recent/Favorite presentation mapper no longer exports the legacy password hash. Dart `Peer`
 has no credential/group fields, outbound serializers, copy/equality APIs or redundant constructor;

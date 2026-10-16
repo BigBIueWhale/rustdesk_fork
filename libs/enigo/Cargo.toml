@@ -9,14 +9,9 @@ description = "Enigo lets you control your mouse and keyboard in an abstract way
 documentation = "https://docs.rs/enigo/"
 homepage = "https://github.com/enigo-rs/enigo"
 repository = "https://github.com/enigo-rs/enigo"
-readme = "README.md"
 keywords = ["input", "mouse", "testing", "keyboard", "automation"]
 categories = ["development-tools::testing", "api-bindings", "hardware-support"]
 license = "MIT"
-
-[badges]
-travis-ci = { repository = "enigo-rs/enigo" }
-appveyor = { repository = "pythoneer/enigo-85xiy" }
 
 [dependencies]
 serde = { version = "1.0", optional = true }

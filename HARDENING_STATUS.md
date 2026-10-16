@@ -11598,8 +11598,8 @@ reproduction remain OPEN; listener IPv4-only binding is a separate R-D5 property
 
 **NATIVE COMPONENT EXPOSURE CONFIRMED; CORRECTION OPEN — hostname resolution transport and lifetime (R-SV5/R-SV10).**
 The actual viewer path is `Client::_start` → `connect_tcp_local` → `FramedStream::new`
-(`src/client.rs:510`, `libs/hbb_common/src/socket_client.rs:79`, `tcp.rs:466`). String targets
-use Tokio 1.44.2's blocking standard-library resolver; Rust 1.75 calls libc `getaddrinfo`
+with name lookup now explicit in the connector. String targets use Tokio
+1.44.2's blocking standard-library resolver; Rust 1.75 calls libc `getaddrinfo`
 with a stream hint. Resolution precedes the per-address TCP-connect timeout. Reviewed glibc 2.27
 source creates datagram sockets for ordinary DNS and, with multiple returned addresses, for
 source-address sorting probes. TCP DNS configuration alone does not remove the latter path.
@@ -11647,13 +11647,19 @@ Product correction, unrestricted/whole-viewer behavior, platform DNS-policy
 integration and exact-current artifacts remain OPEN. Literal-only admission,
 TCP DNS configuration or a timeout wrapper do not establish the required
 transport/lifetime correction.
-**Resolver boundary — source separated; native replay pending.**
+**Resolver boundary — source separated; named Linux comparison accepted.**
 `FramedStream::new` accepts one `SocketAddr`; it no longer resolves names or
 selects candidates. The existing `connect_tcp_local` facade owns those steps,
-and socket/option failures retain their native cause. Hostname probes now use
-the same facade as the viewer. The blocking lookup still exists there; its
-transport and cancellation correction remain OPEN. The focused native replay
-adds real literal-connect and old/current occupied-bind error comparisons.
+and returned socket/connect and TCP_NODELAY failures retain their native cause.
+Hostname probes now use the same facade as the viewer. The blocking lookup still exists there; its
+transport and cancellation correction remain OPEN. Exact `cf58ee67` passed
+173 tests and nine connector diagnostic processes in 190 VM seconds. Both the
+exact earlier constructor and current constructor connected to the owned
+loopback peer; occupied bind erased the old native cause, while the current
+constructor and connector retained `EADDRINUSE`. The old method is test-only.
+Frozen source, stable artifacts, unchanged host endpoints and joined bounded-RAM
+retirement are bound in `.harness-state/verifier-vm/tcp-resolution-boundary-cf58ee67.json`.
+Full-root/video-probe, other-platform, installed and release acceptance remain OPEN.
 Primary references: [Rust 1.75 lookup](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys_common/net.rs#L181),
 [glibc 2.27 sorting](https://github.com/bminor/glibc/blob/glibc-2.27/sysdeps/posix/getaddrinfo.c#L2187),
 [glibc DNS sockets](https://github.com/bminor/glibc/blob/glibc-2.27/resolv/res_send.c#L858).

@@ -94,6 +94,7 @@ class DraggableChatWindow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               IconButton(
+                  tooltip: translate('Minimize'),
                   onPressed: () {
                     chatModel.hideChatWindowOverlay();
                   },
@@ -102,6 +103,7 @@ class DraggableChatWindow extends StatelessWidget {
                     color: Colors.white,
                   )),
               IconButton(
+                  tooltip: translate('Close'),
                   onPressed: () {
                     chatModel.hideChatWindowOverlay();
                     chatModel.hideChatIconOverlay();

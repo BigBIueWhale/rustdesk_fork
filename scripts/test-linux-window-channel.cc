@@ -79,7 +79,7 @@ void test_messenger_init(TestMessenger* messenger) {
 void MessengerInterface(FlBinaryMessengerInterface* iface) {
   iface->set_message_handler_on_channel = SetHandler;
   iface->send_response = +[](FlBinaryMessenger* messenger,
-      FlBinaryMessengerResponseHandle*, GBytes* response, GError** error) {
+      FlBinaryMessengerResponseHandle*, GBytes* response, GError** error) -> gboolean {
     auto* state = reinterpret_cast<TestMessenger*>(messenger)->state;
     ++state->responses;
     if (state->refuse_response) {
@@ -99,7 +99,7 @@ void MessengerInterface(FlBinaryMessengerInterface* iface) {
     g_autofree gchar* method = nullptr;
     g_autoptr(FlValue) args = nullptr;
     g_autoptr(GError) error = nullptr;
-    Check(fl_method_codec_decode_method_call(FL_METHOD_CODEC(codec), message,
+    Check(FL_METHOD_CODEC_GET_CLASS(codec)->decode_method_call(FL_METHOD_CODEC(codec), message,
         &method, &args, &error), "outbound-native-codec-decode");
     if (args != nullptr) {
       auto* payload = fl_value_lookup_string(args, "arguments");
@@ -127,7 +127,7 @@ void MessengerInterface(FlBinaryMessengerInterface* iface) {
 
 typedef struct { FlBinaryMessengerResponseHandle parent; } TestHandle;
 typedef struct { FlBinaryMessengerResponseHandleClass parent; } TestHandleClass;
-G_DEFINE_TYPE(TestHandle, test_handle, FL_TYPE_BINARY_MESSENGER_RESPONSE_HANDLE)
+G_DEFINE_TYPE(TestHandle, test_handle, fl_binary_messenger_response_handle_get_type())
 void test_handle_class_init(TestHandleClass*) {}
 void test_handle_init(TestHandle*) {}
 
@@ -159,7 +159,7 @@ void Run(const std::string& name, int reply_kind) {
   fl_value_set_string_take(payload, "connToken", fl_value_new_string(kToken));
   g_autoptr(GError) error = nullptr;
   if (reply_kind == 1) {
-    target->state->reply = fl_method_codec_encode_error_envelope(
+    target->state->reply = FL_METHOD_CODEC_GET_CLASS(codec)->encode_error_envelope(
         FL_METHOD_CODEC(codec), "declined", "Request declined", nullptr, &error);
   } else if (reply_kind == 2) {
     target->state->reply = g_bytes_new(nullptr, 0);
@@ -167,7 +167,7 @@ void Run(const std::string& name, int reply_kind) {
     const guint8 malformed[] = {255};
     target->state->reply = g_bytes_new(malformed, sizeof malformed);
   } else {
-    target->state->reply = fl_method_codec_encode_success_envelope(
+    target->state->reply = FL_METHOD_CODEC_GET_CLASS(codec)->encode_success_envelope(
         FL_METHOD_CODEC(codec), payload, &error);
   }
   const bool self = name == "self-error";
@@ -180,7 +180,7 @@ void Run(const std::string& name, int reply_kind) {
   } else {
     auto* handle = FL_BINARY_MESSENGER_RESPONSE_HANDLE(g_object_new(test_handle_get_type(), nullptr));
     g_object_weak_ref(G_OBJECT(handle), Retired, &handle_retired);
-    g_autoptr(GBytes) request = fl_method_codec_encode_method_call(
+    g_autoptr(GBytes) request = FL_METHOD_CODEC_GET_CLASS(codec)->encode_method_call(
         FL_METHOD_CODEC(codec), "forward", payload, &error);
     source->state->handler(FL_BINARY_MESSENGER(source), kChannel, request,
         handle, source->state->handler_data);
@@ -198,7 +198,7 @@ void Run(const std::string& name, int reply_kind) {
     if (!source->state->refuse_response) {
       Check(source->state->received != nullptr, "caller-received-reply");
       if (source->state->received != nullptr) {
-        g_autoptr(FlMethodResponse) response = fl_method_codec_decode_response(
+        g_autoptr(FlMethodResponse) response = FL_METHOD_CODEC_GET_CLASS(codec)->decode_response(
             FL_METHOD_CODEC(codec), source->state->received, &error);
         Check(response != nullptr, "caller-reply-native-decode");
         if ((reply_kind == 3 || name == "transport-error") && response != nullptr) {

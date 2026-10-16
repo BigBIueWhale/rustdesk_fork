@@ -3816,18 +3816,21 @@ mod tests {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    async fn admitted_cm_raw_test(
+    async fn admitted_cm_transport_test<S>(
         id: i32,
         conn_type: ipc::CmAuthConnType,
+        runner_io: S,
+        peer_io: S,
     ) -> (
         tokio::task::JoinHandle<()>,
-        ipc::ConnectionTmpl<tokio::io::DuplexStream>,
+        ipc::ConnectionTmpl<S>,
         CmTaskOwnerTestUi,
-    ) {
+    )
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
         assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
         let ui = CmTaskOwnerTestUi::default();
-        let (runner_io, peer_io) =
-            tokio::io::duplex(ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES * 2);
         let mut runner_stream = ipc::ConnectionTmpl::new(runner_io);
         runner_stream.set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);
         let mut peer = ipc::ConnectionTmpl::new(peer_io);
@@ -3874,6 +3877,201 @@ mod tests {
         .await
         .expect("authenticated CM file login must be admitted");
         (task, peer, ui)
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn admitted_cm_raw_test(
+        id: i32,
+        conn_type: ipc::CmAuthConnType,
+    ) -> (
+        tokio::task::JoinHandle<()>,
+        ipc::ConnectionTmpl<tokio::io::DuplexStream>,
+        CmTaskOwnerTestUi,
+    ) {
+        let (runner_io, peer_io) = tokio::io::duplex(ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES * 2);
+        admitted_cm_transport_test(id, conn_type, runner_io, peer_io).await
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn admitted_cm_native_output_test(
+        id: i32,
+    ) -> (
+        tokio::task::JoinHandle<()>,
+        ipc::ConnectionTmpl<tokio::net::UnixStream>,
+        std::os::unix::net::UnixStream,
+        CmTaskOwnerTestUi,
+    ) {
+        use hbb_common::libc;
+        use std::os::fd::AsRawFd;
+
+        let (runner, peer) = std::os::unix::net::UnixStream::pair().unwrap();
+        let requested: libc::c_int = 4096;
+        assert_eq!(unsafe {
+            libc::setsockopt(runner.as_raw_fd(), libc::SOL_SOCKET, libc::SO_SNDBUF,
+                (&requested as *const libc::c_int).cast(), std::mem::size_of_val(&requested) as _)
+        }, 0);
+        let mut actual: libc::c_int = 0;
+        let mut size = std::mem::size_of_val(&actual) as libc::socklen_t;
+        assert_eq!(unsafe {
+            libc::getsockopt(runner.as_raw_fd(), libc::SOL_SOCKET, libc::SO_SNDBUF,
+                (&mut actual as *mut libc::c_int).cast(), &mut size)
+        }, 0);
+        assert!(actual > 0 && actual < 64 * 1024);
+        runner.set_nonblocking(true).unwrap();
+        peer.set_nonblocking(true).unwrap();
+        let observer = peer.try_clone().unwrap();
+        let (task, peer, ui) = admitted_cm_transport_test(
+            id, ipc::CmAuthConnType::FileTransfer,
+            tokio::net::UnixStream::from_std(runner).unwrap(),
+            tokio::net::UnixStream::from_std(peer).unwrap(),
+        ).await;
+        (task, peer, observer, ui)
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn observe_cm_native_output(socket: &std::os::unix::net::UnixStream) {
+        use hbb_common::libc;
+        use std::os::fd::AsRawFd;
+
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let mut byte = 0u8;
+                let count = unsafe {
+                    libc::recv(socket.as_raw_fd(), (&mut byte as *mut u8).cast(), 1,
+                        libc::MSG_PEEK | libc::MSG_DONTWAIT)
+                };
+                if count == 1 { break; }
+                assert_eq!(count, -1, "the native writer must remain connected");
+                assert_eq!(std::io::Error::last_os_error().kind(), std::io::ErrorKind::WouldBlock);
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            }
+        }).await.expect("the actual kernel socket must contain response bytes");
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn retire_cm_stalled_output_test(
+        mut task: tokio::task::JoinHandle<()>,
+        id: i32,
+        generation: i64,
+        ui: &CmTaskOwnerTestUi,
+        stale_sender: CmEgressSender,
+    ) {
+        let natural = match tokio::time::timeout(
+            std::time::Duration::from_millis(6500), &mut task,
+        ).await {
+            Ok(result) => { result.expect("CM response timeout must not panic"); true }
+            Err(_) => {
+                task.abort();
+                assert!(task.await.unwrap_err().is_cancelled());
+                false
+            }
+        };
+        assert_eq!(*lock_cm_egress_test(&ui.removed), vec![(id, generation, true)]);
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert!(matches!(stale_sender.send(Data::Close), Err(CmEgressAdmissionError::ReceiverGone)));
+        assert!(natural, "CM stalled output required watchdog cancellation instead of terminal retirement");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11fi_cm_stalled_directory_response_retires_native_socket_owner() {
+        let id = 2_000_200_020;
+        let temp = CmFileTestDir::new("native_directory_output");
+        for index in 0..512 {
+            std::fs::write(temp.join(&format!("{index:04}_{}", "n".repeat(192))), b"keep").unwrap();
+        }
+        let (task, mut peer, observer, ui) = admitted_cm_native_output_test(id).await;
+        let generation = CLIENTS.read().unwrap().clients[&id].registry_generation;
+        let stale_sender = cm_egress_sender(id).unwrap();
+        peer.send(&Data::AuthorizedFS {
+            cm_auth_token: "test-token".to_owned(),
+            fs: ipc::FS::ReadDir { dir: get_string(&temp.path), include_hidden: true, request_id: 7 },
+        }).await.unwrap();
+        observe_cm_native_output(&observer).await;
+        retire_cm_stalled_output_test(task, id, generation, &ui, stale_sender).await;
+        assert_eq!(std::fs::read_dir(&temp.path).unwrap().count(), 512);
+
+        let (mut task, mut peer, _observer, ui) = admitted_cm_native_output_test(id).await;
+        assert!(CLIENTS.read().unwrap().clients[&id].registry_generation > generation);
+        peer.send(&Data::AuthorizedFS {
+            cm_auth_token: "test-token".to_owned(),
+            fs: ipc::FS::ReadDir { dir: get_string(&temp.path), include_hidden: true, request_id: 8 },
+        }).await.unwrap();
+        let response = tokio::time::timeout(std::time::Duration::from_secs(2), peer.next())
+            .await.unwrap().unwrap().unwrap();
+        let Data::CmFileResponse(envelope) = response else { panic!("expected typed directory reply"); };
+        let ipc::CmFileResponseKind::ReadDirectory { request_id, result: Ok(directory), .. } =
+            *envelope.response else { panic!("expected fresh directory result"); };
+        assert_eq!(request_id, 8);
+        assert_eq!(directory.entries.len(), 512);
+        assert_eq!(directory.path, get_string(&temp.path));
+        peer.send(&Data::Close).await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), &mut task).await.unwrap().unwrap();
+        assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11fi_cm_stalled_read_block_retires_native_source_and_recovers() {
+        let id = 2_000_200_021;
+        let temp = CmFileTestDir::new("native_read_output");
+        let source = temp.join("source.zip");
+        let content = vec![0x5a; 128 * 1024];
+        std::fs::write(&source, &content).unwrap();
+        let request = Data::AuthorizedFS {
+            cm_auth_token: "test-token".to_owned(),
+            fs: ipc::FS::ReadFile { path: get_string(&source), id: 17, file_num: 0,
+                include_hidden: true, conn_id: id, overwrite_detection: false, generation: 4 },
+        };
+        let (task, mut peer, observer, ui) = admitted_cm_native_output_test(id).await;
+        let generation = CLIENTS.read().unwrap().clients[&id].registry_generation;
+        let stale_sender = cm_egress_sender(id).unwrap();
+        peer.send(&request).await.unwrap();
+        for expected_init in [true, false] {
+            let response = tokio::time::timeout(std::time::Duration::from_secs(2), peer.next())
+                .await.unwrap().unwrap().unwrap();
+            let Data::CmFileResponse(envelope) = response else { panic!("expected typed file reply"); };
+            assert!(match *envelope.response {
+                ipc::CmFileResponseKind::ReadJobInit { id: 17, generation: 4, result: Ok(_) } => expected_init,
+                ipc::CmFileResponseKind::ReadBlock { id: 17, generation: 4, file_num: 0, compressed: false, .. } => !expected_init,
+                _ => false,
+            });
+        }
+        observe_cm_native_output(&observer).await;
+        retire_cm_stalled_output_test(task, id, generation, &ui, stale_sender).await;
+        assert_eq!(std::fs::read(&source).unwrap(), content);
+        let source_open = std::fs::read_dir("/proc/self/fd").unwrap().any(|entry| {
+            match std::fs::read_link(entry.unwrap().path()) {
+                Ok(path) => path == source,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                Err(error) => panic!("inspect native source handle: {error}"),
+            }
+        });
+        assert!(!source_open, "the retired CM runner must close its exact source descriptor");
+
+        let (mut task, mut peer, _observer, ui) = admitted_cm_native_output_test(id).await;
+        assert!(CLIENTS.read().unwrap().clients[&id].registry_generation > generation);
+        peer.send(&request).await.unwrap();
+        let mut received = Vec::new();
+        loop {
+            let response = tokio::time::timeout(std::time::Duration::from_secs(2), peer.next())
+                .await.unwrap().unwrap().unwrap();
+            let Data::CmFileResponse(envelope) = response else { panic!("expected typed file reply"); };
+            match *envelope.response {
+                ipc::CmFileResponseKind::ReadJobInit { id: 17, generation: 4, result: Ok(_) } => {}
+                ipc::CmFileResponseKind::ReadBlock { id: 17, generation: 4, file_num: 0, compressed: false, .. } => {
+                    let raw = tokio::time::timeout(std::time::Duration::from_secs(2), peer.next_raw())
+                        .await.unwrap().unwrap();
+                    received.extend_from_slice(&raw);
+                }
+                ipc::CmFileResponseKind::ReadDone { id: 17, generation: 4, file_num: 1 } => break,
+                reply => panic!("unexpected fresh-transfer reply: {reply:?}"),
+            }
+        }
+        assert_eq!(received, content);
+        peer.send(&Data::Close).await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), &mut task).await.unwrap().unwrap();
+        assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

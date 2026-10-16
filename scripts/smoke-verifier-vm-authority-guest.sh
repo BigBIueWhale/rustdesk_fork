@@ -2675,14 +2675,18 @@ generate_focused_rust_flutter_bridge() {
     CONTAINER_ID=
     "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
     rm -rf -- "$codegen_source" "$codegen_work"
-    if [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+    if [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
         [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
             && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
             || fail 'bridge preparation left a container or image before storage retirement'
         sync -f "$ROOT"
         fstrim --verbose / >"$ROOT/bridge-retirement.trim" \
             || fail 'disposable guest root does not support completed-tool discard'
-        printf 'VIEWER_CREDENTIAL_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
+        if [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+            printf 'VIEWER_CREDENTIAL_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
+        else
+            printf 'FILE_RECEIVE_PARENT_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
+        fi
     fi
     [ "$(grep -Fxc 'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' "$output")" -eq 1 ] \
         || fail 'direct-password generated API absence receipt differs'
@@ -3529,6 +3533,8 @@ run_focused_rust_tests() {
                 client::io_loop::tests::r_s11fi_next_file_setup_failure_retires_only_the_viewer_job
                 ui_cm_interface::tests::r_s11fi_cm_next_file_setup_failure_emits_exact_failure_and_refuses_done
                 ui_cm_interface::tests::r_s11fi_cm_replaced_sidecars_preserve_foreign_files_and_report_cleanup
+                ui_cm_interface::tests::r_s11fi_cm_stalled_directory_response_retires_native_socket_owner
+                ui_cm_interface::tests::r_s11fi_cm_stalled_read_block_retires_native_source_and_recovers
                 flutter_ffi::file_job_id_tests::typed_file_job_ids_use_the_process_allocator
             )
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
@@ -4809,9 +4815,9 @@ PY
             || fail 'resolution-restoration artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
         [ "${#result_lines[@]}" -eq 3 ] || fail 'file-receive parent summary count differs'
-        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=7 groups=3 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=9 groups=3 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FILE_RECEIVE_PARENT_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$' "$output")" -eq 6 ] \
+            && [ "$(grep -Ec '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$' "$output")" -eq 8 ] \
             || fail 'file-receive parent artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
         [ "${#result_lines[@]}" -eq 3 ] || fail 'viewer credential summary count differs'
@@ -5186,9 +5192,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
-            [ "$tests_passed" -eq 7 ] || fail 'file-receive parent total differs'
+            [ "$tests_passed" -eq 9 ] || fail 'file-receive parent total differs'
             grep -E '^test ((client::io_loop|ui_cm_interface)::tests::r_s11fi_.*|flutter_ffi::file_job_id_tests::.*) \.\.\. ok$|^FILE_RECEIVE_PARENT_BUILD=pass |^FILE_RECEIVE_PARENT_ARTIFACT=' "$output"
-            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=7 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=9 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then

@@ -1876,7 +1876,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
 - **R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement** — Source closed. Activity/service
   callbacks advance exact owner authority and remove live admission without joining I/O on Android’s component
   thread; one bounded process-lifetime coordinator owns the transferred tree, and replacement admission waits
-  for its exact drain ticket off-thread. APK/device lifecycle behavior remains open.
+  for its exact drain ticket off-thread. The duplicate source-text lifecycle checker and its shared-verifier
+  success claim are removed; the executable blocked-worker regressions in
+  `src/flutter.rs::mobile_session_lifecycle_tests` remain. APK/device lifecycle behavior remains open.
 - **R-S11er/R-S11e-179 desktop lock-screen mechanism authority** — Source closed. Linux and macOS use their one
   connection-owned physical key chord; the external-helper and generic-fallback surfaces are absent. Windows uses
   the fallible native `LockWorkStation` request and treats success only as initiation. Installed Linux, Windows,
@@ -11596,7 +11598,9 @@ validators and shared-library behavior, not a final product artifact or privileg
 client/URL/login dispatch, rendered UI, installed/platform artifacts, full-verifier integration and independent
 reproduction remain OPEN; listener IPv4-only binding is a separate R-D5 property.
 
-**NATIVE COMPONENT EXPOSURE CONFIRMED; CORRECTION OPEN — hostname resolution transport and lifetime (R-SV5/R-SV10).**
+**NATIVE COMPONENT EXPOSURE CONFIRMED; CORRECTION OPEN/PARKED — hostname resolution transport and lifetime (R-SV5/R-SV10).**
+Parked by explicit user request to change topic. Keep the unresolved transport/cancellation
+defect and retained evidence open; do not resume this item automatically.
 The actual viewer path is `Client::_start` → `connect_tcp_local` → `FramedStream::new`
 with name lookup now explicit in the connector. String targets use Tokio
 1.44.2's blocking standard-library resolver; Rust 1.75 calls libc `getaddrinfo`

@@ -1325,13 +1325,6 @@ fi
 echo "== (3b-iii-a1a01) Voice-call exact input ownership (R-S11bq/R-S11e-83) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e83_ --color never
 
-if python3 scripts/verify-android-client-lifecycle-drain.py --repo .; then
-  echo "  ok  R-S11e-178 Android component lifecycle retires exact outgoing owners without waiting on native worker finality"
-else
-  echo "  FAIL R-S11e-178 Android lifecycle retirement regained main-thread joins, detached cleanup, inexact completion, or pre-finality replacement admission"
-  rc=1
-fi
-
 echo "== (3b-iii-a1a1) Android APK source, container, publication, and verifier-VM authority (R-S11bj/R-S11bk/R-S11dj/R-S11dw/R-S11e-76/R-S11e-77/R-S11e-128/R-S11e-141) =="
 if python3 scripts/verify-android-build-source.py --self-test \
     && python3 scripts/verify-android-builder-authority.py --repo .; then

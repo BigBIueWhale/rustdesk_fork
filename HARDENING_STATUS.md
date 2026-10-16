@@ -14874,11 +14874,26 @@ whole-process allocation/resource measurements and other-platform acceptance rem
 | Send starting index | `new_read_with_budget` and its `new_read` wrapper admit filesystem indexes only in the inclusive range zero through the exact list length. An invalid index fails before job publication rather than becoming an empty successful transfer. |
 | Whole-list receive completion | `finalize_write` first requires successful file-list admission, then requires the active file's exact next index to equal the whole admitted list length before consuming the stream or publishing the claim. A missing or rejected list cannot become a successful empty transfer. Explicitly admitted empty and skipped lists retain their no-stream completion path. |
 | Send length and EOF | `read` owns a per-file position and probes at most the admitted remainder plus one byte, capped at 128 KiB. Short EOF or overrun closes the stream and fails before publishing the affected block or changing counters/file number. Successful seek establishes the position; skip, retirement, fresh open and exact EOF reset it. |
+| Overwrite digest size | `get_current_digest` requires the retained source's observed length to equal the admitted entry size before either CM or keyed TCP digest publication and before entering confirmation wait. A changed length refuses without replacing list authority or advancing counters; later read/EOF checks remain required. |
 | Direct read-step retirement | `handle_read_jobs` uses one selected vector entry through initialization, reading and terminal retirement, and returns at most one exact writer receipt. The separate initializer and numeric-ID finished list are deleted. |
 | Send resume source ownership | `set_stream_offset` checks metadata and seeks on the retained send `FileStream`; it does not reopen the pathname to replace an active stream. A first open remains provisional until length validation and seek succeed. Refused offsets preserve confirmation and accounting. |
 | Resume admitted size | Both roles reject offsets beyond the admitted entry size before path resolution, open, seek or accounting. Send also checks the retained object's actual length; in-place growth does not enlarge the admitted authority. |
 | File confirmation entry | Every filesystem-backed skip, overwrite and resume action requires a present entry at the exact matching current index before changing flags, counters, streams or cleanup state. Empty and completed lists cannot confirm an absent file; a present zero-byte file remains valid. |
 | File-list construction | `read_dir_with_budget`, both recursive scanners and `new_read_with_budget` propagate iterator, root/entry metadata and descendant failures. Unsupported UTF-8 names, unavailable modification times and pre-epoch times fail explicitly. Every scanned entry consumes quota even when hidden filtering excludes it; recursive byte accounting includes the complete relative name. Flat and empty-directory results reserve each full returned path in the shared byte counter before copying it. The private scanner returns entries without allocating a discarded directory path. Child-error string classification and partial-success branches are deleted. |
+
+**Send-digest size admission — Linux library/file and keyed TCP component comparison ACCEPTED; caller/platform integration OPEN.**
+At `119b65c6`, the exact earlier getter from `784daba1` accepted lengths changed after enumeration;
+the corrected CM and keyed guest-loopback paths refused the same files before waiting or publishing
+a digest. Two executable tests cover eight comparisons: truncation to zero, shorter content, growth,
+and growth from an empty file on both routes. Restoring the admitted length permits exact metadata,
+keyed digest receipt, payload and EOF. Lists, counters and source ownership survive refusal.
+The focused `--file-send-digest-tests` transaction compiled the shared library once and passed both
+cases in 149 VM seconds; stable artifact, exact old-method provenance, source freezes, unchanged
+endpoints and joined bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/file-send-digest-accepted-119b65c6-v2.json`.
+This compares the old getter and current production entry points, not two whole-app artifacts.
+Length equality is observed at digest creation; content snapshots, later same-size mutations,
+actual CM IPC/caller error delivery, CPace handshake, installed/other-platform and release acceptance remain OPEN.
 
 **Completion before list admission — Linux library regression ACCEPTED; caller integration OPEN.**
 Current source refuses `Done(0)` before any list is admitted, including after a rejected

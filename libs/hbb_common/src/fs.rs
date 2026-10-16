@@ -9258,6 +9258,90 @@ mod tests {
     }
 
     #[test]
+    fn enumeration_string_budget_matches_json_and_preserves_state() {
+        let controls: String = (0u8..32).map(char::from).collect();
+        for value in ["", "plain", "שלום😀", "\"\\\n\t\r", &controls] {
+            let encoded = serde_json::to_vec(value).expect("serialize the actual JSON string");
+            let charged = 128 + encoded.len() - 2;
+            let budget = FileEnumerationBudget {
+                max_serialized_bytes: charged,
+                ..FileEnumerationBudget::for_max_entries(8)
+            };
+            let mut usage = FileEnumerationUsage::default();
+            usage.add_serialized_string(value, budget)
+                .expect("the exact encoded-string allowance is inclusive");
+            assert_eq!(usage.approx_serialized_bytes, charged);
+            let before = usage.approx_serialized_bytes;
+            let error = usage.add_serialized_string(value, budget)
+                .expect_err("a second string must not exceed the admitted total");
+            assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED);
+            assert_eq!(usage.approx_serialized_bytes, before);
+
+            let mut refused = FileEnumerationUsage::default();
+            let error = refused.add_serialized_string(value, FileEnumerationBudget {
+                max_serialized_bytes: charged - 1,
+                ..budget
+            }).expect_err("one byte below the encoded-string allowance must refuse");
+            assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED);
+            assert_eq!(refused.approx_serialized_bytes, 0);
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn directory_enumeration_budgets_escaped_file_names() {
+        let tmp = TestTempDir::new("rustdesk_enum_escaped_name");
+        std::fs::create_dir_all(&tmp.path).expect("create directory");
+        let name = format!("{}\"\\\nשלום", "\u{1}".repeat(200));
+        let file = tmp.join(&name);
+        std::fs::write(&file, b"unchanged").expect("create escaped-name file");
+        let encoded = serde_json::to_vec(&name).expect("serialize the actual file name");
+        let ordinary_budget = FileEnumerationBudget::for_max_entries(8);
+        let error = read_dir_with_budget(&tmp.path, true, FileEnumerationBudget {
+            max_serialized_bytes: encoded.len() - 1,
+            ..ordinary_budget
+        }).expect_err("a file name larger than the whole JSON allowance must refuse");
+        assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED);
+        let directory = read_dir_with_budget(&tmp.path, true, ordinary_budget)
+            .expect("the same native file remains listable with sufficient allowance");
+        assert_eq!(directory.entries.len(), 1);
+        assert_eq!(directory.entries[0].name, name);
+        assert_eq!(directory.entries[0].size, 9);
+        assert_eq!(std::fs::read(file).expect("read unchanged file"), b"unchanged");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn directory_enumeration_budgets_escaped_directory_paths() {
+        let tmp = TestTempDir::new("rustdesk_enum_escaped_path");
+        let root = tmp.join(&format!("{}\"\\\nשלום", "\u{1}".repeat(200)));
+        std::fs::create_dir_all(&root).expect("create escaped-path directory");
+        let path = get_string(&root);
+        let encoded = serde_json::to_vec(&path).expect("serialize the actual directory path");
+        let ordinary_budget = FileEnumerationBudget::for_max_entries(8);
+        let budget = FileEnumerationBudget {
+            max_serialized_bytes: encoded.len() - 1,
+            ..ordinary_budget
+        };
+        for (operation, result) in [
+            ("directory", read_dir_with_budget(&root, true, budget).map(|dir| vec![dir])),
+            ("empty directories", get_empty_dirs_recursive_with_budget(&path, true, budget)),
+        ] {
+            let error = result.expect_err(operation);
+            assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED);
+        }
+        let directory = read_dir_with_budget(&root, true, ordinary_budget)
+            .expect("the empty directory remains listable with sufficient allowance");
+        assert_eq!(directory.path, path);
+        assert!(directory.entries.is_empty());
+        let directories = get_empty_dirs_recursive_with_budget(&path, true, ordinary_budget)
+            .expect("empty-directory enumeration recovers with sufficient allowance");
+        assert_eq!(directories.len(), 1);
+        assert_eq!(directories[0].path, path);
+        assert!(directories[0].entries.is_empty());
+    }
+
+    #[test]
     fn recursive_enumeration_budgets_complete_relative_paths() {
         let tmp = TestTempDir::new("rustdesk_enum_prefix_budget");
         let parent = tmp.join("abcdefgh/ijklmnop");

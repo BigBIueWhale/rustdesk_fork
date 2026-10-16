@@ -2774,6 +2774,9 @@ run_focused_rust_tests() {
             fs::tests::directory_enumeration_refuses_unrepresentable_file_names
             fs::tests::directory_enumeration_budgets_excluded_hidden_entries
             fs::tests::recursive_enumeration_budgets_complete_relative_paths
+            fs::tests::enumeration_string_budget_matches_json_and_preserves_state
+            fs::tests::directory_enumeration_budgets_escaped_file_names
+            fs::tests::directory_enumeration_budgets_escaped_directory_paths
             fs::tests::file_job_id_allocator_never_reuses_or_wraps
             fs::tests::file_enumeration_refuses_unrepresentable_modification_times
             config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal

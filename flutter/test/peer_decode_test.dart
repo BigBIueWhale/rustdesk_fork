@@ -262,7 +262,10 @@ void main() {
       {'width': -1, 'height': 720},
       {'width': 'SyntheticPrivateResolution', 'height': 720},
     ];
-    for (final input in [values, {'resolutions': values}]) {
+    for (final input in [
+      values,
+      {'resolutions': values}
+    ]) {
       info.setResolutions(jsonEncode(input));
       expect(
         info.resolutions.map((value) => [value.width, value.height]).toList(),

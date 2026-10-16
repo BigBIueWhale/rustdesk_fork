@@ -207,62 +207,46 @@ class ToReleaseRawKeys {
   }
 
   updateKeyDown(LogicalKeyboardKey logicKey, RawKeyDownEvent e) {
-    if (e.isAltPressed) {
-      if (logicKey == LogicalKeyboardKey.altLeft) {
-        lastLAltKeyEvent = e;
-      } else if (logicKey == LogicalKeyboardKey.altRight) {
-        lastRAltKeyEvent = e;
-      }
-    } else if (e.isControlPressed) {
-      if (logicKey == LogicalKeyboardKey.controlLeft) {
-        lastLCtrlKeyEvent = e;
-      } else if (logicKey == LogicalKeyboardKey.controlRight) {
-        lastRCtrlKeyEvent = e;
-      }
-    } else if (e.isShiftPressed) {
-      if (logicKey == LogicalKeyboardKey.shiftLeft) {
-        lastLShiftKeyEvent = e;
-      } else if (logicKey == LogicalKeyboardKey.shiftRight) {
-        lastRShiftKeyEvent = e;
-      }
-    } else if (e.isMetaPressed) {
-      if (logicKey == LogicalKeyboardKey.metaLeft) {
-        lastLCommandKeyEvent = e;
-      } else if (logicKey == LogicalKeyboardKey.metaRight) {
-        lastRCommandKeyEvent = e;
-      } else if (logicKey == LogicalKeyboardKey.superKey) {
-        lastSuperKeyEvent = e;
-      }
+    if (logicKey == LogicalKeyboardKey.altLeft) {
+      lastLAltKeyEvent = e;
+    } else if (logicKey == LogicalKeyboardKey.altRight) {
+      lastRAltKeyEvent = e;
+    } else if (logicKey == LogicalKeyboardKey.controlLeft) {
+      lastLCtrlKeyEvent = e;
+    } else if (logicKey == LogicalKeyboardKey.controlRight) {
+      lastRCtrlKeyEvent = e;
+    } else if (logicKey == LogicalKeyboardKey.shiftLeft) {
+      lastLShiftKeyEvent = e;
+    } else if (logicKey == LogicalKeyboardKey.shiftRight) {
+      lastRShiftKeyEvent = e;
+    } else if (logicKey == LogicalKeyboardKey.metaLeft) {
+      lastLCommandKeyEvent = e;
+    } else if (logicKey == LogicalKeyboardKey.metaRight) {
+      lastRCommandKeyEvent = e;
+    } else if (logicKey == LogicalKeyboardKey.superKey) {
+      lastSuperKeyEvent = e;
     }
   }
 
   updateKeyUp(LogicalKeyboardKey logicKey, RawKeyUpEvent e) {
-    if (e.isAltPressed) {
-      if (logicKey == LogicalKeyboardKey.altLeft) {
-        lastLAltKeyEvent = null;
-      } else if (logicKey == LogicalKeyboardKey.altRight) {
-        lastRAltKeyEvent = null;
-      }
-    } else if (e.isControlPressed) {
-      if (logicKey == LogicalKeyboardKey.controlLeft) {
-        lastLCtrlKeyEvent = null;
-      } else if (logicKey == LogicalKeyboardKey.controlRight) {
-        lastRCtrlKeyEvent = null;
-      }
-    } else if (e.isShiftPressed) {
-      if (logicKey == LogicalKeyboardKey.shiftLeft) {
-        lastLShiftKeyEvent = null;
-      } else if (logicKey == LogicalKeyboardKey.shiftRight) {
-        lastRShiftKeyEvent = null;
-      }
-    } else if (e.isMetaPressed) {
-      if (logicKey == LogicalKeyboardKey.metaLeft) {
-        lastLCommandKeyEvent = null;
-      } else if (logicKey == LogicalKeyboardKey.metaRight) {
-        lastRCommandKeyEvent = null;
-      } else if (logicKey == LogicalKeyboardKey.superKey) {
-        lastSuperKeyEvent = null;
-      }
+    if (logicKey == LogicalKeyboardKey.altLeft) {
+      lastLAltKeyEvent = null;
+    } else if (logicKey == LogicalKeyboardKey.altRight) {
+      lastRAltKeyEvent = null;
+    } else if (logicKey == LogicalKeyboardKey.controlLeft) {
+      lastLCtrlKeyEvent = null;
+    } else if (logicKey == LogicalKeyboardKey.controlRight) {
+      lastRCtrlKeyEvent = null;
+    } else if (logicKey == LogicalKeyboardKey.shiftLeft) {
+      lastLShiftKeyEvent = null;
+    } else if (logicKey == LogicalKeyboardKey.shiftRight) {
+      lastRShiftKeyEvent = null;
+    } else if (logicKey == LogicalKeyboardKey.metaLeft) {
+      lastLCommandKeyEvent = null;
+    } else if (logicKey == LogicalKeyboardKey.metaRight) {
+      lastRCommandKeyEvent = null;
+    } else if (logicKey == LogicalKeyboardKey.superKey) {
+      lastSuperKeyEvent = null;
     }
   }
 
@@ -649,7 +633,7 @@ class InputModel {
       if (!alt) {
         alt = true;
       }
-      toReleaseKeys.lastLAltKeyEvent = upEvent(e);
+      toReleaseKeys.lastRAltKeyEvent = upEvent(e);
     } else if (e.logicalKey == LogicalKeyboardKey.controlLeft) {
       if (!ctrl) {
         ctrl = true;
@@ -690,31 +674,34 @@ class InputModel {
 
   void handleKeyUpEventModifiers(KeyEvent e) {
     if (e.logicalKey == LogicalKeyboardKey.altLeft) {
-      alt = false;
+      alt = toReleaseKeys.lastRAltKeyEvent != null;
       toReleaseKeys.lastLAltKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.altRight) {
-      alt = false;
+      alt = toReleaseKeys.lastLAltKeyEvent != null;
       toReleaseKeys.lastRAltKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.controlLeft) {
-      ctrl = false;
+      ctrl = toReleaseKeys.lastRCtrlKeyEvent != null;
       toReleaseKeys.lastLCtrlKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.controlRight) {
-      ctrl = false;
+      ctrl = toReleaseKeys.lastLCtrlKeyEvent != null;
       toReleaseKeys.lastRCtrlKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.shiftLeft) {
-      shift = false;
+      shift = toReleaseKeys.lastRShiftKeyEvent != null;
       toReleaseKeys.lastLShiftKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.shiftRight) {
-      shift = false;
+      shift = toReleaseKeys.lastLShiftKeyEvent != null;
       toReleaseKeys.lastRShiftKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.metaLeft) {
-      command = false;
+      command = toReleaseKeys.lastRCommandKeyEvent != null ||
+          toReleaseKeys.lastSuperKeyEvent != null;
       toReleaseKeys.lastLCommandKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.metaRight) {
-      command = false;
+      command = toReleaseKeys.lastLCommandKeyEvent != null ||
+          toReleaseKeys.lastSuperKeyEvent != null;
       toReleaseKeys.lastRCommandKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.superKey) {
-      command = false;
+      command = toReleaseKeys.lastLCommandKeyEvent != null ||
+          toReleaseKeys.lastRCommandKeyEvent != null;
       toReleaseKeys.lastSuperKeyEvent = null;
     }
   }
@@ -776,33 +763,41 @@ class InputModel {
       if (!e.repeat) {
         if (e.isAltPressed && !alt) {
           alt = true;
-        } else if (e.isControlPressed && !ctrl) {
+        }
+        if (e.isControlPressed && !ctrl) {
           ctrl = true;
-        } else if (e.isShiftPressed && !shift) {
+        }
+        if (e.isShiftPressed && !shift) {
           shift = true;
-        } else if (e.isMetaPressed && !command) {
+        }
+        if ((e.isMetaPressed || key == LogicalKeyboardKey.superKey) &&
+            !command) {
           command = true;
         }
       }
       toReleaseRawKeys.updateKeyDown(key, e);
     }
     if (e is RawKeyUpEvent) {
+      toReleaseRawKeys.updateKeyUp(key, e);
       if (key == LogicalKeyboardKey.altLeft ||
           key == LogicalKeyboardKey.altRight) {
-        alt = false;
+        alt = toReleaseRawKeys.lastLAltKeyEvent != null ||
+            toReleaseRawKeys.lastRAltKeyEvent != null;
       } else if (key == LogicalKeyboardKey.controlLeft ||
           key == LogicalKeyboardKey.controlRight) {
-        ctrl = false;
+        ctrl = toReleaseRawKeys.lastLCtrlKeyEvent != null ||
+            toReleaseRawKeys.lastRCtrlKeyEvent != null;
       } else if (key == LogicalKeyboardKey.shiftRight ||
           key == LogicalKeyboardKey.shiftLeft) {
-        shift = false;
+        shift = toReleaseRawKeys.lastLShiftKeyEvent != null ||
+            toReleaseRawKeys.lastRShiftKeyEvent != null;
       } else if (key == LogicalKeyboardKey.metaLeft ||
           key == LogicalKeyboardKey.metaRight ||
           key == LogicalKeyboardKey.superKey) {
-        command = false;
+        command = toReleaseRawKeys.lastLCommandKeyEvent != null ||
+            toReleaseRawKeys.lastRCommandKeyEvent != null ||
+            toReleaseRawKeys.lastSuperKeyEvent != null;
       }
-
-      toReleaseRawKeys.updateKeyUp(key, e);
     }
 
     // On some mobile soft-keyboard paths, Flutter may leave cached Shift state

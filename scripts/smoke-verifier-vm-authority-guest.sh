@@ -15,6 +15,7 @@ FLUTTER_TEST_PROFILE=models
 RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
 HBB_FUSE_READ_TESTS=0
+HBB_SEND_DIGEST_TESTS=0
 LINUX_PA_PLAYBACK=0
 APPLE_CURSOR_ONLY=0
 APPLE_FILE_MODE_ONLY=0
@@ -94,6 +95,7 @@ case "$#:${8:-}" in
         case "${13}" in
             --native-logind) HBB_LOGIND_NATIVE=1 ;;
             --fuse-reads) HBB_FUSE_READ_TESTS=1 ;;
+            --send-digest) HBB_SEND_DIGEST_TESTS=1 ;;
             *) exit 2 ;;
         esac
         ;;
@@ -2927,6 +2929,14 @@ run_focused_rust_tests() {
                 --add-host=multi.resolver-audit.invalid:127.0.0.2
             )
         fi
+        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
+            source_fingerprints+=(scripts/fixtures/file-send-digest-before-size-admission.rs)
+            required_tests=(
+                fs::tests::send_digest_refuses_changed_lengths_before_cm_wait
+                fs::tests::send_digest_refuses_changed_lengths_before_wire_publication
+            )
+            hostname_options=()
+        fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
             source_fingerprints+=(
                 libs/clipboard/Cargo.toml
@@ -4111,6 +4121,7 @@ run_focused_rust_tests() {
             --env "RUST_TEST_PROFILE=$RUST_TEST_PROFILE" \
             --env "HBB_LOGIND_NATIVE=$HBB_LOGIND_NATIVE" \
             --env "HBB_FUSE_READ_TESTS=$HBB_FUSE_READ_TESTS" \
+            --env "HBB_SEND_DIGEST_TESTS=$HBB_SEND_DIGEST_TESTS" \
             --env "LINUX_PA_PLAYBACK=$LINUX_PA_PLAYBACK" \
             "${hostname_options[@]}" \
             --env "RUST_TOOLCHAIN_MODE=$toolchain_mode" \
@@ -4202,6 +4213,11 @@ run_focused_rust_tests() {
                         printf "HBB_COMMON_FS_ARTIFACT_START=observed sha256=%s executable=%s\n" \
                             "$artifact_sha" "$test_executable"
                         cd /source/libs/hbb_common
+                        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
+                            timeout --signal=TERM --kill-after=5s 20s \
+                                "$test_executable" fs::tests::send_digest_ --color never --test-threads=1 --show-output
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                        else
                         "$test_executable" platform::linux::tests::r_s11at_loginctl_output_ \
                             --color never --test-threads=1
                         [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
@@ -4243,6 +4259,7 @@ run_focused_rust_tests() {
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             printf "FILE_PEER_PROBE_ARTIFACT=pass sha256=%s executable=%s tests=5 unchanged=before-after\n" \
                                 "$probe_sha" "$probe_executable"
+                        fi
                         fi
                         printf "HBB_COMMON_FS_ARTIFACT=pass sha256=%s executable=%s unchanged=before-between-after\n" \
                             "$artifact_sha" "$test_executable"
@@ -4746,6 +4763,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     )
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=9
+        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
@@ -5191,6 +5209,10 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
+        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
+            [ "$tests_passed" -eq 2 ] || fail 'send digest test total differs'
+            grep -E '^test fs::tests::send_digest_.* \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=' "$output"
+        else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
             grep -E '^test socket_client::tests::(single_address_connect_owns_the_literal_socket|bind_collision_preserves_the_native_error) \.\.\. ok$' "$output"
@@ -5201,16 +5223,23 @@ PY
             python3 -I -S "$source_root/scripts/verify-hostname-resolution-probe.py" "$output" "$source_root" \
                 || fail 'hostname connector observation or source binding differs'
         fi
+        fi
         printf '%s\n' "${hbb_artifact_receipts[@]}"
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
             grep -E '^test platform::linux::tests::r_s11e40_.* \.\.\. ok$' "$output"
             cat "$native_output"
         fi
+        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
+            printf 'FILE_SEND_DIGEST_VM=pass commit=%s tree=%s tests=2 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-size-admission cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        else
         printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$hbb_test_artifact_sha" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" \
             "$image_config"
+        fi
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "$tests_passed" -eq 20 ] \

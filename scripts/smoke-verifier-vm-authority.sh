@@ -24,6 +24,7 @@ FLUTTER_TEST_PROFILE=models
 RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
 HBB_FUSE_READ_TESTS=0
+HBB_SEND_DIGEST_TESTS=0
 LINUX_PA_PLAYBACK=0
 APPLE_CURSOR_ONLY=0
 APPLE_FILE_MODE_ONLY=0
@@ -62,7 +63,7 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'verifier-VM input/run overrides are lifecycle-internal' >&2; exit 2; }
         ;;
-    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests)
+    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests|1:--file-send-digest-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Rust-test input/run overrides are forbidden' >&2; exit 2; }
@@ -71,6 +72,8 @@ case "$#:${1:-}" in
             HBB_LOGIND_NATIVE=1
         elif [ "$1" = --linux-fuse-read-tests ]; then
             HBB_FUSE_READ_TESTS=1
+        elif [ "$1" = --file-send-digest-tests ]; then
+            HBB_SEND_DIGEST_TESTS=1
         fi
         ;;
     1:--cpace-recovery-tests)
@@ -479,6 +482,7 @@ case "$#:${1:-}" in
         printf 'Focused directory-ordering publication and home correlation: %s --flutter-model-tests --directory-ordering\n' "${0##*/}" >&2
         printf 'Installed Linux authorization deadline: %s --linux-service-authorization-timeout-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Blocked-worker owner transitions: %s --android-client-drain-tests\n' "${0##*/}" >&2
+        printf 'Send digest size admission: %s --file-send-digest-tests\n' "${0##*/}" >&2
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
@@ -4324,6 +4328,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
         guest_invocation+=' --native-logind'
     elif [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
         guest_invocation+=' --fuse-reads'
+    elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
+        guest_invocation+=' --send-digest'
     fi
 elif [ "$MODE" = cpace-recovery-tests ]; then
     guest_invocation+=" --cpace-recovery-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
@@ -5538,6 +5544,9 @@ elif [ "$MODE" = hbb-common-fs ]; then
     if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
         hbb_receipt_kind=FUSE_READ_COMPONENT_VM
         hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default snapshot=readonly mounted_fuse=unexecuted cleanup=joined'
+    elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
+        hbb_receipt_kind=FILE_SEND_DIGEST_VM
+        hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-size-admission cleanup=joined'
     fi
     if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         hbb_image_index=$DEV_CHECK_IMAGE_ID
@@ -5554,7 +5563,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
     HBB_COMMON_FS_ARTIFACT_SHA256=${hbb_common_fs_receipts[0]#*artifact_sha256=}
     HBB_COMMON_FS_ARTIFACT_SHA256=${HBB_COMMON_FS_ARTIFACT_SHA256%% *}
     printf '%s\n' "${hbb_common_fs_receipts[0]}"
-    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then
+    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ] && [ "$HBB_SEND_DIGEST_TESTS" -eq 0 ]; then
         /usr/bin/python3 -B -I -S "$SCRIPT_DIR/verify-hostname-resolution-probe.py" "$SERIAL_LOG" "$REPO_ROOT" \
             || fail 'production connector observation is absent or source binding differs'
         mapfile -t peer_probe_artifacts < <(
@@ -7125,6 +7134,11 @@ elif [ "$MODE" = debian-systemd-lifecycle ]; then
 elif [ "$MODE" = hbb-common-fs ]; then
     if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
         printf 'FUSE_READ_COMPONENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s scope=production-library-read-path mounted_fuse=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+            "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
+    elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test fs::tests::send_digest_[a-z_]+ \.\.\. ok|SEND_DIGEST_(BEFORE|SIZE)=.*'
+        printf 'FILE_SEND_DIGEST_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=2 artifact_sha256=%s scope=send-digest-size-admission network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     else

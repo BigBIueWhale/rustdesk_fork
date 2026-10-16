@@ -21,6 +21,10 @@ use crate::{compress::compress, config::Config};
 mod file_block;
 use file_block::SIZE as FILE_TRANSFER_BLOCK_SIZE;
 
+#[cfg(test)]
+#[path = "../../../scripts/fixtures/file-send-digest-before-size-admission.rs"]
+mod send_digest_before_size_admission;
+
 static NEXT_JOB_ID: AtomicI32 = AtomicI32::new(1);
 
 pub const DEFAULT_FILE_TRANSFER_MAX_FILES: usize = 10_000;
@@ -3601,17 +3605,29 @@ impl TransferJob {
 
     /// Get current file's digest (last_modified, file_size) for overwrite detection.
     async fn get_current_digest(&self) -> ResultType<(u64, u64)> {
+        let entry = self
+            .files
+            .get(self.file_num as usize)
+            .ok_or_else(|| anyhow!("invalid digest file number {}", self.file_num))?;
         let meta = self
             .data_stream
             .as_ref()
             .ok_or(anyhow!("file is None"))?
             .metadata()
             .await?;
+        if meta.len() != entry.size {
+            bail!(
+                "source length changed at file {}: length {}, declared size {}",
+                self.file_num,
+                meta.len(),
+                entry.size
+            );
+        }
         let last_modified = meta
             .modified()?
             .duration_since(SystemTime::UNIX_EPOCH)?
             .as_secs();
-        Ok((last_modified, meta.len()))
+        Ok((last_modified, entry.size))
     }
 
     async fn init_data_stream(
@@ -7380,6 +7396,99 @@ mod tests {
             "cleanup must not delete a sidecar this job never opened"
         );
         assert!(digest.exists());
+    }
+
+    async fn assert_send_digest_size_admission(wire: bool) {
+        for (admitted_size, changed_size) in [(3, 0), (3, 2), (3, 6), (0, 3)] {
+            let tmp = TestTempDir::new("rustdesk_send_digest_size");
+            std::fs::create_dir_all(&tmp.path).expect("create source directory");
+            let source = tmp.join("source.zip");
+            let original = vec![0x41; admitted_size];
+            std::fs::write(&source, &original).expect("create admitted source");
+            let mut job = TransferJob::new_read(
+                278, JobType::Generic, String::new(), source.clone(),
+                0, false, false, true,
+            ).expect("admit the original source length");
+            std::fs::OpenOptions::new().write(true).open(&source)
+                .expect("open source for an in-place length change")
+                .set_len(changed_size).expect("change the admitted source length");
+            assert!(!job.open_data_stream().await.expect("open the changed native file"));
+
+            let (_, before_size) = job.digest_before_size_admission().await
+                .expect("the exact earlier getter accepted changed length");
+            assert_eq!(before_size, changed_size);
+            assert_ne!(before_size, admitted_size as u64);
+            println!("SEND_DIGEST_BEFORE=observed wire={wire} admitted={admitted_size} accepted={before_size}");
+
+            let mut wire_pair = if wire { Some(keyed_read_job_tcp_pair().await) } else { None };
+            let result = match wire_pair.as_mut() {
+                Some((sender, _)) => job.init_data_stream(sender).await.map(|_| ()),
+                None => job.init_data_stream_for_cm().await.map(|_| ()),
+            };
+            let error = result.expect_err("changed length must refuse before digest publication");
+            assert_err_contains(error, "source length changed");
+            assert!(!job.file_is_waiting());
+            assert!(!job.file_confirmed());
+            assert_eq!(job.file_num(), 0);
+            assert_eq!(job.total_size(), admitted_size as u64);
+            assert_eq!(job.files()[0].size, admitted_size as u64);
+            assert_eq!(job.finished_size(), 0);
+            assert_eq!(job.transferred(), 0);
+            assert_eq!(job.send_file_offset, 0);
+            assert!(job.data_stream.is_some(), "the source handle remains owned until retirement");
+            assert_eq!(std::fs::metadata(&source).unwrap().len(), changed_size);
+            if let Some((_, receiver)) = wire_pair.as_mut() {
+                assert!(tokio::time::timeout(Duration::from_millis(20), receiver.next()).await.is_err(),
+                    "a refused digest must not reach the native keyed peer");
+            }
+
+            std::fs::write(&source, &original).expect("restore the admitted length");
+            match wire_pair.as_mut() {
+                Some((sender, receiver)) => {
+                    let receipt = job.init_data_stream(sender).await
+                        .expect("admit a digest for the restored source").expect("digest writer receipt");
+                    let encoded = tokio::time::timeout(Duration::from_secs(5), receiver.next()).await
+                        .expect("positive peer deadline").expect("positive peer frame")
+                        .expect("authenticate the positive digest");
+                    let message = Message::parse_from_bytes(&encoded).expect("parse the native peer digest");
+                    let Some(message::Union::FileResponse(response)) = message.union else {
+                        panic!("positive peer frame is not a file response");
+                    };
+                    let Some(file_response::Union::Digest(digest)) = response.union else {
+                        panic!("positive file response is not a digest");
+                    };
+                    assert_eq!((digest.id, digest.file_num, digest.file_size),
+                        (278, 0, admitted_size as u64));
+                    tokio::time::timeout(Duration::from_secs(5), receipt).await
+                        .expect("positive writer deadline").expect("join the positive writer")
+                        .expect("flush the admitted digest");
+                }
+                None => assert_eq!(job.init_data_stream_for_cm().await
+                    .expect("admit restored CM digest").expect("one CM digest").1, admitted_size as u64),
+            }
+            assert!(job.file_is_waiting());
+            job.confirm_with_offset(0, 0).await.expect("confirm the admitted source");
+            let block = job.read().await.expect("read restored source").expect("source block");
+            assert_eq!(block.data.as_ref(), original.as_slice());
+            if !original.is_empty() {
+                assert!(job.read().await.expect("read exact EOF").expect("EOF block").data.is_empty());
+            }
+            assert_eq!(job.file_num(), 1);
+            assert!(job.data_stream.is_none());
+            assert_eq!(job.finished_size(), admitted_size as u64);
+            assert_eq!(std::fs::read(&source).unwrap(), original);
+            println!("SEND_DIGEST_SIZE=pass wire={wire} admitted={admitted_size} changed={changed_size} refused_before_wait=true restored=delivered");
+        }
+    }
+
+    #[tokio::test]
+    async fn send_digest_refuses_changed_lengths_before_cm_wait() {
+        assert_send_digest_size_admission(false).await;
+    }
+
+    #[tokio::test]
+    async fn send_digest_refuses_changed_lengths_before_wire_publication() {
+        assert_send_digest_size_admission(true).await;
     }
 
     #[cfg(target_os = "linux")]

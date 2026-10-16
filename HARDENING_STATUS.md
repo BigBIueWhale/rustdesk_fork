@@ -1333,13 +1333,18 @@ Process actors and cleanup callbacks are fixtures;
 actual setuid helper/device/mount, descendant lifetime, principal/permission failures, full parent
 compilation, async caller placement, installed and sustained resource/latency acceptance remain OPEN.
 
-**FUSE reply bootstrap — source corrected; native caller comparison pending.**
+**FUSE reply bootstrap — source corrected; native caller comparison OPEN/PARKED by user request.**
 `src/clipboard_file.rs` no longer initializes FUSE while consuming file-content
 responses. Such replies use only the existing side/connection/stream route.
 Failed format-data responses return before initialization; successful metadata
 selects the caller's typed clipboard side rather than always selecting the viewer.
 The focused helper transaction adds the actual root dispatcher, real clipboard
 library and native namespace comparisons against the exact earlier module.
+Its existing 18 helper/descriptor cases passed, but standalone offline lock
+generation refused the vendored Git dependency before any dispatcher or routing
+comparison ran. The VM was joined and its RAM/private roots retired.
+`.harness-state/verifier-vm/fuse-dispatch-parked-a1a3649c.json` retains the
+unaccepted attempt. Do not repair or rerun this item automatically.
 Native comparison, successful mounted exchange, full caller/owner integration
 and async startup/teardown placement remain OPEN.
 The global OPEN tables remain authoritative for exact-current native packages,

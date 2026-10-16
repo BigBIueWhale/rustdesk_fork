@@ -108,6 +108,7 @@ def main():
         if observation.get("case") != case or digest(artifact) != artifact_sha:
             raise ValueError("Connector observation or executable identity changed")
         observations.append(observation)
+        print(lines[0], flush=True)
     if {p: digest(source / p) for p in paths} != sources:
         raise ValueError("Connector observation sources changed")
     if digest(Path(producer["path"])) != producer_sha:

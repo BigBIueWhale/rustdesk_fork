@@ -192,6 +192,7 @@ mod probe {
         elapsed_ms: u64,
         question_types: Vec<u16>,
         socket_retained_after_cancel: bool,
+        datagram_attempts_after_cancel: usize,
     }
 
     async fn observe_dns_tcp(target: String, stall: bool) -> Result<DnsTcpObservation> {
@@ -229,29 +230,29 @@ mod probe {
                 question_types.push(kind);
                 let mut reply = query[..end].to_vec();
                 reply[2] = 0x81;
-                reply[3] = if stall { 0x83 } else { 0x80 };
+                reply[3] = 0x80;
                 reply[4..12].fill(0);
                 reply[5] = 1;
-                if !stall {
-                    reply[7] = 1;
-                    reply.extend_from_slice(&[0xc0, 0x0c]);
-                    reply.extend_from_slice(&kind.to_be_bytes());
-                    reply.extend_from_slice(&[0, 1, 0, 0, 0, 1]); // IN, TTL one second
-                    if kind == 1 {
-                        reply.extend_from_slice(&[0, 4, 127, 0, 0, 1]);
-                    } else {
-                        reply.extend_from_slice(&[0, 16]);
-                        reply.extend_from_slice(&std::net::Ipv6Addr::LOCALHOST.octets());
-                    }
+                reply[7] = 1;
+                reply.extend_from_slice(&[0xc0, 0x0c]);
+                reply.extend_from_slice(&kind.to_be_bytes());
+                reply.extend_from_slice(&[0, 1, 0, 0, 0, 1]); // IN, TTL one second
+                if kind == 1 {
+                    reply.extend_from_slice(&[0, 4, 127, 0, 0, 1]);
+                } else {
+                    reply.extend_from_slice(&[0, 16]);
+                    reply.extend_from_slice(&std::net::Ipv6Addr::LOCALHOST.octets());
                 }
                 replies.push(reply);
             }
             question_types.sort_unstable();
+            drop(listener);
             if !stall {
                 for reply in replies {
                     peer.write_all(&(reply.len() as u16).to_be_bytes()).await?;
                     peer.write_all(&reply).await?;
                 }
+                peer.shutdown().await?;
                 let task = caller.take().context("missing exact connector task")?;
                 let connected = task.await?.is_ok();
                 ensure!(GAI_ACTIVE.load(SeqCst) == 0, "successful TCP DNS lookup remains active");
@@ -260,7 +261,7 @@ mod probe {
                     "successful TCP DNS peer did not close");
                 return Ok(DnsTcpObservation { connected, pending_after_budget: false,
                     active_after_cancel: false, elapsed_ms, question_types,
-                    socket_retained_after_cancel: false });
+                    socket_retained_after_cancel: false, datagram_attempts_after_cancel: 0 });
             }
             let task = caller.take().context("missing exact connector task")?;
             let pending_after_budget = !task.is_finished();
@@ -274,6 +275,7 @@ mod probe {
                 task.await?.is_ok()
             };
             let active_after_cancel = GAI_ACTIVE.load(SeqCst) != 0;
+            let datagram_before_release = UDP_ATTEMPTS.load(SeqCst);
             let mut byte = [0];
             let socket_retained_after_cancel = match peer.try_read(&mut byte) {
                 Ok(0) => false,
@@ -286,16 +288,20 @@ mod probe {
                     peer.write_all(&(reply.len() as u16).to_be_bytes()).await?;
                     peer.write_all(&reply).await?;
                 }
+                peer.shutdown().await?;
             }
             let drained = Instant::now();
             while GAI_ACTIVE.load(SeqCst) != 0 {
-                ensure!(drained.elapsed() < Duration::from_secs(1), "TCP DNS native lookup did not drain");
+                ensure!(drained.elapsed() < Duration::from_secs(1),
+                    "TCP DNS native lookup did not drain: questions={question_types:?} pending={pending_after_budget} active_after_cancel={active_after_cancel} socket_retained={socket_retained_after_cancel}");
                 tokio::time::sleep(Duration::from_millis(1)).await;
             }
             ensure!(tokio::time::timeout(Duration::from_secs(1), peer.read(&mut byte)).await?? == 0,
                 "TCP DNS peer did not close after native completion");
+            let datagram_attempts_after_cancel = UDP_ATTEMPTS.load(SeqCst)
+                .checked_sub(datagram_before_release).context("datagram counter moved backwards")?;
             Ok(DnsTcpObservation { connected, pending_after_budget, active_after_cancel,
-                elapsed_ms, question_types, socket_retained_after_cancel })
+                elapsed_ms, question_types, socket_retained_after_cancel, datagram_attempts_after_cancel })
         }.await;
         if let Some(task) = caller {
             task.abort();
@@ -337,6 +343,7 @@ mod probe {
         let mut gate_elapsed_ms = 0;
         let mut dns_question_types = Vec::new();
         let mut dns_socket_retained_after_cancel = false;
+        let mut datagram_attempts_after_cancel = 0;
         let connected;
         if case == "dns-cancel-tcp" || case == "dns-answer-tcp" {
             let observation = observe_dns_tcp(target, case == "dns-cancel-tcp").await?;
@@ -347,9 +354,17 @@ mod probe {
             gate_elapsed_ms = observation.elapsed_ms;
             dns_question_types = observation.question_types;
             dns_socket_retained_after_cancel = observation.socket_retained_after_cancel;
+            datagram_attempts_after_cancel = observation.datagram_attempts_after_cancel;
             if connected {
                 let accepted = tokio::time::timeout(Duration::from_secs(1), listener.accept()).await??;
                 ensure!(accepted.1.ip().is_loopback(), "DNS answer connection escaped loopback");
+            }
+            if case == "dns-cancel-tcp" {
+                match tokio::time::timeout(Duration::from_millis(10), listener.accept()).await {
+                    Err(_) => {},
+                    Ok(Ok(_)) => bail!("retired DNS caller connected after its late answer"),
+                    Ok(Err(error)) => return Err(error.into()),
+                }
             }
         } else if case == "cancel" {
             HOLD_GAI.store(true, SeqCst);
@@ -410,6 +425,10 @@ mod probe {
             },
             "dns_question_types": dns_question_types,
             "dns_socket_retained_after_cancel": dns_socket_retained_after_cancel,
+            "ip_datagram_attempts_after_cancel": datagram_attempts_after_cancel,
+            "dns_release": if case == "dns-cancel-tcp" || case == "dns-answer-tcp" {
+                "answer-and-server-half-close"
+            } else { "not-applicable" },
             "trap_self_controls": 2,
             "getaddrinfo_self_control": true,
             "connect_timeout_ms": if case == "cancel" || case == "dns-cancel-tcp" { 5 } else { 100 },

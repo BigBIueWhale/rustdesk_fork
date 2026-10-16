@@ -50,6 +50,9 @@ def verify(log, source):
             raise ValueError("Connector observation deadline context differs")
         types = observation.get("dns_question_types")
         if (type(observation.get("dns_socket_retained_after_cancel")) is not bool
+                or observation.get("dns_release") != (
+                    "answer-and-server-half-close" if observation["case"] in ("dns-cancel-tcp", "dns-answer-tcp")
+                    else "not-applicable")
                 or not isinstance(types, list)
                 or types != sorted(set(types)) or any(type(t) is not int or t not in (1, 28) for t in types)
                 or (observation["case"] in ("dns-cancel-tcp", "dns-answer-tcp")
@@ -57,6 +60,11 @@ def verify(log, source):
                 or (observation["case"] not in ("dns-cancel-tcp", "dns-answer-tcp")
                     and (types or observation["dns_socket_retained_after_cancel"]))):
             raise ValueError("Connector observation actual TCP DNS context differs")
+        late_datagrams = observation.get("ip_datagram_attempts_after_cancel")
+        if (type(late_datagrams) is not int
+                or not 0 <= late_datagrams <= observation["ip_datagram_socket_attempts"]
+                or (observation["case"] != "dns-cancel-tcp" and late_datagrams != 0)):
+            raise ValueError("Connector observation post-cancellation counter differs")
         if observation["case"] == "dns-answer-tcp" and not observation["connected"]:
             raise ValueError("Actual TCP DNS answer did not connect to the loopback control")
     literal = observations[0]

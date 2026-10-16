@@ -69,7 +69,7 @@ CVE-2025-5283, a libvpx encoder double-free in WebRTC's `enc_init_multi`, remain
 N/A because the WebRTC path is excised (R-SV4).
 
 Package: libyuv
-Status: reviewed
+Status: OPEN ADVISORY
 Disposition: source-pinned overlay; monitor upstream libyuv advisories and treat
 image conversion/scaling memory-safety advisories as release-blocking until
 patched or isolated by the decoder sandbox.
@@ -78,6 +78,22 @@ LIBYUV_COMMIT: 0faf8dd0e004520a61a603a4d2996d5ecc80dc3f
 libyuv SHA512: be6b343ab6c62e8f2d1571fedf25f5facbf7cd7fe8e1cc4949dab7549ad15f962c91ea43bf567785e54382d7689514f6b66d61bd56b3f38ba54ef51c5fd0da9b
 Watch sources: chromium libyuv changes/security notes, NVD/CVE, OSV, distro
 security trackers.
+
+Review 2026-10-16: upstream commit
+[`ef08f21f6d94addd69e5ae521d0f75f14cb644ed`](https://fuchsia.googlesource.com/third_party/libyuv/+/ef08f21f6d94addd69e5ae521d0f75f14cb644ed%5E%21/)
+addresses dimension validation in `ScalePlane`, `ScalePlane_16`, and
+`ScalePlane_12`, and offset arithmetic in `ARGBAffineRow_C`. The authenticated
+1857 archive lacks those changes; the local patch changes only CMake. Its scaling
+APIs return `void`, unlike the newer upstream API, so applying the newer patch
+verbatim is not an adequate backport.
+
+No direct calls to these APIs were found in the fork's Rust/C/C++ sources.
+That source observation does not prove transitive or compiled-artifact
+unreachability. Resolve this entry through reviewed remediation or exact-artifact
+reachability evidence before release. No product exploit or native reproduction
+is established. The source-bound review record is
+`.harness-state/verifier-vm/native-codec-review-a0122e2e.json`; the broader current
+advisory review, including other upstream arithmetic fixes, remains incomplete.
 
 Package: opus
 Status: reviewed
@@ -92,6 +108,7 @@ trackers.
 ## Baseline-Resolved Libraries
 
 Package: libjpeg-turbo
+Baseline version: 3.1.1
 Status: reviewed
 Disposition: vcpkg-baseline-resolved dependency; monitor libjpeg-turbo
 advisories and treat image-decoder memory-safety advisories as release-blocking
@@ -101,6 +118,7 @@ Watch sources: libjpeg-turbo upstream release/security notes, NVD/CVE, OSV,
 distro security trackers.
 
 Package: oboe
+Baseline version: 1.8.0
 Status: reviewed
 Disposition: Android-only vcpkg-baseline-resolved audio I/O dependency; monitor
 upstream Oboe advisories and Android platform security notes before Android
@@ -110,6 +128,7 @@ Watch sources: google/oboe release/security notes, NVD/CVE, OSV, Android
 security bulletins.
 
 Package: cpu-features
+Baseline version: 0.10.1
 Status: reviewed
 Disposition: Android-only vcpkg-baseline-resolved CPU feature detection helper;
 monitor upstream android/cpu_features advisories before Android artifact release.

@@ -6405,6 +6405,19 @@ or any unresolved advisory ledger entry. Its checker/self-test execution after d
 decoupling has not been replayed in isolation and remains **OPEN**; source inspection does not
 establish scanner, native-codec or release acceptance.
 
+**R-R3 libyuv arithmetic finding — OPEN; release-blocking applicability review.**
+The SHA512-authenticated `0faf8dd0` / version-1857 archive lacks the changes in
+upstream [`ef08f21f`](https://fuchsia.googlesource.com/third_party/libyuv/+/ef08f21f6d94addd69e5ae521d0f75f14cb644ed%5E%21/).
+`docs/NATIVE-CODEC-WATCH.md` now records `OPEN ADVISORY`, which the existing
+watcher rejects. No direct fork calls to the affected scaling/affine APIs were
+found; transitive/native-artifact reachability and reproduction remain unproved.
+The older scaling API returns `void`, so a backport requires an explicit API and
+failure-semantics review. Remediation or exact-artifact unreachability evidence
+is required before clearing the entry. The bounded source/pin review is
+`.harness-state/verifier-vm/native-codec-review-a0122e2e.json`. Broader advisory
+freshness, other upstream arithmetic fixes, isolated watcher replay and final
+native/release acceptance remain OPEN. This is not a reproduced product exploit.
+
 **The remaining native-decode residual is distinct (recorded 2026-07-05 under the universal-deployment re-rating).**
 The in-process VP8/VP9, image, audio, clipboard, and compression decode paths on
 the peer-reachable **viewer** surface retain the general native-memory-safety

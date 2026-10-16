@@ -845,7 +845,7 @@ for profile, memory, scratch, overlay in (
         ('hbb-common-fs', 6144, 6, 4),
         ('cpace-recovery-tests', 8192, 6, 4),
         ('flutter-credential-dialog', 4096, 7, 6),
-        ('linux-service-build', 8192, 9, 8),
+        ('linux-service-build', 8192, 7, 6),
         ('linux-service-receiver', 4096, 6, 5),
         ('x11-focus', 4096, 9, 8),
         ('linux-parent-libtest', 6144, 7, 6),

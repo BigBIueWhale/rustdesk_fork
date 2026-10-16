@@ -36,8 +36,8 @@ def storage_limits(profile, memory_mib):
         return 7 * GIB, 6 * GIB
     if profile == 'linux-service-build':
         require(memory_mib == 8192, 'service build storage profile requires its 8 GiB guest')
-        # Prepared inputs share one GiB beside the unchanged eight-GiB overlay ceiling.
-        return 9 * GIB, 8 * GIB
+        # Prepared media share one GiB beside the bounded build overlay.
+        return 7 * GIB, 6 * GIB
     if profile == 'linux-service-receiver':
         require(memory_mib == 4096, 'service receiver requires its 4 GiB guest')
         return 6 * GIB, 5 * GIB

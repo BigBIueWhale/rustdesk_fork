@@ -2675,6 +2675,15 @@ generate_focused_rust_flutter_bridge() {
     CONTAINER_ID=
     "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
     rm -rf -- "$codegen_source" "$codegen_work"
+    if [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+        [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+            && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+            || fail 'bridge preparation left a container or image before storage retirement'
+        sync -f "$ROOT"
+        fstrim --verbose / >"$ROOT/bridge-retirement.trim" \
+            || fail 'disposable guest root does not support completed-tool discard'
+        printf 'VIEWER_CREDENTIAL_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
+    fi
     [ "$(grep -Fxc 'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' "$output")" -eq 1 ] \
         || fail 'direct-password generated API absence receipt differs'
     printf '%s\n' "$freshness_line"

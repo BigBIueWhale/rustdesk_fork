@@ -314,6 +314,7 @@ def watch(args):
     began = time.monotonic()
     peak = 0
     overlay_peak = 0
+    overlay_reclaimed = 0
     minimum_memory = available_memory()
     samples = 0
     qemu_io = None
@@ -329,7 +330,9 @@ def watch(args):
             peak = max(peak, used)
             overlay = Path(args.workspace) / 'overlay.qcow2'
             if overlay.exists():
-                overlay_peak = max(overlay_peak, overlay.stat().st_blocks * 512)
+                overlay_allocated = overlay.stat().st_blocks * 512
+                overlay_peak = max(overlay_peak, overlay_allocated)
+                overlay_reclaimed = max(overlay_reclaimed, overlay_peak - overlay_allocated)
             minimum_memory = min(minimum_memory, available_memory())
             durable = 0
             for entry in Path(args.run).rglob('*'):
@@ -361,6 +364,7 @@ def watch(args):
             'storage_profile': args.storage_profile, 'overlay_limit_bytes': overlay_limit,
             'headroom_bytes': HEADROOM, 'guest_memory_mib': args.memory_mib,
             'peak_allocated_bytes': peak, 'overlay_peak_allocated_bytes': overlay_peak,
+            'overlay_reclaimed_from_peak_bytes': overlay_reclaimed,
             'minimum_mem_available_bytes': minimum_memory, 'samples': samples,
             'observed_qemu_block_write_bytes': qemu_io['write_bytes'] if qemu_io else None,
             'qemu_io': qemu_io,

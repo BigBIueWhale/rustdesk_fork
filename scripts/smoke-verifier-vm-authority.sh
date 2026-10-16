@@ -4581,7 +4581,7 @@ vm_storage_check
         -device isa-serial,chardev=serial0 \
         -qmp "unix:$QMP_SOCKET,server=on,wait=off" \
         "${focused_qemu_args[@]}" \
-        -drive "file=$OVERLAY,if=virtio,format=qcow2,cache=none" \
+        -drive "file=$OVERLAY,if=virtio,format=qcow2,cache=none,discard=unmap" \
         -drive "file=$SEED,if=virtio,format=raw,media=cdrom,readonly=on" \
         -drive "file=$PAYLOAD,if=virtio,format=raw,media=cdrom,readonly=on" &
 VM_OWNER_PID=$!
@@ -5970,6 +5970,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = view
     require_exact_fixed_receipt \
         "ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN source=exact-pushed network=none outputs=readonly-publication" \
         'viewer credential fresh bridge generation'
+    require_exact_fixed_receipt \
+        'VIEWER_CREDENTIAL_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only' \
+        'joined bridge preparation storage retirement'
     require_exact_fixed_receipt \
         'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' \
         'fresh direct-password generated API absence'

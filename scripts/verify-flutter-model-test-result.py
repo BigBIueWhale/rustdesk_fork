@@ -101,6 +101,17 @@ PASSWORD_FIELD_TESTS = {
     "ordinary obscured field is a keyboard learning control",
     "password field retains focused obscured semantics",
 }
+FILE_NAVIGATION_TESTS = {
+    "refresh retains descending name order",
+    "refresh retains descending type order",
+    "refresh retains descending modified order",
+    "refresh retains descending size order",
+    "refresh retains ascending name order",
+    "folder navigation retains the selected sort direction",
+    "pending listing uses the latest selected sort and direction",
+    "retired listing cannot replace the current directory",
+    "initial home listing retains the selected sort direction",
+}
 PEER_DATA_TESTS = {
     "peer decode redacts malformed JSON exception content",
     "peer decode redacts invalid shapes and field values",
@@ -267,7 +278,7 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -286,6 +297,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"desktop_window_dispatch_test.dart"}
         expected_tests = len(WINDOW_DISPATCH_TESTS)
         expected_names = WINDOW_DISPATCH_TESTS
+    elif profile == "file-navigation":
+        expected_suites = {"file_navigation_sort_test.dart"}
+        expected_tests = len(FILE_NAVIGATION_TESTS)
+        expected_names = FILE_NAVIGATION_TESTS
     elif profile == "peer-data":
         expected_suites = {"peer_decode_test.dart"}
         expected_tests = len(PEER_DATA_TESTS)
@@ -392,7 +407,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -406,6 +421,7 @@ def main():
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
+        "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
         "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",
         "credential-dialog": "FLUTTER_CREDENTIAL_DIALOG_TEST_JSON",

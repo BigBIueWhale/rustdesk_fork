@@ -1321,6 +1321,18 @@ where
     T: InvokeUiCM,
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+    async fn send_response(&mut self, data: Data, raw: Option<bytes::Bytes>) -> ResultType<()> {
+        hbb_common::timeout(5_000, async {
+            self.stream.send(&data).await?;
+            if let Some(raw) = raw {
+                self.stream.send_raw(raw).await?;
+            }
+            Ok::<(), hbb_common::anyhow::Error>(())
+        })
+        .await
+        .map_err(|_| hbb_common::anyhow::anyhow!("connection-manager response send timed out"))?
+    }
+
     async fn run(&mut self) {
         self.run_with_authority_validator(
             |id, conn_type, cm_auth_token| async move {
@@ -1815,11 +1827,10 @@ where
                                             id
                                         );
                                         if let Err(error) = self
-                                            .stream
-                                            .send(&Data::ClipboardNonFile(Some((
+                                            .send_response(Data::ClipboardNonFile(Some((
                                                 "clipboard authority denied".to_owned(),
                                                 vec![],
-                                            ))))
+                                            ))), None)
                                             .await
                                         {
                                             log::error!(
@@ -1836,12 +1847,12 @@ where
                                         });
                                     match contents {
                                         Ok((main_data, raw_contents)) => {
+                                            let raw = (!raw_contents.is_empty()).then_some(raw_contents);
                                             if let Err(error) = self
-                                                .stream
-                                                .send(&Data::ClipboardNonFile(Some((
+                                                .send_response(Data::ClipboardNonFile(Some((
                                                     "".to_owned(),
                                                     main_data,
-                                                ))))
+                                                ))), raw)
                                                 .await
                                             {
                                                 log::error!(
@@ -1849,25 +1860,14 @@ where
                                                 );
                                                 break;
                                             }
-                                            if !raw_contents.is_empty() {
-                                                if let Err(error) =
-                                                    self.stream.send_raw(raw_contents).await
-                                                {
-                                                    log::error!(
-                                                        "failed to publish CM non-file clipboard payload: {error}"
-                                                    );
-                                                    break;
-                                                }
-                                            }
                                         }
                                         Err(e) => {
                                             log::debug!("Failed to get clipboard content. {}", e);
                                             if let Err(error) = self
-                                                .stream
-                                                .send(&Data::ClipboardNonFile(Some((
+                                                .send_response(Data::ClipboardNonFile(Some((
                                                     format!("{}", e),
                                                     vec![],
-                                                ))))
+                                                ))), None)
                                                 .await
                                             {
                                                 log::error!(
@@ -1911,15 +1911,9 @@ where
                         },
                         _ => None,
                     };
-                    if let Err(e) = self.stream.send(&data).await {
+                    if let Err(e) = self.send_response(data, raw_block).await {
                         log::error!("error encountered in IPC task, quitting: {}", e);
                         break;
-                    }
-                    if let Some(raw_block) = raw_block {
-                        if let Err(e) = self.stream.send_raw(raw_block).await {
-                            log::error!("error sending CM read block data: {}", e);
-                            break;
-                        }
                     }
                 },
                 clip_file = rx_clip.recv() => match clip_file {

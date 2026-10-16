@@ -3976,7 +3976,7 @@ run_focused_rust_tests() {
     fi
 
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
-        printf '%s\n' 727573746465736b2d7669657765723031 >"$ROOT/viewer.machine-id"
+        printf '%s\n' 727573746465736b2d76696577657231 >"$ROOT/viewer.machine-id"
         chown 1000:1000 "$ROOT/viewer.machine-id"
         chmod 0400 "$ROOT/viewer.machine-id"
         [ "$(stat -c '%u:%g:%a:%h:%s' "$ROOT/viewer.machine-id")" = 1000:1000:400:1:33 ] \

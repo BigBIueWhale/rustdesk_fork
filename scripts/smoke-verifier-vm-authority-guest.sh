@@ -2759,6 +2759,7 @@ run_focused_rust_tests() {
             src/server/connection.rs
             scripts/select-hbb-common-test-artifact.py
             scripts/test-hbb-common-test-artifact.py
+            scripts/verify.sh
         )
         required_tests=(
             platform::linux::tests::r_s11at_loginctl_output_deadline_reaps_silent_child
@@ -2775,6 +2776,8 @@ run_focused_rust_tests() {
             test::direct_address_hostname_bounds
             test::direct_address_shared_vectors
             socket_client::tests::test_check_port
+            socket_client::tests::single_address_connect_owns_the_literal_socket
+            socket_client::tests::bind_collision_preserves_the_native_error
             fs::tests::directory_enumeration_refuses_metadata_permission_failure
             fs::tests::directory_enumeration_refuses_special_files
             fs::tests::recursive_enumeration_refuses_special_files_before_job_admission
@@ -2884,6 +2887,7 @@ run_focused_rust_tests() {
                 libs/hbb_common/src/bytes_codec.rs
                 libs/hbb_common/src/tcp.rs
                 libs/hbb_common/examples/hostname_resolution_probe.rs
+                scripts/fixtures/tcp-constructor-before-resolution-boundary.rs
                 scripts/run-hostname-resolution-probe.py
                 scripts/verify-hostname-resolution-probe.py
                 examples/probe_client.rs
@@ -4163,6 +4167,7 @@ run_focused_rust_tests() {
                 [ "$(cargo --version)" = "cargo 1.75.0 (1d8b05cdd 2023-11-20)" ]
                 case "$RUST_TEST_MODE" in
                     hbb-common-fs)
+                        /bin/bash -n /source/scripts/verify.sh
                         python3 -I -S /source/scripts/test-hbb-common-test-artifact.py
                         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
                             python3 -I -S /source/scripts/run-linux-fuse-read-test.py
@@ -5158,6 +5163,7 @@ PY
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
+            grep -E '^test socket_client::tests::(single_address_connect_owns_the_literal_socket|bind_collision_preserves_the_native_error) \.\.\. ok$' "$output"
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests)|bytes_codec::tests)::.* \.\.\. ok$' "$output"
             grep -E '^test fs::tests::(receive_blocks_refuse_oversized_input_and_decoded_output|file_block_limit_preserves_real_sender_receiver_roundtrips|file_job_serialization_preserves_the_live_cm_path_field|file_job_id_allocator_never_reuses_or_wraps|file_transfer_type_refuses_reserved_and_unknown_wire_values) \.\.\. ok$' "$output"
             grep -E '^test fs::tests::(send_open_refuses_a_fifo_replaced_after_enumeration|send_resume_refuses_a_fifo_replaced_after_enumeration|send_open_refuses_nonregular_replacements|send_source_open_preserves_regular_files_and_source_links|receive_job_cannot_initialize_a_send_source) \.\.\. ok$' "$output"

@@ -460,31 +460,23 @@ fn set_exclusive_addr_use(socket: &TcpSocket) -> io::Result<()> {
 }
 
 impl FramedStream {
-    pub async fn new<T: ToSocketAddrs + std::fmt::Display>(
-        remote_addr: T,
+    /// Connect one concrete socket address; name resolution belongs to the connector.
+    pub async fn new(
+        remote_addr: SocketAddr,
         local_addr: Option<SocketAddr>,
         ms_timeout: u64,
     ) -> ResultType<Self> {
-        for remote_addr in lookup_host(&remote_addr).await? {
-            let local = if let Some(addr) = local_addr {
-                addr
-            } else {
-                crate::config::Config::get_any_listen_addr(remote_addr.is_ipv4())
-            };
-            if let Ok(socket) = new_socket(local, true) {
-                if let Ok(Ok(stream)) =
-                    super::timeout(ms_timeout, socket.connect(remote_addr)).await
-                {
-                    stream.set_nodelay(true).ok();
-                    let addr = stream.local_addr()?;
-                    return Ok(Self::from_parts(
-                        Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
-                        addr,
-                    ));
-                }
-            }
-        }
-        bail!(format!("Failed to connect to {remote_addr}"));
+        let local = local_addr.unwrap_or_else(|| {
+            crate::config::Config::get_any_listen_addr(remote_addr.is_ipv4())
+        });
+        let socket = new_socket(local, true)?;
+        let stream = super::timeout(ms_timeout, socket.connect(remote_addr)).await??;
+        stream.set_nodelay(true)?;
+        let addr = stream.local_addr()?;
+        Ok(Self::from_parts(
+            Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
+            addr,
+        ))
     }
 
     /// Build an unkeyed stream from a framed socket (R-T2: fresh = not poisoned; the per-send

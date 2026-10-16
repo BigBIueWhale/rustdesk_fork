@@ -1,6 +1,7 @@
-use crate::{tcp::FramedStream, ResultType, Stream};
+use crate::{bail, tcp::FramedStream, ResultType, Stream};
+use anyhow::Context as _;
 use std::net::SocketAddr;
-use tokio::net::ToSocketAddrs;
+use tokio::net::{lookup_host, ToSocketAddrs};
 
 #[inline]
 pub fn check_port<T: std::string::ToString>(host: T, port: i32) -> String {
@@ -75,20 +76,88 @@ pub async fn connect_tcp<T: ToSocketAddrs + std::fmt::Display>(
     connect_tcp_local(target, None, ms_timeout).await
 }
 
-// This function connects directly to the target without checking for websocket endpoints.
+// Resolve the target before connecting its candidate socket addresses.
 pub async fn connect_tcp_local<T: ToSocketAddrs + std::fmt::Display>(
     target: T,
     local: Option<SocketAddr>,
     ms_timeout: u64,
 ) -> ResultType<Stream> {
-    Ok(Stream::Tcp(
-        FramedStream::new(target, local, ms_timeout).await?,
-    ))
+    let mut last_error = None;
+    for address in lookup_host(&target).await? {
+        match FramedStream::new(address, local, ms_timeout).await {
+            Ok(stream) => return Ok(Stream::Tcp(stream)),
+            Err(error) => last_error = Some(error),
+        }
+    }
+    match last_error {
+        Some(error) => Err(error).with_context(|| format!("Failed to connect to {target}")),
+        None => bail!("No socket address was found for {target}"),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn single_address_connect_owns_the_literal_socket() {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let remote = listener.local_addr().unwrap();
+        for before in [true, false] {
+            let stream = if before {
+                FramedStream::before_resolution_boundary(remote, None, 1000).await
+            } else {
+                FramedStream::new(remote, None, 1000).await
+            }
+            .unwrap();
+            let (accepted, peer) = tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                listener.accept(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(accepted.local_addr().unwrap(), remote);
+            assert_eq!(peer, stream.local_addr());
+            drop((accepted, stream));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn bind_collision_preserves_the_native_error() {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let address = listener.local_addr().unwrap();
+        let before = FramedStream::before_resolution_boundary(address, Some(address), 1000)
+            .await
+            .err()
+            .expect("occupied local bind must fail");
+        assert!(before.downcast_ref::<std::io::Error>().is_none());
+        let after = FramedStream::new(address, Some(address), 1000)
+            .await
+            .err()
+            .expect("occupied local bind must fail");
+        assert_eq!(
+            after.downcast_ref::<std::io::Error>()
+                .expect("native bind error must be retained")
+                .raw_os_error(),
+            Some(libc::EADDRINUSE)
+        );
+        let connector = connect_tcp_local(address, Some(address), 1000)
+            .await
+            .err()
+            .expect("connector must preserve the occupied local bind");
+        assert_eq!(
+            connector.downcast_ref::<std::io::Error>()
+                .expect("connector must retain the native cause")
+                .raw_os_error(),
+            Some(libc::EADDRINUSE)
+        );
+    }
 
     #[test]
     fn test_check_port() {

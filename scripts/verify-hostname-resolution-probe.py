@@ -13,7 +13,7 @@ def verify(log, source):
     if len(records) != 1 or raw.count(b"HOSTNAME_RESOLUTION_COMPONENT=") != 1:
         raise ValueError("Connector observation is absent or duplicated")
     record = json.loads(records[0])
-    if (record.get("execution") != "production-FramedStream-new"
+    if (record.get("execution") != "production-connect_tcp_local"
             or record.get("product_correction") is not False or record.get("instrumented") is not True
             or record.get("private_executable_links") != 1
             or record.get("processes") != "exited-and-waited"

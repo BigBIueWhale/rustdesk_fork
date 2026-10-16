@@ -117,7 +117,7 @@ def main():
         "artifact_sha256": artifact_sha, "sources": sources, "observations": observations,
         "producer": producer, "private_executable_links": private.lstat().st_nlink,
         "product_correction": False, "instrumented": True,
-        "execution": "production-FramedStream-new", "processes": "exited-and-waited"
+        "execution": "production-connect_tcp_local", "processes": "exited-and-waited"
     }, sort_keys=True, separators=(",", ":")))
 
 

@@ -20,6 +20,9 @@ pub mod cpace;
 pub mod socket_client;
 pub mod socket_surface;
 pub mod tcp;
+#[cfg(test)]
+#[path = "../../../scripts/fixtures/tcp-constructor-before-resolution-boundary.rs"]
+mod tcp_constructor_before_resolution_boundary;
 pub use env_logger;
 pub use log;
 pub mod bytes_codec;

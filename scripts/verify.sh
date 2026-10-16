@@ -12699,8 +12699,6 @@ if grep -qE '\bsocks\b' <<<"$config2_block"; then
   r_s11b3j="$r_s11b3j structured-config-field-present"
 fi
 direct_connect_block=$(awk '/pub async fn connect_tcp_local/,/^}/' libs/hbb_common/src/socket_client.rs)
-grep -qF 'FramedStream::new(target, local, ms_timeout).await?' <<<"$direct_connect_block" \
-  || r_s11b3j="$r_s11b3j direct-connector-missing"
 if grep -qE 'Config::|FramedStream::connect|proxy' <<<"$direct_connect_block"; then
   r_s11b3j="$r_s11b3j alternate-route-selection-present"
 fi

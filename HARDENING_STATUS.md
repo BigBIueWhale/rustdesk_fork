@@ -11647,6 +11647,13 @@ Product correction, unrestricted/whole-viewer behavior, platform DNS-policy
 integration and exact-current artifacts remain OPEN. Literal-only admission,
 TCP DNS configuration or a timeout wrapper do not establish the required
 transport/lifetime correction.
+**Resolver boundary — source separated; native replay pending.**
+`FramedStream::new` accepts one `SocketAddr`; it no longer resolves names or
+selects candidates. The existing `connect_tcp_local` facade owns those steps,
+and socket/option failures retain their native cause. Hostname probes now use
+the same facade as the viewer. The blocking lookup still exists there; its
+transport and cancellation correction remain OPEN. The focused native replay
+adds real literal-connect and old/current occupied-bind error comparisons.
 Primary references: [Rust 1.75 lookup](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys_common/net.rs#L181),
 [glibc 2.27 sorting](https://github.com/bminor/glibc/blob/glibc-2.27/sysdeps/posix/getaddrinfo.c#L2187),
 [glibc DNS sockets](https://github.com/bminor/glibc/blob/glibc-2.27/resolv/res_send.c#L858).

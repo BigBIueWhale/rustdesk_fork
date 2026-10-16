@@ -310,7 +310,7 @@ async fn connect_and_login(
     prs: &str,
     client_name: &str,
 ) -> ResultType<FramedStream> {
-    let mut stream = FramedStream::new(&endpoint.to_string(), None, 5_000)
+    let mut stream = FramedStream::new(endpoint, None, 5_000)
         .await
         .context("failed to connect to the loopback RustDesk server")?;
     let keys = run_initiator(&mut stream, prs)

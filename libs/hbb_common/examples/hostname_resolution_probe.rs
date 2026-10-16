@@ -5,7 +5,7 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod probe {
     use anyhow::{bail, ensure, Context, Result};
-    use hbb_common::tcp::FramedStream;
+    use hbb_common::socket_client::connect_tcp_local;
     use std::{
         io,
         net::SocketAddr,
@@ -198,7 +198,7 @@ mod probe {
     async fn observe_dns_tcp(target: String, stall: bool) -> Result<DnsTcpObservation> {
         let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 53)).await?;
         let mut caller = Some(tokio::spawn(async move {
-            FramedStream::new(target, None, if stall { 5 } else { 100 }).await
+            connect_tcp_local(target, None, if stall { 5 } else { 100 }).await
         }));
         let outcome = async {
             let (mut peer, address) = tokio::time::timeout(Duration::from_secs(1), listener.accept()).await??;
@@ -369,7 +369,7 @@ mod probe {
         } else if case == "cancel" {
             HOLD_GAI.store(true, SeqCst);
             let release = ReleaseGate;
-            let task = tokio::spawn(async move { FramedStream::new(target, None, 5).await });
+            let task = tokio::spawn(async move { connect_tcp_local(target, None, 5).await });
             let began = Instant::now();
             while GAI_ACTIVE.load(SeqCst) == 0 && !task.is_finished() {
                 ensure!(began.elapsed() < Duration::from_secs(1), "resolver entry was not observable");
@@ -397,7 +397,7 @@ mod probe {
                 connected = task.await?.is_ok();
             }
         } else {
-            let stream = FramedStream::new(target, None, 100).await;
+            let stream = connect_tcp_local(target, None, 100).await;
             connected = stream.is_ok();
             if connected {
                 let accepted = tokio::time::timeout(Duration::from_secs(1), listener.accept()).await??;

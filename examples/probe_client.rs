@@ -2109,7 +2109,9 @@ fn main() {
 
     let rt = hbb_common::tokio::runtime::Runtime::new().expect("tokio runtime");
     let (keyed, postkey, file_transfer_ok, remote_login_ok) = rt.block_on(async {
-        let mut stream = match FramedStream::new(&addr, local, 5000).await {
+        let hbb_common::Stream::Tcp(mut stream) = match
+            hbb_common::socket_client::connect_tcp_local(&addr, local, 5000).await
+        {
             Ok(s) => s,
             Err(e) => {
                 println!("probe_client: CONNECT_FAIL {e}");

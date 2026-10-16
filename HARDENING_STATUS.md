@@ -2874,6 +2874,33 @@ network deadline, native input/display cleanup and broader shutdown acceptance
 remain OPEN. No product code changed; the suspected join-order hang was not
 reproduced in this schedule.
 
+**Stalled authorization helper and concurrent root mutation: one current-source installed Linux case accepted.**
+Harness/artifact `b30f4811` passed the focused authorization-timeout transaction in 201 VM seconds.
+At an actual packaged administrator prompt, the observer stops only the retained root `pkcheck`
+pidfd and sends no administrator password. A concurrent actual root password change returns Applied
+in 185 ms, and a fresh peer confirms the new credential while that helper remains stopped.
+The service's own 120-second deadline terminates and reaps the helper at observed age 120.055 seconds;
+the CLI exits1 with explicit rejection while the agent remains alive. Exact invocation/boot/PID-bound
+root journal, pidfd exit and process reaping prove the outcome. The root value, supervisor/child
+generation and listener remain unchanged through timeout. A fresh real administrator grant, fresh
+no-agent refusal and four total mutual-CPace exchanges pass. No product correction was needed.
+`.harness-state/verifier-vm/linux-authorization-timeout-b30f4811.json` binds the native observation,
+complete raw serial, exact artifact, unchanged source/control/endpoints and joined cleanup.
+
+The required current-source Linux debug capsule built in 341 VM seconds and passed the existing
+file-type and source-replacement CPace/FileTransfer replays. The receiver's full production-source
+equality guard remains mandatory; it refused the older artifact before QEMU. The old `dfac15c2`
+capsule is preserved at `.harness-state/retained-peer-artifact-dfac15c2/linux-x86_64-peer`; the new
+canonical capsule is bound by manifest `1ed9a264…38e440` and binary `837024e0…4389f2`.
+The bounded service build keeps its 8 GiB guest/6 GiB container and tightens RAM scratch from 9 to
+7 GiB and overlay from 8 to 6 GiB; measured peaks are 6,245,519,360 and 6,084,431,872 bytes.
+The timeout replay uses a separate 4 GiB guest/6 GiB scratch/5 GiB overlay profile; scratch peaks at
+4,457,431,040 bytes. Both retain 6 GiB host headroom, monitoring, hard ceilings and joined RAM
+retirement. `.harness-state/verifier-vm/linux-service-build-b30f4811.json` retains build/artifact
+evidence. This is debug/headless installed-layout seatless-X11 evidence for one stopped-helper and
+parallel-root schedule, not current release/package, other desktops/platforms, general contention,
+sustained resource/latency, cold equality, independent reproduction or external-review acceptance.
+
 **Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
 both-endpoint root/cache/session changes, principal allow/deny,
 contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,

@@ -151,6 +151,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=linux-resolution-lifetime
         ;;
+    1:--android-client-drain-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Android client-drain input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=android-client-drain
+        ;;
     1:--viewer-credential-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'viewer credential-test input/run overrides are forbidden' >&2; exit 2; }
@@ -472,6 +478,7 @@ case "$#:${1:-}" in
         printf 'Focused modifier release bookkeeping: %s --flutter-model-tests --modifier-release\n' "${0##*/}" >&2
         printf 'Focused directory-ordering publication and home correlation: %s --flutter-model-tests --directory-ordering\n' "${0##*/}" >&2
         printf 'Installed Linux authorization deadline: %s --linux-service-authorization-timeout-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Blocked-worker owner transitions: %s --android-client-drain-tests\n' "${0##*/}" >&2
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
@@ -716,7 +723,7 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     if [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
         readonly VM_TIMEOUT_SECONDS=900
-    elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+    elif [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = android-client-drain ]]; then
         readonly VM_TIMEOUT_SECONDS=600
     elif [ "$RUST_TEST_PROFILE" != integration ]; then
         readonly VM_TIMEOUT_SECONDS=300
@@ -725,7 +732,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     fi
     readonly OVERLAY_SIZE=40G
     if [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller \
-        || "$RUST_TEST_PROFILE" = viewer-credentials \
+        || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = android-client-drain \
         || "$RUST_TEST_PROFILE" = input-revocation \
         || "$RUST_TEST_PROFILE" = clipboard ]]; then
         readonly VM_MEMORY=6144
@@ -2495,7 +2502,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     )
     rust_lifecycle_dirs=("$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT")
     rust_lifecycle_files=()
-    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
+    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = android-client-drain ]]; then
         rust_lifecycle_inputs+=(
             "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
             "$FLUTTER_TEST_ARCHIVE:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
@@ -2516,7 +2523,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         verify_sha256 "$path" "$digest"
         rust_lifecycle_files+=("$path")
     done
-    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
+    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = android-client-drain ]]; then
         [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
                  "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
@@ -2535,7 +2542,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
-    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
+    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = android-client-drain ]]; then
         [ -d "$PUB_CACHE_ROOT" ] && [ ! -L "$PUB_CACHE_ROOT" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
                  "$HOST_UID:$HOST_GID:500" ] \
@@ -5965,6 +5972,30 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file
         'CM_OWNER_BEFORE=pass source=c16ec444530f001145395c3d4974d2d5d57df960 function_sha256=a1973487bd83eed992b357615b7024bf4e96fe243250e668e15dd1c0f355be53 fixture_sha256=20420e74f04c3f443d6930651b6bf37a592a730c16d87caa01c5ec5a4dc3d71d' \
         'native CM owner counterexample identity'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'file-receive parent cloud-init completion'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = android-client-drain ]; then
+    mapfile -t android_client_drain_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'ANDROID_CLIENT_DRAIN_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 groups=2 unchanged=before-between-after execution_seconds=[0-9]+$'
+    )
+    [ "${#android_client_drain_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'ANDROID_CLIENT_DRAIN_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'Android client drain artifact receipt differs'
+    require_exact_fixed_receipt \
+        "ANDROID_CLIENT_DRAIN_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=2 target=linux-x86_64 scope=production-owner-transitions-with-blocked-worker-fixtures android=unexecuted rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'Android client drain parent compilation and native component result'
+    [ "$(/usr/bin/grep -Ec 'ANDROID_CLIENT_DRAIN_BRIDGE=pass rust_sha256=[0-9a-f]{64} io_sha256=[0-9a-f]{64} unchanged=before-after' "$SERIAL_LOG")" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'ANDROID_CLIENT_DRAIN_BRIDGE=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'Android client drain generated bridge binding differs'
+    require_exact_fixed_receipt \
+        "ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN source=exact-pushed network=none outputs=readonly-publication" \
+        'Android client drain fresh bridge generation'
+    require_exact_fixed_receipt \
+        'ANDROID_CLIENT_DRAIN_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only' \
+        'joined bridge preparation storage retirement'
+    require_exact_fixed_receipt \
+        'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' \
+        'fresh direct-password generated API absence'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Android client drain cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
     mapfile -t viewer_credential_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \

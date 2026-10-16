@@ -588,6 +588,8 @@ readonly FRB_CODEGEN_SOURCE="$SCRIPT_DIR/frb-codegen.sh"
 readonly DART_VERIFY_SOURCE="$SCRIPT_DIR/dart-verify.sh"
 readonly SMOKE_SERVER_SOURCE="$SCRIPT_DIR/smoke-server.sh"
 readonly AUTHORITY_GATE_SOURCES=(
+    "$SCRIPT_DIR/verify-github-automation-authority.py"
+    "$SCRIPT_DIR/test-github-automation-authority.py"
     "$SCRIPT_DIR/smoke-flutter-presentation-windows.sh"
     "$REPO_ROOT/src/client.rs"
     "$REPO_ROOT/src/client/io_loop.rs"
@@ -5298,6 +5300,10 @@ elif [ "$MODE" = android-frame-tests ]; then
     printf 'ANDROID_FRAME_NATIVE=pass source=x11 pixels=actual counter=uint32 age=monotonic whole_cycle=refused network=none uid=4000 cleanup=joined\n'
     printf 'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
 elif [ "$MODE" = authority-smoke ]; then
+require_exact_fixed_receipt \
+    'GITHUB_AUTOMATION_FILESYSTEM=pass cases=59 source=production-cli nodes=regular,symlink,directory,fifo schema=absent cleanup=joined' \
+    'GitHub automation production CLI filesystem refusals'
+printf 'GITHUB_AUTOMATION_FILESYSTEM=pass cases=59 source=production-cli nodes=regular,symlink,directory,fifo schema=absent cleanup=joined\n'
 require_exact_fixed_receipt \
     'RELEASE_TARGET_EPOCH_VM=pass uid=4000 targets=3 refusals=12 unset=android,debian exact=android,debian windows_build=unexecuted artifact=unexecuted' \
     'release target epoch admission'

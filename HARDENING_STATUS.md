@@ -11343,36 +11343,26 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `scripts/online-fetch.sh`, `scripts/build-android.sh`, and `scripts/android-apk-build.sh` are the sole Android
   release path. The ten imported generic, multi-ABI, F-Droid, iOS, and non-aarch64 top-level Flutter scripts remain
   absent, including as symlinks; `flutter/ndk_arm64.sh` is the only top-level Flutter shell and contains the exact
-  locked arm64 command consumed once by the one arm64 split-APK build. The retained Flutter workflow text is
-  schema-inert and is checked separately by the GitHub-automation gate. The shared verifier directly checks this
+  locked arm64 command consumed once by the one arm64 split-APK build. Hosted workflow definitions and disabled
+  copies are absent under R-R2d. The shared verifier directly checks this
   small source topology, while the Android builder checker binds the authenticated verifier-VM funnel and forbids
   host-Docker, root, host-network, published-port, and live-worktree fallbacks. The obsolete standalone 32-mutation
   mobile verifier and its duplicate workspace verifier-of-verifier block are deleted; they had become false after
   the builder correctly replaced `local_docker` with guest-only `verifier_vm_docker` and established no product or
   artifact behavior. A clean cold exact-commit double build, signed current APK, installation, device lifecycle,
   peer, presentation, and resource evidence remain required by R-B2/R-B10 and are not inferred from source checks.
-- **R-R2d — retained GitHub Actions references are schema-inert — source guards implemented;
-  current artifact/release acceptance OPEN.** `.github/workflows/` has exactly seven regular
-  suffix-disabled references plus `DISABLED.md`, with zero enabled workflow definitions. Each
-  reference has one `historical_on` and one `historical_jobs`, no executable trigger/jobs keys,
-  and the exact closed top-level key inventory. Extra/missing/nonregular entries and alternate
-  top-level forms refuse. Renaming alone cannot restore a trigger or executable job graph;
-  restoration is an explicit requirements/gate and reusable-dependency review, never a convenience
-  enable operation. Local repository scripts remain the build/verification/release authority.
-
-  `DISABLED.md` identifies the authenticated no-NIC verifier VM as the execution authority and
-  `build-release.sh` as its internal coordinator. The operator-host execution claim and direct
-  target-builder table are removed. Workflow bytes/schema, executable gates and normative contracts
-  are unchanged; complete release transport, artifacts and native acceptance remain OPEN.
-
-  `scripts/verify-github-automation-authority.py --repo . --self-test`, called by `scripts/verify.sh`
-  section 6c-a4, checks actual inventory/type and finite schema predicates and mutates each retained
-  reference's trigger/jobs keys. It does not read normative/ledger prose or explanatory comment
-  markers; those checks were removed in `d6177985`. Marker comments describe the inert role but
-  do not establish it. Superseded rename history, wording/meta-gate claims and mutation scoreboards
-  are not current evidence. This documentation reconciliation ran no workflow, build, cloud job
-  or product test and changed no automation configuration. Source inspection/guards are not
-  current-commit artifacts, cold equality, release execution or independent acceptance (R-B2/R-B10).
+- **R-R2d — GitHub Actions definitions and disabled copies deleted; filesystem acceptance pending.**
+  `.github/workflows/` contains only the regular `DISABLED.md` policy. All seven
+  obsolete upstream workflows are deleted; Git history retains their provenance.
+  The focused validator checks actual directory and node types, forbids every
+  additional workflow entry and retains Dependabot/absorbed-manifest refusals.
+  The schema parser, per-reference key inventory and in-memory mutation catalog
+  are deleted. `test-github-automation-authority.py` drives the production CLI
+  against actual regular files, dangling symlinks, directories and FIFOs. Its
+  isolated VM execution remains pending. Local scripts and the authenticated
+  no-NIC verifier VM remain the build/verification/release authority. External
+  repository settings, current artifacts, cold equality, release transactions
+  and independent acceptance remain OPEN; file absence does not establish them.
 - **R-R1a — automated dependency-rewrite configuration absent — source guards implemented;
   external setting/advisory/artifact evidence OPEN.** Neither recognized Dependabot spelling
   (`.github/dependabot.yml`/`.yaml`) nor either suffix-hidden copy is retained. `.gitmodules`,

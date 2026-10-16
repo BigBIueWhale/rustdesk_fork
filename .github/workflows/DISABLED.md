@@ -14,23 +14,14 @@ missing authority or inputs refuse without a host-Docker or direct-launch fallba
 is described in [`VERSIONING.md`](../../docs/VERSIONING.md); current transport, artifact and native
 acceptance is tracked in [`HARDENING_STATUS.md`](../../HARDENING_STATUS.md).
 
-The upstream RustDesk workflows are retained for reference but **disabled twice**. The `.disabled` suffix
-keeps GitHub Actions from loading them,
-and every retained file schema-demotes its top-level `on` and `jobs` keys to `historical_on` and
-`historical_jobs`. Renaming a reference alone cannot enable it: it still has neither a workflow trigger nor an
-executable job graph. This means the references trigger **nothing** (no push / PR / tag / schedule, no reusable
-call, and no manual dispatch).
+This directory contains only this policy document. GitHub Actions workflow definitions and disabled
+copies are absent. Git history preserves the obsolete upstream workflows; they are not build inputs,
+release recipes, or a supported activation path. Adding hosted automation requires an explicit change
+to the release-authority requirements and their absence guard.
+
 No Dependabot configuration or disabled copy is retained. The obsolete upstream updater targeted the sole
 `hbb_common` git submodule, which this fork absorbed in-tree; `.gitmodules` and every gitlink are absent. This
 fork's dependency world is **exactly pinned** (`Cargo.lock` + `pubspec.lock` + `vcpkg.json` + `scripts/pins.env`,
 R-R1/R-R1a/R-B12), so dependency changes require an explicit reviewed pin/provenance transaction rather than an
 automated pull-request configuration. GitHub's separate repository-level alert/security-update settings are not
 controlled by this source file and are not represented as a source guarantee.
-
-Disabled workflows: `bridge`, `ci`, `flutter-build`, `flutter-ci`, `flutter-tag`,
-`third-party-RustDeskTempTopMostWindow`, `wf-cliprdr-ci`.
-
-There is no rename-only re-enable path. Restoring `on` and `jobs` is an explicit release-authority change that
-must update R-R2/R-R2d and the closed workflow inventory before a file can be renamed to `*.yml`; reusable
-dependencies must be reviewed and restored separately. Historical `uses:` paths are intentionally left as
-references, not as an executable workflow chain.

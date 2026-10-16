@@ -9696,6 +9696,16 @@ if [ "$MODE" = authority-smoke ]; then
                 /bin/bash -n "$VERIFY_REPO/scripts/$syntax_source" \
             || fail "admitted shell source has invalid syntax: $syntax_source"
     done
+    automation_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            /usr/bin/python3 -B -I -S \
+                "$VERIFY_REPO/scripts/test-github-automation-authority.py"
+    )" || fail 'GitHub automation filesystem test failed'
+    [ "$automation_output" = \
+      'GITHUB_AUTOMATION_FILESYSTEM=pass cases=59 source=production-cli nodes=regular,symlink,directory,fifo schema=absent cleanup=joined' ] \
+        || fail "GitHub automation filesystem result differs: $automation_output"
+    printf '%s\n' "$automation_output"
     publication_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \

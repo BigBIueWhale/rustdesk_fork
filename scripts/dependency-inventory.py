@@ -134,21 +134,13 @@ EXPECTED = {
         "rustdesk_org_git_records": 2,
     },
     "github_workflows": {
-        "disabled_workflow_definition_files": [
-            "bridge.yml.disabled",
-            "ci.yml.disabled",
-            "flutter-build.yml.disabled",
-            "flutter-ci.yml.disabled",
-            "flutter-tag.yml.disabled",
-            "third-party-RustDeskTempTopMostWindow.yml.disabled",
-            "wf-cliprdr-ci.yml.disabled",
-        ],
-        "disabled_workflow_definitions": 7,
+        "disabled_workflow_definition_files": [],
+        "disabled_workflow_definitions": 0,
         "documentation_files": ["DISABLED.md"],
         "documentation_regular_files": 1,
         "enabled_workflow_definition_files": [],
         "enabled_workflow_definitions": 0,
-        "regular_files": 8,
+        "regular_files": 1,
     },
 }
 

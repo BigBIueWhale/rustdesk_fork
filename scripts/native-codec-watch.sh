@@ -244,7 +244,6 @@ aom_scaffold_files=(
   scripts/build-windows.ps1
   scripts/win-guest-setup.ps1
   scripts/online-fetch.sh
-  .github/workflows/flutter-build.yml.disabled
 )
 existing_aom_scaffold_files=()
 for file in "${aom_scaffold_files[@]}"; do

@@ -10312,7 +10312,6 @@ aom_build_scaffold_files=(
   scripts/build-windows.ps1
   scripts/win-guest-setup.ps1
   scripts/online-fetch.sh
-  .github/workflows/flutter-build.yml.disabled
 )
 existing_aom_build_scaffold_files=()
 for file in "${aom_build_scaffold_files[@]}"; do
@@ -14271,15 +14270,14 @@ else
 fi
 
 # R-R1a/R-R2/R-R2d: there is no automated dependency rewrite authority, and
-# retained upstream workflow references are review provenance rather than latent
-# GitHub-hosted execution authority. Dependabot is absent; workflow suffix and
-# schema demotion make every retained reference fail closed after a rename.
-echo "== (6c-a4) absent/inert GitHub automation authority (R-R1a/R-R2/R-R2d) =="
-if ! python3 scripts/verify-github-automation-authority.py --repo . --self-test; then
-  echo "  FAIL R-R1a/R-R2/R-R2d: GitHub automation authority is not the exact absent/schema-inert set"
+# GitHub-hosted workflow definitions and their disabled copies are absent.
+echo "== (6c-a4) absent GitHub automation authority (R-R1a/R-R2/R-R2d) =="
+if ! python3 scripts/verify-github-automation-authority.py --repo . \
+  || ! python3 scripts/test-github-automation-authority.py; then
+  echo "  FAIL R-R1a/R-R2/R-R2d: GitHub automation authority is present or its filesystem guard failed"
   rc=1
 else
-  echo "  ok  R-R1a/R-R2/R-R2d Dependabot absent; zero enabled workflows; seven historical references have no active trigger/job schema"
+  echo "  ok  R-R1a/R-R2/R-R2d Dependabot and workflow definitions absent; filesystem refusals exercised"
 fi
 # R-SV8 (§18 sovereignty, MUST): no Firebase / FCM / Google-services on ANY artifact (iOS source +
 # Android). The iOS GoogleService-Info.plist shipped LIVE Google creds (API_KEY / GCM_SENDER_ID /

@@ -6694,8 +6694,17 @@ else
             "FLUTTER_PASSWORD_FIELD_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=4 flutter=$FLUTTER_VERSION widget=$password_sha256 tests_source=$password_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-password-field-tests cleanup=joined" \
             'focused Flutter password-field receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
+        for native_receipt in \
+            'LINUX_WINDOW_CHANNEL_BEFORE=observed cases=7 failed=7' \
+            'LINUX_WINDOW_CHANNEL_CURRENT=pass cases=7' \
+            'LINUX_WINDOW_CHANNEL_SCOPE=component codec=flutter-3.24.5 messenger=controlled windows=unexecuted'; do
+            require_exact_fixed_receipt "$native_receipt" 'native window-channel result'
+        done
+        native_artifact_line="$(/usr/bin/grep -Eo 'LINUX_WINDOW_CHANNEL_ARTIFACTS=pass before=[0-9a-f]{64} current=[0-9a-f]{64} flutter=[0-9a-f]{64} unchanged=before-after' "$SERIAL_LOG")"
+        [[ "$native_artifact_line" =~ ^LINUX_WINDOW_CHANNEL_ARTIFACTS=pass\ before=[0-9a-f]{64}\ current=[0-9a-f]{64}\ flutter=[0-9a-f]{64}\ unchanged=before-after$ ]] \
+            || fail 'native window-channel artifact receipt differs'
         require_exact_fixed_receipt \
-            "FLUTTER_WINDOW_DISPATCH_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=8 flutter=$FLUTTER_VERSION pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-window-dispatch-tests cleanup=joined" \
+            "FLUTTER_WINDOW_DISPATCH_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=8 flutter=$FLUTTER_VERSION pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-and-linux-native-channel-tests cleanup=joined" \
             'focused Flutter window-dispatch receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = modifier-release ]; then
         require_exact_fixed_receipt \
@@ -7378,7 +7387,9 @@ else
         printf 'FLUTTER_PASSWORD_FIELD_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-password-field-tests cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
-        printf 'FLUTTER_WINDOW_DISPATCH_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-window-dispatch-tests cleanup=joined elapsed_seconds=%s\n' \
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" \
+            | /usr/bin/grep -Eo 'LINUX_WINDOW_CHANNEL_[A-Z]+=.*|WINDOW_CHANNEL_CASE=(pass|fail) case=[a-z-]+'
+        printf 'FLUTTER_WINDOW_DISPATCH_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-and-linux-native-channel-tests cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = modifier-release ]; then
         printf 'FLUTTER_MODIFIER_RELEASE_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-modifier-release-tests cleanup=joined elapsed_seconds=%s\n' \

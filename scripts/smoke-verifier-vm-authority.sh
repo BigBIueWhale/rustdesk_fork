@@ -5673,13 +5673,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = inpu
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = input-revocation ]; then
     mapfile -t input_release_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'INPUT_REVOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 unchanged=before-after$'
+            'INPUT_REVOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=9 unchanged=before-after$'
     )
     [ "${#input_release_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'INPUT_REVOCATION_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'native input-revocation artifact receipt differs'
     input_release_before=${input_release_artifacts[0]/INPUT_REVOCATION_ARTIFACT=pass /INPUT_REVOCATION_ARTIFACT_BEFORE=}
-    input_release_before=${input_release_before% tests=1 unchanged=before-after}
+    input_release_before=${input_release_before% tests=9 unchanged=before-after}
     require_exact_fixed_receipt "$input_release_before" 'input-revocation artifact before execution'
     require_exact_fixed_receipt \
         'INPUT_REVOCATION_NATIVE=pass workers=2 shared_modifier=preserved foreign_key=preserved disable=before-return duplicate=inert reenable=same-worker cleanup=joined network_auth=false' \
@@ -5687,7 +5687,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = inpu
     require_exact_fixed_receipt 'INPUT_REVOCATION_X11=pass server=owned network=none endpoint=absent cleanup=joined' \
         'native input X11 retirement'
     require_exact_fixed_receipt \
-        "INPUT_REVOCATION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=1 target=linux-x86_64 scope=production-peer-keyboard-revocation rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "INPUT_REVOCATION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=9 target=linux-x86_64 scope=production-peer-keyboard-revocation rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'native input-revocation guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'native input-revocation completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = input-release ]; then

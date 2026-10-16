@@ -51,6 +51,16 @@ def main():
                    "DISPLAY": ":96", "XDG_SESSION_TYPE": "x11",
                    "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
                    "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}
+    controls = subprocess.run(
+        [str(executable), "server::connection::desktop_input_queue_tests::desktop_input_reset_",
+         "--color", "never", "--test-threads=1"],
+        env=environment, text=True, capture_output=True, timeout=25)
+    print(controls.stdout, end="", flush=True)
+    sys.stderr.write(controls.stderr)
+    require(controls.returncode == 0 and
+            "test result: ok. 8 passed; 0 failed; 0 ignored;" in controls.stdout,
+            "input reset control scenarios did not all execute successfully")
+    require(digest(executable) == artifact_hash, "artifact changed during input controls")
     with open("/tmp/input-revocation-xvfb.log", "xb") as log:
         server = subprocess.Popen(
             ["/xvfb-root/usr/bin/Xvfb", ":96", "-screen", "0", "320x240x24",

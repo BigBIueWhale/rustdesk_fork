@@ -2909,8 +2909,11 @@ struct InputQueue {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl InputQueue {
     fn try_enqueue(&self, input: MessageInput) -> ResultType<()> {
-        if self.execution.is_cancelled() || owned_input_admission_is_closed() {
-            bail!("remote input worker is stopping");
+        // Publish-before-reset and close-before-publication share this short lock.
+        // It never covers native execution or an await.
+        let _reset = self.execution.reset.lock().unwrap();
+        if self.execution.is_unavailable() || owned_input_admission_is_closed() {
+            bail!("remote input worker admission is closed");
         }
         let weight = input.validated_weight()?;
         let mut current = self.queued_bytes.load(Ordering::Acquire);
@@ -2958,14 +2961,46 @@ struct InputWorker {
 async fn set_peer_keyboard_disabled(
     current: &mut bool,
     disabled: bool,
-    _worker: Option<&InputWorker>,
+    worker: Option<&InputWorker>,
 ) -> ResultType<()> {
+    if worker.map(|worker| worker.execution.is_unavailable()).unwrap_or(false) {
+        bail!("remote input cleanup is pending or its worker has stopped");
+    }
+    if *current == disabled {
+        return Ok(());
+    }
     *current = disabled;
+    if disabled {
+        if let Some(worker) = worker {
+            worker.release_input().await?;
+        }
+    }
     Ok(())
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl InputWorker {
+    async fn release_input(&self) -> ResultType<()> {
+        let receiver = self.execution.request_reset()?;
+        if matches!(tokio::time::timeout(Duration::from_secs(5), receiver).await, Ok(Ok(())))
+            && !self.execution.is_cancelled()
+        {
+            return Ok(());
+        }
+        // An initiating deadline closes admission; it cannot detach native cleanup.
+        self.execution.cancel();
+        let completion = Arc::clone(&self.completion);
+        match tokio::task::spawn_blocking(move || completion.wait()).await {
+            Ok(true) => bail!("remote input cleanup did not acknowledge its request"),
+            Ok(false) => bail!("remote input worker failed during cleanup"),
+            Err(error) => bail!("remote input cleanup join failed: {error}"),
+        }
+    }
+}
+
 const INPUT_EXECUTION_CANCELLED: usize = 1;
-const INPUT_EXECUTION_ACTIVE: usize = 2;
+const INPUT_EXECUTION_RESETTING: usize = 2;
+const INPUT_EXECUTION_ACTIVE: usize = 4;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct InputWorkerCompletion {
@@ -3061,6 +3096,7 @@ fn spawn_input_worker_supervisor(
 #[derive(Default)]
 struct InputExecutionGate {
     state: AtomicUsize,
+    reset: StdMutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -3083,6 +3119,49 @@ impl InputExecutionGate {
         self.state.load(Ordering::Acquire) & INPUT_EXECUTION_CANCELLED != 0
     }
 
+    fn is_resetting(&self) -> bool {
+        self.state.load(Ordering::Acquire) & INPUT_EXECUTION_RESETTING != 0
+    }
+
+    fn is_unavailable(&self) -> bool {
+        self.state.load(Ordering::Acquire)
+            & (INPUT_EXECUTION_CANCELLED | INPUT_EXECUTION_RESETTING) != 0
+    }
+
+    fn request_reset(&self) -> ResultType<tokio::sync::oneshot::Receiver<()>> {
+        let mut pending = self.reset.lock().unwrap();
+        let mut state = self.state.load(Ordering::Acquire);
+        loop {
+            if state & (INPUT_EXECUTION_CANCELLED | INPUT_EXECUTION_RESETTING) != 0 {
+                bail!("remote input cleanup cannot be admitted");
+            }
+            match self.state.compare_exchange_weak(
+                state, state | INPUT_EXECUTION_RESETTING, Ordering::AcqRel, Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(observed) => state = observed,
+            }
+        }
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        *pending = Some(sender);
+        Ok(receiver)
+    }
+
+    fn take_reset(&self) -> Option<tokio::sync::oneshot::Sender<()>> {
+        self.reset.lock().unwrap().take()
+    }
+
+    fn finish_reset(&self, sender: tokio::sync::oneshot::Sender<()>) -> bool {
+        if self.state.compare_exchange(
+            INPUT_EXECUTION_RESETTING, 0, Ordering::AcqRel, Ordering::Acquire,
+        ).is_ok() && sender.send(()).is_ok() {
+            true
+        } else {
+            self.cancel();
+            false
+        }
+    }
+
     fn cancel(&self) {
         // Revocation is nonblocking. A successful dispatch CAS defines an operation as
         // started/admitted even if its native body enters later; no operation can start after this.
@@ -3097,7 +3176,7 @@ impl InputExecutionGate {
     fn dispatch_with_admission_hook(&self, admitted: impl FnOnce(), action: impl FnOnce()) -> bool {
         let mut state = self.state.load(Ordering::Acquire);
         loop {
-            if state & INPUT_EXECUTION_CANCELLED != 0 {
+            if state & (INPUT_EXECUTION_CANCELLED | INPUT_EXECUTION_RESETTING) != 0 {
                 return false;
             }
             let Some(active) = state.checked_add(INPUT_EXECUTION_ACTIVE) else {
@@ -3987,6 +4066,157 @@ mod desktop_input_queue_tests {
         release_tx.send(()).unwrap();
         started_rx.recv().unwrap();
         assert!(dispatch.join().unwrap());
+    }
+
+    #[test]
+    fn desktop_input_reset_closes_full_queue_and_dispatch() {
+        let (sender, receiver) = std_mpsc::sync_channel(INPUT_QUEUE_CAPACITY);
+        let execution = Arc::new(InputExecutionGate::default());
+        let queue = InputQueue {
+            sender, queued_bytes: Arc::new(AtomicUsize::new(0)),
+            execution: Arc::clone(&execution),
+        };
+        for _ in 0..INPUT_QUEUE_CAPACITY {
+            queue.try_enqueue(MessageInput::BlockOn).unwrap();
+        }
+        let mut result = execution.request_reset().unwrap();
+        assert!(execution.is_resetting());
+        assert!(queue.try_enqueue(MessageInput::BlockOff).is_err());
+        assert!(!execution.dispatch(|| panic!("reset admitted native work")));
+        assert_eq!(receiver.try_iter().count(), INPUT_QUEUE_CAPACITY);
+        assert_eq!(queue.queued_bytes.load(Ordering::Acquire), 0);
+        assert!(execution.finish_reset(execution.take_reset().unwrap()));
+        assert_eq!(result.try_recv(), Ok(()));
+        queue.try_enqueue(MessageInput::BlockOff).unwrap();
+        drop(receiver.recv().unwrap());
+        assert_eq!(queue.queued_bytes.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn desktop_input_reset_has_one_owner_until_acknowledgement() {
+        let gate = InputExecutionGate::default();
+        let mut first = gate.request_reset().unwrap();
+        assert!(gate.request_reset().is_err());
+        let owner = gate.take_reset().unwrap();
+        assert!(gate.request_reset().is_err());
+        assert!(gate.finish_reset(owner));
+        assert_eq!(first.try_recv(), Ok(()));
+        let second = gate.request_reset().unwrap();
+        drop(second);
+        assert!(!gate.finish_reset(gate.take_reset().unwrap()));
+        assert!(gate.is_cancelled());
+    }
+
+    #[test]
+    fn desktop_input_reset_cannot_erase_cancellation() {
+        let gate = InputExecutionGate::default();
+        let mut result = gate.request_reset().unwrap();
+        let owner = gate.take_reset().unwrap();
+        gate.cancel();
+        assert!(!gate.finish_reset(owner));
+        assert_eq!(result.try_recv(), Err(tokio::sync::oneshot::error::TryRecvError::Closed));
+        assert!(gate.is_cancelled() && gate.is_unavailable());
+        assert!(gate.request_reset().is_err());
+        assert!(!gate.dispatch(|| panic!("cancelled reset reopened dispatch")));
+    }
+
+    #[test]
+    fn desktop_input_reset_dropped_waiter_closes_admission() {
+        let gate = InputExecutionGate::default();
+        drop(gate.request_reset().unwrap());
+        assert!(!gate.finish_reset(gate.take_reset().unwrap()));
+        assert!(gate.is_cancelled());
+        assert!(!gate.dispatch(|| panic!("retired reset waiter reopened dispatch")));
+    }
+
+    #[test]
+    fn desktop_input_reset_preserves_an_admitted_native_call() {
+        let gate = Arc::new(InputExecutionGate::default());
+        let (entered_tx, entered_rx) = std_mpsc::channel();
+        let (release_tx, release_rx) = std_mpsc::channel();
+        let worker_gate = Arc::clone(&gate);
+        let worker = std::thread::spawn(move || {
+            worker_gate.dispatch_with_admission_hook(
+                || { entered_tx.send(()).unwrap(); release_rx.recv().unwrap(); },
+                || {},
+            )
+        });
+        entered_rx.recv().unwrap();
+        let mut result = gate.request_reset().unwrap();
+        assert!(!gate.dispatch(|| panic!("new work overtook reset")));
+        assert_eq!(result.try_recv(), Err(tokio::sync::oneshot::error::TryRecvError::Empty));
+        release_tx.send(()).unwrap();
+        assert!(worker.join().unwrap());
+        assert!(gate.finish_reset(gate.take_reset().unwrap()));
+        assert_eq!(result.try_recv(), Ok(()));
+        assert!(gate.dispatch(|| {}));
+    }
+
+    #[test]
+    fn desktop_input_reset_publication_lock_cannot_block_cancellation() {
+        let gate = Arc::new(InputExecutionGate::default());
+        let publication = gate.reset.lock().unwrap();
+        let (done_tx, done_rx) = std_mpsc::channel();
+        let cancelled_gate = Arc::clone(&gate);
+        let worker = std::thread::spawn(move || {
+            cancelled_gate.cancel();
+            done_tx.send(()).unwrap();
+        });
+        let completed = done_rx.recv_timeout(Duration::from_secs(1)).is_ok();
+        drop(publication);
+        worker.join().unwrap();
+        assert!(completed && gate.is_cancelled());
+        assert!(gate.request_reset().is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn desktop_input_reset_refuses_reenable_during_retirement() {
+        let execution = Arc::new(InputExecutionGate::default());
+        let pending = execution.request_reset().unwrap();
+        let worker = InputWorker {
+            execution: Arc::clone(&execution),
+            completion: Arc::new(InputWorkerCompletion::new()),
+        };
+        let mut disabled = true;
+        assert!(set_peer_keyboard_disabled(&mut disabled, false, Some(&worker)).await.is_err());
+        assert!(disabled);
+        drop(pending);
+        assert!(!execution.finish_reset(execution.take_reset().unwrap()));
+        assert!(set_peer_keyboard_disabled(&mut disabled, false, Some(&worker)).await.is_err());
+        assert!(disabled);
+        let mut unstarted = false;
+        set_peer_keyboard_disabled(&mut unstarted, true, None).await.unwrap();
+        assert!(unstarted);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn desktop_input_reset_failed_ack_retains_exact_join() {
+        let execution = Arc::new(InputExecutionGate::default());
+        let (release_tx, release_rx) = std_mpsc::channel();
+        let (join_tx, completion, admission) = spawn_input_worker_supervisor(
+            "input-reset-failed-ack".to_owned(), Arc::new(AtomicUsize::new(0)),
+        ).unwrap();
+        join_tx.try_send(std::thread::spawn(move || {
+            // EOF also retires this fixture's worker if an assertion unwinds.
+            let _ = release_rx.recv();
+        })).unwrap();
+        drop(join_tx);
+        drop(admission);
+        let worker = InputWorker {
+            execution: Arc::clone(&execution), completion: Arc::clone(&completion),
+        };
+        let mut disabled = false;
+        let mut update = Box::pin(set_peer_keyboard_disabled(&mut disabled, true, Some(&worker)));
+        assert!(hbb_common::futures::poll!(update.as_mut()).is_pending());
+        drop(execution.take_reset().unwrap());
+        assert!(hbb_common::futures::poll!(update.as_mut()).is_pending());
+        assert!(execution.is_cancelled());
+        tokio::time::sleep(Duration::from_millis(1)).await;
+        assert!(completion.lock_result().is_none());
+        release_tx.send(()).unwrap();
+        assert!(update.await.is_err());
+        assert!(disabled);
+        assert_eq!(*completion.lock_result(), Some(true));
     }
 
     #[test]
@@ -6976,6 +7206,24 @@ impl Connection {
             if execution.is_cancelled() {
                 break;
             }
+            if let Some(acknowledge) = execution.take_reset() {
+                // Admission closed before this drain. No prior publisher can
+                // escape it, and the currently admitted native call has returned.
+                while receiver.try_recv().is_ok() {}
+                let retired = release_block_owner_with_retry(
+                    &INPUT_BLOCK_OWNERS, conn_id, apply_block_input,
+                ).and_then(|()| cleanup.keys.release_remaining());
+                if let Err(error) = retired {
+                    log::error!("remote input restriction could not retire owned input: {error}");
+                    execution.cancel();
+                    break;
+                }
+                special_keys = SpecialKeyState::default();
+                if !execution.finish_reset(acknowledge) {
+                    break;
+                }
+                continue;
+            }
             match receiver.recv_timeout(std::time::Duration::from_millis(50)) {
                 Ok(mut queued) => {
                     let Some(v) = queued.input.take() else {
@@ -7079,6 +7327,9 @@ impl Connection {
                         };
                     });
                     if !dispatched {
+                        if execution.is_resetting() && !execution.is_cancelled() {
+                            continue;
+                        }
                         break;
                     }
                     if let Err(err) = input_result {
@@ -7097,6 +7348,9 @@ impl Connection {
         }
         drop(receiver);
         drop(cleanup);
+        execution.cancel();
+        // Wake a reset waiter only after exact native retirement on this path.
+        drop(execution.take_reset());
         log::debug!("Input thread exited");
     }
 
@@ -10554,6 +10808,16 @@ impl Connection {
 
     async fn update_options(&mut self, o: &OptionMessage) -> ResultType<()> {
         log::info!("Option update: {:?}", o);
+        if let Ok(q) = o.disable_keyboard.enum_value() {
+            if q != BoolOption::NotSet {
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                set_peer_keyboard_disabled(
+                    &mut self.disable_keyboard, q == BoolOption::Yes, self.input_worker.as_ref(),
+                ).await?;
+                #[cfg(any(target_os = "android", target_os = "ios"))]
+                { self.disable_keyboard = q == BoolOption::Yes; }
+            }
+        }
         if let Ok(q) = o.image_quality.enum_value() {
             let image_quality;
             if let ImageQuality::NotSet = q {
@@ -10690,12 +10954,6 @@ impl Connection {
         }
         if let Ok(q) = o.disable_keyboard.enum_value() {
             if q != BoolOption::NotSet {
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                set_peer_keyboard_disabled(
-                    &mut self.disable_keyboard, q == BoolOption::Yes, self.input_worker.as_ref(),
-                ).await?;
-                #[cfg(any(target_os = "android", target_os = "ios"))]
-                { self.disable_keyboard = q == BoolOption::Yes; }
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 self.refresh_cm_clipboard_authority();
                 if let Some(s) = self.server.upgrade() {

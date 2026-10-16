@@ -3600,6 +3600,14 @@ run_focused_rust_tests() {
             )
             required_tests=(
                 server::connection::input_release_native_tests::keyboard_disable_retires_native_ownership_before_return
+                server::connection::desktop_input_queue_tests::desktop_input_reset_closes_full_queue_and_dispatch
+                server::connection::desktop_input_queue_tests::desktop_input_reset_has_one_owner_until_acknowledgement
+                server::connection::desktop_input_queue_tests::desktop_input_reset_cannot_erase_cancellation
+                server::connection::desktop_input_queue_tests::desktop_input_reset_dropped_waiter_closes_admission
+                server::connection::desktop_input_queue_tests::desktop_input_reset_preserves_an_admitted_native_call
+                server::connection::desktop_input_queue_tests::desktop_input_reset_publication_lock_cannot_block_cancellation
+                server::connection::desktop_input_queue_tests::desktop_input_reset_refuses_reenable_during_retirement
+                server::connection::desktop_input_queue_tests::desktop_input_reset_failed_ack_retains_exact_join
             )
         elif [ "$RUST_TEST_PROFILE" = input-release ]; then
             source_fingerprints+=(
@@ -4338,7 +4346,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             python3 -I -S /source/scripts/run-input-revocation-test.py "$clipboard_executable"
                             [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
-                            printf "INPUT_REVOCATION_ARTIFACT=pass sha256=%s executable=%s tests=1 unchanged=before-after\n" \
+                            printf "INPUT_REVOCATION_ARTIFACT=pass sha256=%s executable=%s tests=9 unchanged=before-after\n" \
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             exit 0
                         fi
@@ -4813,6 +4821,8 @@ PY
             expected_groups=4
         elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
             expected_groups=3
+        elif [ "$RUST_TEST_PROFILE" = input-revocation ]; then
+            expected_groups=2
         elif [ "$RUST_TEST_PROFILE" = input-release ]; then
             expected_groups=2
         elif [ "$RUST_TEST_PROFILE" = clipboard ]; then
@@ -4852,7 +4862,7 @@ PY
                     || fail 'native input-lifetime behavior receipt differs'
             done
         elif [ "$RUST_TEST_PROFILE" = input-revocation ]; then
-            [ "$(grep -Ec '^INPUT_REVOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 unchanged=before-after$' "$output")" -eq 1 ] \
+            [ "$(grep -Ec '^INPUT_REVOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=9 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fxc 'INPUT_REVOCATION_NATIVE=pass workers=2 shared_modifier=preserved foreign_key=preserved disable=before-return duplicate=inert reenable=same-worker cleanup=joined network_auth=false' "$output")" -eq 1 ] \
                 && [ "$(grep -Fxc "INPUT_REVOCATION_PROVIDER=observed sha256=$input_provider_sha source=checked-in-unmodified unchanged=before-after" "$output")" -eq 1 ] \
                 && [ "$(sha256sum <"$input_provider_installed/libxdo.so.3")" = "$input_provider_sha  -" ] \
@@ -5167,6 +5177,7 @@ PY
         elif [ "$RUST_TEST_PROFILE" = input-revocation ]; then
             grep -E '^INPUT_REVOCATION_(ARTIFACT_BEFORE|ARTIFACT|BUILD|PROVIDER|NATIVE|X11)=' "$output"
             grep -E '^test server::connection::(input_release_native_tests::keyboard_disable_)' "$output"
+            grep -E '^test server::connection::desktop_input_queue_tests::desktop_input_reset_' "$output"
             printf 'INPUT_REVOCATION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-peer-keyboard-revocation rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

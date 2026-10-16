@@ -6,6 +6,9 @@ umask 077
     && [ "$(id -u):$(id -g)" = 1000:1000 ] \
     || { echo 'Viewer credential-test entry authority differs' >&2; exit 1; }
 readonly WORK=/tmp/viewer-credentials
+[ "$(stat -c '%u:%g:%a:%h:%s' /etc/machine-id)" = 1000:1000:400:1:33 ] \
+    && [ "$(cat /etc/machine-id)" = 727573746465736b2d7669657765723031 ] \
+    || { echo 'Viewer credential fixture machine identity differs' >&2; exit 1; }
 mkdir -m 0700 -- "$WORK"
 export CARGO_BUILD_JOBS=4 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
 source /source/scripts/linux-parent-test-build.sh
@@ -14,5 +17,6 @@ execution_started=$SECONDS
 timeout --signal=TERM --kill-after=5s 25s \
     "$test_executable" client::tests::r_s11hj_viewer_ --color never --test-threads=1
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
+[ "$(cat /etc/machine-id)" = 727573746465736b2d7669657765723031 ]
 printf 'VIEWER_CREDENTIAL_ARTIFACT=pass sha256=%s executable=%s tests=8 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"

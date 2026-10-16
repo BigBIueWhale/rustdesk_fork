@@ -2688,7 +2688,7 @@ run_focused_rust_tests() {
     local input_provider_installed=$ROOT/input-provider-installed
     local input_provider_sha
     local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs clipboard_tests
-    local -a pa_mounts=() pa_env=() dependency_mounts=() whiteboard_mounts=() hostname_options=()
+    local -a pa_mounts=() pa_env=() dependency_mounts=() whiteboard_mounts=() hostname_options=() credential_mounts=()
 
     [ "$(stat -c '%u:%g:%a' -- "$SOCK")" = 0:1000:660 ] \
         || fail 'focused Rust-test Docker socket lacks the exact nonroot guest group'
@@ -3975,6 +3975,15 @@ run_focused_rust_tests() {
         printf 'INPUT_LIFETIME_PROVIDER_PREPARED=pass sha256=%s root=disposable-guest-only execution=nonroot fixed_path=/usr/lib/rustdesk-fork/libxdo.so.3\n' "$input_provider_sha"
     fi
 
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+        printf '%s\n' 727573746465736b2d7669657765723031 >"$ROOT/viewer.machine-id"
+        chown 1000:1000 "$ROOT/viewer.machine-id"
+        chmod 0400 "$ROOT/viewer.machine-id"
+        [ "$(stat -c '%u:%g:%a:%h:%s' "$ROOT/viewer.machine-id")" = 1000:1000:400:1:33 ] \
+            || fail 'viewer credential fixture identity differs'
+        credential_mounts=(--mount "type=bind,source=$ROOT/viewer.machine-id,target=/etc/machine-id,readonly,bind-recursive=disabled")
+    fi
+
     CONTAINER_ID="$(
         "$CLIENT" --host "unix://$SOCK" create \
             --name "$container_name" \
@@ -4007,6 +4016,7 @@ run_focused_rust_tests() {
             "${pa_mounts[@]}" \
             "${pa_env[@]}" \
             "${whiteboard_mounts[@]}" \
+            "${credential_mounts[@]}" \
             --tmpfs "/tmp:rw,exec,nosuid,nodev,size=$tmpfs_size,mode=700,uid=1000,gid=1000" \
             --workdir /source \
             "$image_config" /bin/bash --noprofile --norc -euo pipefail -c '
@@ -4531,6 +4541,15 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             fi
             } | LC_ALL=C sort)" ] \
             || fail 'native whiteboard container mount authority differs'
+    fi
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+        inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+            '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
+        [ "$inspect" = "$(printf '%s\n' \
+            "bind|$source_root|/source|false" "bind|$target_root|/cargo-target|true" \
+            "bind|$vendor|/vendor|false" "bind|$vendor_config|/inputs/config.toml|false" \
+            "bind|$ROOT/viewer.machine-id|/etc/machine-id|false" | LC_ALL=C sort)" ] \
+            || fail 'viewer credential fixture mounts differ'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=23 bridge=absent native=x11\n'

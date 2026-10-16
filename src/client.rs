@@ -4668,12 +4668,14 @@ mod tests {
     #[test]
     fn r_s11hj_viewer_reconnect_preserves_remembered_prs() {
         isolate();
+        assert!(!hbb_common::at_rest_storage_key().unwrap().is_empty());
         let id = "r-s11hj-viewer-reconnect";
         let mut config = PeerConfig::default();
         config.password_prs = b"stored-prs".to_vec();
         config.store(id);
 
         let mut h = LoginConfigHandler::default();
+        assert_eq!(PeerConfig::load(id).password_prs, config.password_prs);
         h.initialize(id.to_owned(), ConnType::DEFAULT_CONN, None, None);
         assert!(h.remember, "a remembered CPace credential must retain the preference");
         h.handle_peer_info(&PeerInfo::new());
@@ -4683,6 +4685,7 @@ mod tests {
     #[test]
     fn r_s11hj_viewer_forget_retires_prs_without_legacy_hash() {
         isolate();
+        assert!(!hbb_common::at_rest_storage_key().unwrap().is_empty());
         let id = "r-s11hj-viewer-forget";
         let mut config = PeerConfig::default();
         config.password_prs = b"stored-prs".to_vec();
@@ -4690,6 +4693,9 @@ mod tests {
 
         let mut h = handler(id);
         h.remember = false;
+        let stored = PeerConfig::load(id);
+        assert!(stored.password.is_empty());
+        assert_eq!(stored.password_prs, config.password_prs);
         h.handle_peer_info(&PeerInfo::new());
         let saved = PeerConfig::load(id);
         assert!(saved.password.is_empty());
@@ -4699,6 +4705,7 @@ mod tests {
     #[test]
     fn r_s11hj_viewer_remember_persists_fresh_prs() {
         isolate();
+        assert!(!hbb_common::at_rest_storage_key().unwrap().is_empty());
         let id = "r-s11hj-viewer-remember";
         let mut h = handler(id);
         h.password_prs = b"new-derived-prs".to_vec();
@@ -4711,6 +4718,7 @@ mod tests {
     #[test]
     fn r_s11hj_viewer_metadata_retires_legacy_hash() {
         isolate();
+        assert!(!hbb_common::at_rest_storage_key().unwrap().is_empty());
         let id = "r-s11hj-viewer-legacy";
         let mut config = PeerConfig::default();
         config.password = b"retired-legacy-hash".to_vec();
@@ -4718,6 +4726,9 @@ mod tests {
         config.store(id);
 
         let mut h = handler(id);
+        let stored = PeerConfig::load(id);
+        assert_eq!(stored.password, config.password);
+        assert_eq!(stored.password_prs, config.password_prs);
         h.handle_peer_info(&PeerInfo::new());
         let saved = PeerConfig::load(id);
         assert!(saved.password.is_empty(), "peer metadata must not republish a legacy credential");

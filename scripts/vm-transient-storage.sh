@@ -39,6 +39,8 @@ elif [ "${MODE:-}:${LINUX_PA_PLAYBACK:-0}" = linux-pa-authority-tests:1 ] \
     readonly VM_STORAGE_PROFILE=linux-parent-libtest
 elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:linux-resolution-lifetime ]; then
     readonly VM_STORAGE_PROFILE=linux-resolution-lifetime
+elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:fusermount-process ]; then
+    readonly VM_STORAGE_PROFILE=fusermount-process
 else
     readonly VM_STORAGE_PROFILE=standard
 fi

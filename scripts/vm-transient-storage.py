@@ -48,8 +48,8 @@ def storage_limits(profile, memory_mib):
     if profile == 'linux-parent-libtest':
         require(memory_mib == 6144, 'parent library storage profile requires its 6 GiB guest')
         return 7 * GIB, 6 * GIB
-    if profile == 'linux-resolution-lifetime':
-        require(memory_mib == 2048, 'resolution storage profile requires its 2 GiB guest')
+    if profile in ('linux-resolution-lifetime', 'fusermount-process'):
+        require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
         return 6 * GIB, 4 * GIB
     if profile == 'xrandr-acquisition':
         require(memory_mib == 4096, 'xrandr acquisition requires its 4 GiB guest')
@@ -387,7 +387,7 @@ def main():
                         choices=('standard', 'hbb-common-fs', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'x11-focus', 'linux-parent-libtest',
-                                 'linux-resolution-lifetime', 'xrandr-acquisition',
+                                 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-receiver'),
                         default='standard')
     parser.add_argument('--workspace')

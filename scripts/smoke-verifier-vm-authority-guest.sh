@@ -853,6 +853,7 @@ for profile, memory, scratch, overlay in (
         ('x11-focus', 4096, 9, 8),
         ('linux-parent-libtest', 6144, 7, 6),
         ('linux-resolution-lifetime', 2048, 6, 4),
+        ('fusermount-process', 2048, 6, 4),
         ('xrandr-acquisition', 4096, 6, 4),
         ('authority-smoke', 2048, 4, 1),
         ('ledger-token-count', 2048, 4, 1)):
@@ -866,7 +867,8 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('linux-resolution-lifetime', 2047), ('linux-resolution-lifetime', 4096),
                         ('xrandr-acquisition', 2048), ('xrandr-acquisition', 8192),
                         ('linux-service-receiver', 4095), ('linux-service-receiver', 8192),
-                        ('authority-smoke', 2047), ('authority-smoke', 4096)):
+                        ('authority-smoke', 2047), ('authority-smoke', 4096),
+                        ('fusermount-process', 2047), ('fusermount-process', 4096)):
     try:
         limits(profile, memory)
     except ValueError:
@@ -875,7 +877,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=12 refusals=18 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=13 refusals=20 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0

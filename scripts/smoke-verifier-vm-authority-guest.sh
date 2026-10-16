@@ -50,7 +50,7 @@ case "$#:${8:-}" in
     8:--host-network-tests)
         MODE=host-network-tests
         ;;
-    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests)
+    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests)
         MODE=linux-service-receiver-tests
         if [ "${8}" = --linux-service-convergence-failure-tests ]; then
             LINUX_RECEIVER_PROFILE=convergence-failure
@@ -58,6 +58,8 @@ case "$#:${8:-}" in
             LINUX_RECEIVER_PROFILE=notification-failure
         elif [ "${8}" = --linux-service-network-drain-tests ]; then
             LINUX_RECEIVER_PROFILE=network-drain
+        elif [ "${8}" = --linux-service-authorization-timeout-tests ]; then
+            LINUX_RECEIVER_PROFILE=authorization-timeout
         fi
         [[ "${9}" =~ ^[0-9a-f]{40}$ ]] && [[ "${10}" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "${11}" =~ ^[0-9a-f]{64}$ ]] && [[ "${12}" =~ ^[0-9a-f]{40}$ ]] || exit 2
@@ -785,6 +787,8 @@ run_linux_service_receiver_tests() {
         native_args+=(--notification-failure)
     elif [ "$LINUX_RECEIVER_PROFILE" = network-drain ]; then
         native_args+=(--network-drain)
+    elif [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
+        native_args+=(--authorization-timeout)
     fi
     /usr/bin/python3 -B -I -S "$helper" "$LINUX_RECEIVER_COMMIT" "$LINUX_RECEIVER_TREE" \
         "$LINUX_RECEIVER_MANIFEST_SHA256" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \
@@ -842,6 +846,7 @@ for profile, memory, scratch, overlay in (
         ('cpace-recovery-tests', 8192, 6, 4),
         ('flutter-credential-dialog', 4096, 7, 6),
         ('linux-service-build', 8192, 9, 8),
+        ('linux-service-receiver', 4096, 6, 5),
         ('x11-focus', 4096, 9, 8),
         ('linux-parent-libtest', 6144, 7, 6),
         ('linux-resolution-lifetime', 2048, 6, 4),
@@ -855,7 +860,8 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('x11-focus', 4095), ('x11-focus', 8192),
                         ('linux-parent-libtest', 4096), ('linux-parent-libtest', 8192),
                         ('linux-resolution-lifetime', 2047), ('linux-resolution-lifetime', 4096),
-                        ('xrandr-acquisition', 2048), ('xrandr-acquisition', 8192)):
+                        ('xrandr-acquisition', 2048), ('xrandr-acquisition', 8192),
+                        ('linux-service-receiver', 4095), ('linux-service-receiver', 8192)):
     try:
         limits(profile, memory)
     except ValueError:
@@ -864,7 +870,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=10 refusals=14 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=11 refusals=16 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0

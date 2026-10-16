@@ -261,7 +261,7 @@ case "$#:${1:-}" in
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
         MODE=host-network-tests
         ;;
-    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -273,6 +273,8 @@ case "$#:${1:-}" in
             LINUX_RECEIVER_PROFILE=notification-failure
         elif [ "$1" = --linux-service-network-drain-tests ]; then
             LINUX_RECEIVER_PROFILE=network-drain
+        elif [ "$1" = --linux-service-authorization-timeout-tests ]; then
+            LINUX_RECEIVER_PROFILE=authorization-timeout
         fi
         ANDROID_RUNTIME_PEER_COMMIT=$3
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=$5
@@ -460,6 +462,7 @@ case "$#:${1:-}" in
         printf 'Focused terminal output and model lifetime: %s --flutter-model-tests --terminal-output\n' "${0##*/}" >&2
         printf 'Focused desktop window error replies: %s --flutter-model-tests --window-dispatch\n' "${0##*/}" >&2
         printf 'Focused peer decode privacy: %s --flutter-model-tests --peer-data\n' "${0##*/}" >&2
+        printf 'Installed Linux authorization deadline: %s --linux-service-authorization-timeout-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
@@ -4277,6 +4280,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         linux_receiver_guest_flag=--linux-service-notification-failure-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = network-drain ]; then
         linux_receiver_guest_flag=--linux-service-network-drain-tests
+    elif [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
+        linux_receiver_guest_flag=--linux-service-authorization-timeout-tests
     fi
     guest_invocation+=" $linux_receiver_guest_flag $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256 $FOCUSED_TEST_COMMIT"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
@@ -4817,7 +4822,16 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
     require_exact_fixed_receipt 'verify-linux-service-password-ipc: source checks passed' 'supplementary password IPC source checks'
-    if [ "$LINUX_RECEIVER_PROFILE" = network-drain ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
+        for phase in root-applied authorization-pending-root authorization-timeout-recovery admin-applied; do
+            require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux authorization-timeout credential use'
+        done
+        require_exact_fixed_receipt 'LINUX_RECEIVER_AUTHORIZATION_PARALLEL=pass root=Applied helper=kernel-stopped requester=pending child=retained listener=owned' 'installed Linux parallel root mutation during blocked authorization'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_AUTHORIZATION_TIMEOUT=pass uid=4001 prompt=actual password=withheld helper=kernel-stopped deadline=120 cli=explicit-denial helper_cleanup=service-reaped parallel_root=Applied durable=root-value child=retained listener=owned cleanup=agent-client-joined' 'installed Linux authorization deadline and exact helper reaping'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN=pass uid=4001 administrator_uid=4003 subject=pid-start-bound authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined' 'installed Linux administrator authentication after timeout'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied durable=unchanged listener=owned' 'installed Linux fresh administrator refusal after timeout'
+        require_exact_fixed_receipt "LINUX_SERVICE_AUTHORIZATION_NATIVE=pass cases=4 cpace=4 timeouts=1 root_grants=2 admin_grants=1 fresh_refusals=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed Linux authorization-timeout profile'
+    elif [ "$LINUX_RECEIVER_PROFILE" = network-drain ]; then
         for phase in root-applied network-drain-recovery admin-applied; do
             require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux network-drain credential use'
         done
@@ -4889,7 +4903,7 @@ elif [ "$MODE" = host-network-tests ]; then
         'host network test guest cleanup'
     /usr/bin/grep -Eo 'VM_HOST_NETWORK_NATIVE=\{.*\}' "$SERIAL_LOG"
 elif [ "$MODE" = ledger-token-count ]; then
-    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=10 refusals=14 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=11 refusals=16 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
         'VM storage profile limits and guest binding'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'
@@ -6943,7 +6957,12 @@ elif [ "$MODE" = ledger-token-count ]; then
     printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    if [ "$LINUX_RECEIVER_PROFILE" = network-drain ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
+        printf 'LINUX_SERVICE_AUTHORIZATION_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=4 cpace=4 timeouts=1 root_grants=2 admin_grants=1 fresh_refusals=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"
+    elif [ "$LINUX_RECEIVER_PROFILE" = network-drain ]; then
         printf 'LINUX_SERVICE_NETWORK_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=4 cpace=3 network_drains=1 admin_grants=1 fresh_refusals=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \

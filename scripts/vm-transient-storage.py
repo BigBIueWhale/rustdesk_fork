@@ -38,6 +38,9 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 8192, 'service build storage profile requires its 8 GiB guest')
         # Prepared inputs share one GiB beside the unchanged eight-GiB overlay ceiling.
         return 9 * GIB, 8 * GIB
+    if profile == 'linux-service-receiver':
+        require(memory_mib == 4096, 'service receiver requires its 4 GiB guest')
+        return 6 * GIB, 5 * GIB
     if profile == 'x11-focus':
         require(memory_mib == 4096, 'focus storage profile requires its 4 GiB guest')
         # The unchanged 8 GiB QEMU ceiling leaves at most 1 GiB for prepared media.
@@ -380,7 +383,8 @@ def main():
                         choices=('standard', 'hbb-common-fs', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
                                  'ledger-token-count', 'x11-focus', 'linux-parent-libtest',
-                                 'linux-resolution-lifetime', 'xrandr-acquisition'),
+                                 'linux-resolution-lifetime', 'xrandr-acquisition',
+                                 'linux-service-receiver'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

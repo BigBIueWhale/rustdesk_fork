@@ -36,6 +36,7 @@ PROBE = WORK / "probe_client"
 ENV = {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"}
 ADMIN_PASSWORD = "Receiver-admin-PAM-2026!"
 INVALID_ADMIN_PASSWORD = "Receiver-invalid-PAM-2026!"
+AUTH_TIMEOUT_ROOT_PASSWORD = "Receiver-timeout-root-2026!"
 
 
 def guard():
@@ -289,6 +290,127 @@ def pending_admin_helper(client, start, record):
             or not (proc / "exe").samefile("/usr/bin/pkcheck")):
         raise RuntimeError("pending pkcheck has the wrong principal or image")
     return proc, helper_start
+
+
+def observe_admin_authorization_timeout(client, agent, terminal, start, record, before, listener):
+    proc, helper_start = pending_admin_helper(client, start, record)
+    pidfd = os.pidfd_open(int(proc.name))
+    faulted = False
+    try:
+        fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+        if (int(fields[19]) != helper_start or fields[0] in (b"Z", b"X")
+                or select.select([pidfd], [], [], 0)[0]
+                or client.poll() is not None or agent.poll() is not None):
+            raise RuntimeError("authorization timeout has no exact live helper/requester/agent")
+        invocation = run(["/usr/bin/systemctl", "show", "rustdesk.service",
+                          "--property=InvocationID", "--value"]).stdout.strip()
+        if re.fullmatch(r"[0-9a-f]{32}", invocation) is None:
+            raise RuntimeError("authorization timeout has no service invocation")
+        run(["/usr/bin/journalctl", "--sync"], timeout=5)
+        last = run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager",
+                    "--output=json", "-n", "1"]).stdout
+        cursor = json.loads(last)["__CURSOR"]
+        began = time.monotonic()
+        signal.pidfd_send_signal(pidfd, signal.SIGSTOP)
+        faulted = True
+        deadline = began + 3
+        while True:
+            fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+            if int(fields[19]) != helper_start or select.select([pidfd], [], [], 0)[0]:
+                raise RuntimeError("authorization helper changed before stop confirmation")
+            if fields[0] == b"T":
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError("exact authorization helper did not stop")
+            time.sleep(0.01)
+        helper_age_at_stop = time.clock_gettime(time.CLOCK_BOOTTIME) - helper_start / os.sysconf("SC_CLK_TCK")
+        print("LINUX_RECEIVER_AUTHORIZATION_TIMEOUT_HELD=" + json.dumps(
+            {**record, "requester_pid": client.pid, "requester_start": start,
+             "helper_pid": int(proc.name), "helper_start": helper_start,
+             "helper_age_seconds": helper_age_at_stop, "helper_state": "T",
+             "agent_pid": agent.pid, "administrator_password_sent": False,
+             "invocation": invocation, "journal_cursor": cursor}, sort_keys=True), flush=True)
+
+        root_began = time.monotonic()
+        change(0, AUTH_TIMEOUT_ROOT_PASSWORD, True)
+        root_seconds = time.monotonic() - root_began
+        root_credential = credential()
+        if root_credential == before or child_record() != record or direct_listener(record) != listener:
+            raise RuntimeError("parallel root request did not converge on the existing serving owner")
+        probe_sha = json.loads((MEDIA / "receiver/peer-manifest.json").read_text())["files"]["probe_client"]["sha256"]
+        keyed(AUTH_TIMEOUT_ROOT_PASSWORD, "authorization-pending-root", record, probe_sha)
+        fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+        if (int(fields[19]) != helper_start or fields[0] != b"T" or client.poll() is not None
+                or select.select([pidfd], [], [], 0)[0]):
+            raise RuntimeError("parallel authorized work did not overlap the exact stopped helper")
+        print("LINUX_RECEIVER_AUTHORIZATION_PARALLEL=pass root=Applied helper=kernel-stopped "
+              "requester=pending child=retained listener=owned", flush=True)
+
+        deadline = began + 130
+        while not select.select([pidfd], [], [], 0)[0]:
+            if client.poll() is not None:
+                if select.select([pidfd], [], [], 0)[0]:
+                    break
+                raise RuntimeError("requester completed before service-owned helper retirement")
+            try:
+                fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+            except (FileNotFoundError, ProcessLookupError):
+                if select.select([pidfd], [], [], 0)[0]:
+                    break
+                raise RuntimeError("authorization helper disappeared without pidfd exit proof")
+            if int(fields[19]) != helper_start or fields[0] != b"T":
+                if select.select([pidfd], [], [], 0)[0]:
+                    break
+                raise RuntimeError("stopped helper changed before the receiver's deadline")
+            if time.monotonic() >= deadline:
+                raise RuntimeError("receiver did not retire its stopped authorization helper")
+            time.sleep(0.05)
+        helper_age_at_exit = time.clock_gettime(time.CLOCK_BOOTTIME) - helper_start / os.sysconf("SC_CLK_TCK")
+        stdout, stderr = client.communicate(timeout=5)
+        if (client.returncode != 1 or "Done!" in stdout
+                or "Changing service-owned unattended password was rejected by service" not in stderr
+                or len(stdout) + len(stderr) > 32768):
+            raise RuntimeError("authorization deadline did not produce explicit terminal denial")
+        try:
+            fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+            reaped = int(fields[19]) != helper_start
+        except (FileNotFoundError, ProcessLookupError):
+            reaped = True
+        run(["/usr/bin/journalctl", "--sync"], timeout=5)
+        messages = [json.loads(line) for line in run(
+            ["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "--output=json",
+             "--after-cursor=" + cursor, "-n", "80"]).stdout.splitlines()]
+        expected = {"_PID": str(record["supervisor"]), "_UID": "0", "_TRANSPORT": "stdout",
+                    "_SYSTEMD_UNIT": "rustdesk.service", "_SYSTEMD_INVOCATION_ID": invocation,
+                    "_BOOT_ID": Path("/proc/sys/kernel/random/boot_id").read_text().strip().replace("-", "")}
+        refusal = "pkcheck exceeded its authorization deadline"
+        matching = [message for message in messages
+                    if refusal in message.get("MESSAGE", "")
+                    and all(message.get(key) == value for key, value in expected.items())]
+        observed = {**record, "requester_pid": client.pid, "requester_start": start,
+                    "helper_pid": int(proc.name), "helper_start": helper_start,
+                    "helper_age_at_stop_seconds": helper_age_at_stop,
+                    "helper_age_at_exit_seconds": helper_age_at_exit,
+                    "fault_elapsed_seconds": time.monotonic() - began,
+                    "root_apply_seconds": root_seconds, "root_credential_digest": root_credential,
+                    "helper_exited": True, "helper_reaped": reaped, "client_exit": client.returncode,
+                    "client_stdout": stdout, "client_stderr": stderr,
+                    "agent_pid": agent.pid, "agent_exit": agent.poll(),
+                    "agent_terminal_at_fault": terminal.decode(errors="replace"),
+                    "administrator_password_sent": False, "service_journal": matching,
+                    "durable_matches_root": credential() == root_credential,
+                    "child_unchanged": child_record() == record,
+                    "listener_unchanged": direct_listener(record) == listener}
+        print("LINUX_RECEIVER_AUTHORIZATION_TIMEOUT_OBSERVED=" + json.dumps(observed, sort_keys=True), flush=True)
+        if (not reaped or not 119.5 <= helper_age_at_exit <= 130 or len(matching) != 1
+                or not all(observed[key] for key in ("durable_matches_root", "child_unchanged", "listener_unchanged"))):
+            raise RuntimeError("receiver deadline lacked exact denial, reaping or preserved root authority")
+        return observed
+    finally:
+        # Failure cleanup cannot manufacture the accepted service-originated retirement.
+        if faulted and not select.select([pidfd], [], [], 0)[0]:
+            signal.pidfd_send_signal(pidfd, signal.SIGCONT)
+        os.close(pidfd)
 
 
 def observe_admin_requester_exit(client, agent, terminal, start, record, before, listener):
@@ -1216,7 +1338,7 @@ def close_admin_requester_session(client, agent, start, record, actor):
 
 
 def admin_change(value, record, phase="apply", actor=None):
-    if phase not in ("apply", "requester-exit", "agent-exit", "supervisor-shutdown", "session-close", "bad-password") or (phase == "session-close" and actor is None):
+    if phase not in ("apply", "requester-exit", "agent-exit", "supervisor-shutdown", "session-close", "bad-password", "authorization-timeout") or (phase == "session-close" and actor is None):
         raise RuntimeError("unknown administrator fixture phase")
     listener = direct_listener(record)
     if listener is None:
@@ -1249,6 +1371,7 @@ def admin_change(value, record, phase="apply", actor=None):
     password_sent = identity_chosen = False
     denial = None
     denial_pidfd = None
+    timeout_observation = None
     try:
         proc = Path("/proc") / str(client.pid)
         deadline = time.monotonic() + 3
@@ -1311,6 +1434,10 @@ def admin_change(value, record, phase="apply", actor=None):
                         or b"rdreceiver4003" not in terminal):
                     raise RuntimeError("authentication challenge has the wrong action or administrator")
                 if not termios.tcgetattr(master)[3] & termios.ECHO:
+                    if phase == "authorization-timeout":
+                        timeout_observation = observe_admin_authorization_timeout(
+                            client, agent, terminal, start, record, before, listener)
+                        break
                     if phase == "requester-exit":
                         observe_admin_requester_exit(client, agent, terminal, start,
                                                     record, before, listener)
@@ -1346,7 +1473,7 @@ def admin_change(value, record, phase="apply", actor=None):
                     password = INVALID_ADMIN_PASSWORD if phase == "bad-password" else ADMIN_PASSWORD
                     os.write(master, (password + "\n").encode())
                     password_sent = True
-        if phase not in ("requester-exit", "agent-exit", "supervisor-shutdown"):
+        if phase not in ("requester-exit", "agent-exit", "supervisor-shutdown", "authorization-timeout"):
             try:
                 stdout, stderr = client.communicate(timeout=5)
             except subprocess.TimeoutExpired:
@@ -1452,6 +1579,15 @@ def admin_change(value, record, phase="apply", actor=None):
             for descriptor in (master, slave, notify_read, notify_write, denial_pidfd):
                 if descriptor is not None:
                     os.close(descriptor)
+    if phase == "authorization-timeout":
+        if (password_sent or timeout_observation is None
+                or credential() != timeout_observation["root_credential_digest"]
+                or child_record() != record or direct_listener(record) != listener):
+            raise RuntimeError("timed-out request changed serving authority during cleanup")
+        print("LINUX_RECEIVER_AUTHORIZATION_TIMEOUT=pass uid=4001 prompt=actual password=withheld "
+              "helper=kernel-stopped deadline=120 cli=explicit-denial helper_cleanup=service-reaped "
+              "parallel_root=Applied durable=root-value child=retained listener=owned cleanup=agent-client-joined", flush=True)
+        return
     changed = credential() != before
     if phase == "session-close":
         if changed:
@@ -1929,7 +2065,7 @@ def network_shutdown(value, record, probe_sha):
             os.close(fd)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -2003,7 +2139,11 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
             raise RuntimeError("root mutation did not converge on the original child")
         print("LINUX_RECEIVER_CASE=root-applied durable=root convergence=Applied", flush=True)
         keyed("Receiver-fixture-first-2026!", "root-applied", first, probe_spec["sha256"])
-        if network_drain:
+        if authorization_timeout:
+            admin_change("Receiver-timeout-refused-2026!", first, "authorization-timeout")
+            second = first
+            keyed(AUTH_TIMEOUT_ROOT_PASSWORD, "authorization-timeout-recovery", second, probe_spec["sha256"])
+        elif network_drain:
             network_shutdown("Receiver-fixture-first-2026!", first, probe_spec["sha256"])
             run(["/usr/bin/systemctl", "start", "rustdesk.service"])
             second = ready(first)
@@ -2168,6 +2308,12 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
+    if authorization_timeout:
+        print(f"LINUX_SERVICE_AUTHORIZATION_NATIVE=pass cases=4 cpace=4 timeouts=1 root_grants=2 "
+              f"admin_grants=1 fresh_refusals=1 source={commit} binary_sha256={spec['sha256']} "
+              f"probe_sha256={probe_spec['sha256']} fixture=installed-layout polkit=actual logind=actual "
+              "child=supervised cleanup=joined", flush=True)
+        return
     if network_drain:
         print(f"LINUX_SERVICE_NETWORK_NATIVE=pass cases=4 cpace=3 network_drains=1 "
               f"admin_grants=1 fresh_refusals=1 source={commit} binary_sha256={spec['sha256']} "
@@ -2246,6 +2392,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], notification_failure=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--network-drain":
         tests(sys.argv[1:6], network_drain=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--authorization-timeout":
+        tests(sys.argv[1:6], authorization_timeout=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

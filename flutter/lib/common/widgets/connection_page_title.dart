@@ -10,14 +10,17 @@ Widget getConnectionPageTitle(BuildContext context) {
       Expanded(
           child: Row(
         children: [
-          AutoSizeText(
-            translate('Control Remote Desktop'),
-            maxLines: 1,
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.merge(TextStyle(height: 1)),
-          ).marginOnly(right: 4),
+          Flexible(
+            child: AutoSizeText(
+              translate('Control Remote Desktop'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.merge(TextStyle(height: 1)),
+            ).marginOnly(right: 4),
+          ),
           Tooltip(
             waitDuration: Duration(milliseconds: 300),
             message: translate("id_input_tip"),

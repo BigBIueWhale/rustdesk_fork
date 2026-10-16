@@ -408,9 +408,15 @@ def observe_admin_authorization_timeout(client, agent, terminal, start, record, 
         return observed
     finally:
         # Failure cleanup cannot manufacture the accepted service-originated retirement.
-        if faulted and not select.select([pidfd], [], [], 0)[0]:
-            signal.pidfd_send_signal(pidfd, signal.SIGCONT)
-        os.close(pidfd)
+        try:
+            if faulted and not select.select([pidfd], [], [], 0)[0]:
+                try:
+                    signal.pidfd_send_signal(pidfd, signal.SIGCONT)
+                except ProcessLookupError:
+                    if not select.select([pidfd], [], [], 0)[0]:
+                        raise
+        finally:
+            os.close(pidfd)
 
 
 def observe_admin_requester_exit(client, agent, terminal, start, record, before, listener):

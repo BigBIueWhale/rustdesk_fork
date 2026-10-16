@@ -8305,10 +8305,6 @@ run_flutter_model_tests() {
                     cat /work/format.err >&2
                     exit 1
                 fi
-                if [ "$FLUTTER_TEST_PROFILE" = models ] || [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
-                    /usr/bin/python3 -I -S \
-                        /source/scripts/verify-display-selection-finality.py --repo /source
-                fi
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     codegen_log=/work/codegen.log
                     if ! (cd "$codegen_source" && \
@@ -9737,7 +9733,7 @@ if [ "$MODE" = flutter-peer-presentation ]; then
 fi
 
 if [ "$MODE" = authority-smoke ]; then
-    for syntax_source in verify.sh apple-conform-check.sh lib.sh online-fetch.sh provision-windows-vm.sh; do
+    for syntax_source in verify.sh dart-verify.sh apple-conform-check.sh lib.sh online-fetch.sh provision-windows-vm.sh; do
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
                 /bin/bash -n "$VERIFY_REPO/scripts/$syntax_source" \

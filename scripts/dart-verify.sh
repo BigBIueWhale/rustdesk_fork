@@ -507,7 +507,6 @@ PY
       -o /tmp/texture_rgba_windows_core_test
     /tmp/texture_rgba_windows_core_test
     cd /src
-    python3 scripts/verify-display-selection-finality.py --repo .
     rustfmt --edition 2021 --check \
       src/client.rs \
       src/client/io_loop.rs \

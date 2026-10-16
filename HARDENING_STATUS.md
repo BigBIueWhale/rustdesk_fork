@@ -11743,10 +11743,13 @@ before UI mutation. Invalid controlled requests, retired controlled owners, or l
 failure terminate the exact connection. Split/generic display-control paths and reconnect-based
 recovery are absent. Local admission and ordered transport are not peer-operation acknowledgement.
 
-**Shared evidence boundary for R-S11go–R-S11gr.** The checker reports source checks only;
-its 180 string mutations, runner and `--self-test` interface are deleted (31,847 bytes removed).
-Shared/Dart/Apple callers retain unchanged product-source guards and executable regressions.
-R-S11go–gr preserve all behavior/native obligations, with source checks and independent executable regressions.
+**Shared evidence boundary for R-S11go–R-S11gr.** The 1,817-line source-text checker
+and all four external entrypoints are deleted. It compared source order, test names
+and its own caller wiring; it executed no display or lifecycle behavior. Production
+code, executable Rust/Dart regressions and their test commands are unchanged.
+Normative requirements retain the actual behavior and executable-evidence obligations,
+without requiring this checker or its shared/Dart/Apple wiring. Isolated shell and
+authority checks plus a fresh ledger count remain pending for this cleanup.
 Accepted source **`d63f45ae0ab3f74875cd8b6f4afb94e25c15507a`** passed
 `bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests`: fresh bridge generation and all
 23 suites/258 tests in a 311-second integration run.

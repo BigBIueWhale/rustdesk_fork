@@ -4539,14 +4539,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2b) R-S11go display-selection source checks =="
-if python3 scripts/verify-display-selection-finality.py --repo .; then
-  note "ok  R-S11go Apple/shared display-selection source checks passed"
-else
-  echo "  FAIL R-S11go Apple/shared display-selection source checks"
-  rc=1
-fi
-
 if [ "$rc" = 0 ]; then
   echo "== (3) cross-compile coherence matrix (Rust 1.81, actual Apple features) =="
   echo "  targets: ${SELECTED_APPLE_TARGETS[*]}"

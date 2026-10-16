@@ -102,6 +102,15 @@ PASSWORD_FIELD_TESTS = {
     "password field retains focused obscured semantics",
 }
 FILE_NAVIGATION_TESTS = {
+    "refresh retires the preceding directory selection",
+    "navigation retires the preceding directory selection",
+    "initial home listing retires the preceding selection",
+    "failed navigation retains the displayed directory and selection",
+    "sorting a displayed directory retains its selection",
+    "retired listing preserves the replacement selection",
+    "retired selection cannot dispatch a transfer after refresh",
+    "current directory selection still dispatches a transfer",
+    "published listing does not cancel an admitted transfer snapshot",
     "refresh retains descending name order",
     "refresh retains descending type order",
     "refresh retains descending modified order",

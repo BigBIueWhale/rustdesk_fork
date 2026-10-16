@@ -11629,11 +11629,24 @@ kept source/input bindings, added no observed host endpoint and joined cleanup. 
 `hbb-common-fs-run.M555mfWUXj.serial.log` and the scoped record
 `.harness-state/verifier-vm/hostname-probe-observed-8367f58b.json` retain the evidence.
 This is an observed defect baseline, not a product correction or zero-UDP acceptance.
-Successful DNS A/AAAA, natural stall/drain, whole viewer, other platforms and the complete
-transport/lifetime correction remain OPEN; literal-only input is not a substitute.
-Two additional source-bound cases now prepare real loopback TCP DNS A/AAAA
-answers and an unanswered DNS transaction across caller cancellation. Their
-native replay is pending; no product correction is claimed.
+Exact `66613e06` extends the diagnostic to nine processes and real TCP DNS
+A/AAAA replies. The positive case connected to its loopback application peer;
+the silent-peer case remained pending after 51 ms despite its 5 ms connect budget.
+After exact async caller cancellation/join, both libc lookup and its accepted
+DNS TCP connection remained active. Late valid answers caused **two trapped
+datagram attempts after caller retirement**, then native completion and peer EOF.
+No late application connection was observed after that cancelled caller.
+The fixture retires its listener and half-closes replies before final drain.
+All nine processes and 171 existing library/file-peer regressions passed in
+217 VM seconds; executable/source bindings and joined bounded-RAM cleanup pass.
+`.harness-state/verifier-vm/dns-tcp-observed-66613e06.json` retains the measurements;
+the first fixture drain failure is separately retained and unaccepted.
+This is an instrumented constructor defect baseline. The observer denied the
+datagram syscalls; no packet transmission or natural Internet outage is claimed.
+Product correction, unrestricted/whole-viewer behavior, platform DNS-policy
+integration and exact-current artifacts remain OPEN. Literal-only admission,
+TCP DNS configuration or a timeout wrapper do not establish the required
+transport/lifetime correction.
 Primary references: [Rust 1.75 lookup](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys_common/net.rs#L181),
 [glibc 2.27 sorting](https://github.com/bminor/glibc/blob/glibc-2.27/sysdeps/posix/getaddrinfo.c#L2187),
 [glibc DNS sockets](https://github.com/bminor/glibc/blob/glibc-2.27/resolv/res_send.c#L858).

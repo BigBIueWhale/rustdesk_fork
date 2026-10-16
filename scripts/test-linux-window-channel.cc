@@ -13,6 +13,7 @@ constexpr char kToken[] = "SyntheticWindowToken2";
 std::string logs;
 int created = 0;
 int retired = 0;
+int not_implemented = 0;
 int failures = 0;
 
 void Check(bool condition, const char* description) {
@@ -47,7 +48,7 @@ typedef struct { GObject parent; MessengerState* state; } TestMessenger;
 typedef struct { GObjectClass parent; } TestMessengerClass;
 void MessengerInterface(FlBinaryMessengerInterface* iface);
 G_DEFINE_TYPE_WITH_CODE(TestMessenger, test_messenger, G_TYPE_OBJECT,
-    G_IMPLEMENT_INTERFACE(FL_TYPE_BINARY_MESSENGER, MessengerInterface))
+    G_IMPLEMENT_INTERFACE(fl_binary_messenger_get_type(), MessengerInterface))
 
 void SetHandler(FlBinaryMessenger* messenger, const gchar*,
                 FlBinaryMessengerMessageHandler handler, gpointer data,
@@ -136,6 +137,7 @@ struct ForwardState { WindowChannel* window; bool* retired; };
 void Run(const std::string& name, int reply_kind) {
   const int start_failures = failures;
   const int start_live = created - retired;
+  const int start_not_implemented = not_implemented;
   logs.clear();
   auto* source = reinterpret_cast<TestMessenger*>(g_object_new(test_messenger_get_type(), nullptr));
   auto* target = reinterpret_cast<TestMessenger*>(g_object_new(test_messenger_get_type(), nullptr));
@@ -198,9 +200,10 @@ void Run(const std::string& name, int reply_kind) {
     if (!source->state->refuse_response) {
       Check(source->state->received != nullptr, "caller-received-reply");
       if (source->state->received != nullptr) {
-        g_autoptr(FlMethodResponse) response = FL_METHOD_CODEC_GET_CLASS(codec)->decode_response(
+        g_autoptr(FlMethodResponse) response = reply_kind == 2 ? nullptr :
+            FL_METHOD_CODEC_GET_CLASS(codec)->decode_response(
             FL_METHOD_CODEC(codec), source->state->received, &error);
-        Check(response != nullptr, "caller-reply-native-decode");
+        Check(reply_kind == 2 || response != nullptr, "caller-reply-native-decode");
         if ((reply_kind == 3 || name == "transport-error") && response != nullptr) {
           Check(FL_IS_METHOD_ERROR_RESPONSE(response), "malformed-is-error");
           if (FL_IS_METHOD_ERROR_RESPONSE(response)) {
@@ -209,14 +212,17 @@ void Run(const std::string& name, int reply_kind) {
                 "fixed-error-code");
             Check(std::strcmp(fl_method_error_response_get_message(failure), "Desktop window request failed") == 0,
                 "fixed-error-message");
-            Check(fl_method_error_response_get_details(failure) == nullptr, "null-error-details");
+            auto* details = fl_method_error_response_get_details(failure);
+            Check(details == nullptr || fl_value_get_type(details) == FL_VALUE_TYPE_NULL,
+                "null-error-details");
           }
         } else if (reply_kind == 1 && response != nullptr) {
           Check(FL_IS_METHOD_ERROR_RESPONSE(response) && std::strcmp(
               fl_method_error_response_get_code(FL_METHOD_ERROR_RESPONSE(response)), "declined") == 0,
               "explicit-error-preserved");
         } else if (reply_kind == 2) {
-          Check(FL_IS_METHOD_NOT_IMPLEMENTED_RESPONSE(response), "not-implemented-preserved");
+          Check(g_bytes_get_size(source->state->received) == 0 &&
+              not_implemented == start_not_implemented + 1, "not-implemented-preserved");
         } else if (response != nullptr) {
           Check(FL_IS_METHOD_SUCCESS_RESPONSE(response) && fl_value_equal(
               fl_method_success_response_get_result(FL_METHOD_SUCCESS_RESPONSE(response)), payload),
@@ -249,6 +255,7 @@ extern "C" FlMethodResponse* __wrap_fl_method_channel_invoke_method_finish(
   auto* response = __real_fl_method_channel_invoke_method_finish(channel, result, error);
   if (response != nullptr) {
     ++created;
+    if (FL_IS_METHOD_NOT_IMPLEMENTED_RESPONSE(response)) ++not_implemented;
     g_object_weak_ref(G_OBJECT(response), +[](gpointer, GObject*) { ++retired; }, nullptr);
   }
   return response;

@@ -5797,8 +5797,8 @@ class PeerInfo with ChangeNotifier {
     if (data == null || data == '') return;
     try {
       platformAdditions = json.decode(data);
-    } catch (e) {
-      debugPrint('Failed to decode platformAdditions $e');
+    } catch (_) {
+      debugPrint('Failed to decode platformAdditions');
     }
   }
 
@@ -5830,8 +5830,8 @@ class PeerInfo with ChangeNotifier {
         }
       });
       resolutions = arr;
-    } catch (e) {
-      debugPrint("Failed to parse resolutions:$e");
+    } catch (_) {
+      debugPrint("Failed to parse resolutions");
     }
   }
 

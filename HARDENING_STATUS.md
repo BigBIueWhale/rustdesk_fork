@@ -12232,6 +12232,11 @@ The shared verifier retains the direct command
 `cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never`. Its execution—not its
 presence—is the relevant regression evidence.
 
+Desktop response-write lifetime now has the named Linux socket-backpressure A/B
+evidence under R-S11is below. A single private send operation owns JSON plus its
+optional raw payload under one five-second initiating deadline; error retires the
+exact runner and stream. Queue-state and broader installed/platform obligations remain.
+
 Remaining STOP-SHIP evidence is the current installed/native transaction itself: complete desktop
 and Android CM/file operations after Login, both hops, saturation and terminal-first refusal, stale
 generation, abrupt owner loss, reconnect, ordering, latency, memory, task/handle finality, and cleanup;
@@ -14539,6 +14544,30 @@ bytes, SHA-256 `3a6a9f0362c7ae60bca160eb5971fcac6eafc6449a03a910876f5895f30e1948
 These are in-memory framed-stream and Rust owner tests, not installed OS IPC, desktop/Android
 file transactions, or release-artifact evidence. The deleted source verifier never drove those
 behaviors and is not evidence.
+
+**Desktop CM response sends — Linux native A/B accepted; installed/platform acceptance OPEN.**
+`91e10766` replaces unbounded response writes with one private operation owning the
+JSON header and optional raw payload under a shared five-second initiating deadline.
+Queued replies and direct Windows non-file clipboard replies use it. Every error or
+timeout retires the exact stream through existing registry/job cleanup; partially
+written framing is neither reused nor retried, and completed filesystem effects are
+not reported rolled back. Synchronous serialization and cleanup are not preemptible
+wall-time guarantees.
+
+The real CM/file runner used Linux Unix socketpairs with checked small send buffers,
+a 512-file directory reply and a 128-KiB file source. At `5dcbf116`, both new cases
+required watchdog cancellation while six caller controls passed. The byte-identical
+test module at `91e10766` passed all nine caller tests, including natural timeout
+retirement, exact UI/registry generation removal, stale-sender refusal, source-FD
+absence, same-ID fresh generations, a complete directory reply and exact fresh file
+bytes/Done. Behavioral execution took 11 seconds after the complete Linux Flutter-
+feature parent build; the fresh-bridge integration took 533 seconds. The file-caller
+profile also retires its completed bridge preparation within unchanged RAM ceilings.
+`cm-response-baseline-5dcbf116.json` and `cm-response-corrected-91e10766.json` under
+`.harness-state/verifier-vm/` bind source/artifact/results, unchanged source/control
+and endpoint captures, and joined cleanup. Login proof uses a controlled test
+validator; installed/cross-process principal attestation, Windows/macOS execution,
+native clipboard, device/soak and release acceptance remain OPEN. No LPE closure follows.
 
 Exact installed desktop and Android transactions remain STOP-SHIP. They must exercise directory and
 recursive listing, create/remove/rename, writes, digest, read blocks, completion, cancellation,

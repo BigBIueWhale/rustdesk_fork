@@ -1315,11 +1315,20 @@ retirement. Reply-channel closure precedes child retirement, which precedes moun
 or unwind. The guard retains the original received descriptor; session duplication occurs only
 after successful helper completion. Consuming `wait_with_output` and direct unmount `output` paths
 are removed. Two opaque-owner pipe accessors expose IO without transferring child wait authority.
-**Focused execution pending:** `--fusermount-process-tests` compiles the unchanged extracted child
-owner plus its new IO accessors, the actual private helper loop and 18 tests (nine process scenarios
-and nine nearest descriptor regressions). Source `26536da5` refused before VM creation: its unchanged
-admission required 25,600 MiB and found 24,552 MiB. No compiler or new test ran; the refusal is retained
-in `.harness-state/verifier-vm/fusermount-process-ram-refusal-26536da5.json`.
+**Named Linux component accepted:** exact `5aae8ce3` passed all 18 cases in
+64 VM seconds: nine real child/pipe/deadline/output/unwind/cleanup scenarios and
+nine native descriptor-transfer/exec regressions. The production helper and
+tests are unchanged from `26536da5`; the runner's two generated module paths are
+corrected. Its exact extracted child owner and IO accessors compile with Rust
+1.75 and root-locked libc 0.2.171/log 0.4.22. Artifact SHA-256
+`54b0539e4a10d205db57a6c939bfd7495457db6d44abfb29f9fe3795c3e50ad1`
+stays fixed before/after execution. The focused VM retains its 2 GiB guest and
+uses a fixed 6 GiB RAM-scratch/4 GiB overlay envelope, with unchanged host
+headroom, admission, hard ceilings, live monitor and joined retirement. Source
+freezes and host endpoints match before/live/after; VM/RAM/private roots retire.
+`.harness-state/verifier-vm/fusermount-process-accepted-5aae8ce3.json` binds the
+outcomes, dependencies, artifact, source and cleanup. The prior RAM refusal and
+compiler path failure remain separately retained, unaccepted preparation.
 Process actors and cleanup callbacks are fixtures;
 actual setuid helper/device/mount, descendant lifetime, principal/permission failures, full parent
 compilation, async caller placement, installed and sustained resource/latency acceptance remain OPEN.

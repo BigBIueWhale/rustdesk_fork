@@ -131,12 +131,18 @@ GitHub's platform reporting is distinct. No native/release acceptance follows.
 | §13 risk register | `.harness-state/verifier-vm/debt-register-document-role-28c2e775.json` |
 | Verification clauses | `.harness-state/verifier-vm/verification-clause-classification-a5946201.json` |
 | R-A6 audit evidence and sole authentication authority | `.harness-state/verifier-vm/audit-contract-document-role-313c3d27.json` |
+| R-S17 retired host-key design | `.harness-state/verifier-vm/host-identity-document-role-1ba44a05.json` |
 
 R-A6 excludes CM operator-accept authority under R-S2/R-S18 and distinguishes source checks,
 artifact inspection and native acceptance. Its direct-startup check preserves credential-unavailable
 parking and socket retirement; Apple requirements carry no transient platform-build status.
 The classification retains the earlier wording and its source comparisons. Product and verifier
 code are unchanged; no native or release obligation is closed by this document correction.
+
+R-S17 retains its reserved, retired ID and states the password-only contract through
+R-S2/R-S9/R-S18, R-P1/R-P5, R-G5 and R-A6. The abandoned host-key construction,
+retirement rationale and implementation claims are removed from the specification.
+Its threat model and all referenced requirements are unchanged.
 
 Whole-document/test classification, exact-current builders/artifacts, installed/native authority,
 scanner acceptance, complete inputs/signing, upstream baseline reproduction, fork-delta accounting,

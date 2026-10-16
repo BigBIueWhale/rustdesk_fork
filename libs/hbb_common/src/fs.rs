@@ -118,6 +118,24 @@ struct FileEnumerationUsage {
     approx_serialized_bytes: usize,
 }
 
+struct JsonStringByteCount(usize);
+
+impl std::io::Write for JsonStringByteCount {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = self.0.checked_add(bytes.len()).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "file enumeration JSON byte counter overflow",
+            )
+        })?;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 impl FileEnumerationUsage {
     fn enter_dir(&mut self, depth: usize, budget: FileEnumerationBudget) -> ResultType<()> {
         if depth > budget.max_depth {
@@ -153,10 +171,12 @@ impl FileEnumerationUsage {
     }
 
     fn add_serialized_string(&mut self, value: &str, budget: FileEnumerationBudget) -> ResultType<()> {
-        let value_bytes = 128usize.saturating_add(value.len());
+        // The existing metadata allowance includes the two JSON string quotes.
+        let mut value_bytes = JsonStringByteCount(128 - 2);
+        serde_json::to_writer(&mut value_bytes, value)?;
         let next_bytes = self
             .approx_serialized_bytes
-            .checked_add(value_bytes)
+            .checked_add(value_bytes.0)
             .ok_or_else(|| anyhow!("file enumeration budget byte counter overflow"))?;
         if next_bytes > budget.max_serialized_bytes {
             bail!(
@@ -9347,11 +9367,20 @@ mod tests {
         let parent = tmp.join("abcdefgh/ijklmnop");
         std::fs::create_dir_all(&parent).expect("create nested directory");
         std::fs::write(parent.join("qrstuvwx"), b"payload").expect("create leaf");
+        let relative_parent = Path::new("abcdefgh").join("ijklmnop");
+        let relative_file = relative_parent.join("qrstuvwx");
+        let exact_bytes = [Path::new("abcdefgh"), relative_parent.as_path(), relative_file.as_path()]
+            .iter()
+            .map(|path| {
+                128 + serde_json::to_vec(&get_string(path))
+                    .expect("serialize the platform's actual relative path").len() - 2
+            })
+            .sum::<usize>();
         let budget = FileEnumerationBudget {
             max_entries: 8,
             max_dirs: 8,
             max_depth: 3,
-            max_serialized_bytes: 435,
+            max_serialized_bytes: exact_bytes,
         };
         let files = get_recursive_files_with_budget(&get_string(&tmp.path), true, budget)
             .expect("the complete relative paths fit the exact byte budget");
@@ -9364,12 +9393,14 @@ mod tests {
             &get_string(&tmp.path),
             true,
             FileEnumerationBudget {
-                max_serialized_bytes: 434,
+                max_serialized_bytes: exact_bytes - 1,
                 ..budget
             },
         )
         .expect_err("relative path prefixes must contribute to the byte bound");
-        assert_err_contains(error, "approx serialized bytes 435 exceed limit 434");
+        assert_err_contains(error, &format!(
+            "approx serialized bytes {} exceed limit {}", exact_bytes, exact_bytes - 1
+        ));
     }
 
     #[test]

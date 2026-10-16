@@ -11748,8 +11748,13 @@ and all four external entrypoints are deleted. It compared source order, test na
 and its own caller wiring; it executed no display or lifecycle behavior. Production
 code, executable Rust/Dart regressions and their test commands are unchanged.
 Normative requirements retain the actual behavior and executable-evidence obligations,
-without requiring this checker or its shared/Dart/Apple wiring. Isolated shell and
-authority checks plus a fresh ledger count remain pending for this cleanup.
+without requiring this checker or its shared/Dart/Apple wiring. Exact cleanup
+`a7677551` passed the existing zero-NIC authority transaction in 96 VM seconds,
+including syntax checks of all four edited shell scripts. Before/live/after source
+captures and host endpoints match; exact VM/RAM/private-root retirement passed.
+`.harness-state/verifier-vm/display-selection-checker-removed-a7677551.json`
+binds the deletion/classification and isolated result. This is verification-tool
+acceptance; the product behavior was not replayed and its evidence scope is unchanged.
 Accepted source **`d63f45ae0ab3f74875cd8b6f4afb94e25c15507a`** passed
 `bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests`: fresh bridge generation and all
 23 suites/258 tests in a 311-second integration run.

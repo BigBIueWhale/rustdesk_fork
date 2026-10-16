@@ -101,6 +101,18 @@ PASSWORD_FIELD_TESTS = {
     "ordinary obscured field is a keyboard learning control",
     "password field retains focused obscured semantics",
 }
+MODIFIER_RELEASE_TESTS = {
+    "right Alt retains its own release identity",
+    "modern modifier release preserves the other held side",
+    "modern focus cleanup emits every held modifier once",
+    "modern reset removes pending modifier releases",
+    "raw tracking uses the changed key without aggregate state",
+    "raw chord retains every changed modifier",
+    "raw key up retires its key after aggregate state is clear",
+    "raw key up preserves a different held modifier",
+    "raw focus cleanup retires each exact pending release",
+    "ordinary raw keys and reset cannot retain modifier ownership",
+}
 DIRECTORY_ORDERING_TESTS = {
     "new destination survives an older navigation response",
     "pending destination rejects an older navigation result",
@@ -300,7 +312,7 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -319,6 +331,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"desktop_window_dispatch_test.dart"}
         expected_tests = len(WINDOW_DISPATCH_TESTS)
         expected_names = WINDOW_DISPATCH_TESTS
+    elif profile == "modifier-release":
+        expected_suites = {"input_modifier_release_test.dart"}
+        expected_tests = len(MODIFIER_RELEASE_TESTS)
+        expected_names = MODIFIER_RELEASE_TESTS
     elif profile == "directory-ordering":
         expected_suites = {"file_navigation_ordering_test.dart"}
         expected_tests = len(DIRECTORY_ORDERING_TESTS)
@@ -433,7 +449,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -447,6 +463,7 @@ def main():
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
+        "modifier-release": "FLUTTER_MODIFIER_RELEASE_TEST_JSON",
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",

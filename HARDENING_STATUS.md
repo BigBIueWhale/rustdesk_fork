@@ -11351,16 +11351,24 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the builder correctly replaced `local_docker` with guest-only `verifier_vm_docker` and established no product or
   artifact behavior. A clean cold exact-commit double build, signed current APK, installation, device lifecycle,
   peer, presentation, and resource evidence remain required by R-B2/R-B10 and are not inferred from source checks.
-- **R-R2d — GitHub Actions definitions and disabled copies deleted; filesystem acceptance pending.**
+- **R-R2d — GitHub Actions definitions and disabled copies deleted; filesystem guard accepted.**
   `.github/workflows/` contains only the regular `DISABLED.md` policy. All seven
   obsolete upstream workflows are deleted; Git history retains their provenance.
   The focused validator checks actual directory and node types, forbids every
   additional workflow entry and retains Dependabot/absorbed-manifest refusals.
   The schema parser, per-reference key inventory and in-memory mutation catalog
   are deleted. `test-github-automation-authority.py` drives the production CLI
-  against actual regular files, dangling symlinks, directories and FIFOs. Its
-  isolated VM execution remains pending. Local scripts and the authenticated
-  no-NIC verifier VM remain the build/verification/release authority. External
+  against actual regular files, dangling symlinks, directories and FIFOs. Exact
+  `974aa907` passed all 59 CLI/filesystem cases and the shared authority smoke
+  in 95 seconds in the no-NIC VM as UID 4000. The fixed smoke storage profile
+  retains a 2 GiB guest, caps RAM scratch at 4 GiB and overlay at 1 GiB, and
+  preserves 6 GiB host headroom plus 1 GiB overhead. Observed peaks were
+  469,069,824 bytes scratch and 372,903,936 bytes overlay. Frozen source and host
+  endpoints were unchanged; exact joins retired the VM and RAM/private workspace.
+  `.harness-state/verifier-vm/github-automation-accepted-974aa907.json` binds the
+  source, filesystem outcomes, initial admission refusal and cleanup. The generic
+  dependency inventory's complete replay remains OPEN. Local scripts and the
+  authenticated no-NIC verifier VM remain the execution authority. External
   repository settings, current artifacts, cold equality, release transactions
   and independent acceptance remain OPEN; file absence does not establish them.
 - **R-R1a — automated dependency-rewrite configuration absent — source guards implemented;

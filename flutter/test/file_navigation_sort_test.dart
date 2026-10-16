@@ -129,8 +129,8 @@ void main() {
     harness.session = const Uuid().v4obj();
 
     expect(
-        harness.fetcher.tryCompleteTask(
-            retiredSession, _listing('/current'), 'false'),
+        harness.fetcher
+            .tryCompleteTask(retiredSession, _listing('/current'), 'false'),
         isTrue);
     expect(await refresh, isFalse);
 

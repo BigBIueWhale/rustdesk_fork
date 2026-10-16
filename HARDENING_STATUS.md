@@ -1332,6 +1332,16 @@ compiler path failure remain separately retained, unaccepted preparation.
 Process actors and cleanup callbacks are fixtures;
 actual setuid helper/device/mount, descendant lifetime, principal/permission failures, full parent
 compilation, async caller placement, installed and sustained resource/latency acceptance remain OPEN.
+
+**FUSE reply bootstrap — source corrected; native caller comparison pending.**
+`src/clipboard_file.rs` no longer initializes FUSE while consuming file-content
+responses. Such replies use only the existing side/connection/stream route.
+Failed format-data responses return before initialization; successful metadata
+selects the caller's typed clipboard side rather than always selecting the viewer.
+The focused helper transaction adds the actual root dispatcher, real clipboard
+library and native namespace comparisons against the exact earlier module.
+Native comparison, successful mounted exchange, full caller/owner integration
+and async startup/teardown placement remain OPEN.
 The global OPEN tables remain authoritative for exact-current native packages,
 cross-platform peer behavior, focus/background freshness, latency, reconnect, concurrency, soak, resource
 bounds, cleanup, cold artifacts, independent reproduction, and external review.

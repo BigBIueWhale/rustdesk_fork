@@ -109,6 +109,8 @@ def main():
                 raise ValueError(f"helper source changed: {name}")
             print(f"FUSE_PROCESS_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
         print(f"FUSE_PROCESS_ARTIFACT=pass sha256={artifact_sha} tests=18 unchanged=before-after", flush=True)
+        run([sys.executable, "-I", "-S", str(repo / "scripts/run-fuse-response-tests.py"),
+             str(repo), config[1]], fixture, 240)
 
 
 if __name__ == "__main__":

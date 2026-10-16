@@ -3404,6 +3404,11 @@ run_focused_rust_tests() {
                 libs/clipboard/src/platform/unix/fuse/fusermount_process.rs
                 libs/clipboard/src/platform/unix/fuse/fusermount_process_tests.rs
                 scripts/run-fusermount-process-tests.py
+                src/clipboard_file.rs src/clipboard.rs
+                libs/clipboard/Cargo.toml libs/clipboard/src/lib.rs
+                libs/clipboard/src/platform/unix/fuse/cs.rs
+                scripts/run-fuse-response-tests.py scripts/test-fuse-response-dispatch.rs
+                scripts/fixtures/clipboard-file-before-response-bootstrap.rs
             )
             required_tests=(
                 fusermount_process::tests::normal_completion_drains_output_and_retains_the_original
@@ -3424,6 +3429,31 @@ run_focused_rust_tests() {
                 fusermount_fd::tests::duplicated_descriptor_is_cloexec_and_retains_object
                 fusermount_fd::tests::duplicate_bad_descriptor_refuses
                 fusermount_fd::tests::descriptors_do_not_survive_exec
+                clipboard_file::tests::cliprdr_format_list_limit_is_bounded
+                clipboard_file::tests::cliprdr_format_name_limit_is_bounded
+                clipboard_file::tests::cliprdr_file_content_request_limit_is_bounded
+                dispatch_tests::content_reply_preserves_absent_contexts
+                dispatch_tests::host_format_reply_selects_host_context
+                dispatch_tests::client_format_reply_selects_client_context
+                dispatch_tests::failed_format_reply_preserves_absent_contexts
+                platform::unix::fuse::cs::fuse_test::test_parse_single
+                platform::unix::fuse::cs::fuse_test::test_parse_tree
+                platform::unix::fuse::cs::fuse_test::fuse_request_accepts_only_one_response
+                platform::unix::fuse::cs::fuse_test::file_content_response_requires_matching_connection_id
+                platform::unix::fuse::cs::fuse_test::file_content_response_route_is_removed_after_read
+                platform::unix::fuse::cs::fuse_test::overlapping_file_content_read_is_rejected
+                platform::unix::fuse::cs::fuse_test::file_content_response_route_rejects_non_response_message
+                platform::unix::fuse::cs::fuse_test::read_node_routes_response_after_request
+                platform::unix::fuse::cs::fuse_test::read_node_keeps_failed_request_and_next_read_responses_separate
+                platform::unix::fuse::cs::fuse_test::read_node_refuses_invalid_flags_and_oversized_response
+                platform::unix::fuse::cs::fuse_test::fuse_stream_ids_preserve_unsigned_bits_and_refuse_exhaustion
+                platform::unix::fuse::cs::fuse_test::read_node_drops_route_when_send_fails
+                platform::unix::fuse::cs::fuse_test::read_node_drops_route_when_response_times_out
+                platform::unix::fuse::cs::fuse_test::router_dispatch_without_active_route_drops_response
+                platform::unix::fuse::cs::fuse_test::router_dispatch_to_disconnected_route_fails_closed
+                platform::unix::fuse::cs::fuse_test::old_route_guard_does_not_remove_new_request
+                platform::unix::fuse::cs::fuse_test::response_key_uses_connection_and_stream
+                platform::unix::fuse::cs::fuse_test::response_key_rejects_non_response
             )
         elif [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
             container_name=rustdesk-fusermount-fd-tests
@@ -4618,7 +4648,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=6 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
-        printf 'FUSE_PROCESS_PROFILE=fusermount-process stage=container-start tests=18 bridge=absent\n'
+        printf 'FUSE_PROCESS_PROFILE=fusermount-process stage=container-start tests=43 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
         printf 'FUSE_FD_PROFILE=fusermount-fd stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
@@ -4804,10 +4834,23 @@ PY
             && [ "$(grep -Fc 'FILE_BLOCK_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'file-block artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
-        [ "${#result_lines[@]}" -eq 1 ] || fail 'FUSE process summary count differs'
+        [ "${#result_lines[@]}" -eq 3 ] || fail 'FUSE process summary count differs'
         [ "$(grep -Ec '^FUSE_PROCESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=18 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FUSE_PROCESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'FUSE process artifact receipt differs'
+        python3 -I -S - "$output" <<'PY'
+import json,re,sys
+lines=open(sys.argv[1]).read().splitlines()
+records=[json.loads(s.split('=pass ',1)[1]) for s in lines if s.startswith('FUSE_DISPATCH_ARTIFACT=pass ')]
+assert len(records)==1
+r=records[0]
+assert (r['tests'],r['groups'],r['comparisons'],r['observations'])==(25,2,6,12)
+assert r['baseline_module_sha256']=='9f009cf5a6658afa538ff7ce2e5ac8f6350f87d690e7dfd0af90867dfd6cd53c'
+assert r['scope']=='production-root-dispatch-and-native-fuse-routing' and r['mounted_fuse'] is False
+assert sum(a['tests'] for a in r['artifacts'])==25 and len(r['artifacts'])==2
+assert all(re.fullmatch('[0-9a-f]{64}',a['sha256']) for a in r['artifacts'])
+assert len([s for s in lines if s.startswith('FUSE_DISPATCH_OBSERVATION=')])==12
+PY
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'FUSE fd summary count differs'
         [ "$(grep -Ec '^FUSE_FD_ARTIFACT=pass sha256=[0-9a-f]{64} tests=9 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -5184,8 +5227,8 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
-            grep -E '^test (fusermount_fd|fusermount_process)::tests::.* \.\.\. ok$|^FUSE_PROCESS_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
-            printf 'FUSE_PROCESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-helper-loop-and-extracted-owner rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^test .* \.\.\. ok$|^FUSE_(PROCESS|DISPATCH)_(ARTIFACT|DEPENDENCIES|INPUT|OBSERVATION)=' "$output"
+            printf 'FUSE_PROCESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-helper-and-root-dispatch rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then

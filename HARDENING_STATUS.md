@@ -11631,6 +11631,9 @@ kept source/input bindings, added no observed host endpoint and joined cleanup. 
 This is an observed defect baseline, not a product correction or zero-UDP acceptance.
 Successful DNS A/AAAA, natural stall/drain, whole viewer, other platforms and the complete
 transport/lifetime correction remain OPEN; literal-only input is not a substitute.
+Two additional source-bound cases now prepare real loopback TCP DNS A/AAAA
+answers and an unanswered DNS transaction across caller cancellation. Their
+native replay is pending; no product correction is claimed.
 Primary references: [Rust 1.75 lookup](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys_common/net.rs#L181),
 [glibc 2.27 sorting](https://github.com/bminor/glibc/blob/glibc-2.27/sysdeps/posix/getaddrinfo.c#L2187),
 [glibc DNS sockets](https://github.com/bminor/glibc/blob/glibc-2.27/resolv/res_send.c#L858).

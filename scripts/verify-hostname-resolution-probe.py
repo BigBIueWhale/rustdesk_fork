@@ -25,7 +25,7 @@ def verify(log, source):
     if record.get("sources") != {p: hashlib.sha256((source / p).read_bytes()).hexdigest() for p in paths}:
         raise ValueError("Connector observation source binding differs")
     observations = record.get("observations")
-    cases = ["literal", "hosts-single", "hosts-multi", "hosts-multi-tcp", "dns-udp", "dns-tcp", "cancel"]
+    cases = ["literal", "hosts-single", "hosts-multi", "hosts-multi-tcp", "dns-udp", "dns-tcp", "cancel", "dns-answer-tcp", "dns-cancel-tcp"]
     if not isinstance(observations, list) or [r.get("case") for r in observations] != cases:
         raise ValueError("Connector observation case inventory differs")
     for observation in observations:
@@ -39,12 +39,26 @@ def verify(log, source):
                 or observation.get("trap_self_controls") != 2
                 or observation.get("getaddrinfo_self_control") is not True
                 or observation.get("datagram_action") != "kernel-trap-denied"
-                or observation.get("cancellation_gate") != "controlled-before-real-getaddrinfo"):
+                or observation.get("cancellation_gate") != {
+                    "dns-cancel-tcp": "real-tcp-dns-silent-peer",
+                    "dns-answer-tcp": "real-tcp-dns-answer-peer",
+                }.get(observation["case"], "controlled-before-real-getaddrinfo")):
             raise ValueError("Connector observation instrumentation/finality differs")
-        if (observation.get("connect_timeout_ms") != (5 if observation["case"] == "cancel" else 100)
+        if (observation.get("connect_timeout_ms") != (5 if observation["case"] in ("cancel", "dns-cancel-tcp") else 100)
                 or type(observation.get("gate_observed_elapsed_ms")) is not int
                 or not 0 <= observation["gate_observed_elapsed_ms"] <= 2500):
             raise ValueError("Connector observation deadline context differs")
+        types = observation.get("dns_question_types")
+        if (type(observation.get("dns_socket_retained_after_cancel")) is not bool
+                or not isinstance(types, list)
+                or types != sorted(set(types)) or any(type(t) is not int or t not in (1, 28) for t in types)
+                or (observation["case"] in ("dns-cancel-tcp", "dns-answer-tcp")
+                    and (not types or not observation["gate_reached"]))
+                or (observation["case"] not in ("dns-cancel-tcp", "dns-answer-tcp")
+                    and (types or observation["dns_socket_retained_after_cancel"]))):
+            raise ValueError("Connector observation actual TCP DNS context differs")
+        if observation["case"] == "dns-answer-tcp" and not observation["connected"]:
+            raise ValueError("Actual TCP DNS answer did not connect to the loopback control")
     literal = observations[0]
     if not literal["connected"] or literal["ip_datagram_socket_attempts"] or literal["getaddrinfo_calls"]:
         raise ValueError("Literal control did not exercise an ordinary TCP connection")

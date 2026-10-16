@@ -2,11 +2,9 @@
 // The binary messenger supplies controlled transport completions; no engine/window runs.
 #include "window_channel.h"
 
-#include <atomic>
-#include <cstdlib>
 #include <cstring>
-#include <dlfcn.h>
 #include <iostream>
+#include <sanitizer/asan_interface.h>
 #include <string>
 
 namespace {
@@ -18,22 +16,30 @@ int created = 0;
 int retired = 0;
 int not_implemented = 0;
 int failures = 0;
-std::atomic<FlValue*> temporary_values[3]{{nullptr}, {nullptr}, {nullptr}};
-std::atomic<bool> temporary_freed[3]{{false}, {false}, {false}};
-std::atomic<int> values_freed{0};
+FlValue* temporary_values[3] = {};
+int values_freed = 0;
 int argument_maps = 0;
 
 void WatchValues(FlValue* first, FlValue* second = nullptr, FlValue* third = nullptr) {
-  FlValue* values[] = {first, second, third};
-  for (int i = 0; i < 3; ++i) {
-    temporary_values[i].store(values[i]);
-    temporary_freed[i].store(false);
-  }
+  temporary_values[0] = first;
+  temporary_values[1] = second;
+  temporary_values[2] = third;
 }
 
-bool TemporaryValuesRetired() {
-  return temporary_freed[0].load() && temporary_freed[1].load() &&
-      temporary_freed[2].load();
+bool ValueRetired(FlValue* value) {
+  if (value == nullptr || __asan_address_is_poisoned(value) == 0) return false;
+  void* trace[1];
+  int thread_id;
+  return __asan_get_free_stack(value, trace, 1, &thread_id) != 0;
+}
+
+bool RecordTemporaryRetirement() {
+  int count = 0;
+  for (auto* value : temporary_values) {
+    if (ValueRetired(value)) ++count;
+  }
+  values_freed += count;
+  return count == 3;
 }
 
 void Check(bool condition, const char* description) {
@@ -55,14 +61,14 @@ void CheckValueObserver() {
   auto* value = fl_value_new_int(7);
   WatchValues(value);
   fl_value_unref(value);
-  Check(temporary_freed[0].load(), "observer-sees-final-reference-retirement");
+  Check(ValueRetired(value), "observer-sees-final-reference-retirement");
   value = fl_value_new_int(8);
   WatchValues(value);
   fl_value_ref(value);
   fl_value_unref(value);
-  Check(!temporary_freed[0].load(), "observer-preserves-retained-reference");
+  Check(!ValueRetired(value), "observer-preserves-retained-reference");
   fl_value_unref(value);
-  Check(temporary_freed[0].load(), "observer-sees-retained-reference-retirement");
+  Check(ValueRetired(value), "observer-sees-retained-reference-retirement");
   WatchValues(nullptr);
 }
 
@@ -218,7 +224,7 @@ void Run(const std::string& name, int reply_kind) {
   if (self_void) {
     for (int i = 0; i < 128; ++i) {
       window->InvokeMethodSelfVoid("onEvent", payload);
-      temporaries_retired = TemporaryValuesRetired() && temporaries_retired;
+      temporaries_retired = RecordTemporaryRetirement() && temporaries_retired;
     }
   } else if (self) {
     window->InvokeMethodSelf("onDestroy", payload, [&completed]() { ++completed; });
@@ -234,10 +240,11 @@ void Run(const std::string& name, int reply_kind) {
   }
   window.reset();
   Drain();
+  if (!self_void) temporaries_retired = RecordTemporaryRetirement();
   const int expected_sends = self_void ? 128 : 1;
   Check(target->state->sends == expected_sends, "exact-outbound-send-count");
   Check(argument_maps - start_maps == expected_sends, "all-native-argument-maps-observed");
-  Check(temporaries_retired && TemporaryValuesRetired(), "temporary-argument-values-retired");
+  Check(temporaries_retired, "temporary-argument-values-retired");
   if (self_void) {
     Check(completed == 0 && source->state->responses == 0, "self-void-has-no-response");
     Check(fl_value_get_type(payload) == FL_VALUE_TYPE_MAP &&
@@ -298,20 +305,6 @@ void Run(const std::string& name, int reply_kind) {
 }
 }  // namespace
 
-// Observe frees of the exact native values; always delegate to real GLib.
-extern "C" void g_free(gpointer memory) {
-  using Free = void (*)(gpointer);
-  static auto real_free = reinterpret_cast<Free>(dlsym(RTLD_NEXT, "g_free"));
-  if (real_free == nullptr) std::abort();
-  for (int i = 0; i < 3; ++i) {
-    if (memory != nullptr && temporary_values[i].load() == memory &&
-        !temporary_freed[i].exchange(true)) {
-      ++values_freed;
-    }
-  }
-  real_free(memory);
-}
-
 extern "C" void __real_fl_method_channel_invoke_method(FlMethodChannel*,
     const gchar*, FlValue*, GCancellable*, GAsyncReadyCallback, gpointer);
 extern "C" void __wrap_fl_method_channel_invoke_method(FlMethodChannel* channel,
@@ -339,13 +332,14 @@ extern "C" FlMethodResponse* __wrap_fl_method_channel_invoke_method_finish(
 }
 
 int main() {
+  std::cout.setf(std::ios::unitbuf);
   g_log_set_always_fatal(G_LOG_LEVEL_ERROR);
   g_log_set_default_handler(+[](const gchar*, GLogLevelFlags, const gchar* message, gpointer) {
     if (message != nullptr) logs += message;
   }, nullptr);
   CheckValueObserver();
   if (failures != 0) return 2;
-  values_freed.store(0);
+  values_freed = 0;
   std::cout << "WINDOW_VALUE_OBSERVER=pass controls=2\n";
   Run("success", 0);
   Run("explicit-error", 1);
@@ -356,6 +350,6 @@ int main() {
   Run("self-error", 0);
   Run("self-void", 0);
   std::cout << "WINDOW_VALUE_TOTAL=observed maps=" << argument_maps
-            << " freed=" << values_freed.load() << '\n';
+            << " freed=" << values_freed << '\n';
   return failures == 0 ? 0 : 1;
 }

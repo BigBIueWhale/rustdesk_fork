@@ -8702,7 +8702,7 @@ run_flutter_model_tests() {
         for native_receipt in \
             'LINUX_WINDOW_CHANNEL_BEFORE=observed cases=8 failed=8' \
             'LINUX_WINDOW_CHANNEL_CURRENT=pass cases=8' \
-            'LINUX_WINDOW_VALUE_OWNERSHIP=pass paths=3 maps=135 values=405 before_retired=0 current_retired=405 controls=2' \
+            'LINUX_WINDOW_VALUE_OWNERSHIP=pass observer=asan-free-stack paths=3 maps=135 values=405 before_retired=0 current_retired=405 controls=2' \
             'LINUX_WINDOW_CHANNEL_SCOPE=component codec=flutter-3.24.5 messenger=controlled windows=unexecuted'; do
             [ "$(grep -Fxc "$native_receipt" "$output")" -eq 1 ] \
                 || fail 'native window-channel result differs'

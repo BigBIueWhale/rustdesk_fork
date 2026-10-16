@@ -56,13 +56,11 @@ class FileManagerPage extends StatefulWidget {
       {Key? key,
       required this.id,
       required this.password,
-      required this.isSharedPassword,
       this.tabController,
       this.connToken})
       : super(key: key);
   final String id;
   final String? password;
-  final bool? isSharedPassword;
   final String? connToken;
   final DesktopTabController? tabController;
   final SimpleWrapper<State<FileManagerPage>?> _lastState = SimpleWrapper(null);
@@ -98,7 +96,6 @@ class _FileManagerPageState extends State<FileManagerPage>
     _sessionId = _ffi.start(widget.id,
         isFileTransfer: true,
         password: widget.password,
-        isSharedPassword: widget.isSharedPassword,
         connToken: widget.connToken);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_ffi.isCurrentSession(_sessionId)) return;

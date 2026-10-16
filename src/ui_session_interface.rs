@@ -2234,9 +2234,8 @@ impl<T: InvokeUiSession> Interface for Session<T> {
 
     fn get_connect_password(&self) -> String {
         // R-S16: the live connect-time password feeding the CPace PRS at `Client::start`.
-        // Prefer the lch's `connect_password` (set by the pre-keying dialog before a reconnect,
-        // A3); else the construction-time `Session.password` (URI `--password`, an
-        // address-book / saved card).
+        // Prefer the password entered for the current prompt; otherwise use the explicit
+        // construction-time session password. Stored CPace PRSs are selected separately.
         let cp = self.lc.read().unwrap().connect_password.clone();
         if !cp.is_empty() {
             cp

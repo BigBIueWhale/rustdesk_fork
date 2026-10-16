@@ -2589,31 +2589,21 @@ connectMainDesktop(String address,
     required bool isTcpTunneling,
     required bool isRDP,
     String? password,
-    String? connToken,
-    bool? isSharedPassword}) async {
+    String? connToken}) async {
   if (isFileTransfer) {
     await rustDeskWinManager.newFileTransfer(address,
-        password: password,
-        isSharedPassword: isSharedPassword,
-        connToken: connToken);
+        password: password, connToken: connToken);
   } else if (isViewCamera) {
     await rustDeskWinManager.newViewCamera(address,
-        password: password,
-        isSharedPassword: isSharedPassword,
-        connToken: connToken);
+        password: password, connToken: connToken);
   } else if (isTcpTunneling || isRDP) {
     await rustDeskWinManager.newPortForward(address, isRDP,
-        password: password,
-        isSharedPassword: isSharedPassword,
-        connToken: connToken);
+        password: password, connToken: connToken);
   } else if (isTerminal) {
     await rustDeskWinManager.newTerminal(address,
-        password: password,
-        isSharedPassword: isSharedPassword,
-        connToken: connToken);
+        password: password, connToken: connToken);
   } else {
-    await rustDeskWinManager.newRemoteDesktop(address,
-        password: password, isSharedPassword: isSharedPassword);
+    await rustDeskWinManager.newRemoteDesktop(address, password: password);
   }
 }
 
@@ -2629,8 +2619,7 @@ connect(BuildContext context, String address,
     bool isTcpTunneling = false,
     bool isRDP = false,
     String? password,
-    String? connToken,
-    bool? isSharedPassword}) async {
+    String? connToken}) async {
   address = normalizeDirectAddress(address);
   if (address.isEmpty) return;
   if (!isDesktop && (isTcpTunneling || isRDP)) {
@@ -2666,7 +2655,6 @@ connect(BuildContext context, String address,
         isTcpTunneling: isTcpTunneling,
         isRDP: isRDP,
         password: password,
-        isSharedPassword: isSharedPassword,
       );
     } else {
       await rustDeskWinManager.call(WindowType.Main, kWindowConnect, {
@@ -2677,7 +2665,6 @@ connect(BuildContext context, String address,
         'isTcpTunneling': isTcpTunneling,
         'isRDP': isRDP,
         'password': password,
-        'isSharedPassword': isSharedPassword,
         'connToken': connToken,
       });
     }
@@ -2696,19 +2683,15 @@ connect(BuildContext context, String address,
           MaterialPageRoute(
             builder: (BuildContext context) =>
                 desktop_file_manager.FileManagerPage(
-                    id: address,
-                    password: password,
-                    isSharedPassword: isSharedPassword),
+                    id: address, password: password),
           ),
         );
       } else {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (BuildContext context) => FileManagerPage(
-                id: address,
-                password: password,
-                isSharedPassword: isSharedPassword),
+            builder: (BuildContext context) =>
+                FileManagerPage(id: address, password: password),
           ),
         );
       }
@@ -2723,7 +2706,6 @@ connect(BuildContext context, String address,
               id: address,
               toolbarState: ToolbarState(),
               password: password,
-              isSharedPassword: isSharedPassword,
             ),
           ),
         );
@@ -2731,10 +2713,8 @@ connect(BuildContext context, String address,
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (BuildContext context) => ViewCameraPage(
-                id: address,
-                password: password,
-                isSharedPassword: isSharedPassword),
+            builder: (BuildContext context) =>
+                ViewCameraPage(id: address, password: password),
           ),
         );
       }
@@ -2745,7 +2725,6 @@ connect(BuildContext context, String address,
           builder: (BuildContext context) => TerminalPage(
             id: address,
             password: password,
-            isSharedPassword: isSharedPassword,
           ),
         ),
       );
@@ -2759,7 +2738,6 @@ connect(BuildContext context, String address,
               id: address,
               toolbarState: ToolbarState(),
               password: password,
-              isSharedPassword: isSharedPassword,
             ),
           ),
         );
@@ -2767,10 +2745,8 @@ connect(BuildContext context, String address,
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (BuildContext context) => RemotePage(
-                id: address,
-                password: password,
-                isSharedPassword: isSharedPassword),
+            builder: (BuildContext context) =>
+                RemotePage(id: address, password: password),
           ),
         );
       }

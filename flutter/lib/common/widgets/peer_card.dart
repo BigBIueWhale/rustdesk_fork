@@ -985,12 +985,9 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     bool isTcpTunneling = false,
     bool isRDP = false,
     bool isTerminal = false}) async {
-  // R-G4: the address-book shared-password path is excised. The remaining tabs are the local
-  // Recent/Favorite lists, which connect with no embedded password (empty, non-shared) — the saved
-  // per-address CPace PRS is applied inside connect().
+  // Recent/Favorite entries connect using the saved per-address CPace credential.
   connect(context, peer.id,
       password: '',
-      isSharedPassword: false,
       isFileTransfer: isFileTransfer,
       isTerminal: isTerminal,
       isViewCamera: isViewCamera,

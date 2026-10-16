@@ -460,7 +460,7 @@ fn production_viewer_pipeline_recovers_after_stalled_publication_without_reconne
     };
     {
         let mut login = session.lc.write().unwrap();
-        login.initialize(EXACT_PEER.to_owned(), ConnType::DEFAULT_CONN, None, None);
+        login.initialize(EXACT_PEER.to_owned(), ConnType::DEFAULT_CONN, None);
         let config = login.get_config();
         config.disable_audio.v = true;
         config.disable_clipboard.v = true;
@@ -612,7 +612,7 @@ fn production_viewer_download_commits_the_exact_file_after_digest_confirmation()
         .lc
         .write()
         .unwrap()
-        .initialize(EXACT_PEER.to_owned(), ConnType::FILE_TRANSFER, None, None);
+        .initialize(EXACT_PEER.to_owned(), ConnType::FILE_TRANSFER, None);
 
     let panic_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let observed_panics = Arc::clone(&panic_count);
@@ -738,7 +738,7 @@ fn production_viewer_download_refuses_a_symlink_destination_at_digest_inspection
         .lc
         .write()
         .unwrap()
-        .initialize(EXACT_PEER.to_owned(), ConnType::FILE_TRANSFER, None, None);
+        .initialize(EXACT_PEER.to_owned(), ConnType::FILE_TRANSFER, None);
 
     let panic_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let observed_panics = Arc::clone(&panic_count);
@@ -830,7 +830,7 @@ fn production_viewer_download_refuses_a_symlink_destination_at_digest_inspection
         .lc
         .write()
         .unwrap()
-        .initialize(EXACT_PEER.to_owned(), ConnType::FILE_TRANSFER, None, None);
+        .initialize(EXACT_PEER.to_owned(), ConnType::FILE_TRANSFER, None);
     let recovered_start = recovered_session.start_io_thread();
     let recovered_started = matches!(&recovered_start, Ok(true));
     let recovered_ready = if recovered_started {

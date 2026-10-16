@@ -111,7 +111,6 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           password: params['password'],
           toolbarState: ToolbarState(),
           tabController: tabController,
-          isSharedPassword: params['isSharedPassword'],
         ),
       ));
       _update_remote_count();
@@ -475,7 +474,6 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           password: args['password'],
           toolbarState: ToolbarState(),
           tabController: tabController,
-          isSharedPassword: args['isSharedPassword'],
         ),
       ));
     } else if (call.method == kWindowDisableGrabKeyboard) {

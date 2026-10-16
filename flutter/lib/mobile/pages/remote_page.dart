@@ -42,12 +42,10 @@ void _disableAndroidSoftKeyboard({bool? isKeyboardVisible}) {
 }
 
 class RemotePage extends StatefulWidget {
-  RemotePage({Key? key, required this.id, this.password, this.isSharedPassword})
-      : super(key: key);
+  RemotePage({Key? key, required this.id, this.password}) : super(key: key);
 
   final String id;
   final String? password;
-  final bool? isSharedPassword;
 
   @override
   State<RemotePage> createState() => _RemotePageState(id);
@@ -90,7 +88,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     sessionId = gFFI.start(
       widget.id,
       password: widget.password,
-      isSharedPassword: widget.isSharedPassword,
     );
     gFFI.ffiModel.updateEventListener(sessionId, widget.id);
     _presentationReadyRegistration = gFFI.ffiModel

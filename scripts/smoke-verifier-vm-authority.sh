@@ -714,6 +714,8 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     if [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
         readonly VM_TIMEOUT_SECONDS=900
+    elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+        readonly VM_TIMEOUT_SECONDS=600
     elif [ "$RUST_TEST_PROFILE" != integration ]; then
         readonly VM_TIMEOUT_SECONDS=300
     else
@@ -2491,7 +2493,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     )
     rust_lifecycle_dirs=("$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT")
     rust_lifecycle_files=()
-    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
         rust_lifecycle_inputs+=(
             "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
             "$FLUTTER_TEST_ARCHIVE:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
@@ -2512,7 +2514,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         verify_sha256 "$path" "$digest"
         rust_lifecycle_files+=("$path")
     done
-    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
         [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
                  "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
@@ -2531,7 +2533,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
-    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
         [ -d "$PUB_CACHE_ROOT" ] && [ ! -L "$PUB_CACHE_ROOT" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
                  "$HOST_UID:$HOST_GID:500" ] \
@@ -5954,14 +5956,23 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
     mapfile -t viewer_credential_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=8 unchanged=before-after execution_seconds=[0-9]+$'
+            'VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=11 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#viewer_credential_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'VIEWER_CREDENTIAL_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'viewer credential artifact receipt differs'
     require_exact_fixed_receipt \
-        "VIEWER_CREDENTIAL_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=8 target=linux-x86_64 scope=production-peer-credential-persistence-and-session-token rust=1.75.0 features=linux-pkg-config vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "VIEWER_CREDENTIAL_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=11 target=linux-x86_64 scope=production-peer-credentials-and-exported-session-factory rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'viewer credential parent compilation and native component result'
+    [ "$(/usr/bin/grep -Ec 'VIEWER_CREDENTIAL_BRIDGE=pass rust_sha256=[0-9a-f]{64} io_sha256=[0-9a-f]{64} unchanged=before-after' "$SERIAL_LOG")" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'VIEWER_CREDENTIAL_BRIDGE=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'viewer credential generated bridge binding differs'
+    require_exact_fixed_receipt \
+        "ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN source=exact-pushed network=none outputs=readonly-publication" \
+        'viewer credential fresh bridge generation'
+    require_exact_fixed_receipt \
+        'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' \
+        'fresh direct-password generated API absence'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'viewer credential cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
     mapfile -t resolution_parent_artifacts < <(
@@ -6621,6 +6632,9 @@ else
             'FLUTTER_PEER_METADATA_BRIDGE=pass retired_loader=absent dart=fresh rust=fresh' \
             'fresh peer-metadata bridge absence receipt'
         require_exact_fixed_receipt \
+            'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' \
+            'fresh direct-password generated API absence'
+        require_exact_fixed_receipt \
             "FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=9 tests=76 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined" \
             'focused Flutter credential-dialog receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
@@ -7125,7 +7139,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'FILE_RECEIVE_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=7 scope=complete-parent-file-receive-callers network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
-        printf 'VIEWER_CREDENTIAL_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=production-peer-credential-persistence-and-session-token network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'VIEWER_CREDENTIAL_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=11 scope=production-peer-credentials-and-exported-session-factory network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
         printf 'RESOLUTION_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=complete-parent-library-and-owned-result network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

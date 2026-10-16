@@ -195,7 +195,6 @@ class RustdeskImpl {
       required bool isRdp,
       required bool isTerminal,
       required String password,
-      required bool isSharedPassword,
       String? connToken,
       dynamic hint}) {
     return js.context.callMethod('setByName', [
@@ -203,7 +202,6 @@ class RustdeskImpl {
       jsonEncode({
         'id': id,
         'password': password,
-        'is_shared_password': isSharedPassword,
         'isFileTransfer': isFileTransfer,
         'isViewCamera': isViewCamera,
         'isTerminal': isTerminal
@@ -221,7 +219,6 @@ class RustdeskImpl {
       required bool isRdp,
       required bool isTerminal,
       required String password,
-      required bool isSharedPassword,
       String? connToken,
       dynamic hint}) {
     return Future.error(

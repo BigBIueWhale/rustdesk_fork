@@ -16,7 +16,6 @@ class TerminalConnectionManager {
   static FFI getConnection({
     required String peerId,
     required String? password,
-    required bool? isSharedPassword,
     required String? connToken,
   }) {
     final tag = 'terminal_$peerId';
@@ -44,7 +43,6 @@ class TerminalConnectionManager {
     ffi.start(
       peerId,
       password: password,
-      isSharedPassword: isSharedPassword,
       connToken: connToken,
       isTerminal: true,
     );

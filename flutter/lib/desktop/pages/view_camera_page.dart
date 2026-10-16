@@ -40,7 +40,6 @@ class ViewCameraPage extends StatefulWidget {
     this.displays,
     this.tabController,
     this.connToken,
-    this.isSharedPassword,
   }) : super(key: key) {
     initSharedStates(id);
   }
@@ -54,7 +53,6 @@ class ViewCameraPage extends StatefulWidget {
   final List<int>? displays;
   final String? password;
   final ToolbarState toolbarState;
-  final bool? isSharedPassword;
   final String? connToken;
   final SimpleWrapper<State<ViewCameraPage>?> _lastState = SimpleWrapper(null);
   final DesktopTabController? tabController;
@@ -138,7 +136,6 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       widget.id,
       isViewCamera: true,
       password: widget.password,
-      isSharedPassword: widget.isSharedPassword,
       tabWindowId: widget.tabWindowId,
       moveFromSessionId: widget.moveFromSessionId,
       moveFromClientOwnerId: widget.moveFromClientOwnerId,

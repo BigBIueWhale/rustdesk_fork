@@ -209,7 +209,6 @@ pub fn session_add_sync(
     is_rdp: bool,
     is_terminal: bool,
     password: String,
-    is_shared_password: bool,
     conn_token: Option<String>,
 ) -> SyncReturn<String> {
     if cfg!(any(target_os = "android", target_os = "ios")) {
@@ -225,7 +224,6 @@ pub fn session_add_sync(
         is_rdp,
         is_terminal,
         password,
-        is_shared_password,
         conn_token,
     );
 
@@ -246,7 +244,6 @@ pub fn session_add_mobile(
     is_rdp: bool,
     is_terminal: bool,
     password: String,
-    is_shared_password: bool,
     conn_token: Option<String>,
 ) -> Result<()> {
     if !cfg!(any(target_os = "android", target_os = "ios")) {
@@ -267,7 +264,6 @@ pub fn session_add_mobile(
         is_rdp,
         is_terminal,
         password,
-        is_shared_password,
         conn_token,
     )?;
     Ok(())

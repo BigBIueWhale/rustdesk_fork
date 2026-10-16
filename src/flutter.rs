@@ -2749,7 +2749,6 @@ pub fn session_add(
     is_rdp: bool,
     is_terminal: bool,
     password: String,
-    is_shared_password: bool,
     conn_token: Option<String>,
 ) -> ResultType<FlutterSession> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -2800,17 +2799,8 @@ pub fn session_add(
     #[cfg(target_os = "android")]
     let owner_admission = acquire_android_client_owner(client_owner_id)?;
 
-    let mut preset_password = password.clone();
-    let shared_password = if is_shared_password {
-        // To achieve a flexible password application order, we don't treat shared password as a preset password.
-        preset_password = Default::default();
-        Some(password)
-    } else {
-        None
-    };
-
     let session: Session<FlutterHandler> = Session {
-        password: preset_password,
+        password,
         server_keyboard_enabled: Arc::new(RwLock::new(true)),
         server_file_transfer_enabled: Arc::new(RwLock::new(true)),
         server_clipboard_enabled: Arc::new(RwLock::new(true)),
@@ -2822,7 +2812,7 @@ pub fn session_add(
         .lc
         .write()
         .unwrap()
-        .initialize(id.to_owned(), conn_type, shared_password, conn_token);
+        .initialize(id.to_owned(), conn_type, conn_token);
 
     let candidate = Arc::new(session.clone());
     let session = sessions::insert_session(
@@ -4743,6 +4733,73 @@ mod compressed_ui_handoff_tests {
     }
 }
 
+#[cfg(all(test, target_os = "linux"))]
+mod viewer_credential_bridge_tests {
+    use super::*;
+    use hbb_common::config::PeerConfig;
+
+    #[test]
+    fn explicit_password_survives_all_session_factories_and_exact_retirement() {
+        let root = std::env::temp_dir().join(format!("viewer-credential-factory-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", &root);
+        assert!(!hbb_common::at_rest_storage_key().unwrap().is_empty());
+        assert!(sessions::get_sessions().is_empty());
+
+        let kinds = [
+            (ConnType::DEFAULT_CONN, false, false, false, false, false),
+            (ConnType::FILE_TRANSFER, true, false, false, false, false),
+            (ConnType::VIEW_CAMERA, false, true, false, false, false),
+            (ConnType::PORT_FORWARD, false, false, true, false, false),
+            (ConnType::RDP, false, false, true, true, false),
+            (ConnType::TERMINAL, false, false, false, false, true),
+        ];
+        for (index, (kind, files, camera, forward, rdp, terminal)) in kinds.into_iter().enumerate() {
+            for (input_index, input) in ["explicit-operator-password", ""].into_iter().enumerate() {
+                let peer = format!("127.0.0.1:{}", 24000 + index * 2 + input_index);
+                let mut config = PeerConfig::default();
+                config.password_prs = b"stored-peer-prs".to_vec();
+                config.store(&peer);
+                assert_eq!(PeerConfig::load(&peer).password_prs, config.password_prs);
+
+                let session_id = SessionID::new_v4();
+                let client_owner_id = SessionID::new_v4();
+                let result = crate::flutter_ffi::session_add_sync(
+                    session_id,
+                    client_owner_id,
+                    peer.clone(),
+                    files,
+                    camera,
+                    forward,
+                    rdp,
+                    terminal,
+                    input.to_owned(),
+                    None,
+                );
+                assert!(result.0.is_empty(), "session preparation failed: {}", result.0);
+                let session = sessions::get_session_by_session_id(&session_id).unwrap();
+                assert_eq!(session.lc.read().unwrap().conn_type, kind);
+                assert_eq!(session.get_connect_password(), input);
+                assert!(session.sender.read().unwrap().is_none());
+                assert!(sessions::session_has_client_owner(&session_id, &client_owner_id));
+
+                session.lc.write().unwrap().connect_password = "prompt-override".to_owned();
+                assert_eq!(session.get_connect_password(), "prompt-override");
+                assert_eq!(PeerConfig::load(&peer).password_prs, config.password_prs);
+
+                let retired = sessions::remove_session_by_exact_ui_owner(&session_id, &client_owner_id)
+                    .expect("the final exact UI owner retires its peer");
+                assert!(Arc::ptr_eq(&retired, &session));
+                assert!(sessions::get_session_by_session_id(&session_id).is_none());
+                drop(retired);
+                drop(session);
+            }
+        }
+        assert!(sessions::get_sessions().is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
 #[cfg(test)]
 mod mobile_session_lifecycle_tests {
     use super::*;
@@ -4759,7 +4816,7 @@ mod mobile_session_lifecycle_tests {
             .lc
             .write()
             .unwrap()
-            .initialize(peer_id.to_owned(), conn_type, None, None);
+            .initialize(peer_id.to_owned(), conn_type, None);
         session
     }
 

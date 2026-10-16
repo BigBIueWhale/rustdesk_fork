@@ -16,7 +16,7 @@ fn change_permission(reenable: bool) {
     assert_eq!(std::env::var("HOME").as_deref(), Ok("/tmp/home"));
     let mut login = LoginConfigHandler::default();
     let peer = if reenable { "127.0.0.1:21112" } else { "127.0.0.1:21111" };
-    login.initialize(peer.to_owned(), ConnType::DEFAULT_CONN, None, None);
+    login.initialize(peer.to_owned(), ConnType::DEFAULT_CONN, None);
     let mut config = login.load_config();
     config.disable_clipboard.v = false;
     login.save_config(config);

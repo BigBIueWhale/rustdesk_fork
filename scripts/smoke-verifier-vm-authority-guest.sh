@@ -2450,7 +2450,11 @@ generate_focused_rust_flutter_bridge() {
     local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
     local load_output container_status=0 inspect namespace_inspect freshness_line
     local codegen_memory=8g
-    if [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then codegen_memory=3g; fi
+    local codegen_memory_bytes=8589934592
+    if [[ "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
+        codegen_memory=3g
+        codegen_memory_bytes=3221225472
+    fi
 
     rm -rf -- "$codegen_source" "$codegen_work" "$bridge_root"
     mkdir "$codegen_source" "$codegen_work" "$bridge_root"
@@ -2607,7 +2611,14 @@ generate_focused_rust_flutter_bridge() {
                     /source/flutter/lib/generated_bridge.dart \
                     /source/flutter/lib/generated_bridge.freezed.dart; do
                     [ -s "$generated" ] && [ ! -L "$generated" ]
+                    if grep -Eq "isSharedPassword|is_shared_password|shared_password" "$generated"; then
+                        echo "Retired password-source flag remains in a generated bridge" >&2
+                        exit 1
+                    else
+                        [ "$?" -eq 1 ] || exit 1
+                    fi
                 done
+                printf "DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh\n"
                 install -m 0444 /source/src/bridge_generated.rs /bridge/bridge_generated.rs
                 install -m 0444 /source/src/bridge_generated.io.rs /bridge/bridge_generated.io.rs
                 [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
@@ -2621,7 +2632,7 @@ generate_focused_rust_flutter_bridge() {
         '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' \
         "$CONTAINER_ID")"
     [ "$inspect" = \
-      'none|true|1000:1000|8589934592|8589934592|4000000000|1024|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
+      "none|true|1000:1000|$codegen_memory_bytes|$codegen_memory_bytes|4000000000|1024|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]" ] \
         || fail "focused Rust bridge container authority differs: $inspect"
     namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' \
@@ -2659,7 +2670,10 @@ generate_focused_rust_flutter_bridge() {
     CONTAINER_ID=
     "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
     rm -rf -- "$codegen_source" "$codegen_work"
+    [ "$(grep -Fxc 'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' "$output")" -eq 1 ] \
+        || fail 'direct-password generated API absence receipt differs'
     printf '%s\n' "$freshness_line"
+    printf 'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh\n'
     printf 'ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s source=exact-pushed network=none outputs=readonly-publication\n' \
         "$SHA256_FLUTTER_PEER_FRB_CODEGEN"
 }
@@ -3506,6 +3520,7 @@ run_focused_rust_tests() {
             memory_bytes=5368709120
             source_fingerprints=(
                 Cargo.lock Cargo.toml src/lib.rs src/client.rs
+                src/flutter.rs src/flutter_ffi.rs src/ui_session_interface.rs src/cli.rs
                 libs/hbb_common/src/config.rs libs/hbb_common/src/config/permanent_password.rs
                 scripts/run-viewer-credential-tests.sh scripts/linux-parent-test-build.sh
             )
@@ -3518,6 +3533,9 @@ run_focused_rust_tests() {
                 client::tests::r_s11hj_viewer_token_refuses_retired_account_payload
                 client::tests::r_s11hj_viewer_token_requires_one_nonzero_session_id
                 client::tests::r_s11hj_viewer_empty_state_stays_unremembered
+                client::tests::r_p14_viewer_credential_is_fully_prepared_before_socket_keying
+                client::tests::r_p14c_viewer_credential_prompt_requires_typed_credential_failure
+                flutter::viewer_credential_bridge_tests::explicit_password_survives_all_session_factories_and_exact_retirement
             )
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             container_name=rustdesk-resolution-parent-tests
@@ -3716,7 +3734,7 @@ run_focused_rust_tests() {
         || fail 'cannot extract the exact focused-test source archive'
     chown -R 1000:1000 "$source_root"
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
         install -o 1000 -g 1000 -m 0444 /dev/null \
             "$source_root/src/bridge_generated.rs"
         install -o 1000 -g 1000 -m 0444 /dev/null \
@@ -3834,7 +3852,7 @@ run_focused_rust_tests() {
             || fail "Debian-builder image receipt differs: $load_output"
     else
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
             bridge_inputs=(
                 "$rust_archive:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
                 "$flutter_archive:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
@@ -3855,7 +3873,7 @@ run_focused_rust_tests() {
                 || fail "sealed Android Rust bridge input differs: $path"
         done
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
             [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
               "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
                 && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
@@ -3875,7 +3893,7 @@ run_focused_rust_tests() {
         fi
         local file_bridge_sources_before=
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
             generate_focused_rust_flutter_bridge
             bridge_mounts=(
                 --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.rs,target=/source/src/bridge_generated.rs,readonly"
@@ -4548,6 +4566,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         [ "$inspect" = "$(printf '%s\n' \
             "bind|$source_root|/source|false" "bind|$target_root|/cargo-target|true" \
             "bind|$vendor|/vendor|false" "bind|$vendor_config|/inputs/config.toml|false" \
+            "bind|$ROOT/focused-rust-bridge/bridge_generated.rs|/source/src/bridge_generated.rs|false" \
+            "bind|$ROOT/focused-rust-bridge/bridge_generated.io.rs|/source/src/bridge_generated.io.rs|false" \
             "bind|$ROOT/viewer.machine-id|/etc/machine-id|false" | LC_ALL=C sort)" ] \
             || fail 'viewer credential fixture mounts differ'
     fi
@@ -4777,8 +4797,8 @@ PY
             && [ "$(grep -Ec '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$' "$output")" -eq 6 ] \
             || fail 'file-receive parent artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
-        [ "${#result_lines[@]}" -eq 1 ] || fail 'viewer credential summary count differs'
-        [ "$(grep -Ec '^VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=8 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 3 ] || fail 'viewer credential summary count differs'
+        [ "$(grep -Ec '^VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=11 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_CREDENTIAL_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'viewer credential artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
@@ -5013,7 +5033,7 @@ PY
       )" ] \
         || fail 'focused Rust-test source inputs changed during execution'
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials ]]; then
         post_pub_receipt="$(
             setpriv --reuid=1000 --regid=1000 --clear-groups \
                 env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
@@ -5028,6 +5048,10 @@ PY
             || fail 'generated Rust bridge changed during parent execution'
         if [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
             printf 'FILE_RECEIVE_PARENT_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
+                "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
+                "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
+        elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+            printf 'VIEWER_CREDENTIAL_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
         fi
@@ -5151,9 +5175,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
-            grep -E '^test client::tests::r_s11hj_viewer_.* \.\.\. ok$|^VIEWER_CREDENTIAL_(ARTIFACT|BUILD)=' "$output"
-            [ "$tests_passed" -eq 8 ] || fail 'viewer credential total differs'
-            printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=8 target=linux-x86_64 scope=production-peer-credential-persistence-and-session-token rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^test (client::tests::r_(s11hj_viewer_|p14).*|flutter::viewer_credential_bridge_tests::.*) \.\.\. ok$|^VIEWER_CREDENTIAL_(ARTIFACT|BUILD)=' "$output"
+            [ "$tests_passed" -eq 11 ] || fail 'viewer credential total differs'
+            printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=11 target=linux-x86_64 scope=production-peer-credentials-and-exported-session-factory rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             [ "$tests_passed" -eq 3 ] || fail 'resolution parent total differs'
@@ -8221,6 +8245,14 @@ run_flutter_model_tests() {
                         "$codegen_source/flutter/lib/generated_bridge.dart" \
                         "$codegen_source/flutter/lib/generated_bridge.freezed.dart"; do
                         [ -s "$generated" ] && [ ! -L "$generated" ]
+                        if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                            if grep -Eq "isSharedPassword|is_shared_password|shared_password" "$generated"; then
+                                echo "Retired password-source flag remains in a generated bridge" >&2
+                                exit 1
+                            else
+                                [ "$?" -eq 1 ] || exit 1
+                            fi
+                        fi
                     done
                     sed -i "s/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g" \
                         "$codegen_source/flutter/lib/generated_bridge.dart"
@@ -8329,6 +8361,7 @@ run_flutter_model_tests() {
                         [ "$?" -eq 1 ] || exit 1
                     fi
                     printf "FLUTTER_PEER_METADATA_BRIDGE=pass retired_loader=absent dart=fresh rust=fresh\n"
+                    printf "DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh\n"
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" != models ]; then
                     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
@@ -8450,6 +8483,8 @@ run_flutter_model_tests() {
     if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
         [ "$(grep -Fxc 'FLUTTER_PEER_METADATA_BRIDGE=pass retired_loader=absent dart=fresh rust=fresh' "$output")" -eq 1 ] \
             || fail 'fresh peer-metadata bridge absence receipt differs'
+        [ "$(grep -Fxc 'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' "$output")" -eq 1 ] \
+            || fail 'fresh direct-password bridge absence receipt differs'
     fi
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'focused Flutter-test container did not exit cleanly'
@@ -8475,6 +8510,7 @@ run_flutter_model_tests() {
     printf '%s\n' "$result_line"
     if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
         printf 'FLUTTER_PEER_METADATA_BRIDGE=pass retired_loader=absent dart=fresh rust=fresh\n'
+        printf 'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh\n'
     fi
     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
         queue_sha256="$(sha256sum "$source_root/flutter/lib/models/latest_frame_queue.dart" | awk '{print $1}')"

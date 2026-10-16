@@ -17,12 +17,10 @@ class TerminalPage extends StatefulWidget {
     Key? key,
     required this.id,
     required this.password,
-    required this.isSharedPassword,
     this.connToken,
   }) : super(key: key);
   final String id;
   final String? password;
-  final bool? isSharedPassword;
   final String? connToken;
   final terminalId = 0;
 
@@ -64,7 +62,6 @@ class _TerminalPageState extends State<TerminalPage>
     _ffi = TerminalConnectionManager.getConnection(
       peerId: widget.id,
       password: widget.password,
-      isSharedPassword: widget.isSharedPassword,
       connToken: widget.connToken,
     );
     _sessionId = _ffi.sessionId;

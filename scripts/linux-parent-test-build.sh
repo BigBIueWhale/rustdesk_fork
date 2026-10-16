@@ -13,10 +13,10 @@ build_linux_parent_test() {
         && [ "$(stat -c '%u:%g:%a' -- "$work")" = 1000:1000:700 ] \
         || { echo 'Linux parent compiler entry authority differs' >&2; return 1; }
     local build_budget=600
-    if [ "$receipt_prefix" = VIEWER_CREDENTIAL ]; then build_budget=180; fi
+    if [ "$receipt_prefix" = VIEWER_CREDENTIAL ]; then build_budget=240; fi
     printf '%s_BUILD=started target=linux-libtest budget_seconds=%s\n' "$receipt_prefix" "$build_budget"
     local features=linux-pkg-config
-    if [ "$receipt_prefix" = FILE_RECEIVE_PARENT ]; then
+    if [[ "$receipt_prefix" = FILE_RECEIVE_PARENT || "$receipt_prefix" = VIEWER_CREDENTIAL ]]; then
         features=linux-pkg-config,flutter
     fi
     local build_started=$SECONDS

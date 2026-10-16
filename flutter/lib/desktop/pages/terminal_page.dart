@@ -14,7 +14,6 @@ class TerminalPage extends StatefulWidget {
     required this.id,
     required this.password,
     required this.tabController,
-    required this.isSharedPassword,
     required this.terminalId,
     required this.tabKey,
     this.connToken,
@@ -22,7 +21,6 @@ class TerminalPage extends StatefulWidget {
   final String id;
   final String? password;
   final DesktopTabController tabController;
-  final bool? isSharedPassword;
   final String? connToken;
   final int terminalId;
 
@@ -62,7 +60,6 @@ class _TerminalPageState extends State<TerminalPage>
     _ffi = TerminalConnectionManager.getConnection(
       peerId: widget.id,
       password: widget.password,
-      isSharedPassword: widget.isSharedPassword,
       connToken: widget.connToken,
     );
 

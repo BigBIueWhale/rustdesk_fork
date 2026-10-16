@@ -17,6 +17,13 @@ execution_started=$SECONDS
 timeout --signal=TERM --kill-after=5s 25s \
     "$test_executable" client::tests::r_s11hj_viewer_ --color never --test-threads=1
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
+timeout --signal=TERM --kill-after=5s 25s \
+    "$test_executable" client::tests::r_p14 --color never --test-threads=1
+[ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
+timeout --signal=TERM --kill-after=5s 25s \
+    "$test_executable" flutter::viewer_credential_bridge_tests::explicit_password_survives_all_session_factories_and_exact_retirement \
+    --exact --color never --test-threads=1
+[ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
 [ "$(cat /etc/machine-id)" = 727573746465736b2d76696577657231 ]
-printf 'VIEWER_CREDENTIAL_ARTIFACT=pass sha256=%s executable=%s tests=8 unchanged=before-after execution_seconds=%s\n' \
+printf 'VIEWER_CREDENTIAL_ARTIFACT=pass sha256=%s executable=%s tests=11 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"

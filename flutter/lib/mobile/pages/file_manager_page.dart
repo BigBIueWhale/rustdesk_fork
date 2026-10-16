@@ -11,12 +11,9 @@ import '../../common/widgets/dialog.dart';
 import '../../models/platform_model.dart';
 
 class FileManagerPage extends StatefulWidget {
-  FileManagerPage(
-      {Key? key, required this.id, this.password, this.isSharedPassword})
-      : super(key: key);
+  FileManagerPage({Key? key, required this.id, this.password}) : super(key: key);
   final String id;
   final String? password;
-  final bool? isSharedPassword;
 
   @override
   State<StatefulWidget> createState() => _FileManagerPageState();
@@ -74,9 +71,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   void initState() {
     super.initState();
     sessionId = gFFI.start(widget.id,
-        isFileTransfer: true,
-        password: widget.password,
-        isSharedPassword: widget.isSharedPassword);
+        isFileTransfer: true, password: widget.password);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       gFFI.dialogManager

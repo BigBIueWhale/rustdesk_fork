@@ -173,7 +173,6 @@ class _MobileSessionStartRequest {
     required this.isRdp,
     required this.isTerminal,
     required this.password,
-    required this.isSharedPassword,
     required this.connToken,
   });
 
@@ -185,7 +184,6 @@ class _MobileSessionStartRequest {
   final bool isRdp;
   final bool isTerminal;
   final String password;
-  final bool isSharedPassword;
   final String? connToken;
 }
 
@@ -4756,7 +4754,6 @@ class FFI {
         isRdp: request.isRdp,
         isTerminal: request.isTerminal,
         password: request.password,
-        isSharedPassword: request.isSharedPassword,
         connToken: request.connToken,
       );
     } catch (error) {
@@ -5360,7 +5357,6 @@ class FFI {
     bool isRdp = false,
     bool isTerminal = false,
     String? password,
-    bool? isSharedPassword,
     String? connToken,
     int? tabWindowId,
     int? display,
@@ -5422,7 +5418,6 @@ class FFI {
         isRdp: isRdp,
         isTerminal: isTerminal,
         password: password ?? '',
-        isSharedPassword: isSharedPassword ?? false,
         connToken: connToken,
       ));
       return activeSessionId;
@@ -5441,7 +5436,6 @@ class FFI {
         isRdp: isRdp,
         isTerminal: isTerminal,
         password: password ?? '',
-        isSharedPassword: isSharedPassword ?? false,
         connToken: connToken,
       );
       if (addRes != '') {

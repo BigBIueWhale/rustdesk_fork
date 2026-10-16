@@ -504,7 +504,7 @@ impl Client {
             } else if !from_stored_prs.is_empty() {
                 (from_stored_prs, true, false) // persisted derived PRS: used verbatim
             } else {
-                (g.shared_password.clone().unwrap_or_default(), false, false)
+                (String::new(), false, false)
             }
         };
         let derived_prs = Self::prepare_initiator_credential(&credential, credential_is_derived)?;
@@ -1475,7 +1475,6 @@ pub struct LoginConfigHandler {
     pub mark_unsupported: Vec<CodecFormat>,
     pub selected_windows_session_id: Option<u32>,
     pub peer_info: Option<PeerInfo>,
-    shared_password: Option<String>, // Store the shared password
     pub record_state: bool,
     pub record_permission: bool,
 }
@@ -1517,7 +1516,6 @@ impl LoginConfigHandler {
         &mut self,
         id: String,
         conn_type: ConnType,
-        shared_password: Option<String>,
         conn_token: Option<String>,
     ) {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1551,7 +1549,6 @@ impl LoginConfigHandler {
         self.restarting_remote_device = false;
         self.received = false;
         self.selected_windows_session_id = None;
-        self.shared_password = shared_password;
         self.record_state = false;
         self.record_permission = true;
     }
@@ -4579,7 +4576,7 @@ mod tests {
 
         let mut h = LoginConfigHandler::default();
         assert_eq!(PeerConfig::load(id).password_prs, config.password_prs);
-        h.initialize(id.to_owned(), ConnType::DEFAULT_CONN, None, None);
+        h.initialize(id.to_owned(), ConnType::DEFAULT_CONN, None);
         assert!(h.remember, "a remembered CPace credential must retain the preference");
         h.handle_peer_info(&PeerInfo::new());
         assert_eq!(PeerConfig::load(id).password_prs, b"stored-prs");
@@ -4643,7 +4640,7 @@ mod tests {
         isolate();
         let mut h = LoginConfigHandler::default();
         assert!(h.get_conn_token().is_none());
-        h.initialize("r-s11hj-viewer-token".to_owned(), ConnType::DEFAULT_CONN, None, None);
+        h.initialize("r-s11hj-viewer-token".to_owned(), ConnType::DEFAULT_CONN, None);
         h.password_prs = b"session-private-prs".to_vec();
         h.connect_password = "session-private-plaintext".to_owned();
         let token = h.get_conn_token().expect("an initialized session owns a correlation token");
@@ -4656,7 +4653,6 @@ mod tests {
         replacement.initialize(
             "r-s11hj-viewer-token-target".to_owned(),
             ConnType::FILE_TRANSFER,
-            None,
             Some(token),
         );
         assert_eq!(replacement.session_id, h.session_id);
@@ -4697,7 +4693,7 @@ mod tests {
         isolate();
         let id = "r-s11hj-viewer-empty";
         let mut h = LoginConfigHandler::default();
-        h.initialize(id.to_owned(), ConnType::DEFAULT_CONN, None, None);
+        h.initialize(id.to_owned(), ConnType::DEFAULT_CONN, None);
         assert!(!h.remember);
         h.handle_peer_info(&PeerInfo::new());
         let saved = PeerConfig::load(id);
@@ -5185,7 +5181,7 @@ mod tests {
         isolate();
         let address = "12345@legacy.example?key=attacker";
         let mut handler = LoginConfigHandler::default();
-        handler.initialize(address.to_owned(), ConnType::DEFAULT_CONN, None, None);
+        handler.initialize(address.to_owned(), ConnType::DEFAULT_CONN, None);
 
         assert_eq!(handler.id, address);
         let message = handler.create_login_msg(None).unwrap();
@@ -5206,7 +5202,7 @@ mod tests {
             (ConnType::TERMINAL, 0),
         ] {
             let mut handler = LoginConfigHandler::default();
-            handler.initialize("127.0.0.1".to_owned(), conn_type, None, None);
+            handler.initialize("127.0.0.1".to_owned(), conn_type, None);
             let message = handler.create_login_msg(None).unwrap();
             let Some(message::Union::LoginRequest(login)) = message.union else {
                 panic!("login builder must produce a LoginRequest");

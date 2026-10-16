@@ -38,13 +38,10 @@ void _disableAndroidSoftKeyboard({bool? isKeyboardVisible}) {
 }
 
 class ViewCameraPage extends StatefulWidget {
-  ViewCameraPage(
-      {Key? key, required this.id, this.password, this.isSharedPassword})
-      : super(key: key);
+  ViewCameraPage({Key? key, required this.id, this.password}) : super(key: key);
 
   final String id;
   final String? password;
-  final bool? isSharedPassword;
 
   @override
   State<ViewCameraPage> createState() => _ViewCameraPageState(id);
@@ -88,7 +85,6 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       widget.id,
       isViewCamera: true,
       password: widget.password,
-      isSharedPassword: widget.isSharedPassword,
     );
     gFFI.ffiModel.updateEventListener(sessionId, widget.id);
     _presentationReadyRegistration = gFFI.ffiModel

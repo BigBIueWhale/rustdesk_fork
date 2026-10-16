@@ -46,7 +46,7 @@ typedef GetSessionID = SessionID Function();
 typedef GetDialogManager = OverlayDialogManager? Function();
 typedef IsCurrentSession = bool Function(SessionID sessionId);
 typedef GetPeerPlatform = String? Function();
-typedef GetPeerVersion = String Function();
+typedef ComparePeerVersion = int Function(String version);
 typedef TranslateText = String Function(String text);
 typedef ReadRemoteDirectory = Future<void> Function(
     SessionID sessionId, String path, bool showHidden);
@@ -288,7 +288,8 @@ class FileModel {
         getDialogManager: getDialogManager,
         isCurrentSession: isCurrentSession,
         getPeerPlatform: () => parent.target?.ffiModel.pi.platform,
-        getPeerVersion: () => parent.target?.ffiModel.pi.version ?? '',
+        comparePeerVersion: (version) =>
+            versionCmp(parent.target?.ffiModel.pi.version ?? '', version),
         jobController: jobController,
         fileFetcher: fileFetcher,
         translateText: translate,
@@ -299,7 +300,8 @@ class FileModel {
         getDialogManager: getDialogManager,
         isCurrentSession: isCurrentSession,
         getPeerPlatform: () => parent.target?.ffiModel.pi.platform,
-        getPeerVersion: () => parent.target?.ffiModel.pi.version ?? '',
+        comparePeerVersion: (version) =>
+            versionCmp(parent.target?.ffiModel.pi.version ?? '', version),
         jobController: jobController,
         fileFetcher: fileFetcher,
         translateText: translate,
@@ -647,7 +649,7 @@ class FileController {
   final GetDialogManager getDialogManager;
   final IsCurrentSession isCurrentSession;
   final GetPeerPlatform getPeerPlatform;
-  final GetPeerVersion getPeerVersion;
+  final ComparePeerVersion comparePeerVersion;
   final FileControllerRequests _requests;
   final TranslateText _translate;
 
@@ -670,7 +672,7 @@ class FileController {
       required this.getDialogManager,
       required this.isCurrentSession,
       required this.getPeerPlatform,
-      required this.getPeerVersion,
+      required this.comparePeerVersion,
       required this.jobController,
       required this.fileFetcher,
       required this.getOtherSideDirectoryData,
@@ -986,7 +988,8 @@ class FileController {
     final showHidden = otherSideData.options.showHidden;
     final sourceRootPath = directory.value.path;
     final isSourceWindows = options.value.isWindows;
-    final peerVersion = getPeerVersion();
+    final enumerateEmptyDirectories =
+        !isWeb && (isLocal || comparePeerVersion('1.3.3') >= 0);
 
     for (final from in entries) {
       if (!_isCurrentSession(selectedSessionId)) return;
@@ -1008,8 +1011,7 @@ class FileController {
       debugPrint('path: ${from.path}, to: $destination');
     }
 
-    if (isWeb ||
-        (!isLocal && versionCmp(peerVersion, '1.3.3') < 0)) {
+    if (!enumerateEmptyDirectories) {
       return;
     }
     final createRemotely = isLocal;

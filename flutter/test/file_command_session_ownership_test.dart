@@ -127,7 +127,7 @@ void main() {
       getDialogManager: () => null,
       isCurrentSession: (actual) => actual == session,
       getPeerPlatform: () => 'Linux',
-      getPeerVersion: () => '1.4.0',
+      comparePeerVersion: (_) => 1,
       jobController: jobController,
       fileFetcher: FileFetcher(() => session, requests: _fetcherRequests()),
       getOtherSideDirectoryData: () =>
@@ -187,7 +187,7 @@ void main() {
       getDialogManager: () => null,
       isCurrentSession: (sessionId) => sessionId == currentSession,
       getPeerPlatform: () => 'Linux',
-      getPeerVersion: () => '1.4.0',
+      comparePeerVersion: (_) => 1,
       jobController: jobController,
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
@@ -246,7 +246,7 @@ void main() {
       getDialogManager: () => null,
       isCurrentSession: (actual) => actual == session,
       getPeerPlatform: () => 'Linux',
-      getPeerVersion: () => '1.4.0',
+      comparePeerVersion: (_) => 1,
       jobController: jobController,
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
@@ -312,7 +312,7 @@ void main() {
       getDialogManager: () => manager,
       isCurrentSession: (actual) => actual == session,
       getPeerPlatform: () => 'Linux',
-      getPeerVersion: () => '1.4.0',
+      comparePeerVersion: (_) => 1,
       jobController: jobController,
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
@@ -379,7 +379,7 @@ void main() {
       getDialogManager: () => null,
       isCurrentSession: (actual) => actual == session,
       getPeerPlatform: () => 'Linux',
-      getPeerVersion: () => '1.4.0',
+      comparePeerVersion: (_) => 1,
       jobController: jobController,
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
@@ -467,7 +467,7 @@ void main() {
       getDialogManager: () => manager,
       isCurrentSession: (actual) => actual == session,
       getPeerPlatform: () => 'Linux',
-      getPeerVersion: () => '1.4.0',
+      comparePeerVersion: (_) => 1,
       jobController: jobController,
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
@@ -578,7 +578,7 @@ void main() {
       getDialogManager: () => manager,
       isCurrentSession: (actual) => actual == session,
       getPeerPlatform: () => 'Linux',
-      getPeerVersion: () => '1.4.0',
+      comparePeerVersion: (_) => 1,
       jobController: jobController,
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>

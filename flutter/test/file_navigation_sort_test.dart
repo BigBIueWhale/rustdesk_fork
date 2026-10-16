@@ -18,6 +18,7 @@ String _listing(String path) => jsonEncode({
 class _ListingHarness {
   var session = const Uuid().v4obj();
   var failDirectoryRequest = false;
+  var failVersionQuery = false;
   var nextJobId = 0;
   final sentPaths = <String>[];
   final firstSendEntered = Completer<void>();
@@ -38,7 +39,10 @@ class _ListingHarness {
     getDialogManager: () => null,
     isCurrentSession: (actual) => actual == session,
     getPeerPlatform: () => 'Linux',
-    getPeerVersion: () => '1.4.0',
+    comparePeerVersion: (_) {
+      if (failVersionQuery) throw StateError('version unavailable');
+      return 1;
+    },
     jobController: JobController(
       () => session,
       () => null,
@@ -314,5 +318,20 @@ void main() {
       if (!release.isCompleted) release.complete();
       await send;
     }
+  });
+
+  test('peer compatibility failure prevents transfer dispatch', () async {
+    final harness = _ListingHarness();
+    harness.selectFirst();
+    harness.failVersionQuery = true;
+
+    await expectLater(
+        harness.controller
+            .sendFiles(harness.controller.selectedItems, harness.destination),
+        throwsA(isA<StateError>()));
+
+    expect(harness.sentPaths, isEmpty);
+    expect(harness.controller.jobController.jobTable, isEmpty);
+    expect(harness.controller.selectedItems.items, hasLength(1));
   });
 }

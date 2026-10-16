@@ -102,6 +102,7 @@ PASSWORD_FIELD_TESTS = {
     "password field retains focused obscured semantics",
 }
 FILE_NAVIGATION_TESTS = {
+    "peer compatibility failure prevents transfer dispatch",
     "refresh retires the preceding directory selection",
     "navigation retires the preceding directory selection",
     "initial home listing retires the preceding selection",

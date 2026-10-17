@@ -58,8 +58,8 @@ async fn keyed_pair() -> (Stream, Stream) {
     let mut viewer = Stream::from(client.unwrap(), address);
     let mut peer = Stream::from(accepted.unwrap().0, address);
     let (initiator, responder) = tokio::join!(
-        run_initiator(&mut viewer, "viewer-resume-test"),
-        run_responder(&mut peer, "viewer-resume-test")
+        run_initiator(viewer.as_framed_tcp_mut().unwrap(), "viewer-resume-test"),
+        run_responder(peer.as_framed_tcp_mut().unwrap(), "viewer-resume-test")
     );
     viewer.set_session_keys(initiator.unwrap());
     peer.set_session_keys(responder.unwrap());

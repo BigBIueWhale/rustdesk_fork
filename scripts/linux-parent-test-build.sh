@@ -26,15 +26,33 @@ build_linux_parent_test() {
     local build_status=0
     timeout --signal=TERM --kill-after=5s "${build_budget}s" \
         cargo test --offline --locked --lib --features "$features" --no-run \
-        --message-format=json-render-diagnostics --color never >"$work/build.json" || build_status=$?
+        --message-format=json --color never >"$work/build.json" || build_status=$?
     if [ "$build_status" -ne 0 ]; then
         python3 -I -S - "$work/build.json" <<'PY'
+import json
 import os
 import sys
 with open(sys.argv[1], 'rb') as stream:
     stream.seek(0, os.SEEK_END)
-    stream.seek(max(0, stream.tell() - 16000))
-    print(stream.read(16000).decode('utf-8',errors='replace'),file=sys.stderr)
+    size = stream.tell()
+    if size > 4 * 1024 * 1024:
+        print('Linux parent Cargo metadata exceeds 4 MiB', file=sys.stderr)
+        stream.seek(max(0, size - 16000))
+        diagnostics = stream.read(16000)
+    else:
+        stream.seek(0)
+        output = stream.read(4 * 1024 * 1024 + 1)
+        errors = []
+        for line in output.splitlines():
+            if not line.startswith(b'{'):
+                continue
+            message = json.loads(line)
+            if (message.get('reason') == 'compiler-message'
+                    and message.get('message', {}).get('level') == 'error'):
+                error = message['message']
+                errors.append(error.get('rendered') or error['message'])
+        diagnostics = '\n'.join(errors).encode('utf-8') if errors else output
+    print(diagnostics[-16000:].decode('utf-8', errors='replace'), file=sys.stderr)
 PY
         cat /sys/fs/cgroup/memory.events >&2
         exit "$build_status"

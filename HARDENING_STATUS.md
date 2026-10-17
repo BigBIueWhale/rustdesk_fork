@@ -14625,29 +14625,38 @@ This is real common-library receive behavior, not viewer/CM/UI or installed-prin
 execution. Predecode allocation, complete serialized-response/copy memory ceilings,
 aggregate resources, other platforms and all broader native/release obligations remain OPEN.
 
-**Send-source acquisition — Linux library and named authenticated peer ACCEPTED; installed/platform acceptance OPEN.**
-Source `e9dfe4af` uses one private `open_send_file` for initial acquisition and first-resume
-opens. One off-runtime operation opens read-only and verifies regular-file metadata on the
-exact owned object before publishing a Tokio file. Unix uses `O_NONBLOCK | O_NOCTTY`;
-Windows additionally requires `GetFileType == FILE_TYPE_DISK`. Source initialization requires
-the immutable Send role before any open or state mutation. Active resumes retain their
-existing source. Explicit source-file/parent links and the full-filesystem mode remain supported.
-At baseline `e7f04464`, four new cases failed: initial/resume FIFO replacement after enumeration,
-nonregular source replacement and Receive-role initialization. The ordinary/link control passed;
-retained filesystem summary is 113 passed/four failed. The bounded failure tail omitted its
-artifact-start digest, so there is no retained exact baseline executable identity. A FIFO failure
-message printed literally under Rust 2018; correcting that formatting was the only test-module
-change, with fixtures, schedules and assertion conditions unchanged.
-The correction passed all **162 focused Linux tests in 169 VM seconds**, including all five
-named new cases, prompt FIFO refusal without a writer, unchanged refused state, restored-source
-retry/resume, exact bytes, source links and a real receive publication after refused read setup.
-Stable artifact SHA-256 `b40f4fa75e7a9ab61c1f07ca3242dfa152851b45d454b670c64b1911111150c0`.
-`.harness-state/verifier-vm/send-source-corrected-e9dfe4af.json` binds the baseline, exact source,
-all named results, pinned inputs, 151 matching before/during/after controls, unchanged endpoints,
-limits and joined cleanup. Windows type-query compilation/native behavior and other target OS
-acceptance remain open. This does not establish a general filesystem I/O deadline, prevention
-of pre-open device effects, regular-file namespace/content snapshotting, installed privilege,
-whole-application, sustained-resource or release acceptance.
+**Send-source acquisition — Linux metadata-first library A/B ACCEPTED; installed/root/platform evidence OPEN.**
+Linux initial acquisition and first resume use one `open_send_file` primitive: acquire
+`O_PATH` authority, admit only a regular object, reopen through that held descriptor, and
+verify readable-handle device/inode identity before publication. There is no original-path
+fallback. Ordinary files and explicit source-file/parent symlinks remain supported; read
+permission is checked by readable reopening. Other targets retain their existing post-open
+type checks. Send/receive role separation, offsets, byte accounting and error propagation remain.
+At unchanged-product `04e91b74`, both new initial/first-resume tests failed: the actual
+production path reached kernel-denied I/O opening instead of metadata-only rejection.
+All 133 other filesystem cases passed. Four retained earlier summaries show 31 other passes;
+the bounded failure tail omits an earlier group and supplies no complete baseline total.
+Each isolated child calibrated regular-file reading, a private FIFO's real reader, an
+unrelated syscall, denied I/O opening and allowed metadata-only acquisition before its
+production call. Unchanged job state, original bytes and exact fixture cleanup passed before
+the final refusal assertion. No real device was accessed.
+The identical complete filesystem test module at `76e3f3b6` passed **187 focused native tests,
+including all 135 filesystem cases, in 169 VM seconds**. Existing regular/link, initial/resume,
+exact bytes/EOF, nonregular and Receive-role controls pass. The selected library executable
+retains SHA-256 `874a23f41b70d8a94ebb1f021f76fef890b4e9a6d0be7cf6dc42f458d2b6fec7`
+before/between/after; five existing probe-component cases have their separate executable.
+`.harness-state/verifier-vm/send-source-preopen-baseline-04e91b74.json` and
+`send-source-preopen-accepted-76e3f3b6.json` bind source/pins, native outcomes, failed setup,
+complete unchanged endpoints, fixed bounded-RAM limits and joined VM/private-root retirement.
+Executable bytes were ephemeral; the failed baseline retains its start digest only.
+The earlier `e9dfe4af` library/named authenticated-peer evidence remains scoped to its
+checkpoint in `send-source-corrected-e9dfe4af.json`; setup/filter/compile failures remain unaccepted.
+This is ordinary-user Linux library/component execution, not an installed privileged receiver.
+Other platforms, pre-pin namespace and same-size content races, immutable snapshots, general
+filesystem I/O deadlines/cancellation, aggregate resources, full-app/peer, installed/release,
+soak, independent reproduction and external review remain OPEN. The separate receive helper's
+`fstatat`/I/O-open type-check window needs atomic acquisition and native race proof; it remains
+OPEN. No new installed LPE closure follows from these results. All user parks remain in force.
 
 **Special-file enumeration — Linux library A/B ACCEPTED; integration/platform acceptance OPEN.**
 The directory scanner previously labeled every non-directory, non-link as a regular `File`.

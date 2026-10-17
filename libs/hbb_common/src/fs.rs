@@ -104,15 +104,6 @@ impl FileEnumerationBudget {
             max_serialized_bytes: MAX_FILE_ENUM_SERIALIZED_BYTES,
         }
     }
-
-    fn unbounded_for_local_use() -> Self {
-        Self {
-            max_entries: usize::MAX,
-            max_dirs: usize::MAX,
-            max_depth: usize::MAX,
-            max_serialized_bytes: usize::MAX,
-        }
-    }
 }
 
 #[derive(Default)]
@@ -213,7 +204,7 @@ pub fn read_dir(path: &Path, include_hidden: bool) -> ResultType<FileDirectory> 
     read_dir_with_budget(
         path,
         include_hidden,
-        FileEnumerationBudget::unbounded_for_local_use(),
+        FileEnumerationBudget::for_max_entries(DEFAULT_FILE_TRANSFER_MAX_FILES),
     )
 }
 
@@ -349,21 +340,6 @@ pub fn get_home_as_string() -> String {
     get_string(&Config::get_home())
 }
 
-fn read_dir_recursive(
-    path: &Path,
-    prefix: &Path,
-    include_hidden: bool,
-) -> ResultType<Vec<FileEntry>> {
-    read_dir_recursive_with_budget(
-        path,
-        prefix,
-        include_hidden,
-        FileEnumerationBudget::unbounded_for_local_use(),
-        &mut FileEnumerationUsage::default(),
-        0,
-    )
-}
-
 fn read_dir_recursive_with_budget(
     path: &Path,
     prefix: &Path,
@@ -416,7 +392,11 @@ fn read_dir_recursive_with_budget(
 }
 
 pub fn get_recursive_files(path: &str, include_hidden: bool) -> ResultType<Vec<FileEntry>> {
-    read_dir_recursive(&get_path(path), &get_path(""), include_hidden)
+    get_recursive_files_with_budget(
+        path,
+        include_hidden,
+        FileEnumerationBudget::for_max_entries(DEFAULT_FILE_TRANSFER_MAX_FILES),
+    )
 }
 
 pub fn get_recursive_files_with_budget(
@@ -431,21 +411,6 @@ pub fn get_recursive_files_with_budget(
         include_hidden,
         budget,
         &mut usage,
-        0,
-    )
-}
-
-fn read_empty_dirs_recursive(
-    path: &Path,
-    prefix: &Path,
-    include_hidden: bool,
-) -> ResultType<Vec<FileDirectory>> {
-    read_empty_dirs_recursive_with_budget(
-        path,
-        prefix,
-        include_hidden,
-        FileEnumerationBudget::unbounded_for_local_use(),
-        &mut FileEnumerationUsage::default(),
         0,
     )
 }
@@ -505,7 +470,11 @@ pub fn get_empty_dirs_recursive(
     path: &str,
     include_hidden: bool,
 ) -> ResultType<Vec<FileDirectory>> {
-    read_empty_dirs_recursive(&get_path(path), &get_path(""), include_hidden)
+    get_empty_dirs_recursive_with_budget(
+        path,
+        include_hidden,
+        FileEnumerationBudget::for_max_entries(DEFAULT_FILE_TRANSFER_MAX_FILES),
+    )
 }
 
 pub fn get_empty_dirs_recursive_with_budget(

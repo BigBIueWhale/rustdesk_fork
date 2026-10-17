@@ -1410,17 +1410,37 @@ fn fstatat_regular_no_follow(
 }
 
 #[cfg(unix)]
-fn open_regular_child_no_follow(
+#[derive(Clone, Copy)]
+enum RegularFileAccess {
+    Read,
+    Write,
+    ReadWrite,
+}
+
+#[cfg(unix)]
+impl RegularFileAccess {
+    fn flags(self) -> i32 {
+        (match self {
+            Self::Read => crate::libc::O_RDONLY,
+            Self::Write => crate::libc::O_WRONLY,
+            Self::ReadWrite => crate::libc::O_RDWR,
+        }) | crate::libc::O_CLOEXEC
+            | crate::libc::O_NOFOLLOW
+            | crate::libc::O_NONBLOCK
+            | crate::libc::O_NOCTTY
+    }
+}
+
+#[cfg(unix)]
+fn open_regular_child_io(
     parent_fd: i32,
     name: &std::ffi::CStr,
     flags: i32,
-    mode: crate::libc::mode_t,
 ) -> std::io::Result<std::fs::File> {
     use std::os::unix::io::FromRawFd;
 
-    let _ = fstatat_regular_no_follow(parent_fd, name)?;
     let fd = unsafe {
-        crate::libc::openat(parent_fd, name.as_ptr(), flags, mode as crate::libc::c_uint)
+        crate::libc::openat(parent_fd, name.as_ptr(), flags, 0o600 as crate::libc::c_uint)
     };
     if fd < 0 {
         return Err(std::io::Error::last_os_error());
@@ -1438,18 +1458,76 @@ fn open_regular_child_no_follow(
     Ok(file)
 }
 
+#[cfg(target_os = "linux")]
+struct LinuxRegularChild<'a> {
+    parent: &'a std::fs::File,
+    name: &'a std::ffi::CStr,
+}
+
+#[cfg(target_os = "linux")]
+impl<'a> LinuxRegularChild<'a> {
+    fn acquire(parent: &'a std::fs::File, name: &'a std::ffi::CStr) -> std::io::Result<Self> {
+        use std::os::unix::io::AsRawFd;
+
+        let _ = fstatat_regular_no_follow(parent.as_raw_fd(), name)?;
+        Ok(Self { parent, name })
+    }
+
+    fn open(
+        self,
+        access: RegularFileAccess,
+        creation: ReceiveFileCreation,
+    ) -> std::io::Result<std::fs::File> {
+        use std::os::unix::io::AsRawFd;
+
+        open_regular_child_io(
+            self.parent.as_raw_fd(),
+            self.name,
+            regular_child_flags(access, creation),
+        )
+    }
+}
+
+#[cfg(unix)]
+fn regular_child_flags(access: RegularFileAccess, creation: ReceiveFileCreation) -> i32 {
+    let flags = access.flags();
+    match creation {
+        ReceiveFileCreation::Existing => flags,
+        ReceiveFileCreation::OpenOrCreate => flags | crate::libc::O_CREAT,
+        ReceiveFileCreation::CreateNew => flags | crate::libc::O_CREAT | crate::libc::O_EXCL,
+    }
+}
+
+#[cfg(unix)]
+fn open_regular_child_no_follow(
+    parent: &std::fs::File,
+    name: &std::ffi::CStr,
+    access: RegularFileAccess,
+    creation: ReceiveFileCreation,
+) -> std::io::Result<std::fs::File> {
+    #[cfg(target_os = "linux")]
+    {
+        LinuxRegularChild::acquire(parent, name)?.open(access, creation)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        use std::os::unix::io::AsRawFd;
+
+        let _ = fstatat_regular_no_follow(parent.as_raw_fd(), name)?;
+        open_regular_child_io(parent.as_raw_fd(), name, regular_child_flags(access, creation))
+    }
+}
+
 #[cfg(unix)]
 fn open_existing_regular_no_follow(path: &Path) -> std::io::Result<std::fs::File> {
-    use std::os::unix::io::AsRawFd;
-
     let parent = open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
     let name = cstring_file_name(path)?;
-    let flags = crate::libc::O_RDONLY
-        | crate::libc::O_CLOEXEC
-        | crate::libc::O_NOFOLLOW
-        | crate::libc::O_NONBLOCK
-        | crate::libc::O_NOCTTY;
-    open_regular_child_no_follow(parent.as_raw_fd(), &name, flags, 0)
+    open_regular_child_no_follow(
+        &parent,
+        &name,
+        RegularFileAccess::Read,
+        ReceiveFileCreation::Existing,
+    )
 }
 
 /// R-S8 / R-A5 — the WINDOWS equivalent of the Unix `openat(O_NOFOLLOW)` receive-write walk.
@@ -2359,28 +2437,17 @@ fn open_recv_file_no_follow_std(
     let file = {
         #[cfg(unix)]
         {
-            use std::os::unix::io::AsRawFd;
-
             let parent = open_parent_dir_no_follow(
                 path.parent().unwrap_or_else(|| Path::new(".")),
                 create_parent,
             )?;
             let name = cstring_file_name(path)?;
-            let mut flags = (if readable {
-                crate::libc::O_RDWR
+            let access = if readable {
+                RegularFileAccess::ReadWrite
             } else {
-                crate::libc::O_WRONLY
-            }) | crate::libc::O_CLOEXEC
-                | crate::libc::O_NOFOLLOW
-                | crate::libc::O_NONBLOCK
-                | crate::libc::O_NOCTTY;
-            if !matches!(creation, ReceiveFileCreation::Existing) {
-                flags |= crate::libc::O_CREAT;
-            }
-            if matches!(creation, ReceiveFileCreation::CreateNew) {
-                flags |= crate::libc::O_EXCL;
-            }
-            open_regular_child_no_follow(parent.as_raw_fd(), &name, flags, 0o600)
+                RegularFileAccess::Write
+            };
+            open_regular_child_no_follow(&parent, &name, access, creation)
         }
 
         #[cfg(windows)]
@@ -7493,7 +7560,7 @@ mod tests {
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn deny_send_io_opens_for_test_child() {
+    fn deny_nonexclusive_io_opens_for_test_child() {
         let statement = |code, k| crate::libc::sock_filter {
             code: code as u16, jt: 0, jf: 0, k,
         };
@@ -7513,13 +7580,16 @@ mod tests {
             statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
             jump(equal, crate::libc::SYS_openat as u32, 3, 0),
             jump(equal, crate::libc::SYS_open as u32, 4, 0),
-            jump(equal, crate::libc::SYS_openat2 as u32, 6, 0),
+            jump(equal, crate::libc::SYS_openat2 as u32, 8, 0),
             statement(ret, crate::libc::SECCOMP_RET_ALLOW),
             statement(load, 32), // openat flags: args[2]
             statement(crate::libc::BPF_JMP | crate::libc::BPF_JA, 2),
             statement(load, 24), // open flags: args[1]
             statement(crate::libc::BPF_JMP | crate::libc::BPF_JA, 0),
-            jump(bits, crate::libc::O_PATH as u32, 1, 0),
+            jump(bits, crate::libc::O_PATH as u32, 3, 0),
+            statement(crate::libc::BPF_ALU | crate::libc::BPF_AND | crate::libc::BPF_K,
+                (crate::libc::O_CREAT | crate::libc::O_EXCL) as u32),
+            jump(equal, (crate::libc::O_CREAT | crate::libc::O_EXCL) as u32, 1, 0),
             statement(ret, crate::libc::SECCOMP_RET_ERRNO | crate::libc::EOWNERDEAD as u32),
             statement(ret, crate::libc::SECCOMP_RET_ALLOW),
         ];
@@ -7589,7 +7659,7 @@ mod tests {
             .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
             .open(&source).expect("the private FIFO permits a real nonblocking reader"));
 
-        deny_send_io_opens_for_test_child();
+        deny_nonexclusive_io_opens_for_test_child();
         assert!(unsafe { crate::libc::syscall(crate::libc::SYS_getpid) } > 0,
             "unrelated syscalls must remain available");
         let denied = std::fs::OpenOptions::new().read(true)
@@ -7636,6 +7706,172 @@ mod tests {
     #[tokio::test]
     async fn send_resume_acquisition_refuses_special_file_before_io_open() {
         assert_send_source_type_precedes_io_open(true).await;
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn assert_receive_type_precedes_io_open(mode: &str, case: &str) {
+        use std::os::unix::{ffi::OsStrExt, fs::{FileTypeExt, OpenOptionsExt}};
+
+        if std::env::var("RUSTDESK_RECEIVE_PREOPEN_TEST_CHILD").as_deref() != Ok(mode) {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", case, "--nocapture", "--test-threads=1"])
+                .env("RUSTDESK_RECEIVE_PREOPEN_TEST_CHILD", mode)
+                .output().unwrap();
+            assert!(output.status.success(),
+                "isolated child status={:?}, stdout={:?}, stderr={:?}",
+                output.status, String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr));
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            let markers: Vec<_> = stdout.lines()
+                .filter_map(|line| line.find("RECEIVE_PREOPEN_ADMISSION=pass ")
+                    .map(|offset| &line[offset..])).collect();
+            assert_eq!(markers.len(), 1);
+            println!("{}", markers[0]);
+            return;
+        }
+
+        let tmp = TestTempDir::new("rustdesk_receive_preopen");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let target = tmp.join("target");
+        let displaced = tmp.join("displaced");
+        let calibration = tmp.join("calibration");
+        let missing = mode == "create";
+        let mut sentinel = if missing {
+            None
+        } else {
+            std::fs::write(&target, b"ordinary").unwrap();
+            Some(std::fs::File::open(&target).unwrap())
+        };
+        let parent = open_parent_dir_no_follow(&tmp.path, false).unwrap();
+        let name = cstring_file_name(&target).unwrap();
+        let acquired = LinuxRegularChild::acquire(&parent, &name).unwrap();
+        if !missing {
+            std::fs::rename(&target, &displaced).unwrap();
+        }
+        let target_c = std::ffi::CString::new(target.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { crate::libc::mkfifo(target_c.as_ptr(), 0o600) }, 0);
+        let reader = std::fs::OpenOptions::new().read(true)
+            .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
+            .open(&target).expect("the private FIFO has a real reader");
+        drop(std::fs::OpenOptions::new().write(true)
+            .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
+            .open(&target).expect("the private FIFO permits a real writer"));
+
+        deny_nonexclusive_io_opens_for_test_child();
+        assert!(unsafe { crate::libc::syscall(crate::libc::SYS_getpid) } > 0);
+        for write in [false, true] {
+            let error = std::fs::OpenOptions::new().read(!write).write(write)
+                .custom_flags(crate::libc::O_NONBLOCK).open(&target).unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(crate::libc::EOWNERDEAD));
+        }
+        let path_only = std::fs::OpenOptions::new().read(true)
+            .custom_flags(crate::libc::O_PATH | crate::libc::O_NOFOLLOW)
+            .open(&target).expect("metadata-only admission remains available");
+        assert!(path_only.metadata().unwrap().file_type().is_fifo());
+        drop(path_only);
+        let created = std::fs::OpenOptions::new().write(true).create_new(true)
+            .open(&calibration).expect("exclusive creation remains available");
+        assert!(created.metadata().unwrap().is_file());
+        drop(created);
+        assert_eq!(std::fs::OpenOptions::new().write(true).create_new(true)
+            .open(&target).unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+
+        let access = if mode == "read" { RegularFileAccess::Read } else { RegularFileAccess::Write };
+        let creation = if missing { ReceiveFileCreation::OpenOrCreate } else { ReceiveFileCreation::Existing };
+        let error = acquired.open(access, creation).unwrap_err();
+        if let Some(file) = sentinel.as_mut() {
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(file, &mut bytes).unwrap();
+            assert_eq!(bytes, b"ordinary");
+        }
+        drop(sentinel);
+        drop(reader);
+        drop(parent);
+        std::fs::remove_file(&target).unwrap();
+        std::fs::remove_file(&calibration).unwrap();
+        if !missing { std::fs::remove_file(&displaced).unwrap(); }
+        std::fs::remove_dir(&tmp.path).unwrap();
+        let expected = if missing { std::io::ErrorKind::InvalidInput } else { std::io::ErrorKind::PermissionDenied };
+        assert_eq!(error.kind(), expected,
+            "replacement must be refused before any kernel-denied I/O open: {:?}", error);
+        println!("RECEIVE_PREOPEN_ADMISSION=pass mode={} io_open=kernel-denied path_open=allowed exclusive_create=allowed original=unchanged cleanup=joined", mode);
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn receive_existing_read_refuses_fifo_swap_before_io_open() {
+        assert_receive_type_precedes_io_open("read",
+            "fs::tests::receive_existing_read_refuses_fifo_swap_before_io_open");
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn receive_existing_write_refuses_fifo_swap_before_io_open() {
+        assert_receive_type_precedes_io_open("write",
+            "fs::tests::receive_existing_write_refuses_fifo_swap_before_io_open");
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn receive_missing_create_refuses_fifo_swap_before_io_open() {
+        assert_receive_type_precedes_io_open("create",
+            "fs::tests::receive_missing_create_refuses_fifo_swap_before_io_open");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn receive_regular_acquisition_preserves_creation_and_collision_semantics() {
+        use std::io::{Read, Write};
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let tmp = TestTempDir::new("rustdesk_receive_acquisition");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let target = tmp.join("target");
+        let parent = open_parent_dir_no_follow(&tmp.path, false).unwrap();
+        let name = cstring_file_name(&target).unwrap();
+        assert_eq!(open_regular_child_no_follow(&parent, &name, RegularFileAccess::Read,
+            ReceiveFileCreation::Existing).unwrap_err().kind(), std::io::ErrorKind::NotFound);
+        let mut file = open_recv_file_no_follow_std(&target, false,
+            ReceiveFileCreation::OpenOrCreate, false, true).unwrap();
+        file.write_all(b"ordinary").unwrap();
+        assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+        drop(file);
+        let mut read = open_existing_regular_no_follow(&target).unwrap();
+        let mut bytes = Vec::new();
+        read.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"ordinary");
+        drop(read);
+        assert_eq!(open_recv_file_no_follow_std(&target, true,
+            ReceiveFileCreation::CreateNew, false, false).unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(&target).unwrap(), b"ordinary");
+        drop(open_recv_file_no_follow_std(&target, false,
+            ReceiveFileCreation::OpenOrCreate, false, false).unwrap());
+        assert_eq!(std::fs::read(&target).unwrap(), b"ordinary");
+        std::fs::remove_file(&target).unwrap();
+        let missing = LinuxRegularChild::acquire(&parent, &name).unwrap();
+        std::fs::write(&target, b"winner").unwrap();
+        drop(missing.open(RegularFileAccess::ReadWrite, ReceiveFileCreation::OpenOrCreate).unwrap());
+        assert_eq!(std::fs::read(&target).unwrap(), b"winner");
+        let linked = tmp.join("linked");
+        std::fs::hard_link(&target, &linked).unwrap();
+        assert!(open_recv_file_no_follow_std(&target, true,
+            ReceiveFileCreation::Existing, false, false).is_err());
+        assert_eq!(std::fs::read(&linked).unwrap(), b"winner");
+        std::fs::remove_file(&linked).unwrap();
+        drop(open_recv_file_no_follow_std(&target, true,
+            ReceiveFileCreation::Existing, false, false).unwrap());
+        assert!(std::fs::read(&target).unwrap().is_empty());
+        std::fs::remove_file(&target).unwrap();
+        let mut created = open_recv_file_no_follow_std(&target, false,
+            ReceiveFileCreation::CreateNew, false, false).unwrap();
+        created.write_all(b"new").unwrap();
+        drop(created);
+        symlink(&target, &linked).unwrap();
+        assert!(open_existing_regular_no_follow(&linked).is_err());
+        assert!(open_recv_file_no_follow_std(&linked, true,
+            ReceiveFileCreation::OpenOrCreate, false, false).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
     }
 
     #[cfg(target_os = "linux")]

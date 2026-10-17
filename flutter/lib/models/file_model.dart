@@ -1458,6 +1458,15 @@ class FileController {
 
 const _kOneWayFileTransferError = 'one-way-file-transfer-tip';
 const _kMaxNativeFileJobInt = 0x7fffffff;
+const _kMaxPendingFileRequests = 64;
+
+// Replacing a model cannot reset admission while its dispatches still drain.
+final _pendingFileRequestOwners = Set<Object>.identity();
+
+bool _tryAdmitFileRequest(Object owner) {
+  if (_pendingFileRequestOwners.length >= _kMaxPendingFileRequests) return false;
+  return _pendingFileRequestOwners.add(owner);
+}
 
 class JobController {
   static final JobID jobID = JobID();
@@ -1858,7 +1867,7 @@ class JobController {
 
 class JobResultListener {
   JobResultListener(
-      {this.maxPending = 64,
+      {this.maxPending = _kMaxPendingFileRequests,
       this.requestTimeout = const Duration(seconds: 5)}) {
     if (maxPending < 1) {
       throw ArgumentError.value(maxPending, 'maxPending');
@@ -1873,6 +1882,11 @@ class JobResultListener {
   final Map<_JobResultKey, _PendingJobResult> _pending = {};
   // Response routing can retire before native dispatch completes.
   final Map<_PendingJobResult, Future<void>?> _pendingTasks = {};
+
+  void _releasePendingTask(_PendingJobResult pending) {
+    _pendingTasks.remove(pending);
+    _pendingFileRequestOwners.remove(pending);
+  }
 
   Future<Map<String, dynamic>> dispatchAndWait(
       {required SessionID expectedSessionId,
@@ -1893,6 +1907,9 @@ class JobResultListener {
       return Future.error(StateError('File-job result capacity exhausted'));
     }
     final pending = _PendingJobResult();
+    if (!_tryAdmitFileRequest(pending)) {
+      return Future.error(StateError('File-job result capacity exhausted'));
+    }
     _pending[key] = pending;
     _pendingTasks[pending] = null;
     pending.startTimeout(requestTimeout, () {
@@ -1908,7 +1925,7 @@ class JobResultListener {
     try {
       dispatchResult = dispatch();
     } catch (error, stackTrace) {
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
       if (identical(_pending[key], pending)) _pending.remove(key);
       pending.completeError(error, stackTrace);
       return pending.future;
@@ -1916,11 +1933,11 @@ class JobResultListener {
     final completion = dispatchResult.then<void>((_) {
       pending.markDispatchSettled();
       if (pending.responseReceived || !identical(_pending[key], pending)) {
-        _pendingTasks.remove(pending);
+        _releasePendingTask(pending);
         if (identical(_pending[key], pending)) _pending.remove(key);
       }
     }, onError: (Object error, StackTrace stackTrace) {
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
       if (identical(_pending[key], pending)) {
         _pending.remove(key);
         pending.completeError(error, stackTrace);
@@ -1948,7 +1965,7 @@ class JobResultListener {
     pending.complete(Map<String, dynamic>.unmodifiable(event));
     if (pending.dispatchSettled) {
       _pending.remove(key);
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
     }
     return true;
   }
@@ -1970,7 +1987,7 @@ class JobResultListener {
     pending.completeResponseError(StateError(error));
     if (pending.dispatchSettled) {
       _pending.remove(key);
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
     }
     return true;
   }
@@ -1980,7 +1997,7 @@ class JobResultListener {
     if (!pending.markLateResponseReceived()) return;
     if (pending.dispatchSettled && identical(_pending[key], pending)) {
       _pending.remove(key);
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
     }
   }
 
@@ -1990,7 +2007,7 @@ class JobResultListener {
     final error = StateError('Superseded file-transfer session');
     for (final result in pending) {
       result.completeError(error);
-      if (result.dispatchSettled) _pendingTasks.remove(result);
+      if (result.dispatchSettled) _releasePendingTask(result);
     }
   }
 }
@@ -2098,7 +2115,7 @@ class FileFetcher {
 
   FileFetcher(this.getSessionID,
       {FileFetcherRequests? requests,
-      this.maxPending = 64,
+      this.maxPending = _kMaxPendingFileRequests,
       this.requestTimeout = const Duration(seconds: 2)})
       : _requests = requests ?? FileFetcherRequests.native {
     if (maxPending < 1) {
@@ -2111,6 +2128,11 @@ class FileFetcher {
 
   int get _pendingCount => _pendingTasks.length;
 
+  void _releasePendingTask(_PendingFileRequest<Object?> pending) {
+    _pendingTasks.remove(pending);
+    _pendingFileRequestOwners.remove(pending);
+  }
+
   void cancelPending() {
     final pendingTasks = _pendingTasks.keys.toList(growable: false);
     _remoteTasks.clear();
@@ -2119,7 +2141,7 @@ class FileFetcher {
     final error = StateError('Superseded file-transfer session');
     for (final task in pendingTasks) {
       task.completeError(error);
-      if (task.dispatchSettled) _pendingTasks.remove(task);
+      if (task.dispatchSettled) _releasePendingTask(task);
     }
   }
 
@@ -2132,6 +2154,9 @@ class FileFetcher {
       throw StateError('File request capacity exhausted');
     }
     final pending = _PendingFileRequest<String>(expectedSessionId, true);
+    if (!_tryAdmitFileRequest(pending)) {
+      throw StateError('File request capacity exhausted');
+    }
     _pendingTasks[pending] = null;
     pending.startTimeout(requestTimeout, () {
       pending.completeError(TimeoutException(
@@ -2141,21 +2166,21 @@ class FileFetcher {
       // Logical cancellation retains the exact native completion and its slot.
       final completion = request(expectedSessionId, path, showHidden)
           .then<void>((value) {
-        _pendingTasks.remove(pending);
+        _releasePendingTask(pending);
         if (expectedSessionId != sessionId) {
           pending.completeError(StateError('Superseded file-transfer session'));
         } else {
           pending.complete(value);
         }
       }, onError: (Object error, StackTrace stackTrace) {
-        _pendingTasks.remove(pending);
+        _releasePendingTask(pending);
         pending.completeError(error, stackTrace);
       });
       if (_pendingTasks.containsKey(pending)) {
         _pendingTasks[pending] = completion;
       }
     } catch (error, stackTrace) {
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
       pending.completeError(error, stackTrace);
     }
     return pending.future;
@@ -2177,6 +2202,9 @@ class FileFetcher {
       throw StateError('File request capacity exhausted');
     }
     final pending = _PendingFileRequest<T>(expectedSessionId, isLocal);
+    if (!_tryAdmitFileRequest(pending)) {
+      throw StateError('File request capacity exhausted');
+    }
     tasks[key] = pending;
     _pendingTasks[pending] = null;
     pending.startTimeout(requestTimeout, () {
@@ -2198,7 +2226,7 @@ class FileFetcher {
     try {
       dispatchResult = dispatch();
     } catch (error, stackTrace) {
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
       if (identical(tasks[key], pending)) {
         tasks.remove(key);
       }
@@ -2209,11 +2237,11 @@ class FileFetcher {
     final completion = dispatchResult.then<void>((_) {
       pending.markDispatchSettled();
       if (pending.responseReceived || !identical(tasks[key], pending)) {
-        _pendingTasks.remove(pending);
+        _releasePendingTask(pending);
         if (identical(tasks[key], pending)) tasks.remove(key);
       }
     }, onError: (Object error, StackTrace stackTrace) {
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
       if (identical(tasks[key], pending)) {
         tasks.remove(key);
         pending.completeError(error, stackTrace);
@@ -2245,7 +2273,7 @@ class FileFetcher {
     pending.complete(value);
     if (pending.dispatchSettled) {
       tasks.remove(key);
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
     }
     return true;
   }
@@ -2257,7 +2285,7 @@ class FileFetcher {
     if (!pending.markLateResponseReceived()) return;
     if (pending.dispatchSettled && identical(tasks[key], pending)) {
       tasks.remove(key);
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
     }
   }
 
@@ -2325,7 +2353,7 @@ class FileFetcher {
     pending.completeResponseError(StateError(error));
     if (pending.dispatchSettled) {
       _readRecursiveTasks.remove(id);
-      _pendingTasks.remove(pending);
+      _releasePendingTask(pending);
     }
     return true;
   }

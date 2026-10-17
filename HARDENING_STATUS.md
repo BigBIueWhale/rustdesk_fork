@@ -6248,41 +6248,42 @@ QA narratives remain available in Git and the external audit; they are not curre
 Release preparation follows [`docs/VERSIONING.md`](docs/VERSIONING.md#preparing-a-release).
 Tracked source does not substitute for the generated exact-commit artifact manifest; no release publication is claimed.
 
-## Upstream-CVE coverage — the 2026 RustDesk client CVE inventory
+## Upstream CVE review — source dispositions; native/artifact acceptance OPEN
 
-Cross-checked (2026-06-29) the fork's hardening against the **complete public 2026
-RustDesk client CVE set** (the spec's batch `CVE-2026-30783..30798`/`3598`/`2490`
-plus the post-spec **`CVE-2026-58056`**). **Every one is covered** — the
-spec's PAKE-plus-excisions design attacks exactly the root-cause classes the CVE
-researchers later found:
-- **signaling / strategy-sync / heartbeat / address-book** (`30783`/`30792`/
-  `30798`/`30795`/`30796`) → the rendezvous mediator, `hbbs_http::sync`, and the
-  account/address-book module are **excised** (R-D4/R-X3/R-SV6).
-- **URI-scheme CSRF / missing-authz config-import** (`30793`/`30797`/`30791`) →
-  the deep-link config/password/key write authorities are **excised** (R-X6/R-X4).
-- **offline password brute-force / weak hashing** (`30789`/`30785`) → the PAKE
-  replaces the unstretched hash; no offline-crackable material (R-S6); desktop
-  at-rest storage remains the Appendix C #14 machine-UUID HARDEN+ACCEPT residual,
-  while mobile source now uses OS-protected storage keys with on-device/artifact
-  validation still pending.
-- **client AiTM (cert-validation on retry)** (`30794`) → insecure-TLS-fallback
-  excised, pinned `N`.
-- **`CVE-2026-58056` session-type-confusion** (a FileTransfer-authorized peer
-  injecting keyboard/mouse + reaching screenshot/display handlers) → **covered by
-  R-S19 AuthConnType confinement, not by broad PAKE authorization alone**. PAKE
-  keeps the class out of the unauthenticated-network/password-bypass bucket: a
-  peer still needs the CPace password and remains the §2 trusted owner. That does
-  not make session type an inert tag. R-S19 now treats session-type confinement as
-  normative least-privilege: input is Remote-only; desktop capture is
-  Remote-or-ViewCamera; capability booleans are derived from `AuthConnType`
-  before peer login options; clipboard text, voice/audio, block-input, privacy,
-  restart, screenshot-source, viewer-clipboard, CLIPRDR-to-CM, and Android
-  MediaProjection edge cases are independently gated. The live evidence is the
-  R-S19 status block above, the `connection.rs`/`video_service.rs`/viewer/mobile
-  source gates, and the generalized `scripts/verify.sh` R-S19/CVE-2026-58056
-  checks.
-- The **server / Server Pro** CVEs (`30784`/`3598`/`30796`-Pro) are N/A — the
-  rendezvous/relay server is excised entirely.
+The earlier June inventory and blanket coverage claim are retired. This is a bounded review of the
+named records against the current fork, not an exhaustive current advisory inventory or a claim
+that an upstream affected-version range proves this fork's disposition.
+
+**CVE-2026-76840 — Windows clipboard caller-buffer overflow: correction prepared; execution pending.**
+The actual `CliprdrStream_Read` still copied `req_fsize` into a caller buffer of `cb` bytes;
+the response handler's eight-MiB ceiling did not enforce that caller-specific limit. The correction
+snapshots the received length and rejects an oversized response, excess remaining-file extent or
+missing nonempty payload before copying or advancing the stream. Win32/HRESULT transfer failures
+return an error with zero read count, and zero-byte reads do not request peer data. Accepted bytes,
+reported count and offset use the same checked length; response storage is released.
+
+`--cliprdr-read-component-tests` prepares twelve calls to the exact C reader body with controlled
+COM types and RPC responses. Its exact pre-correction body from `eabb4e8a` must fail seven cases
+while passing five controls; the corrected body must pass all twelve. This is portable C component
+execution only. Real Windows compilation/ABI, OLE paste consumers, peer routing, callback concurrency,
+shared response/request identity and lifetime, installed contexts and packaged artifacts remain OPEN.
+
+| Record | Current disposition and evidence limit |
+| --- | --- |
+| [CVE-2026-76840](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/76xxx/CVE-2026-76840.json) | Caller-buffer and file-extent correction above. Native Windows and exact-artifact acceptance OPEN. |
+| [CVE-2026-100388](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/100xxx/CVE-2026-100388.json) | Linux/macOS incoming file-clipboard authorization. The Unix receiver checks `can_sub_file_clipboard_service` before processing; exact current peer/platform refusal evidence and full path review remain OPEN. |
+| [CVE-2026-100417](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/100xxx/CVE-2026-100417.json) | Windows one-way file-clipboard request bypass. Current policy applicability, all CM/native request sinks and exact-artifact behavior require review; OPEN. |
+| [CVE-2026-73102](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/73xxx/CVE-2026-73102.json) | macOS clipboard-paste traversal. `paste_task.rs` normalizes descriptor names and opens destination components relative to retained descriptors without following links. Native macOS/peer/package acceptance remains OPEN. |
+| [CVE-2026-73108](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/73xxx/CVE-2026-73108.json) | Header-driven allocation. `BytesCodec::decode_head` checks the engaged packet ceiling and caps speculative payload reservation at 256 KiB. This source disposition does not establish whole-service memory bounds or current-artifact acceptance. |
+| [CVE-2026-57850](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/57xxx/CVE-2026-57850.json) | Broader session-scope bypass, alongside CVE-2026-58056. R-S19 owns type confinement and its named evidence; authentication alone does not grant Remote capabilities. Current native/platform/artifact matrix remains OPEN. |
+| [CVE-2026-30796](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/30xxx/CVE-2026-30796.json) | The current record describes the **client** heartbeat's preset address-book password disclosure, not a Server Pro-only issue. The fork removes that heartbeat/address-book path under R-D4/R-SV6; artifact absence remains separate evidence. |
+| [CVE-2026-30784](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/30xxx/CVE-2026-30784.json) | CNA **REJECTED** on 2026-06-22. It is not counted as a covered vulnerability. |
+
+The original configuration/import/URI, weak-proof/online-guess, TLS and rendezvous findings retain
+their individual requirement and Appendix C dispositions. CVE-2026-2490's Windows file-link/SYSTEM
+boundary remains subject to the installed file-authority matrix; the desktop machine-UUID credential
+residual remains Appendix C #14. No credential, local-privilege, native-decoder or release residual
+is closed by this review. Full advisory refresh and independent reproduction remain OPEN.
 
 ## Appendix C #2b (native-decode RCE surface) — ACCEPTED residual
 

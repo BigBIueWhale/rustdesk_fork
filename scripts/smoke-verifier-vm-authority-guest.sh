@@ -129,7 +129,7 @@ case "$#:${8:-}" in
             || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
             || "${13}" = --fusermount-process || "${13}" = --file-block \
-            || "${13}" = --clipboard-response || "${13}" = --android-client-drain || "${13}" = --cm-read-tick ]] || exit 2
+            || "${13}" = --clipboard-response || "${13}" = --cliprdr-read || "${13}" = --android-client-drain || "${13}" = --cm-read-tick ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -3347,6 +3347,24 @@ run_focused_rust_tests() {
                 clipboard::write_permission_native_tests::disabling_viewer_clipboard_retires_a_write_waiting_for_native_admission
                 clipboard::write_permission_native_tests::reenabling_viewer_clipboard_does_not_resurrect_an_old_queued_write
             )
+        elif [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
+            container_name=rustdesk-cliprdr-read-component-tests
+            memory=512m
+            memory_bytes=536870912
+            tmpfs_size=128m
+            source_fingerprints=(
+                libs/clipboard/src/windows/wf_cliprdr.c scripts/test-windows-cliprdr-read.c
+                scripts/run-windows-cliprdr-read-tests.py
+                scripts/fixtures/windows-cliprdr-read-before-capacity.c
+            )
+            required_tests=(
+                cliprdr_stream_read::full_read cliprdr_stream_read::short_read
+                cliprdr_stream_read::end_of_file cliprdr_stream_read::empty_response
+                cliprdr_stream_read::failed_hresult cliprdr_stream_read::caller_capacity
+                cliprdr_stream_read::file_extent cliprdr_stream_read::offset_overflow
+                cliprdr_stream_read::failed_win32_status cliprdr_stream_read::zero_count_at_eof
+                cliprdr_stream_read::missing_payload cliprdr_stream_read::zero_count_before_eof
+            )
         elif [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
             container_name=rustdesk-cm-clipboard-response-tests
             memory=1g
@@ -4345,6 +4363,10 @@ run_focused_rust_tests() {
                             /bin/bash /source/scripts/run-resolution-parent-tests.sh
                             exit 0
                         fi
+                        if [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
+                            python3 -I -S /source/scripts/run-windows-cliprdr-read-tests.py /source
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
                             python3 -I -S /source/scripts/run-cm-clipboard-response-tests.py \
                                 /source /tmp/cargo-home/config.toml
@@ -4708,6 +4730,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=23 bridge=absent native=x11\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
+        printf 'CLIPRDR_READ_PROFILE=cliprdr-read stage=container-start tests=12 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=29 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
@@ -4889,6 +4913,21 @@ PY
         uid_test_artifact_sha="$(sha256sum "$target_root/uid-policy-tests" | awk '{ print $1 }')"
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'cliprdr component summary count differs'
+        python3 -I -S - "$output" <<'PY' || fail 'cliprdr component artifact record differs'
+import json,re,sys
+lines=open(sys.argv[1],encoding='utf-8').read().splitlines()
+records=[json.loads(s.split('=pass ',1)[1]) for s in lines if s.startswith('CLIPRDR_READ_ARTIFACT=pass ')]
+assert len(records)==1
+r=records[0]
+assert r['tests']==12 and r['windows_native'] is False and r['callback_concurrency'] is False
+assert r['before_body_sha256']=='a96b8f3b2c19eb99a1337f930ab905066784648130aa4c37d77b31cc9fdb52e9'
+old,new=r['artifacts']['before'],r['artifacts']['current']
+assert old['exit']==101 and len(old['failed'])==7 and len(old['passed'])==5
+assert new['exit']==0 and len(new['passed'])==12 and not new['failed']
+for item in (old,new): assert re.fullmatch('[0-9a-f]{64}',item['sha256'])
+PY
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'CM clipboard response summary count differs'
         [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=29 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -5312,7 +5351,11 @@ PY
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        if [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
+        if [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
+            cat "$output"
+            printf 'CLIPRDR_READ_VM=pass commit=%s tree=%s tests=%s baseline_failed=7 baseline_controls=5 target=linux-x86_64 scope=portable-production-C-reader windows=unexecuted concurrency=unexecuted uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed"
+        elif [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
             grep -E '^test (clipboard_non_file|bytes_codec)::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'CM_CLIPBOARD_RESPONSE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-response-type-and-assembly windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

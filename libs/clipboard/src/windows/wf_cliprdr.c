@@ -425,7 +425,8 @@ static ULONG STDMETHODCALLTYPE CliprdrStream_Release(IStream *This)
 static HRESULT STDMETHODCALLTYPE CliprdrStream_Read(IStream *This, void *pv, ULONG cb,
 													ULONG *pcbRead)
 {
-	int ret;
+	UINT ret;
+	ULONG received;
 	CliprdrStream *instance = (CliprdrStream *)This;
 	wfClipboard *clipboard = NULL;
 
@@ -434,6 +435,11 @@ static HRESULT STDMETHODCALLTYPE CliprdrStream_Read(IStream *This, void *pv, ULO
 
 	clipboard = (wfClipboard *)instance->m_pData;
 	*pcbRead = 0;
+	if (!clipboard)
+		return E_INVALIDARG;
+
+	if (cb == 0)
+		return S_OK;
 
 	if (instance->m_lOffset.QuadPart >= instance->m_lSize.QuadPart)
 		return S_FALSE;
@@ -442,27 +448,30 @@ static HRESULT STDMETHODCALLTYPE CliprdrStream_Read(IStream *This, void *pv, ULO
 											FILECONTENTS_RANGE, instance->m_lOffset.HighPart,
 											instance->m_lOffset.LowPart, cb);
 
-	if (ret < 0)
+	if (ret != ERROR_SUCCESS)
+	{
+		wf_cliprdr_clear_file_response(clipboard);
 		return E_FAIL;
+	}
+
+	received = clipboard->req_fsize;
+	if (received > cb || received > instance->m_lSize.QuadPart - instance->m_lOffset.QuadPart ||
+		(received > 0 && !clipboard->req_fdata))
+	{
+		wf_cliprdr_clear_file_response(clipboard);
+		return E_FAIL;
+	}
 
 	if (clipboard->req_fdata)
 	{
-		CopyMemory(pv, clipboard->req_fdata, clipboard->req_fsize);
-		free(clipboard->req_fdata);
-		clipboard->req_fdata = NULL;
+		CopyMemory(pv, clipboard->req_fdata, received);
 	}
+	wf_cliprdr_clear_file_response(clipboard);
 
-	*pcbRead = clipboard->req_fsize;
-	// Check overflow, can not be a real case
-	if ((instance->m_lOffset.QuadPart + clipboard->req_fsize) < instance->m_lOffset.QuadPart) {
-		// It's better to crash to release the explorer.exe
-		// This is a critical error, because the explorer is waiting for the data
-		// and the m_lOffset is wrong(overflowed)
-		return S_FALSE;
-	}
-	instance->m_lOffset.QuadPart += clipboard->req_fsize;
+	*pcbRead = received;
+	instance->m_lOffset.QuadPart += received;
 
-	if (clipboard->req_fsize < cb)
+	if (received < cb)
 		return S_FALSE;
 
 	return S_OK;

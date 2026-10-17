@@ -118,6 +118,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=audio-mailbox
         ;;
+    1:--cliprdr-read-component-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'cliprdr component input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=cliprdr-read
+        ;;
     1:--cm-clipboard-response-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'CM clipboard response input/run overrides are forbidden' >&2; exit 2; }
@@ -751,7 +757,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         || "$RUST_TEST_PROFILE" = linux-resolution-lifetime || "$RUST_TEST_PROFILE" = audio-mailbox \
         || "$RUST_TEST_PROFILE" = audio-buffer || "$RUST_TEST_PROFILE" = fusermount-fd \
         || "$RUST_TEST_PROFILE" = fusermount-process || "$RUST_TEST_PROFILE" = file-block \
-        || "$RUST_TEST_PROFILE" = clipboard-response ]]; then
+        || "$RUST_TEST_PROFILE" = clipboard-response || "$RUST_TEST_PROFILE" = cliprdr-read ]]; then
         readonly VM_MEMORY=2048
     else
         readonly VM_MEMORY=16384
@@ -5880,6 +5886,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'focused whiteboard presentation state receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused whiteboard presentation state cloud-init completion marker'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
+    [ "$(/usr/bin/grep -Fc 'CLIPRDR_READ_ARTIFACT=pass ' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'cliprdr reader artifact comparison is absent or duplicated'
+    require_exact_fixed_receipt \
+        "CLIPRDR_READ_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=12 baseline_failed=7 baseline_controls=5 target=linux-x86_64 scope=portable-production-C-reader windows=unexecuted concurrency=unexecuted uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
+        'cliprdr reader component receipt'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'cliprdr component cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
     mapfile -t clipboard_response_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -7214,6 +7227,9 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     if [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
         printf 'LINUX_PASSWORD_ADMISSION_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-linux-password-coordinator-and-raw-transport installed=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
+        printf 'CLIPRDR_READ_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=12 baseline_failed=7 baseline_controls=5 scope=portable-production-C-reader windows=unexecuted concurrency=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=29 scope=production-response-type-and-assembly windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

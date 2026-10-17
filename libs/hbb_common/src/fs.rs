@@ -3201,7 +3201,7 @@ impl TransferJob {
             show_hidden,
             is_remote,
             enable_overwrite_detection,
-            FileEnumerationBudget::unbounded_for_local_use(),
+            FileEnumerationBudget::for_max_entries(DEFAULT_FILE_TRANSFER_MAX_FILES),
         )
     }
 

@@ -36,6 +36,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "peer-data":
             suites = ["peer_decode_test.dart"]
             names = sorted(result.PEER_DATA_TESTS)
+        elif profile == "file-navigation":
+            suites = ["file_navigation_sort_test.dart"]
+            names = sorted(result.FILE_NAVIGATION_TESTS)
         elif profile == "terminal-output":
             suites = sorted(result.TERMINAL_OUTPUT_TESTS)
             names = sorted(set().union(*result.TERMINAL_OUTPUT_TESTS.values()))
@@ -87,6 +90,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (1, 10))
+        self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (1, 25))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 26))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (9, 76))
         with tempfile.TemporaryDirectory() as root:
@@ -122,7 +126,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data"):
+        for profile in ("frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation"):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
@@ -146,7 +150,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_and_incomplete_are_rejected(self):
-        for profile in ("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data"):
+        for profile in ("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation"):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

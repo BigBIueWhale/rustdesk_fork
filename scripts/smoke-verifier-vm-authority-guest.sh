@@ -8688,8 +8688,11 @@ run_flutter_model_tests() {
                 [ ! -s /work/test.err ] || tail -n 120 /work/test.err >&2
                 /usr/bin/python3 -I -S /source/scripts/test-flutter-model-test-result.py
                 printf "FLUTTER_TEST_RESULT_PARSER=pass tests=3\n"
-                /usr/bin/python3 -I -S /authority/result.py \
-                    /work/test.json --profile "$FLUTTER_TEST_PROFILE"
+                if ! /usr/bin/python3 -I -S /authority/result.py \
+                        /work/test.json --profile "$FLUTTER_TEST_PROFILE"; then
+                    tail -c 4194304 /work/test.json >&2
+                    exit 1
+                fi
                 if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
                     if grep -Eq "mainLoadRecentPeersForAb|main_load_recent_peers_for_ab" \
                         lib/generated_bridge.dart \

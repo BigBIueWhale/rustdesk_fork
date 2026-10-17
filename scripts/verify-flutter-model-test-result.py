@@ -145,6 +145,12 @@ FILE_NAVIGATION_TESTS = {
     "pending listing uses the latest selected sort and direction",
     "retired listing cannot replace the current directory",
     "initial home listing retains the selected sort direction",
+    "local listing methods share capacity before native dispatch",
+    "remote listing owner also bounds local listing admission",
+    "cancelled local request retains capacity until native completion",
+    "timed out local request retains capacity through late native error",
+    "local error and malformed JSON release exact capacity slots",
+    "retired local session refuses dispatch and late native success",
 }
 PEER_DATA_TESTS = {
     "peer decode redacts malformed JSON exception content",

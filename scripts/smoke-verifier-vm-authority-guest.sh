@@ -8820,7 +8820,12 @@ run_flutter_model_tests() {
         local -a flutter_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
-            | awk '/^FLUTTER_FILE_NAVIGATION_STAGE=/ { print; fflush() }'; then
+            | while IFS= read -r progress_line; do
+                case "$progress_line" in
+                    FLUTTER_FILE_NAVIGATION_STAGE=*)
+                        printf '%s\n' "$progress_line" || exit 1 ;;
+                esac
+              done; then
             flutter_start_status=("${PIPESTATUS[@]}")
         else
             flutter_start_status=("${PIPESTATUS[@]}")

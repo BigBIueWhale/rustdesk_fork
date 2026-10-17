@@ -14585,6 +14585,32 @@ The exported-function error component is covered below. Caller/UI/peer, installe
 release evidence, filesystem I/O deadlines/cancellation and application-wide aggregate
 resource limits remain OPEN.
 
+**Local listing request admission — Dart owner-state A/B ACCEPTED; native drain/aggregate/UI integration OPEN.**
+`FileFetcher` includes local listing futures in its existing shared request limit (default 64),
+reserves before native dispatch, and refuses stale-session or excess requests without invoking
+the bridge. Both local listing methods use the existing typed request facade and logical
+two-second request timeout. Cancel/timeout completes the caller while the exact local owner
+and native completion remain counted; only actual completion or synchronous dispatch refusal
+releases that slot. Native errors retain their cause, and retired-session success is rejected.
+The correction is `c673b168`; navigation ordering/Home, transfer dispatch and Rust are unchanged.
+At baseline `c300169f`, all 25 production Dart cases executed: 20 passed and five new admission,
+cancel/timeout and stale-session regressions failed. The identical test file at `68da924d`
+passed **all 25 cases and the complete outer gate in 286 VM seconds**, including the existing
+19 controller/selection/transfer cases and native-error/JSON recovery control. These execute
+actual `FileFetcher` state with controlled native-completion futures under Flutter 3.24.5;
+they do not execute blocked Rust filesystem work or establish native I/O cancellation.
+The exact 25-name result inventory and its three parser controls pass. Retained timestamps
+measure 67 seconds extracting tools, seven resolving offline packages, 85 generating the
+bridge and nine running tests; source/Pub validation and retirement remain cold-run costs.
+The 300-second deadline, 18-GiB admission and existing isolation/storage limits are unchanged.
+`.harness-state/verifier-vm/local-file-capacity-baseline-c300169f.json` and
+`.harness-state/verifier-vm/local-file-capacity-accepted-68da924d.json` bind source/pins,
+results, complete controls/endpoints and joined cleanup. Setup/inventory failures and the
+timeout are separately retained and unaccepted. Ephemeral test-kernel bytes/digest were not
+retained; current full-app/installed/platform artifacts, native drain/cancellation, remote
+retirement semantics, global aggregate resources, rendered feedback, faster reusable build
+inputs and broader release evidence remain OPEN. Every explicit user park remains parked.
+
 **Local listing errors — Linux exports and actual Dart transport ACCEPTED; UI/platform integration OPEN.**
 `session_read_local_dir_sync` and `session_read_local_empty_dirs_recursive_sync` now return
 `Result<String>` and propagate enumeration errors instead of returning a successful empty

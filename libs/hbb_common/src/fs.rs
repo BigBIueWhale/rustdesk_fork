@@ -7571,7 +7571,7 @@ mod tests {
         drop(path_only);
 
         let result = if resume {
-            job.confirm_with_offset(0, 2).await
+            job.confirm_with_offset(0, 2).await.map(|_| ())
         } else {
             job.init_data_stream_for_cm().await.map(|_| ())
         };

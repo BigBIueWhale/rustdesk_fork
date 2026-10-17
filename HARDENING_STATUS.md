@@ -14581,8 +14581,33 @@ remained unchanged before, between and after execution.
 `.harness-state/verifier-vm/local-enumeration-accepted-ac0cff0e.json` binds the baseline,
 source/artifact/raw results, matching controls/endpoints, unchanged resource limits and joined
 RAM/VM cleanup. It references the historical admission refusals without crediting them as runs.
-Caller/UI/peer, installed/platform/release evidence, explicit FFI listing-error reporting,
-filesystem I/O deadlines/cancellation and application-wide aggregate resource limits remain OPEN.
+The exported-function error component is covered below. Caller/UI/peer, installed/platform/
+release evidence, filesystem I/O deadlines/cancellation and application-wide aggregate
+resource limits remain OPEN.
+
+**Local listing errors — Linux exported-function comparison ACCEPTED; Dart/UI/platform integration OPEN.**
+`session_read_local_dir_sync` and `session_read_local_empty_dirs_recursive_sync` now return
+`Result<String>` and propagate enumeration errors instead of returning a successful empty
+string that Dart subsequently tried to JSON-decode. Successful JSON serializers and Dart's
+`Future<String>` success shape are unchanged. This uses the existing
+[FRB v1 Result/error channel](https://cjycode.com/flutter_rust_bridge/v1/feature/lang_exceptions.html).
+Exact source `8a5efe57` passed `--local-file-listing-tests` in 475 VM seconds: fresh Rust/Dart
+bridge generation, the complete Linux Flutter-enabled root libtest build (173 seconds), and
+three actual exported-function tests (0.26 seconds). Two unchanged earlier function bodies
+from `419f04b0` execute with the same current filesystem/JSON helpers. Missing, non-directory,
+permission-denied and 10,001-entry inputs reproduce eight earlier empty successes versus
+the exact native errors now; removing the owned excess entry permits exact 10,000-entry
+recovery. Empty/hidden success shapes and payload bytes are preserved. This is a controlled
+earlier-function comparison in one artifact, not a historical whole-application A/B.
+Artifact SHA-256 `1a1d3440b0cce6ebf6f295b555b9925317ef05f8824cf3818dc2b92555ed2873`
+is stable before/after; fresh generated bridges are read-only and unchanged. The fixed
+20-GiB parent admission, zero-NIC/nonroot guest-only containers, complete frozen controls/
+endpoints, pin/artifact bindings and joined RAM/private-root retirement are retained in
+`.harness-state/verifier-vm/local-listing-errors-accepted-8a5efe57.json`.
+Actual Dart exception transport, rendered error feedback, controller/session continuation,
+installed/native other-platform behavior, I/O deadlines/cancellation, aggregate resources
+and broader release obligations remain OPEN. Directory-ordering/Home and all other explicit
+user parks remain parked.
 
 **Default receive-list admission — Linux library A/B ACCEPTED; caller/platform integration OPEN.**
 `TransferJob::set_files` and its `with_files` builder now use the shared 10,000-entry

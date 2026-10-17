@@ -80,6 +80,12 @@ integration/release checkpoint.
 
 `requirements.html` owns the normative contract; this ledger owns current state and open obligations.
 Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
+The duplicate transport-security claim map is removed. Its cipher, nonce, framing,
+admission, cancellation, limiter and threat-model obligations remain in the
+specification and the R-V3 audit scope. The deployment and PAKE guides link there.
+Writer abort requests cancellation; synchronous task/socket finality and blanket
+pre-key parser safety are not established by that call or by the deleted guide.
+Native finality, platform/parser acceptance and the independent audit remain OPEN.
 Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
 model. The Android controlled-host guide follows the distinct foreground-service, task and capture-grant
 lifetimes; the ADB consent-override recipe and per-launch/attended-only/privacy-superiority claims are

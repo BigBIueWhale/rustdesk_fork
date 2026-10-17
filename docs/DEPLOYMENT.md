@@ -10,7 +10,7 @@ package separately through the independent release-verification procedure below.
 Current installed-service, artifact and native acceptance is tracked in
 [`HARDENING_STATUS.md`](../HARDENING_STATUS.md#current-verdict).
 
-Related: [`TRANSPORT-SECURITY.md`](./TRANSPORT-SECURITY.md) (the wire protocol),
+Related: the [transport requirements](../requirements.html#tcp),
 the [normative threat model](../requirements.html#threat).
 
 ---

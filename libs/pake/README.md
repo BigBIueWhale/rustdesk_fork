@@ -53,9 +53,9 @@ in `src/lib.rs`; their KATs and negative tests live in `src/tests.rs`.
     `src/server.rs`), R-P14.
   * The AEAD transport that *consumes* `DirectionalKeys` — XSalsa20-Poly1305
     `secretbox`, the `SealCipher`/`OpenCipher` split, the dedicated writer task,
-    and per-frame sequencing (R-T2/T3/T5/T7, `tcp.rs`). Documented as the
-    companion audit-scope half in
-    [`docs/TRANSPORT-SECURITY.md`](../../docs/TRANSPORT-SECURITY.md).
+    and per-frame sequencing (R-T2/T3/T5/T7, `tcp.rs`). See the
+    [transport requirements](../../requirements.html#tcp) and
+    [encrypted-frame audit scope](../../docs/CRYPTO-AUDIT-SCOPE.md#key-derivation-and-encrypted-frame-lifecycle).
   * The online-guess limiter that `PakeError::Confirmation` feeds (R-S10).
 
 ---
@@ -217,9 +217,9 @@ returns and timeouts:
   ISK, two 32-byte outputs under distinct info labels (§1). 32-byte expansion
   never fails for the requested length.
 * **Secretbox keys:** the `DirectionalKeys` are consumed by the
-  XSalsa20-Poly1305 transport (outside this crate, but mandatory R-V3 scope;
-  see `docs/TRANSPORT-SECURITY.md`). This crate's contract is only that the two
-  keys are independent and role-oriented.
+  XSalsa20-Poly1305 transport (outside this crate, but mandatory
+  [R-V3 review scope](../../docs/CRYPTO-AUDIT-SCOPE.md#key-derivation-and-encrypted-frame-lifecycle)).
+  This crate's contract is only that the two keys are independent and role-oriented.
 
 **Vectors (`src/tests.rs`):**
 * **R-V2 — CFRG draft conformance:** the published ristretto255 vector

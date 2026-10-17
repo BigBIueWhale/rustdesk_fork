@@ -167,8 +167,8 @@ non-confirmation input can poison the owner's online-guess budget.
   `FramedStream::send_bytes`, `FramedStream::next`,
   `FramedStream::set_session_keys`, `WriterAdmission`,
   `WriterFrameReservation`, `writer_task`, and `FramedStream::drop`.
-- `docs/TRANSPORT-SECURITY.md`: the current claim map; verify every claim from
-  code rather than treating this project-authored document as evidence.
+- `requirements.html` Section 20: the transport contract against which the
+  implementation and behavioral evidence must be reviewed.
 
 Review HKDF-SHA512 extraction/expansion and labels, role-to-direction mapping,
 XSalsa20-Poly1305 key/nonce/tag parameters, distinct-key enforcement, monotonic

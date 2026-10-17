@@ -14599,9 +14599,19 @@ passed **all 25 cases and the complete outer gate in 286 VM seconds**, including
 19 controller/selection/transfer cases and native-error/JSON recovery control. These execute
 actual `FileFetcher` state with controlled native-completion futures under Flutter 3.24.5;
 they do not execute blocked Rust filesystem work or establish native I/O cancellation.
-The exact 25-name result inventory and its three parser controls pass. Retained timestamps
-measure 67 seconds extracting tools, seven resolving offline packages, 85 generating the
-bridge and nine running tests; source/Pub validation and retirement remain cold-run costs.
+The exact 25-name result inventory and its three parser controls pass. At `511a05bb`, the
+unchanged suite and outer gate passed in **278 VM seconds**. FRB still generates the complete
+current API; its automatic Freezed step is deferred to the pinned builder with the exact
+`lib/generated_bridge.freezed.dart` output filter. Application sources remain available.
+All four generated Rust/IO/Dart/Freezed files match the accepted full generation at `72056f19`
+byte for byte; both consumed Dart files retain their before/after hashes. Generation took
+**74 seconds versus 85** previously (60 FRB, 14 Freezed), while extraction took 71 seconds,
+offline Pub seven and the test command eleven. This single cold-run comparison saves eleven
+generation seconds and eight total VM seconds; source/Pub validation and retirement remain
+cold-run costs. Guest serial stage messages were observed before completion; host CLI stage
+forwarding is not established. Source/pins, canonical/consumer hashes, exact results,
+unchanged controls/endpoints and joined cleanup are retained in
+`.harness-state/verifier-vm/file-navigation-filtered-511a05bb.json`.
 The 300-second deadline, 18-GiB admission and existing isolation/storage limits are unchanged.
 `.harness-state/verifier-vm/local-file-capacity-baseline-c300169f.json` and
 `.harness-state/verifier-vm/local-file-capacity-accepted-68da924d.json` bind source/pins,

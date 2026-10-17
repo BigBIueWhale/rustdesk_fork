@@ -119,10 +119,10 @@ impl Interface for Session {
 }
 
 #[tokio::main(flavor = "current_thread")]
-pub async fn connect_test(id: &str, key: String, token: String) {
+pub async fn connect_test(id: &str) {
     let (sender, mut receiver) = viewer_command_channel();
     let handler = Session::new(&id, ConnType::DEFAULT_CONN, sender);
-    match crate::client::Client::start(id, &key, &token, ConnType::DEFAULT_CONN, handler).await {
+    match crate::client::Client::start(id, ConnType::DEFAULT_CONN, handler).await {
         Err(err) => {
             log::error!("Failed to connect {}: {}", &id, err);
         }
@@ -171,8 +171,6 @@ pub async fn start_one_port_forward(
     port: i32,
     remote_host: String,
     remote_port: i32,
-    key: String,
-    token: String,
 ) {
     let (sender, _receiver) = viewer_command_channel();
     let handler = Session::new(&id, ConnType::PORT_FORWARD, sender);
@@ -182,8 +180,6 @@ pub async fn start_one_port_forward(
         port,
         handler.clone(),
         receiver,
-        &key,
-        &token,
         remote_host,
         remote_port,
     )

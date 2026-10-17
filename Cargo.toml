@@ -14,7 +14,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 
 # R-X4: the `naming` bin generated the exe-name branding (rustdesk-host=... .exe)
 # that the inherited get_license_from_exe_name trust-anchor override parsed; it is
-# excised — the fork's trust anchor is the baked RS_PUB_KEY only (get_key, 59750e7).
+# excised. Network authentication uses the shared password through CPace.
 [[bin]]
 name = "service"
 path = "src/service.rs"

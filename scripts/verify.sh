@@ -850,12 +850,9 @@ cleanup_nonroot_ipc_fixture
 echo "== (3b-i) IPC service-socket peer-uid authorization policy (R-S11a/§17) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::ipc_auth::tests --color never
 
-# (3b-iv) R-A4/R-X4/R-S11b-3: the rendezvous trust anchor (get_key) must return the baked RS_PUB_KEY,
-# and the legacy "key" option must not persist at all. Upstream re-pointed the client via
-# Config::get_option("key") / the async IPC options blob / the Windows license; the fork pins the option
-# empty and reads NO override.
-echo "== (3b-iv) trust-anchor option is pinned empty and get_key is constant (R-A4/R-X4/R-S11b-3) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::get_key_uses_pinned_anchor_and_rejects_option_override --color never
+# (3b-iv) R-X4/R-S16: retired server-key values stay masked by the config funnel.
+echo "== (3b-iv) retired server-key option is pinned empty (R-X4/R-S16) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::retired_server_key_option_remains_pinned_empty --color never
 
 echo "== (3b-iv-a) custom-client app-name is a constrained system identifier (R-S11d-26) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::custom_client_app_name_identifier_contract --color never
@@ -15441,7 +15438,7 @@ echo "== pending excisions =="
 # completion audit):
 #  - R-X4 custom_server: REMOVED — the R-A6 hard gate above asserts mod custom_server /
 #    get_custom_server_from_string / get_license_from_exe_name / CustomServer / EXE_RENDEZVOUS_SERVER all
-#    absent; get_key() returns the baked RS_PUB_KEY unconditionally (override ignored, regression-tested).
+#    absent; the retired server-key option remains pinned empty.
 #    (The old TODO was a FALSE POSITIVE: its `mod custom_server` grep matched the removal-COMMENT this gate left.)
 #  - R-X8 terminal_helper/terminal_service: these modules remain and the terminal is now GRANTED to the
 #    authenticated owner (full access — the one mode, R-D8/R-X8/R-F1: enable-terminal=Y pinned, the

@@ -371,8 +371,6 @@ impl Client {
 
     async fn start_with_port_forward_target(
         peer: &str,
-        key: &str,
-        token: &str,
         conn_type: ConnType,
         port_forward_target: Option<&PortForwardTarget>,
         interface: impl Interface,
@@ -386,7 +384,7 @@ impl Client {
         }
         debug_assert!(peer == interface.get_id());
         interface.update_received(false);
-        let connection_attempt = Self::_start(peer, key, token, conn_type, interface.clone());
+        let connection_attempt = Self::_start(peer, interface.clone());
         #[cfg(windows)]
         let connection_result = if windows_viewer_cpu_usage_seed_required(conn_type) {
             let ((), connection_result) =
@@ -428,39 +426,27 @@ impl Client {
     /// Start a new non-tunnel connection.
     pub async fn start(
         peer: &str,
-        key: &str,
-        token: &str,
         conn_type: ConnType,
         interface: impl Interface,
     ) -> ResultType<(Stream, &'static str)> {
-        Self::start_with_port_forward_target(peer, key, token, conn_type, None, interface).await
+        Self::start_with_port_forward_target(peer, conn_type, None, interface).await
     }
 
     /// Start a port-forward or RDP connection with a connection-owned login target.
     pub async fn start_port_forward(
         peer: &str,
-        key: &str,
-        token: &str,
         conn_type: ConnType,
         target: PortForwardTarget,
         interface: impl Interface,
     ) -> ResultType<(Stream, &'static str)> {
-        Self::start_with_port_forward_target(peer, key, token, conn_type, Some(&target), interface)
-            .await
+        Self::start_with_port_forward_target(peer, conn_type, Some(&target), interface).await
     }
 
     /// Start a new connection.
-    async fn _start(
-        peer: &str,
-        key: &str,
-        token: &str,
-        conn_type: ConnType,
-        interface: impl Interface,
-    ) -> ResultType<(Stream, &'static str)> {
+    async fn _start(peer: &str, interface: impl Interface) -> ResultType<(Stream, &'static str)> {
         if config::is_incoming_only() {
             bail!("Incoming only mode");
         }
-        let _ = (key, token, conn_type);
         // Validate the direct-only target before doing the memory-hard credential work, but do not
         // acquire a socket yet. The responder starts its unauthenticated first-frame deadline when
         // accept(2) completes, so every local prerequisite for CPace step 1 must be ready first.

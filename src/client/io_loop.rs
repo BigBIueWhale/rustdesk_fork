@@ -1311,7 +1311,7 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
-    pub async fn io_loop(&mut self, key: &str, token: &str, round: u64) {
+    pub async fn io_loop(&mut self, round: u64) {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let mut clipboard_writes = self.handler.lc.read().unwrap().clipboard_write_owner();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1351,7 +1351,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 round,
                 &self.handler.close_requested,
                 &self.handler.close_notify,
-                Client::start(&peer_id, key, token, conn_type, self.handler.clone()),
+                Client::start(&peer_id, conn_type, self.handler.clone()),
             )
             .await;
 

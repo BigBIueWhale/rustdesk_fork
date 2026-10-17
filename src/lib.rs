@@ -47,6 +47,8 @@ pub mod flutter_ffi;
 use common::*;
 #[cfg(feature = "cli")]
 pub mod cli;
+#[cfg(any(feature = "cli", test))]
+pub mod cli_command;
 #[cfg(not(target_os = "ios"))]
 mod clipboard;
 #[cfg(not(any(target_os = "android", target_os = "ios", feature = "cli")))]

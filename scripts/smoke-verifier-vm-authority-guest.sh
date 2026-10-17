@@ -3690,7 +3690,8 @@ run_focused_rust_tests() {
             memory=5g
             memory_bytes=5368709120
             source_fingerprints=(
-                Cargo.lock Cargo.toml src/lib.rs src/client/io_loop.rs
+                Cargo.lock Cargo.toml src/lib.rs src/main.rs src/cli.rs src/cli_command.rs
+                src/common.rs src/port_forward.rs src/client/io_loop.rs
                 src/client/io_loop/file_resume_tests.rs src/client.rs src/ui_session_interface.rs
                 libs/hbb_common/src/fs.rs libs/hbb_common/src/tcp.rs
                 libs/hbb_common/protos/message.proto
@@ -3700,6 +3701,25 @@ run_focused_rust_tests() {
                 client::io_loop::file_resume_tests::upload_refuses_unrepresentable_resume_before_wire_confirmation
                 client::io_loop::file_resume_tests::download_refuses_large_partial_without_adopting_or_removing_it
                 client::io_loop::file_resume_tests::valid_resume_offsets_reach_the_wire_and_exact_file_tail
+                port_forward::tests::rdp_launch_only_passes_endpoint_and_prompt
+                port_forward::tests::cancellation_covers_connect_keying_login_and_relay
+                port_forward::tests::control_eof_and_close_are_terminal_and_rdp_launch_coalesces
+                port_forward::tests::mapping_shutdown_drains_every_owned_task
+                port_forward::tests::process_reaper_joins_one_off_owner_and_reports_result
+                port_forward::tests::cancellation_reaper_handoff_returns_before_owner_exit
+                port_forward::tests::mapping_admission_rejects_literal_33rd_and_recovers
+                port_forward::tests::local_relay_is_not_entered_before_authorization
+                port_forward::tests::connection_admission_enforces_literal_32_and_128_boundaries_and_recovers
+                port_forward::tests::sustained_ready_completion_reaping_keeps_join_set_bounded
+                ui_session_interface::port_forward_mapping_tests::configured_and_live_mapping_adds_share_one_capacity_boundary
+                ui_session_interface::port_forward_mapping_tests::duplicate_replacement_drains_old_mapping_before_returning
+                ui_session_interface::port_forward_mapping_tests::supervisor_cleanup_signals_all_mappings_before_draining
+                ui_session_interface::port_forward_mapping_tests::outer_owner_drop_closes_and_drains_independent_runtime_mappings
+                cli_command::tests::server_is_a_value_free_flag
+                cli_command::tests::connect_keeps_the_exact_direct_target
+                cli_command::tests::port_forward_keeps_the_exact_mapping
+                cli_command::tests::retired_server_key_arguments_are_rejected
+                common::tests::retired_server_key_option_remains_pinned_empty
             )
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             container_name=rustdesk-viewer-credential-tests
@@ -5069,10 +5089,13 @@ PY
             || fail 'local file-listing Dart artifact or outcomes differ'
         tests_passed=3
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
-        [ "${#result_lines[@]}" -eq 1 ] || fail 'viewer resume summary count differs'
-        [ "$(grep -Ec '^VIEWER_RESUME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 5 ] || fail 'viewer connection summary count differs'
+        [ "$(grep -Ec '^VIEWER_RESUME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=22 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_RESUME_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'viewer resume artifact receipt differs'
+        [ "$(grep -Fxc 'VIEWER_RESUME_CLI_CHECK=pass target=rustdesk features=linux-pkg-config,cli runtime=unexecuted' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'VIEWER_RESUME_CLI_CHECK=pass' "$output")" -eq 1 ] \
+            || fail 'viewer CLI binary check receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
         [ "${#result_lines[@]}" -eq 3 ] || fail 'viewer credential summary count differs'
         [ "$(grep -Ec '^VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=11 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -5510,9 +5533,9 @@ PY
             printf 'LOCAL_FILE_LISTING_VM=pass commit=%s tree=%s tests=3 target=linux-x86_64 scope=generated-dart-api-to-complete-rust-cdylib rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
-            grep -E '^test client::io_loop::file_resume_tests::.* \.\.\. ok$|^VIEWER_RESUME_(ARTIFACT|BUILD)=' "$output"
-            [ "$tests_passed" -eq 3 ] || fail 'viewer resume total differs'
-            printf 'VIEWER_RESUME_VM=pass commit=%s tree=%s tests=3 target=linux-x86_64 scope=production-viewer-postkey-resume-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^test (client::io_loop::file_resume_tests::.*|port_forward::tests::.*|ui_session_interface::port_forward_mapping_tests::.*|cli_command::tests::.*|common::tests::retired_server_key_option_remains_pinned_empty) \.\.\. ok$|^VIEWER_RESUME_(ARTIFACT|BUILD|CLI_CHECK)=' "$output"
+            [ "$tests_passed" -eq 22 ] || fail 'viewer connection total differs'
+            printf 'VIEWER_RESUME_VM=pass commit=%s tree=%s tests=22 target=linux-x86_64 scope=production-viewer-connection-callers-and-cli-parser rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             grep -E '^test (client::tests::r_(s11hj_viewer_|p14).*|flutter::viewer_credential_bridge_tests::.*) \.\.\. ok$|^VIEWER_CREDENTIAL_(ARTIFACT|BUILD)=' "$output"

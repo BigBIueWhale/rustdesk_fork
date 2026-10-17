@@ -2298,8 +2298,6 @@ pub(crate) async fn io_loop<T: InvokeUiSession>(
 ) {
     let (sender, mut receiver) = viewer_command_channel();
     *handler.sender.write().unwrap() = Some(sender.clone());
-    let token = LocalConfig::get_option("access_token");
-    let key = crate::get_key(false).await;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if handler.is_port_forward() {
         let one_off = !handler.is_rdp() && !handler.args.is_empty();
@@ -2314,14 +2312,13 @@ pub(crate) async fn io_loop<T: InvokeUiSession>(
             }
         }
 
-        let supervisor =
-            match PortForwardSupervisorOwner::start(handler.clone(), key.clone(), token.clone()) {
-                Ok(supervisor) => supervisor,
-                Err(err) => {
-                    handler.on_error(&err);
-                    return;
-                }
-            };
+        let supervisor = match PortForwardSupervisorOwner::start(handler.clone()) {
+            Ok(supervisor) => supervisor,
+            Err(err) => {
+                handler.on_error(&err);
+                return;
+            }
+        };
 
         if handler.is_rdp() {
             let port = handler
@@ -2424,7 +2421,7 @@ pub(crate) async fn io_loop<T: InvokeUiSession>(
         return;
     }
     let mut remote = Remote::new(handler, receiver, sender, video_refresh_receiver);
-    remote.io_loop(&key, &token, round).await;
+    remote.io_loop(round).await;
     let _ = remote.sync_jobs_status_to_local().await;
 }
 
@@ -2476,11 +2473,7 @@ struct PortForwardSupervisorOwner {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl PortForwardSupervisorOwner {
-    fn start<T: InvokeUiSession>(
-        handler: Session<T>,
-        key: String,
-        token: String,
-    ) -> Result<Self, String> {
+    fn start<T: InvokeUiSession>(handler: Session<T>) -> Result<Self, String> {
         ensure_port_forward_owner_reaper();
         let (commands, receiver) =
             mpsc::channel::<PortForwardSupervisorCommand>(MAX_OWNED_PORT_FORWARD_MAPPINGS);
@@ -2503,7 +2496,7 @@ impl PortForwardSupervisorOwner {
                 if started.send(Ok(())).is_err() {
                     return;
                 }
-                runtime.block_on(run_port_forward_supervisor(handler, receiver, key, token));
+                runtime.block_on(run_port_forward_supervisor(handler, receiver));
             })
             .map_err(|err| format!("Failed to start port-forward owner thread: {err}"))?;
 
@@ -2609,8 +2602,6 @@ fn ensure_mapping_capacity<T>(mappings: &HashMap<i32, T>, port: i32) -> Result<(
 async fn add_owned_port_forward<T: InvokeUiSession>(
     mappings: &mut HashMap<i32, OwnedPortForwardMapping>,
     handler: &Session<T>,
-    key: &str,
-    token: &str,
     mapping: PortForwardMappingSpec,
 ) -> Result<(), String> {
     let PortForwardMappingSpec {
@@ -2627,8 +2618,6 @@ async fn add_owned_port_forward<T: InvokeUiSession>(
     replace_owned_port_forward(mappings, port, |process_permit| {
         let (control, mapping_receiver) = port_forward_control();
         let mapping_handler = handler.clone();
-        let mapping_key = key.to_owned();
-        let mapping_token = token.to_owned();
         let task = tokio::spawn(async move {
             start_admitted_port_forward(
                 mapping_handler,
@@ -2636,8 +2625,6 @@ async fn add_owned_port_forward<T: InvokeUiSession>(
                 remote_host,
                 remote_port,
                 mapping_receiver,
-                &mapping_key,
-                &mapping_token,
                 process_permit,
             )
             .await;
@@ -2698,16 +2685,13 @@ async fn drain_owned_port_forwards(mappings: &mut HashMap<i32, OwnedPortForwardM
 async fn run_port_forward_supervisor<T: InvokeUiSession>(
     handler: Session<T>,
     mut commands: mpsc::Receiver<PortForwardSupervisorCommand>,
-    key: String,
-    token: String,
 ) {
     let mut mappings = HashMap::<i32, OwnedPortForwardMapping>::new();
     while let Some(command) = commands.recv().await {
         reap_finished_port_forwards(&mut mappings).await;
         match command {
             PortForwardSupervisorCommand::Add { mapping, completed } => {
-                let result =
-                    add_owned_port_forward(&mut mappings, &handler, &key, &token, mapping).await;
+                let result = add_owned_port_forward(&mut mappings, &handler, mapping).await;
                 if completed.send(result).is_err() {
                     log::debug!("port-forward add requester closed before completion");
                 }
@@ -2848,8 +2832,6 @@ async fn start_admitted_port_forward<T: InvokeUiSession>(
     remote_host: String,
     remote_port: i32,
     receiver: PortForwardControlReceiver,
-    key: &str,
-    token: &str,
     mapping_permit: PortForwardMappingPermit,
 ) {
     if let Err(err) = crate::port_forward::listen_admitted(
@@ -2857,8 +2839,6 @@ async fn start_admitted_port_forward<T: InvokeUiSession>(
         port,
         handler.clone(),
         receiver,
-        key,
-        token,
         remote_host,
         remote_port,
         &mapping_permit,

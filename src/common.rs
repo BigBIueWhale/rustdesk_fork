@@ -1008,18 +1008,6 @@ pub fn decode64<T: AsRef<[u8]>>(input: T) -> Result<Vec<u8>, base64::DecodeError
     base64::decode(input)
 }
 
-pub async fn get_key(_sync: bool) -> String {
-    // R-X4: the rendezvous trust anchor is the fork's baked constant,
-    // unconditionally. Every runtime override is IGNORED — the config option (all
-    // platforms, including iOS), the async IPC options blob, and the Windows
-    // license/exe-name (renamed-exe / RUSTDESK_APPNAME) spoof — so a malicious
-    // installer name or a shared "config string" can never re-point the client at
-    // attacker infrastructure under the attacker's key. RS_PUB_KEY remains only as
-    // this baked default; the override path is gone (the macOS/iOS source obeys the
-    // same rule, R-X4).
-    config::RS_PUB_KEY.to_owned()
-}
-
 #[allow(unused_mut)]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn check_process(arg: &str, mut same_uid: bool) -> bool {
@@ -1778,13 +1766,9 @@ mod tests {
         fs::remove_dir(&test_root).expect("parent-bound child test directory must be removable");
     }
 
-    // R-A4 / R-X4 / §18: the rendezvous trust anchor is the baked RS_PUB_KEY, unconditionally.
-    // Upstream's get_key read an override from Config::get_option("key"), the async IPC options blob,
-    // or the Windows license/renamed-exe. The fork has no stored override: the option is pinned empty
-    // at the config funnel, and both get_key paths return the constant.
-    #[tokio::test]
-    async fn get_key_uses_pinned_anchor_and_rejects_option_override() {
-        use hbb_common::config::{Config, RS_PUB_KEY};
+    #[test]
+    fn retired_server_key_option_remains_pinned_empty() {
+        use hbb_common::config::Config;
         Config::set_option(
             "key".to_owned(),
             "ATTACKER-REPOINTED-TRUST-ANCHOR=".to_owned(),
@@ -1798,17 +1782,6 @@ mod tests {
             Config::get_options().get("key").map(String::as_str),
             Some(""),
             "R-S16/R-S11b-3: whole-map option reads must expose the pinned empty trust-anchor value"
-        );
-        // both invocations (the upstream sync=true Config path and sync=false IPC path) yield the anchor
-        assert_eq!(
-            get_key(true).await,
-            RS_PUB_KEY,
-            "R-A4: the trust anchor must be the pinned RS_PUB_KEY, never an option override"
-        );
-        assert_eq!(
-            get_key(false).await,
-            RS_PUB_KEY,
-            "R-A4: the anchor is constant across the sync flag"
         );
     }
 

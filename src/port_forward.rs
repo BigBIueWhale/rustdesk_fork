@@ -384,15 +384,11 @@ pub(crate) async fn listen(
     port: i32,
     interface: impl Interface,
     control: PortForwardControlReceiver,
-    key: &str,
-    token: &str,
     remote_host: String,
     remote_port: i32,
 ) -> ResultType<()> {
     ensure_port_forward_owner_reaper();
     let mapping_permit = PortForwardMappingPermit::try_acquire().map_err(|err| anyhow!(err))?;
-    let key = key.to_owned();
-    let token = token.to_owned();
     let thread = std::thread::Builder::new()
         .name("rustdesk-port-forward-one-off".to_owned())
         .spawn(move || {
@@ -405,8 +401,6 @@ pub(crate) async fn listen(
                 port,
                 interface,
                 control,
-                &key,
-                &token,
                 remote_host,
                 remote_port,
                 &mapping_permit,
@@ -431,8 +425,6 @@ pub(crate) async fn listen_admitted(
     port: i32,
     interface: impl Interface,
     control: PortForwardControlReceiver,
-    key: &str,
-    token: &str,
     remote_host: String,
     remote_port: i32,
     _mapping_permit: &PortForwardMappingPermit,
@@ -498,8 +490,6 @@ pub(crate) async fn listen_admitted(
                 };
                 log::info!("new connection from {:?}", peer_addr);
                 let id = id.clone();
-                let key = key.to_owned();
-                let token = token.to_owned();
                 let target = target.clone();
                 let interface = interface.clone();
                 let task_cancellation = cancellation.clone();
@@ -507,8 +497,6 @@ pub(crate) async fn listen_admitted(
                     let _permits = permits;
                     let result = serve_connection(
                         id,
-                        key,
-                        token,
                         target,
                         is_rdp,
                         interface,
@@ -533,8 +521,6 @@ pub(crate) async fn listen_admitted(
 
 async fn serve_connection(
     id: String,
-    key: String,
-    token: String,
     target: PortForwardTarget,
     is_rdp: bool,
     interface: impl Interface,
@@ -547,8 +533,6 @@ async fn serve_connection(
         let result = connect_and_login(
             &id,
             setup_interface.clone(),
-            &key,
-            &token,
             target,
             is_rdp,
             &setup_cancellation,
@@ -571,8 +555,6 @@ async fn serve_connection(
 async fn connect_and_login(
     id: &str,
     interface: impl Interface,
-    key: &str,
-    token: &str,
     target: PortForwardTarget,
     is_rdp: bool,
     cancellation: &CancellationToken,
@@ -585,7 +567,7 @@ async fn connect_and_login(
     let Some((mut stream, _stream_type)) = cancellable_phase(
         cancellation,
         TunnelPhase::ConnectAndKey,
-        Client::start_port_forward(id, key, token, conn_type, target, interface.clone()),
+        Client::start_port_forward(id, conn_type, target, interface.clone()),
     )
     .await?
     else {

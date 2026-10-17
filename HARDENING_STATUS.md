@@ -12832,6 +12832,27 @@ and retired icon fonts are absent rather than replaced by a worker or migration 
 Existing `*_ab`/`*_group` files remain untouched inert bytes. Live peer TOML and direct-session
 display-name/avatar, CPace, password, and connection-token state remain separate.
 
+**Direct viewer connection inputs — Linux API integration ACCEPTED; platform acceptance OPEN.**
+`ecc166be` removes the ignored rendezvous-key/account-token arguments from the viewer
+connection factories, network loop, tunnel listener and mapping supervisor, including
+their reads and per-connection copies. The unused constant-key getter and its equality
+assertions are deleted. The real retired-key option masking regression remains;
+R-P5/R-X4's inert baked metadata has no connection consumer. CLI `-k`/`--key` is absent.
+The shared production command parser rejects all four tested separate/attached spellings
+while preserving direct targets, tunnel mappings and the value-free server flag.
+The zero-NIC transaction compiled the complete Linux Flutter library and passed 22 cases:
+four parser, ten tunnel, four mapping-owner, three real-CPace resume and one config-pin
+case. It also compiled the actual CLI binary callers with `linux-pkg-config,cli`;
+the CLI binary itself was not executed. Parent compilation took 144 seconds and native
+tests one second; the complete integration VM took 485 seconds. Source and executable
+hashes stayed stable and bounded RAM/VM cleanup joined. Endpoint records retain an
+unattributed final snapshot change rather than claim whole-host listener invariance.
+`.harness-state/verifier-vm/viewer-connection-inputs-ecc166be.json` binds the exact
+source/artifact, named outcomes, inputs, endpoint deltas and cleanup. This is removal
+of an already-discarded API path, not a new authentication-bypass or LPE closure.
+Full viewer/CLI peer behavior, installed-service, other-platform and release evidence
+remain OPEN. The separately parked credential-factory follow-up below stays parked.
+
 **Viewer remembered credentials and session correlation — Linux component A/B accepted.**
 `0295d420` initializes the remember choice from the stored CPace PRS. Peer metadata
 preserves a remembered PRS when no fresh value was staged, persists a fresh PRS only

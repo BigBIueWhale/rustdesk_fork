@@ -13106,10 +13106,9 @@ fi
 # R-T8 / R-T16 (§20): the single-writer + framing/processing-order contract is CODIFIED at the
 # FramedStream type (and at the Connection.stream owner) so a refactor cannot silently regress to
 # a second writer (wire-interleave / cipher desync) or to parsing a raw TCP segment. The invariant
-# already holds structurally — the write API is &mut self, the type owns a Box<dyn> socket and is
-# not Clone, and the stream is never split / Arc<Mutex>-wrapped — so this gate (a) keeps the
-# contract docs present and (b) forbids the one realistic second-writer regression: an Arc<Mutex>
-# write-wrapper or a `.split()` of the stream in CODE (doc-comment mentions, `///`, are excluded).
+# is structural: the write API is &mut self, the stream is not Clone, and the sole keying split
+# transfers its sink to one writer task. These supplementary assertions check the contract text,
+# sole split/writer-task shape and write-wrapper absence; native evidence remains separately required.
 r_t8_missing=
 grep -q 'Single-writer contract (R-T8' libs/hbb_common/src/tcp.rs        || r_t8_missing="$r_t8_missing tcp-writer-doc"
 grep -q 'Framing + processing-order contract (R-T16' libs/hbb_common/src/tcp.rs || r_t8_missing="$r_t8_missing tcp-framing-doc"

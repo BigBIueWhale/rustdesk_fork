@@ -50,6 +50,8 @@ typedef ComparePeerVersion = int Function(String version);
 typedef TranslateText = String Function(String text);
 typedef ReadRemoteDirectory = Future<void> Function(
     SessionID sessionId, String path, bool showHidden);
+typedef ReadLocalDirectory = Future<String> Function(
+    SessionID sessionId, String path, bool showHidden);
 typedef ReadRemoteDirectoryTree = Future<void> Function(SessionID sessionId,
     int actionId, String path, bool isRemote, bool showHidden);
 typedef SendFilesRequest = Future<void> Function(
@@ -87,11 +89,25 @@ class FileFetcherRequests {
     required this.readDirectory,
     required this.readEmptyDirectories,
     required this.readDirectoryTree,
+    this.readLocalDirectory = _readLocalDirectory,
+    this.readLocalEmptyDirectories = _readLocalEmptyDirectories,
   });
 
   final ReadRemoteDirectory readDirectory;
   final ReadRemoteDirectory readEmptyDirectories;
   final ReadRemoteDirectoryTree readDirectoryTree;
+  final ReadLocalDirectory readLocalDirectory;
+  final ReadLocalDirectory readLocalEmptyDirectories;
+
+  static Future<String> _readLocalDirectory(
+          SessionID sessionId, String path, bool showHidden) =>
+      bind.sessionReadLocalDirSync(
+          sessionId: sessionId, path: path, showHidden: showHidden);
+
+  static Future<String> _readLocalEmptyDirectories(
+          SessionID sessionId, String path, bool showHidden) =>
+      bind.sessionReadLocalEmptyDirsRecursiveSync(
+          sessionId: sessionId, path: path, includeHidden: showHidden);
 
   static final native = FileFetcherRequests(
     readDirectory: (sessionId, path, showHidden) => bind.sessionReadRemoteDir(
@@ -2265,10 +2281,8 @@ class FileFetcher {
       {SessionID? expectedSessionId}) async {
     final selectedSessionId = expectedSessionId ?? sessionId;
     if (isLocal) {
-      final res = await bind.sessionReadLocalEmptyDirsRecursiveSync(
-          sessionId: selectedSessionId,
-          path: path,
-          includeHidden: showHidden);
+      final res = await _requests.readLocalEmptyDirectories(
+          selectedSessionId, path, showHidden);
 
       final List<dynamic> fdJsons = jsonDecode(res);
 
@@ -2288,8 +2302,8 @@ class FileFetcher {
       {SessionID? expectedSessionId}) async {
     final selectedSessionId = expectedSessionId ?? sessionId;
     if (isLocal) {
-      final res = await bind.sessionReadLocalDirSync(
-          sessionId: selectedSessionId, path: path, showHidden: showHidden);
+      final res = await _requests.readLocalDirectory(
+          selectedSessionId, path, showHidden);
       return FileDirectory.fromJson(jsonDecode(res));
     }
     final pending = _reserve(_remoteTasks, path, selectedSessionId, false,

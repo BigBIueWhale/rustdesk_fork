@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_hbb/models/file_model.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uuid/uuid.dart';
 
@@ -14,6 +15,16 @@ String _listing(String path) => jsonEncode({
         {'entry_type': 4, 'name': 'beta.a', 'size': 10, 'modified_time': 300},
       ],
     });
+
+FileFetcherRequests _localRequests(
+        {ReadLocalDirectory? flat, ReadLocalDirectory? empty}) =>
+    FileFetcherRequests(
+      readDirectory: (_, __, ___) async {},
+      readEmptyDirectories: (_, __, ___) async {},
+      readDirectoryTree: (_, __, ___, ____, _____) async {},
+      readLocalDirectory: flat ?? (_, path, __) async => _listing(path),
+      readLocalEmptyDirectories: empty ?? (_, __, ___) async => '[]',
+    );
 
 class _ListingHarness {
   var session = const Uuid().v4obj();
@@ -333,5 +344,192 @@ void main() {
     expect(harness.sentPaths, isEmpty);
     expect(harness.controller.jobController.jobTable, isEmpty);
     expect(harness.controller.selectedItems.items, hasLength(1));
+  });
+
+  test('local listing methods share capacity before native dispatch', () async {
+    final session = const Uuid().v4obj();
+    final flat = Completer<String>();
+    final empty = Completer<String>();
+    var dispatches = 0;
+    final fetcher = FileFetcher(() => session,
+        maxPending: 2,
+        requests: _localRequests(flat: (actual, path, hidden) {
+          expect(actual, session);
+          expect(path, '/flat');
+          expect(hidden, isTrue);
+          dispatches++;
+          return flat.future;
+        }, empty: (actual, path, hidden) {
+          expect(actual, session);
+          expect(path, '/empty');
+          expect(hidden, isFalse);
+          dispatches++;
+          return empty.future;
+        }));
+    final first = fetcher.fetchDirectory('/flat', true, true);
+    final second = fetcher.readEmptyDirs('/empty', true, false);
+    try {
+      await expectLater(fetcher.fetchDirectory('/flat', true, true)
+              .timeout(const Duration(milliseconds: 500)),
+          throwsA(isA<StateError>()));
+      await expectLater(fetcher.readEmptyDirs('/empty', true, false)
+              .timeout(const Duration(milliseconds: 500)),
+          throwsA(isA<StateError>()));
+      await expectLater(fetcher.fetchDirectory('/remote', false, false),
+          throwsA(isA<StateError>()));
+      expect(dispatches, 2);
+    } finally {
+      flat.complete(_listing('/flat'));
+      empty.complete('[]');
+      expect((await first).path, '/flat');
+      expect(await second, isEmpty);
+      fetcher.cancelPending();
+    }
+  });
+
+  test('remote listing owner also bounds local listing admission', () async {
+    final session = const Uuid().v4obj();
+    var localDispatches = 0;
+    final fetcher = FileFetcher(() => session,
+        maxPending: 1,
+        requests: _localRequests(flat: (_, path, __) async {
+          localDispatches++;
+          return _listing(path);
+        }, empty: (_, __, ___) async {
+          localDispatches++;
+          return '[]';
+        }));
+    final remote = fetcher.fetchDirectory('/remote', false, false);
+    try {
+      await expectLater(fetcher.fetchDirectory('/local', true, false),
+          throwsA(isA<StateError>()));
+      await expectLater(fetcher.readEmptyDirs('/local', true, false),
+          throwsA(isA<StateError>()));
+      expect(localDispatches, 0);
+    } finally {
+      expect(fetcher.tryCompleteTask(session, _listing('/remote'), 'false'),
+          isTrue);
+      await remote;
+    }
+    expect((await fetcher.fetchDirectory('/local', true, false)).path, '/local');
+    expect(await fetcher.readEmptyDirs('/local', true, false), isEmpty);
+    expect(localDispatches, 2);
+  });
+
+  test('cancelled local request retains capacity until native completion',
+      () async {
+    var session = const Uuid().v4obj();
+    final native = Completer<String>();
+    var dispatches = 0;
+    final fetcher = FileFetcher(() => session,
+        maxPending: 1,
+        requests: _localRequests(flat: (_, path, __) {
+          dispatches++;
+          return dispatches == 1 ? native.future : Future.value(_listing(path));
+        }));
+    final result = fetcher.fetchDirectory('/old', true, false);
+    final cancelled = expectLater(
+        result.timeout(const Duration(milliseconds: 500)),
+        throwsA(isA<StateError>()));
+    try {
+      fetcher.cancelPending();
+      await cancelled;
+      session = const Uuid().v4obj();
+      fetcher.cancelPending();
+      await expectLater(fetcher.fetchDirectory('/new', true, false),
+          throwsA(isA<StateError>()));
+      await expectLater(fetcher.fetchDirectory('/remote', false, false),
+          throwsA(isA<StateError>()));
+      expect(dispatches, 1);
+    } finally {
+      native.complete(_listing('/old'));
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect((await fetcher.fetchDirectory('/new', true, false)).path, '/new');
+    expect(dispatches, 2);
+  });
+
+  test('timed out local request retains capacity through late native error',
+      () async {
+    final session = const Uuid().v4obj();
+    final native = Completer<String>();
+    var dispatches = 0;
+    final fetcher = FileFetcher(() => session,
+        maxPending: 1,
+        requestTimeout: const Duration(milliseconds: 20),
+        requests: _localRequests(empty: (_, __, ___) {
+          dispatches++;
+          return dispatches == 1 ? native.future : Future.value('[]');
+        }));
+    final result = fetcher.readEmptyDirs('/slow', true, false);
+    final observed = result.then<Object>((_) => 'unexpected success',
+        onError: (Object error) => error);
+    try {
+      expect(await observed.timeout(const Duration(milliseconds: 500)),
+          isA<TimeoutException>());
+      await expectLater(fetcher.readEmptyDirs('/retry', true, false),
+          throwsA(isA<StateError>()));
+      expect(dispatches, 1);
+    } finally {
+      native.completeError(const FfiException('RESULT_ERROR', 'late native error'));
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(await fetcher.readEmptyDirs('/retry', true, false), isEmpty);
+    expect(dispatches, 2);
+  });
+
+  test('local error and malformed JSON release exact capacity slots', () async {
+    final session = const Uuid().v4obj();
+    final immediate = StateError('synchronous dispatch failure');
+    const native = FfiException('RESULT_ERROR', 'Permission denied (os error 13)');
+    var mode = 0;
+    Future<String> request(_, String path, __) {
+      if (mode == 0) throw immediate;
+      if (mode == 1) return Future.error(native);
+      if (mode == 2) return Future.value('invalid JSON');
+      return Future.value(_listing(path));
+    }
+
+    final fetcher = FileFetcher(() => session,
+        maxPending: 1, requests: _localRequests(flat: request));
+    await expectLater(fetcher.fetchDirectory('/failure', true, false),
+        throwsA(same(immediate)));
+    mode = 1;
+    await expectLater(fetcher.fetchDirectory('/failure', true, false),
+        throwsA(same(native)));
+    mode = 2;
+    await expectLater(fetcher.fetchDirectory('/failure', true, false),
+        throwsA(isA<FormatException>()));
+    mode = 3;
+    expect((await fetcher.fetchDirectory('/valid', true, false)).path, '/valid');
+    expect(await fetcher.readEmptyDirs('/valid', true, false), isEmpty);
+  });
+
+  test('retired local session refuses dispatch and late native success', () async {
+    var session = const Uuid().v4obj();
+    final retiredSession = session;
+    final native = Completer<String>();
+    var dispatches = 0;
+    final fetcher = FileFetcher(() => session,
+        maxPending: 1,
+        requests: _localRequests(flat: (_, path, __) {
+          dispatches++;
+          return dispatches == 1 ? native.future : Future.value(_listing(path));
+        }));
+    final result = fetcher.fetchDirectory('/old', true, false);
+    final retired = expectLater(result, throwsA(isA<StateError>()));
+    session = const Uuid().v4obj();
+    try {
+      await expectLater(
+          fetcher.readEmptyDirs('/stale', true, false,
+              expectedSessionId: retiredSession),
+          throwsA(isA<StateError>()));
+      expect(dispatches, 1);
+    } finally {
+      native.complete(_listing('/old'));
+      await retired;
+    }
+    expect((await fetcher.fetchDirectory('/new', true, false)).path, '/new');
+    expect(dispatches, 2);
   });
 }

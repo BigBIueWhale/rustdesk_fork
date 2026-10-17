@@ -8489,6 +8489,7 @@ run_flutter_model_tests() {
                 [ "$project_lock" = "$(sha256sum pubspec.lock | awk "{print \$1}")" ]
                 format_status=0
                 : >/work/format.diff
+                : >/work/format.err
                 format_paths=(lib/models/latest_frame_queue.dart test/latest_frame_queue_test.dart)
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
                     format_paths=(lib/common/formatter/direct_address.dart test/address_validator_test.dart)

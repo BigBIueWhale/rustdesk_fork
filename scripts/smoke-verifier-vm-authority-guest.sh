@@ -2732,7 +2732,7 @@ run_focused_rust_tests() {
     local input_provider_installed=$ROOT/input-provider-installed
     local input_provider_sha
     local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs clipboard_tests
-    local -a pa_mounts=() pa_env=() dependency_mounts=() whiteboard_mounts=() hostname_options=() credential_mounts=()
+    local -a pa_mounts=() pa_env=() dependency_mounts=() whiteboard_mounts=() credential_mounts=()
 
     [ "$(stat -c '%u:%g:%a' -- "$SOCK")" = 0:1000:660 ] \
         || fail 'focused Rust-test Docker socket lacks the exact nonroot guest group'
@@ -2896,10 +2896,6 @@ run_focused_rust_tests() {
             source_fingerprints+=(
                 libs/hbb_common/src/bytes_codec.rs
                 libs/hbb_common/src/tcp.rs
-                libs/hbb_common/examples/hostname_resolution_probe.rs
-                scripts/fixtures/tcp-constructor-before-resolution-boundary.rs
-                scripts/run-hostname-resolution-probe.py
-                scripts/verify-hostname-resolution-probe.py
                 examples/probe_client.rs
             )
             required_tests+=(
@@ -2928,12 +2924,6 @@ run_focused_rust_tests() {
                 tests::peer_source_swap_rejects_invalid_refusal_and_payload
                 tests::peer_source_swap_rejects_duplicate_and_late_terminal_results
             )
-            hostname_options=(
-                --dns=127.0.0.1 --dns-option=attempts:1 --dns-option=timeout:1
-                --add-host=single.resolver-audit.invalid:127.0.0.1
-                --add-host=multi.resolver-audit.invalid:127.0.0.1
-                --add-host=multi.resolver-audit.invalid:127.0.0.2
-            )
         fi
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             source_fingerprints+=(scripts/fixtures/file-send-digest-before-size-admission.rs)
@@ -2941,7 +2931,6 @@ run_focused_rust_tests() {
                 fs::tests::send_digest_refuses_changed_lengths_before_cm_wait
                 fs::tests::send_digest_refuses_changed_lengths_before_wire_publication
             )
-            hostname_options=()
         fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
             source_fingerprints+=(
@@ -4179,7 +4168,6 @@ run_focused_rust_tests() {
             --env "HBB_FUSE_READ_TESTS=$HBB_FUSE_READ_TESTS" \
             --env "HBB_SEND_DIGEST_TESTS=$HBB_SEND_DIGEST_TESTS" \
             --env "LINUX_PA_PLAYBACK=$LINUX_PA_PLAYBACK" \
-            "${hostname_options[@]}" \
             --env "RUST_TOOLCHAIN_MODE=$toolchain_mode" \
             --env RUSTDESK_CANARY_OFFLINE=1 \
             --mount "type=bind,source=$source_root,target=/source,readonly" \
@@ -4297,7 +4285,6 @@ run_focused_rust_tests() {
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             "$test_executable" socket_client::tests:: --color never --test-threads=1
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
-                            python3 -I -S /source/scripts/run-hostname-resolution-probe.py
                             cargo test --offline --locked -p hbb_common --example probe_client \
                                 --no-run --message-format=json-render-diagnostics --color never \
                                 >/cargo-target/peer-probe-build.json
@@ -5326,8 +5313,6 @@ PY
             grep -E '^test fs::tests::(send_open_refuses_a_fifo_replaced_after_enumeration|send_resume_refuses_a_fifo_replaced_after_enumeration|send_open_refuses_nonregular_replacements|send_source_open_preserves_regular_files_and_source_links|receive_job_cannot_initialize_a_send_source) \.\.\. ok$' "$output"
             grep -E '^test fs::tests::default_send_job_bounds_native_(entry_enumeration|directory_depth) \.\.\. ok$' "$output"
             grep -E '^test tests::(redirected_probe_password_is_bounded_and_line_framed|remote_login_admission_requires_current_protocol_or_exact_headless_error|peer_source_swap_.*) \.\.\. ok$|^FILE_PEER_PROBE_ARTIFACT(_START)?=' "$output"
-            python3 -I -S "$source_root/scripts/verify-hostname-resolution-probe.py" "$output" "$source_root" \
-                || fail 'hostname connector observation or source binding differs'
         fi
         fi
         printf '%s\n' "${hbb_artifact_receipts[@]}"

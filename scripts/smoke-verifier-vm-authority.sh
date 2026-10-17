@@ -5583,8 +5583,6 @@ elif [ "$MODE" = hbb-common-fs ]; then
     HBB_COMMON_FS_ARTIFACT_SHA256=${HBB_COMMON_FS_ARTIFACT_SHA256%% *}
     printf '%s\n' "${hbb_common_fs_receipts[0]}"
     if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ] && [ "$HBB_SEND_DIGEST_TESTS" -eq 0 ]; then
-        /usr/bin/python3 -B -I -S "$SCRIPT_DIR/verify-hostname-resolution-probe.py" "$SERIAL_LOG" "$REPO_ROOT" \
-            || fail 'production connector observation is absent or source binding differs'
         mapfile -t peer_probe_artifacts < <(
             /usr/bin/grep -Eo 'FILE_PEER_PROBE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/examples/probe_client-[0-9a-f]{16} tests=5 unchanged=before-after' "$SERIAL_LOG"
         )

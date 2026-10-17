@@ -12928,9 +12928,10 @@ or already-consumed responses confer no authority.
 
 No-nonce timeout retains the exact bounded tombstone. A late normal/empty/recursive reply or
 recursive error is consumed without completing later work, but cannot release the slot or same-key
-refusal while its original dispatch is still live. The existing dispatch continuation removes that
-owner only after both response consumption and dispatch settlement. Exact close/replacement clears
-ownership before settling waiters. The native producer's local/remote-side source contract is retained;
+refusal while its original dispatch is still live. For a live response key, the dispatch continuation
+removes its owner only after both response consumption and dispatch settlement. Exact close/replacement retires
+response lookup before settling waiters; unfinished dispatch owners remain counted until settlement.
+The native producer's local/remote-side source contract is retained;
 this model result does not execute that producer.
 
 Four added held-dispatch regressions in `flutter/test/mobile_file_session_lifecycle_test.dart`
@@ -14636,9 +14637,39 @@ results, complete controls/endpoints and joined cleanup. Setup/inventory failure
 timeout are separately retained and unaccepted. Ephemeral test-kernel bytes/digest were not
 retained; current full-app/installed/platform artifacts, native peer/I/O drain and cancellation,
 global aggregate resources, rendered feedback, faster reusable build inputs and broader
-release evidence remain OPEN. `JobResultListener.clear` still clears its capacity map while
-mutating-job dispatch futures can remain pending; that separate lifetime correction and
-behavioral proof remain OPEN. Every explicit user park remains parked.
+release evidence remain OPEN. Mutating-job dispatch ownership is covered below.
+Every explicit user park remains parked.
+
+**Mutating file-job dispatch admission — Dart listener/caller A/B ACCEPTED; native mutation/drain/platform integration OPEN.**
+`JobResultListener` retains exact pending objects and dispatch-completion futures independently
+of its keyed response map. `clear()` retires response routing and caller results while unfinished
+dispatches keep their capacity slots. Completion/refusal releases exact retired owners; settled
+response waiters can be cleared without retaining unnecessary capacity. Both synchronous and
+asynchronous failure paths check exact owner identity before removing a response entry, so an old
+synchronous throw cannot orphan a reentrant same-key replacement. Inline completion cannot
+reinsert a retired slot. The default 64-request limit and five-second deadline are unchanged.
+Mutating success still requires successful dispatch and its exact session/action/file response;
+an early peer success cannot mask a later dispatch failure. Controller admission checks and
+immutable result publication remain unchanged. The correction is `deeb7130`; Rust/wire APIs
+and the preceding `FileFetcher` correction are unchanged.
+At unchanged-product baseline `d754a231`, all 53 cases ran: 48 passed and five new regressions
+failed. Four capacity cases admitted work instead of refusing, and a synchronous predecessor
+failure removed its reentrant replacement. All 47 existing cases and the new settled-dispatch
+control passed. The late-error case failed its capacity check before its later native-error
+injection; that later step is not separate old-behavior proof.
+The identical two test files at `deeb7130` passed **all 53 cases and three parser controls in
+271 VM seconds**: 31 listing cases and 22 command/controller cases. New cases cover repeated
+clear, early success/error, timeout, actual late dispatch success/error, exact replacement,
+settled response waiters, synchronous refusal, inline completion and reentrant clear.
+Existing rename/create/delete, correlation, result finality and session controls also passed.
+Exact per-suite names, source/pins, unchanged generated API/consumer hashes, controls/endpoints,
+fixed 300-second/18-GiB limits and joined RAM/VM cleanup are retained in
+`.harness-state/verifier-vm/file-job-dispatch-baseline-d754a231.json` and
+`.harness-state/verifier-vm/file-job-dispatch-accepted-deeb7130.json`.
+These execute production Dart listener/controller methods with controlled bridge futures and
+responses under Flutter 3.24.5, not native filesystem mutations. Test-kernel bytes/digests were
+not retained. Native peer/I/O cancellation and drain, aggregate resources, full-app/rendered UI,
+installed/platform/release artifacts, independent reproduction and LPE acceptance remain OPEN.
 
 **Local listing errors — Linux exports and actual Dart transport ACCEPTED; UI/platform integration OPEN.**
 `session_read_local_dir_sync` and `session_read_local_empty_dirs_recursive_sync` now return

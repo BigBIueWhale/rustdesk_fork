@@ -2270,24 +2270,27 @@ Linux queries and setters use one retained-child/pidfd runner with a five-second
 deadline and one-MiB stdout ceiling; errors/unwind retain termination and reap before
 return. The setter accepts only successful terminal status. Missing pidfd acquisition
 fails the operation and retains natural wait without numeric-PID signaling fallback.
-`--linux-resolution-lifetime-tests` passed all 22 named component tests at source
-`a4dee86e` in 85 VM seconds; execution took 5.26 seconds. The two added cases run
-the actual generic worker and pidfd command runner around a held real child: a
-current-thread Tokio timer progresses, the typed result arrives after release,
-and cancelled wait/controller retirement keeps the owner until exact child reap.
-Existing command, cancellation, panic, owner and query regressions remain required.
-Artifact SHA-256 `6b872f273a4a95a5aa2efc8a355902eedce316124e60c394ecae9a182e23220b`
-stays equal before/after. Ten source-input receipts and root-locked dependencies
-match; all 216 complete source/control captures match before/live/after. The zero-NIC
-VM uses guest-only networkless, nonroot, capability-free Docker. Four native listener
-deltas and independent endpoint comparisons are empty; exact joins and RAM/private
-root retirement pass. The measured profile admits 15 GiB: 2 GiB guest, 6 GiB RAM
-scratch, 6 GiB headroom and 1 GiB overhead, with a 4 GiB hard file ceiling. Scratch
-peaks at 3,557,425,152 bytes and overlay at 3,397,324,800. Nine profile-limit controls
-and twelve invalid-profile/guest refusals pass in the short control VM.
-`.harness-state/verifier-vm/resolution-query-native-a4dee86e-v2.json` binds source,
-artifact, results, controls, limits and cleanup. The earlier twenty-case receipt
-`resolution-lifetime-accepted-2fcdbf6e.json` remains retained.
+`--linux-resolution-lifetime-tests` passed all 24 named component tests at source
+`1de2dd47` in 88 VM seconds; execution took 5.38 seconds. The actual generic worker
+and pidfd command runner retain a held child and owner through result delivery,
+cancelled waits and controller retirement while a current-thread Tokio timer runs.
+Two process-isolated cases install and read back actual `SIGCHLD=SIG_IGN` and
+`SA_NOCLDWAIT` dispositions. The unchanged production runner refuses with its exact
+wait-authority error before the requested child executes. Restored disposition
+permits a fresh real child and exact reap; positive controls run before each refusal.
+The exact re-exec test name and one-case result are required, so empty selection cannot pass.
+Existing command, timeout, output-cap, cancellation, panic, owner and query cases remain.
+Artifact SHA-256 `6a7ef3e9b14caf5516c70b6d147a15b3a8e8800bcab478259add9b66fc3d1375`
+is stable before/after. Ten input receipts and root-locked dependencies match;
+615-file source/control captures and complete endpoint observations are unchanged.
+The zero-NIC VM uses guest-only networkless, nonroot, capability-free Docker;
+exact joins and RAM/private-root retirement pass. The unchanged 15 GiB admission
+covers 2 GiB guest, 6 GiB RAM scratch, 6 GiB headroom and 1 GiB overhead, with a
+4 GiB hard file ceiling. Scratch peaks at 3,431,944,192 bytes and overlay at
+3,270,578,176. `.harness-state/verifier-vm/resolution-wait-authority-1de2dd47.json`
+binds native outcomes, source/artifact, storage and cleanup. Earlier component
+receipts `resolution-query-native-a4dee86e-v2.json` and
+`resolution-lifetime-accepted-2fcdbf6e.json` remain retained.
 The complete Linux parent library test build now compiles the changed login helper
 and its actual generated-protobuf result type. Source `ee89906e` passed
 `--linux-resolution-parent-tests` in 292 VM seconds: the locked

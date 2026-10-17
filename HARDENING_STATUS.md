@@ -93,6 +93,18 @@ outer-loop decryption description, retired cipher narrative and claims that
 coalescing itself fails authentication are removed. The shared gate's comment
 now agrees with its unchanged one-split checks. This specification correction
 does not supply new native or release acceptance.
+
+R-X3/R-X4 now state the direct-only configuration and password-only authentication
+contract. The inherited local server-list/no-op rewrite permission and instruction
+to bake and pin a rendezvous trust anchor are removed. All three remote mutation routes,
+CLI/import/URL/FFI/IPC paths, Windows license sources and Apple override exclusions
+remain covered. R-A4, R-A6, acceptance and Appendix C #6 agree that an inert baked
+constant confers no channel authority; constant equality is not a startup identity
+check. Product and verifier source are unchanged. Current native, installed,
+artifact, independent-review and whole-document cleanup obligations remain OPEN.
+`.harness-state/verifier-vm/direct-only-authority-document-role-3a0306a4.json`
+retains the exact replacements, obligation mapping and source comparisons.
+
 Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
 model. The Android controlled-host guide follows the distinct foreground-service, task and capture-grant
 lifetimes; the ADB consent-override recipe and per-launch/attended-only/privacy-superiority claims are
@@ -189,6 +201,7 @@ GitHub's platform reporting is distinct. No native/release acceptance follows.
 | Verification clauses | `.harness-state/verifier-vm/verification-clause-classification-a5946201.json` |
 | R-A6 audit evidence and sole authentication authority | `.harness-state/verifier-vm/audit-contract-document-role-313c3d27.json` |
 | R-S17 retired host-key design | `.harness-state/verifier-vm/host-identity-document-role-1ba44a05.json` |
+| R-X3/R-X4 direct-only configuration authority | `.harness-state/verifier-vm/direct-only-authority-document-role-3a0306a4.json` |
 
 R-A6 excludes CM operator-accept authority under R-S2/R-S18 and distinguishes source checks,
 artifact inspection and native acceptance. Its direct-startup check preserves credential-unavailable

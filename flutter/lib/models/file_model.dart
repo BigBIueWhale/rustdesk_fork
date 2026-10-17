@@ -2070,7 +2070,8 @@ class _PendingJobResult {
 }
 
 class FileFetcher {
-  final Map<_PendingFileRequest<String>, Future<void>?> _localTasks = {};
+  // Response lookup keys can retire while native dispatch is still running.
+  final Map<_PendingFileRequest<Object?>, Future<void>?> _pendingTasks = {};
   final Map<String, _PendingFileRequest<FileDirectory>> _remoteTasks = {};
   final Map<String, _PendingFileRequest<List<FileDirectory>>>
       _remoteEmptyDirsTasks = {};
@@ -2095,34 +2096,17 @@ class FileFetcher {
     }
   }
 
-  int get _pendingCount =>
-      _localTasks.length +
-      _remoteTasks.length +
-      _remoteEmptyDirsTasks.length +
-      _readRecursiveTasks.length;
+  int get _pendingCount => _pendingTasks.length;
 
   void cancelPending() {
-    final directoryTasks = _remoteTasks.values.toList(growable: false);
-    final emptyDirectoryTasks =
-        _remoteEmptyDirsTasks.values.toList(growable: false);
-    final recursiveTasks =
-        _readRecursiveTasks.values.toList(growable: false);
-    final localTasks = _localTasks.keys.toList(growable: false);
+    final pendingTasks = _pendingTasks.keys.toList(growable: false);
     _remoteTasks.clear();
     _remoteEmptyDirsTasks.clear();
     _readRecursiveTasks.clear();
     final error = StateError('Superseded file-transfer session');
-    for (final task in directoryTasks) {
+    for (final task in pendingTasks) {
       task.completeError(error);
-    }
-    for (final task in emptyDirectoryTasks) {
-      task.completeError(error);
-    }
-    for (final task in recursiveTasks) {
-      task.completeError(error);
-    }
-    for (final task in localTasks) {
-      task.completeError(error);
+      if (task.dispatchSettled) _pendingTasks.remove(task);
     }
   }
 
@@ -2135,27 +2119,30 @@ class FileFetcher {
       throw StateError('File request capacity exhausted');
     }
     final pending = _PendingFileRequest<String>(expectedSessionId, true);
-    _localTasks[pending] = null;
+    _pendingTasks[pending] = null;
     pending.startTimeout(requestTimeout, () {
       pending.completeError(TimeoutException(
           'Local directory request did not complete', requestTimeout));
     });
     try {
       // Logical cancellation retains the exact native completion and its slot.
-      _localTasks[pending] = request(expectedSessionId, path, showHidden)
+      final completion = request(expectedSessionId, path, showHidden)
           .then<void>((value) {
-        _localTasks.remove(pending);
+        _pendingTasks.remove(pending);
         if (expectedSessionId != sessionId) {
           pending.completeError(StateError('Superseded file-transfer session'));
         } else {
           pending.complete(value);
         }
       }, onError: (Object error, StackTrace stackTrace) {
-        _localTasks.remove(pending);
+        _pendingTasks.remove(pending);
         pending.completeError(error, stackTrace);
       });
+      if (_pendingTasks.containsKey(pending)) {
+        _pendingTasks[pending] = completion;
+      }
     } catch (error, stackTrace) {
-      _localTasks.remove(pending);
+      _pendingTasks.remove(pending);
       pending.completeError(error, stackTrace);
     }
     return pending.future;
@@ -2167,6 +2154,9 @@ class FileFetcher {
       SessionID expectedSessionId,
       bool isLocal,
       String operation) {
+    if (expectedSessionId != sessionId) {
+      throw StateError('Superseded file-transfer session');
+    }
     if (tasks.containsKey(key)) {
       throw StateError('$operation is already pending');
     }
@@ -2175,6 +2165,7 @@ class FileFetcher {
     }
     final pending = _PendingFileRequest<T>(expectedSessionId, isLocal);
     tasks[key] = pending;
+    _pendingTasks[pending] = null;
     pending.startTimeout(requestTimeout, () {
       if (!identical(tasks[key], pending)) return;
       // The wire response has no per-request nonce. Keep this exact owner as a
@@ -2194,6 +2185,7 @@ class FileFetcher {
     try {
       dispatchResult = dispatch();
     } catch (error, stackTrace) {
+      _pendingTasks.remove(pending);
       if (identical(tasks[key], pending)) {
         tasks.remove(key);
       }
@@ -2201,17 +2193,22 @@ class FileFetcher {
       return pending.future;
     }
 
-    unawaited(dispatchResult.then<void>((_) {
+    final completion = dispatchResult.then<void>((_) {
       pending.markDispatchSettled();
-      if (pending.responseReceived && identical(tasks[key], pending)) {
-        tasks.remove(key);
+      if (pending.responseReceived || !identical(tasks[key], pending)) {
+        _pendingTasks.remove(pending);
+        if (identical(tasks[key], pending)) tasks.remove(key);
       }
     }, onError: (Object error, StackTrace stackTrace) {
+      _pendingTasks.remove(pending);
       if (identical(tasks[key], pending)) {
         tasks.remove(key);
         pending.completeError(error, stackTrace);
       }
-    }));
+    });
+    if (_pendingTasks.containsKey(pending)) {
+      _pendingTasks[pending] = completion;
+    }
     return pending.future;
   }
 
@@ -2235,6 +2232,7 @@ class FileFetcher {
     pending.complete(value);
     if (pending.dispatchSettled) {
       tasks.remove(key);
+      _pendingTasks.remove(pending);
     }
     return true;
   }
@@ -2246,6 +2244,7 @@ class FileFetcher {
     if (!pending.markLateResponseReceived()) return;
     if (pending.dispatchSettled && identical(tasks[key], pending)) {
       tasks.remove(key);
+      _pendingTasks.remove(pending);
     }
   }
 
@@ -2313,6 +2312,7 @@ class FileFetcher {
     pending.completeResponseError(StateError(error));
     if (pending.dispatchSettled) {
       _readRecursiveTasks.remove(id);
+      _pendingTasks.remove(pending);
     }
     return true;
   }

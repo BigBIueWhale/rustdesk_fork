@@ -14312,152 +14312,73 @@ STOP-SHIP obligations.
 
 ### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication
 
-**State:** Source implementation plus the exact clean Dart model regression and
-fresh bridge generation pass at `2403bef449d67778cc89a580c34840d2cd029cc3` and exact-current Linux native
-full-peer execution at `3e5d9d0ec2263888957f16bc69dd6445ccd1ce63`. Exact-current Rust regression
-execution, Windows/macOS native execution, installed-platform behavior, sustained performance and resource
-evidence, current artifacts, independent reproduction, and external review remain pending.
+**State: source owner/slot model implemented; named Dart and Linux native evidence retained;
+current-platform and release acceptance OPEN.** R-S11iv and R-S11ex own the normative
+lifetime contract. This entry records the implementation and evidence scope.
 
-**Boundary and current implementation.** This is the Windows, Linux, and macOS
-outgoing-viewer texture lifecycle from Dart display demand through asynchronous
-plugin creation, exact Rust publication, matching unpublication, and release.
-`LatestDesktopTextureSlot` requests retirement synchronously on false demand or
-disposal, retains one retirement future, and creates a successor only after exact
-predecessor finality. Native publication is result-bearing and names the exact
-session, UI owner, selected display, nonzero pointer, and operation. Registration
-accepts only a vacant slot or the same pointer; unregistration removes one exact
-matching pointer. Dart exposes the Flutter texture ID only after native success and
-attempts one matching unpublication before plugin release. Android and iOS use the
-separate bounded software-RGBA path.
+`LatestDesktopTextureSlot` owns one candidate and one retirement future. False demand
+or disposal requests retirement synchronously; replacement waits for successful exact
+predecessor finality. Failed unpublication retains native storage, while failed release
+keeps the predecessor terminal and blocks replacement. Errors remain visible.
+`DesktopTextureLifecycle`, `desktop_render_texture.dart` and
+`src/flutter.rs::session_register_pixelbuffer_texture` bind publication to the exact
+session, independent UI owner, selected display and nonzero pointer. Native success
+precedes publishing the Flutter texture ID; matching unpublication precedes release.
+A live different pointer, stale owner or inexact removal refuses without mutation.
+Android/iOS use their separately specified software-RGBA lifecycle.
 
-Fresh connections do not create a desktop texture during `FFI.start`, when their native display set is
-necessarily empty. Rust commits the bounded initial display owner before publishing `peer_info`; the
-desktop view is guarded by the corresponding committed `pi.isSet` state and only then supplies texture
-demand. Existing-window routes may bootstrap a texture before cached-state replay only after their
-synchronous exact display-owner transaction succeeds. A refused publication remains terminal for that
-unchanged demand; the correction does not weaken owner checks or introduce retries.
+Fresh peers commit native initial-display ownership before `peer_info` lets the
+`pi.isSet` view request a texture. Existing-window bootstrap first commits its exact
+display owner synchronously. Publication refusal is terminal for unchanged demand;
+there is no blind retry. Linux secondary windows retain their `FlViewRenderer`
+through GTK destruction and release it on the GTK idle queue after the exact
+`FlEngine` finalizes, keeping compositor finalization after raster callbacks retire.
 
-**Evidence.** `flutter/test/desktop_texture_lifecycle_test.dart` covers in-flight
-retirement, false/true demand, predecessor finality, and single retirement. Rust
-regression `r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact` covers
-selected-display, collision, wrong-pointer, exact-removal, and retired-owner cases.
-`scripts/dart-verify.sh` and `scripts/verify.sh` retain those executable tests;
-the independent workspace baseline supplies only supplementary source checks. The
-named clean transaction generated the bridges and executed the Dart suite under
-Flutter 3.24.5; it did not execute the Rust regression or a native plugin. The later
-`run.e47T6SGHQP` transaction built the exact release bundle, authenticated a real viewer, and exercised
-successful production Linux plugin publication through changing observed X11 pixels and focus loss with
-joined cleanup. That is Linux native runtime evidence, not installed-package, Windows/macOS, sustained-soak,
-or release-artifact evidence.
+| Named evidence | Established scope and limits |
+| --- | --- |
+| `2403bef449d67778cc89a580c34840d2cd029cc3` | Clean Flutter 3.24.5 bridge generation and Dart lifecycle suite passed. This is state-machine evidence, not native plugin or Rust-regression execution. |
+| `3e5d9d0ec2263888957f16bc69dd6445ccd1ce63`, tree `5b0264a6532078e804fc7507a3f4702c8bfe991a`; `run.Qoe0Boy2u8` | One Flutter 3.47.5 build passed six uninstrumented Linux X11 peer lifecycles in 1,267 VM seconds: real password prompts, actual capture/VP9/decode/texture/X11 pixels, 2/6/12-second focus-loss intervals on unchanged connections, three server-generation reconnects per cycle, declared thread/FD/RSS bounds, and joined teardown without a core. The zero-NIC, guest-only networkless transaction passed its outer audit and retired scratch. This addresses the reproduced compositor-teardown race at that source and environment. |
+| App `a3755044`; harness `7f6649f0` | The later retained, source-bound app with its independently selected patched engine passed six lifecycles without rebuilding, including eighteen focus cycles, reconnects and same-accessible dialog resizes. Its full serial, artifact bindings, sampled bounds, joined cleanup and evidence limits are recorded in the Linux engine/app entry above. It does not renew current-master acceptance. |
 
-Candidate Flutter 3.47.5 runs identified and corrected a separate Linux secondary-engine regression. The
-remote-desktop window is created by `desktop_multi_window` with its own `FlDartProject`; selecting the legacy
-external-pixel-buffer renderer only on the primary project left that actual window on Impeller and reduced
-texture consumption to roughly one copy per 1.1 seconds. Commit `61842d6c` applies one checked pre-engine
-project policy to primary and secondary projects. Exact no-NIC run `run.38gNPF0izl` then had no Impeller
-banner, presented initial current pixels, and copied every traced submission through its failure boundary.
+Two historical distinctions remain load-bearing. The repeating-palette observer's
+first-sighting ages produced false Linux freshness failures: `run.PR6gFPcq8E`
+observed source and viewer matching while the oracle called current pixels stale.
+Those failures cannot establish product latency or Android/Windows causation; the
+publication-bound full-counter observer is the later authority. Decoder refresh
+resets remain epoch hygiene, without proving the reported symptom's cause.
 
-Follow-up exact run `run.DuaU2EktAy` at `f243f46ef533e303d0416c6186edc7214df09da0` added a native GTK draw
-observation. It built the exact 78-file candidate bundle, authenticated the real password prompt, presented
-initial pixels in 253 ms with 291 ms maximum age, passed a two-second unfocused interval with eight distinct
-states and 261 ms maximum age, and recovered focus without replacing the authenticated TCP connection. During
-the next interval, every copied frame was followed by a mapped, visible, drawable `FlViewRenderer` draw. The
-failure was therefore not a lost Flutter/GTK redraw. Its decoded pixels showed `current low nibble + previous
-high nibble` after the 255-to-0 source wrap. Commit `8eeed293` changed the verifier source to compose off-screen
-and publish each complete state with one X request, eliminating a plausible torn-source explanation. Exact no-NIC
-run `run.j1fl3OE6Zz` then reproduced the defect: initial pixels arrived in 168 ms with 297 ms maximum age, the
-two-second background cycle delivered nine distinct current states, and the next cycle again exceeded the
-freshness bound at 1,023 ms while submissions, copies, and mapped GTK draws continued. The atomic-source result
-disproves that verifier explanation.
+Separately, uninstrumented `run.OTmfcqESsz` reproduced exit 134 on cycle five.
+Its exact core resolved compositor finalization while another thread held that
+compositor's mutex inside Mesa presentation. Timing-altering interposers were not
+acceptance evidence, and the earlier window-close correction alone did not close
+the race. The engine-before-compositor barrier and named six-cycle pass above
+address that reproduced Linux lifetime defect. Intermediate build/diagnostic
+narration remains in Git history at `23e79bc5`.
 
-Commit `5d6cd9f8` made the product refresh boundary purge queued predecessor frames, enqueue one coalesced decoder
-reset, and await a leading successor keyframe without killing the persistent process or reconnecting the
-authenticated transport. Exact no-NIC run `run.hOuCXVG0jc` proved the intended order: the real viewer reset display
-zero's decoder at 20:32:46.225027 and the controlled server created the replacement VP9 encoder at
-20:32:46.300703. It did not change the then-unrecognized verifier failure. Initial pixels arrived in 85 ms with 300 ms maximum age,
-the two-second background cycle and same-connection focus recovery passed, and the six-second cycle still failed at
-a 1,017 ms verifier-reported pixel gap while the reset had already completed. That result cannot establish
-retained decoder state as a cause or non-cause, as the direct source/observer evidence below supersedes its verdict.
-The reset remains required refresh-epoch hygiene; it is not a symptom fix and is
-not evidence that the reported Android persistent-process or Windows focus/display-only delay is fixed. The next
-diagnostic must locate the first divergence across real server capture, pixel conversion, VP9 output, client frame
-admission, and decoded output instead of inferring that boundary from renderer callbacks.
+`flutter/test/desktop_texture_lifecycle_test.dart` retains retirement, failure and
+replacement coverage. Rust test
+`r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact` covers selected-display,
+live-pointer collision, wrong-pointer refusal and exact single-use removal; separate
+owner-replacement tests cover stale UI authority. `scripts/dart-verify.sh` and
+`scripts/verify.sh` select the respective families. The later viewer-resume run
+compiled the Linux Flutter-enabled root libtest but did not select these Rust cases;
+current execution of this family remains OPEN.
 
-Exact no-NIC run `run.73WWeSoMPn` at `bc4405bc` built and authenticated the current peer. Initial pixels arrived
-in 166 ms; the two-second unfocused cycle and same-TCP focus recovery passed. The six-second cycle still failed
-at a 1,024 ms actual-pixel freshness gap. Environment-gated traces showed changing server capture and I420 output,
-the actual encoded VP9 bytes shadow-decoding to changing pixels, matching viewer submissions, copied textures, and
-mapped GTK draws through the failure boundary. This excludes a blanket stopped capture, encoder, transport,
-decoder, or texture-copy explanation for that run, but it does not prove the final X11 pixels were current. The
-captured right-half sample was often near-white, a color absent from the controlled source palette; source-window
-occlusion or observer classification now needs direct evidence. The next verifier-only diagnostic records source
-publication and exact observer source/viewer states at each sample before assigning product causation. The failed
-runtime verdict and all Android/Windows, cross-version, sustained, installed, and release obligations remain open.
+Document/source classification is retained in
+`.harness-state/verifier-vm/desktop-texture-contract-23e79bc5.json`;
+this documentation correction supplies no new product execution.
 
-Correction from exact no-NIC run `run.PR6gFPcq8E`: the reported 1,025 ms gap is a **verifier false positive**.
-At monotonic 914,628 ms the controlled fixture published frame 74 (low nibble 10, high nibble 4), but the
-source-screen and viewer pixel readers both reported state 250 (low 10, high 15). The server's right-half capture
-was near-white, not palette color 4. At 914,735 ms the source and viewer both still reported state 250, yet the
-observer classified it stale with `age_ms=3960` because it stores the marker's first-ever sighting. Occlusion of
-the fixture's right half reduced the 256-state sequence to 16 repeating low-nibble states; four seconds later,
-current pixels were falsely aged as old. The viewer continued following the **visible** source at the failed
-sample. Therefore the previous Linux 1-second failures in this fixture cannot be cited as product presentation
-latency, nor do they prove or disprove decoder-reset causation for the user's deployed Android/Windows complaint.
-The verifier must keep the controlled source fully visible, reject occlusion, and rerun the exact focus/reconnect
-transaction before any product-owned failure or pass claim. The source fixture now raises its window on each
-publication and checks both published colors against root pixels; that correction is test-only. The original
-Android/Windows delay, complete connection correctness, performance, and release evidence remain open STOP-SHIP
-obligations.
-
-The corrected source fixture then exposed a separate Linux secondary-window teardown race. Presentation, all
-2/6/12-second unfocused intervals, same-TCP recovery, three server replacements, and resource bounds could pass,
-but an uninstrumented viewer intermittently aborted with exit 134 after pixel-buffer release and before manager
-finality: `g_mutex_clear() called on uninitialised or locked mutex`. A temporary mutex interposer and even a
-signal-only preload changed the timing and masked the failure, so both were rejected as acceptance evidence.
-Commit `5f4c4bd4` corrected main/secondary close ordering and manager-lock ownership, and one exact six-cycle run
-passed, but later exact uninstrumented execution disproved that this alone closed the race.
-
-Commit `e2b01e29` added a bounded failure-only kernel-core channel to the no-NIC harness. Exact run
-`run.OTmfcqESsz` passed four complete cycles and reproduced the abort on cycle five, retaining the 534,884,352-byte
-core, exact runner, and exact bundle libraries. GDB with the pinned Debian userspace resolved the UI-thread stack
-as `g_mutex_clear` called by `FlCompositorOpenGL::dispose`, reached from `FlViewRenderer::finalize`. The compositor's
-`frame_mutex` contained the locked state. LWP 276's live stack held that exact compositor and mutex while blocked
-inside Mesa's synchronous `glBlitFramebuffer`, called from `FlCompositorOpenGL::present_layers`. This proves that
-GTK child destruction finalized the renderer/compositor while the secondary Flutter engine still had an in-flight
-raster presentation callback. The adjacent invalid implicit-view-removal warning was not the aborting object or
-the cause.
-
-**Exact-current Linux source and isolated native closure; broader evidence remains open.** Commit `3e5d9d0e`
-retains the secondary `FlViewRenderer` across GTK window destruction and releases that final reference on the GTK
-idle queue only after the corresponding `FlEngine` is finalized. Renderer disposal can still release the engine,
-engine shutdown can synchronously retire raster callbacks, and compositor finalization then occurs after engine
-finality. This is an ownership barrier, not a sleep, ignored error, mutex suppression, or permanent leak.
-
-Exact no-NIC run `run.Qoe0Boy2u8` built pushed commit
-`3e5d9d0ec2263888957f16bc69dd6445ccd1ce63` (tree
-`5b0264a6532078e804fc7507a3f4702c8bfe991a`) once with Flutter 3.47.5 and passed all six uninstrumented
-server/viewer lifecycles from those bytes. Every cycle authenticated through the real password prompt, observed
-actual capture-to-VP9-to-decode-to-Flutter-texture-to-X11 pixels across 2/6/12-second focus-loss intervals,
-recovered on the same TCP connection, completed three server-generation reconnects, stayed within the declared
-thread/FD/RSS bounds, and joined viewer, server, Xvfb, and containers without a core. The outer receipt passed after
-1,267 seconds with `-nic none`, guest-only networkless Docker, read-only Landlocked inputs, no host-listener
-addition or pre-existing-process drift, and joined QEMU/virtiofsd cleanup; the successful private root retired
-automatically. This closes the reproduced Linux X11 compositor-teardown race for that exact source and environment.
-It does **not** establish the cause or correction of the older Android persistent-process hang or Windows
-focus/display delay, nor Windows, Android, Apple, installed Linux, cross-version, sustained-soak, signed-artifact,
-cold-reproduction, independent-reproduction, external-review, or release closure; all remain open as listed above.
-
-**Open evidence.** Run the exact current generated bridge and native Windows and
-macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,
-deselection, disposal, and pointer-replacement stress. Measure capture-through-
-compositor latency, queues, CPU, memory, and cleanup under sustained lifecycle
-soak. Physical Android lifecycle behavior remains open under its separate path.
-Trace the real capture-to-decode transaction through the failing focus cycle, then rerun all focus and reconnect
-cycles after the first proven product-owned divergence is corrected; do not substitute texture callbacks, redraw
-callbacks, source inspection, or relaxed pixel freshness for actual presented-pixel evidence.
-Cross-version behavior, current signed artifacts, clean cold R-B2/R-B10 equality,
-independent reproduction, causation, external review, and proof that the complete
-connection flow is correct and performant remain open STOP-SHIP obligations.
+**OPEN / STOP-SHIP:** exact-current generated bridges and operational artifacts;
+native Windows/macOS and installed Linux focus/minimize, display-switch,
+window-transfer, deselection, disposal, pointer replacement and cleanup-fault
+scenarios; the full FlView restart/dispose/subtree/Wayland matrix; physical
+Android lifecycle and the separate Android/iOS presentation path; cross-version
+operation; sustained capture-through-compositor/actual-presentation latency,
+freshness, queues, CPU, memory, threads, handles and exact cleanup under repeated
+replacement/reconnect load; cold R-B2/R-B10 equality, independent reproduction
+and external review. The original Android persistent-process hang and Windows
+display-only focus delay remain unexplained and open. Source checks, callbacks
+and these named Linux runs do not prove those broader claims.
 
 ### R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision
 

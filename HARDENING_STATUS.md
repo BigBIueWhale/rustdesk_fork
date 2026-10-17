@@ -14784,6 +14784,25 @@ It references the retained admission refusal and interrupted retry; neither is a
 Application/caller/UI/peer integration, other platforms, installed/release acceptance, separate
 local listing/removal enumeration and whole-application aggregate resource bounds remain OPEN.
 
+**Default local enumeration — source corrected; five baseline failures reproduced; corrected native execution OPEN.**
+`read_dir`, `get_recursive_files` and `get_empty_dirs_recursive` now use the standard
+10,000-entry/10,000-directory, depth-64 and 16-MiB estimated serialized-size budget before
+returning a list. Source `63410c67` removes the unlimited-budget constructor and both private
+unlimited recursive wrappers. Local Flutter listing and pre-removal enumeration use these APIs;
+explicit-budget callers retain their behavior. At `19ab1bfe`, all five new real-filesystem
+regressions failed because the defaults admitted entry 10,001, including an excluded hidden
+entry, or depth 65. Exact 10,000-entry/depth-64 controls passed before those failures.
+The bounded failure tail retains 125 filesystem and 20 other passes; two earlier group summaries
+are absent. `.harness-state/verifier-vm/local-enumeration-baseline-19ab1bfe.json` retains the
+artifact-start digest, raw results, controls, limits and joined cleanup; no after digest was
+exported on failure. The complete test module is unchanged for the correction.
+Corrected preflight refused at 19,448 MiB against the unchanged 19,456-MiB floor; a later
+180-second wait expired at 17,249 MiB. No corrected compiler/test ran.
+`.harness-state/verifier-vm/local-enumeration-pending-63410c67.json` binds the source,
+baseline, refusals and ledger count. Corrected Linux library execution, caller/UI/peer and
+installed/platform/release evidence remain OPEN, as do explicit FFI listing-error reporting,
+filesystem I/O deadlines/cancellation and application-wide aggregate resource limits.
+
 **Send-source acquisition — Linux library and named authenticated peer ACCEPTED; installed/platform acceptance OPEN.**
 Source `e9dfe4af` uses one private `open_send_file` for initial acquisition and first-resume
 opens. One off-runtime operation opens read-only and verifies regular-file metadata on the

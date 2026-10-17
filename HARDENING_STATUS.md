@@ -9441,189 +9441,45 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the Android bootstrap refresh prerequisite, not the real Gradle/Rust/signing/APK producer, release, device,
   independent-reproduction, or external-review obligations. Equivalent current Debian-builder and Windows-
   helper bootstrap refresh/certification remains open.
-- **R-S11da/R-S11e-119 — authenticated Android builder image distribution authority —
-  SOURCE, DIRECT-OCI DISTRIBUTION, PROVENANCE SELF-TEST, CURRENT REAL ARCHIVE/RUNTIME,
-  PIN-BOUND PROMOTION, COMPACT SOURCE, ISOLATED EXECUTABLE-FIXTURE, AND ONLINE-CLOSURE EVIDENCE
-  RENEWED 2026-09-16; CLEAN EXACT-COMMIT R-B2/R-B10 RELEASE, DEVICE/NATIVE, OTHER
-  IMAGE-DISTRIBUTION, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.** Platform:
-  the unprivileged Linux acquisition/build host, its local Docker/BuildKit engine, and every
-  offline Android release consumer. Endpoint/action: `scripts/online-fetch.sh` maintenance
-  acquisition, direct certification export/canonicalization, exact-pin promotion, plus ordinary `load_builder_images` and
-  `require_pinned_builder_image android-builder`. Boundary: a network/root package-installing
-  historical image build and its incomplete source metadata ↔ the exact independently archived
-  builder executable authority trusted by release builds.
+- **R-S11da/R-S11e-119 — Android builder certification/distribution implemented;
+  historical acquisition-VM certification and pin-bound promotion retained;
+  independent certification reproduction, product/device and release acceptance OPEN.**
+  R-S11da and Appendix C #254 define the contract; `scripts/pins.env` holds the complete
+  reviewed bootstrap/final archive, image, manifest, config, recipe/package and OCI-layout pins.
+  `scripts/online-fetch.sh` owns separate bootstrap acquisition, local-OCI networkless
+  certification, bounded direct-export normalization and exact-pin no-clobber promotion.
+  Ordinary loading admits only the certified final archive and requires semantic validation
+  plus the confined runtime fingerprint. Bootstrap/candidate identities, VCS hints, mutable
+  tags and Docker-store capture cannot authorize an ordinary release consumer.
 
-  Before this slice, `online/build-images/android-builder.docker.tar.gz` was a
-  467,527,003-byte archive at SHA-256
-  `8103ee08edb4fd40d5d7d86f825f374692fa3d58f549a47ce05a64beecf2e304`.
-  Its root image/index ID was
-  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`,
-  runtime manifest
-  `sha256:8eebca9c54a246acfa16bec3ac9768cf7e1cb0e8687ab17c0438b573bd821259`,
-  and config
-  `sha256:7e3a21f7335f4ab15eec150c07df242424ef626718a110f5b504174fd3217103`.
-  Its embedded builder Dockerfile SHA-256
-  `a1c2bc0e3475eefc9b16810035013d023b93a2e4db575eaa2cab9f99826bcfed`
-  and live/stored package-manifest SHA-256
-  `89c22fc379536a5279456a7a1e7f841af90034d7ef47a9f8a508516d4d1e1ee4`
-  are exact and internally coherent. Its default mode-min BuildKit statement nevertheless
-  supplied local-worktree VCS revision `ef8b…`, while the Dockerfile at that committed revision
-  hashes to `7639…`, not the embedded `a1c2…` recipe. Docker's primary SLSA-definition
-  documentation explicitly says local-context `vcs` values are client-supplied, unverified
-  metadata hints. The mismatch therefore made the attestation insufficient source/build
-  authority; it is not evidence that the exact archive or package set changed, that Docker
-  escaped, that host root was acquired, that a listener or public port was exposed, that host
-  RustDesk/service/configuration/firewall/network state changed, that exploitation occurred,
-  or that the host was compromised.
+  **Current retained inputs.** The bootstrap is 468,001,119 bytes, SHA-256
+  `d67c950403691bb6db099e1fb19e8113a31a24366d8279b5b83a741c90fabdbc`;
+  the certified final is 474,623,832 bytes, SHA-256
+  `918c3b696270bbb9a5ff70ea8cabd19f5a5d353503af3268ab2951a0ec66cd06`.
+  Stable read-only no-follow leaf reads found both current-user-owned, single-link mode-0400
+  archives with those exact pinned lengths and digests. This checks bytes and metadata;
+  it does not rerun the semantic validator or execute either image. Recipe/package/layout
+  identities come from the reviewed pin set, rather than the superseded bootstrap narrative.
 
-  The historical object is now named and accepted only as
-  `android-builder-bootstrap.docker.tar.gz`. Its archive bytes, length, index/config/manifest
-  IDs, embedded recipe/package contract, and deterministic materialized OCI-layout SHA-256
-  `5c7d43a27ac02e28ae22d6d37d5a566e09a8a8c22937c33609a2ce1a20cfbf75`
-  are all separately pinned. The exact-bootstrap role requires current-user ownership, one
-  link, mode 0400, exact size, and the modern content-addressed OCI archive form; it cannot use
-  a legacy Docker tar layout. `materialize-oci-layout` stably no-follow opens and twice hashes
-  that archive, reruns its complete semantic verdict, bounds 4,096 members, 16-MiB metadata,
-  and 8-GiB expanded content, admits only the exact OCI root files/directories and hash-named
-  blobs, and creates every output through descriptor-relative no-follow `O_EXCL`. Every blob
-  must match its name. Files are synchronized and sealed 0400, blob directories 0500, the
-  namespace is synchronized, and a fresh inventory/metadata/blob pass derives the independently
-  pinned complete-layout digest. The digest is reproved immediately before and after BuildKit
-  executes.
+  **Historical evidence.** Certification at `bc3bfe9cc6ceb4dd928cd89906ae542bf0f62928`
+  (`run.61vb0nCRcV`, 99 seconds) and exact-pin promotion at
+  `b5d39e1dafd0fe534fac02f4cff78750a4a0453b` (`run.phE39wA0oN`, 38 seconds)
+  retain their source-bound success receipts under
+  `.harness-state/verifier-vm/online-fetch-receipts/`. They bind source, transaction request,
+  output digests, guest-only Docker/BuildKit, no host forwarding, unchanged listeners and
+  joined cleanup. The preceding bootstrap refresh/promotion is recorded above. The executable
+  provenance/materializer/canonicalizer fixtures and Android-specific source gate remain;
+  source and fixture results are distinct from real archive/load/runtime acceptance.
+  Detailed intermediate captures, obsolete identities, mutation counts and failed attempts
+  remain in Git history, including `21148d86`, and the deep-audit journal.
 
-  `scripts/Dockerfile.android-builder-certify` is the sole 51-line certification recipe, exact
-  SHA-256
-  `b665c4007b9a24cc7987e42db64e062c824ef737d03462d5df593c5e572c8bcb`.
-  It names only `FROM android-builder-bootstrap`, sets `USER 1000:1000`, and has one
-  `RUN --network=none`. That operation verifies live UID/GID, the embedded original recipe,
-  both live and stored package-manifest identities, the exact original contract, and every
-  required tool. It installs, downloads, copies, and repairs nothing. Certification fixes a
-  private empty Docker configuration/client endpoint, clears the environment, sets
-  `BUILDX_GIT_INFO=false`, supplies the bootstrap only as
-  `oci-layout://<private-layout>@<exact-index-id>`, and invokes BuildKit with no network, pull,
-  cache, secret, SSH agent, privileged entitlement, registry context, load, tag, or push. Linux/amd64,
-  `SOURCE_DATE_EPOCH=1700000000`, timestamp rewriting, no unpack, and mode-max provenance are
-  explicit.
-
-  Certification now writes only
-  `type=oci,name=rd-android-builder-certified:authenticated-v1,dest=<private-file>,tar=true`
-  with OCI media types, gzip-compressed layers, and timestamp rewriting. The fixed name creates
-  the exact exporter annotations and attested subject; it is never installed as a tag or used as
-  image-selection authority. The raw outer tar must be current-user-owned, one link, mode 0600,
-  and beneath a current-user mode-0700 private parent. Its scanner rejects more than 4,096
-  members or 8 GiB, noncanonical inventory/order/header metadata, links/specials/PAX, blob-name
-  disagreement, nonzero termination data, and source mutation. The outer index must contain
-  exactly one descriptor with the exact name/ref/epoch annotations. Candidate normalization derives
-  the candidate index, runtime manifest, and runtime config from the completely validated direct export
-  rather than requiring not-yet-reviewed final pins. It rejects an extra root referrer, compatibility
-  manifest, unreferenced object, or missing object, strips exporter-only outer annotations, and synthesizes
-  one `RepoTags: null` compatibility manifest. It streams a deterministic gzip/USTAR candidate through
-  exclusive no-follow creation, seals it mode 0400, and applies the complete semantic verdict before and
-  after descriptor-relative no-clobber publication. Only the later promotion path accepts deliberately
-  reviewed final archive/index/manifest/config pins.
-
-  The final validator rejects every VCS-shaped field recursively and requires exactly one in-toto
-  Statement/v0.1 attestation with a SLSA v0.2 predicate. It exact-matches the subject; the sole
-  `oci-layout://<opaque-store>:latest@<digest>` bootstrap dependency; complete external request and five
-  build arguments; embedded certification Dockerfile bytes/source map; the exact three-operation LLB graph;
-  sole UID/GID-1000 execution with BuildKit network mode 2 and only the root mount; builder/result platform;
-  and request-completeness metadata. The provenance layer map must use the exact original uncompressed
-  descriptors from the independently rehashed pinned bootstrap OCI layout: step zero is its three layers,
-  and step one is those same layers plus the new certification layer. The runtime output separately requires
-  four rewritten gzip layers, 21 history entries with the final eight at the fixed epoch, exact Docker 27.5.1
-  loaded-config representation, no root descriptor annotation, no archive tag, and no unreferenced
-  blob/member.
-  Runtime verification launches only the final content ID with no pull/network, a read-only
-  root, UID/GID 1000, all capabilities dropped, no-new-privileges, PID/memory/no-swap/CPU
-  ceilings, and bounded non-executable tmpfs, then rechecks live UID/GID, recipe/package
-  contract, and tool resolution.
-
-  The current canonical certified archive is 474,623,832 bytes, current-user-owned, single-link,
-  mode 0400, with SHA-256
-  `918c3b696270bbb9a5ff70ea8cabd19f5a5d353503af3268ab2951a0ec66cd06`. Its root image/index ID is
-  `sha256:420530ff412c240c70ed510d019c27cfb9cce99c9dc9e669beb9fda818999b43`, exact runtime
-  manifest `sha256:38b072fca23d9bebb5f817cf9cc4519544b0435bb3144cd92cfa547f1f0289ac`, and config
-  `sha256:66059635c06f8e003312d8e897d3ed664fca790ce6cafc5a6b531992b5063119`.
-
-  At clean pushed commit `bc3bfe9cc6ceb4dd928cd89906ae542bf0f62928`, real
-  `run.61vb0nCRcV` completed exact-bootstrap materialization, BuildKit v0.18.2 networkless
-  certification, bounded direct-OCI normalization, complete semantic verification, guest-only Docker load, and
-  confined runtime fingerprint in 99 seconds. After deliberate pin review at
-  `b5d39e1dafd0fe534fac02f4cff78750a4a0453b`, real `run.phE39wA0oN` reverified the complete
-  candidate against those pins, no-clobber promoted the same inode, and repeated the complete final load/runtime
-  verdict in 38 seconds. Both source-bound receipts require no host forwarding, unchanged host listeners,
-  guest-only Docker/BuildKit, and joined cleanup. The candidate path and successful run roots are absent; the
-  final archive above is present and independently rehashed from the host as an ordinary file read.
-
-  BuildKit records dynamic invocation/session data in the attestation, so a subsequent outer index/archive need
-  not be byte-identical even when the runtime manifest/config are reproduced. The current image has not yet had
-  a second independent current-source certification or cold R-B2/R-B10 product build, and no such claim is made.
-  Failed diagnostic candidates remain confined beneath their exact failed-run evidence rather than entering the
-  fixed candidate or final namespace.
-
-  Ordinary `load_builder_images` now accepts only the certified archive with exact byte size and
-  full certified spec, then revalidates the exact loaded ID/runtime. Five Android release
-  consumers retain `ANDROID_BUILDER_IMAGE_ID`, which now names only the certified content.
-  The bootstrap archive and `android-builder-bootstrap-candidate` role cannot enter ordinary
-  runtime verification. Networked package installation remains an explicit maintenance
-  `build_android_builder_bootstrap_image` operation; exact bootstrap capture is separate; and the
-  bootstrap becomes eligible material only after the networkless certification transaction.
-  The prior self-authorizing `build_android_builder_image` surface and Android Docker-store
-  capture function are absent; generic builder capture now covers only the Windows helper
-  image. New archive publication uses a current-user mode-0700 parent, current-user mode-0400
-  one-link source, and descriptor-relative `renameat2(RENAME_NOREPLACE)` with namespace
-  synchronization and inode postcondition; occupied state is preserved.
-
-  The complete provenance self-test passes 39 Android-builder decisions: the positive
-  archive/runtime baseline; archive hash/size; all image/config/manifest/bootstrap/recipe/
-  package/epoch pins; runtime user; archive mode/hardlink; and adversarial tag, VCS, embedded
-  source, execution network/user, registry context, material, layer map, runtime user, root
-  annotation, layer epoch, subject, missing-attestation, and extra-operation fixtures, followed
-  by a final positive replay. The added decisions cover successful direct-export normalization,
-  wrong raw mode, raw hardlink, wrong exporter name, extra outer referrer, unexpected
-  compatibility manifest, occupied normalized output, and byte-identical normalization replay.
-  The former 1,282-line focused mutation catalog and its duplicate 237-line workspace validator
-  are deleted. Neither executed an archive, canonicalizer, loader, or certification operation;
-  they mutated source and documentation wording and made unrelated verifier structure part of
-  the verdict. A compact Android-specific source invariant now binds the reviewed pins and
-  certification Dockerfile, final-only loader, local-OCI networkless build, verify-before-no-clobber
-  promotion, and absence of the retired self-authorizing/Docker-store paths. The authenticated
-  no-NIC verifier VM runs that compact invariant and the executable provenance self-test as
-  UID/GID 4000; the latter executes the 39 Android archive/direct-OCI decisions, including
-  referrer, metadata, no-clobber, and deterministic-normalization failures. The focused authority
-  pass completed in 25 seconds with unchanged host listeners and joined residue-free cleanup. That historical
-  pass remains fixture behavior; the distinct current 474,623,832-byte archive build, load/runtime verdict, and
-  pin-bound promotion are the real acquisition-VM runs recorded above. The final confined proportional rerun
-  also passed online-fetch
-  container authority's 44 mutations; Apple image authority's 56; Dart image authority's 85;
-  Rust image authority's 95; Bash syntax, Python byte-compilation, HTML parsing, native-codec
-  normal/mutation checks, and diff hygiene. Dart/Rust focused gates now bind the centralized
-  five-image private-archive classifier and exact candidate functions rather than source-order-
-  dependent legacy tuples. The self-excluding complete ignored online tree was regenerated and
-  independently verified at
-  `1e7e9a813e2ee2b3325205f9db29c335086133a6a900ee585639125bcf4ee70e`:
-  145,627 files, 42,831 directories, 41 symlinks, 29,224,673,274 content bytes,
-  16 hardlink groups, and 9 case collisions.
-
-  One diagnostic attempt used a `docker-image://sha256:…` additional context while determining
-  BuildKit's accepted context syntax. BuildKit attempted outbound registry resolution and failed
-  before any Dockerfile operation, image publication, or archive change. That approach was
-  abandoned; the implemented path is the documented local
-  `oci-layout://…@sha256:…` form and the final attestation rejects a registry context. An earlier
-  corrected maintenance attempt exported through Docker's shared image store and then saved the
-  captured content ID. Because that store already retained the canonical archive's attestation
-  referrer for the identical runtime manifest, the saved outer index contained an unrelated
-  second descriptor. The validator rejected it as anything other than exactly one captured
-  image; no candidate/final was published or changed. This engine-state-dependent capture is
-  the reason the Android store/tag/save path was deleted in favor of direct OCI output, not
-  evidence of compromise. No root
-  command or root container, privileged flag, added capability, host namespace/device, Docker
-  socket passed into a container, published port, release build, or host RustDesk
-  process/service/configuration/listener/firewall/network inspection or mutation occurred.
-  This slice does not complete the clean independent-snapshot R-B2/R-B10 transaction, build or
-  sign an APK, test Android devices or the original swipe/relaunch sequence, prove native
-  installed-platform behavior, authenticate/distribute other maintenance images,
-  or complete R-V3 external review.
+  **Still OPEN.** A second independent current-source certification reproducing the exact
+  runtime manifest/config, current real producers and cold R-B2/R-B10 product equality,
+  stable signing and APK/device behavior, installed/native acceptance, other maintenance-image
+  distribution, independently administered reproduction and R-V3 review remain required.
+  Per-invocation provenance can change the outer archive/index; runtime-graph equality and
+  exact reviewed-envelope authentication are separate obligations. No new certification,
+  image runtime, product build or native acceptance is established by this documentation cleanup.
 - **R-S11db/R-S11e-120 — Debian builder certification/distribution implemented;
   historical real certification, promotion, confined runtime and runtime-graph reproduction
   evidence retained; exact-current product, installed lifecycle and release acceptance OPEN.**

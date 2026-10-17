@@ -12753,10 +12753,12 @@ reproduction; external review; and the global connection-flow correctness/perfor
 
 ### R-S11hl/R-S11e-249 — reserve-before-dispatch file-response ownership
 
-**SOURCE CORRECTED; THIRTEEN DART MODEL REGRESSIONS PASS; TARGET-NATIVE EVIDENCE OPEN.**
+**SOURCE CORRECTED; CURRENT DART COMPONENT A/B ACCEPTED; NATIVE FILE/INSTALLED/PLATFORM EVIDENCE OPEN.**
 `FileFetcher` in `flutter/lib/models/file_model.dart` reserves the exact session/operation/key/side
 owner before normal, empty, or recursive-directory dispatch. Active, dispatch-draining, and timed-out
-owners share a capacity of 64. The response deadline remains live during dispatch; every correlation
+owners share one capacity of 64 across every `FileFetcher` and `JobResultListener` instance in a
+Dart isolate, including model/listener replacement. Existing per-instance limits remain additional
+bounds. The response deadline remains live during dispatch; every correlation
 dimension must match. Recursive requests require positive canonical signed-32-bit action IDs, and
 recursive error fields must be correctly typed. Wrong, malformed, negative-ID, unsolicited, stale,
 or already-consumed responses confer no authority.
@@ -12805,9 +12807,10 @@ connection-flow correctness/performance.
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
-**SOURCE CORRECTED; SIXTEEN DART MODEL REGRESSIONS AND FRESH BRIDGE GENERATION PASS;
-CURRENT LINUX TEST PAYLOAD PASSES BUT ITS OUTER TRANSACTION IS INVALID;
-ACCEPTED CURRENT NATIVE, INSTALLED, AND OTHER TARGET-PLATFORM EVIDENCE OPEN.**
+**SOURCE CORRECTED; CURRENT DART COMPONENT A/B AND FRESH BRIDGE GENERATION ACCEPTED;
+NATIVE FILESYSTEM, INSTALLED, AND OTHER TARGET-PLATFORM EVIDENCE OPEN.**
+The shared-admission entry below records current evidence; historical invalid transactions
+remain unaccepted and do not qualify the current Dart component pass.
 
 Current source captures exact sessions and immutable command inputs before asynchronous
 boundaries. Delete-file events settle only their bounded exact session/action/file owner;
@@ -14505,6 +14508,37 @@ These execute production Dart listener/controller methods with controlled bridge
 responses under Flutter 3.24.5, not native filesystem mutations. Test-kernel bytes/digests were
 not retained. Native peer/I/O cancellation and drain, aggregate resources, full-app/rendered UI,
 installed/platform/release artifacts, independent reproduction and LPE acceptance remain OPEN.
+
+**Shared file-request admission across model replacement — Dart A/B ACCEPTED; native/process-wide bounds OPEN.**
+`FileFetcher` and `JobResultListener` now share one fixed 64-request identity set in each
+Dart isolate. Every instance reserves its exact pending object before dispatch; existing
+per-instance limits and the two-/five-second deadlines remain additional bounds. Clearing or
+replacing a model/listener retires response authority without resetting shared admission while
+its dispatch is unfinished. Exact-object release preserves unrelated and reentrant replacements;
+normal response/dispatch finality and caller-visible errors remain unchanged.
+At unchanged-product baseline `d6be7fa9`, all **56 cases** ran: 53 passed and the three new
+distinct-owner regressions failed their admission checks with timeout instead of capacity refusal.
+Their later recovery/error steps were not reached and are not separate old-behavior evidence.
+The identical test files passed **56 cases in two suites plus three parser controls in 257 VM
+seconds** at `0e070a72`: 33 listing and 23 command/controller cases. They cover separate retired
+local, remote and job owners, cross-family refusal before dispatch, recovery after actual completion
+or error, and protection of a current lease from repeated predecessor cleanup.
+Product correction `622fa633` is unchanged in the accepted run. Its first corrected transaction
+is unaccepted because a parser self-check found stale credential-profile metadata (76 versus 83);
+`0e070a72` corrects that metadata. The credential/API0248 cohort remains unrun and user-parked.
+The 301-case full-model and 83-case credential counts are source inventories, not executed suites.
+All four fresh bridge outputs match full generation `72056f19`; consumed Dart hashes are unchanged.
+The 300-second/18-GiB limits, isolation and bounded-RAM orchestration are unchanged; endpoint
+observations have zero deltas, exact QEMU wait succeeds and transient roots retire. Source,
+outcomes, generated hashes, retained failures and cleanup are bound in
+`.harness-state/verifier-vm/file-request-admission-baseline-d6be7fa9.json`,
+`file-request-admission-parser-failure-622fa633.json` and
+`file-request-admission-accepted-0e070a72.json` in that same directory.
+This is production Dart owner/controller execution with controlled dispatch/response futures
+under Flutter 3.24.5 in one isolate. Ephemeral test-kernel bytes/digest were not retained.
+Native filesystem effects, worker admission, I/O cancellation/drain, multiple engines/isolates,
+process-wide resources, full-app/rendered behavior, installed/platform/release artifacts,
+independent reproduction and LPE acceptance remain OPEN. Every explicit user park remains in force.
 
 **Local listing errors — Linux exports and actual Dart transport ACCEPTED; UI/platform integration OPEN.**
 `session_read_local_dir_sync` and `session_read_local_empty_dirs_recursive_sync` now return

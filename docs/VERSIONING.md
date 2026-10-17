@@ -29,70 +29,60 @@ keeps working, while releases of the fork on that same base still need to be tol
 fork release into the wire version would either break negotiation or make two different builds
 indistinguishable — so they are separate, and `FORK_VERSION` is the one you bump.
 
-## Cutting a release
+## Preparing a release
 
-1. **Settle source and normative requirements first.** Finish implementation and finalize
-   [`requirements.html`](../requirements.html); no release identity changes occur while architecture is moving.
-2. **Update the machine inventory expectation.** Re-run the inventory mechanism and settle its expected counts
-   against the same source tree that will be released.
-3. **Review native-codec advisories.** Refresh the advisory dispositions in
-   [`NATIVE-CODEC-WATCH.md`](./NATIVE-CODEC-WATCH.md) against the pinned native source set and run
-   `bash scripts/native-codec-watch.sh` to check package, source-pin, and advisory-ledger synchronization.
-4. **Bump `FORK_VERSION` last.** Increment `N` only after source, requirements, inventory, and advisory dispositions
-   are settled; update the matching top `CHANGELOG.md` heading/date in the release-preparation change.
-5. **Verify the complete tree.** Run `bash scripts/verify-release.sh` and resolve every failure without weakening
-   a gate. Any source or requirements change returns the sequence to step 1.
-6. **Commit the complete release source.** The commit contains the settled implementation, documentation,
-   inventory expectation, advisory dispositions, version, and changelog. The worktree must then be clean.
-7. **Push the exact clean `HEAD`.** Use `git push origin HEAD:master`. The build reads live `refs/heads/master` from `origin`
-   and requires that full commit ID to equal the pinned local `HEAD` before
-   and after verification and target builds.
-8. **Run the full cold build only through the completed no-NIC VM launcher.** The checked-in
-   `./scripts/build-release.sh` is now the verifier-VM-internal transaction and deliberately refuses a direct
-   orchestration-host production invocation. The complete source/online/image/signing/Windows-golden input and
-   bounded artifact-return transport is still STOP-SHIP work; until it exists, do not attempt or claim a release.
-   The transaction starts from an empty environment, has no parent Docker calls, and supplies each child through
-   an `env -i` allowlist. It creates two independent `--no-hardlinks --reject-shallow`, mode-0700 private repositories, removes their remotes,
-   and checks out the exact commit detached. Debian, Android, and Windows each run once in each repository with
-   independent target, Flutter, generated, output, and Windows state.
-   Each pass owns the `outputs/` parent but leaves its three target leaves absent. Debian and Android create their
-   leaves; Windows publishes its complete leaf by a sibling staging rename with no clobber. Its mutable
-   `windows-state/` is a pass-private sibling of `outputs/`, never equal to, above, or beneath the Windows output.
-   The orchestrator requires byte-identical SHA-256 values for all four artifacts across the two snapshots.
-   Direct target scripts retain their own default internal double build; only this structural A/B
-   orchestrator passes `DOUBLE_BUILD=0` to a direct target invocation.
-9. **Install one immutable local release set.** The exact A/B-equal files and nine-line manifest are copied
-   through unnamed synchronized files into a private same-parent payload on the required ext4 publication filesystem.
-   A synchronized read-only journal binds the complete descriptor-retrieved ext4 UUID and persistent object identities through
-   `initializing`, handle-bound `staging`, manifest-bound `prepared`, and explicit `rollback` or `cleanup`.
-   The payload is installed with kernel no-clobber when `dist/` is absent or atomically exchanged with the prior
-   set when it exists, then revalidated for exact names, regular-file types, checksums, metadata, and read-only
-   modes. Clean source and live `origin/master` equality are proved immediately before installation. Final
-   verification rejects any unresolved reserved publication state without repairing it. File edges are acquired with
-   `O_PATH|O_NOFOLLOW`, reopened nonblocking through retained descriptors, and re-proved before any read. Recovery requires
-   canonical state names to carry the active transaction token. Restart fixtures are logical process-restart proofs, not
-   physical power-loss simulation; the invoking UID is cooperative and root, the kernel, ext4, and storage are trusted.
-   There is no partial release mode.
+The [hardening ledger](../HARDENING_STATUS.md#current-verdict) records the current
+release blockers. Version preparation does not establish release acceptance.
+Build, compiler, scanner and verification commands below run inside the authenticated
+no-NIC verifier VM described in the [build guide](../scripts/README.md#execution-boundary).
+The host only orchestrates the owned VM launchers.
 
-The Android signing identity is the public certificate SHA-256 pinned in `scripts/pins.env`. The build
-requires the keystore and password to be current-UID, non-symlink, mode-0600 files beneath two mode-0700
-current-UID directories. The private key is never an argument or environment value. Both the keystore
-certificate and the final APK certificate must match the pin exactly. Artifact authentication and Android
-key-loss/compromise handling are normative operational procedures in
-[`RELEASE-VERIFICATION.md`](./RELEASE-VERIFICATION.md) and
-[`ANDROID-SIGNING-RECOVERY.md`](./ANDROID-SIGNING-RECOVERY.md); neither permits a pin bypass.
+1. **Settle source and requirements.** Complete the implementation and finalize
+   [`requirements.html`](../requirements.html). Review the native, installed-service
+   and release gates in `HARDENING_STATUS.md`; keep current evidence and unresolved
+   obligations there. Artifact acceptance follows the builds below.
+2. **Review the dependency inventory.** `scripts/dependency-inventory.py --text`
+   compares the source inventory with its committed expectations. Review each
+   dependency or build-surface change before updating those expectations.
+3. **Review native-codec advisories.** Refresh
+   [`NATIVE-CODEC-WATCH.md`](./NATIVE-CODEC-WATCH.md) against the pinned source set.
+   `bash scripts/native-codec-watch.sh` checks package, pin and ledger synchronization;
+   the advisory review and any required remediation remain separate obligations.
+4. **Bump `FORK_VERSION` last.** Once source, requirements, inventory and advisory
+   dispositions are settled, increment the counter and update the matching top
+   `CHANGELOG.md` heading and date.
+5. **Verify the complete tree.** Run `bash scripts/verify-release.sh` in the verifier
+   VM and resolve every failure without weakening a gate. Its source and portable
+   checks have the scope described by that script; target artifacts, installed
+   privilege boundaries and native acceptance require their own evidence. A source
+   or requirements change returns the sequence to step 1.
+6. **Commit and push the release source.** Include the settled implementation,
+   documentation, reviewed inventory expectations, advisory dispositions, version
+   and changelog in signed-off commits. Require a clean worktree and push the exact
+   `HEAD` with `git push origin HEAD:master`. The build requires live `origin/master`
+   to equal that commit before and after verification and target builds.
+7. **Build and verify one complete release set.** Invoke `scripts/build-release.sh`
+   only through the completed no-NIC VM orchestration. It coordinates independent
+   Debian, Android and Windows builds, requires byte-identical artifacts across both
+   snapshots, and installs the immutable four-artifact `dist/` set with its
+   commit/version-bound `SHA256SUMS`. R-B2 and R-B10 define the build and input rules;
+   partial release sets and unresolved publication state fail closed. The ledger
+   tracks the still-open release orchestration and artifact acceptance.
 
-Publication is a separate optional action after a verified build:
-`./scripts/publish-github-release.sh`. It never builds or pushes source. It independently locks publication,
-binds every GitHub CLI command to the owner/repository derived from the exact Git `origin`, snapshots metadata
-from the pinned commit and artifacts from the immutable five-file `dist/`, includes drafts in uniqueness checks,
-and resolves every existing release tag to a commit. Publication is allowed only when the repository's GitHub
-immutable-release policy is enabled. It atomically creates the one canonical
-`fork-version-<version>-commit-<full-sha>` tag before creating a draft. All five assets are uploaded to that draft,
-queried by numeric release and asset IDs for exact names, nonzero sizes, and server digests, downloaded, and
-SHA-256 compared with the private snapshot. The policy, source, origin, tag, manifest, and remote inventory are
-reproved immediately before publication. Only then is the draft published; the publisher requires the resulting
-release to report immutable and revalidates metadata and downloaded assets. A failure leaves the explicit
-tag/draft state for reconciliation; it never deletes uncertain remote state or exposes a partial non-draft release.
-Everything downstream derives from `FORK_VERSION` — read it once via `scripts/fork-version.sh`
-(`fork_version`), never re-hardcode the string.
+Android's signing certificate must match the pin in
+[`scripts/pins.env`](../scripts/pins.env). Supply the keystore and its password as
+private, read-only file inputs at signing time; never put the private key or password
+in arguments or environment values. Follow
+[`ANDROID-SIGNING-RECOVERY.md`](./ANDROID-SIGNING-RECOVERY.md) for key loss or suspected
+compromise. Authenticate the complete manifest independently and verify every
+artifact under [`RELEASE-VERIFICATION.md`](./RELEASE-VERIFICATION.md) before installation.
+
+GitHub publication is a separate optional action through
+[`scripts/publish-github-release.sh`](../scripts/publish-github-release.sh). It requires
+the exact verified release set, source and canonical tag, plus GitHub's immutable-release
+policy. It verifies all uploaded assets before publishing and revalidates the immutable
+result. A failure retains its tag/draft state for reconciliation. Build and verification
+do not authorize publication.
+
+Read the fork identity through `scripts/fork-version.sh` (`fork_version`) rather than
+hardcoding it in downstream tools.

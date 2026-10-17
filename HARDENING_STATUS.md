@@ -99,6 +99,14 @@ Classification is in `.harness-state/verifier-vm/deployment-guide-source-7e735cf
 and the normative specification are unchanged; current installed/native and fresh token-count
 acceptance remain OPEN.
 
+The versioning guide retains the version identities and release sequence, with verification commands
+explicitly confined to the authenticated no-NIC VM. Dependency inventory expectations require review;
+codec-ledger synchronization does not replace advisory research, and source gates do not establish
+native or artifact acceptance. Repeated build/publication implementation details are removed from
+that guide; R-B2/R-B10, the build guide, signing recovery and artifact-verification procedure retain
+their respective contracts. Release orchestration, current artifacts and whole-document cleanup
+remain OPEN.
+
 Retained documentation classifications are indexed below. They establish document/source
 comparisons, not compiler, artifact, scanner, native or release acceptance. Completed repair
 narratives and size comparisons remain in Git history.
@@ -2397,6 +2405,22 @@ binary replies and weak-reference retirement are observed through a controlled m
 The eight Dart dispatcher tests and three parser controls also passed in 104 VM seconds.
 `.harness-state/verifier-vm/linux-window-channel-accepted-3f8f4bf5.json` binds both artifacts,
 source freezes, three retained preparation/fixture failures, unchanged endpoints and joined RAM cleanup.
+
+**Native argument and reply-error ownership: OPEN/PARKED by user request.** Source `233b7aa2`
+changes the three outbound argument maps to retain the borrowed payload and transfer the newly
+allocated keys/sender value. Neither subsequent native attempt was accepted: the custom-free
+observer at `233b7aa2` and the ASan driver at `1265da1c` both terminated with a baseline crash;
+the corrected native binary and subsequent Dart cases did not run. The bounded retained records
+are `linux-window-arguments-observer-233b7aa2.json` and
+`linux-window-arguments-asan-1265da1c.json` under `.harness-state/verifier-vm/`.
+Unfinished typed reply-error handling and probe edits, including the untracked common header,
+are preserved as eleven files in stash `453ed898abbde3900c70a20d2f9f535850f5740b`, based on
+`1265da1c7d77809d331720855df72b1b286c0a4c`. All seven earlier stashes are preserved.
+The pinned SDK's generic reply-error lifetime needs direct native investigation; its suspected
+relation to the crash and the unfinished correction remain unvalidated. No VM remains running,
+both exact RAM/private workspaces are retired, and the shared lock is released. This work will
+not resume automatically; the earlier seven-case reply result does not establish argument or
+generic reply-error memory safety.
 
 These results exercise Dart/plugin and Linux native channel components. Actual GTK/Win32/Cocoa
 application-window handoff/log capture across all five session types, real peer/IPC transactions,

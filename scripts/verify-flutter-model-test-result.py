@@ -157,6 +157,8 @@ FILE_NAVIGATION_TESTS = {
     "timed out remote dispatches stay bounded across cancellation",
     "early remote responses retain cancelled dispatch capacity",
     "synchronous listing completions cannot resurrect capacity owners",
+    "new remote listing owners share retained dispatch admission",
+    "new local listing owners share retained dispatch admission",
 }
 FILE_COMMAND_TESTS = {
     "native file-job allocation failures cannot dispatch fallback IDs",
@@ -181,6 +183,7 @@ FILE_COMMAND_TESTS = {
     "retired file job failure cannot release replacement ownership",
     "settled file dispatches release cancelled response waiters",
     "inline file job completion and reentrant clear cannot retain slots",
+    "new file job owners share admission with listing owners",
 }
 FILE_NAVIGATION_SUITES = {
     "file_navigation_sort_test.dart": FILE_NAVIGATION_TESTS,
@@ -303,24 +306,7 @@ CREDENTIAL_DIALOG_TESTS = {
         "middle blocker owns the tap before revealing the route",
         "one explicit dialog tag owns one disposable overlay entry",
     },
-    "file_command_session_ownership_test.dart": {
-        "native file-job allocation failures cannot dispatch fallback IDs",
-        "retired send continuation cannot target replacement session",
-        "send operation snapshots entries and directory arguments at admission",
-        "rename snapshots directory policy before the dialog await",
-        "create waits for its exact result and exposes an exact error",
-        "remote empty-directory deletion uses a fresh exact result owner",
-        "directory-link deletion is one leaf command",
-        "deleted-subtree matching is component exact for both path styles",
-        "job result requires exact session action and file before completion",
-        "retirement completes an exact pending job result with an error",
-        "exact job error is caller-visible instead of successful completion",
-        "delete state changes only after exact result and dispatch finality",
-        "invalid or unowned cancel IDs never reach the native request surface",
-        "dispatch failure wins over an early matching success response",
-        "timed-out late result remains owned until dispatch settles",
-        "load-last-job cannot resume after its session is replaced",
-    },
+    "file_command_session_ownership_test.dart": FILE_COMMAND_TESTS,
 }
 MAXIMUM_EVENTS = 16_384
 MAXIMUM_LINE_BYTES = 1024 * 1024

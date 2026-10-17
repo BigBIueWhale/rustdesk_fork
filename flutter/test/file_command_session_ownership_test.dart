@@ -1095,4 +1095,57 @@ void main() {
     expect(await replacement!, containsPair('id', '7'));
     expect(await harness.start(dispatch: inlineSuccess), containsPair('id', '7'));
   });
+
+  test('new file job owners share admission with listing owners', () async {
+    final owners = <_ResultHarness>[];
+    final session = const Uuid().v4obj();
+    final nativeListing = Completer<String>();
+    var listingDispatches = 0;
+    final listing = FileFetcher(() => session,
+        requestTimeout: const Duration(milliseconds: 20),
+        requests: FileFetcherRequests(
+          readDirectory: (_, __, ___) async {},
+          readEmptyDirectories: (_, __, ___) async {},
+          readDirectoryTree: (_, __, ___, ____, _____) async {},
+          readLocalDirectory: (_, __, ___) {
+            listingDispatches++;
+            return nativeListing.future;
+          },
+        ));
+    Future<Object> read() => listing.fetchDirectory('/local', true, false)
+        .then<Object>((value) => value,
+            onError: (Object error, StackTrace _) => error);
+    addTearDown(() async {
+      listing.cancelPending();
+      if (!nativeListing.isCompleted) {
+        nativeListing.complete(jsonEncode({'id': 0, 'path': '/local', 'entries': []}));
+      }
+      await Future.wait(owners.map((owner) => owner.drain()));
+      await Future<void>.delayed(Duration.zero);
+    });
+    for (var i = 0; i < 64; i++) {
+      final owner = _ResultHarness(timeout: const Duration(seconds: 2));
+      owners.add(owner);
+      final result = owner.start();
+      owner.listener.clear();
+      expect(await result, _retiredError);
+    }
+    final capacity = isA<StateError>().having(
+        (error) => error.message, 'message', 'File request capacity exhausted');
+    expect(await read(), capacity);
+    expect(listingDispatches, 0);
+    owners.first.completions.single.completeError(StateError('retired job'));
+    await Future<void>.delayed(Duration.zero);
+    final currentOwner = _ResultHarness();
+    owners.add(currentOwner);
+    final current = currentOwner.start();
+    expect(currentOwner.reply(), isTrue);
+    owners.first.listener.clear();
+    expect(await read(), capacity);
+    expect(listingDispatches, 0);
+    currentOwner.completions.single.complete();
+    expect(await current, containsPair('id', '7'));
+    nativeListing.complete(jsonEncode({'id': 0, 'path': '/local', 'entries': []}));
+    expect((await read() as FileDirectory).path, '/local');
+  });
 }

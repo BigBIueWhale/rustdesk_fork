@@ -714,4 +714,103 @@ void main() {
       expect(await fetcher.readEmptyDirs('/local', true, false), isEmpty);
     }
   });
+
+  test('new remote listing owners share retained dispatch admission', () async {
+    final owners = <_RemoteListingHarness>[];
+    final results = <Future<Object>>[];
+    Future<Object> start(_RemoteListing kind,
+        {Duration timeout = const Duration(seconds: 2)}) {
+      final owner = _RemoteListingHarness(timeout: timeout);
+      owners.add(owner);
+      final result = owner.start(kind).then<Object>((value) => value,
+          onError: (Object error, StackTrace _) => error);
+      results.add(result);
+      return result;
+    }
+    addTearDown(() async {
+      await Future.wait(owners.map((owner) => owner.drain()));
+      await Future.wait(results);
+    });
+    for (var i = 0; i < 64; i++) {
+      final result = start(_RemoteListing.values[i % 3]);
+      owners.last.fetcher.cancelPending();
+      expect(await result, isA<StateError>());
+    }
+    final capacity = isA<StateError>().having(
+        (error) => error.message, 'message', 'File request capacity exhausted');
+    expect(await start(_RemoteListing.directory,
+        timeout: const Duration(milliseconds: 20)), capacity);
+    expect(owners.last.dispatches, isEmpty);
+    owners.first.completions.single.completeError(StateError('retired dispatch'));
+    await Future<void>.delayed(Duration.zero);
+    final current = start(_RemoteListing.recursive);
+    final currentOwner = owners.last;
+    expect(currentOwner.reply(_RemoteListing.recursive, currentOwner.session),
+        isTrue);
+    owners.first.fetcher.cancelPending();
+    expect(await start(_RemoteListing.empty,
+        timeout: const Duration(milliseconds: 20)), capacity);
+    expect(owners.last.dispatches, isEmpty);
+    currentOwner.completions.single.complete();
+    expect((await current as FileDirectory).id, 7);
+  });
+
+  test('new local listing owners share retained dispatch admission', () async {
+    final owners = <FileFetcher>[];
+    final completions = <Completer<String>>[];
+    final values = <String>[];
+    final results = <Future<Object>>[];
+    var dispatches = 0;
+    Future<Object> start(bool empty,
+        {Duration timeout = const Duration(seconds: 2)}) {
+      final session = const Uuid().v4obj();
+      final completion = Completer<String>();
+      completions.add(completion);
+      values.add(empty ? '[]' : _listing('/local'));
+      Future<String> dispatch(SessionID _, String __, bool ___) {
+        dispatches++;
+        return completion.future;
+      }
+      final owner = FileFetcher(() => session,
+          maxPending: 1,
+          requestTimeout: timeout,
+          requests: _localRequests(flat: dispatch, empty: dispatch));
+      owners.add(owner);
+      final Future<Object> request = empty
+          ? owner.readEmptyDirs('/local', true, false)
+          : owner.fetchDirectory('/local', true, false);
+      final result = request.then<Object>((value) => value,
+          onError: (Object error, StackTrace _) => error);
+      results.add(result);
+      return result;
+    }
+    addTearDown(() async {
+      for (final owner in owners) {
+        owner.cancelPending();
+      }
+      for (var i = 0; i < completions.length; i++) {
+        if (!completions[i].isCompleted) completions[i].complete(values[i]);
+      }
+      await Future.wait(results);
+      await Future<void>.delayed(Duration.zero);
+    });
+    for (var i = 0; i < 64; i++) {
+      final result = start(i.isOdd);
+      owners.last.cancelPending();
+      expect(await result, isA<StateError>());
+    }
+    final capacity = isA<StateError>().having(
+        (error) => error.message, 'message', 'File request capacity exhausted');
+    expect(await start(false, timeout: const Duration(milliseconds: 20)), capacity);
+    expect(dispatches, 64);
+    completions.first.completeError(StateError('retired native listing'));
+    await Future<void>.delayed(Duration.zero);
+    final current = start(false);
+    final currentCompletion = completions.last;
+    owners.first.cancelPending();
+    expect(await start(true, timeout: const Duration(milliseconds: 20)), capacity);
+    expect(dispatches, 65);
+    currentCompletion.complete(_listing('/local'));
+    expect((await current as FileDirectory).path, '/local');
+  });
 }

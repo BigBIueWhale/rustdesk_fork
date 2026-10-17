@@ -7172,338 +7172,139 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   changed. The exact cold Debian release artifact and installed install/upgrade/removal/purge run remain R-B2.
   Current APK/device, native Apple/Windows installed-platform evidence, and external R-V3 review remain open; this
   slice is not overall completion.
-- **R-S11ca/R-S11e-93 — Linux crash recovery signals only through a stable pidfd — SOURCE IMPLEMENTED AND CONFINED
-  SOURCE/MUTATION/COMPILER/INVENTORY VERIFICATION PASSED 2026-07-23; UPDATED EXACT-BINARY LIFECYCLE FIXTURE NOT
-  EXECUTED; INSTALLED ARTIFACT EVIDENCE REMAINS R-B2.** Platform: Linux `rustdesk --service` recovery after a supervisor crash.
-  Endpoint/action: root-originated `SIGTERM`/`SIGKILL` toward the process named by the durable
-  `/run/rustdesk/service-child.record`. Boundary: time-bounded `/proc` identity observations and a recyclable numeric
-  PID ↔ stable kernel process-reference authority.
+- **R-S11ca/R-S11e-93 — Linux crash recovery signals only through a stable pidfd — SOURCE
+  IMPLEMENTED; EXACT-BINARY REFUSAL AND INSTALLED-ARTIFACT EVIDENCE OPEN.** The root
+  `--service` supervisor recovers `/run/rustdesk/service-child.record` through an opened
+  pidfd and complete identity revalidation before each descriptor-bound signal. The
+  revalidate-then-numeric-PID signal and wait helpers are deleted: PID reuse can occur
+  after a path/start-time check and before `kill(2)`.
 
-  The deleted compatibility branch was careful but could not be made correct. It compared PID/start time, current
-  boot ID, executable device/inode, all UID fields, exact service-owned argv, and the unique generation environment;
-  it repeated those checks immediately before each numeric-PID `kill(2)` and during both bounded waits. A target
-  process could nevertheless exit and its PID be reused between the last successful inspection and the signal.
-  Linux's `pidfd_send_signal(2)` exists specifically to address that class: after a pidfd has been opened for one
-  process, later PID recycling does not retarget operations through the descriptor. The former warning accurately
-  disclosed the race but accepting it still left root lifecycle authority capable of reaching an unrelated process.
-  This is a narrow local crash-recovery availability/authority defect, not evidence that the race occurred, a host
-  process was signaled, Docker obtained root, a public listener was created, a firewall changed, exploitation
-  happened, or a machine was compromised.
+  If pidfds are unavailable, only an exact record classified `Exited` or `Absent` may
+  be removed without signaling. A live `Match`, `Mismatch`, or `Unavailable` preserves
+  the record and refuses recovery before IPC, listener creation, or replacement launch.
+  No-record startup and shutdown through the supervisor's retained Rust `Child` remain
+  supported. The debug-only unsupported-pidfd fixture is inert in release; its required
+  outcome is service exit 1, unchanged record bytes/metadata, no temporary record, and
+  survival of the retained child and unrelated UID-4000 portable server. Fixture cleanup
+  is exact-record and pidfd-bound. The updated actual-binary refusal fixture has not
+  established current installed behavior. See Appendix C #220 and the parent R-S11c-27
+  lifecycle matrix.
 
-  Current source removes `send_revalidated_service_child_pid_signal` and
-  `wait_revalidated_service_child_pid_exit` completely. The only recovery signal helper calls
-  `SYS_pidfd_send_signal` on the already-opened descriptor. When `pidfd_open` returns `ENOSYS`, the new handler may
-  delete only an exact record whose identity inspection reports `Exited` or `Absent`, because that operation sends no
-  signal. `Match` fails with an explicit required-pidfd diagnostic; `Mismatch` and `Unavailable` also fail, preserving
-  the record and signaling nothing. `start_os_service` already sequences lease acquisition and recovery before IPC
-  listener creation, so every refusal precedes both network/service endpoint authority and child launch. No-record
-  startup and the supervisor's routine directly owned-`Child` shutdown remain unchanged, avoiding a needless blanket
-  rejection of older kernels.
+- **R-S11cb/R-S11e-94 — Linux stable service credential ownership and nondumpable runtime
+  replica — SOURCE IMPLEMENTED; NATIVE INSTALLED-SERVICE AND ARTIFACT EVIDENCE OPEN.**
+  The root supervisor is the sole durable machine-credential writer. After polkit
+  authorization it persists the password, reads root PRS state, and delivers only an
+  empty or canonical 32-byte PRS encoded as 44 base64 bytes to the exact child under the
+  same operation UUID. The child validates and installs a wiping, nonpersistent runtime
+  override through `set_permanent_password_prs_for_runtime`, advances its credential
+  generation, and suppresses stale user-profile storage even when root state is empty.
+  Undecryptable state, post-persistence read/delivery failure, a response other than
+  `Applied`, or uncertain convergence latches authority failure; owned IPC work drains
+  and the exact generation stops so a fresh child can pull root state.
 
-  The actual-binary lifecycle fixture was changed from “fallback succeeds” to “unsafe recovery is refused.” It binds
-  one canonical live child/record, forces only `PidFdOpen::Unsupported` through a debug-only environment name that is
-  inert in release builds, requires service exit status 1, compares full record metadata and SHA-256 before and after,
-  rejects a temporary record, and re-proves the exact child plus unrelated UID-4000 portable server are alive. Test
-  cleanup removes only the retained exact record and uses Python's `pidfd_open`/`pidfd_send_signal` path against the
-  retained start-time identity. The top-level smoke consumer now requires
-  `SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL`, and source/semantic mutation gates bind the safe-state split,
-  live-record refusal, fallback-symbol absence, pre-listener order, runtime preservation, R-S11ca, Appendix C #220,
-  and this ledger entry.
+  Before startup invariants or any local/public listener, the child obtains its replica
+  through capacity-two raw `_service_credential`: bodyless kind 3, operation-bound kind 4,
+  canonical 36-byte header, one UUID, and an empty-or-44-byte body. Root admission
+  precedes process proof and body read; root proves exact child argv, direct parent,
+  launch-parent marker and current runtime generation, then reauthenticates before
+  reading credential state. The child proves a kernel UID-0 peer whose PID equals both
+  its launch-parent marker and actual direct parent, without ptrace-gated root procfs.
+  Wrong-peer/operation, unavailable, malformed or undecryptable startup state fails
+  before admission. Root-to-child updates retain the same parent/generation binding
+  and raw R-S11i secret-memory/framing contract.
 
-  Confined verification used immutable image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
-  `--pull=never`, no network, a read-only root and source mount, all capabilities dropped, no-new-privileges, bounded
-  PIDs/CPU/memory/no-swap, and private tmpfs outputs. Bash parsing and in-memory Python compilation passed; normal
-  independent semantic validation passed; the complete in-memory source-mutation matrix passed after independently
-  rejecting weakened live/stale/mismatch/unverifiable decisions, record metadata/byte/temp-path preservation,
-  release-hook closure, recovery dispatch, reintroduced fallback symbols, gate wiring, requirement, Appendix row,
-  and ledger identities. The Rust 1.75.0 locked/offline `cargo check --lib --features linux-pkg-config` completed in
-  1m30s with only the repository's existing warning set. Native-codec normal and negative self-tests passed against
-  requirements SHA-256
-  `31eb86ec577062999f519f00680e85a04d10e4a687c8daa182b1db0d433d22d1`.
+  The ordinary installed UI/service image remains root:root 0755; the dedicated
+  `rustdesk-service-child` is a byte-identical root:root 0711 image. Before privilege
+  drop, root opens the fixed running primary and no-follow child objects, proves
+  protected ancestry, owner/mode/length, streaming byte equality and selected child
+  inode, and requires `fs.suid_dumpable=0`. A root-owned execute-only manual service
+  may use its current inode. The final image verifies it began nondumpable, reasserts
+  and reads back `PR_SET_DUMPABLE(0)`, emits a bounded readiness marker and stops.
+  Root durably publishes its exact child record before resuming it; root-principal
+  children share this stop/publication boundary. Metadata, policy, marker, identity,
+  record, resume and cleanup failures refuse launch. The systemd unit excludes the
+  `ptrace` syscall and `@debug`; retained `CAP_SYS_PTRACE` permits root's exact-child
+  proof and does not replace nondumpability. The unsupervised fixture is debug-only,
+  false in release, and absent from the supervisor's cleared environment. Native
+  same-UID inspection denial and installed startup/change/restart convergence remain
+  unproved by the historical compiler and component tests.
 
-  The immutable image lacks the `rustfmt` component. Invoking its rustup proxy on a read-only root stopped while
-  trying to create an update temporary file, so no formatting result is claimed; the Rust compiler accepted the
-  source. A first confined Python-compile attempt likewise stopped because explicit `py_compile` tried the read-only
-  source `__pycache__`; the corrected run bound its cache to private tmpfs and passed. Before confined validation, a
-  mistaken host-side parser-only `bash -n`/`py_compile` invocation ran without root, project binaries, network,
-  ports, Docker mounts, or service paths and changed no tracked file; it is not counted as evidence and is recorded
-  as a procedural deviation. The first new semantic pass also exposed and then rejected a local verifier-variable
-  wiring error, while two mutation iterations exposed overly broad/underbound mutation targets; those checks were
-  tightened rather than bypassed and the complete final matrix passed.
+- **R-S11cc/R-S11e-95 — Linux nondumpable service child and connection-manager use kernel
+  parent authority — SOURCE IMPLEMENTED; INSTALLED-SERVICE EVIDENCE OPEN.** CM and
+  PulseAudio authority use `LinuxProcessIdentity` (PID, UID, start time), connected
+  Unix peer credentials and readable process-stat identity. The server accepts only
+  its exact current direct CM child; the CM requires its immutable launch marker to
+  equal its current kernel parent and the protected main socket to name that same live
+  parent before requesting a connection capability. Executable, argv, environment and
+  token reads from the peer's ptrace-gated procfs are absent from this boundary.
 
-  The updated exact-binary lifecycle fixture was not executed: it intentionally models a UID-0 installed service,
-  whereas every permitted project/test process in this slice had to remain numeric UID/GID 1000 with all
-  capabilities dropped. No root container, host namespace, Docker socket mount, port publication, host RustDesk
-  process/service/configuration, listener, firewall, or device path was used or changed. Consequently this slice does
-  not claim current exact-binary pidfd-unavailable refusal, clean exact-commit Debian package
-  construction/installation, an installed old-kernel run, Android device evidence, native Apple/Windows evidence, or
-  independent R-V3 review; those broader items remain open.
-- **R-S11cb/R-S11e-94 — Linux stable service credential ownership and nondumpable runtime replica — SOURCE
-  IMPLEMENTED; CONFINED COMPILER AND SEMANTIC/MUTATION VERIFICATION PASSED 2026-07-23; NATIVE INSTALLED-SERVICE
-  BEHAVIOR AND EXACT ARTIFACT EVIDENCE REMAIN R-B2/R-S11c-27.** Platform: Linux installed-service mode when the
-  stable root `--service` supervisor selects an active-desktop
-  `--server --service-owned-server` child. Endpoint/action: polkit-authorized permanent-password mutation, initial
-  credential snapshot, and the child process's access to the password-equivalent CPace PRS. Boundary: stable root
-  durable machine authority ↔ replaceable active-user runtime authority and ordinary same-uid process-inspection
-  authority.
+  Mutual launch-token proof remains bound to the exact `--cm` or `--cm-no-ui` role;
+  one role cannot authorize the other. Graphical and headless launches retain
+  `PR_SET_PDEATHSIG(SIGKILL)` plus the pre-exec parent recheck. Each PA subscriber
+  retains its exact authenticated CM child and rechecks start identity/direct parent.
+  The CM-side PA listener proves the exact launch parent and main-socket peer before
+  requesting per-connection random-token validation; user-owned same-process use
+  requires exact self identity. Incumbent CM probing requires direct-parent identity
+  and mutual role-bound HMAC; PA probing uses the minimal identity. Same-UID and
+  executable-procfs fallbacks, body-before-proof and generic-config authority remain
+  excluded. Named kernel/role tests, production CM wrong-peer refusal and source-bound
+  authorized production-pair capture remain retained; they do not establish installed
+  principals or current release behavior.
 
-  The prior architecture authorized in root but committed in the child. After polkit succeeded, root forwarded the
-  plaintext over raw `_password`; `spawn_password_mutation` then called
-  `Config::set_permanent_password_persisted` inside the active-user child, so the selected desktop uid/config root
-  chose durable machine credential state. The child also retained the PRS while an ordinary final-image exec did
-  not explicitly hold dumpability off. Linux documents that credential changes reset dumpability but ordinary exec
-  can restore it, and that ptrace-style checks govern `ptrace`, `process_vm_readv`, and `/proc/<pid>/mem`. Kernel
-  `ptrace.c` also distinguishes the sole-tracer check in attach from the general `__ptrace_may_access` decision used
-  by those other interfaces: making root the child's registered tracer would prevent a second attach but would not
-  itself close every classic same-uid read path during a dumpable exec interval. The application cannot treat either
-  that tracer relationship or an optional restrictive Yama setting as its credential boundary. This was a local
-  credential-authority/confidentiality defect requiring local same-uid process authority; it is not evidence that
-  memory was read, a password was stolen, a host process/service/configuration/firewall changed, Docker gained root,
-  a public listener was created, exploitation occurred, or a machine was compromised.
+- **R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent
+  authority — SOURCE IMPLEMENTED; INSTALLED-ARTIFACT EVIDENCE OPEN.** The helper binds
+  its connected Unix peer's PID/UID/start time to its exact current kernel parent and
+  immutable launch-parent marker before answering a challenge. It reads no ptrace-gated
+  peer executable, argv, environment or token metadata. Non-Linux admission retains
+  exact parent PID, executable and complete server-role checks.
 
-  Current source makes root the sole durable writer. The root commit worker persists the submitted plaintext,
-  reads the resulting root PRS tri-state, and sends the exact service-owned child only a canonical PRS-or-empty
-  `SensitivePassword` replica under the same UUID. The child-side mutation worker recognizes its exact Linux
-  service-owned role and calls only `set_permanent_password_prs_for_runtime`; that setter accepts empty or canonical
-  base64 for exactly 32 decoded bytes, wipes decoded/re-encoded temporaries and any replaced replica, overrides stale
-  user-profile state without persistence, and advances the credential generation. If root storage is undecryptable,
-  the PRS cannot be read after persistence, the child returns anything but `Applied`, or transport/finality cannot
-  converge, root latches authority failure and cancels the generation. The existing owned IPC drain completes, the
-  supervisor treats the lost protected-IPC worker as fatal, stops the exact child, and lets the service manager
-  start a fresh generation rather than serving divergent credentials.
+  The fresh 32-byte secret, HMAC-derived `_whiteboard_<hmac>` endpoint, directional
+  mutual proof, proof-before-stream-spawn order and per-connection drawing tokens
+  remain. Both proofs bind `--whiteboard`, derived from the helper's complete argv;
+  missing, extra, case-varied and different roles refuse. Same-principal Linux launch
+  retains parent-death binding and pre-exec recheck through
+  `run_me_with_env_and_parent_death`, covering the creating server thread and inherited
+  secret. Historical Rust kernel/role-token tests and the actual-child R-S11e-44
+  parent-death test retain their component scope. Installed authorized/forbidden-peer
+  overlay admission, UI lifetime and exact cleanup remain OPEN.
 
-  Startup uses a separate raw `_service_credential` listener with its own capacity-two semaphore. Admission occurs
-  before `/proc` identity work; the root reads no request body until it proves the exact child. The bodyless kind-3
-  request and kind-4 response reuse the canonical 36-byte raw header and bind one UUID; a replica body is exactly
-  empty or 44-byte canonical base64. Root reauthenticates the accepted identity before reading credential state.
-  The child connects to service IPC, proves a kernel-credential uid-0 peer whose PID is both its launch-parent marker
-  and its actual direct parent, receives and validates the operation-bound replica, and installs it before startup
-  invariants or any local/public listener. It does not depend on reading protected root `/proc` metadata. Root
-  independently proves the accepted child has the exact service-owned argv, direct parent, and current generation.
-  Explicit empty
-  root state suppresses stale user-profile storage; unavailable, malformed, wrong-operation, wrong-peer, or
-  undecryptable state exits the child before admission. Both root-to-child mutation and child-to-root snapshot proof
-  now require direct parent PID plus the root supervisor's current runtime generation, not ancestry alone.
+- **R-S11ce/R-S11e-97 — Linux unprivileged clients authenticate root service endpoints
+  without root procfs — SOURCE IMPLEMENTED; INSTALLED-SERVICE/ARTIFACT EVIDENCE OPEN.**
+  Generic nonsecret `_service` and raw `_service_password` clients share one connected
+  kernel-credential decision: UID must be present and zero, PID present and positive.
+  It runs before request/header/secret transmission and reads no root-peer executable,
+  argv, environment, start time or ancestry. The fixed root-owned mode-0711 service
+  parent remains independently enforced. Non-root socket squatters refuse before
+  password disclosure; a UID-0 peer is already within root authority. The root receiver
+  still independently proves the active/root requester and exact polkit subject before
+  reading a password; credential replication retains direct-parent/current-generation
+  proof. See Appendix C #224.
 
-  The active-user launch closes the exec-time same-uid inspection window without ptrace. Debian packaging keeps the
-  ordinary UI/service image root:root mode 0755 so its established same-uid `/proc` executable proofs remain usable,
-  and adds a separate byte-identical root:root mode-0711 service-child image. Before dropping privilege, the root
-  supervisor opens the running fixed primary and no-follow child objects, proves the primary path/mode, protected
-  child parent, child ownership/mode/length, exact byte equality, and selected child inode; it also requires
-  `/proc/sys/fs/suid_dumpable` to contain exactly `0`. An already execute-only root-owned manual service image can use
-  its current inode directly. Linux's unreadable-executable exec transition
-  therefore starts the final active-user image nondumpable instead of briefly restoring classic same-uid inspection.
-  The final image first verifies its initial `PR_GET_DUMPABLE == 0`, reasserts `PR_SET_DUMPABLE(0)`, reads the state
-  back, writes one bounded bootstrap marker, and stops itself. Root constructs and atomically publishes the exact
-  durable child record only while that child is stopped, then sends `SIGCONT`. Root-principal children share the
-  explicit nondumpable marker/stop publication boundary. All metadata, policy, marker, stop, identity, record, resume,
-  and cleanup failures are fail-closed. The systemd unit permits neither the individual `ptrace` syscall nor
-  `@debug`; its already-retained `CAP_SYS_PTRACE` permits the root supervisor's exact nondumpable-child `/proc`
-  proofs without becoming the exec-transition boundary. The unsupervised recovery test hook is
-  `debug_assertions`-only, compiles to false in release, and the real supervisor's `env_clear()` never propagates it.
+  Historical full-library/test typechecking compiled
+  `r_s11e97_linux_root_service_peer_requires_kernel_uid_and_positive_pid`; its focused
+  test execution stopped at a 6-GiB link-memory limit and is not an executed-test pass.
+  Current installed liveness, password transactions and final Debian artifact evidence
+  remain OPEN under R-B2/R-S11c-27.
 
-  Final review rejected an earlier package draft that made the primary executable itself mode 0711. That would
-  also make every ordinary user-launched RustDesk process nondumpable and break the fork's existing same-uid
-  `/proc/<peer>/exe` proofs between ordinary RustDesk processes. The corrected package split confines unreadable-exec
-  behavior to `rustdesk-service-child`. The constructor makes that member by direct byte copy, and both source and
-  archive verifiers require primary mode 0755, child mode 0711, exact ELF policy on both, and byte-for-byte equality.
-  At runtime the root supervisor accepts the package child only after fixed-path, protected-parent, metadata, length,
-  and streaming byte comparison against its open running image; peer authentication then binds the selected child's
-  device/inode rather than incorrectly requiring that its pathname equal the primary UI image.
+  For these five entries, historical compiler checks, source-wording/mutation receipts,
+  formatter/setup failures and recorded host-command/empty-volume deviations are
+  archived in Git at `b52c85cd` and the audit journal (including R-S11gl cleanup).
+  The retired mutation catalogues and combined helper wording checker establish no
+  native authority. The remaining Linux-password source checker has one normal mode;
+  actual password/role/codec, UID-policy and parent-death tests remain. Named source
+  `b74dbbca` ran that checker and four compiled UID-policy cases in the zero-NIC VM;
+  raw SHA-256 `56c5e063946fa07919fc2ed5f2a0437f3976eaa1afc687e295b1c53516bab56b`
+  retains its limited source-check/UID-policy scope. Earlier executed streaming
+  child-byte identity, operation-bound/wrong-operation credential snapshot, replica
+  framing and canonical nonpersistent PRS/clear tests remain historical component
+  evidence. No new product execution accompanies this compression. The unchanged
+  parent lifecycle matrix still requires current exact-artifact VMs under every
+  supported supervisor, authorized/forbidden principals, races, bounded resources and
+  cleanup, cold equality, independent reproduction and external R-V3 review. Android
+  device and native Apple/Windows acceptance remain separate open obligations.
+  Classification and the final whole-ledger count are retained in
+  `.harness-state/verifier-vm/linux-service-ledger-role-b52c85cd.json`.
 
-  `scripts/verify-linux-service-password-ipc.py` retains supplementary token checks for raw framing,
-  endpoint/role separation, credential ownership, bootstrap and source ordering. Its 229-case in-memory
-  source-mutation catalogue is deleted: the altered strings were neither compiled nor executed and did not
-  establish native authority or finality. The checker has one source-check mode; `scripts/verify.sh` invokes
-  it without `--self-test`. The retained source guards are byte-identical. Runtime UID-policy and product
-  password/role/codec tests remain. Source `b74dbbca` passed the checker and four compiled UID-policy tests
-  in 35s in the zero-NIC VM, with no added host listener and joined cleanup. Raw log SHA-256:
-  `56c5e063946fa07919fc2ed5f2a0437f3976eaa1afc687e295b1c53516bab56b`; command/artifact bindings remain
-  in the retained catalogue-deletion audit. Native installed-service principals, OS authorization, races,
-  startup/finality and cleanup remain OPEN.
-
-  Confined evidence used only already-present immutable images as numeric UID/GID 1000 with no network, a read-only
-  root/source/toolchain, all capabilities dropped, no-new-privileges, bounded PIDs/CPU/memory, and private tmpfs
-  outputs. Final Rust 1.75.0 locked/offline `cargo check --config online/cargo-vendor-config.toml --lib --tests
-  --no-default-features --features linux-pkg-config -j1` completed in 5m12s with only the repository's existing
-  warning set. Focused test-profile execution then passed five tests: streaming service-child byte identity including
-  changed/trailing/truncated negatives (1/1), operation-bound and wrong-operation credential snapshots (2/2), exact
-  credential-replica framing (1/1), and canonical nonpersistent PRS replica/clear behavior (1/1). Normal
-  Linux-password semantic/package validation, both complete deliberate-mutation matrices, dependency inventory and
-  its self-tests, native-codec normal/negative checks, meta-verifier normal/source-mutation checks,
-  Bash parsing, and private-tmpfs Python compilation passed. Two stale meta-verifier self-test literals for the
-  corrected dedicated child/27-statement package constructor were rejected, updated to the actual contract, and the
-  complete matrix was rerun successfully. Rustfmt found no drift in a newly touched hunk; the whole-file check remains
-  non-clean only at explicitly untouched pre-existing locations in `src/ipc/auth.rs` and `src/platform/linux.rs`.
-
-  One dependency-inventory invocation was mistakenly executed directly on the host as the ordinary user. It was
-  read-only, used no root/network/service/device/port authority, changed no file, and is not counted; normal mode and
-  its self-tests were rerun in the confined container. Separately, an incorrect formatter toolchain mount caused
-  Docker to create one empty named volume, `rust1.75.0-x86_64-unknown-linux-gnu`. No project process used it, it
-  contained no files and was initially left untouched rather than silently removed. The operator's later explicit
-  residue-cleanup authorization removed that exact empty volume; see R-S11gl below. Neither deviation touched
-  RustDesk, services, listeners, firewall state, or a device. No root container, host namespace, Docker socket
-  mount, port publication, host RustDesk process/service/configuration, listener, firewall, network, or device path
-  was used, inspected, or changed. The final exact-state review and publication identity are recorded in the
-  external audit ledger after publication; the source slice does not claim native
-  systemd/SysV/OpenRC/runit behavior, same-uid inspection-denial behavior, a built/installed Debian artifact, a
-  clean exact-commit cold release, Android device behavior, native Apple/Windows behavior, or independent R-V3
-  review.
-- **R-S11cc/R-S11e-95 — Linux nondumpable service child and connection-manager use kernel parent authority —
-  SOURCE IMPLEMENTED; CONFINED COMPILER AND SEMANTIC/MUTATION VERIFICATION PASSED 2026-07-23; NATIVE
-  INSTALLED-SERVICE BEHAVIOR AND EXACT ARTIFACT EVIDENCE REMAIN R-B2/R-S11c-27.** Platform: Linux installed-service
-  mode after the stable root supervisor has launched the active-user, nondumpable
-  `--server --service-owned-server` image. Endpoint/action: the service child's graphical/headless connection
-  manager, the `_cm` listener and launch proof, main-IPC connection-capability validation, and the `_pa` capture
-  capability. Boundary: nondumpable service server ↔ its exact CM child, and CM ↔ its exact server launch parent.
-
-  R-S11cb intentionally made the active-user service image unreadable and nondumpable. A CM spawned through
-  `current_exe()` executes that same dedicated image and remains nondumpable. The retained Linux `_cm` proof still
-  attempted to read the other same-uid process's `/proc/<pid>/exe`, `cmdline`, and `environ` into
-  `PeerProcessIdentity`. Linux subjects the executable link to ptrace read access, so the new confidentiality
-  boundary could reject the legitimate parent/child pair it was meant to protect. The CM-dependent control/audio
-  path could therefore fail while an independent file-transfer path continued. This was a hardening-induced local
-  functional and helper-authority incompatibility, not evidence of exploitation, remote authentication bypass,
-  Docker root access, a host service/configuration/firewall change, a public listener, or machine compromise.
-
-  Linux CM and PA flows now use a deliberately minimal `LinuxProcessIdentity` containing only PID, UID, and process
-  start time. A Unix socket supplies the peer PID/UID; `/proc/<pid>/stat` adds the non-reused start identity. The
-  server accepts `_cm` only when that live identity is its exact current direct child. In the reverse direction the
-  CM requires its launch-parent marker to equal its current kernel parent and requires the main socket peer to equal
-  that parent's PID/UID/start-time identity before asking for a connection capability. No executable, argv,
-  environment, token, or other ptrace-gated metadata crosses this nondumpable boundary. The fresh launch-token proof
-  remains mutual and is additionally domain-separated by the complete exact `--cm` or `--cm-no-ui` role; a proof
-  from one role cannot authorize the other. Both graphical and headless Linux launches use the existing
-  `PR_SET_PDEATHSIG(SIGKILL)` plus pre-exec parent recheck path, preventing an orphaned CM from outliving the server
-  parent whose authority it carries.
-
-  The per-connection PulseAudio authority also retains only the minimal kernel identity. The service server records
-  the exact authenticated CM child for each active subscriber and rechecks both process start and direct parent
-  before issuing capture authority. The CM-side PA listener accepts an external owner only when it is the exact
-  launch parent and the exact peer on the protected main socket, then asks that peer to validate the per-connection
-  random token. A user-owned same-process path remains supported through exact self identity. Incumbent `_cm`
-  probing now requires both exact direct-parent identity and mutual role-bound HMAC; `_pa` probing uses the exact
-  minimal identity. No same-UID-only fallback, executable-procfs fallback, body-before-proof path, or generic config
-  authority was added.
-
-  The former source-wording checker for this boundary was retired after it became
-  incapable of recognizing the current PA request and CM registry. Its historical
-  mutation receipts remain in Git history, not as current native evidence.
-  Focused Rust tests, production CM wrong-peer refusal, and source-bound authorized
-  production-pair capture are retained. Installed-service principals remain OPEN.
-
-  Confined validation used immutable image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
-  `--pull=never`, no network, a read-only root/source/toolchain, all capabilities dropped, no-new-privileges, bounded
-  PIDs/CPU/memory/no-swap, and private tmpfs output. The final Rust 1.75.0 locked/offline
-  `cargo check --config online/cargo-vendor-config.toml --lib --tests --no-default-features --features
-  linux-pkg-config -j1` completed with only the repository's existing warning set. Focused R-S11e-95 tests, normal
-  and 17-mutation focused verification, meta-verifier normal/source-mutation checks, Bash/Python syntax,
-  dependency-inventory normal/self-test, native-codec normal/self-test, requirements-hash synchronization, and
-  touched-source formatting/diff checks are recorded in the external audit ledger with the final publication
-  identity.
-
-  No release build, package installation, root container, host namespace, Docker socket mount, port publication,
-  host RustDesk process/service/configuration, listener, firewall, network, or device path was used, inspected, or
-  changed. This source slice therefore does not claim current native service-child/CM behavior, an installed Debian
-  package, a clean exact-commit cold release, Android device behavior, native Apple/Windows behavior, or independent
-  R-V3 review.
-- **R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent authority —
-  SOURCE IMPLEMENTED; CONFINED RUST 1.75 COMPILER/TEST AND SEMANTIC/MUTATION VERIFICATION PASSED
-  2026-07-23; NATIVE INSTALLED-ARTIFACT EVIDENCE PENDING.** Platform: Linux installed-service mode after the active-user
-  `--server --service-owned-server` image is deliberately unreadable and nondumpable. Endpoint/action:
-  same-principal `--whiteboard` overlay launch, token-derived `_whiteboard_<hmac>` listener admission,
-  directional mutual launch proof, and helper lifetime. Boundary: the overlay helper ↔ the exact server
-  process and thread that launched it.
-
-  The source-proven old path recorded the launch parent and required that exact socket PID, but then called
-  `ensure_peer_executable_matches_current_by_pid_opt` and the server-role argv reader before answering the
-  mutual HMAC challenge. The server and helper both execute the dedicated mode-0711 service-child image.
-  Linux subjects `/proc/<pid>/exe` dereference to ptrace access checks, and the capability-free non-root
-  reproduction recorded for this slice changed that same-UID read from success to `EACCES` immediately after
-  `PR_SET_DUMPABLE(0)`. `/proc/<pid>/stat` remained readable. The hardened service confidentiality boundary
-  could therefore make a legitimate overlay reject its own server before proof. This is a hardening-induced
-  local availability and helper-authority incompatibility, not evidence of exploitation, remote bypass, Docker
-  root access, host service/configuration/firewall mutation, a public listener, or compromise.
-
-  Linux whiteboard admission now derives one minimal PID/UID/start-time identity for the connected Unix peer,
-  requires the immutable launch-parent PID to equal the helper's current kernel parent, and requires the socket
-  identity to equal that exact live parent before answering any challenge. It does not read executable, argv,
-  environment, or token metadata across the nondumpable boundary. Non-Linux admission retains its existing exact
-  parent PID, current executable, and complete server-role checks.
-
-  The existing fresh 32-byte launch secret, HMAC-derived endpoint name, directional server/endpoint challenge
-  domains, proof-before-stream-spawn order, and per-connection drawing tokens remain. Both directional proofs now
-  also bind the fixed `--whiteboard` role. The helper derives that role from its complete exact argv before
-  answering; missing, extra, case-varied, or different roles fail closed. Every same-principal Linux whiteboard
-  launch uses `run_me_with_env_and_parent_death`, which arms the existing pre-exec
-  `PR_SET_PDEATHSIG(SIGKILL)` and parent recheck before the descriptor policy and exec. The overlay and inherited
-  launch secret therefore cannot remain after loss of the exact creating server thread.
-
-  The former combined CM/PA/whiteboard source-wording checker was retired after
-  it required superseded PA and CM shapes. Its historical mutation receipts are
-  not native overlay evidence. Focused Rust and Apple source checks remain;
-  source-bound installed whiteboard admission, forbidden peers, and cleanup are OPEN.
-
-  Confined validation used immutable image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
-  no network, all capabilities dropped, no-new-privileges, a read-only root and source tree, vendored dependencies,
-  and ephemeral tmpfs compiler output. Rust 1.75.0 locked/offline tests passed all four R-S11e-95/R-S11e-96
-  kernel-identity and role/token-proof regressions plus the actual-child R-S11e-44 parent-death regression. The
-  normal default-feature `cargo check --features linux-pkg-config` passed with only the repository's existing
-  warning set. Focused 25-mutation verification, workspace normal/source-mutation verification, Bash/Python syntax,
-  dependency-inventory normal/self-test, native-codec normal/self-test,
-  requirements-hash synchronization, `Cargo.lock` immutability, touched-source Rust 1.75 formatting, and
-  `git diff --check` also passed. The full Apple wrapper was deliberately not invoked because it unconditionally
-  rebuilds and retags Docker images before source checking; its three changed whiteboard assertions were instead
-  syntax-checked, independently inspected, and mutation-bound by the workspace verifier.
-
-  No native installed service, overlay UI, package, release artifact, Android/iOS device, host RustDesk process,
-  listener, firewall, or configuration is exercised by this source row. Exact native installed-service/overlay and
-  final Debian artifact evidence remain R-B2/R-S11c-27; the prohibited long cold release build remains unrun.
-- **R-S11ce/R-S11e-97 — Linux unprivileged clients authenticate root service endpoints without root procfs —
-  SOURCE IMPLEMENTED; CONFINED RUST 1.75 FULL LIB/TEST TYPECHECK AND SEMANTIC/MUTATION VERIFICATION PASSED
-  2026-07-23; NATIVE INSTALLED-SERVICE/ARTIFACT EVIDENCE PENDING.** Platform: Linux
-  installed-service mode. Endpoint/action: client-side authentication of the generic, nonsecret `_service`
-  liveness channel and the dedicated raw `_service_password` channel before any request/header/body is sent.
-  Boundary: active-user UI/CLI process ↔ stable uid-0 service listener.
-
-  The retained implementation contradicted the already-normative R-S11i model. Both client paths connected to the
-  fixed root service socket and then tried to read the root peer's `/proc/<pid>/cmdline` and dereference
-  `/proc/<pid>/exe` to prove `--service` plus a protected executable. Linux subjects the executable link to
-  `PTRACE_MODE_READ_FSCREDS`; an ordinary active-user client cannot inspect a uid-0 service this way. The proof
-  could therefore reject the legitimate installed service before generic liveness or the raw password header,
-  while adding no meaningful authority against a process already capable of presenting uid 0.
-
-  Both client paths now terminate in one decision over the connected Unix socket's kernel credentials: uid must be
-  present and exactly zero, and PID must be present and positive. Generic framed `_service` and raw
-  `_service_password` use thin transport-specific wrappers around that decision. The client no longer reads the
-  root peer's executable, argv, environment, start time, ancestry, or any other procfs process metadata. The fixed
-  service path and root-owned mode-0711 service IPC parent remain separately enforced; a non-root path squatter is
-  rejected before any password bytes, and a process that can present uid 0 is already inside the root authority
-  boundary. The opposite-direction controls are unchanged: the root listener still snapshots and proves the
-  active/root caller and exact polkit subject before reading the password body, and `_service_credential` retains
-  the exact direct-parent/current-generation proof in both directions.
-
-  `r_s11e97_linux_root_service_peer_requires_kernel_uid_and_positive_pid` covers the common decision and is
-  compiled/typechecked by the full lib/test target. The Linux password semantic verifier binds both call paths,
-  shared decision, uid/PID requirements, absence of the retired root-procfs proof, and deliberate non-root/procfs
-  regressions. Its normal and complete deliberate-mutation modes pass. The shared source gate binds R-S11ce,
-  Appendix C #224, and this ledger identity.
-
-  Confined validation used immutable image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
-  no network, all capabilities dropped, no-new-privileges, a read-only root/source tree and Rust 1.75 toolchain,
-  locked/offline vendored dependencies, and an ephemeral executable tmpfs output tree. The full
-  `cargo check --lib --tests --no-default-features --features linux-pkg-config` target passed, compiling and
-  typechecking production code plus the focused regression. The direct focused `cargo test` attempt compiled the
-  project through the final link and exposed no source error, but the linker was killed at the container's 6 GiB
-  memory cap; it is therefore not recorded as an executed-test pass. The focused semantic verifier passed normally
-  and rejected every deliberate mutation, including non-root peer acceptance and a reintroduced root-procfs read.
-  No native installed service, password transaction, package, release artifact, host RustDesk process, listener,
-  firewall, or configuration was exercised. Native installed-service liveness/password behavior and exact
-  Debian-artifact evidence remain R-B2/R-S11c-27; the prohibited long cold release build remains unrun.
 - **R-S11cf/R-S11e-98 — Debian builder private-source and container authority — SOURCE IMPLEMENTED;
   EXACT SOURCE COMMIT `547da491d182b98c31184a509e192977bcd7cb18` CONFINED
   SEMANTIC/MUTATION/WORKSPACE AND AUTHORITY-RUNTIME PROBES PASSED 2026-07-23;

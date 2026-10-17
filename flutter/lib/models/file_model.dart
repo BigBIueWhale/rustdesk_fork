@@ -1871,6 +1871,8 @@ class JobResultListener {
   final int maxPending;
   final Duration requestTimeout;
   final Map<_JobResultKey, _PendingJobResult> _pending = {};
+  // Response routing can retire before native dispatch completes.
+  final Map<_PendingJobResult, Future<void>?> _pendingTasks = {};
 
   Future<Map<String, dynamic>> dispatchAndWait(
       {required SessionID expectedSessionId,
@@ -1887,11 +1889,12 @@ class JobResultListener {
     if (_pending.containsKey(key)) {
       return Future.error(StateError('File-job result is already pending'));
     }
-    if (_pending.length >= maxPending) {
+    if (_pendingTasks.length >= maxPending) {
       return Future.error(StateError('File-job result capacity exhausted'));
     }
     final pending = _PendingJobResult();
     _pending[key] = pending;
+    _pendingTasks[pending] = null;
     pending.startTimeout(requestTimeout, () {
       if (!identical(_pending[key], pending)) return;
       // Keep an exact bounded tombstone. A late response must be consumed by
@@ -1905,21 +1908,27 @@ class JobResultListener {
     try {
       dispatchResult = dispatch();
     } catch (error, stackTrace) {
-      _pending.remove(key);
+      _pendingTasks.remove(pending);
+      if (identical(_pending[key], pending)) _pending.remove(key);
       pending.completeError(error, stackTrace);
       return pending.future;
     }
-    unawaited(dispatchResult.then<void>((_) {
+    final completion = dispatchResult.then<void>((_) {
       pending.markDispatchSettled();
-      if (pending.responseReceived && identical(_pending[key], pending)) {
-        _pending.remove(key);
+      if (pending.responseReceived || !identical(_pending[key], pending)) {
+        _pendingTasks.remove(pending);
+        if (identical(_pending[key], pending)) _pending.remove(key);
       }
     }, onError: (Object error, StackTrace stackTrace) {
+      _pendingTasks.remove(pending);
       if (identical(_pending[key], pending)) {
         _pending.remove(key);
         pending.completeError(error, stackTrace);
       }
-    }));
+    });
+    if (_pendingTasks.containsKey(pending)) {
+      _pendingTasks[pending] = completion;
+    }
     return pending.future;
   }
 
@@ -1939,6 +1948,7 @@ class JobResultListener {
     pending.complete(Map<String, dynamic>.unmodifiable(event));
     if (pending.dispatchSettled) {
       _pending.remove(key);
+      _pendingTasks.remove(pending);
     }
     return true;
   }
@@ -1960,6 +1970,7 @@ class JobResultListener {
     pending.completeResponseError(StateError(error));
     if (pending.dispatchSettled) {
       _pending.remove(key);
+      _pendingTasks.remove(pending);
     }
     return true;
   }
@@ -1969,15 +1980,17 @@ class JobResultListener {
     if (!pending.markLateResponseReceived()) return;
     if (pending.dispatchSettled && identical(_pending[key], pending)) {
       _pending.remove(key);
+      _pendingTasks.remove(pending);
     }
   }
 
   void clear() {
-    final pending = _pending.values.toList(growable: false);
+    final pending = _pendingTasks.keys.toList(growable: false);
     _pending.clear();
     final error = StateError('Superseded file-transfer session');
     for (final result in pending) {
       result.completeError(error);
+      if (result.dispatchSettled) _pendingTasks.remove(result);
     }
   }
 }

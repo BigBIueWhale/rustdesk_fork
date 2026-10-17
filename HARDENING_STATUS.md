@@ -6248,14 +6248,24 @@ QA narratives remain available in Git and the external audit; they are not curre
 Release preparation follows [`docs/VERSIONING.md`](docs/VERSIONING.md#preparing-a-release).
 Tracked source does not substitute for the generated exact-commit artifact manifest; no release publication is claimed.
 
+**R-B3 source identity — requirement corrected; release-source delivery OPEN.**
+`hbb_common` is in-tree; there is no `.gitmodules` file or gitlink. The GitHub publisher
+links the full source commit and binds that same commit into its canonical tag, release
+metadata and artifact manifest. R-B3 no longer requires a nonexistent second repository
+and submodule revision. Availability of complete Corresponding Source for exact release
+artifacts, including the required external source inputs, remains unverified and OPEN.
+
 ## Upstream CVE review — source dispositions; native/artifact acceptance OPEN
 
 The earlier June inventory and blanket coverage claim are retired. This is a bounded review of the
 named records against the current fork, not an exhaustive current advisory inventory or a claim
 that an upstream affected-version range proves this fork's disposition.
 
-**CVE-2026-76840 — Windows clipboard caller-buffer overflow: correction prepared; execution pending.**
-The actual `CliprdrStream_Read` still copied `req_fsize` into a caller buffer of `cb` bytes;
+**CVE-2026-76840 — Windows clipboard caller-buffer overflow: source corrected; OPEN/PARKED.**
+Source `ab156fc2` is committed and pushed. At the user's request, this work and the advisory
+review below are parked and will not resume automatically. No component test binary was
+compiled or executed, and no clipboard test VM was started.
+Before the correction, `CliprdrStream_Read` copied `req_fsize` into a caller buffer of `cb` bytes;
 the response handler's eight-MiB ceiling did not enforce that caller-specific limit. The correction
 snapshots the received length and rejects an oversized response, excess remaining-file extent or
 missing nonempty payload before copying or advancing the stream. Win32/HRESULT transfer failures

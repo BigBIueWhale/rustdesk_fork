@@ -113,6 +113,7 @@ fn receiver(fixture: &Fixture, size: u64) -> fs::TransferJob {
     let mut job = fs::TransferJob::new_write(371, fs::JobType::Generic,
         "remote".to_owned(), fixture.0.clone(), 0, false, true, true)
         .with_files(vec![FileEntry { name: "incoming".to_owned(), size,
+            entry_type: FileType::File.into(),
             ..Default::default() }]).unwrap();
     job.is_resume = true;
     job
@@ -156,6 +157,10 @@ async fn download_refuses_large_partial_without_adopting_or_removing_it() {
     let size = offset + 4;
     stage_partial(&fixture, offset, size);
     let path = fixture.0.join("incoming.download");
+    let mut partial = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    partial.seek(SeekFrom::Start(offset - 8)).unwrap();
+    partial.write_all(b"retained").unwrap();
+    drop(partial);
     let before = std::fs::metadata(&path).unwrap();
     let digest_before = std::fs::read(fixture.0.join("incoming.digest")).unwrap();
     let mut remote = remote();
@@ -172,6 +177,11 @@ async fn download_refuses_large_partial_without_adopting_or_removing_it() {
     let after = std::fs::metadata(&path).unwrap();
     assert_eq!((before.dev(), before.ino(), before.len()),
         (after.dev(), after.ino(), after.len()));
+    let mut partial = std::fs::File::open(&path).unwrap();
+    partial.seek(SeekFrom::Start(offset - 8)).unwrap();
+    let mut retained = [0; 8];
+    partial.read_exact(&mut retained).unwrap();
+    assert_eq!(&retained, b"retained");
     assert_eq!(std::fs::read(fixture.0.join("incoming.digest")).unwrap(), digest_before);
     assert!(!fixture.0.join("incoming.download.lock").exists());
     assert!(!fixture.0.join("incoming").exists());

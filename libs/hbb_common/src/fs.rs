@@ -3524,6 +3524,26 @@ impl TransferJob {
 
     async fn open_send_file(path: PathBuf) -> ResultType<File> {
         let file = tokio::task::spawn_blocking(move || -> ResultType<std::fs::File> {
+            #[cfg(target_os = "linux")]
+            let (source, source_metadata) = {
+                use std::os::unix::fs::OpenOptionsExt;
+
+                // Pin and classify without opening a device or FIFO for I/O.
+                let source = std::fs::OpenOptions::new().read(true)
+                    .custom_flags(crate::libc::O_PATH | crate::libc::O_CLOEXEC)
+                    .open(&path)?;
+                let metadata = source.metadata()?;
+                if !metadata.is_file() {
+                    bail!("send source is not a regular file");
+                }
+                (source, metadata)
+            };
+            #[cfg(target_os = "linux")]
+            let path = {
+                use std::os::unix::io::AsRawFd;
+
+                PathBuf::from(format!("/proc/self/fd/{}", source.as_raw_fd()))
+            };
             let mut options = std::fs::OpenOptions::new();
             options.read(true);
             #[cfg(unix)]
@@ -3541,8 +3561,20 @@ impl TransferJob {
                     bail!("send source is not a verified disk file (native type {kind})");
                 }
             }
-            if !file.metadata()?.is_file() {
+            let metadata = file.metadata()?;
+            if !metadata.is_file() {
                 bail!("send source is not a regular file");
+            }
+            #[cfg(target_os = "linux")]
+            {
+                use std::os::unix::fs::MetadataExt;
+
+                if (metadata.dev(), metadata.ino())
+                    != (source_metadata.dev(), source_metadata.ino())
+                {
+                    bail!("send source changed during descriptor reopening");
+                }
+                drop(source);
             }
             Ok(file)
         })

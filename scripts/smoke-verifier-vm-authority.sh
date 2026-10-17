@@ -6797,6 +6797,11 @@ else
             "FLUTTER_DIRECTORY_ORDERING_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=10 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-directory-ordering-tests cleanup=joined" \
             'focused Flutter directory ordering receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+        [ "$(/usr/bin/grep -Ec 'FLUTTER_FILE_NAVIGATION_GENERATED=pass mode=filtered-freezed seconds=[0-9]+ rust_sha256=[0-9a-f]{64} io_sha256=[0-9a-f]{64} dart_sha256=[0-9a-f]{64} freezed_sha256=[0-9a-f]{64}' "$SERIAL_LOG")" -eq 1 ] \
+            && [ "$(/usr/bin/grep -Fc 'FLUTTER_FILE_NAVIGATION_GENERATED=' "$SERIAL_LOG")" -eq 1 ] \
+            && [ "$(/usr/bin/grep -Ec 'FLUTTER_FILE_NAVIGATION_BRIDGE_USE=pass dart_sha256=[0-9a-f]{64} freezed_sha256=[0-9a-f]{64} unchanged=before-after' "$SERIAL_LOG")" -eq 1 ] \
+            && [ "$(/usr/bin/grep -Fc 'FLUTTER_FILE_NAVIGATION_BRIDGE_USE=' "$SERIAL_LOG")" -eq 1 ] \
+            || fail 'file-navigation exact generated API binding differs'
         require_exact_fixed_receipt \
             "FLUTTER_FILE_NAVIGATION_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=25 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-navigation-tests cleanup=joined" \
             'focused Flutter file navigation receipt'

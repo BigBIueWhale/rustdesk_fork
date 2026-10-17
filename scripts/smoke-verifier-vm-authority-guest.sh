@@ -8570,9 +8570,15 @@ run_flutter_model_tests() {
                 fi
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     codegen_log=/work/codegen.log
+                    codegen_flags=()
+                    if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+                        codegen_flags=(--no-build-runner)
+                        file_navigation_codegen_started=$SECONDS
+                    fi
                     file_navigation_stage generate-bridge
                     if ! (cd "$codegen_source" && \
                         /work/toolchain/flutter_rust_bridge_codegen \
+                            "${codegen_flags[@]}" \
                             --rust-input ./src/flutter_ffi.rs \
                             --dart-output ./flutter/lib/generated_bridge.dart \
                             --llvm-path "$LLVM_ROOT" \
@@ -8584,6 +8590,22 @@ run_flutter_model_tests() {
                     [ "$(stat -c %s "$codegen_log")" -le 1048576 ]
                     ! grep -Fq "[SEVERE]" "$codegen_log" \
                         || { tail -n 160 "$codegen_log" >&2; exit 1; }
+                    if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+                        file_navigation_stage generate-freezed
+                        freezed_log=/work/freezed.log
+                        if ! (timeout --signal=TERM --kill-after=5s 90s \
+                                flutter pub run build_runner build \
+                                    --delete-conflicting-outputs --fail-on-severe \
+                                    --enable-experiment=class-modifiers \
+                                    --build-filter=lib/generated_bridge.freezed.dart \
+                            && dart format --line-length 80 \
+                                lib/generated_bridge.freezed.dart) \
+                                >"$freezed_log" 2>&1; then
+                            tail -n 160 "$freezed_log" >&2
+                            exit 1
+                        fi
+                        [ "$(stat -c %s "$freezed_log")" -le 1048576 ]
+                    fi
                     for generated in \
                         "$codegen_source/src/bridge_generated.rs" \
                         "$codegen_source/src/bridge_generated.io.rs" \
@@ -8599,8 +8621,20 @@ run_flutter_model_tests() {
                             fi
                         fi
                     done
+                    if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+                        printf "FLUTTER_FILE_NAVIGATION_GENERATED=pass mode=filtered-freezed seconds=%s rust_sha256=%s io_sha256=%s dart_sha256=%s freezed_sha256=%s\n" \
+                            "$((SECONDS - file_navigation_codegen_started))" \
+                            "$(sha256sum "$codegen_source/src/bridge_generated.rs" | cut -d " " -f 1)" \
+                            "$(sha256sum "$codegen_source/src/bridge_generated.io.rs" | cut -d " " -f 1)" \
+                            "$(sha256sum lib/generated_bridge.dart | cut -d " " -f 1)" \
+                            "$(sha256sum lib/generated_bridge.freezed.dart | cut -d " " -f 1)"
+                    fi
                     sed -i "s/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g" \
                         "$codegen_source/flutter/lib/generated_bridge.dart"
+                    if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+                        file_navigation_bridge_before=$(sha256sum \
+                            lib/generated_bridge.dart lib/generated_bridge.freezed.dart)
+                    fi
                 fi
                 [ "$project_lock" = "$(sha256sum pubspec.lock | awk "{print \$1}")" ]
                 tests=(test/latest_frame_queue_test.dart)
@@ -8704,6 +8738,13 @@ run_flutter_model_tests() {
                     exit 1
                 fi
                 file_navigation_stage source-postconditions
+                if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+                    [ "$file_navigation_bridge_before" = "$(sha256sum \
+                        lib/generated_bridge.dart lib/generated_bridge.freezed.dart)" ]
+                    printf "FLUTTER_FILE_NAVIGATION_BRIDGE_USE=pass dart_sha256=%s freezed_sha256=%s unchanged=before-after\n" \
+                        "$(sha256sum lib/generated_bridge.dart | cut -d " " -f 1)" \
+                        "$(sha256sum lib/generated_bridge.freezed.dart | cut -d " " -f 1)"
+                fi
                 if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
                     if grep -Eq "mainLoadRecentPeersForAb|main_load_recent_peers_for_ab" \
                         lib/generated_bridge.dart \
@@ -8949,6 +8990,12 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+        [ "$(grep -Ec '^FLUTTER_FILE_NAVIGATION_GENERATED=pass mode=filtered-freezed seconds=[0-9]+ rust_sha256=[0-9a-f]{64} io_sha256=[0-9a-f]{64} dart_sha256=[0-9a-f]{64} freezed_sha256=[0-9a-f]{64}$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'FLUTTER_FILE_NAVIGATION_GENERATED=' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^FLUTTER_FILE_NAVIGATION_BRIDGE_USE=pass dart_sha256=[0-9a-f]{64} freezed_sha256=[0-9a-f]{64} unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'FLUTTER_FILE_NAVIGATION_BRIDGE_USE=' "$output")" -eq 1 ] \
+            || fail 'file-navigation generated API publication or use differs'
+        grep -E '^FLUTTER_FILE_NAVIGATION_(GENERATED|BRIDGE_USE)=' "$output"
         printf 'FLUTTER_FILE_NAVIGATION_TESTS_VM=pass commit=%s tree=%s suites=1 tests=25 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-navigation-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

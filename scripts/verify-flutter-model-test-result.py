@@ -151,6 +151,12 @@ FILE_NAVIGATION_TESTS = {
     "timed out local request retains capacity through late native error",
     "local error and malformed JSON release exact capacity slots",
     "retired local session refuses dispatch and late native success",
+    "cancelled remote dispatches retain shared capacity until settlement",
+    "late remote dispatch errors release only their retired owner",
+    "stale remote sessions refuse every dispatch family",
+    "timed out remote dispatches stay bounded across cancellation",
+    "early remote responses retain cancelled dispatch capacity",
+    "synchronous listing completions cannot resurrect capacity owners",
 }
 PEER_DATA_TESTS = {
     "peer decode redacts malformed JSON exception content",

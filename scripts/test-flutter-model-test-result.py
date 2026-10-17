@@ -90,7 +90,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (1, 10))
-        self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (1, 25))
+        self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (1, 31))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 26))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (9, 76))
         with tempfile.TemporaryDirectory() as root:

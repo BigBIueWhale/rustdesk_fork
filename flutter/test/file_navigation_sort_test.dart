@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter_hbb/common.dart' show SessionID;
 import 'package:flutter_hbb/models/file_model.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +27,69 @@ FileFetcherRequests _localRequests(
       readLocalDirectory: flat ?? (_, path, __) async => _listing(path),
       readLocalEmptyDirectories: empty ?? (_, __, ___) async => '[]',
     );
+
+enum _RemoteListing { directory, empty, recursive }
+
+class _RemoteListingHarness {
+  var session = const Uuid().v4obj();
+  final dispatches = <SessionID>[];
+  final completions = <Completer<void>>[];
+  final int capacity;
+  final Duration timeout;
+
+  _RemoteListingHarness({this.capacity = 1,
+      this.timeout = const Duration(seconds: 2)});
+
+  Future<void> dispatch(SessionID actual) {
+    dispatches.add(actual);
+    final completion = Completer<void>();
+    completions.add(completion);
+    return completion.future;
+  }
+
+  late final fetcher = FileFetcher(() => session,
+      maxPending: capacity,
+      requestTimeout: timeout,
+      requests: FileFetcherRequests(
+        readDirectory: (actual, _, __) => dispatch(actual),
+        readEmptyDirectories: (actual, _, __) => dispatch(actual),
+        readDirectoryTree: (actual, _, __, ___, ____) => dispatch(actual),
+        readLocalDirectory: (_, path, __) async => _listing(path),
+        readLocalEmptyDirectories: (_, __, ___) async => '[]',
+      ));
+
+  Future<Object> start(_RemoteListing kind, {SessionID? expectedSessionId}) {
+    switch (kind) {
+      case _RemoteListing.directory:
+        return fetcher.fetchDirectory('/remote', false, false,
+            expectedSessionId: expectedSessionId);
+      case _RemoteListing.empty:
+        return fetcher.readEmptyDirs('/remote', false, false,
+            expectedSessionId: expectedSessionId);
+      case _RemoteListing.recursive:
+        return fetcher.fetchDirectoryRecursiveToRemove(7, '/remote', false, false,
+            expectedSessionId: expectedSessionId);
+    }
+  }
+
+  bool reply(_RemoteListing kind, SessionID actual) {
+    if (kind == _RemoteListing.empty) {
+      return fetcher.tryCompleteEmptyDirsTask(actual,
+          jsonEncode({'path': '/remote', 'empty_dirs': []}), 'false');
+    }
+    final listing = jsonDecode(_listing('/remote'));
+    if (kind == _RemoteListing.recursive) listing['id'] = 7;
+    return fetcher.tryCompleteTask(actual, jsonEncode(listing), 'false');
+  }
+
+  Future<void> drain() async {
+    fetcher.cancelPending();
+    for (final completion in completions) {
+      if (!completion.isCompleted) completion.complete();
+    }
+    await Future<void>.delayed(Duration.zero);
+  }
+}
 
 class _ListingHarness {
   var session = const Uuid().v4obj();
@@ -531,5 +596,122 @@ void main() {
     }
     expect((await fetcher.fetchDirectory('/new', true, false)).path, '/new');
     expect(dispatches, 2);
+  });
+
+  test('cancelled remote dispatches retain shared capacity until settlement',
+      () async {
+    for (final kind in _RemoteListing.values) {
+      final harness = _RemoteListingHarness();
+      addTearDown(harness.drain);
+      final cancelled = expectLater(harness.start(kind), throwsA(isA<StateError>()));
+      harness.fetcher.cancelPending();
+      await cancelled;
+      harness.session = const Uuid().v4obj();
+      harness.fetcher.cancelPending();
+      await expectLater(harness.start(kind), throwsA(isA<StateError>()));
+      await expectLater(harness.fetcher.fetchDirectory('/local', true, false),
+          throwsA(isA<StateError>()));
+      expect(harness.dispatches, hasLength(1));
+      await harness.drain();
+      expect((await harness.fetcher.fetchDirectory('/local', true, false)).path,
+          '/local');
+      final replacement = harness.start(kind);
+      harness.completions.last.complete();
+      expect(harness.reply(kind, harness.session), isTrue);
+      await replacement;
+    }
+  });
+
+  test('late remote dispatch errors release only their retired owner', () async {
+    for (final kind in _RemoteListing.values) {
+      final harness = _RemoteListingHarness(capacity: 2);
+      addTearDown(harness.drain);
+      final retiredSession = harness.session;
+      final cancelled = expectLater(harness.start(kind), throwsA(isA<StateError>()));
+      harness.fetcher.cancelPending();
+      await cancelled;
+      harness.session = const Uuid().v4obj();
+      final replacement = harness.start(kind);
+      try {
+        await expectLater(harness.fetcher.fetchDirectory('/local', true, false),
+            throwsA(isA<StateError>()));
+        expect(harness.reply(kind, retiredSession), isFalse);
+        harness.completions.first.completeError(
+            const FfiException('RESULT_ERROR', 'retired dispatch failure'));
+        await Future<void>.delayed(Duration.zero);
+        expect((await harness.fetcher.fetchDirectory('/local', true, false)).path,
+            '/local');
+        expect(harness.reply(kind, harness.session), isTrue);
+        harness.completions.last.complete();
+      } finally {
+        await harness.drain();
+        await replacement;
+      }
+    }
+  });
+
+  test('stale remote sessions refuse every dispatch family', () async {
+    for (final kind in _RemoteListing.values) {
+      final harness = _RemoteListingHarness();
+      addTearDown(harness.drain);
+      final retiredSession = harness.session;
+      harness.session = const Uuid().v4obj();
+      await expectLater(harness.start(kind, expectedSessionId: retiredSession),
+          throwsA(isA<StateError>()));
+      expect(harness.dispatches, isEmpty);
+      final current = harness.start(kind);
+      harness.completions.single.complete();
+      expect(harness.reply(kind, harness.session), isTrue);
+      await current;
+    }
+  });
+
+  test('timed out remote dispatches stay bounded across cancellation', () async {
+    for (final kind in _RemoteListing.values) {
+      final harness = _RemoteListingHarness(
+          timeout: const Duration(milliseconds: 20));
+      addTearDown(harness.drain);
+      await expectLater(harness.start(kind), throwsA(isA<TimeoutException>()));
+      harness.fetcher.cancelPending();
+      harness.session = const Uuid().v4obj();
+      await expectLater(harness.fetcher.readEmptyDirs('/local', true, false),
+          throwsA(isA<StateError>()));
+      expect(harness.dispatches, hasLength(1));
+      harness.completions.single.completeError(
+          const FfiException('RESULT_ERROR', 'late timed-out dispatch failure'));
+      await Future<void>.delayed(Duration.zero);
+      expect(await harness.fetcher.readEmptyDirs('/local', true, false), isEmpty);
+    }
+  });
+
+  test('early remote responses retain cancelled dispatch capacity', () async {
+    for (final kind in _RemoteListing.values) {
+      final harness = _RemoteListingHarness();
+      addTearDown(harness.drain);
+      final result = harness.start(kind);
+      expect(harness.reply(kind, harness.session), isTrue);
+      await result;
+      harness.fetcher.cancelPending();
+      await expectLater(harness.fetcher.fetchDirectory('/local', true, false),
+          throwsA(isA<StateError>()));
+      await harness.drain();
+      expect((await harness.fetcher.fetchDirectory('/local', true, false)).path,
+          '/local');
+    }
+  });
+
+  test('synchronous listing completions cannot resurrect capacity owners',
+      () async {
+    final session = const Uuid().v4obj();
+    final fetcher = FileFetcher(() => session,
+        maxPending: 1,
+        requests: _localRequests(
+            flat: (_, path, __) => SynchronousFuture(_listing(path)),
+            empty: (_, __, ___) => SynchronousFuture('[]')));
+    addTearDown(fetcher.cancelPending);
+    for (var i = 0; i < 3; i++) {
+      expect((await fetcher.fetchDirectory('/local', true, false)).path, '/local');
+      expect(await fetcher.readEmptyDirs('/local', true, false), isEmpty);
+    }
   });
 }

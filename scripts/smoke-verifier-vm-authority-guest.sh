@@ -8397,6 +8397,12 @@ run_flutter_model_tests() {
                 mkdir /work/toolchain /work/home /work/flutter-shim
                 [ "$(stat -c "%u:%g:%a:%h" /authority/flutter-model-test-count.txt)" = 0:0:444:1 ]
                 [ ! -w /authority/flutter-model-test-count.txt ]
+                file_navigation_stage() {
+                    if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+                        printf "FLUTTER_FILE_NAVIGATION_STAGE=%s seconds=%s\n" "$1" "$SECONDS"
+                    fi
+                }
+                file_navigation_stage extract-toolchains
                 tar -C /work/toolchain -xf /inputs/flutter.tar.xz
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     mkdir /work/cargo-home
@@ -8462,6 +8468,7 @@ run_flutter_model_tests() {
                 cd "$project_root"
                 project_lock="$(sha256sum pubspec.lock | awk "{print \$1}")"
                 tools_lock="$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")"
+                file_navigation_stage offline-pub
                 if ! (cd /work/toolchain/flutter/packages/flutter_tools \
                     && dart pub get --offline --enforce-lockfile) \
                     >/work/tools-pub.out 2>/work/tools-pub.err; then
@@ -8563,6 +8570,7 @@ run_flutter_model_tests() {
                 fi
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     codegen_log=/work/codegen.log
+                    file_navigation_stage generate-bridge
                     if ! (cd "$codegen_source" && \
                         /work/toolchain/flutter_rust_bridge_codegen \
                             --rust-input ./src/flutter_ffi.rs \
@@ -8676,6 +8684,7 @@ run_flutter_model_tests() {
                 if [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
                     /bin/bash /source/scripts/run-linux-window-channel-tests.sh
                 fi
+                file_navigation_stage execute-tests
                 if ! timeout --signal=TERM --kill-after=10s "$test_budget" \
                     flutter test --no-pub --reporter json --concurrency="$test_concurrency" \
                         --timeout=30s "${test_fail_fast[@]}" \
@@ -8686,6 +8695,7 @@ run_flutter_model_tests() {
                 fi
                 [ "$(stat -c %s /work/test.err)" -le 1048576 ]
                 [ ! -s /work/test.err ] || tail -n 120 /work/test.err >&2
+                file_navigation_stage validate-results
                 /usr/bin/python3 -I -S /source/scripts/test-flutter-model-test-result.py
                 printf "FLUTTER_TEST_RESULT_PARSER=pass tests=3\n"
                 if ! /usr/bin/python3 -I -S /authority/result.py \
@@ -8693,6 +8703,7 @@ run_flutter_model_tests() {
                     tail -c 4194304 /work/test.json >&2
                     exit 1
                 fi
+                file_navigation_stage source-postconditions
                 if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
                     if grep -Eq "mainLoadRecentPeersForAb|main_load_recent_peers_for_ab" \
                         lib/generated_bridge.dart \
@@ -8805,8 +8816,22 @@ run_flutter_model_tests() {
     elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
         printf 'FLUTTER_TERMINAL_OUTPUT_STAGE=run-production-terminal-tests\n'
     fi
-    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
-        >"$output" 2>&1 || container_status=$?
+    if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+        local -a flutter_start_status
+        if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
+            | tee "$output" \
+            | awk '/^FLUTTER_FILE_NAVIGATION_STAGE=/ { print; fflush() }'; then
+            flutter_start_status=("${PIPESTATUS[@]}")
+        else
+            flutter_start_status=("${PIPESTATUS[@]}")
+        fi
+        [ "${flutter_start_status[1]}" -eq 0 ] && [ "${flutter_start_status[2]}" -eq 0 ] \
+            || fail 'cannot retain Flutter-test output and stage progress'
+        container_status=${flutter_start_status[0]}
+    else
+        "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
+            >"$output" 2>&1 || container_status=$?
+    fi
     [ "$container_status" -eq 0 ] \
         || { tail -c 6291456 "$output" >&2; fail "focused Flutter model tests exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
@@ -8837,6 +8862,9 @@ run_flutter_model_tests() {
     [ "$(sha256sum "$FLUTTER_SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
       "$source_archive_sha" ] \
         || fail 'focused Flutter-test source archive changed during execution'
+    if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+        printf 'FLUTTER_FILE_NAVIGATION_STAGE=verify-pub-postcondition\n'
+    fi
     post_pub_receipt="$(
         setpriv --reuid=1000 --regid=1000 --clear-groups \
             env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \

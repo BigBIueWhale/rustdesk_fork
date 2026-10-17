@@ -2522,6 +2522,7 @@ generate_focused_rust_flutter_bridge() {
             --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
             --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
             --env "FRB_CODEGEN_SHA256=$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
+            --env "RUST_TEST_PROFILE=$RUST_TEST_PROFILE" \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=700,uid=1000,gid=1000 \
             --workdir /source \
             "$DEB_BUILDER_CONFIG_ID" /bin/bash --noprofile --norc -euo pipefail -c '
@@ -2632,6 +2633,21 @@ generate_focused_rust_flutter_bridge() {
                 printf "DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh\n"
                 install -m 0444 /source/src/bridge_generated.rs /bridge/bridge_generated.rs
                 install -m 0444 /source/src/bridge_generated.io.rs /bridge/bridge_generated.io.rs
+                if [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+                    mkdir /bridge/dart
+                    for generated in /source/flutter/lib/generated_bridge*.dart; do
+                        [ -f "$generated" ] && [ ! -L "$generated" ]
+                        install -m 0444 "$generated" /bridge/dart/
+                    done
+                    timeout --signal=TERM --kill-after=5s 60s \
+                        dart compile exe \
+                            --packages=/source/flutter/.dart_tool/package_config.json \
+                            /source/scripts/test-local-file-listing.dart \
+                            --output=/bridge/dart/client
+                    [ "$(stat -c %s /bridge/dart/client)" -le 33554432 ]
+                    chmod 0555 /bridge/dart/client
+                    printf "LOCAL_FILE_LISTING_DART_BUILD=pass compiler=flutter-3.24.5 format=aot-executable generated_api=exact source=exact-pushed\n"
+                fi
                 [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
                 printf "ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s source=exact-pushed network=none outputs=readonly-publication\n" \
                     "$FRB_CODEGEN_SHA256"
@@ -2704,6 +2720,12 @@ generate_focused_rust_flutter_bridge() {
     fi
     [ "$(grep -Fxc 'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' "$output")" -eq 1 ] \
         || fail 'direct-password generated API absence receipt differs'
+    if [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+        [ "$(grep -Fxc 'LOCAL_FILE_LISTING_DART_BUILD=pass compiler=flutter-3.24.5 format=aot-executable generated_api=exact source=exact-pushed' "$output")" -eq 1 ] \
+            && [ "$(stat -c '%u:%g:%a:%h' "$bridge_root/dart/client")" = 1000:1000:555:1 ] \
+            || fail 'local file-listing Dart compilation receipt or artifact differs'
+        printf 'LOCAL_FILE_LISTING_DART_BUILD=pass compiler=flutter-3.24.5 format=aot-executable generated_api=exact source=exact-pushed\n'
+    fi
     printf '%s\n' "$freshness_line"
     printf 'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh\n'
     printf 'ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s source=exact-pushed network=none outputs=readonly-publication\n' \
@@ -3658,12 +3680,10 @@ run_focused_rust_tests() {
                 Cargo.lock Cargo.toml src/lib.rs src/flutter_ffi.rs src/common.rs
                 src/flutter_ffi/local_file_listing_tests.rs libs/hbb_common/src/fs.rs
                 scripts/fixtures/local-file-listing-before-errors.rs
-                scripts/run-local-file-listing-tests.sh scripts/linux-parent-test-build.sh
+                scripts/run-local-file-listing-tests.sh scripts/test-local-file-listing.dart
             )
             required_tests=(
-                flutter_ffi::local_file_listing_tests::listing_exports_preserve_filesystem_errors
-                flutter_ffi::local_file_listing_tests::listing_exports_report_entry_budget_and_recover_at_exact_boundary
-                flutter_ffi::local_file_listing_tests::listing_exports_preserve_empty_and_hidden_success_json
+                filesystem_errors entry_budget_recovery empty_hidden_success
             )
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             container_name=rustdesk-viewer-resume-tests
@@ -4070,6 +4090,10 @@ run_focused_rust_tests() {
             )
             file_bridge_sources_before=$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" \
                 "$ROOT/focused-rust-bridge/bridge_generated.io.rs")
+            if [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+                bridge_mounts+=(--mount "type=bind,source=$ROOT/focused-rust-bridge/dart,target=/listing-dart,readonly")
+                (cd "$ROOT/focused-rust-bridge/dart" && sha256sum ./*) >"$ROOT/listing-dart-before.sha256"
+            fi
         fi
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$image_archive")" = \
           "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
@@ -5036,12 +5060,14 @@ PY
             && [ "$(grep -Fc 'ANDROID_CLIENT_DRAIN_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'Android client drain artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
-        [ "${#result_lines[@]}" -eq 1 ] || fail 'local file-listing summary count differs'
-        [ "$(grep -Ec '^LOCAL_FILE_LISTING_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 0 ] || fail 'local file-listing unexpectedly ran Rust unit tests'
+        [ "$(grep -Ec '^LOCAL_FILE_LISTING_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'LOCAL_FILE_LISTING_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Fc 'LOCAL_FILE_LISTING_COMPARISON=pass ' "$output")" -eq 2 ] \
-            && [ "$(grep -Fxc 'LOCAL_FILE_LISTING_SUCCESS=pass empty=valid-json hidden=preserved entries=preserved payload=unchanged' "$output")" -eq 1 ] \
-            || fail 'local file-listing artifact or native comparison differs'
+            && [ "$(grep -Fxc 'LOCAL_FILE_LISTING_DART=pass cases=3 exports=2 native_errors=8 recovery=pass fixtures=retired' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LOCAL_FILE_LISTING_DART=' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LOCAL_FILE_LISTING_DART_CASE=' "$output")" -eq 3 ] \
+            || fail 'local file-listing Dart artifact or outcomes differ'
+        tests_passed=3
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'viewer resume summary count differs'
         [ "$(grep -Ec '^VIEWER_RESUME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -5253,8 +5279,13 @@ PY
         tests_passed=$((tests_passed + passed))
     done
     for test_name in "${required_tests[@]}"; do
-        grep -Fxq "test $test_name ... ok" "$output" \
-            || { tail -n 200 "$output" >&2; fail "load-bearing Rust test did not pass: $test_name"; }
+        if [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+            [ "$(grep -Fxc "LOCAL_FILE_LISTING_DART_CASE=pass name=$test_name" "$output")" -eq 1 ] \
+                || fail "local listing Dart case did not pass exactly once: $test_name"
+        else
+            grep -Fxq "test $test_name ... ok" "$output" \
+                || { tail -n 200 "$output" >&2; fail "load-bearing Rust test did not pass: $test_name"; }
+        fi
     done
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'focused Rust-test container did not exit cleanly'
@@ -5310,6 +5341,9 @@ PY
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
         elif [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+            (cd "$ROOT/focused-rust-bridge/dart" && sha256sum --check "$ROOT/listing-dart-before.sha256") \
+                || fail 'generated Dart bridge or executable changed during parent execution'
+            cat "$ROOT/listing-dart-before.sha256"
             printf 'LOCAL_FILE_LISTING_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
@@ -5471,9 +5505,9 @@ PY
             printf 'ANDROID_CLIENT_DRAIN_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=production-owner-transitions-with-blocked-worker-fixtures android=unexecuted rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
-            grep -E '^test flutter_ffi::local_file_listing_tests::.* \.\.\. ok$|^LOCAL_FILE_LISTING_(ARTIFACT|BUILD|COMPARISON|SUCCESS)=' "$output"
+            grep -E '^LOCAL_FILE_LISTING_(ARTIFACT|BUILD|DART|DART_CASE)=' "$output"
             [ "$tests_passed" -eq 3 ] || fail 'local file-listing total differs'
-            printf 'LOCAL_FILE_LISTING_VM=pass commit=%s tree=%s tests=3 target=linux-x86_64 scope=production-local-file-listing-exports comparison=earlier-export-bodies rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            printf 'LOCAL_FILE_LISTING_VM=pass commit=%s tree=%s tests=3 target=linux-x86_64 scope=generated-dart-api-to-complete-rust-cdylib rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             grep -E '^test client::io_loop::file_resume_tests::.* \.\.\. ok$|^VIEWER_RESUME_(ARTIFACT|BUILD)=' "$output"

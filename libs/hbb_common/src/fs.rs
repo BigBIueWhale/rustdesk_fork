@@ -9559,6 +9559,72 @@ mod tests {
         assert_err_contains(err, "entries exceed limit");
     }
 
+    fn default_send_job(path: PathBuf) -> ResultType<TransferJob> {
+        TransferJob::new_read(
+            541, JobType::Generic, String::new(), path, 0, true, false, true,
+        )
+    }
+
+    #[test]
+    fn default_send_job_bounds_native_entry_enumeration() {
+        let tmp = TestTempDir::new("rustdesk_default_send_entries");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        for index in 0..10_000 {
+            std::fs::File::create(tmp.join(&format!("entry-{index:05}")))
+                .expect("create source entry");
+        }
+        let sentinel = tmp.join("entry-00000");
+        std::fs::write(&sentinel, b"retained").expect("write source sentinel");
+        let job = default_send_job(tmp.path.clone()).expect("exactly 10000 entries fit");
+        assert_eq!(job.files().len(), 10_000);
+        assert_eq!(job.total_size(), 8);
+        drop(job);
+
+        let extra = tmp.join("extra");
+        std::fs::File::create(&extra).expect("create the over-limit entry");
+        let error = default_send_job(tmp.path.clone()).err()
+            .expect("the default send constructor must refuse entry 10001");
+        assert_err_contains(error, "entries exceed limit 10000");
+        assert_eq!(std::fs::read_dir(&tmp.path).expect("inspect refused source").count(), 10_001);
+        assert_eq!(std::fs::read(&sentinel).expect("read unchanged sentinel"), b"retained");
+
+        std::fs::remove_file(extra).expect("remove only the excess fixture entry");
+        let job = default_send_job(tmp.path.clone()).expect("a bounded source remains retryable");
+        assert_eq!(job.files().len(), 10_000);
+        assert_eq!(job.total_size(), 8);
+    }
+
+    #[test]
+    fn default_send_job_bounds_native_directory_depth() {
+        let tmp = TestTempDir::new("rustdesk_default_send_depth");
+        let mut parent = tmp.path.clone();
+        for _ in 0..64 {
+            parent.push("d");
+        }
+        std::fs::create_dir_all(&parent).expect("create the exact depth boundary");
+        let sentinel = parent.join("leaf");
+        std::fs::write(&sentinel, b"retained").expect("write source sentinel");
+        let job = default_send_job(tmp.path.clone()).expect("depth 64 fits");
+        assert_eq!(job.files().len(), 1);
+        assert_eq!(job.total_size(), 8);
+        drop(job);
+
+        let extra = parent.join("d");
+        std::fs::create_dir(&extra).expect("create a depth-65 directory");
+        std::fs::write(extra.join("deeper"), b"extra").expect("write deep source");
+        let error = default_send_job(tmp.path.clone()).err()
+            .expect("the default send constructor must refuse depth 65");
+        assert_err_contains(error, "depth 65 exceeds limit 64");
+        assert_eq!(std::fs::read(&sentinel).expect("read unchanged sentinel"), b"retained");
+        assert_eq!(std::fs::read(extra.join("deeper")).expect("read unchanged deep file"), b"extra");
+
+        std::fs::remove_file(extra.join("deeper")).expect("remove only the extra fixture file");
+        std::fs::remove_dir(extra).expect("remove only the extra fixture directory");
+        let job = default_send_job(tmp.path.clone()).expect("a bounded source remains retryable");
+        assert_eq!(job.files().len(), 1);
+        assert_eq!(job.total_size(), 8);
+    }
+
     #[test]
     fn budgeted_recursive_listing_rejects_excessive_depth() {
         let tmp = TestTempDir::new("rustdesk_budgeted_recursive_depth");

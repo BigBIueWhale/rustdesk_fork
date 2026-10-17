@@ -1065,7 +1065,7 @@ void main() {
 
   test('inline file job completion and reentrant clear cannot retain slots',
       () async {
-    final harness = _ResultHarness();
+    final harness = _ResultHarness(capacity: 2);
     addTearDown(harness.drain);
     Future<void> inlineSuccess() {
       expect(harness.reply(), isTrue);
@@ -1082,6 +1082,15 @@ void main() {
       harness.listener.clear();
       throw StateError('dispatch refused after reentrant clear');
     }), _retiredError);
+    Future<Object>? replacement;
+    expect(await harness.start(dispatch: () {
+      harness.listener.clear();
+      replacement = harness.start();
+      throw StateError('old dispatch refused after replacement');
+    }), _retiredError);
+    expect(harness.reply(), isTrue);
+    harness.completions.last.complete();
+    expect(await replacement!, containsPair('id', '7'));
     expect(await harness.start(dispatch: inlineSuccess), containsPair('id', '7'));
   });
 }

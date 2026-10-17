@@ -14617,7 +14617,7 @@ results, unchanged controls/endpoints and joined bounded-RAM cleanup are bound i
 These are production Dart owner-state tests with controlled bridge-completion futures;
 native peer/filesystem cancellation and rendered UI are not established.
 The exact 31-name result inventory and its three parser controls pass. At `511a05bb`, the
-unchanged suite and outer gate passed in **278 VM seconds**. FRB still generates the complete
+25-case suite and outer gate passed in **278 VM seconds**. FRB still generates the complete
 current API; its automatic Freezed step is deferred to the pinned builder with the exact
 `lib/generated_bridge.freezed.dart` output filter. Application sources remain available.
 All four generated Rust/IO/Dart/Freezed files match the accepted full generation at `72056f19`

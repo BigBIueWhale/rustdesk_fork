@@ -7,6 +7,7 @@ build_linux_parent_test() {
         || "$work:$receipt_prefix" = /tmp/resolution-parent:RESOLUTION_PARENT \
         || "$work:$receipt_prefix" = /tmp/file-receive-caller:FILE_RECEIVE_PARENT \
         || "$work:$receipt_prefix" = /tmp/viewer-credentials:VIEWER_CREDENTIAL \
+        || "$work:$receipt_prefix" = /tmp/viewer-resume:VIEWER_RESUME \
         || "$work:$receipt_prefix" = /tmp/android-client-drain:ANDROID_CLIENT_DRAIN \
         || "$work:$receipt_prefix" = /tmp/cm-read-tick:CM_READ_TICK ]] \
         && [ "$PWD" = /source ] && [ "$(id -u):$(id -g)" = 1000:1000 ] \
@@ -15,10 +16,10 @@ build_linux_parent_test() {
         && [ "$(stat -c '%u:%g:%a' -- "$work")" = 1000:1000:700 ] \
         || { echo 'Linux parent compiler entry authority differs' >&2; return 1; }
     local build_budget=600
-    if [[ "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK ]]; then build_budget=240; fi
+    if [[ "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK ]]; then build_budget=240; fi
     printf '%s_BUILD=started target=linux-libtest budget_seconds=%s\n' "$receipt_prefix" "$build_budget"
     local features=linux-pkg-config
-    if [[ "$receipt_prefix" = FILE_RECEIVE_PARENT || "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK ]]; then
+    if [[ "$receipt_prefix" = FILE_RECEIVE_PARENT || "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK ]]; then
         features=linux-pkg-config,flutter
     fi
     local build_started=$SECONDS

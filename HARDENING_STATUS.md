@@ -14889,6 +14889,16 @@ through a Unix sparse tail, and zero-offset fresh transfer with real receive pub
 sidecar retirement. All three are required and passed in the named Linux library transaction above.
 Viewer/CM/peer, installed and other-platform integration remain OPEN.
 
+**Viewer resume caller follow-up — prepared; execution PENDING.**
+`--viewer-resume-tests` builds the complete Linux Flutter-enabled Rust library and selects
+three new `client::io_loop::file_resume_tests` cases. They send digests over real CPace-keyed
+guest-loopback TCP into the production post-key viewer handler, observe wire confirmations,
+and inspect actual file state. Uploads above the 32-bit wire limit must fail without a
+confirmation; a sparse oversized download prefix must remain unadopted and unchanged.
+Valid two-byte and exact `u32::MAX` resumes must reach the wire and transfer/publish the
+exact file tail. This is caller-component work, not login/UI/CM, installed, other-platform
+or release acceptance. Existing user-requested parks remain parked.
+
 **Filesystem-only job authority — Linux library compilation/tests ACCEPTED; application integration OPEN.**
 All production constructors use filesystem paths. `TransferJob` now accepts and retains a
 private immutable `PathBuf` plus an optional owned Tokio `File`; the path getter borrows,

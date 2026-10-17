@@ -9559,6 +9559,98 @@ mod tests {
         assert_err_contains(err, "entries exceed limit");
     }
 
+    fn assert_default_local_entry_budget(
+        enumerate: impl Fn(&Path, bool) -> ResultType<usize>,
+        expected_entries: usize,
+    ) {
+        let tmp = TestTempDir::new("rustdesk_default_local_entries");
+        std::fs::create_dir_all(&tmp.path).expect("create local directory");
+        for index in 0..10_000 {
+            std::fs::File::create(tmp.join(&format!("entry-{index:05}")))
+                .expect("create local entry");
+        }
+        let sentinel = tmp.join("entry-00000");
+        std::fs::write(&sentinel, b"retained").expect("write local sentinel");
+        for include_hidden in [false, true] {
+            assert_eq!(enumerate(&tmp.path, include_hidden).expect("10000 entries fit"),
+                expected_entries);
+        }
+
+        let extra = tmp.join(".extra");
+        std::fs::write(&extra, b"excess").expect("create the excess entry");
+        for include_hidden in [false, true] {
+            let error = enumerate(&tmp.path, include_hidden)
+                .expect_err("entry 10001 must be refused even when hidden");
+            assert_err_contains(error, "entries exceed limit 10000");
+        }
+        assert_eq!(std::fs::read_dir(&tmp.path).expect("inspect refused directory").count(), 10_001);
+        assert_eq!(std::fs::read(&sentinel).expect("read unchanged sentinel"), b"retained");
+        assert_eq!(std::fs::read(&extra).expect("read unchanged excess entry"), b"excess");
+
+        std::fs::remove_file(extra).expect("remove only the excess fixture entry");
+        for include_hidden in [false, true] {
+            assert_eq!(enumerate(&tmp.path, include_hidden).expect("bounded listing recovers"),
+                expected_entries);
+        }
+    }
+
+    #[test]
+    fn default_local_directory_listing_bounds_native_entries() {
+        assert_default_local_entry_budget(
+            |path, hidden| read_dir(path, hidden).map(|directory| directory.entries.len()),
+            10_000,
+        );
+    }
+
+    #[test]
+    fn default_local_recursive_listing_bounds_native_entries() {
+        assert_default_local_entry_budget(
+            |path, hidden| get_recursive_files(&get_string(path), hidden).map(|files| files.len()),
+            10_000,
+        );
+    }
+
+    #[test]
+    fn default_local_empty_directory_listing_bounds_native_entries() {
+        assert_default_local_entry_budget(
+            |path, hidden| get_empty_dirs_recursive(&get_string(path), hidden).map(|dirs| dirs.len()),
+            0,
+        );
+    }
+
+    fn assert_default_local_depth_budget(enumerate: impl Fn(&str) -> ResultType<usize>) {
+        let tmp = TestTempDir::new("rustdesk_default_local_depth");
+        let mut parent = tmp.path.clone();
+        for _ in 0..64 {
+            parent.push("d");
+        }
+        std::fs::create_dir_all(&parent).expect("create depth-64 empty directory");
+        let sentinel = tmp.join("sentinel");
+        std::fs::write(&sentinel, b"retained").expect("write local sentinel");
+        let path = get_string(&tmp.path);
+        assert_eq!(enumerate(&path).expect("depth 64 fits"), 1);
+
+        let extra = parent.join("d");
+        std::fs::create_dir(&extra).expect("create depth-65 directory");
+        let error = enumerate(&path).expect_err("depth 65 must be refused");
+        assert_err_contains(error, "depth 65 exceeds limit 64");
+        assert_eq!(std::fs::read(&sentinel).expect("read unchanged sentinel"), b"retained");
+        assert!(extra.is_dir());
+
+        std::fs::remove_dir(extra).expect("remove only the excess fixture directory");
+        assert_eq!(enumerate(&path).expect("bounded traversal recovers"), 1);
+    }
+
+    #[test]
+    fn default_local_recursive_listing_bounds_native_depth() {
+        assert_default_local_depth_budget(|path| get_recursive_files(path, true).map(|files| files.len()));
+    }
+
+    #[test]
+    fn default_local_empty_directory_listing_bounds_native_depth() {
+        assert_default_local_depth_budget(|path| get_empty_dirs_recursive(path, true).map(|dirs| dirs.len()));
+    }
+
     fn default_send_job(path: PathBuf) -> ResultType<TransferJob> {
         TransferJob::new_read(
             541, JobType::Generic, String::new(), path, 0, true, false, true,

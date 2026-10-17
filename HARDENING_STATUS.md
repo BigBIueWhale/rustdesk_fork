@@ -107,6 +107,15 @@ that guide; R-B2/R-B10, the build guide, signing recovery and artifact-verificat
 their respective contracts. Release orchestration, current artifacts and whole-document cleanup
 remain OPEN.
 
+R-B2 states the supported isolated-build, Android-signing, independent artifact-authentication
+and reproducibility contract. Its obsolete requirement to run the deleted `flutter-build.yml`,
+unmeasured hosted-runner failure rate, upstream build-history narrative and general code-signing
+claims are removed. Stable Android key/certificate custody and recovery, manifest/source/version
+authentication, read-only source and private version outputs, target output/state separation and
+independent artifact equality remain required. Release preparation follows `docs/VERSIONING.md`;
+the retired specification-hash synchronization instruction is removed from this ledger.
+Current release/native acceptance and whole-document cleanup remain OPEN.
+
 Retained documentation classifications are indexed below. They establish document/source
 comparisons, not compiler, artifact, scanner, native or release acceptance. Completed repair
 narratives and size comparisons remain in Git history.
@@ -6236,9 +6245,8 @@ No current-master R-B2/R-B10 Debian, Android, and Windows artifact set or A==B m
 successful and failed build transcripts, intermediate artifact hashes, temporary-log identities, and superseded
 QA narratives remain available in Git and the external audit; they are not current release evidence.
 
-The required sequence is: settle source and normative documentation, update inventory and codec/status hashes,
-bump `FORK_VERSION` last, verify, commit, push the exact clean HEAD, then run the full cold build. This tracked
-source does not substitute for the generated exact-commit artifact manifest, and no `.6` publication is claimed.
+Release preparation follows [`docs/VERSIONING.md`](docs/VERSIONING.md#preparing-a-release).
+Tracked source does not substitute for the generated exact-commit artifact manifest; no release publication is claimed.
 
 ## Upstream-CVE coverage — the 2026 RustDesk client CVE inventory
 

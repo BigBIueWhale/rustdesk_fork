@@ -14540,6 +14540,32 @@ Native filesystem effects, worker admission, I/O cancellation/drain, multiple en
 process-wide resources, full-app/rendered behavior, installed/platform/release artifacts,
 independent reproduction and LPE acceptance remain OPEN. Every explicit user park remains in force.
 
+**Local listing completion after owner retirement — Dart A/B ACCEPTED; native/GC/platform integration OPEN.**
+`FileFetcher._readLocal` releases the exact completed dispatch slot, then skips the session
+getter if its caller already completed through cancellation or timeout. A still-live caller
+receives an owner-lookup exception through its result instead of an unobserved continuation
+error followed by timeout. The shared 64-owner bound, per-instance admission, native API,
+two-second default deadline and successful listing behavior are unchanged.
+At unchanged-product `b1846eac`, all **59 cases** ran: 56 passed and three new regressions
+failed. Cancelled and timed-out completions read the getter three times rather than twice;
+the live getter-failure case returned a 20-ms timeout instead of the original error.
+Each failing test stopped at its first ordinary-listing assertion; later empty-listing,
+stray-error and recovery assertions are not additional old-behavior evidence.
+The identical test files at `4d5a1bf7` passed **59 cases in two suites plus three parser
+controls in 295 VM seconds**. The new tests cover ordinary and empty local listings after
+explicit cancellation, timeout and live owner failure, no stray async errors, exact error
+identity and successful capacity reuse. All 56 preceding cases pass.
+Fresh generated API/consumer hashes match canonical `72056f19`; source/control captures
+are identical before/during/after. Existing 300-second/18-GiB limits are unchanged; complete
+endpoint observations have zero deltas and exact VM/RAM/private-root retirement passes.
+`.harness-state/verifier-vm/local-listing-owner-baseline-b1846eac.json` and
+`local-listing-owner-accepted-4d5a1bf7.json` in that directory bind the sources and evidence.
+These execute production Dart methods with controlled dispatch and owner-getter failures.
+They do not force collection of a real weak parent or execute native filesystem cancellation,
+full-app/device/installed/platform behavior, process-wide limits or an LPE boundary.
+Ephemeral test-kernel bytes/digest were not retained. Those broader obligations, latency/soak,
+cold release, independent reproduction and external review remain OPEN; all user parks remain.
+
 **Local listing errors — Linux exports and actual Dart transport ACCEPTED; UI/platform integration OPEN.**
 `session_read_local_dir_sync` and `session_read_local_empty_dirs_recursive_sync` now return
 `Result<String>` and propagate enumeration errors instead of returning a successful empty

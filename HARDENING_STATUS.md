@@ -14637,10 +14637,10 @@ unrelated parked DNS diagnostic; its implementation and OPEN/PARKED status are u
 `.harness-state/verifier-vm/send-budget-accepted-ce8cb2c1.json` binds the A/B sources, artifacts,
 raw results, matching controls/endpoints, unchanged resource limits and joined RAM/VM cleanup.
 It references the retained admission refusal and interrupted retry; neither is a passing run.
-Application/caller/UI/peer integration, other platforms, installed/release acceptance, separate
-local listing/removal enumeration and whole-application aggregate resource bounds remain OPEN.
+Application/caller/UI/peer integration, other platforms, installed/release acceptance and
+whole-application aggregate resource bounds remain OPEN.
 
-**Default local enumeration — source corrected; five baseline failures reproduced; corrected native execution OPEN.**
+**Default local enumeration — Linux library A/B ACCEPTED; application/platform evidence OPEN.**
 `read_dir`, `get_recursive_files` and `get_empty_dirs_recursive` now use the standard
 10,000-entry/10,000-directory, depth-64 and 16-MiB estimated serialized-size budget before
 returning a list. Source `63410c67` removes the unlimited-budget constructor and both private
@@ -14652,12 +14652,16 @@ The bounded failure tail retains 125 filesystem and 20 other passes; two earlier
 are absent. `.harness-state/verifier-vm/local-enumeration-baseline-19ab1bfe.json` retains the
 artifact-start digest, raw results, controls, limits and joined cleanup; no after digest was
 exported on failure. The complete test module is unchanged for the correction.
-Corrected preflight refused at 19,448 MiB against the unchanged 19,456-MiB floor; a later
-180-second wait expired at 17,249 MiB. No corrected compiler/test ran.
-`.harness-state/verifier-vm/local-enumeration-pending-63410c67.json` binds the source,
-baseline, refusals and ledger count. Corrected Linux library execution, caller/UI/peer and
-installed/platform/release evidence remain OPEN, as do explicit FFI listing-error reporting,
-filesystem I/O deadlines/cancellation and application-wide aggregate resource limits.
+At `ac0cff0e`, all **182 focused Linux tests passed in 214 VM seconds**, including 130
+filesystem cases and all five new entry/depth boundary, refusal, preserved-content and retry
+regressions. Executed library artifact SHA-256
+`42c1e06fb138ccecd118a0ab532c7f6892f52ac84c11a82fcb93cefbae3dcb48`
+remained unchanged before, between and after execution.
+`.harness-state/verifier-vm/local-enumeration-accepted-ac0cff0e.json` binds the baseline,
+source/artifact/raw results, matching controls/endpoints, unchanged resource limits and joined
+RAM/VM cleanup. It references the historical admission refusals without crediting them as runs.
+Caller/UI/peer, installed/platform/release evidence, explicit FFI listing-error reporting,
+filesystem I/O deadlines/cancellation and application-wide aggregate resource limits remain OPEN.
 
 **Send-source acquisition — Linux library and named authenticated peer ACCEPTED; installed/platform acceptance OPEN.**
 Source `e9dfe4af` uses one private `open_send_file` for initial acquisition and first-resume

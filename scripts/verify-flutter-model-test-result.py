@@ -158,6 +158,34 @@ FILE_NAVIGATION_TESTS = {
     "early remote responses retain cancelled dispatch capacity",
     "synchronous listing completions cannot resurrect capacity owners",
 }
+FILE_COMMAND_TESTS = {
+    "native file-job allocation failures cannot dispatch fallback IDs",
+    "retired send continuation cannot target replacement session",
+    "send operation snapshots entries and directory arguments at admission",
+    "rename snapshots directory policy before the dialog await",
+    "create waits for its exact result and exposes an exact error",
+    "remote empty-directory deletion uses a fresh exact result owner",
+    "directory-link deletion is one leaf command",
+    "deleted-subtree matching is component exact for both path styles",
+    "job result requires exact session action and file before completion",
+    "retirement completes an exact pending job result with an error",
+    "exact job error is caller-visible instead of successful completion",
+    "delete state changes only after exact result and dispatch finality",
+    "invalid or unowned cancel IDs never reach the native request surface",
+    "dispatch failure wins over an early matching success response",
+    "timed-out late result remains owned until dispatch settles",
+    "load-last-job cannot resume after its session is replaced",
+    "cleared file jobs retain dispatch capacity until actual completion",
+    "cleared file jobs retain capacity after early success and error",
+    "timed out file jobs retain dispatch capacity across clear",
+    "retired file job failure cannot release replacement ownership",
+    "settled file dispatches release cancelled response waiters",
+    "inline file job completion and reentrant clear cannot retain slots",
+}
+FILE_NAVIGATION_SUITES = {
+    "file_navigation_sort_test.dart": FILE_NAVIGATION_TESTS,
+    "file_command_session_ownership_test.dart": FILE_COMMAND_TESTS,
+}
 PEER_DATA_TESTS = {
     "peer decode redacts malformed JSON exception content",
     "peer decode redacts invalid shapes and field values",
@@ -352,9 +380,10 @@ def parse_result(path, profile="models"):
         expected_tests = len(DIRECTORY_ORDERING_TESTS)
         expected_names = DIRECTORY_ORDERING_TESTS
     elif profile == "file-navigation":
-        expected_suites = {"file_navigation_sort_test.dart"}
-        expected_tests = len(FILE_NAVIGATION_TESTS)
-        expected_names = FILE_NAVIGATION_TESTS
+        expected_by_suite = FILE_NAVIGATION_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     elif profile == "peer-data":
         expected_suites = {"peer_decode_test.dart"}
         expected_tests = len(PEER_DATA_TESTS)

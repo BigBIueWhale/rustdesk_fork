@@ -37,8 +37,8 @@ class ResultTests(unittest.TestCase):
             suites = ["peer_decode_test.dart"]
             names = sorted(result.PEER_DATA_TESTS)
         elif profile == "file-navigation":
-            suites = ["file_navigation_sort_test.dart"]
-            names = sorted(result.FILE_NAVIGATION_TESTS)
+            suites = sorted(result.FILE_NAVIGATION_SUITES)
+            names = sorted(set().union(*result.FILE_NAVIGATION_SUITES.values()))
         elif profile == "terminal-output":
             suites = sorted(result.TERMINAL_OUTPUT_TESTS)
             names = sorted(set().union(*result.TERMINAL_OUTPUT_TESTS.values()))
@@ -56,9 +56,10 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
-            if profile in ("credential-dialog", "terminal-output"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation"):
                 inventory = (result.CREDENTIAL_DIALOG_TESTS if profile == "credential-dialog"
-                             else result.TERMINAL_OUTPUT_TESTS)
+                             else result.TERMINAL_OUTPUT_TESTS if profile == "terminal-output"
+                             else result.FILE_NAVIGATION_SUITES)
                 suite_id = next(i for i, suite in enumerate(suites)
                                 if name in inventory[suite])
             events.append({
@@ -90,7 +91,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (1, 10))
-        self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (1, 31))
+        self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (2, 53))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 26))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (9, 76))
         with tempfile.TemporaryDirectory() as root:

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
@@ -102,6 +103,60 @@ Entry _file(String name, String path) => Entry()
   ..name = name
   ..path = path
   ..size = 1;
+
+class _ResultHarness {
+  _ResultHarness({int capacity = 1,
+      Duration timeout = const Duration(milliseconds: 200)})
+      : listener = JobResultListener(maxPending: capacity, requestTimeout: timeout);
+
+  final JobResultListener listener;
+  var session = const Uuid().v4obj();
+  var dispatches = 0;
+  final completions = <Completer<void>>[];
+  final results = <Future<Object>>[];
+
+  Future<Object> start({int actionId = 7, Future<void> Function()? dispatch}) {
+    final result = listener.dispatchAndWait(
+        expectedSessionId: session,
+        actionId: actionId,
+        fileNum: 3,
+        dispatch: () {
+          dispatches++;
+          if (dispatch != null) return dispatch();
+          final completion = Completer<void>();
+          completions.add(completion);
+          return completion.future;
+        });
+    final observed = result.then<Object>((value) => value,
+        onError: (Object error, StackTrace _) => error);
+    results.add(observed);
+    return observed;
+  }
+
+  bool reply({int actionId = 7, String? error}) {
+    final event = {'id': '$actionId', 'file_num': '3', 'speed': '0'};
+    if (error != null) {
+      event['err'] = error;
+      return listener.tryCompleteError(session, event);
+    }
+    return listener.tryComplete(session, event);
+  }
+
+  Future<void> drain() async {
+    listener.clear();
+    for (final completion in completions) {
+      if (!completion.isCompleted) completion.complete();
+    }
+    await Future.wait(results);
+    await Future<void>.delayed(Duration.zero);
+  }
+}
+
+Matcher get _capacityError => isA<StateError>().having(
+    (error) => error.message, 'message', 'File-job result capacity exhausted');
+
+Matcher get _retiredError => isA<StateError>().having(
+    (error) => error.message, 'message', 'Superseded file-transfer session');
 
 void main() {
   test('native file-job allocation failures cannot dispatch fallback IDs',
@@ -907,5 +962,126 @@ void main() {
 
     expect(resumeCalls, 0);
     expect(controller.jobTable, isEmpty);
+  });
+
+  test('cleared file jobs retain dispatch capacity until actual completion',
+      () async {
+    final harness = _ResultHarness();
+    addTearDown(harness.drain);
+    final old = harness.start();
+    harness.listener.clear();
+    expect(await old, _retiredError);
+    harness.session = const Uuid().v4obj();
+    harness.listener.clear();
+    expect(await harness.start(actionId: 8), _capacityError);
+    expect(harness.dispatches, 1);
+    harness.completions.single.complete();
+    await Future<void>.delayed(Duration.zero);
+    final replacement = harness.start(actionId: 8);
+    expect(harness.reply(actionId: 8), isTrue);
+    harness.completions.last.complete();
+    expect(await replacement, containsPair('id', '8'));
+    expect(harness.dispatches, 2);
+  });
+
+  test('cleared file jobs retain capacity after early success and error',
+      () async {
+    for (final error in <String?>[null, 'early peer failure']) {
+      final harness = _ResultHarness();
+      addTearDown(harness.drain);
+      final old = harness.start();
+      expect(harness.reply(error: error), isTrue);
+      harness.listener.clear();
+      expect(await old, _retiredError);
+      harness.session = const Uuid().v4obj();
+      expect(await harness.start(actionId: 8), _capacityError);
+      expect(harness.dispatches, 1);
+      harness.completions.single.complete();
+      await Future<void>.delayed(Duration.zero);
+      final replacement = harness.start();
+      expect(harness.reply(), isTrue);
+      harness.completions.last.complete();
+      expect(await replacement, containsPair('id', '7'));
+    }
+  });
+
+  test('timed out file jobs retain dispatch capacity across clear', () async {
+    final harness = _ResultHarness(timeout: const Duration(milliseconds: 20));
+    addTearDown(harness.drain);
+    expect(await harness.start(), isA<TimeoutException>());
+    harness.listener.clear();
+    harness.session = const Uuid().v4obj();
+    expect(await harness.start(actionId: 8), _capacityError);
+    expect(harness.dispatches, 1);
+    harness.completions.single.completeError(StateError('late dispatch failure'));
+    await Future<void>.delayed(Duration.zero);
+    final replacement = harness.start();
+    expect(harness.reply(), isTrue);
+    harness.completions.last.complete();
+    expect(await replacement, containsPair('id', '7'));
+  });
+
+  test('retired file job failure cannot release replacement ownership', () async {
+    final harness = _ResultHarness(capacity: 2);
+    addTearDown(harness.drain);
+    final old = harness.start();
+    harness.listener.clear();
+    expect(await old, _retiredError);
+    final replacement = harness.start();
+    expect(await harness.start(actionId: 8), _capacityError);
+    expect(harness.dispatches, 2);
+    harness.completions.first.completeError(StateError('retired dispatch failed'));
+    await Future<void>.delayed(Duration.zero);
+    final other = harness.start(actionId: 8);
+    expect(harness.reply(actionId: 8, error: 'current job denied'), isTrue);
+    harness.completions.last.complete();
+    expect(await other, isA<StateError>().having(
+        (error) => error.message, 'message', 'current job denied'));
+    expect(harness.reply(), isTrue);
+    harness.completions[1].complete();
+    expect(await replacement, containsPair('id', '7'));
+    expect(harness.dispatches, 3);
+  });
+
+  test('settled file dispatches release cancelled response waiters', () async {
+    final harness = _ResultHarness();
+    addTearDown(harness.drain);
+    final old = harness.start();
+    harness.completions.single.complete();
+    await Future<void>.delayed(Duration.zero);
+    harness.listener.clear();
+    expect(await old, _retiredError);
+    final replacement = harness.start(actionId: 8);
+    expect(harness.reply(actionId: 8), isTrue);
+    harness.completions.last.complete();
+    expect(await replacement, containsPair('id', '8'));
+    final immediate = StateError('synchronous dispatch failure');
+    expect(await harness.start(dispatch: () => throw immediate), same(immediate));
+    final recovered = harness.start();
+    expect(harness.reply(), isTrue);
+    harness.completions.last.complete();
+    expect(await recovered, containsPair('id', '7'));
+  });
+
+  test('inline file job completion and reentrant clear cannot retain slots',
+      () async {
+    final harness = _ResultHarness();
+    addTearDown(harness.drain);
+    Future<void> inlineSuccess() {
+      expect(harness.reply(), isTrue);
+      return SynchronousFuture<void>(null);
+    }
+    for (var i = 0; i < 3; i++) {
+      expect(await harness.start(dispatch: inlineSuccess), containsPair('id', '7'));
+    }
+    expect(await harness.start(dispatch: () {
+      harness.listener.clear();
+      return SynchronousFuture<void>(null);
+    }), _retiredError);
+    expect(await harness.start(dispatch: () {
+      harness.listener.clear();
+      throw StateError('dispatch refused after reentrant clear');
+    }), _retiredError);
+    expect(await harness.start(dispatch: inlineSuccess), containsPair('id', '7'));
   });
 }

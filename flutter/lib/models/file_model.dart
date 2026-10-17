@@ -2070,6 +2070,7 @@ class _PendingJobResult {
 }
 
 class FileFetcher {
+  final Map<_PendingFileRequest<String>, Future<void>?> _localTasks = {};
   final Map<String, _PendingFileRequest<FileDirectory>> _remoteTasks = {};
   final Map<String, _PendingFileRequest<List<FileDirectory>>>
       _remoteEmptyDirsTasks = {};
@@ -2095,6 +2096,7 @@ class FileFetcher {
   }
 
   int get _pendingCount =>
+      _localTasks.length +
       _remoteTasks.length +
       _remoteEmptyDirsTasks.length +
       _readRecursiveTasks.length;
@@ -2105,6 +2107,7 @@ class FileFetcher {
         _remoteEmptyDirsTasks.values.toList(growable: false);
     final recursiveTasks =
         _readRecursiveTasks.values.toList(growable: false);
+    final localTasks = _localTasks.keys.toList(growable: false);
     _remoteTasks.clear();
     _remoteEmptyDirsTasks.clear();
     _readRecursiveTasks.clear();
@@ -2118,6 +2121,44 @@ class FileFetcher {
     for (final task in recursiveTasks) {
       task.completeError(error);
     }
+    for (final task in localTasks) {
+      task.completeError(error);
+    }
+  }
+
+  Future<String> _readLocal(ReadLocalDirectory request,
+      SessionID expectedSessionId, String path, bool showHidden) {
+    if (expectedSessionId != sessionId) {
+      throw StateError('Superseded file-transfer session');
+    }
+    if (_pendingCount >= maxPending) {
+      throw StateError('File request capacity exhausted');
+    }
+    final pending = _PendingFileRequest<String>(expectedSessionId, true);
+    _localTasks[pending] = null;
+    pending.startTimeout(requestTimeout, () {
+      pending.completeError(TimeoutException(
+          'Local directory request did not complete', requestTimeout));
+    });
+    try {
+      // Logical cancellation retains the exact native completion and its slot.
+      _localTasks[pending] = request(expectedSessionId, path, showHidden)
+          .then<void>((value) {
+        _localTasks.remove(pending);
+        if (expectedSessionId != sessionId) {
+          pending.completeError(StateError('Superseded file-transfer session'));
+        } else {
+          pending.complete(value);
+        }
+      }, onError: (Object error, StackTrace stackTrace) {
+        _localTasks.remove(pending);
+        pending.completeError(error, stackTrace);
+      });
+    } catch (error, stackTrace) {
+      _localTasks.remove(pending);
+      pending.completeError(error, stackTrace);
+    }
+    return pending.future;
   }
 
   _PendingFileRequest<T> _reserve<K, T>(
@@ -2281,7 +2322,7 @@ class FileFetcher {
       {SessionID? expectedSessionId}) async {
     final selectedSessionId = expectedSessionId ?? sessionId;
     if (isLocal) {
-      final res = await _requests.readLocalEmptyDirectories(
+      final res = await _readLocal(_requests.readLocalEmptyDirectories,
           selectedSessionId, path, showHidden);
 
       final List<dynamic> fdJsons = jsonDecode(res);
@@ -2302,7 +2343,7 @@ class FileFetcher {
       {SessionID? expectedSessionId}) async {
     final selectedSessionId = expectedSessionId ?? sessionId;
     if (isLocal) {
-      final res = await _requests.readLocalDirectory(
+      final res = await _readLocal(_requests.readLocalDirectory,
           selectedSessionId, path, showHidden);
       return FileDirectory.fromJson(jsonDecode(res));
     }

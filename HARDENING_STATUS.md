@@ -116,6 +116,12 @@ independent artifact equality remain required. Release preparation follows `docs
 the retired specification-hash synchronization instruction is removed from this ledger.
 Current release/native acceptance and whole-document cleanup remain OPEN.
 
+R-B4 retains per-platform connection/authentication/session-type acceptance, Linux exact-process
+and kernel-socket ownership, typed read-only readiness, fixed deadlines, pidfd signaling, bounded
+credential-command lifetime, complete stage results and identity-bound cleanup. Obsolete upstream
+artifact-upload and hosted-runner commentary is removed. Native release acceptance and the broader
+platform matrix remain OPEN; this specification correction supplies no new runtime evidence.
+
 Retained documentation classifications are indexed below. They establish document/source
 comparisons, not compiler, artifact, scanner, native or release acceptance. Completed repair
 narratives and size comparisons remain in Git history.

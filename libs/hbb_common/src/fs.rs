@@ -7481,7 +7481,7 @@ mod tests {
             statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
             jump(equal, crate::libc::SYS_openat as u32, 3, 0),
             jump(equal, crate::libc::SYS_open as u32, 4, 0),
-            jump(equal, crate::libc::SYS_openat2 as u32, 6, 1),
+            jump(equal, crate::libc::SYS_openat2 as u32, 6, 0),
             statement(ret, crate::libc::SECCOMP_RET_ALLOW),
             statement(load, 32), // openat flags: args[2]
             statement(crate::libc::BPF_JMP | crate::libc::BPF_JA, 2),
@@ -7558,6 +7558,8 @@ mod tests {
             .open(&source).expect("the private FIFO permits a real nonblocking reader"));
 
         deny_send_io_opens_for_test_child();
+        assert!(unsafe { crate::libc::syscall(crate::libc::SYS_getpid) } > 0,
+            "unrelated syscalls must remain available");
         let denied = std::fs::OpenOptions::new().read(true)
             .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
             .open(&source).expect_err("the kernel must refuse a real I/O open");

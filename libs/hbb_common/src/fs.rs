@@ -7460,6 +7460,150 @@ mod tests {
         assert_send_digest_size_admission(true).await;
     }
 
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn deny_send_io_opens_for_test_child() {
+        let statement = |code, k| crate::libc::sock_filter {
+            code: code as u16, jt: 0, jf: 0, k,
+        };
+        let jump = |code, k, jt, jf| crate::libc::sock_filter {
+            code: code as u16, jt, jf, k,
+        };
+        let load = crate::libc::BPF_LD | crate::libc::BPF_W | crate::libc::BPF_ABS;
+        let equal = crate::libc::BPF_JMP | crate::libc::BPF_JEQ | crate::libc::BPF_K;
+        let bits = crate::libc::BPF_JMP | crate::libc::BPF_JSET | crate::libc::BPF_K;
+        let ret = crate::libc::BPF_RET | crate::libc::BPF_K;
+        let mut filter = [
+            statement(load, 4), // seccomp_data.arch
+            jump(equal, 0xc000003e, 1, 0), // AUDIT_ARCH_X86_64
+            statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+            statement(load, 0), // seccomp_data.nr
+            jump(bits, 0x40000000, 0, 1), // reject x32
+            statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+            jump(equal, crate::libc::SYS_openat as u32, 3, 0),
+            jump(equal, crate::libc::SYS_open as u32, 4, 0),
+            jump(equal, crate::libc::SYS_openat2 as u32, 6, 1),
+            statement(ret, crate::libc::SECCOMP_RET_ALLOW),
+            statement(load, 32), // openat flags: args[2]
+            statement(crate::libc::BPF_JMP | crate::libc::BPF_JA, 2),
+            statement(load, 24), // open flags: args[1]
+            statement(crate::libc::BPF_JMP | crate::libc::BPF_JA, 0),
+            jump(bits, crate::libc::O_PATH as u32, 1, 0),
+            statement(ret, crate::libc::SECCOMP_RET_ERRNO | crate::libc::EOWNERDEAD as u32),
+            statement(ret, crate::libc::SECCOMP_RET_ALLOW),
+        ];
+        let program = crate::libc::sock_fprog {
+            len: filter.len() as u16,
+            filter: filter.as_mut_ptr(),
+        };
+        assert_eq!(unsafe {
+            crate::libc::prctl(crate::libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)
+        }, 0, "no-new-privileges: {}", std::io::Error::last_os_error());
+        assert_eq!(unsafe {
+            crate::libc::syscall(crate::libc::SYS_seccomp,
+                crate::libc::SECCOMP_SET_MODE_FILTER,
+                crate::libc::SECCOMP_FILTER_FLAG_TSYNC, &program)
+        }, 0, "child-only synchronized filter: {}", std::io::Error::last_os_error());
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    async fn assert_send_source_type_precedes_io_open(resume: bool) {
+        use std::os::unix::{ffi::OsStrExt, fs::{FileTypeExt, OpenOptionsExt}};
+
+        let mode = if resume { "resume" } else { "initial" };
+        if std::env::var("RUSTDESK_SEND_PREOPEN_TEST_CHILD").as_deref() != Ok(mode) {
+            let case = if resume {
+                "fs::tests::send_resume_acquisition_refuses_special_file_before_io_open"
+            } else {
+                "fs::tests::send_initial_acquisition_refuses_special_file_before_io_open"
+            };
+            let output = tokio::task::spawn_blocking(move || {
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", case, "--nocapture", "--test-threads=1"])
+                    .env("RUSTDESK_SEND_PREOPEN_TEST_CHILD", mode)
+                    .output()
+            }).await.unwrap().unwrap();
+            assert!(output.status.success(),
+                "isolated child status={:?}, stdout={:?}, stderr={:?}",
+                output.status, String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr));
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            let markers: Vec<_> = stdout.lines()
+                .filter_map(|line| line.find("SEND_PREOPEN_ADMISSION=pass ")
+                    .map(|offset| &line[offset..])).collect();
+            assert_eq!(markers.len(), 1);
+            println!("{}", markers[0]);
+            return;
+        }
+
+        let tmp = TestTempDir::new("rustdesk_send_preopen");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let source = tmp.join("source.zip");
+        let original = tmp.join("original.zip");
+        std::fs::write(&source, b"ordinary").unwrap();
+        let mut positive = TransferJob::open_send_file(source.clone()).await
+            .expect("the same artifact must still acquire regular sources");
+        let mut bytes = Vec::new();
+        positive.read_to_end(&mut bytes).await.unwrap();
+        assert_eq!(bytes, b"ordinary");
+        let mut sentinel = positive.into_std().await;
+        let mut job = TransferJob::new_read(
+            224, JobType::Generic, String::new(), source.clone(),
+            0, false, false, true,
+        ).unwrap();
+        std::fs::rename(&source, &original).unwrap();
+        let name = std::ffi::CString::new(source.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { crate::libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        drop(std::fs::OpenOptions::new().read(true)
+            .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
+            .open(&source).expect("the private FIFO permits a real nonblocking reader"));
+
+        deny_send_io_opens_for_test_child();
+        let denied = std::fs::OpenOptions::new().read(true)
+            .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
+            .open(&source).expect_err("the kernel must refuse a real I/O open");
+        assert_eq!(denied.raw_os_error(), Some(crate::libc::EOWNERDEAD));
+        let path_only = std::fs::OpenOptions::new().read(true)
+            .custom_flags(crate::libc::O_PATH | crate::libc::O_CLOEXEC)
+            .open(&source).expect("metadata-only acquisition remains available");
+        assert!(path_only.metadata().unwrap().file_type().is_fifo());
+        drop(path_only);
+
+        let result = if resume {
+            job.confirm_with_offset(0, 2).await
+        } else {
+            job.init_data_stream_for_cm().await.map(|_| ())
+        };
+        let error = result.expect_err("the special source must be refused");
+        assert!(job.data_stream.is_none());
+        assert!(!job.file_confirmed());
+        assert!(!job.file_is_waiting());
+        assert_eq!((job.file_num(), job.send_file_offset, job.finished_size(), job.transferred()),
+            (0, 0, 0, 0));
+        std::io::Seek::seek(&mut sentinel, std::io::SeekFrom::Start(0)).unwrap();
+        bytes.clear();
+        std::io::Read::read_to_end(&mut sentinel, &mut bytes).unwrap();
+        assert_eq!(bytes, b"ordinary");
+        drop(sentinel);
+        std::fs::remove_file(&source).unwrap();
+        std::fs::remove_file(&original).unwrap();
+        std::fs::remove_dir(&tmp.path).unwrap();
+        assert_eq!(error.to_string(), "send source is not a regular file",
+            "refusal must precede the kernel-denied I/O open: {:?}", error);
+        println!("SEND_PREOPEN_ADMISSION=pass mode={} io_open=kernel-denied path_open=allowed regular=read", mode);
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[tokio::test]
+    async fn send_initial_acquisition_refuses_special_file_before_io_open() {
+        assert_send_source_type_precedes_io_open(false).await;
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[tokio::test]
+    async fn send_resume_acquisition_refuses_special_file_before_io_open() {
+        assert_send_source_type_precedes_io_open(true).await;
+    }
+
     #[cfg(target_os = "linux")]
     async fn send_fifo_replacement_is_refused(resume: bool) {
         use std::os::unix::{ffi::OsStrExt, fs::OpenOptionsExt};

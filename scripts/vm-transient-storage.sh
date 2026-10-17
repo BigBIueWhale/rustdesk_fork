@@ -34,6 +34,7 @@ elif [ "${MODE:-}:${LINUX_PA_PLAYBACK:-0}" = linux-pa-authority-tests:1 ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:resolution-parent ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:viewer-credentials ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:viewer-resume ] \
+    || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:local-file-listing ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:android-client-drain ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:cm-read-tick ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:file-receive-caller ] \

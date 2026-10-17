@@ -906,23 +906,23 @@ pub fn session_read_local_dir_sync(
     _session_id: SessionID,
     path: String,
     show_hidden: bool,
-) -> String {
-    if let Ok(fd) = fs::read_dir(&fs::get_path(&path), show_hidden) {
-        return make_fd_to_json(fd.id, path, &fd.entries);
-    }
-    "".to_string()
+) -> Result<String> {
+    let fd = fs::read_dir(&fs::get_path(&path), show_hidden)?;
+    Ok(make_fd_to_json(fd.id, path, &fd.entries))
 }
 
 pub fn session_read_local_empty_dirs_recursive_sync(
     _session_id: SessionID,
     path: String,
     include_hidden: bool,
-) -> String {
-    if let Ok(fds) = fs::get_empty_dirs_recursive(&path, include_hidden) {
-        return make_vec_fd_to_json(&fds);
-    }
-    "".to_string()
+) -> Result<String> {
+    let fds = fs::get_empty_dirs_recursive(&path, include_hidden)?;
+    Ok(make_vec_fd_to_json(&fds))
 }
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "flutter_ffi/local_file_listing_tests.rs"]
+mod local_file_listing_tests;
 
 pub fn session_read_remote_empty_dirs_recursive_sync(
     session_id: SessionID,

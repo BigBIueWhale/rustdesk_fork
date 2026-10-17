@@ -126,7 +126,7 @@ case "$#:${8:-}" in
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
-            || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume \
+            || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
             || "${13}" = --fusermount-process || "${13}" = --file-block \
             || "${13}" = --clipboard-response || "${13}" = --cliprdr-read || "${13}" = --android-client-drain || "${13}" = --cm-read-tick ]] || exit 2
@@ -2457,7 +2457,7 @@ generate_focused_rust_flutter_bridge() {
     local load_output container_status=0 inspect namespace_inspect freshness_line
     local codegen_memory=8g
     local codegen_memory_bytes=8589934592
-    if [[ "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+    if [[ "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         codegen_memory=3g
         codegen_memory_bytes=3221225472
     fi
@@ -2681,14 +2681,16 @@ generate_focused_rust_flutter_bridge() {
     CONTAINER_ID=
     "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
     rm -rf -- "$codegen_source" "$codegen_work"
-    if [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+    if [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
             && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
             || fail 'bridge preparation left a container or image before storage retirement'
         sync -f "$ROOT"
         fstrim --verbose / >"$ROOT/bridge-retirement.trim" \
             || fail 'disposable guest root does not support completed-tool discard'
-        if [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
+        if [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+            printf 'LOCAL_FILE_LISTING_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
+        elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             printf 'VIEWER_RESUME_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             printf 'VIEWER_CREDENTIAL_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
@@ -3648,6 +3650,21 @@ run_focused_rust_tests() {
                 flutter::mobile_session_lifecycle_tests::android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain
                 flutter::mobile_session_lifecycle_tests::android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain
             )
+        elif [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+            container_name=rustdesk-local-file-listing-tests
+            memory=5g
+            memory_bytes=5368709120
+            source_fingerprints=(
+                Cargo.lock Cargo.toml src/lib.rs src/flutter_ffi.rs src/common.rs
+                src/flutter_ffi/local_file_listing_tests.rs libs/hbb_common/src/fs.rs
+                scripts/fixtures/local-file-listing-before-errors.rs
+                scripts/run-local-file-listing-tests.sh scripts/linux-parent-test-build.sh
+            )
+            required_tests=(
+                flutter_ffi::local_file_listing_tests::listing_exports_preserve_filesystem_errors
+                flutter_ffi::local_file_listing_tests::listing_exports_report_entry_budget_and_recover_at_exact_boundary
+                flutter_ffi::local_file_listing_tests::listing_exports_preserve_empty_and_hidden_success_json
+            )
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             container_name=rustdesk-viewer-resume-tests
             memory=5g
@@ -3886,7 +3903,7 @@ run_focused_rust_tests() {
         || fail 'cannot extract the exact focused-test source archive'
     chown -R 1000:1000 "$source_root"
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         install -o 1000 -g 1000 -m 0444 /dev/null \
             "$source_root/src/bridge_generated.rs"
         install -o 1000 -g 1000 -m 0444 /dev/null \
@@ -4004,7 +4021,7 @@ run_focused_rust_tests() {
             || fail "Debian-builder image receipt differs: $load_output"
     else
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
             bridge_inputs=(
                 "$rust_archive:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
                 "$flutter_archive:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
@@ -4025,7 +4042,7 @@ run_focused_rust_tests() {
                 || fail "sealed Android Rust bridge input differs: $path"
         done
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
             [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
               "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
                 && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
@@ -4045,7 +4062,7 @@ run_focused_rust_tests() {
         fi
         local file_bridge_sources_before=
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
             generate_focused_rust_flutter_bridge
             bridge_mounts=(
                 --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.rs,target=/source/src/bridge_generated.rs,readonly"
@@ -4372,7 +4389,10 @@ run_focused_rust_tests() {
                             /bin/bash /source/scripts/run-file-receive-caller-tests.sh
                             exit 0
                         fi
-                        if [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
+                        if [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+                            /bin/bash /source/scripts/run-local-file-listing-tests.sh
+                            exit 0
+                        elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
                             /bin/bash /source/scripts/run-viewer-resume-tests.sh
                             exit 0
                         fi
@@ -4779,7 +4799,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+        && [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
@@ -5015,6 +5035,13 @@ PY
         [ "$(grep -Ec '^ANDROID_CLIENT_DRAIN_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 groups=2 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'ANDROID_CLIENT_DRAIN_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'Android client drain artifact receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'local file-listing summary count differs'
+        [ "$(grep -Ec '^LOCAL_FILE_LISTING_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LOCAL_FILE_LISTING_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LOCAL_FILE_LISTING_COMPARISON=pass ' "$output")" -eq 2 ] \
+            && [ "$(grep -Fxc 'LOCAL_FILE_LISTING_SUCCESS=pass empty=valid-json hidden=preserved entries=preserved payload=unchanged' "$output")" -eq 1 ] \
+            || fail 'local file-listing artifact or native comparison differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'viewer resume summary count differs'
         [ "$(grep -Ec '^VIEWER_RESUME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -5257,7 +5284,7 @@ PY
       )" ] \
         || fail 'focused Rust-test source inputs changed during execution'
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         post_pub_receipt="$(
             setpriv --reuid=1000 --regid=1000 --clear-groups \
                 env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
@@ -5280,6 +5307,10 @@ PY
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
         elif [ "$RUST_TEST_PROFILE" = android-client-drain ]; then
             printf 'ANDROID_CLIENT_DRAIN_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
+                "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
+                "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
+        elif [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+            printf 'LOCAL_FILE_LISTING_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
@@ -5438,6 +5469,11 @@ PY
             grep -E '^test flutter::mobile_session_lifecycle_tests::android_lifecycle_.* \.\.\. ok$|^ANDROID_CLIENT_DRAIN_(ARTIFACT|BUILD)=' "$output"
             [ "$tests_passed" -eq 2 ] || fail 'Android client drain total differs'
             printf 'ANDROID_CLIENT_DRAIN_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=production-owner-transitions-with-blocked-worker-fixtures android=unexecuted rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+            grep -E '^test flutter_ffi::local_file_listing_tests::.* \.\.\. ok$|^LOCAL_FILE_LISTING_(ARTIFACT|BUILD|COMPARISON|SUCCESS)=' "$output"
+            [ "$tests_passed" -eq 3 ] || fail 'local file-listing total differs'
+            printf 'LOCAL_FILE_LISTING_VM=pass commit=%s tree=%s tests=3 target=linux-x86_64 scope=production-local-file-listing-exports comparison=earlier-export-bodies rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             grep -E '^test client::io_loop::file_resume_tests::.* \.\.\. ok$|^VIEWER_RESUME_(ARTIFACT|BUILD)=' "$output"

@@ -3226,7 +3226,7 @@ impl TransferJob {
 
     #[inline]
     pub fn set_files(&mut self, files: Vec<FileEntry>) -> ResultType<()> {
-        self.set_files_with_limit(files, usize::MAX)
+        self.set_files_with_limit(files, DEFAULT_FILE_TRANSFER_MAX_FILES)
     }
 
     #[inline]

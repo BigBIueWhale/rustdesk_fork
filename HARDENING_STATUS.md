@@ -14798,7 +14798,7 @@ receipt. These are corrected-source library results, with no new historical A/B.
 Rust core/caller compilation and the named authenticated peer replay are covered above. Flutter,
 installed routing, other-platform and every broader runtime obligation below remain OPEN.
 
-**Resume confirmation width — Linux library regressions ACCEPTED; caller integration OPEN.** Both viewer
+**Resume confirmation width — Linux library and named viewer callers ACCEPTED; broader integration OPEN.** Both viewer
 upload and download resume paths retain the digest's 64-bit byte offset until
 `TransferJob::confirm_with_offset` checks its representability in the protocol's existing
 32-bit `offset_blk` field. Unrepresentable offsets now fail before confirmation, seek,
@@ -14811,20 +14811,33 @@ Three real-file regressions are required by `--hbb-common-fs`: both-role wrap re
 unchanged staging/state followed by valid resume, exact `u32::MAX` wire/seek/read/accounting
 through a Unix sparse tail, and zero-offset fresh transfer with real receive publication and
 sidecar retirement. All three are required and passed in the named Linux library transaction above.
-Viewer/CM/peer, installed and other-platform integration remain OPEN.
+The named post-key viewer caller cases below also pass. Full connection/login/UI/CM,
+installed and other-platform integration remain OPEN.
 
-**Viewer resume caller follow-up — prepared; execution OPEN after RAM-admission refusal.**
-The 20-GiB admitted parent-test profile was refused before VM startup; a bounded five-minute
-resource wait also expired. No caller test binary was compiled or executed. The profile and
-headroom are unchanged, and no disk-scratch fallback or foreign-resource cleanup was attempted.
-`--viewer-resume-tests` builds the complete Linux Flutter-enabled Rust library and selects
-three new `client::io_loop::file_resume_tests` cases. They send digests over real CPace-keyed
-guest-loopback TCP into the production post-key viewer handler, observe wire confirmations,
-and inspect actual file state. Uploads above the 32-bit wire limit must fail without a
-confirmation; a sparse oversized download prefix must remain unadopted and unchanged.
-Valid two-byte and exact `u32::MAX` resumes must reach the wire and transfer/publish the
-exact file tail. This is caller-component work, not login/UI/CM, installed, other-platform
-or release acceptance. Existing user-requested parks remain parked.
+**Viewer resume caller follow-up — named Linux post-key caller cases ACCEPTED; broader integration OPEN.**
+Exact source `8928dcd8` passed `--viewer-resume-tests` in 433 VM seconds. The complete
+Linux Flutter-enabled root library test build took 143 seconds; all three selected
+`client::io_loop::file_resume_tests` cases passed in 0.64 seconds. They send digests over
+real CPace-keyed guest-loopback TCP into the production viewer handler and inspect wire
+and real-file outcomes: four unrepresentable upload offsets refuse before confirmation
+and retire the exact job; an oversized sparse download prefix retains its inode, length,
+sentinel bytes and digest without adoption or removal; two-byte and exact `u32::MAX`
+resumes in both directions produce the exact wire offset, counters and file tail, with
+receive publication and sidecar retirement. Sparse fixtures require bounded allocation.
+The executed artifact SHA-256
+`63b551c54a90ea00f8d2c9dcfbe7e8ef4bf0afb83e66cb71d6b83db0f401fe27`
+is unchanged before/after. Fresh generated bridges are read-only; the pinned, offline,
+nonroot guest-container build and execution use zero guest NICs and container network none.
+The unchanged 20-GiB admission covers 6-GiB guest RAM, 7-GiB bounded RAM scratch,
+6-GiB host headroom and 1-GiB overhead; the overlay ceiling remains 6 GiB. Exact joins
+and retirement removed both RAM scratch and the private run root. Source/control/index/
+stash captures and complete endpoint observations are unchanged. Raw serial, source/tree,
+artifact/bridge/pin bindings, earlier compilation failures and cleanup are retained through
+`.harness-state/verifier-vm/viewer-resume-accepted-8928dcd8.json`.
+The earlier attempts failed compilation; there is no historical caller behavioral A/B.
+This compiles the root libtest and exercises post-key caller components with a prepared
+FileTransfer context; full login/UI/CM, installed, other-platform and release acceptance
+remain OPEN. The CM read-tick cases below remain parked and unexecuted.
 
 **Filesystem-only job authority — Linux library compilation/tests ACCEPTED; application integration OPEN.**
 All production constructors use filesystem paths. `TransferJob` now accepts and retains a
@@ -14839,7 +14852,8 @@ The existing encrypted writer-receipt test now reads actual `.zip` files and req
 raw bytes/file index while back-pressured. The obsolete memory-receive test is removed;
 the focused filesystem gate retains both file-block tests and requires a real job-serialization
 test for the CM field. The named Linux transaction above compiled the common library and passed
-the real-file writer/serialization cases. Application/caller compilation and native/platform
+the real-file writer/serialization cases. The viewer follow-up above also compiles the Linux
+Flutter-enabled root libtest; normal application builds and broader caller/native/platform
 transactions remain PENDING. No live memory-backend constructor or newly proven LPE was
 found; this removes an obsolete production abstraction rather than claiming an exploit.
 

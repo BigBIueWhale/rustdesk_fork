@@ -14764,6 +14764,21 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
+**Default send enumeration — source corrected; baseline reproduced; corrected native execution OPEN.**
+`TransferJob::new_read`, used by viewer local SendFiles/AddJob, now selects the existing
+finite standard budget before collecting or publishing its file list: 10,000 scanned entries,
+10,000 directories, depth 64 and a 16-MiB serialized-size estimate. The old convenience
+constructor selected unlimited enumeration even though controlled/CM sends were bounded.
+At `35fdf3f0`, two real-filesystem tests failed because 10,001 files and depth 65 were admitted;
+the exact 10,000-entry/depth-64 controls and 162 other executed cases passed. The baseline
+receipt is `.harness-state/verifier-vm/send-budget-baseline-35fdf3f0.json`.
+Correction `f1bdad44` changes only that budget argument; the complete test module is identical.
+The corrected VM refused admission at 19,071 MiB available against its unchanged 19,456-MiB
+floor; a bounded 180-second wait expired below it. No corrected compiler/test ran.
+`.harness-state/verifier-vm/send-budget-pending-f1bdad44.json` retains source/refusal/count state.
+The same native lane, application/caller/peer and other-platform behavior remain OPEN, along
+with separate local listing/removal enumeration and whole-application aggregate resource bounds.
+
 **Send-source acquisition — Linux library and named authenticated peer ACCEPTED; installed/platform acceptance OPEN.**
 Source `e9dfe4af` uses one private `open_send_file` for initial acquisition and first-resume
 opens. One off-runtime operation opens read-only and verifies regular-file metadata on the

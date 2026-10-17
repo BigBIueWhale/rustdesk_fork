@@ -2167,10 +2167,15 @@ class FileFetcher {
       final completion = request(expectedSessionId, path, showHidden)
           .then<void>((value) {
         _releasePendingTask(pending);
-        if (expectedSessionId != sessionId) {
-          pending.completeError(StateError('Superseded file-transfer session'));
-        } else {
-          pending.complete(value);
+        if (pending.isCompleted) return;
+        try {
+          if (expectedSessionId != sessionId) {
+            pending.completeError(StateError('Superseded file-transfer session'));
+          } else {
+            pending.complete(value);
+          }
+        } catch (error, stackTrace) {
+          pending.completeError(error, stackTrace);
         }
       }, onError: (Object error, StackTrace stackTrace) {
         _releasePendingTask(pending);

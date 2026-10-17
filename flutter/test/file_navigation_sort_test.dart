@@ -28,6 +28,60 @@ FileFetcherRequests _localRequests(
       readLocalEmptyDirectories: empty ?? (_, __, ___) async => '[]',
     );
 
+class _LocalCompletionHarness {
+  _LocalCompletionHarness(this.empty,
+      {this.timeout = const Duration(seconds: 2)});
+
+  final bool empty;
+  final Duration timeout;
+  final session = const Uuid().v4obj();
+  final ownerError = StateError('Local session owner is unavailable');
+  final completion = Completer<String>();
+  final uncaught = <Object>[];
+  var ownerUnavailable = false;
+  var ownerReads = 0;
+  var dispatches = 0;
+
+  SessionID currentSession() {
+    ownerReads++;
+    if (ownerUnavailable) throw ownerError;
+    return session;
+  }
+
+  String value(String path) => empty ? '[]' : _listing(path);
+
+  Future<String> dispatch(SessionID _, String path, bool __) {
+    dispatches++;
+    return dispatches == 1 ? completion.future : Future.value(value(path));
+  }
+
+  late final fetcher = FileFetcher(currentSession,
+      maxPending: 1,
+      requestTimeout: timeout,
+      requests: _localRequests(flat: dispatch, empty: dispatch));
+
+  Future<Object> start() {
+    late Future<Object> result;
+    runZonedGuarded(() {
+      final Future<Object> request = empty
+          ? fetcher.readEmptyDirs('/local', true, false)
+          : fetcher.fetchDirectory('/local', true, false);
+      result = request.then<Object>((value) => value,
+          onError: (Object error, StackTrace _) => error);
+    }, (Object error, StackTrace _) {
+      uncaught.add(error);
+    });
+    return result;
+  }
+
+  Future<void> drain() async {
+    fetcher.cancelPending();
+    ownerUnavailable = false;
+    if (!completion.isCompleted) completion.complete(value('/local'));
+    await Future<void>.delayed(Duration.zero);
+  }
+}
+
 enum _RemoteListing { directory, empty, recursive }
 
 class _RemoteListingHarness {
@@ -712,6 +766,69 @@ void main() {
     for (var i = 0; i < 3; i++) {
       expect((await fetcher.fetchDirectory('/local', true, false)).path, '/local');
       expect(await fetcher.readEmptyDirs('/local', true, false), isEmpty);
+    }
+  });
+
+  test('retired local listing completions never consult their session owner',
+      () async {
+    for (final empty in [false, true]) {
+      final harness = _LocalCompletionHarness(empty);
+      addTearDown(harness.drain);
+      final result = harness.start();
+      harness.fetcher.cancelPending();
+      expect(await result, isA<StateError>());
+      harness.ownerUnavailable = true;
+      final reads = harness.ownerReads;
+      harness.completion.complete(harness.value('/local'));
+      await Future<void>.delayed(Duration.zero);
+      expect(harness.ownerReads, reads);
+      expect(harness.uncaught, isEmpty);
+      harness.ownerUnavailable = false;
+      final replacement = await harness.start();
+      expect(empty ? replacement : (replacement as FileDirectory).path,
+          empty ? isEmpty : '/local');
+      expect(harness.dispatches, 2);
+    }
+  });
+
+  test('timed-out local listing completions never consult their session owner',
+      () async {
+    for (final empty in [false, true]) {
+      final harness = _LocalCompletionHarness(empty,
+          timeout: const Duration(milliseconds: 20));
+      addTearDown(harness.drain);
+      final result = harness.start();
+      expect(await result, isA<TimeoutException>());
+      harness.ownerUnavailable = true;
+      final reads = harness.ownerReads;
+      harness.completion.complete(harness.value('/local'));
+      await Future<void>.delayed(Duration.zero);
+      expect(harness.ownerReads, reads);
+      expect(harness.uncaught, isEmpty);
+      harness.ownerUnavailable = false;
+      final replacement = await harness.start();
+      expect(empty ? replacement : (replacement as FileDirectory).path,
+          empty ? isEmpty : '/local');
+      expect(harness.dispatches, 2);
+    }
+  });
+
+  test('local listing owner lookup failures reach the caller and release capacity',
+      () async {
+    for (final empty in [false, true]) {
+      final harness = _LocalCompletionHarness(empty,
+          timeout: const Duration(milliseconds: 20));
+      addTearDown(harness.drain);
+      final result = harness.start();
+      harness.ownerUnavailable = true;
+      harness.completion.complete(harness.value('/local'));
+      expect(await result, same(harness.ownerError));
+      expect(harness.uncaught, isEmpty);
+      harness.ownerUnavailable = false;
+      final replacement = await harness.start();
+      expect(empty ? replacement : (replacement as FileDirectory).path,
+          empty ? isEmpty : '/local');
+      expect(harness.dispatches, 2);
     }
   });
 

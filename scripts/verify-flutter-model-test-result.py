@@ -157,6 +157,9 @@ FILE_NAVIGATION_TESTS = {
     "timed out remote dispatches stay bounded across cancellation",
     "early remote responses retain cancelled dispatch capacity",
     "synchronous listing completions cannot resurrect capacity owners",
+    "retired local listing completions never consult their session owner",
+    "timed-out local listing completions never consult their session owner",
+    "local listing owner lookup failures reach the caller and release capacity",
     "new remote listing owners share retained dispatch admission",
     "new local listing owners share retained dispatch admission",
 }

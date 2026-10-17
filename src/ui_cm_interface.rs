@@ -3983,8 +3983,8 @@ mod tests {
         std::fs::write(&next, b"healthy!").unwrap();
         std::fs::write(&parked, b"paused").unwrap();
         let make_job = |id, generation, path: &PathBuf| {
-            let mut job = fs::TransferJob::new_read(
-                id, fs::JobType::Generic, String::new(), path.clone(),
+            let mut job = hbb_common::fs::TransferJob::new_read(
+                id, hbb_common::fs::JobType::Generic, String::new(), path.clone(),
                 0, false, true, true,
             ).unwrap();
             job.conn_id = 42;

@@ -14889,7 +14889,10 @@ through a Unix sparse tail, and zero-offset fresh transfer with real receive pub
 sidecar retirement. All three are required and passed in the named Linux library transaction above.
 Viewer/CM/peer, installed and other-platform integration remain OPEN.
 
-**Viewer resume caller follow-up — prepared; execution PENDING.**
+**Viewer resume caller follow-up — prepared; execution OPEN after RAM-admission refusal.**
+The 20-GiB admitted parent-test profile was refused before VM startup; a bounded five-minute
+resource wait also expired. No caller test binary was compiled or executed. The profile and
+headroom are unchanged, and no disk-scratch fallback or foreign-resource cleanup was attempted.
 `--viewer-resume-tests` builds the complete Linux Flutter-enabled Rust library and selects
 three new `client::io_loop::file_resume_tests` cases. They send digests over real CPace-keyed
 guest-loopback TCP into the production post-key viewer handler, observe wire confirmations,

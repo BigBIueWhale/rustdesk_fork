@@ -76,7 +76,7 @@ const MAX_PENDING_VIEWER_FILE_WRITES: usize = 256;
 const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;
 const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 
-#[cfg(all(test, unix, feature = "flutter"))]
+#[cfg(all(test, target_os = "linux", feature = "flutter"))]
 mod file_resume_tests;
 
 #[derive(Default)]

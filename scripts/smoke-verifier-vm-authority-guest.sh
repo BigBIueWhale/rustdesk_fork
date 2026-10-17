@@ -3719,6 +3719,8 @@ run_focused_rust_tests() {
                 command_tests::successful_command_waits_for_exact_child_completion
                 command_tests::unsuccessful_child_status_is_preserved
                 command_tests::signalled_child_status_is_preserved
+                command_tests::ignored_sigchld_refuses_before_child_creation
+                command_tests::no_cldwait_refuses_before_child_creation
                 command_tests::timeout_terminates_and_reaps_owned_child
                 command_tests::output_limit_terminates_and_reaps_owned_child
                 work_tests::normal_completion_holds_owner_and_runtime_stays_responsive
@@ -5034,7 +5036,7 @@ PY
             || fail 'resolution parent artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution-lifetime summary count differs'
-        [ "$(grep -Ec '^LINUX_RESOLUTION_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=22 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^LINUX_RESOLUTION_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=24 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'LINUX_RESOLUTION_LIFETIME_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'resolution-lifetime artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then

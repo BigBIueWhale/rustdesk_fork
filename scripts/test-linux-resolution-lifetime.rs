@@ -83,6 +83,81 @@ mod command_tests {
         root.assert_reaped();
     }
 
+    fn wait_disposition_refusal(test_name: &str, ignore: bool) {
+        const PROBE: &str = "RUSTDESK_XRANDR_WAIT_DISPOSITION_PROBE";
+        let mode = if ignore { "ignored" } else { "no-cldwait" };
+        if std::env::var_os(PROBE).is_none() {
+            // Signal disposition is process-wide. Change it only in this exact re-exec child.
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command.args(["--exact", test_name, "--test-threads=1", "--color", "never"])
+                .env(PROBE, mode);
+            let output = xrandr_command::run(command).unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+            let text = String::from_utf8(output.stdout).unwrap();
+            assert!(text.lines().any(|line| line == format!("test {test_name} ... ok")));
+            assert!(text.lines().any(|line| line.starts_with(
+                "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured;"
+            )));
+            return;
+        }
+        assert_eq!(std::env::var(PROBE).unwrap(), mode);
+
+        fn admitted_child() {
+            let root = Directory::new();
+            let output = xrandr_command::run(root.command("fail")).unwrap();
+            assert_eq!(output.status.code(), Some(7));
+            assert_eq!(output.stdout, b"plausible stdout\n");
+            root.assert_reaped();
+        }
+        admitted_child();
+
+        struct RestoreDisposition(libc::sigaction);
+        impl Drop for RestoreDisposition {
+            fn drop(&mut self) {
+                assert_eq!(unsafe {
+                    libc::sigaction(libc::SIGCHLD, &self.0, std::ptr::null_mut())
+                }, 0);
+            }
+        }
+
+        let refused = Directory::new();
+        let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
+        action.sa_sigaction = if ignore { libc::SIG_IGN } else { libc::SIG_DFL };
+        action.sa_flags = if ignore { 0 } else { libc::SA_NOCLDWAIT };
+        assert_eq!(unsafe { libc::sigemptyset(&mut action.sa_mask) }, 0);
+        let mut previous: libc::sigaction = unsafe { std::mem::zeroed() };
+        assert_eq!(unsafe { libc::sigaction(libc::SIGCHLD, &action, &mut previous) }, 0);
+        let restore = RestoreDisposition(previous);
+        let mut observed: libc::sigaction = unsafe { std::mem::zeroed() };
+        assert_eq!(unsafe {
+            libc::sigaction(libc::SIGCHLD, std::ptr::null(), &mut observed)
+        }, 0);
+        assert_eq!(observed.sa_sigaction, action.sa_sigaction);
+        assert_eq!(observed.sa_flags & libc::SA_NOCLDWAIT, action.sa_flags);
+
+        let result = xrandr_command::run(refused.command("fail"));
+        drop(restore);
+        let error = result.unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "xrandr requires retained child wait authority");
+        assert!(!refused.0.join("pid").exists(), "refused child must never execute");
+        admitted_child();
+    }
+
+    #[test]
+    fn ignored_sigchld_refuses_before_child_creation() {
+        wait_disposition_refusal(
+            "command_tests::ignored_sigchld_refuses_before_child_creation", true,
+        );
+    }
+
+    #[test]
+    fn no_cldwait_refuses_before_child_creation() {
+        wait_disposition_refusal(
+            "command_tests::no_cldwait_refuses_before_child_creation", false,
+        );
+    }
+
     #[test]
     fn timeout_terminates_and_reaps_owned_child() {
         let root = Directory::new();

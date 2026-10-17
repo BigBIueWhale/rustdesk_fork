@@ -47,7 +47,7 @@ def main():
                             "src/platform/linux/xrandr_command.rs", test_file) if lifetime else ())
     inputs = {name: (repo / name).read_bytes() for name in input_names}
     receipt = "LINUX_RESOLUTION_LIFETIME" if lifetime else "LINUX_XRANDR_QUERY"
-    tests = 22 if lifetime else 8
+    tests = 24 if lifetime else 8
     root_lock = tomllib.loads(inputs["Cargo.lock"].decode("utf-8"))
     records = {(p["name"], p["version"]): p for p in root_lock["package"] if "source" in p}
     with socket.socket() as canary:

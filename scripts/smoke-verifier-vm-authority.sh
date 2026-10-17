@@ -6118,13 +6118,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = reso
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
     mapfile -t lifetime_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'LINUX_RESOLUTION_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=22 unchanged=before-after$'
+            'LINUX_RESOLUTION_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=24 unchanged=before-after$'
     )
     [ "${#lifetime_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'LINUX_RESOLUTION_LIFETIME_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'resolution-lifetime artifact receipt differs'
     require_exact_fixed_receipt \
-        "LINUX_RESOLUTION_LIFETIME_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=22 target=linux-x86_64 scope=production-command-and-owned-work-components rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "LINUX_RESOLUTION_LIFETIME_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=24 target=linux-x86_64 scope=production-command-and-owned-work-components rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Linux resolution-lifetime receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'resolution-lifetime cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
@@ -7305,7 +7305,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'RESOLUTION_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=complete-parent-library-and-owned-result network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
-        printf 'LINUX_RESOLUTION_LIFETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=22 scope=production-command-and-owned-work-components network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'LINUX_RESOLUTION_LIFETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=24 scope=production-command-and-owned-work-components network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
         printf 'LINUX_XRANDR_QUERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=production-query-result-and-output-identity network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

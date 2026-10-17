@@ -14585,7 +14585,7 @@ The exported-function error component is covered below. Caller/UI/peer, installe
 release evidence, filesystem I/O deadlines/cancellation and application-wide aggregate
 resource limits remain OPEN.
 
-**Local listing errors — Linux exported-function comparison ACCEPTED; Dart/UI/platform integration OPEN.**
+**Local listing errors — Linux exports and actual Dart transport ACCEPTED; UI/platform integration OPEN.**
 `session_read_local_dir_sync` and `session_read_local_empty_dirs_recursive_sync` now return
 `Result<String>` and propagate enumeration errors instead of returning a successful empty
 string that Dart subsequently tried to JSON-decode. Successful JSON serializers and Dart's
@@ -14604,7 +14604,20 @@ is stable before/after; fresh generated bridges are read-only and unchanged. The
 20-GiB parent admission, zero-NIC/nonroot guest-only containers, complete frozen controls/
 endpoints, pin/artifact bindings and joined RAM/private-root retirement are retained in
 `.harness-state/verifier-vm/local-listing-errors-accepted-8a5efe57.json`.
-Actual Dart exception transport, rendered error feedback, controller/session continuation,
+At source `72056f19`, the same bounded profile passed three actual Dart cases in **427 VM
+seconds**. A small AOT client compiles against the complete freshly generated Dart API;
+it loads the complete non-test, Flutter-enabled root Rust cdylib selected from Cargo JSON.
+SDK/compiler preparation retires before the 137-second library build; behavior takes one
+second. Both exports first return valid filesystem JSON, then preserve `RESULT_ERROR` /
+`FfiException` causes for missing, non-directory, permission and entry-budget failures
+(eight errors). Valid calls after refusal, exact 10,000-entry recovery, hidden filtering,
+preserved payloads and private fixture retirement pass. No mock producer or reconstructed
+Rust shim is used. This is current transport execution, not historical whole-app/Dart A/B.
+The Rust library and Dart client retain their before/after hashes; generated Rust/Dart inputs,
+644-file frozen controls, complete unchanged endpoint observations, fixed resource limits
+and joined RAM/VM retirement are bound in
+`.harness-state/verifier-vm/local-listing-dart-72056f19.json`.
+Rendered error feedback, controller/session continuation,
 installed/native other-platform behavior, I/O deadlines/cancellation, aggregate resources
 and broader release obligations remain OPEN. Directory-ordering/Home and all other explicit
 user parks remain parked.

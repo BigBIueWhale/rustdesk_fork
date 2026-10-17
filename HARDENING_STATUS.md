@@ -14585,21 +14585,38 @@ The exported-function error component is covered below. Caller/UI/peer, installe
 release evidence, filesystem I/O deadlines/cancellation and application-wide aggregate
 resource limits remain OPEN.
 
-**Local listing request admission — Dart owner-state A/B ACCEPTED; native drain/aggregate/UI integration OPEN.**
-`FileFetcher` includes local listing futures in its existing shared request limit (default 64),
+**File listing request admission — Dart owner-state A/B ACCEPTED; native drain/aggregate/UI integration OPEN.**
+`FileFetcher` uses one exact-owner registry for its shared request limit (default 64),
 reserves before native dispatch, and refuses stale-session or excess requests without invoking
-the bridge. Both local listing methods use the existing typed request facade and logical
-two-second request timeout. Cancel/timeout completes the caller while the exact local owner
-and native completion remain counted; only actual completion or synchronous dispatch refusal
-releases that slot. Native errors retain their cause, and retired-session success is rejected.
-The correction is `c673b168`; navigation ordering/Home, transfer dispatch and Rust are unchanged.
+the bridge. Both local listing methods and all three remote response families use the existing
+typed request facade and logical two-second timeout. Cancel/timeout completes the caller;
+unfinished native dispatch futures retain their owners and slots independently of response
+lookup keys. Actual dispatch completion/refusal retires cancelled owners, and live remote
+responses retain their existing dispatch-finality and late-response tombstone rules.
+Native errors retain their cause, and retired local success is rejected. Synchronous completion
+cannot reinsert an already-retired owner. The local correction is `c673b168`; `5fb51517`
+adds independent remote ownership, stale remote admission refusal and safe completion
+publication. Navigation ordering/Home, transfer dispatch and Rust are unchanged.
 At baseline `c300169f`, all 25 production Dart cases executed: 20 passed and five new admission,
 cancel/timeout and stale-session regressions failed. The identical test file at `68da924d`
 passed **all 25 cases and the complete outer gate in 286 VM seconds**, including the existing
 19 controller/selection/transfer cases and native-error/JSON recovery control. These execute
 actual `FileFetcher` state with controlled native-completion futures under Flutter 3.24.5;
 they do not execute blocked Rust filesystem work or establish native I/O cancellation.
-The exact 25-name result inventory and its three parser controls pass. At `511a05bb`, the
+At unchanged-product baseline `f0932466`, all 31 cases executed: the 25 existing cases passed
+and the six added cases did not succeed. Admission after cancellation, stale dispatch and
+synchronous-completion slot retention were reproduced; the late-error case aborted during
+cancellation cleanup before its intended injection and is not separate baseline error proof.
+The identical test file at `5fb51517` passed **all 31 cases and three parser controls in 266
+VM seconds**, including cancellation/recovery, timeout and early-response retirement across
+all three remote families, late predecessor failure with a live same-key replacement, stale
+refusal before dispatch and repeated synchronous local completion. Exact source/pins, raw
+results, unchanged controls/endpoints and joined bounded-RAM cleanup are bound in
+`.harness-state/verifier-vm/retired-file-dispatch-baseline-f0932466.json` and
+`.harness-state/verifier-vm/retired-file-dispatch-accepted-5fb51517.json`.
+These are production Dart owner-state tests with controlled bridge-completion futures;
+native peer/filesystem cancellation and rendered UI are not established.
+The exact 31-name result inventory and its three parser controls pass. At `511a05bb`, the
 unchanged suite and outer gate passed in **278 VM seconds**. FRB still generates the complete
 current API; its automatic Freezed step is deferred to the pinned builder with the exact
 `lib/generated_bridge.freezed.dart` output filter. Application sources remain available.
@@ -14617,9 +14634,11 @@ The 300-second deadline, 18-GiB admission and existing isolation/storage limits 
 `.harness-state/verifier-vm/local-file-capacity-accepted-68da924d.json` bind source/pins,
 results, complete controls/endpoints and joined cleanup. Setup/inventory failures and the
 timeout are separately retained and unaccepted. Ephemeral test-kernel bytes/digest were not
-retained; current full-app/installed/platform artifacts, native drain/cancellation, remote
-retirement semantics, global aggregate resources, rendered feedback, faster reusable build
-inputs and broader release evidence remain OPEN. Every explicit user park remains parked.
+retained; current full-app/installed/platform artifacts, native peer/I/O drain and cancellation,
+global aggregate resources, rendered feedback, faster reusable build inputs and broader
+release evidence remain OPEN. `JobResultListener.clear` still clears its capacity map while
+mutating-job dispatch futures can remain pending; that separate lifetime correction and
+behavioral proof remain OPEN. Every explicit user park remains parked.
 
 **Local listing errors — Linux exports and actual Dart transport ACCEPTED; UI/platform integration OPEN.**
 `session_read_local_dir_sync` and `session_read_local_empty_dirs_recursive_sync` now return

@@ -14584,6 +14584,28 @@ RAM/VM cleanup. It references the historical admission refusals without creditin
 Caller/UI/peer, installed/platform/release evidence, explicit FFI listing-error reporting,
 filesystem I/O deadlines/cancellation and application-wide aggregate resource limits remain OPEN.
 
+**Default receive-list admission — Linux library A/B ACCEPTED; caller/platform integration OPEN.**
+`TransferJob::set_files` and its `with_files` builder now use the shared 10,000-entry
+default instead of `usize::MAX`. The viewer's peer-directory receive path uses this
+default; controlled/CM callers retain their explicit limit. Count refusal precedes
+name/path validation and list/total/admission-state mutation. Explicit caller-supplied
+limits keep their existing semantics.
+Baseline `13bac8d3` failed both 10,001-entry setter/builder regressions while the
+exact-boundary and explicit-limit control passed. At `88e55451`, the identical full
+filesystem test module and runner passed **185 focused Linux tests in 204 VM seconds**,
+including all 133 filesystem cases. The three required new cases cover refusal with
+unchanged job state and unowned partial/digest bytes, a valid four-byte receive/publication
+after refusal with sidecar retirement, the inclusive 10,000 boundary, and explicit larger
+and smaller limits. Executed library artifact SHA-256
+`e7304899a65d0762fe28b9f3b4e935e228376be5cf23340f581acb4799dddffa`
+is stable before/between/after. `.harness-state/verifier-vm/receive-default-limit-accepted-88e55451.json`
+binds baseline/correction, exact source/artifact/pins, unchanged controls/endpoints and
+joined bounded-RAM/private-root cleanup. Resource limits are unchanged; the initial RAM
+refusal started no VM, and admission followed changed authoritative availability.
+This is real common-library receive behavior, not viewer/CM/UI or installed-principal
+execution. Predecode allocation, complete serialized-response/copy memory ceilings,
+aggregate resources, other platforms and all broader native/release obligations remain OPEN.
+
 **Send-source acquisition — Linux library and named authenticated peer ACCEPTED; installed/platform acceptance OPEN.**
 Source `e9dfe4af` uses one private `open_send_file` for initial acquisition and first-resume
 opens. One off-runtime operation opens read-only and verifies regular-file metadata on the

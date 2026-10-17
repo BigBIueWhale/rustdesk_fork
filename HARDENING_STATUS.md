@@ -126,6 +126,15 @@ Retained documentation classifications are indexed below. They establish documen
 comparisons, not compiler, artifact, scanner, native or release acceptance. Completed repair
 narratives and size comparisons remain in Git history.
 
+R-B6/R-B9/R-B10/R-B12 describe the supported UI, source topology and complete pinned-input
+contract. Sciter build history, a live `hbb_common` submodule and historical dependency counts
+are removed. The toolchain default's comments now agree with the release manifest; its parsed
+configuration is unchanged. First-pin provenance, independent corroboration, compiler/codegen
+identities, captured Windows inputs, SHA-1 residual review and moving-ref refusal remain required.
+Current `Cargo.lock` has 34 Git records while `dependency-inventory.py` expects 36; the Pub lock
+has three, not the specification's former six. The inventory expectation/source-closure review
+remains OPEN and must precede any expectation refresh. No native or release acceptance follows.
+
 The inherited `libs/scrap/README.md` and `libs/enigo/README.md` are deleted.
 Scrap's standalone crates.io example, byte-array frame contract and platform-minimum
 claims do not describe the fork's timed `TraitCapturer` and pixel-buffer/texture

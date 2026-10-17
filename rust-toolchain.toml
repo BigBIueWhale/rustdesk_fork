@@ -1,17 +1,7 @@
-# In-tree Rust toolchain pin — the one pin upstream omits (R-R1, §3.2, §16).
-#
-# Upstream fixed the Rust version in its Flutter workflow. That matrix survives here
-# only as a `.disabled` historical reference; the hardened fork commits the release pin
-# in `scripts/pins.env` and this in-tree default so no enabled CI definition is authority.
-#
-# Pinned to 1.75 — the exact upstream release version retained by `scripts/pins.env`
-# for all three shipped targets. The historical macOS 1.81 pin is not a release target
-# pin (R-R2), so it is not selected here.
-#
-# NOTE (R-B6): 1.75 is forced by the 32-bit Sciter path (Rust 1.78's i128 ABI
-# change breaks Sciter). Once Sciter is dropped (R-B6) this channel SHOULD be
-# bumped past 1.75 to unblock a modern Rust. Bump deliberately, re-run the
-# committed `--locked` build, and keep this file the single source of truth.
+# Product toolchain default (R-R1, R-B5a, requirements.html §3.2).
+# Keep this channel consistent with the release manifest in scripts/pins.env.
+# A toolchain update requires reviewed matching pins, locked target builds and
+# the R-R3 dependency-advisory gate.
 
 [toolchain]
 channel = "1.75"

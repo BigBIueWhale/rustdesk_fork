@@ -128,7 +128,9 @@ class _ResultHarness {
           return completion.future;
         });
     final observed = result.then<Object>((value) => value,
-        onError: (Object error, StackTrace _) => error);
+        onError: (Object error, StackTrace _) => error).timeout(
+            const Duration(milliseconds: 500),
+            onTimeout: () => TimeoutException('File-job test caller did not settle'));
     results.add(observed);
     return observed;
   }

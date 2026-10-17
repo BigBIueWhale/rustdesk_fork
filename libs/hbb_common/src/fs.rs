@@ -8556,6 +8556,105 @@ mod tests {
         }
     }
 
+    fn receive_file_entries(count: usize) -> Vec<FileEntry> {
+        (0..count)
+            .map(|index| FileEntry {
+                name: format!("entry-{index}.bin"),
+                size: 4,
+                entry_type: FileType::File.into(),
+                ..Default::default()
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn default_receive_list_refuses_excess_before_admission_and_recovers() {
+        let tmp = TestTempDir::new("rustdesk_receive_default_limit");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        std::fs::write(tmp.join("entry-0.bin.download"), b"unowned partial")
+            .expect("create unowned partial");
+        std::fs::write(tmp.join("entry-0.bin.digest"), b"unowned digest")
+            .expect("create unowned digest");
+        let mut job = TransferJob::new_write(
+            224, JobType::Generic, String::new(), tmp.path.clone(), 0, false, true, false,
+        );
+
+        let error = job
+            .set_files(receive_file_entries(DEFAULT_FILE_TRANSFER_MAX_FILES + 1))
+            .expect_err("default receive admission must refuse one entry beyond its limit");
+        assert_err_contains(error, "too many files");
+        assert!(!job.files_admitted);
+        assert!(job.files().is_empty());
+        assert_eq!((job.total_size(), job.finished_size(), job.transferred()), (0, 0, 0));
+        assert_eq!(job.file_num(), 0);
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
+        assert!(!tmp.join("entry-0.bin").exists());
+        assert!(!tmp.join("entry-0.bin.download.lock").exists());
+
+        let mut entry = new_file_entry("recovered.bin");
+        entry.size = 4;
+        job.set_files(vec![entry]).expect("admit a valid list after refusal");
+        job.write(FileTransferBlock {
+            id: 224,
+            file_num: 0,
+            data: b"tail".to_vec().into(),
+            ..Default::default()
+        }).await.expect("write the valid receive block");
+        job.finalize_write(1).await.expect("publish the complete valid file");
+        assert_eq!(std::fs::read(tmp.join("recovered.bin")).unwrap(), b"tail");
+        assert_eq!((job.finished_size(), job.transferred()), (4, 4));
+        for suffix in [".download", ".digest", ".download.lock"] {
+            assert!(!tmp.join(&format!("recovered.bin{suffix}")).exists());
+        }
+        assert_eq!(std::fs::read(tmp.join("entry-0.bin.download")).unwrap(), b"unowned partial");
+        assert_eq!(std::fs::read(tmp.join("entry-0.bin.digest")).unwrap(), b"unowned digest");
+    }
+
+    #[test]
+    fn default_receive_builder_refuses_excess_entries() {
+        let tmp = TestTempDir::new("rustdesk_receive_builder_limit");
+        let error = new_write_job_with_files(
+            225, tmp.path.clone(), receive_file_entries(DEFAULT_FILE_TRANSFER_MAX_FILES + 1),
+        )
+        .err()
+        .expect("default receive builder must refuse one entry beyond its limit");
+        assert_err_contains(error, "too many files");
+        assert!(!tmp.path.exists());
+    }
+
+    #[test]
+    fn default_receive_list_accepts_boundary_and_explicit_limits() {
+        let tmp = TestTempDir::new("rustdesk_receive_list_boundary");
+        let job = new_write_job_with_files(
+            226, tmp.path.clone(), receive_file_entries(DEFAULT_FILE_TRANSFER_MAX_FILES),
+        ).expect("the exact default boundary remains admissible");
+        assert_eq!(job.files().len(), DEFAULT_FILE_TRANSFER_MAX_FILES);
+        assert_eq!(job.total_size(), DEFAULT_FILE_TRANSFER_MAX_FILES as u64 * 4);
+        assert!(job.files_admitted);
+
+        let mut explicit = TransferJob::new_write(
+            227, JobType::Generic, String::new(), tmp.path.clone(), 0, false, true, false,
+        );
+        let count = DEFAULT_FILE_TRANSFER_MAX_FILES + 1;
+        explicit.set_files_with_limit(receive_file_entries(count), count)
+            .expect("an explicit caller-supplied limit keeps its authority");
+        assert_eq!(explicit.files().len(), count);
+        assert_eq!(explicit.total_size(), count as u64 * 4);
+        assert!(explicit.files_admitted);
+
+        let mut limited = TransferJob::new_write(
+            228, JobType::Generic, String::new(), tmp.path.clone(), 0, false, true, false,
+        );
+        limited.set_files_with_limit(receive_file_entries(3), 2)
+            .expect_err("an explicit smaller limit must still refuse excess entries");
+        assert!(!limited.files_admitted);
+        limited.set_files_with_limit(receive_file_entries(2), 2)
+            .expect("an explicit smaller limit remains inclusive and retryable");
+        assert_eq!(limited.files().len(), 2);
+        assert!(!tmp.path.exists());
+    }
+
     #[tokio::test]
     async fn receive_file_list_replacement_cannot_authorize_early_done() {
         let tmp = TestTempDir::new("rustdesk_receive_list_owner");

@@ -2862,6 +2862,9 @@ run_focused_rust_tests() {
             fs::tests::confirmation_refuses_a_receive_job_after_publication
             fs::tests::confirmation_preserves_active_empty_files_and_skip_actions
             fs::tests::file_list_admission_is_single_use_and_transactional
+            fs::tests::default_receive_list_refuses_excess_before_admission_and_recovers
+            fs::tests::default_receive_builder_refuses_excess_entries
+            fs::tests::default_receive_list_accepts_boundary_and_explicit_limits
             fs::tests::receive_file_list_replacement_cannot_authorize_early_done
             fs::tests::receive_file_list_replacement_cannot_expand_the_active_file
             fs::tests::send_file_list_is_immutable_from_construction
@@ -5317,6 +5320,7 @@ PY
             grep -E '^test fs::tests::(receive_blocks_refuse_oversized_input_and_decoded_output|file_block_limit_preserves_real_sender_receiver_roundtrips|file_job_serialization_preserves_the_live_cm_path_field|file_job_id_allocator_never_reuses_or_wraps|file_transfer_type_refuses_reserved_and_unknown_wire_values) \.\.\. ok$' "$output"
             grep -E '^test fs::tests::(send_open_refuses_a_fifo_replaced_after_enumeration|send_resume_refuses_a_fifo_replaced_after_enumeration|send_open_refuses_nonregular_replacements|send_source_open_preserves_regular_files_and_source_links|receive_job_cannot_initialize_a_send_source) \.\.\. ok$' "$output"
             grep -E '^test fs::tests::default_send_job_bounds_native_(entry_enumeration|directory_depth) \.\.\. ok$' "$output"
+            grep -E '^test fs::tests::default_receive_(list|builder)_.* \.\.\. ok$' "$output"
             grep -E '^test fs::tests::default_local_(directory_listing|recursive_listing|empty_directory_listing)_bounds_native_(entries|depth) \.\.\. ok$' "$output"
             grep -E '^test tests::(redirected_probe_password_is_bounded_and_line_framed|remote_login_admission_requires_current_protocol_or_exact_headless_error|peer_source_swap_.*) \.\.\. ok$|^FILE_PEER_PROBE_ARTIFACT(_START)?=' "$output"
         fi

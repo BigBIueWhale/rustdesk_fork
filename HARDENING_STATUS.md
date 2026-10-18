@@ -12106,8 +12106,8 @@ R-V3 external review; causation; and complete connection-flow correctness and pe
 
 ### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership (2026-08-17)
 
-**KEYED WRITER COMPONENT CORRECTED; LINUX LIBRARY/TCP REGRESSIONS PASS;
-WHOLE-APPLICATION, OTHER-PLATFORM AND RELEASE EVIDENCE OPEN.**
+**KEYED WRITER COMPONENT CORRECTED; NAMED LINUX TRANSPORT CASES PASS;
+BROADER TEST LANE, WHOLE-APPLICATION, OTHER-PLATFORM AND RELEASE EVIDENCE OPEN.**
 
 **Evidence boundary for R-S11gx–R-S11hd.** Historical inspection receipts established
 parser/syntax, focused source-gate, and document-size results only; they executed none of the
@@ -12131,7 +12131,8 @@ carries media, file, clipboard, tunnel, screenshot, and control traffic. The mec
 with cleanup-mediated recovery, but source review does not establish that an unidentified deployed
 artifact exercised it or that it caused the reported display delay.
 
-The current design creates one `WriterAdmission` from the exact codec ceiling at keying. Before
+The current design creates one `WriterAdmission` from the exact codec ceiling at keying.
+Each keyed send first nonblockingly reserves a writer-channel slot. Before
 protobuf encoding or sealing, keyed sends add secretbox `MACBYTES` with overflow checking,
 reject oversized frames, and
 nonblockingly reserve one of 512 active-plus-queued frame permits plus exact ciphertext bytes from
@@ -12169,7 +12170,34 @@ are retained in `.harness-state/verifier-vm/protobuf-admission-corrected-ec94f87
 This is Linux component evidence; no full application, installed principal, CPace handshake,
 other-platform, process-wide memory/latency, sustained socket-backpressure or LPE closure follows.
 
-**Current transport integration — all 20 CPace wire cases PASS.** Subsequent exact harness
+**Writer-channel refusal — named Linux component cases PASS; broader lane FAILS.**
+At `9aea38ae`, both ordinary and receipt-bearing protobuf sends encoded once and advanced
+their nonce before discovering a full channel or an already failed writer. Both new tests
+failed; the eleven existing writer controls passed. Product `4e92169b` reserves channel
+capacity before size measurement, retained-byte admission, encoding and sealing, then consumes
+that slot for FIFO handoff. Error exits release the slot and follow the existing terminal
+stream transition. The obsolete source-string writer gate is deleted; executable regressions
+cover refusal ordering, retained permits, sink outcomes and healthy TCP delivery.
+
+Exact source `537dcb90` passes all thirteen named writer cases, four TCP/EOF cases and twelve
+codec cases in the zero-NIC Linux VM. The new tests use the generated protobuf encoder,
+real ciphers and Tokio duplex streams; they cover both send APIs after an actual sink failure
+and with 512 queued drain commands, asserting zero encoding, unchanged next nonce, returned
+permits and exact writer join. The unchanged real TCP positive controls also pass.
+The writer stage takes 0.07s; the VM supervisor records 151.744s. The broader lane exits 1:
+136 filesystem cases pass and three parked receive pre-I/O race cases fail with `Owner died`
+instead of their expected refusal errors. Those cases are unchanged and remain OPEN.
+Later address/socket/probe stages do not run, and no final whole-lane artifact receipt exists.
+An earlier candidate run reached the later filesystem failure but its bounded diagnostic tail
+omitted writer results; it is retained as incomplete component evidence. The corrected failure
+export retains bounded named transport outcomes and group summaries alongside every filesystem
+failure, without changing the executable tests or their container execution sequence.
+`.harness-state/verifier-vm/writer-channel-component-537dcb90.json` binds baseline, both
+candidate observations, source/artifact identities, frozen controls, endpoints and joined RAM/VM
+cleanup. Current CPace integration, other platforms, full-app latency recovery and LPE acceptance
+remain OPEN.
+
+**Earlier transport integration — all 20 CPace wire cases PASS.** Subsequent exact harness
 `c3b1ac6d` ran the unchanged `libs/cpace_it/tests/handshake.rs` suite against the current
 production source through `ec94f87b`. The 152-second zero-NIC transaction freshly built and
 selected the exact Cargo integration-test executable, checked its digest before/after, and

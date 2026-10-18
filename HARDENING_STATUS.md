@@ -82,6 +82,26 @@ integration/release checkpoint.
 
 `requirements.html` owns the normative contract; this ledger owns current state and open obligations.
 Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
+Appendix C now states vulnerability classes and required dispositions without the
+June disclosure chronology, upstream-priority commentary, public-CVE absence claim,
+or duplicate inherited-handshake/proof-of-concept/upstream-repair boxes. Those boxes
+were historical source analysis, not additional product requirements; Git
+`703a2b61`, `b9a484f5` and the pre-cleanup `ad4c20a2` retain their provenance.
+The live-wire key/nonce-reuse class remains distinct from at-rest configuration
+exposure (#14) and direct-IP plaintext (#2). Finding #1's per-direction-key,
+runtime-assertion and known-answer-test disposition is byte-identical.
+
+The specification shrinks by 8,644 bytes, from 1,780,126 to 1,771,482.
+All 411 requirement IDs, 371 numbered rows and 36 anchor IDs preserve order;
+all other bytes are unchanged. Changed-node tags balance. The only link addition
+points to this ledger (214 → 215 links), whose path exists. Original document role,
+classification, obligation mapping, full-document pinned before/after token counts,
+source freezes and isolated cleanup receipts are retained in
+`.harness-state/verifier-vm/appendix-c-role.json`.
+Product, verifier and test sources are unchanged. No parked advisory review resumes,
+and no installed/native/security obligation is closed. Whole-document role cleanup,
+all fifteen credential actions and broader release acceptance remain OPEN.
+
 The duplicate transport-security claim map is removed. Its cipher, nonce, framing,
 admission, cancellation, limiter and threat-model obligations remain in the
 specification and the R-V3 audit scope. The deployment and PAKE guides link there.

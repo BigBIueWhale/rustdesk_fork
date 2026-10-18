@@ -4587,6 +4587,13 @@ run_focused_rust_tests() {
                         done
                         printf "TCP_TRANSPORT_ARTIFACT=pass sha256=%s executable=%s tests=31 unchanged=before-between-after\n" \
                             "$transport_sha" "$transport_executable"
+                        [ "$(rustdoc --version)" = "rustdoc 1.75.0 (82e1608df 2023-12-21)" ]
+                        export RUSTDOC="$(command -v rustdoc)"
+                        timeout --signal=TERM --kill-after=5s 30s \
+                            cargo test --offline --locked -p hbb_common --doc tcp::FramedStream \
+                                --color never -- --test-threads=1 --show-output
+                        [ "$(sha256sum "$transport_executable" | cut -d " " -f 1)" = "$transport_sha" ]
+                        printf "TCP_FRAMING_API=pass tests=4 compile_pass=1 compile_fail=3 rustdoc=1.75.0 transport_artifact_unchanged=true\n"
                         ;;
                     linux-pa-authority-tests)
                         if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
@@ -5088,6 +5095,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 /^test [[:alnum:]_:]+ \.\.\. (ok|FAILED)$/ { if (++cases <= 64) print }
                 /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
                 /^WRITER_BUFFER_LIFETIME=/ { if (++observations <= 8) print }
+                /^test .*tcp.rs - tcp::FramedStream / { if (++doccases <= 8) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
         fi
         if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
@@ -5150,8 +5158,12 @@ PY
         hbb_test_artifact_sha=${hbb_test_artifact_sha%% *}
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
-        [ "${#result_lines[@]}" -eq 5 ] \
+        [ "${#result_lines[@]}" -eq 6 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
+        [ "$(grep -Ec '^test .*tcp.rs - tcp::FramedStream [(]line [0-9]+[)]( - compile fail)? [.][.][.] ok$' "$output")" -eq 4 ] \
+            && [ "$(grep -Ec '^test .*tcp.rs - tcp::FramedStream [(]line [0-9]+[)] - compile fail [.][.][.] ok$' "$output")" -eq 3 ] \
+            && [ "$(grep -Fxc 'TCP_FRAMING_API=pass tests=4 compile_pass=1 compile_fail=3 rustdoc=1.75.0 transport_artifact_unchanged=true' "$output")" -eq 1 ] \
+            || fail 'framing API positive/negative compiler cases differ'
         [ "$(grep -Ec '^CPACE_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CPACE_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'CPace wire artifact identity or stability is absent'
@@ -5678,9 +5690,10 @@ PY
         fi
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
-        [ "$tests_passed" -eq 51 ] \
+        [ "$tests_passed" -eq 55 ] \
             || fail "CPace recovery test count differs: $tests_passed"
         grep -E '^test [a-z0-9_:]+ \.\.\. ok$|^(CPACE_WIRE|TCP_TRANSPORT)_ARTIFACT(_START)?=|^CPACE_PENDING_READ_CANCEL=|^WRITER_BUFFER_LIFETIME=' "$output"
+        grep -E '^test .*tcp.rs - tcp::FramedStream |^TCP_FRAMING_API=' "$output"
         printf 'CPACE_RECOVERY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \

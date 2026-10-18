@@ -180,6 +180,28 @@ impl Encoder<Bytes> for SecretboxCodec {
 /// `state` the keying-state machine — pre-key holds the whole [`Framed`]; post-key (R-T3) holds the
 /// read-only `Framed` plus the send-side [`SealCipher`], exact writer admission, and the
 /// bounded channel to the dedicated writer task · `local_addr` peer addr · `poison` flag (R-T2).
+///
+/// Framing is the only transport mode. The public types and bounded setup remain available:
+/// ```rust
+/// use hbb_common::{bytes_codec::BytesCodec, stream::Stream, tcp::FramedStream};
+/// fn setup(stream: &mut FramedStream, codec: &mut BytesCodec, wrapper: &Stream) {
+///     stream.set_max_packet_length(4096);
+///     codec.set_max_packet_length(4096);
+///     let _ = wrapper.is_secured();
+/// }
+/// ```
+/// A stream cannot select an unframed mode:
+/// ```compile_fail
+/// fn bypass(stream: &mut hbb_common::tcp::FramedStream) { stream.set_raw(); }
+/// ```
+/// Its wrapper cannot select one either:
+/// ```compile_fail
+/// fn bypass(stream: &mut hbb_common::stream::Stream) { stream.set_raw(); }
+/// ```
+/// The framing codec exposes no raw-mode switch:
+/// ```compile_fail
+/// fn bypass(codec: &mut hbb_common::bytes_codec::BytesCodec) { codec.set_raw(); }
+/// ```
 pub struct FramedStream {
     state: StreamState,
     local_addr: SocketAddr,

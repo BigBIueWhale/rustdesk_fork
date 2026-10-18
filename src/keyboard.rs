@@ -1550,10 +1550,12 @@ pub mod input_source {
         #[cfg(target_os = "macos")]
         if !crate::platform::macos::is_can_input_monitoring(false) {
             log::error!("init_input_source, is_can_input_monitoring() false");
-            set_local_option(
+            if let Err(error) = set_local_option(
                 CONFIG_OPTION_INPUT_SOURCE.to_string(),
                 CONFIG_INPUT_SOURCE_2.to_string(),
-            );
+            ) {
+                log::error!("Failed to save input source: {error}");
+            }
             return;
         }
         let cur_input_source = get_cur_session_input_source();
@@ -1563,17 +1565,29 @@ pub mod input_source {
         super::client::start_grab_loop();
     }
 
-    pub fn change_input_source(session_id: SessionID, input_source: String) {
-        let cur_input_source = get_cur_session_input_source();
-        if cur_input_source == input_source {
-            return;
+    pub fn change_input_source(
+        session_id: SessionID,
+        input_source: String,
+    ) -> hbb_common::ResultType<()> {
+        if input_source != CONFIG_INPUT_SOURCE_1 && input_source != CONFIG_INPUT_SOURCE_2 {
+            hbb_common::bail!("Invalid input source");
         }
+        #[cfg(target_os = "linux")]
+        if input_source == CONFIG_INPUT_SOURCE_1 && !crate::platform::linux::is_x11() {
+            hbb_common::bail!("Input source 1 requires X11");
+        }
+        #[cfg(target_os = "macos")]
+        if input_source == CONFIG_INPUT_SOURCE_1
+            && !crate::platform::macos::is_can_input_monitoring(false)
+        {
+            hbb_common::bail!("Input monitoring permission is unavailable");
+        }
+        if get_cur_session_input_source() == input_source {
+            return Ok(());
+        }
+        set_local_option(CONFIG_OPTION_INPUT_SOURCE.to_string(), input_source)?;
+        let input_source = get_cur_session_input_source();
         if input_source == CONFIG_INPUT_SOURCE_1 {
-            #[cfg(target_os = "macos")]
-            if !crate::platform::macos::is_can_input_monitoring(false) {
-                log::error!("change_input_source, is_can_input_monitoring() false");
-                return;
-            }
             // It is ok to start grab loop multiple times.
             super::client::start_grab_loop();
             super::IS_RDEV_ENABLED.store(true, super::Ordering::SeqCst);
@@ -1583,7 +1597,7 @@ pub mod input_source {
             crate::flutter_ffi::session_enter_or_leave(session_id, false);
             super::IS_RDEV_ENABLED.store(false, super::Ordering::SeqCst);
         }
-        set_local_option(CONFIG_OPTION_INPUT_SOURCE.to_string(), input_source);
+        Ok(())
     }
 
     #[inline]

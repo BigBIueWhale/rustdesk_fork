@@ -176,4 +176,65 @@ Future<void> main(List<String> arguments) async {
   print('KEYBOARD_WIRE_DART_CASE=pass name=idempotent_without_write');
   print('KEYBOARD_WIRE_DART=pass cases=3 native_errors=1 error=RESULT_ERROR '
       'failed_mapping=preserved failed_file=preserved retry=durable unrelated=preserved');
+
+  const localKey = 'local-option-wire-test';
+  await api.mainSetLocalOption(key: localKey, value: 'original');
+  check(api.mainGetLocalOption(key: localKey) == 'original',
+      'initial local preference was not saved');
+  print('LOCAL_OPTION_WIRE_DART_CASE=pass name=initial_commit');
+  var localErrors = 0;
+  Future<void> refusedLocalWrite(String key, String value) async {
+    final beforeFiles = configFiles(config);
+    final beforeValue = api.mainGetLocalOption(key: key);
+    Object? failure;
+    permissions('0500');
+    try {
+      try {
+        await api.mainSetLocalOption(key: key, value: value);
+      } catch (error) {
+        failure = error;
+      }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'local persistence failure did not cross the bridge');
+      localErrors++;
+      check(api.mainGetLocalOption(key: key) == beforeValue,
+          'failed local save changed its effective value');
+      final afterFiles = configFiles(config);
+      check(afterFiles.length == beforeFiles.length &&
+          beforeFiles.entries.every((entry) => afterFiles[entry.key] == entry.value),
+          'failed local save changed durable configuration');
+    } finally {
+      permissions('0700');
+    }
+  }
+  for (final value in ['replacement', '']) {
+    await refusedLocalWrite(localKey, value);
+    await api.mainSetLocalOption(key: localKey, value: value);
+    final text = localFiles.single.readAsStringSync();
+    check(api.mainGetLocalOption(key: localKey) == value &&
+        (value.isEmpty ? !text.contains('$localKey =') :
+            text.contains('$localKey = "$value"')),
+        'identical local preference retry was not durable');
+    print('LOCAL_OPTION_WIRE_DART_CASE=pass name=${value.isEmpty ? "failed_remove_retry" : "failed_replace_retry"}');
+  }
+  await api.mainSetLocalOption(key: 'lang', value: 'fr');
+  await refusedLocalWrite('lang', 'default');
+  await api.mainSetLocalOption(key: 'lang', value: 'default');
+  check(api.mainGetLocalOption(key: 'lang').isEmpty &&
+      localFiles.single.readAsStringSync().contains('lang = ""'),
+      'system language retry did not preserve the explicit empty override');
+  permissions('0500');
+  try {
+    await api.mainSetLocalOption(key: 'lang', value: 'default');
+    await api.mainSetLocalOption(key: localKey, value: '');
+  } finally {
+    permissions('0700');
+  }
+  check(api.getLocalKbLayoutType() == 'Not ISO' &&
+      jsonEncode(await api.mainGetFav()) == jsonEncode(current),
+      'local option save changed unrelated keyboard or favorite settings');
+  check(localErrors == 3, 'local preference native error count differs');
+  print('LOCAL_OPTION_WIRE_DART_CASE=pass name=system_language_and_idempotence');
+  print('LOCAL_OPTION_WIRE_DART=pass cases=4 native_errors=3 error=RESULT_ERROR '
+      'failed_state=preserved retry=durable language=explicit-empty idempotent=without-write unrelated=preserved');
 }

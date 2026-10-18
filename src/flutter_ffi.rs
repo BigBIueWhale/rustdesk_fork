@@ -1173,11 +1173,12 @@ pub fn main_set_env(key: String, value: Option<String>) -> SyncReturn<()> {
     SyncReturn(())
 }
 
-pub fn main_set_local_option(key: String, value: String) {
+pub fn main_set_local_option(key: String, value: String) -> Result<()> {
     let is_texture_render_key = key.eq(config::keys::OPTION_TEXTURE_RENDER);
     let is_d3d_render_key = key.eq(config::keys::OPTION_ALLOW_D3D_RENDER);
-    set_local_option(key, value.clone());
+    set_local_option(key.clone(), value)?;
     if is_texture_render_key {
+        let value = get_local_option(key);
         let session_event = [("v", &value)];
         for session in sessions::get_sessions() {
             session.push_event("use_texture_render", &session_event, &[]);
@@ -1190,6 +1191,7 @@ pub fn main_set_local_option(key: String, value: String) {
             session.update_supported_decodings();
         }
     }
+    Ok(())
 }
 
 pub fn main_get_input_source() -> SyncReturn<String> {
@@ -1200,13 +1202,19 @@ pub fn main_get_input_source() -> SyncReturn<String> {
     SyncReturn(input_source)
 }
 
-pub fn main_set_input_source(session_id: SessionID, value: String) {
+pub fn main_set_input_source(session_id: SessionID, value: String) -> Result<()> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        change_input_source(session_id, value);
+        change_input_source(session_id, value)?;
         if let Some(session) = sessions::get_session_by_session_id(&session_id) {
             try_sync_peer_option(&session, &session_id, "input_source", None);
         }
+        Ok(())
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (session_id, value);
+        hbb_common::bail!("Input source selection is unavailable on this platform")
     }
 }
 

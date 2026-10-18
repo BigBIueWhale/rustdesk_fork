@@ -423,7 +423,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     }
     void closeCard() async {
       if (closeOption != null) {
-        await bind.mainSetLocalOption(key: closeOption, value: 'N');
+        if (!await mainSetLocalOption(closeOption, 'N') || !mounted) return;
         if (bind.mainGetLocalOption(key: closeOption) == 'N') {
           setState(() {
             isCardClosed = true;

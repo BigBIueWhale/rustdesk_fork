@@ -121,9 +121,12 @@ class StateGlobal {
     return _inputSource;
   }
 
-  setInputSource(SessionID sessionId, String v) async {
-    await bind.mainSetInputSource(sessionId: sessionId, value: v);
+  Future<bool> setInputSource(SessionID sessionId, String v) async {
+    if (!await mainSetLocalOption('input-source', v,
+        writeOption: (_, value) =>
+            bind.mainSetInputSource(sessionId: sessionId, value: value))) return false;
     _inputSource = bind.mainGetInputSource();
+    return true;
   }
 
   StateGlobal._() {

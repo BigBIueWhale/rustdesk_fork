@@ -845,10 +845,16 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
             padding: EdgeInsets.symmetric(vertical: 10),
             child: GestureHelp(
               touchMode: gFFI.ffiModel.touchMode,
-              onTouchModeChange: (t) {
-                gFFI.ffiModel.toggleTouchMode();
-                final v = gFFI.ffiModel.touchMode ? 'Y' : 'N';
-                bind.mainSetLocalOption(key: kOptionTouchMode, value: v);
+              onTouchModeChange: (t) async {
+                final ffi = gFFI;
+                final sessionId = ffi.sessionId;
+                if (!mounted || !ffi.isCurrentSession(sessionId) ||
+                    ffi.ffiModel.isPeerAndroid) return false;
+                if (!await mainSetLocalOption(kOptionTouchMode, t ? 'Y' : 'N') ||
+                    !mounted || !ffi.isCurrentSession(sessionId)) return false;
+                final effective = bind.mainGetLocalOption(key: kOptionTouchMode) == 'Y';
+                if (ffi.ffiModel.touchMode != effective) ffi.ffiModel.toggleTouchMode();
+                return effective == t;
               },
               virtualMouseMode: gFFI.ffiModel.virtualMouseMode,
               inputModel: gFFI.inputModel,

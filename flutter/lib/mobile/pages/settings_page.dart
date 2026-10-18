@@ -276,7 +276,8 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
           Text(translate('Show terminal extra keys')),
         ]),
         onToggle: (bool v) async {
-          await mainSetLocalBoolOption(kOptionEnableShowTerminalExtraKeys, v);
+          if (!await mainSetLocalBoolOption(kOptionEnableShowTerminalExtraKeys, v) ||
+              !mounted) return;
           final newValue =
               mainGetLocalBoolOptionSync(kOptionEnableShowTerminalExtraKeys);
           setState(() {
@@ -325,10 +326,12 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                   Text(translate('keep-awake-during-outgoing-sessions-label')),
               initialValue: _preventSleepWhileConnected,
               onToggle: (v) async {
-                await mainSetLocalBoolOption(
-                    kOptionKeepAwakeDuringOutgoingSessions, v);
+                if (!await mainSetLocalBoolOption(
+                        kOptionKeepAwakeDuringOutgoingSessions, v) ||
+                    !mounted) return;
                 setState(() {
-                  _preventSleepWhileConnected = v;
+                  _preventSleepWhileConnected = mainGetLocalBoolOptionSync(
+                      kOptionKeepAwakeDuringOutgoingSessions);
                 });
               },
             ),
@@ -369,10 +372,9 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                   onToggle: isOptionFixed(kOptionAllowAutoRecordOutgoing)
                       ? null
                       : (v) async {
-                          await bind.mainSetLocalOption(
-                              key: kOptionAllowAutoRecordOutgoing,
-                              value: bool2option(
-                                  kOptionAllowAutoRecordOutgoing, v));
+                          if (!await mainSetLocalBoolOption(
+                                  kOptionAllowAutoRecordOutgoing, v) ||
+                              !mounted) return;
                           final newValue = option2bool(
                               kOptionAllowAutoRecordOutgoing,
                               bind.mainGetLocalOption(
@@ -454,10 +456,11 @@ void showLanguageSettings(OverlayDialogManager dialogManager) async {
     dialogManager.show((setState, close, context) {
       setLang(v) async {
         if (lang != v) {
+          if (!await mainSetLocalOption(kCommConfKeyLang, v) ||
+              !context.mounted) return;
           setState(() {
-            lang = v;
+            lang = bind.mainGetLocalOption(key: kCommConfKeyLang);
           });
-          await bind.mainSetLocalOption(key: kCommConfKeyLang, value: v);
           HomePage.homeKey.currentState?.refreshPages();
           Future.delayed(Duration(milliseconds: 200), close);
         }
@@ -489,12 +492,12 @@ void showThemeSettings(OverlayDialogManager dialogManager) async {
   var themeMode = MyTheme.getThemeModePreference();
 
   dialogManager.show((setState, close, context) {
-    setTheme(v) {
+    setTheme(v) async {
       if (themeMode != v) {
+        if (!await MyTheme.changeDarkMode(v) || !context.mounted) return;
         setState(() {
-          themeMode = v;
+          themeMode = MyTheme.getThemeModePreference();
         });
-        MyTheme.changeDarkMode(themeMode);
         Future.delayed(Duration(milliseconds: 200), close);
       }
     }

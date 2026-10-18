@@ -3899,31 +3899,25 @@ impl LocalConfig {
         option2bool(k, &Self::get_option(k))
     }
 
-    pub fn set_option(k: String, v: String) {
-        if !is_option_can_save(&OVERWRITE_LOCAL_SETTINGS, &k, &DEFAULT_LOCAL_SETTINGS, &v) {
-            let mut config = LOCAL_CONFIG.write().unwrap();
-            if config.options.remove(&k).is_some() {
-                config.store();
-            }
-            return;
-        }
+    pub fn set_option(k: String, v: String) -> crate::ResultType<()> {
         let mut config = LOCAL_CONFIG.write().unwrap();
-        // The custom client will explictly set "default" as the default language.
-        let is_custom_client_default_lang = k == keys::OPTION_LANGUAGE && v == "default";
-        if is_custom_client_default_lang {
-            config.options.insert(k, "".to_owned());
-            config.store();
-            return;
+        let mut candidate = config.clone();
+        if !is_option_can_save(&OVERWRITE_LOCAL_SETTINGS, &k, &DEFAULT_LOCAL_SETTINGS, &v) {
+            candidate.options.remove(&k);
+        } else if k == keys::OPTION_LANGUAGE && v == "default" {
+            // An explicit system language shadows a custom client's default language.
+            candidate.options.insert(k, String::new());
+        } else if v.is_empty() {
+            candidate.options.remove(&k);
+        } else {
+            candidate.options.insert(k, v);
         }
-        let v2 = if v.is_empty() { None } else { Some(&v) };
-        if v2 != config.options.get(&k) {
-            if v2.is_none() {
-                config.options.remove(&k);
-            } else {
-                config.options.insert(k, v);
-            }
-            config.store();
+        if candidate.options == config.options {
+            return Ok(());
         }
+        store_path(Config::file_("_local"), &candidate)?;
+        *config = candidate;
+        Ok(())
     }
 
     pub fn get_flutter_option(k: &str) -> String {

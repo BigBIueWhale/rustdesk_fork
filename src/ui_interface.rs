@@ -178,8 +178,8 @@ pub fn get_builtin_option(key: &str) -> String {
 }
 
 #[inline]
-pub fn set_local_option(key: String, value: String) {
-    LocalConfig::set_option(key.clone(), value);
+pub fn set_local_option(key: String, value: String) -> hbb_common::ResultType<()> {
+    LocalConfig::set_option(key, value)
 }
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]

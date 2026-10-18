@@ -4,6 +4,56 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('local option save waits before publishing dependent effects', () async {
+    final completion = Completer<void>();
+    final calls = <String>[];
+    var effect = false;
+    final save = mainSetLocalOption('theme', 'dark',
+        writeOption: (key, value) {
+          calls.add('$key=$value');
+          return completion.future;
+        }, showFailure: () => fail('successful local save reported failure'))
+        .then((saved) { if (saved) effect = true; });
+    await Future<void>.delayed(Duration.zero);
+    expect(calls, ['theme=dark']);
+    expect(effect, isFalse);
+    completion.complete();
+    await save;
+    expect(effect, isTrue);
+  });
+
+  test('local option failures report feedback and stop dependent effects',
+      () async {
+    for (final synchronous in [false, true]) {
+      var failures = 0;
+      var effect = false;
+      final saved = await mainSetLocalOption('theme', 'dark',
+          writeOption: (_, __) {
+            if (synchronous) throw StateError('dispatch failure');
+            return Future<void>.error(StateError('native save failure'));
+          }, showFailure: () => failures++);
+      if (saved) effect = true;
+      expect(effect, isFalse);
+      expect(saved, isFalse);
+      expect(failures, 1);
+    }
+  });
+
+  test('local option failure permits the identical retry', () async {
+    final calls = <String>[];
+    var failures = 0;
+    Future<void> write(String key, String value) async {
+      calls.add('$key=$value');
+      if (calls.length == 1) throw StateError('first local save failed');
+    }
+    expect(await mainSetLocalOption('theme', 'dark',
+        writeOption: write, showFailure: () => failures++), isFalse);
+    expect(await mainSetLocalOption('theme', 'dark',
+        writeOption: write, showFailure: () => failures++), isTrue);
+    expect(calls, ['theme=dark', 'theme=dark']);
+    expect(failures, 1);
+  });
+
   test('favorite save owns its submitted IDs and waits for completion', () async {
     final completion = Completer<void>();
     final ids = ['first'];

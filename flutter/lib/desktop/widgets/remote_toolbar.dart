@@ -2382,7 +2382,9 @@ class _KeyboardMenu extends StatelessWidget {
         onChanged: enabled
             ? (v) async {
                 if (v != null) {
-                  await stateGlobal.setInputSource(ffi.sessionId, v);
+                  final sessionId = ffi.sessionId;
+                  if (!await stateGlobal.setInputSource(sessionId, v) ||
+                      !ffi.isCurrentSession(sessionId)) return;
                   await ffi.inputModel.updateKeyboardMode();
                 }
               }
@@ -3027,16 +3029,14 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
     final confLeft = double.tryParse(
         bind.mainGetLocalOption(key: kOptionRemoteMenubarDragLeft));
     if (confLeft == null) {
-      bind.mainSetLocalOption(
-          key: kOptionRemoteMenubarDragLeft, value: left.toString());
+      mainSetLocalOption(kOptionRemoteMenubarDragLeft, left.toString());
     } else {
       left = confLeft;
     }
     final confRight = double.tryParse(
         bind.mainGetLocalOption(key: kOptionRemoteMenubarDragRight));
     if (confRight == null) {
-      bind.mainSetLocalOption(
-          key: kOptionRemoteMenubarDragRight, value: right.toString());
+      mainSetLocalOption(kOptionRemoteMenubarDragRight, right.toString());
     } else {
       right = confRight;
     }

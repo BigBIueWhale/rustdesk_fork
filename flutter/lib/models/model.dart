@@ -1802,12 +1802,17 @@ class VirtualMouseMode with ChangeNotifier {
     }
   }
 
-  setVirtualMouseScale(double s) {
-    if (s <= 0) return;
-    if (s == _virtualMouseScale) return;
-    _virtualMouseScale = s;
-    bind.mainSetLocalOption(key: kOptionVirtualMouseScale, value: s.toString());
+  Future<bool> setVirtualMouseScale(double s) async {
+    if (s <= 0) return false;
+    if (s == _virtualMouseScale) return true;
+    final sessionId = ffiModel.parent.target?.sessionId;
+    if (sessionId == null || !ffiModel._isCurrentSession(sessionId)) return false;
+    if (!await mainSetLocalOption(kOptionVirtualMouseScale, s.toString()) ||
+        !ffiModel._isCurrentSession(sessionId)) return false;
+    _virtualMouseScale = double.tryParse(
+            bind.mainGetLocalOption(key: kOptionVirtualMouseScale)) ?? 1.0;
     notifyListeners();
+    return true;
   }
 
   setShowVirtualJoystick(bool b) {
@@ -1829,19 +1834,26 @@ class VirtualMouseMode with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> toggleVirtualMouse() async {
-    await bind.mainSetLocalOption(
-        key: kOptionShowVirtualMouse, value: showVirtualMouse ? 'N' : 'Y');
+  Future<bool> toggleVirtualMouse() async {
+    final sessionId = ffiModel.parent.target?.sessionId;
+    if (sessionId == null || !ffiModel._isCurrentSession(sessionId)) return false;
+    if (!await mainSetLocalOption(
+            kOptionShowVirtualMouse, showVirtualMouse ? 'N' : 'Y') ||
+        !ffiModel._isCurrentSession(sessionId)) return false;
     setShowVirtualMouse(
         bind.mainGetLocalOption(key: kOptionShowVirtualMouse) == 'Y');
+    return true;
   }
 
-  Future<void> toggleVirtualJoystick() async {
-    await bind.mainSetLocalOption(
-        key: kOptionShowVirtualJoystick,
-        value: showVirtualJoystick ? 'N' : 'Y');
+  Future<bool> toggleVirtualJoystick() async {
+    final sessionId = ffiModel.parent.target?.sessionId;
+    if (sessionId == null || !ffiModel._isCurrentSession(sessionId)) return false;
+    if (!await mainSetLocalOption(
+            kOptionShowVirtualJoystick, showVirtualJoystick ? 'N' : 'Y') ||
+        !ffiModel._isCurrentSession(sessionId)) return false;
     setShowVirtualJoystick(
         bind.mainGetLocalOption(key: kOptionShowVirtualJoystick) == 'Y');
+    return true;
   }
 }
 

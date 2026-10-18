@@ -920,11 +920,18 @@ Future<bool> toggleMaximize(bool isMainWindow) async {
 
 Future<bool> closeConfirmDialog() async {
   var confirm = true;
+  var pending = false;
   final res = await gFFI.dialogManager.show<bool>((setState, close, context) {
-    submit() {
+    submit() async {
+      if (pending || !context.mounted) return;
+      setState(() => pending = true);
       String value = bool2option(kOptionEnableConfirmClosingTabs, confirm);
-      bind.mainSetLocalOption(
-          key: kOptionEnableConfirmClosingTabs, value: value);
+      final saved = await mainSetLocalOption(kOptionEnableConfirmClosingTabs, value);
+      if (!saved) {
+        if (context.mounted) setState(() => pending = false);
+        return;
+      }
+      if (!context.mounted) return;
       close(true);
     }
 
@@ -948,7 +955,7 @@ Future<bool> closeConfirmDialog() async {
                 translate("Confirm before closing multiple tabs"),
               ),
               value: confirm,
-              onChanged: (v) {
+              onChanged: pending ? null : (v) {
                 if (v == null) return;
                 setState(() => confirm = v);
               },

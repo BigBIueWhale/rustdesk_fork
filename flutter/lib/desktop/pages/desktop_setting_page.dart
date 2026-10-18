@@ -351,7 +351,8 @@ class _GeneralState extends State<_General> {
   Widget theme() {
     final current = MyTheme.getThemeModePreference().toShortString();
     onChanged(String value) async {
-      await MyTheme.changeDarkMode(MyTheme.themeModeFromString(value));
+      if (!await MyTheme.changeDarkMode(MyTheme.themeModeFromString(value)) ||
+          !mounted) return;
       setState(() {});
     }
 
@@ -419,7 +420,7 @@ class _GeneralState extends State<_General> {
               kOptionTextureRender,
               optGetter: bind.mainGetUseTextureRender,
               optSetter: (k, v) async =>
-                  await bind.mainSetLocalOption(key: k, value: v ? 'Y' : 'N'),
+                  mainSetLocalOption(k, v ? 'Y' : 'N'),
             ),
           ),
         if (isWindows)
@@ -609,9 +610,9 @@ class _GeneralState extends State<_General> {
                                   await FilePicker.platform.getDirectoryPath(
                                       initialDirectory: initialDirectory);
                               if (selectedDirectory != null) {
-                                await bind.mainSetLocalOption(
-                                    key: kOptionVideoSaveDirectory,
-                                    value: selectedDirectory);
+                                if (!await mainSetLocalOption(
+                                        kOptionVideoSaveDirectory,
+                                        selectedDirectory) || !mounted) return;
                                 setState(() {});
                               }
                             },
@@ -645,7 +646,8 @@ class _GeneralState extends State<_General> {
         values: values,
         initialKey: currentKey,
         onChanged: (key) async {
-          await bind.mainSetLocalOption(key: kCommConfKeyLang, value: key);
+          if (!await mainSetLocalOption(kCommConfKeyLang, key) || !mounted) return;
+          key = bind.mainGetLocalOption(key: kCommConfKeyLang);
           if (isWeb) reloadCurrentWindow();
           if (!isWeb) reloadAllWindows();
           if (!isWeb) bind.mainChangeLanguage(lang: key);
@@ -1296,7 +1298,7 @@ Widget _OptionCheckBox(
   bool? fakeValue,
   bool isServer = true,
   bool Function()? optGetter,
-  Future<void> Function(String, bool)? optSetter,
+  Future<bool> Function(String, bool)? optSetter,
 }) {
   getOpt() => optGetter != null
       ? optGetter()
@@ -1312,7 +1314,7 @@ Widget _OptionCheckBox(
       if (reverse) option = !option;
       final setter =
           optSetter ?? (isServer ? mainSetBoolOption : mainSetLocalBoolOption);
-      await setter(key, option);
+      if (!await setter(key, option) || !context.mounted) return;
       final readOption = getOpt();
       if (reverse) {
         ref.value = !readOption;

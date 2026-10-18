@@ -588,20 +588,21 @@ class MyTheme {
     return themeModeFromString(bind.mainGetLocalOption(key: kCommConfKeyTheme));
   }
 
-  static Future<void> changeDarkMode(ThemeMode mode) async {
-    Get.changeThemeMode(mode);
+  static Future<bool> changeDarkMode(ThemeMode mode) async {
     if (desktopType == DesktopType.main || isAndroid || isIOS || isWeb) {
-      if (mode == ThemeMode.system) {
-        await bind.mainSetLocalOption(
-            key: kCommConfKeyTheme, value: defaultOptionTheme);
-      } else {
-        await bind.mainSetLocalOption(
-            key: kCommConfKeyTheme, value: mode.toShortString());
-      }
+      final value = mode == ThemeMode.system
+          ? defaultOptionTheme
+          : mode.toShortString();
+      if (!await mainSetLocalOption(kCommConfKeyTheme, value)) return false;
+      mode = getThemeModePreference();
+      Get.changeThemeMode(mode);
       if (!isWeb) await bind.mainChangeTheme(dark: mode.toShortString());
       // Synchronize the window theme of the system.
       updateSystemWindowTheme();
+    } else {
+      Get.changeThemeMode(mode);
     }
+    return true;
   }
 
   static ThemeMode currentThemeMode() {
@@ -1736,8 +1737,8 @@ Future<bool> mainSetOption(String key, String value,
   }
 }
 
-Future<void> mainSetBoolOption(String key, bool value) async {
-  await mainSetOption(key, bool2option(key, value));
+Future<bool> mainSetBoolOption(String key, bool value) async {
+  return mainSetOption(key, bool2option(key, value));
 }
 
 Future<bool> mainGetBoolOption(String key) async {
@@ -1748,9 +1749,27 @@ bool mainGetBoolOptionSync(String key) {
   return option2bool(key, bind.mainGetOptionSync(key: key));
 }
 
-mainSetLocalBoolOption(String key, bool value) async {
-  String v = bool2option(key, value);
-  await bind.mainSetLocalOption(key: key, value: v);
+Future<bool> mainSetLocalOption(String key, String value,
+    {Future<void> Function(String key, String value)? writeOption,
+    VoidCallback? showFailure}) async {
+  final write = writeOption ??
+      (key, value) => bind.mainSetLocalOption(key: key, value: value);
+  try {
+    await write(key, value);
+    return true;
+  } catch (error) {
+    debugPrint('Failed to save local option: $error');
+    if (showFailure != null) {
+      showFailure();
+    } else {
+      showToast(translate('Failed'));
+    }
+    return false;
+  }
+}
+
+Future<bool> mainSetLocalBoolOption(String key, bool value) async {
+  return mainSetLocalOption(key, bool2option(key, value));
 }
 
 bool mainGetLocalBoolOptionSync(String key) {

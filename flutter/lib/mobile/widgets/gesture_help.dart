@@ -34,7 +34,7 @@ class GestureIcons {
       IconData(0xe687, fontFamily: _family);
 }
 
-typedef OnTouchModeChange = void Function(bool);
+typedef OnTouchModeChange = Future<bool> Function(bool);
 
 class GestureHelp extends StatefulWidget {
   GestureHelp(
@@ -57,6 +57,7 @@ class GestureHelp extends StatefulWidget {
 class _GestureHelpState extends State<GestureHelp> {
   late int _selectedIndex;
   late bool _touchMode;
+  bool _touchModePending = false;
   final VirtualMouseMode _virtualMouseMode;
 
   _GestureHelpState(bool touchMode, VirtualMouseMode virtualMouseMode)
@@ -95,6 +96,7 @@ class _GestureHelpState extends State<GestureHelp> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ToggleSwitch(
+                        key: ValueKey('$_selectedIndex:$_touchModePending'),
                         initialLabelIndex: _selectedIndex,
                         activeFgColor: Colors.white,
                         inactiveFgColor: Colors.white60,
@@ -109,13 +111,22 @@ class _GestureHelpState extends State<GestureHelp> {
                           translate("Touch mode")
                         ],
                         icons: [Icons.mouse, Icons.touch_app],
-                        onToggle: (index) {
+                        onToggle: (index) async {
+                          if (index == null || index == _selectedIndex ||
+                              _touchModePending || !mounted) return;
+                          setState(() => _touchModePending = true);
+                          var saved = false;
+                          try {
+                            saved = await widget.onTouchModeChange(index == 1);
+                          } catch (error) {
+                            debugPrint('Failed to change touch mode: $error');
+                          }
+                          if (!mounted) return;
                           setState(() {
-                            if (_selectedIndex != index) {
-                              _selectedIndex = index ?? 0;
-                              _touchMode = index == 0 ? false : true;
-                              widget.onTouchModeChange(_touchMode);
-                              // Exit relative mouse mode when switching to touch mode
+                            _touchModePending = false;
+                            if (saved) {
+                              _selectedIndex = index;
+                              _touchMode = index == 1;
                               _exitRelativeMouseModeIf(_touchMode);
                             }
                           });
@@ -130,7 +141,8 @@ class _GestureHelpState extends State<GestureHelp> {
                               value: _virtualMouseMode.showVirtualMouse,
                               onChanged: (value) async {
                                 if (value == null) return;
-                                await _virtualMouseMode.toggleVirtualMouse();
+                                if (!await _virtualMouseMode.toggleVirtualMouse() ||
+                                    !mounted) return;
                                 // Exit relative mouse mode when virtual mouse is hidden
                                 _exitRelativeMouseModeIf(
                                     !_virtualMouseMode.showVirtualMouse);
@@ -139,7 +151,8 @@ class _GestureHelpState extends State<GestureHelp> {
                             ),
                             InkWell(
                               onTap: () async {
-                                await _virtualMouseMode.toggleVirtualMouse();
+                                if (!await _virtualMouseMode.toggleVirtualMouse() ||
+                                    !mounted) return;
                                 // Exit relative mouse mode when virtual mouse is hidden
                                 _exitRelativeMouseModeIf(
                                     !_virtualMouseMode.showVirtualMouse);
@@ -181,9 +194,10 @@ class _GestureHelpState extends State<GestureHelp> {
                                           min: 0.8,
                                           max: 1.8,
                                           divisions: 10,
-                                          onChanged: (value) {
-                                            _virtualMouseMode
-                                                .setVirtualMouseScale(value);
+                                          onChanged: (value) async {
+                                            if (!await _virtualMouseMode
+                                                .setVirtualMouseScale(value) ||
+                                                !mounted) return;
                                             setState(() {});
                                           },
                                         ),
@@ -214,8 +228,8 @@ class _GestureHelpState extends State<GestureHelp> {
                                         _virtualMouseMode.showVirtualJoystick,
                                     onChanged: (value) async {
                                       if (value == null) return;
-                                      await _virtualMouseMode
-                                          .toggleVirtualJoystick();
+                                      if (!await _virtualMouseMode
+                                          .toggleVirtualJoystick() || !mounted) return;
                                       // Exit relative mouse mode when joystick is hidden
                                       _exitRelativeMouseModeIf(
                                           !_virtualMouseMode
@@ -225,8 +239,8 @@ class _GestureHelpState extends State<GestureHelp> {
                                   ),
                                   InkWell(
                                     onTap: () async {
-                                      await _virtualMouseMode
-                                          .toggleVirtualJoystick();
+                                      if (!await _virtualMouseMode
+                                          .toggleVirtualJoystick() || !mounted) return;
                                       // Exit relative mouse mode when joystick is hidden
                                       _exitRelativeMouseModeIf(
                                           !_virtualMouseMode

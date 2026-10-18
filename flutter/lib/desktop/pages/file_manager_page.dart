@@ -958,11 +958,12 @@ class _FileManagerViewState extends State<FileManagerView> {
                           if (value != null &&
                               mounted &&
                               isCurrentSession) {
-                            isUploadFolder.value = value;
-                            bind.mainSetLocalOption(
-                                key: 'upload-folder-button',
-                                value: value ? 'Y' : '');
-                            await webselectFiles(is_folder: value);
+                            if (!await mainSetLocalOption(
+                                    'upload-folder-button', value ? 'Y' : '') ||
+                                !mounted || !isCurrentSession) return;
+                            isUploadFolder.value = bind.mainGetLocalOption(
+                                    key: 'upload-folder-button') == 'Y';
+                            await webselectFiles(is_folder: isUploadFolder.value);
                             if (!isCurrentSession) return;
                           }
                         },

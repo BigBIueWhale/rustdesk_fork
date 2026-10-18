@@ -111,6 +111,9 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SETTING_OPTION_TESTS = {
+    "local option save waits before publishing dependent effects",
+    "local option failures report feedback and stop dependent effects",
+    "local option failure permits the identical retry",
     "favorite save owns its submitted IDs and waits for completion",
     "failed favorite membership change reports failure and permits retry",
     "option save waits for its native completion",

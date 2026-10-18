@@ -297,3 +297,179 @@ fn native_file_limit_failure_is_terminal() {
     assert_eq!(stdout.matches("test result: ok. 1 passed; 0 failed;").count(), 1);
     assert!(stdout.contains("test common::record::tests::native_file_limit_failure_is_terminal ... ok"));
 }
+
+struct FaultFile {
+    file: File,
+    mode: &'static str,
+    observed: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    seek_fail: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    dropped: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl std::io::Write for FaultFile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        use std::{io::{Error, ErrorKind}, sync::atomic::Ordering};
+        if self.mode == "interrupted" && !self.observed.swap(true, Ordering::SeqCst) {
+            return Err(Error::from(ErrorKind::Interrupted));
+        }
+        if self.mode == "zero" {
+            self.observed.store(true, Ordering::SeqCst);
+            return Ok(0);
+        }
+        let len = if self.mode == "partial" {
+            self.observed.store(true, Ordering::SeqCst);
+            buf.len().min(3)
+        } else { buf.len() };
+        std::io::Write::write(&mut self.file, &buf[..len])
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> { std::io::Write::flush(&mut self.file) }
+}
+
+impl std::io::Seek for FaultFile {
+    fn seek(&mut self, from: std::io::SeekFrom) -> std::io::Result<u64> {
+        use std::{io::{Error, ErrorKind, SeekFrom}, sync::atomic::Ordering};
+        if matches!(from, SeekFrom::Start(_)) && self.seek_fail.load(Ordering::SeqCst) {
+            self.observed.store(true, Ordering::SeqCst);
+            return Err(Error::from(ErrorKind::Other));
+        }
+        std::io::Seek::seek(&mut self.file, from)
+    }
+}
+
+impl Drop for FaultFile {
+    fn drop(&mut self) { self.dropped.store(true, std::sync::atomic::Ordering::SeqCst); }
+}
+
+fn native_writer_fault(mode: &'static str) {
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    let dir = TestDir::new();
+    let output = dir.0.join("fault.webm");
+    let ctx = dir.context(&output, CodecFormat::VP8);
+    let observed = Arc::new(AtomicBool::new(false));
+    let seek_fail = Arc::new(AtomicBool::new(false));
+    let dropped = Arc::new(AtomicBool::new(false));
+    let file = FaultFile {
+        file: OpenOptions::new().write(true).create_new(true).open(&output).unwrap(), mode,
+        observed: observed.clone(), seek_fail: seek_fail.clone(), dropped: dropped.clone(),
+    };
+    let mut mux = WebmMux::new(file, &ctx).unwrap();
+    let mut accepted = true;
+    for frame in native_frames(VpxVideoCodecId::VP8) {
+        accepted &= mux.add_frame(&frame.data, frame.pts as u64 * 1_000_000, frame.key);
+        if !accepted { break; }
+    }
+    if mode == "seek" { seek_fail.store(true, Ordering::SeqCst); }
+    let finalized = mux.finalize();
+    assert!(dropped.load(Ordering::SeqCst), "native destination not retired");
+    assert!(observed.load(Ordering::SeqCst), "requested I/O fault was not exercised");
+    if mode == "zero" {
+        assert!(!accepted && !finalized, "zero-byte write accepted");
+        assert!(fs::read(&output).unwrap().is_empty());
+    } else if mode == "seek" {
+        assert!(accepted && !finalized, "absolute seek failure not reported at finalization");
+    } else {
+        assert!(accepted && finalized, "resumable writer I/O rejected: {mode}");
+        assert_webm(&output, b"V_VP8");
+    }
+}
+
+#[test]
+fn native_partial_writes_are_completed() {
+    isolated_mux_case("native_partial_writes_are_completed", || native_writer_fault("partial"));
+}
+
+#[test]
+fn native_interrupted_write_is_retried() {
+    isolated_mux_case("native_interrupted_write_is_retried", || native_writer_fault("interrupted"));
+}
+
+#[test]
+fn native_zero_write_is_refused() {
+    isolated_mux_case("native_zero_write_is_refused", || native_writer_fault("zero"));
+}
+
+#[test]
+fn native_absolute_seek_failure_is_reported() {
+    isolated_mux_case("native_absolute_seek_failure_is_reported", || native_writer_fault("seek"));
+}
+
+fn isolated_mux_case(name: &str, run: impl FnOnce()) {
+    const CHILD: &str = "RUSTDESK_RECORDING_MUX_CHILD";
+    let test = format!("common::record::tests::{name}");
+    if std::env::var(CHILD).as_deref() == Ok(test.as_str()) {
+        let no_core = crate::libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        assert_eq!(unsafe { crate::libc::setrlimit(crate::libc::RLIMIT_CORE, &no_core) }, 0);
+        run();
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", &test, "--test-threads=1", "--color", "never"])
+        .env(CHILD, &test).env("RUST_BACKTRACE", "0").output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "isolated mux case {test}: {stdout}\n{stderr}");
+    assert_eq!(stdout.matches("test result: ok. 1 passed; 0 failed;").count(), 1);
+    assert!(stdout.contains(&format!("test {test} ... ok")));
+}
+
+#[test]
+fn native_nonseekable_file_is_refused() {
+    const CHILD: &str = "RUSTDESK_RECORDING_NONSEEKABLE_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "common::record::tests::native_nonseekable_file_is_refused",
+                "--test-threads=1", "--color", "never"])
+            .env(CHILD, "1").env("RUST_BACKTRACE", "0").output().unwrap();
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(output.status.success(), "isolated nonseekable case: {stdout}\n{stderr}");
+        assert_eq!(stdout.matches("test result: ok. 1 passed; 0 failed;").count(), 1);
+        return;
+    }
+    use std::{io::{Seek, SeekFrom}, os::fd::OwnedFd, os::unix::net::UnixStream};
+    let no_core = crate::libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    assert_eq!(unsafe { crate::libc::setrlimit(crate::libc::RLIMIT_CORE, &no_core) }, 0);
+    let (stream, peer) = UnixStream::pair().unwrap();
+    let fd: OwnedFd = stream.into();
+    let mut file = File::from(fd);
+    assert_eq!(file.seek(SeekFrom::Current(0)).unwrap_err().raw_os_error(), Some(crate::libc::ESPIPE));
+    let dir = TestDir::new();
+    let ctx = dir.context(&dir.0.join("unused.webm"), CodecFormat::VP8);
+    let refused = match WebmMux::new(file, &ctx) {
+        Ok(mut mux) => {
+            let frame = native_frames(VpxVideoCodecId::VP8).remove(0);
+            let accepted = mux.add_frame(&frame.data, 0, true);
+            !mux.finalize() && !accepted
+        }
+        Err(_) => true,
+    };
+    drop(peer);
+    assert!(refused, "nonseekable destination accepted");
+}
+
+#[test]
+fn native_invalid_mux_configuration_is_refused() {
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    let dir = TestDir::new();
+    for (index, width, height, format) in [
+        (0, 0, 48, CodecFormat::VP8), (1, usize::MAX, 48, CodecFormat::VP8),
+        (2, 64, 0, CodecFormat::VP9), (3, 64, 48, CodecFormat::Unknown),
+    ] {
+        let output = dir.0.join(format!("invalid-{index}.webm"));
+        let mut ctx = dir.context(&output, format);
+        ctx.width = width; ctx.height = height;
+        let dropped = Arc::new(AtomicBool::new(false));
+        let file = FaultFile {
+            file: OpenOptions::new().write(true).create_new(true).open(&output).unwrap(), mode: "none",
+            observed: Arc::new(AtomicBool::new(false)), seek_fail: Arc::new(AtomicBool::new(false)),
+            dropped: dropped.clone(),
+        };
+        let result = WebmMux::new(file, &ctx);
+        let refused = result.is_err();
+        drop(result);
+        assert!(dropped.load(Ordering::SeqCst), "failed constructor retained its destination");
+        assert!(refused, "invalid mux configuration accepted");
+        assert!(fs::read(&output).unwrap().is_empty());
+    }
+}

@@ -13,7 +13,9 @@ use std::{
     ops::{Deref, DerefMut},
     path::PathBuf,
 };
-use webm::mux::{self, Segment, Track, VideoTrack, Writer};
+use self::webm_mux::WebmMux;
+
+mod webm_mux;
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests;
@@ -237,8 +239,7 @@ impl Recorder {
 }
 
 struct WebmRecorder {
-    vt: VideoTrack,
-    webm: Option<Segment<Writer<File>>>,
+    webm: Option<WebmMux<File>>,
     key: bool,
 }
 
@@ -248,31 +249,8 @@ impl RecorderApi for WebmRecorder {
             .write(true)
             .create_new(true)
             .open(&ctx2.filename)?;
-        let mut webm = match mux::Segment::new(mux::Writer::new(out)) {
-            Some(v) => v,
-            None => bail!("Failed to create webm mux"),
-        };
-        let vt = webm.add_video_track(
-            ctx2.width as _,
-            ctx2.height as _,
-            None,
-            if ctx2.format == CodecFormat::VP9 {
-                mux::VideoCodecId::VP9
-            } else if ctx2.format == CodecFormat::VP8 {
-                mux::VideoCodecId::VP8
-            } else {
-                mux::VideoCodecId::AV1
-            },
-        );
-        if ctx2.format == CodecFormat::AV1 {
-            // [129, 8, 12, 0] in 3.6.0, but zero works
-            let codec_private = vec![0, 0, 0, 0];
-            if !webm.set_codec_private(vt.track_number(), &codec_private) {
-                bail!("Failed to set codec private");
-            }
-        }
+        let webm = WebmMux::new(out, ctx2)?;
         Ok(WebmRecorder {
-            vt,
             webm: Some(webm),
             key: false,
         })
@@ -283,8 +261,9 @@ impl RecorderApi for WebmRecorder {
             self.key = true;
         }
         if self.key {
-            self.vt
-                .add_frame(&frame.data, frame.pts as u64 * 1_000_000, frame.key)
+            self.webm.as_mut().map(|webm| {
+                webm.add_frame(&frame.data, frame.pts as u64 * 1_000_000, frame.key)
+            }).unwrap_or(false)
         } else {
             false
         }
@@ -294,13 +273,7 @@ impl RecorderApi for WebmRecorder {
 impl Drop for WebmRecorder {
     fn drop(&mut self) {
         if let Some(webm) = self.webm.take() {
-            let (writer, finalized) = match webm.try_finalize(None) {
-                Ok(writer) => (writer, true),
-                Err(writer) => (writer, false),
-            };
-            // This consuming API releases the native writer and returns its File.
-            drop(mux::Writer::unwrap(writer));
-            if !finalized {
+            if !webm.finalize() {
                 log::error!("Failed to finalize WebM recording");
             }
         }

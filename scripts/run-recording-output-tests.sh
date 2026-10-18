@@ -67,6 +67,11 @@ if [ "$status" -ne 0 ]; then
 fi
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
 execution_seconds=$((SECONDS-execution_started))
+if [ "$status" -ne 0 ]; then
+    printf 'RECORDING_OUTPUT_ARTIFACT=complete sha256=%s executable=%s tests=18 exit_code=%s unchanged=before-after execution_seconds=%s\n' \
+        "$artifact_sha" "$test_executable" "$status" "$execution_seconds"
+    exit "$status"
+fi
 parent_started=$SECONDS
 printf 'RECORDING_OUTPUT_PARENT_BUILD=started target=linux-libcheck tier=integration budget_seconds=180\n'
 parent_status=0
@@ -99,6 +104,6 @@ print('RECORDING_OUTPUT_PARENT_CHECK=pass target=librustdesk features=linux-pkg-
 PY
 printf 'RECORDING_OUTPUT_PARENT_BUILD=pass seconds=%s\n' "$((SECONDS-parent_started))"
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'RECORDING_OUTPUT_ARTIFACT=complete sha256=%s executable=%s tests=12 exit_code=%s unchanged=before-after execution_seconds=%s\n' \
+printf 'RECORDING_OUTPUT_ARTIFACT=complete sha256=%s executable=%s tests=18 exit_code=%s unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$status" "$execution_seconds"
 exit "$status"

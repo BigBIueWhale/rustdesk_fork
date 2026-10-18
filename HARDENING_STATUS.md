@@ -2336,23 +2336,31 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
-**WebM recording creation — Linux native constructor A/B accepted; recording lifetime and installed/platform acceptance OPEN.**
-`libs/scrap/src/common/record.rs::WebmRecorder::new` creates its output exclusively and
-propagates an occupied-path error. The `AlreadyExists` retry through `File::create` is deleted;
-no existing regular file, hardlink or final symlink becomes a recording output through that retry.
-The six actual scrap-library tests at `267526cc` reproduced four collision failures: construction
-and drop removed each occupied entry. Both fresh VP8/VP9 controls passed. Product `1657f818`
-passes the identical six tests, preserving refused entries' identity, bytes and symlink targets,
-while real encoded VP8/VP9 frames still mux and finalize with the expected WebM header and codec.
-This is constructor/filesystem and native mux evidence, with no playback or whole-app claim.
-The complete `--recording-output-tests` transaction at `15e3045b` passed in 154 VM seconds
-(83-second library build), with the same artifact as the earlier six-case pass whose wrapper
-correctly rejected a missing network canary. The entry now executes and retains the actual
-canary. Exact artifact/source/input bindings, all endpoint snapshots, bounded RAM storage and
-joined cleanup are retained in `.harness-state/verifier-vm/recording-output-accepted-1657f818.json`;
-the baseline and rejected partial transaction remain separately retained. Parent-directory
-authority, replacement during recording/cleanup, caller/UI error reporting, installed-root
-recording and native Windows/macOS acceptance remain OPEN. No overall recording or LPE closure follows.
+**Recording outputs — Linux native creation and normal-stop ownership accepted; I/O faults and installed/platform acceptance OPEN.**
+`libs/scrap/src/common/record.rs` creates WebM output exclusively and retains its open File in
+the muxer. Factory metadata is borrowed only for construction. The unused `RecordState` channel
+and its two `None` producers are deleted. Neither recorder backend retains an output pathname
+for deletion. Automatic short/unwritten-file deletion and its timer/state are removed; created
+outputs, including short or incomplete recordings, are retained. WebM stop consumes the segment,
+releases the returned native writer and closes its File; finalization failure is logged.
+The native-writer release API is infallible, rather than a Result/Option panic operation.
+The earlier occupied-path truncation fix `1657f818` remains covered by four refusal controls.
+Baseline `68d6c21e` retained the old discard/cleanup behavior: those four controls passed,
+while six short-recording/replacement cases failed. Product `51b6d4fa` passes the identical ten
+actual scrap-library cases, including real VP8/VP9 mux output without elapsed-time backdating,
+an owned recording finalized after rename, and replacement regular files, symlinks and a substituted
+parent left intact. The complete `--recording-output-tests` transaction passed in 313 VM seconds:
+83-second library build, 0.01-second native execution and 156-second production-parent cargo-check.
+That check compiles both changed application callers; it does not execute the application.
+The combined command is a caller-integration checkpoint. Native cases run and publish progress
+before the separately bounded parent check. Source/artifact/input bindings, all endpoint snapshots,
+bounded RAM storage and joined cleanup are retained in
+`.harness-state/verifier-vm/recording-lifetime-accepted-51b6d4fa.json`; the lifetime baseline and
+earlier creation receipts remain retained. This accepts the named Linux file/mux transactions.
+Pinned supplier callbacks still need partial-write and fallible-seek correction/native fault cases,
+and constructor-failure native cleanup remains OPEN. Initial parent-directory authority, caller/UI
+error reporting, complete playback/recording behavior, installed-root recording and native
+Windows/macOS acceptance remain OPEN. No overall recording or LPE closure follows.
 
 **Frame EOF handling — Linux common codec/TCP component ACCEPTED; installed/platform evidence OPEN.**
 `libs/hbb_common/src/bytes_codec.rs` reports `UnexpectedEof` for an unfinished header or

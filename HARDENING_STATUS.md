@@ -2384,6 +2384,29 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
+**Screenshot action decoding — Linux native library corrected; UI/platform acceptance OPEN.**
+Product `217f0469` replaces infallible `From` and implicit default-to-discard with
+fallible exact decoding: `1`, `2`, or `0:` followed by a nonempty path. Save paths
+are preserved verbatim. Invalid input returns an error before save/copy dispatch;
+the public handler's string result and the Flutter caller's canonical values are unchanged.
+
+At test baseline `bf541f78`, malformed ASCII and Unicode save separators overwrote
+the real test destination, and all nine invalid action values were accepted.
+Two regressions failed while 25 controls passed. The identical four-test module
+and guest recipe pass all 27 cases at `217f0469`: malformed-selector refusal and
+unchanged destination bytes, canonical action/path round trips, real file create
+and overwrite, inert discard, returned I/O failure, plus the existing 23 clipboard
+sanitizer/owner/X11 controls. Copy selection is decoded; no new screenshot-PNG
+clipboard-completion or rendered-UI result is claimed. The existing clipboard VM
+profile compiles the Linux library with `linux-pkg-config`; storage limits and
+the 300-second budget are unchanged. A/B supervisor times are 225.987/218.553s.
+Exact sources/artifacts, raw cases and observations, complete endpoints and joined
+RAM/private-root retirement are retained in
+`.harness-state/verifier-vm/screenshot-action-217f0469.json`.
+UI/FFI/peer, other-platform and installed acceptance, save-destination link and
+publication safety, clipboard completion, broader resource/latency and release
+evidence remain OPEN. This is an action-decoding correction, not LPE closure.
+
 **Receive resume-length admission — Linux native component corrected; installed/platform acceptance OPEN.**
 Product `ad57ba2a` checks the opened partial file's length both before offering a
 resume offset and before publishing resume-stream ownership. The latter bound

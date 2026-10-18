@@ -107,7 +107,7 @@ impl ViewerPipelineState {
 }
 
 #[derive(Clone, Default)]
-struct ViewerPipelineUi {
+pub(crate) struct ViewerPipelineUi {
     state: Arc<(Mutex<ViewerPipelineState>, Condvar)>,
     file_transfer: bool,
     expect_file_inspection_refusal: bool,

@@ -3760,6 +3760,7 @@ run_focused_rust_tests() {
                 Cargo.lock Cargo.toml src/lib.rs src/client.rs src/client/io_loop.rs
                 src/client/video_handler_tests.rs libs/scrap/src/common/codec.rs
                 libs/scrap/src/common/vpxcodec.rs libs/scrap/src/common/mod.rs
+                src/ui_session_interface.rs src/viewer_pipeline_smoke_tests.rs
                 scripts/run-viewer-video-tests.sh scripts/linux-parent-test-build.sh
             )
             required_tests=(
@@ -3767,6 +3768,8 @@ run_focused_rust_tests() {
                 client::video_handler_tests::repeated_hidden_packets_do_not_accumulate_failures
                 client::video_handler_tests::hidden_packet_clears_prior_decode_failure
                 client::video_handler_tests::visible_output_and_corrupt_packet_remain_distinct
+                client::video_handler_tests::worker_tests::retired_decode_failure_keeps_replacement_codec_available
+                client::video_handler_tests::worker_tests::current_decode_failure_keeps_existing_unsupported_policy
             )
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
             container_name=rustdesk-video-qos-tests
@@ -5154,9 +5157,9 @@ PY
             || fail 'viewer credential artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-video ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'viewer video summary count differs'
-        [ "$(grep -Ec '^VIEWER_VIDEO_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=4 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^VIEWER_VIDEO_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=6 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_VIDEO_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test client::video_handler_tests::.* \.\.\. ok$' "$output")" -eq 4 ] \
+            && [ "$(grep -Ec '^test client::video_handler_tests::.* \.\.\. ok$' "$output")" -eq 6 ] \
             || fail 'viewer video artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
@@ -5608,9 +5611,9 @@ PY
             printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=11 target=linux-x86_64 scope=production-peer-credentials-and-exported-session-factory rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-video ]; then
-            [ "$tests_passed" -eq 4 ] || fail 'viewer video total differs'
+            [ "$tests_passed" -eq 6 ] || fail 'viewer video total differs'
             grep -E '^test client::video_handler_tests::.* \.\.\. ok$|^VIEWER_VIDEO_BUILD=pass |^VIEWER_VIDEO_ARTIFACT=' "$output"
-            printf 'VIEWER_VIDEO_VM=pass commit=%s tree=%s tests=4 target=linux-x86_64 scope=complete-parent-library-native-decoder-outcomes rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            printf 'VIEWER_VIDEO_VM=pass commit=%s tree=%s tests=6 target=linux-x86_64 scope=complete-parent-library-native-decoder-outcomes rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then

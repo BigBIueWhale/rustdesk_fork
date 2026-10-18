@@ -36,7 +36,6 @@ crate::generate_call_macro!(call_yuv, false);
 #[cfg(not(target_os = "android"))]
 lazy_static::lazy_static! {
     static ref CONFIG: std::sync::Arc<std::sync::Mutex<Option<HwCodecConfig>>> = Default::default();
-    static ref CONFIG_SET_BY_IPC: std::sync::Arc<std::sync::Mutex<bool>> = Default::default();
 }
 
 #[derive(Debug, Clone)]
@@ -512,27 +511,7 @@ struct HwCodecConfig2 {
     pub config: String,
 }
 
-// ipc server process start check process once, other process get from ipc server once
-// install: --server start check process, check process send to --server,  ui get from --server
-// portable: ui start check process, check process send to ui
-// sciter and unilink: get from ipc server
 impl HwCodecConfig {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn set(config: String) {
-        let config = serde_json::from_str(&config).unwrap_or_default();
-        log::info!("set hwcodec config");
-        log::debug!("{config:?}");
-        #[cfg(any(windows, target_os = "macos"))]
-        hbb_common::config::common_store(
-            &HwCodecConfig2 {
-                config: serde_json::to_string_pretty(&config).unwrap_or_default(),
-            },
-            "_hwcodec",
-        );
-        *CONFIG.lock().unwrap() = Some(config);
-        *CONFIG_SET_BY_IPC.lock().unwrap() = true;
-    }
-
     pub fn get() -> HwCodecConfig {
         #[cfg(target_os = "android")]
         {
@@ -634,21 +613,6 @@ impl HwCodecConfig {
         }
     }
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn get_set_value() -> Option<HwCodecConfig> {
-        let set = CONFIG_SET_BY_IPC.lock().unwrap().clone();
-        if set {
-            CONFIG.lock().unwrap().clone()
-        } else {
-            None
-        }
-    }
-
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn already_set() -> bool {
-        CONFIG_SET_BY_IPC.lock().unwrap().clone()
-    }
-
     pub fn clear(vram: bool, encode: bool) {
         log::info!("clear hwcodec config, vram: {vram}, encode: {encode}");
         #[cfg(target_os = "android")]
@@ -675,109 +639,4 @@ impl HwCodecConfig {
         }
         crate::codec::Encoder::update(crate::codec::EncodingUpdate::Check);
     }
-}
-
-pub fn check_available_hwcodec() -> String {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    hwcodec::common::setup_parent_death_signal();
-    let ctx = EncodeContext {
-        name: String::from(""),
-        mc_name: None,
-        width: 1280,
-        height: 720,
-        pixfmt: DEFAULT_PIXFMT,
-        align: HW_STRIDE_ALIGN as _,
-        kbs: 1000,
-        fps: DEFAULT_FPS,
-        gop: DEFAULT_GOP,
-        quality: DEFAULT_HW_QUALITY,
-        rc: RC_CBR,
-        q: -1,
-        thread_count: 4,
-    };
-    #[cfg(feature = "vram")]
-    let vram = crate::vram::check_available_vram();
-    #[cfg(feature = "vram")]
-    let vram_string = vram.2;
-    #[cfg(not(feature = "vram"))]
-    let vram_string = "".to_owned();
-    let c = HwCodecConfig {
-        ram_encode: Encoder::available_encoders(ctx, Some(vram_string)),
-        ram_decode: Decoder::available_decoders(),
-        #[cfg(feature = "vram")]
-        vram_encode: vram.0,
-        #[cfg(feature = "vram")]
-        vram_decode: vram.1,
-        signature: hwcodec::common::get_gpu_signature(),
-    };
-    log::debug!("{c:?}");
-    serde_json::to_string(&c).unwrap_or_default()
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn start_check_process() {
-    if !enable_hwcodec_option() || HwCodecConfig::already_set() {
-        return;
-    }
-    use hbb_common::allow_err;
-    use std::sync::Once;
-    let f = || {
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(_) = exe.file_name().to_owned() {
-                let arg = "--check-hwcodec-config";
-                let mut command = std::process::Command::new(exe);
-                command.arg(arg);
-                #[cfg(target_os = "linux")]
-                if let Err(err) =
-                    hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(
-                        &mut command,
-                    )
-                {
-                    log::error!("Failed to constrain hardware-codec check descriptors: {err}");
-                    return;
-                }
-                #[cfg(target_os = "macos")]
-                if let Err(err) =
-                    hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(
-                        &mut command,
-                    )
-                {
-                    log::error!("Failed to constrain hardware-codec check descriptors: {err}");
-                    return;
-                }
-                if let Ok(mut child) = command.spawn() {
-                    #[cfg(windows)]
-                    hwcodec::common::child_exit_when_parent_exit(child.id());
-                    // wait up to 30 seconds, it maybe slow on windows startup for poorly performing machines
-                    for _ in 0..30 {
-                        std::thread::sleep(std::time::Duration::from_secs(1));
-                        if let Ok(Some(_)) = child.try_wait() {
-                            break;
-                        }
-                    }
-                    allow_err!(child.kill());
-                    std::thread::sleep(std::time::Duration::from_millis(30));
-                    match child.try_wait() {
-                        Ok(Some(status)) => {
-                            log::info!("Check hwcodec config, exit with: {status}")
-                        }
-                        Ok(None) => {
-                            log::info!(
-                                "Check hwcodec config, status not ready yet, let's really wait"
-                            );
-                            let res = child.wait();
-                            log::info!("Check hwcodec config, wait result: {res:?}");
-                        }
-                        Err(e) => {
-                            log::error!("Check hwcodec config, error attempting to wait: {e}")
-                        }
-                    }
-                }
-            }
-        };
-    };
-    static ONCE: Once = Once::new();
-    ONCE.call_once(|| {
-        std::thread::spawn(f);
-    });
 }

@@ -927,6 +927,10 @@ if verify_scan_capture "$VERIFY_TMP/rd_verify_hwcodec_ipc" -rInE 'CheckHwcodec|H
   src; then
   r_s11="$r_s11 hwcodec-ipc-probe-surface-present:$(tr '\n' ';' <"$VERIFY_TMP/rd_verify_hwcodec_ipc")"
 fi
+if verify_scan_capture "$VERIFY_TMP/rd_verify_retired_codec_probe" -nE 'start_check_process|check_available_hwcodec|CONFIG_SET_BY_IPC|pub fn (set|get_set_value|already_set)[[:space:]]*\(|std::process::|std::thread::' \
+  libs/scrap/src/common/hwcodec.rs; then
+  r_s11="$r_s11 retired-hwcodec-library-probe-present:$(tr '\n' ';' <"$VERIFY_TMP/rd_verify_retired_codec_probe")"
+fi
 config_get_id_body=$(awk '/pub fn get_id\(\) -> String \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
 echo "$config_get_id_body" | grep -q 'CONFIG.read' || r_s11="$r_s11 config-get-id-not-reading-config"
 if echo "$config_get_id_body" | grep -qE 'Config::set_id|set_id\(|Config::gen_id|gen_id\(|CONFIG\.write|store\('; then
@@ -7236,7 +7240,6 @@ xrandr_change_helper=$(awk '/pub fn change_resolution_directly/,/mod desktop/' s
 systemctl_helper=$(awk '/fn systemctl_service/,/pub fn uninstall_service/' src/platform/linux.rs)
 fuse_mount_helper=$(awk '/fn mount_with_fixed_fusermount/,/fn fuse_device_still_mounted/' libs/clipboard/src/platform/unix/fuse/mod.rs)
 fuse_unmount_helper=$(awk '/fn fixed_fusermount_unmount/,/fn unmount_stale_fuse_mount/' libs/clipboard/src/platform/unix/fuse/mod.rs)
-hwcodec_check_helper=$(awk '/pub fn start_check_process\(\)/,/^}/' libs/scrap/src/common/hwcodec.rs)
 shared_descriptor_test=$(awk '/fn r_s11e32_linux_command_descriptor_allowlist_is_exact\(\)/,/fn r_s11e32_linux_command_descriptor_allowlist_rejects_invalid_entries/' libs/hbb_common/src/platform/linux.rs)
 invalid_allowlist_test=$(awk '/fn r_s11e32_linux_command_descriptor_allowlist_rejects_invalid_entries\(\)/,/Test get_home_dir_trusted/' libs/hbb_common/src/platform/linux.rs)
 for shared_binding in \
@@ -7274,7 +7277,6 @@ check_r_s11e32_helper_contract "$xrandr_query_helper" 'configure_command_close_n
 check_r_s11e32_helper_contract "$xrandr_change_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'xrandr_command::run(command)?'
 check_r_s11e32_helper_contract "$systemctl_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
 check_r_s11e32_helper_contract "$fuse_unmount_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'fusermount_process::unmount(&mut command)'
-check_r_s11e32_helper_contract "$hwcodec_check_helper" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 for fuse_binding in \
   'communication_fd: child_socket.as_raw_fd()' \
   'configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])' \
@@ -7350,7 +7352,6 @@ macos_uninstall=$(awk '/pub fn uninstall_service/,/pub fn get_cursor_pos/' src/p
 macos_lock_query=$(awk '/pub fn is_locked/,/pub fn declare_remote_user_activity/' src/platform/macos.rs)
 macos_service_snapshot_query=$(awk '/fn macos_launch_agent_owns_service_owned_server_pid/,/^[}]$/' src/ipc.rs)
 macos_run_me=$(awk '/pub fn run_me_with_env/,/#\[inline\]/{print}' src/common.rs)
-macos_hwcodec_check=$(awk '/pub fn start_check_process\(\)/,/^}/' libs/scrap/src/common/hwcodec.rs)
 portable_pty_unix=$(cat libs/portable_pty/src/unix.rs)
 portable_pty_spawn=$(awk '/fn spawn_command\(&self, builder: CommandBuilder\)/,/let mut child = cmd.spawn\(\)\?;/' libs/portable_pty/src/unix.rs)
 terminal_pty_launch=$(awk '/let pty_system = portable_pty::native_pty_system\(\);/,/drop\(slave\);/' src/server/terminal_service.rs)
@@ -7394,7 +7395,6 @@ check_r_s11e34_helper_contract "$macos_uninstall" 'configure_command_close_nonst
 check_r_s11e34_helper_contract "$macos_lock_query" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
 check_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'run_macos_bounded_child_stdout('
 check_r_s11e34_helper_contract "$macos_run_me" 'platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)' 'let result = cmd.args(&args).spawn();'
-check_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 [ "$(grep -cF 'command.status()' <<<"$macos_platform_source")" = 2 ] \
   || r_s11e34="$r_s11e34 macos-platform-status-inventory-drift"
 [ "$(grep -cF 'command.spawn()' <<<"$macos_platform_source")" = 1 ] \
@@ -14035,7 +14035,7 @@ software_codec_build_hits() (
       --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null \
     | grep -vE '/target/|requirements\.html|scripts/verify\.sh' \
     | grep -vE ':[0-9]+:[[:space:]]*#' \
-    | grep -vE 'scrap_hwcodec|macos_hwcodec_check|has_hwcodec|hwcodec_check|common/hwcodec\.rs' \
+    | grep -vE 'scrap_hwcodec|has_hwcodec' \
     | grep -viE 'nvram' || true
 )
 software_codec_default_feature_is_forbidden() {

@@ -3450,6 +3450,7 @@ run_focused_rust_tests() {
             source_fingerprints+=(
                 src/clipboard/write_owner.rs src/clipboard/write_native_tests.rs
                 src/clipboard/write_permission_native_tests.rs
+                src/clipboard/write_screenshot_native_tests.rs
                 src/client/screenshot.rs scripts/run-clipboard-write-native-tests.py
                 scripts/smoke-xvfb-prepare.sh scripts/smoke-xvfb-packages.tsv scripts/smoke-xvfb-files.tsv
             )
@@ -3473,6 +3474,9 @@ run_focused_rust_tests() {
                 clipboard::write_native_tests::retired_owner_cannot_publish_a_dequeued_write_after_the_native_lock
                 clipboard::write_permission_native_tests::disabling_viewer_clipboard_retires_a_write_waiting_for_native_admission
                 clipboard::write_permission_native_tests::reenabling_viewer_clipboard_does_not_resurrect_an_old_queued_write
+                clipboard::write_screenshot_native_tests::screenshot_copy_waits_for_native_publication
+                clipboard::write_screenshot_native_tests::screenshot_copy_refuses_a_full_dispatcher
+                clipboard::write_screenshot_native_tests::screenshot_copy_returns_payload_refusal_without_changing_clipboard
                 client::screenshot::tests::malformed_actions_are_rejected
                 client::screenshot::tests::malformed_save_selectors_preserve_the_destination
                 client::screenshot::tests::canonical_actions_round_trip_without_altering_paths
@@ -4974,7 +4978,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                                 --color never --test-threads=1
                             python3 -I -S /source/scripts/run-clipboard-write-native-tests.py "$clipboard_executable"
                             [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
-                            printf "CLIPBOARD_WRITE_ARTIFACT=pass sha256=%s tests=10 unchanged=before-after\n" \
+                            printf "CLIPBOARD_WRITE_ARTIFACT=pass sha256=%s tests=13 unchanged=before-after\n" \
                                 "$clipboard_artifact_sha"
                             screenshot_status=0
                             /usr/bin/timeout --signal=TERM --kill-after=5s 10s \
@@ -5101,7 +5105,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'viewer credential fixture mounts differ'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
-        printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=27 bridge=absent native=x11\n'
+        printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=30 bridge=absent native=x11\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
         printf 'CLIPRDR_READ_PROFILE=cliprdr-read stage=container-start tests=12 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
@@ -5606,9 +5610,9 @@ PY
                 && [ "$(grep -Fc 'CLIPBOARD_DECODE_ARTIFACT=' "$output")" -eq 1 ] \
                 || fail 'clipboard decode test artifact receipt is absent, malformed or duplicated'
             if [ "$RUST_TEST_PROFILE" = clipboard ]; then
-                [ "$(grep -Ec '^CLIPBOARD_WRITE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=10 unchanged=before-after$' "$output")" -eq 1 ] \
+                [ "$(grep -Ec '^CLIPBOARD_WRITE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=13 unchanged=before-after$' "$output")" -eq 1 ] \
                     && [ "$(grep -Fc 'CLIPBOARD_WRITE_ARTIFACT=' "$output")" -eq 1 ] \
-                    && [ "$(grep -Ec '^CLIPBOARD_WRITE_NATIVE=pass tests=4 artifact_sha256=[0-9a-f]{64} queue=production native=x11 retired=unchanged live=published cleanup=joined$' "$output")" -eq 1 ] \
+                    && [ "$(grep -Ec '^CLIPBOARD_WRITE_NATIVE=pass tests=7 artifact_sha256=[0-9a-f]{64} queue=production native=x11 retired=unchanged live=published cleanup=joined$' "$output")" -eq 1 ] \
                     && [ "$(grep -Fc 'CLIPBOARD_WRITE_NATIVE=' "$output")" -eq 1 ] \
                     || fail 'clipboard write ownership receipt differs'
                 [ "$(grep -Ec '^SCREENSHOT_ACTION_ARTIFACT=observed sha256=[0-9a-f]{64} tests=4 exit_code=0 unchanged=before-after$' "$output")" -eq 1 ] \

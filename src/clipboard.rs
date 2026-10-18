@@ -19,6 +19,8 @@ use write_owner::ClipboardWriteRequest;
 mod write_native_tests;
 #[cfg(all(test, target_os = "linux"))]
 mod write_permission_native_tests;
+#[cfg(all(test, target_os = "linux"))]
+mod write_screenshot_native_tests;
 use limits::{
     MAX_NATIVE_CLIPBOARD_ITEMS, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES,
     MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES, MAX_NATIVE_CLIPBOARD_TOTAL_BYTES,

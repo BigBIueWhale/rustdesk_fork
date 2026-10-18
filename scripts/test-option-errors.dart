@@ -319,4 +319,37 @@ Future<void> main(List<String> arguments) async {
   print('UI_STATE_WIRE_DART_CASE=pass name=idempotent_and_namespace_isolation');
   print('UI_STATE_WIRE_DART=pass cases=4 native_errors=2 error=RESULT_ERROR '
       'failed_state=preserved retry=durable idempotent=without-write namespaces=isolated unrelated=preserved');
+
+  final beforeVoice = configFiles(config);
+  await api.setVoiceCallInputDevice(isCm: false, device: 'viewer-microphone');
+  check(await api.getVoiceCallInputDevice(isCm: false) == 'viewer-microphone',
+      'viewer voice-call input selection was not applied');
+  print('VOICE_INPUT_WIRE_DART_CASE=pass name=viewer_selection');
+  await api.setVoiceCallInputDevice(isCm: false, device: '');
+  check((await api.getVoiceCallInputDevice(isCm: false)).isEmpty,
+      'viewer voice-call default selection was not applied');
+  print('VOICE_INPUT_WIRE_DART_CASE=pass name=viewer_default');
+  await api.setVoiceCallInputDevice(isCm: false, device: 'viewer-microphone');
+  var voiceErrors = 0;
+  for (final name in ['cm_missing_receiver', 'cm_retry_preserves_viewer']) {
+    Object? failure;
+    try {
+      await api.setVoiceCallInputDevice(isCm: true, device: 'cm-microphone');
+    } catch (error) {
+      failure = error;
+    }
+    check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+        'voice-call input failure did not cross the native bridge');
+    voiceErrors++;
+    check(await api.getVoiceCallInputDevice(isCm: false) == 'viewer-microphone',
+        'CM voice-call input failure changed viewer state');
+    final afterVoice = configFiles(config);
+    check(afterVoice.length == beforeVoice.length &&
+        beforeVoice.entries.every((entry) => afterVoice[entry.key] == entry.value),
+        'voice-call input selection changed durable configuration');
+    print('VOICE_INPUT_WIRE_DART_CASE=pass name=$name');
+  }
+  check(voiceErrors == 2, 'voice-call input native error count differs');
+  print('VOICE_INPUT_WIRE_DART=pass cases=4 native_errors=2 error=RESULT_ERROR '
+      'viewer=selected-and-default cm_failure=reported retry=reported state=preserved config=unchanged');
 }

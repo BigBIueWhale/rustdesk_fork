@@ -4,6 +4,9 @@ use hbb_common::ResultType;
 #[path = "../../scripts/fixtures/option-export-before-errors.rs"]
 mod before;
 
+#[path = "../../scripts/fixtures/voice-input-before-errors.rs"]
+mod before_voice;
+
 // FRB treats a unit-returning export as a successful completion. This adapter
 // lets the same behavioral probe execute the pre-fix and fallible exports.
 trait ExportOutcome {
@@ -36,7 +39,7 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
         std::fs::remove_dir_all(&root).unwrap();
         assert!(output.stdout.len() + output.stderr.len() <= 16384);
         for line in String::from_utf8(output.stdout).unwrap().lines() {
-            if let Some(start) = line.find("OPTION_EXPORT_") {
+            if let Some(start) = line.find("OPTION_EXPORT_").or_else(|| line.find("VOICE_INPUT_EXPORT_")) {
                 println!("{}", &line[start..]);
             }
         }
@@ -63,7 +66,19 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
     let missing_receiver = crate::flutter_ffi::main_set_option("enable-abr".into(), "Y".into()).result().is_err();
     let cache_preserved = OPTIONS.lock().unwrap().get("enable-abr").map(String::as_str) == Some("N");
     let memory_preserved = Config::get_option("enable-abr") == "N";
-    let file_preserved = std::fs::read(file).unwrap() == original;
+    let file_preserved = std::fs::read(&file).unwrap() == original;
     println!("OPTION_EXPORT_NATIVE=observed refused={refused} missing_receiver={missing_receiver} cache_preserved={cache_preserved} memory_preserved={memory_preserved} file_preserved={file_preserved}");
     assert!(refused && missing_receiver && cache_preserved && memory_preserved && file_preserved);
+
+    crate::flutter_ffi::set_voice_call_input_device(false, "viewer-microphone".into()).result().unwrap();
+    let viewer_selected = crate::audio_service::get_voice_call_input_device().as_deref() == Some("viewer-microphone");
+    let before_voice_failure = before_voice::set_voice_call_input_device(true, "cm-microphone".into()).result().is_err();
+    let before_viewer_preserved = crate::audio_service::get_voice_call_input_device().as_deref() == Some("viewer-microphone");
+    println!("VOICE_INPUT_EXPORT_BEFORE=observed failure_reported={before_voice_failure} viewer_preserved={before_viewer_preserved}");
+    assert!(!before_voice_failure && before_viewer_preserved);
+    let voice_failure = crate::flutter_ffi::set_voice_call_input_device(true, "cm-microphone".into()).result().is_err();
+    let viewer_preserved = crate::audio_service::get_voice_call_input_device().as_deref() == Some("viewer-microphone");
+    let config_preserved = std::fs::read(&file).unwrap() == original;
+    println!("VOICE_INPUT_EXPORT_NATIVE=observed failure_reported={voice_failure} viewer_selected={viewer_selected} viewer_preserved={viewer_preserved} config_preserved={config_preserved}");
+    assert!(voice_failure && viewer_selected && viewer_preserved && config_preserved);
 }

@@ -1616,12 +1616,19 @@ pub fn cm_close_voice_call(id: i32) {
     crate::ui_cm_interface::close_voice_call(id);
 }
 
-pub fn set_voice_call_input_device(_is_cm: bool, _device: String) {
+pub fn set_voice_call_input_device(_is_cm: bool, _device: String) -> Result<()> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    if _is_cm {
-        let _ = crate::ipc::set_voice_call_input_device(_device);
-    } else {
-        crate::audio_service::set_voice_call_input_device(_device);
+    {
+        if _is_cm {
+            crate::ipc::set_voice_call_input_device(_device)
+        } else {
+            crate::audio_service::set_voice_call_input_device(_device);
+            Ok(())
+        }
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        bail!("Voice-call input-device selection is unavailable on mobile")
     }
 }
 

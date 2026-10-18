@@ -4019,6 +4019,7 @@ run_focused_rust_tests() {
                 Cargo.lock Cargo.toml src/lib.rs src/ipc.rs src/ui_interface.rs
                 src/flutter_ffi.rs src/ui_interface/option_tests.rs
                 scripts/fixtures/option-export-before-errors.rs
+                scripts/fixtures/voice-input-before-errors.rs
                 libs/hbb_common/src/config.rs
                 scripts/run-option-ack-tests.sh scripts/linux-parent-test-build.sh
                 scripts/run-option-bridge-tests.sh scripts/test-option-errors.dart
@@ -5611,8 +5612,10 @@ PY
             && [ "$(grep -Fxc 'OPTION_ACK_NATIVE=observed failure_reported=true memory_preserved=true file_preserved=true retry_applied=true retry_persisted=true peer=unix' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_EXPORT_NATIVE=observed refused=true missing_receiver=true cache_preserved=true memory_preserved=true file_preserved=true' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_EXPORT_BEFORE=observed refused=false missing_receiver=false state_preserved=true' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'VOICE_INPUT_EXPORT_BEFORE=observed failure_reported=false viewer_preserved=true' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'VOICE_INPUT_EXPORT_NATIVE=observed failure_reported=true viewer_selected=true viewer_preserved=true config_preserved=true' "$output")" -eq 1 ] \
             || { tail -c 262144 "$output" >&2; fail 'option acknowledgement artifact or native outcomes differ'; }
-        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=20 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=24 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_WIRE_DART=pass cases=4 native_errors=11 error=RESULT_ERROR cache=preserved config=preserved reads=sync-and-async' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_DART_CASE=' "$output")" -eq 4 ] \
@@ -5648,6 +5651,13 @@ PY
         for case_name in initial_commit failed_replace_retry failed_remove_retry idempotent_and_namespace_isolation; do
             [ "$(grep -Fxc "UI_STATE_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
                 || fail "Flutter preference bridge case differs: $case_name"
+        done
+        [ "$(grep -Fxc 'VOICE_INPUT_WIRE_DART=pass cases=4 native_errors=2 error=RESULT_ERROR viewer=selected-and-default cm_failure=reported retry=reported state=preserved config=unchanged' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'VOICE_INPUT_WIRE_DART_CASE=' "$output")" -eq 4 ] \
+            || fail 'voice-call input bridge outcomes differ'
+        for case_name in viewer_selection viewer_default cm_missing_receiver cm_retry_preserves_viewer; do
+            [ "$(grep -Fxc "VOICE_INPUT_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
+                || fail "voice-call input bridge case differs: $case_name"
         done
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
@@ -6151,6 +6161,7 @@ PY
             grep -E '^KEYBOARD_WIRE_DART(_CASE)?=' "$output"
             grep -E '^LOCAL_PREF_WIRE_DART(_CASE)?=' "$output"
             grep -E '^UI_STATE_WIRE_DART(_CASE)?=' "$output"
+            grep -E '^VOICE_INPUT_EXPORT_(BEFORE|NATIVE)=|^VOICE_INPUT_WIRE_DART(_CASE)?=' "$output"
             printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

@@ -2963,6 +2963,17 @@ impl Drop for ReceivePathLease {
     }
 }
 
+fn validate_resume_file_length(available: u64, expected_size: u64) -> ResultType<()> {
+    if available > expected_size {
+        bail!(
+            "resume file length {} exceeds declared file size {}",
+            available,
+            expected_size
+        );
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 struct ReceiveWriteClaim {
     final_path: PathBuf,
@@ -3072,6 +3083,7 @@ impl ReceiveWriteClaim {
     fn resume(
         final_path: PathBuf,
         expected_digest: FileDigest,
+        expected_size: u64,
         offset: u64,
     ) -> ResultType<(std::fs::File, Self)> {
         use std::io::{Read, Seek};
@@ -3105,8 +3117,8 @@ impl ReceiveWriteClaim {
                     false,
                     false,
                 )?;
-            let mut stream_file = download_file.try_clone()?;
-            let available = stream_file.metadata()?.len();
+            let available = download_file.metadata()?.len();
+            validate_resume_file_length(available, expected_size)?;
             if offset > available {
                 bail!(
                     "confirmed offset {} exceeds file length {}",
@@ -3114,6 +3126,7 @@ impl ReceiveWriteClaim {
                     available
                 );
             }
+            let mut stream_file = download_file.try_clone()?;
             stream_file.seek(std::io::SeekFrom::Start(offset))?;
             Ok((download_file, digest_file, stream_file))
         })();
@@ -3986,6 +3999,7 @@ impl TransferJob {
             .finished_size
             .checked_add(offset)
             .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
+        let expected_size = entry.size;
         match self.role {
             TransferRole::Receive => {
                 if self.receive_write_claim.is_some() {
@@ -3993,7 +4007,7 @@ impl TransferJob {
                 }
                 let digest = self.digest;
                 let (stream_file, claim) = tokio::task::spawn_blocking(move || {
-                    ReceiveWriteClaim::resume(path, digest, offset)
+                    ReceiveWriteClaim::resume(path, digest, expected_size, offset)
                 })
                 .await??;
                 self.data_stream = Some(File::from_std(stream_file));
@@ -4392,6 +4406,7 @@ pub fn inspect_write_destination(
             if let (Some(stored), Some(download_file)) = (stored_digest, download_file) {
                 if stored.modified == digest.last_modified && stored.size == digest.file_size {
                     let transferred_size = download_file.metadata()?.len();
+                    validate_resume_file_length(transferred_size, digest.file_size)?;
                     if transferred_size > 0 {
                         return Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
                             id: digest.id,

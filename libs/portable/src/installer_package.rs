@@ -2,6 +2,7 @@ use std::{
     fs::{self, File, Metadata, OpenOptions},
     io::{self, Read, Seek, SeekFrom, Write},
     path::Path,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use crate::package_format::{COMPOUND_FILE_HEADER, MAGIC, MAX_MSI_SIZE, MSI_PATH};
@@ -96,8 +97,33 @@ pub(crate) fn write_package(path: &Path, output: &mut (impl Write + Seek)) -> io
 }
 
 pub(crate) fn generate(path: &Path, output_dir: &Path) -> io::Result<()> {
-    let mut data = File::create(output_dir.join("data.bin"))?;
-    write_package(path, &mut data)
+    // Publish a complete package within Cargo's private OUT_DIR.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let temporary = output_dir.join(format!(
+        ".data.bin-{}-{}.tmp",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed),
+    ));
+    let mut data = File::options()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)?;
+    let result = write_package(path, &mut data).and_then(|()| data.sync_all());
+    drop(data);
+    let result = result.and_then(|()| fs::rename(&temporary, output_dir.join("data.bin")));
+    if let Err(error) = result {
+        if let Err(cleanup) = fs::remove_file(&temporary) {
+            return Err(io::Error::new(
+                error.kind(),
+                format!(
+                    "{error}; failed to remove unpublished package {}: {cleanup}",
+                    temporary.display(),
+                ),
+            ));
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

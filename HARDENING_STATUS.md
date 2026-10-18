@@ -5950,7 +5950,15 @@ exists only to make the current source disposition discoverable.
 - R-S11b-3f — desktop at-rest wrapper no longer creates service identity/key material
 - R-S11b-3g — trust-anchor/proxy-shaped option writes are pinned empty
 - R-S11b-3h — main IPC mutation policy has no permissive fallback
-- R-S11b-3i — hardware-codec probe IPC write surface deleted
+- R-S11b-3i — hardware-codec probe IPC write surface and dormant library launcher deleted.
+  `dea41c7c` removes the unused probe detector/child launcher, result-import setter and
+  IPC-set status APIs; the app has no probe caller. Three Linux/macOS checks that
+  required the dead launcher are deleted, with a narrow library-absence guard retained.
+  Both edited shell files parse; the bounded no-NIC Linux parent checkpoint passes all
+  six existing software-codec/worker tests. This preserves supported CPU-only behavior;
+  the hardware branch is unselected and was not executed. Source/artifact, native results
+  and joined cleanup: `.harness-state/verifier-vm/retired-hardware-probe-dea41c7c.json`.
+  No new reachable LPE finding or installed/macOS/hardware-native closure is claimed.
 - R-S11b-3j — structured SOCKS/proxy transport and credential store deleted
 - R-S11b-3k — obsolete whole-config and standalone-salt authority APIs excised
 - R-S11b-3l/R-X7b — generic automatic-password generator excised

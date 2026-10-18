@@ -7,6 +7,18 @@ umask 077
 readonly WORK=/tmp/recording-output
 mkdir -m 0700 -- "$WORK"
 export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+python3 -I -S - <<'PY'
+import errno,socket
+with socket.socket() as canary:
+    canary.settimeout(1)
+    try:
+        canary.connect(('192.0.2.1',9))
+    except OSError as error:
+        assert error.errno == errno.ENETUNREACH, error
+    else:
+        raise SystemExit('Recording compile canary connected')
+print('R-B10 canary: build confirmed network-isolated (offline compile stage).')
+PY
 printf 'RECORDING_OUTPUT_BUILD=started target=scrap-libtest budget_seconds=240\n'
 build_started=$SECONDS
 build_status=0

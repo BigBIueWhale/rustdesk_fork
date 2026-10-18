@@ -3307,6 +3307,56 @@ if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
             || fail 'Linux app manifest differs from the independent requested digest'
     fi
     FLUTTER_APP_RECIPE_SHA256="$(git_closed -C "$REPO_ROOT" cat-file blob "$app_context_commit:scripts/smoke-flutter-peer-presentation-stage.sh" | /usr/bin/sha256sum | /usr/bin/awk '{print $1}')"
+    if [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
+        producer_pins=$VM_TRANSIENT/app-producer-pins.env
+        git_closed -C "$REPO_ROOT" cat-file blob "$app_context_commit:scripts/pins.env" \
+            > "$producer_pins" || fail 'cannot read the exact app producer pins'
+        /usr/bin/chmod 0400 -- "$producer_pins"
+        FLUTTER_APP_BUILD_CONTEXT="$(/usr/bin/python3 -I -S - \
+            "$producer_pins" "$app_context_commit" "$app_context_tree" \
+            "$FLUTTER_APP_RECIPE_SHA256" "$FLUTTER_APP_ENGINE_CONTEXT" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], 'rb') as source:
+    raw = source.read(1024 * 1024 + 1)
+if len(raw) > 1024 * 1024:
+    raise SystemExit('app producer pins exceed their bound')
+pins = raw.decode('utf-8', errors='strict')
+
+def pin(key):
+    values = re.findall(r'^' + re.escape(key) + r'="([^"\n]+)"(?:[ \t]+#[^\n]*)?$', pins, re.M)
+    if len(values) != 1:
+        raise SystemExit('app producer pin is missing or duplicated: ' + key)
+    return values[0]
+
+roles = {
+    'rust_archive': 'SHA256_RUST_1_75',
+    'flutter_archive': 'SHA256_FLUTTER_PRESENTATION_CANDIDATE',
+    'flutter_tools_lock': 'SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK',
+    'flutter_project_lock': 'SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK',
+    'llvm_archive': 'SHA256_LLVM_15_0_6',
+    'frb_codegen': 'SHA256_FLUTTER_PEER_FRB_CODEGEN',
+    'vendor_closure': 'SHA256_CARGO_VENDOR_CLOSURE_V1',
+    'vendor_config': 'SHA256_CARGO_VENDOR_CONFIG',
+    'vcpkg_closure': 'SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1',
+    'pub_cache_closure': 'SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE',
+}
+context = {
+    'source_commit': sys.argv[2], 'source_tree': sys.argv[3],
+    'builder_config': pin('DEB_BUILDER_CONFIG_ID'),
+    'build_recipe_sha256': sys.argv[4],
+    'rust_toolchain': pin('RUST_VERSION') + '.0-x86_64-unknown-linux-gnu',
+    'flutter_version': pin('FLUTTER_PRESENTATION_CANDIDATE_VERSION'),
+    'source_date_epoch': pin('SOURCE_DATE_EPOCH_PIN'),
+    'engine': json.loads(sys.argv[5]),
+    'inputs': {role: pin(key) for role, key in roles.items()},
+}
+print(json.dumps(context, sort_keys=True, separators=(',', ':')))
+PY
+)" || fail 'cannot derive the app context from its exact producer commit'
+    else
     FLUTTER_APP_BUILD_CONTEXT="$(printf '{"source_commit":"%s","source_tree":"%s","builder_config":"%s","build_recipe_sha256":"%s","rust_toolchain":"%s.0-x86_64-unknown-linux-gnu","flutter_version":"%s","source_date_epoch":"%s","engine":%s,"inputs":{"rust_archive":"%s","flutter_archive":"%s","flutter_tools_lock":"%s","flutter_project_lock":"%s","llvm_archive":"%s","frb_codegen":"%s","vendor_closure":"%s","vendor_config":"%s","vcpkg_closure":"%s","pub_cache_closure":"%s"}}' \
         "$app_context_commit" "$app_context_tree" "$DEB_BUILDER_CONFIG_ID" \
         "$FLUTTER_APP_RECIPE_SHA256" "$RUST_VERSION" "$FLUTTER_PEER_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" "$FLUTTER_APP_ENGINE_CONTEXT" \
@@ -3314,6 +3364,7 @@ if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
         "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" "$SHA256_LLVM_15_0_6" "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
         "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_CARGO_VENDOR_CONFIG" \
         "$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE")"
+    fi
     [[ "$FLUTTER_APP_BUILD_CONTEXT" != *"'"* ]] && [[ "$FLUTTER_APP_BUILD_CONTEXT" != *$'\n'* ]] \
         || fail 'Linux Flutter app build context is not one shell-inert argument'
 fi

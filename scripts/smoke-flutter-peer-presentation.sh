@@ -449,7 +449,6 @@ if [ "$BUILD_APP_ONLY" -eq 1 ]; then
   APP_COMMIT=$SOURCE_COMMIT
   APP_TREE=$SOURCE_TREE
   APP_RECIPE_SHA256="$(sha256sum "$SOURCE_SNAPSHOT/scripts/smoke-flutter-peer-presentation-stage.sh" | awk '{print $1}')"
-fi
   expected_context="$(printf '{"source_commit":"%s","source_tree":"%s","builder_config":"%s","build_recipe_sha256":"%s","rust_toolchain":"%s.0-x86_64-unknown-linux-gnu","flutter_version":"%s","source_date_epoch":"%s","engine":%s,"inputs":{"rust_archive":"%s","flutter_archive":"%s","flutter_tools_lock":"%s","flutter_project_lock":"%s","llvm_archive":"%s","frb_codegen":"%s","vendor_closure":"%s","vendor_config":"%s","vcpkg_closure":"%s","pub_cache_closure":"%s"}}' \
     "$APP_COMMIT" "$APP_TREE" "$DEB_BUILDER_CONFIG_ID" "$APP_RECIPE_SHA256" \
     "$RUST_VERSION" "$BUILD_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" "$APP_ENGINE_CONTEXT" \
@@ -459,8 +458,12 @@ fi
     "$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" "$EVIDENCE_PUB_CACHE_SHA256")"
   [ "$APP_BUILD_CONTEXT" = "$expected_context" ] \
     || die 'independent app build context differs from the actual source and selected inputs'
+else
+  expected_context=$APP_BUILD_CONTEXT
+fi
 ENGINE_BINDING="$(/usr/bin/python3 -I -S - "$SOURCE_SNAPSHOT/scripts/linux-flutter-artifact.py" \
-  "$expected_context" "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION" <<'PY'
+  "$expected_context" "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION" \
+  "$APP_COMMIT" "$APP_TREE" "$APP_RECIPE_SHA256" "$APP_ENGINE_CONTEXT" <<'PY'
 import importlib.util
 import json
 import sys
@@ -472,6 +475,10 @@ app = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(app)
 context = json.loads(sys.argv[2], object_pairs_hook=app.no_duplicates)
 app.validate_context(context)
+if (context['source_commit'] != sys.argv[4] or context['source_tree'] != sys.argv[5]
+        or context['build_recipe_sha256'] != sys.argv[6]
+        or context['engine'] != json.loads(sys.argv[7], object_pairs_hook=app.no_duplicates)):
+    raise RuntimeError('app context differs from its selected producer or engine')
 engine = context["engine"]
 if engine["framework_revision"] != sys.argv[3]:
     raise RuntimeError("app engine framework differs from the selected SDK")

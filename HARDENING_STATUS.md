@@ -400,6 +400,35 @@ This establishes shared component behavior and source removal. Windows compilati
 renamed/canonical setup, UAC success/denial, MSI install/update/cleanup and installed
 negative-principal execution remain OPEN, as do cold artifacts and release review.
 
+**Installer payload decoder — fixed MSI, explicit errors and output bound; Windows acceptance OPEN.**
+Product `acf3b0ae` replaces the generic infallible file-list/startup-path reader
+with one borrowed `InstallerPackage`. The constructor checks every field boundary,
+the canonical MSI path and trailer, checksum syntax and exact end of input;
+malformed/truncated packages return errors before the installer flow is entered.
+Generic path normalization, lossy strings, file-list allocation and parser panics
+are removed. The encoder and decoder share format constants; wire-encoder bytes
+are unchanged. Windows extraction/cleanup now names only the fixed root MSI.
+
+The production Brotli loop checks output against the shared 2-GiB MSI ceiling
+before vector growth, uses fallible reserve, and requires a complete single stream
+with no trailing compressed bytes. MSI-header/checksum validation precedes any
+prefix or output-file creation by the extraction method; exclusive file creation
+and sync remain. The privileged caller still owns private staging and error cleanup.
+Elevation, explicit current-executable UAC relaunch and the direct MSI API remain.
+
+At test baseline `fe08aa9e`, the real decoder panicked on 103 of 127 truncated
+prefixes while seven existing controls passed. The byte-identical regression at
+`acf3b0ae` reports zero panics; a separate case requires explicit errors on every
+truncated prefix. All 15 current Linux component/CLI cases pass in 131 outer
+seconds, including exact-envelope refusal, small-cap decompression and complete-
+stream checks, invalid-body refusal before filesystem effects, plus the retained
+round-trip, deterministic-generation, file/link refusal and error controls.
+Executed artifacts, raw A/B output, scope, source freezes and joined RAM/private-
+root retirement are in `.harness-state/verifier-vm/installer-decoder-acf3b0ae.json`.
+This is component execution and source closure. Windows compilation/installation,
+UAC and MSI lifecycle, installed principals/settings, cold equality and release
+acceptance remain OPEN; the finite cases do not establish whole-product immunity.
+
 Further cleanup must classify remaining prose and purported tests by the current requirement or real behavior they
 protect, preserve load-bearing contracts and executable coverage, and delete obsolete history or make-believe proof.
 

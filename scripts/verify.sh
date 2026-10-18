@@ -2341,7 +2341,8 @@ if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_ui" -rInE 'goto_install|i
   r_s11e20="$r_s11e20 in-app-installer-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_ui")"
 fi
 
-grep -Fq 'win::run_protected_installer(BinaryReader::default(), silent, protected)' "$portable" || r_s11e20="$r_s11e20 protected-installer-entry-missing"
+grep -Fq 'let package = match InstallerPackage::embedded() {' "$portable" || r_s11e20="$r_s11e20 fallible-installer-decoder-missing"
+grep -Fq 'win::run_protected_installer(package, silent, protected)' "$portable" || r_s11e20="$r_s11e20 protected-installer-entry-missing"
 if grep -Eq 'fn (setup|execute|current_exe_is_installer|is_timestamp_matches)\(|Command::new|dirs::data_local_dir|mod ui;' "$portable"; then
   r_s11e20="$r_s11e20 alternate-wrapper-extraction-or-execution-leftover"
 fi
@@ -2349,8 +2350,7 @@ grep -Fq 'fn parse_installer_invocation(args: &[String]) -> Result<(bool, bool),
 grep -Fq '_ => Err("invalid setup command line".to_owned()),' "$portable" || r_s11e20="$r_s11e20 setup-command-line-not-closed"
 grep -Fq 'if protected {' "$portable" || r_s11e20="$r_s11e20 protected-marker-not-distinguished"
 grep -Fq 'protected installer invocation requires an elevated process' "$portable" || r_s11e20="$r_s11e20 protected-marker-not-elevation-gated"
-grep -Fq 'const INSTALLER_MSI_NAME: &str = "rustdesk-installer.msi";' "$portable" || r_s11e20="$r_s11e20 fixed-msi-name-missing"
-grep -Fq 'if files.len() != 1 || files.first() != Some(&msi)' "$portable" || r_s11e20="$r_s11e20 setup-manifest-not-exactly-one-msi"
+grep -Fq 'const INSTALLER_MSI_NAME: &str = "rustdesk-installer.msi";' libs/portable/src/package_format.rs || r_s11e20="$r_s11e20 fixed-msi-name-missing"
 grep -Fq '"Win32_System_ApplicationInstallationAndServicing",' libs/portable/Cargo.toml || r_s11e20="$r_s11e20 typed-windows-installer-api-feature-missing"
 grep -Fq 'MsiInstallProductW(' "$portable" || r_s11e20="$r_s11e20 typed-windows-installer-call-missing"
 grep -Fq 'let properties = wide_text("REBOOT=ReallySuppress");' "$portable" || r_s11e20="$r_s11e20 reboot-suppression-property-missing"
@@ -2369,9 +2369,9 @@ grep -Fq 'ensure_non_reparse_dir(&root)?;' "$portable" || r_s11e20="$r_s11e20 pr
 grep -Fq 'matches!(code, 0 | 3010)' "$portable" || r_s11e20="$r_s11e20 msi-status-policy-not-exact"
 grep -Fq 'for code in [1, 1603, 1641, 3011, u32::MAX]' "$portable" || r_s11e20="$r_s11e20 reboot-initiated-rejection-test-missing"
 protected_installer=$(awk '/pub\(super\) fn run_protected_installer/,/^    }/' "$portable")
-printf '%s\n' "$protected_installer" | grep -Fq 'installer_msi_from_manifest' || r_s11e20="$r_s11e20 protected-leg-not-manifest-bound"
+printf '%s\n' "$protected_installer" | grep -Fq 'package: InstallerPackage' || r_s11e20="$r_s11e20 protected-leg-not-typed-package"
 printf '%s\n' "$protected_installer" | grep -Fq 'run_staged_msi' || r_s11e20="$r_s11e20 protected-leg-not-msi-only"
-grep -Fq 'file.write_to_new_file(staging)?;' "$portable" || r_s11e20="$r_s11e20 setup-extraction-uses-replacement-temporary-file"
+printf '%s\n' "$protected_installer" | grep -Fq '.write_to_new_file(&staging.path)' || r_s11e20="$r_s11e20 setup-exclusive-extraction-missing"
 if printf '%s\n' "$protected_installer" | grep -Eq 'payload\.exe|librustdesk|--install"|Command::new\(&payload'; then
   r_s11e20="$r_s11e20 protected-leg-executes-application-payload"
 fi

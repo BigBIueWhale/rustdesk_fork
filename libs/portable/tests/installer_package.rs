@@ -3,6 +3,9 @@ mod bin_reader;
 #[path = "../src/installer_package.rs"]
 mod installer_package;
 
-use bin_reader::BinaryReader as InstallerPackage;
+#[path = "../src/package_format.rs"]
+mod package_format;
+
+use bin_reader::InstallerPackage;
 #[path = "support/decoder_no_panic.rs"]
 mod decoder_no_panic;

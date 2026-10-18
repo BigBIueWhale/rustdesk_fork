@@ -1,17 +1,19 @@
 #![windows_subsystem = "windows"]
 
 #[cfg(windows)]
-use bin_reader::{relative_payload_path, BinaryReader};
+use bin_reader::InstallerPackage;
+#[cfg(windows)]
+use package_format::INSTALLER_MSI_NAME;
 
 #[cfg(windows)]
 mod bin_reader;
+#[cfg(windows)]
+mod package_format;
 
 #[cfg(any(windows, test))]
 const ELEVATED_INSTALL_ARG: &str = "--rustdesk-protected-install";
 #[cfg(any(windows, test))]
 const ELEVATED_SILENT_INSTALL_ARG: &str = "--rustdesk-protected-silent-install";
-#[cfg(windows)]
-const INSTALLER_MSI_NAME: &str = "rustdesk-installer.msi";
 
 #[cfg(any(windows, test))]
 fn parse_installer_invocation(args: &[String]) -> Result<(bool, bool), String> {
@@ -46,7 +48,14 @@ fn main() {
             std::process::exit(1);
         }
     };
-    if let Err(err) = win::run_protected_installer(BinaryReader::default(), silent, protected) {
+    let package = match InstallerPackage::embedded() {
+        Ok(package) => package,
+        Err(err) => {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
+    };
+    if let Err(err) = win::run_protected_installer(package, silent, protected) {
         eprintln!("{err}");
         std::process::exit(1);
     }
@@ -95,7 +104,7 @@ mod win {
     };
 
     use crate::{
-        is_accepted_msi_exit_code, relative_payload_path, BinaryReader, ELEVATED_INSTALL_ARG,
+        is_accepted_msi_exit_code, InstallerPackage, ELEVATED_INSTALL_ARG,
         ELEVATED_SILENT_INSTALL_ARG, INSTALLER_MSI_NAME,
     };
 
@@ -367,119 +376,17 @@ mod win {
         }
     }
 
-    fn remove_empty_payload_dirs(root: &Path, files: &[PathBuf]) -> Result<(), String> {
-        let mut dirs = Vec::new();
-        for file in files {
-            let mut current = file.parent();
-            while let Some(dir) = current {
-                if dir == root {
-                    break;
-                }
-                dirs.push(dir.to_path_buf());
-                current = dir.parent();
-            }
-        }
-        dirs.sort_by(|left, right| {
-            right
-                .components()
-                .count()
-                .cmp(&left.components().count())
-                .then_with(|| right.cmp(left))
-        });
-        dirs.dedup();
-        let mut errors = Vec::new();
-        for dir in dirs {
-            match fs::symlink_metadata(&dir) {
-                Ok(metadata)
-                    if metadata.is_dir()
-                        && !metadata.file_type().is_symlink()
-                        && !crate::has_reparse_point(&metadata) => {}
-                Ok(_) => {
-                    errors.push(format!(
-                        "refusing to remove non-directory or reparse payload path {}",
-                        dir.display()
-                    ));
-                    continue;
-                }
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(err) => {
-                    errors.push(format!("failed to inspect {}: {err}", dir.display()));
-                    continue;
-                }
-            }
-            match fs::remove_dir(&dir) {
-                Ok(()) => {}
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-                Err(err) => errors.push(format!(
-                    "failed to remove payload dir {}: {err}",
-                    dir.display()
-                )),
-            }
-        }
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors.join("; "))
-        }
-    }
-
-    fn cleanup_extracted_payload(root: &Path, files: &[PathBuf]) -> Result<(), String> {
-        let mut errors = Vec::new();
-        for file in files.iter().rev() {
-            if let Err(err) = remove_payload_file(root, file) {
-                errors.push(err);
-            }
-        }
-        if let Err(err) = remove_empty_payload_dirs(root, files) {
-            errors.push(err);
-        }
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors.join("; "))
-        }
-    }
-
-    fn finish_with_manifest_cleanup(
+    fn finish_with_payload_cleanup(
         staging: &StagingDir,
-        files: &[PathBuf],
         result: Result<(), String>,
     ) -> Result<(), String> {
-        let cleanup = cleanup_extracted_payload(&staging.path, files);
+        let cleanup = remove_payload_file(&staging.path, &staging.path.join(INSTALLER_MSI_NAME));
         match (result, cleanup) {
             (Ok(()), Ok(())) => Ok(()),
             (Err(err), Ok(())) => Err(err),
             (Ok(()), Err(cleanup_err)) => Err(cleanup_err),
             (Err(err), Err(cleanup_err)) => Err(format!("{err}; cleanup failed: {cleanup_err}")),
         }
-    }
-
-    fn installer_manifest_paths(
-        reader: &BinaryReader,
-        staging: &Path,
-    ) -> Result<Vec<PathBuf>, String> {
-        reader
-            .files
-            .iter()
-            .map(|file| relative_payload_path(&file.path).map(|path| staging.join(path)))
-            .collect()
-    }
-
-    fn extract_installer_payload(reader: &BinaryReader, staging: &Path) -> Result<(), String> {
-        for file in &reader.files {
-            file.write_to_new_file(staging)?;
-        }
-        Ok(())
-    }
-
-    fn installer_msi_from_manifest(staging: &Path, files: &[PathBuf]) -> Result<PathBuf, String> {
-        let msi = staging.join(INSTALLER_MSI_NAME);
-        if files.len() != 1 || files.first() != Some(&msi) {
-            return Err(format!(
-                "embedded setup payload must contain only root {INSTALLER_MSI_NAME}"
-            ));
-        }
-        Ok(msi)
     }
 
     fn validate_staged_installer_msi(staging: &Path, msi: &Path) -> Result<(), String> {
@@ -529,7 +436,7 @@ mod win {
     }
 
     pub(super) fn run_protected_installer(
-        reader: BinaryReader,
+        package: InstallerPackage<'_>,
         silent: bool,
         protected: bool,
     ) -> Result<(), String> {
@@ -543,12 +450,11 @@ mod win {
         }
 
         let staging = create_staging_dir()?;
-        let files = installer_manifest_paths(&reader, &staging.path)?;
-        let result = installer_msi_from_manifest(&staging.path, &files)
-            .and_then(|msi| extract_installer_payload(&reader, &staging.path).map(|_| msi))
+        let result = package
+            .write_to_new_file(&staging.path)
             .and_then(|msi| validate_staged_installer_msi(&staging.path, &msi).map(|_| msi))
             .and_then(|msi| run_staged_msi(&msi, silent));
-        finish_with_manifest_cleanup(&staging, &files, result)
+        finish_with_payload_cleanup(&staging, result)
     }
 }
 

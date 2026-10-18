@@ -4,10 +4,7 @@ use std::{
     path::Path,
 };
 
-const MSI_PATH: &[u8] = b".\\rustdesk-installer.msi";
-const MAGIC: &[u8] = b"rustdesk";
-const MAX_MSI_SIZE: u64 = i32::MAX as u64;
-const COMPOUND_FILE_HEADER: &[u8] = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1";
+use crate::package_format::{COMPOUND_FILE_HEADER, MAGIC, MAX_MSI_SIZE, MSI_PATH};
 
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
@@ -106,7 +103,7 @@ pub(crate) fn generate(path: &Path, output_dir: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bin_reader::BinaryReader;
+    use crate::bin_reader::InstallerPackage;
     use std::{
         io::Cursor,
         path::PathBuf,
@@ -145,15 +142,8 @@ mod tests {
         let mut package = Cursor::new(Vec::new());
         write_package(&msi, &mut package).unwrap();
         let bytes = Box::leak(package.into_inner().into_boxed_slice());
-        let (files, startup) = BinaryReader::read_from(bytes);
-        assert_eq!(files.len(), 1);
-        assert_eq!(startup, String::from_utf8(MSI_PATH.to_vec()).unwrap());
-        assert_eq!(files[0].path, startup);
-        assert_eq!(
-            files[0].md5_code,
-            format!("{:x}", md5::compute(&original)).as_bytes()
-        );
-        let extracted = files[0].write_to_new_file(&fixture.0.join("extract")).unwrap();
+        let package = InstallerPackage::read_from(bytes).unwrap();
+        let extracted = package.write_to_new_file(&fixture.0.join("extract")).unwrap();
         assert_eq!(extracted.file_name().unwrap(), "rustdesk-installer.msi");
         assert_eq!(fs::read(extracted).unwrap(), original);
     }
@@ -198,15 +188,15 @@ mod tests {
         let fixture = Fixture::new();
         let mut package = Cursor::new(Vec::new());
         write_package(&fixture.msi(), &mut package).unwrap();
-        let (files, _) = BinaryReader::read_from(Box::leak(package.into_inner().into_boxed_slice()));
+        let package = InstallerPackage::read_from(Box::leak(package.into_inner().into_boxed_slice())).unwrap();
         let destination = fixture.0.join("rustdesk-installer.msi");
         fs::write(&destination, "existing").unwrap();
-        assert!(files[0].write_to_new_file(&fixture.0).is_err());
+        assert!(package.write_to_new_file(&fixture.0).is_err());
         assert_eq!(fs::read(&destination).unwrap(), b"existing");
         fs::remove_file(&destination).unwrap();
-        files[0].write_to_new_file(&fixture.0).unwrap();
+        package.write_to_new_file(&fixture.0).unwrap();
         let original = fs::read(&destination).unwrap();
-        assert!(files[0].write_to_new_file(&fixture.0).is_err());
+        assert!(package.write_to_new_file(&fixture.0).is_err());
         assert_eq!(fs::read(&destination).unwrap(), original);
     }
 
@@ -216,17 +206,17 @@ mod tests {
         let fixture = Fixture::new();
         let mut package = Cursor::new(Vec::new());
         write_package(&fixture.msi(), &mut package).unwrap();
-        let (files, _) = BinaryReader::read_from(Box::leak(package.into_inner().into_boxed_slice()));
+        let package = InstallerPackage::read_from(Box::leak(package.into_inner().into_boxed_slice())).unwrap();
         let sentinel = fixture.0.join("sentinel");
         let destination = fixture.0.join("rustdesk-installer.msi");
         fs::write(&sentinel, "sentinel").unwrap();
         std::os::unix::fs::symlink(&sentinel, &destination).unwrap();
-        assert!(files[0].write_to_new_file(&fixture.0).is_err());
+        assert!(package.write_to_new_file(&fixture.0).is_err());
         assert!(fs::symlink_metadata(&destination).unwrap().file_type().is_symlink());
         assert_eq!(fs::read(&sentinel).unwrap(), b"sentinel");
         fs::remove_file(&destination).unwrap();
         fs::hard_link(&sentinel, &destination).unwrap();
-        assert!(files[0].write_to_new_file(&fixture.0).is_err());
+        assert!(package.write_to_new_file(&fixture.0).is_err());
         assert_eq!(fs::read(&sentinel).unwrap(), b"sentinel");
         assert_eq!(fs::read(&destination).unwrap(), b"sentinel");
     }

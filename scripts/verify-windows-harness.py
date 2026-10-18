@@ -24,6 +24,7 @@ FILES = {
     "portable_build": "libs/portable/build.rs",
     "portable_cargo": "libs/portable/Cargo.toml",
     "portable_main": "libs/portable/src/main.rs",
+    "portable_decoder": "libs/portable/src/bin_reader.rs",
     "resource": "res/windows_resource.rs",
     "host": "scripts/build-windows-vm.sh",
     "provision": "scripts/provision-windows-vm.sh",
@@ -306,8 +307,13 @@ def validate_sources(sources: dict[str, str]) -> None:
     portable_build = sources["portable_build"]
     portable_cargo = sources["portable_cargo"]
     portable_main = sources["portable_main"]
-    require(portable_main, "win::run_protected_installer(BinaryReader::default(), silent, protected)",
+    require(portable_main, "let package = match InstallerPackage::embedded() {",
+            "fallible installer payload construction")
+    require(portable_main, "win::run_protected_installer(package, silent, protected)",
             "single protected installer entry")
+    reject(sources["portable_decoder"].split("#[cfg(test)]", 1)[0],
+           r"BinaryReader|BinaryData|from_utf8_lossy|read_to_end|panic!|assert!",
+           "generic or infallible installer decoder")
     reject(portable_main,
            r"fn (?:setup|execute|current_exe_is_installer|is_timestamp_matches)\(|Command::new|dirs::data_local_dir|mod ui;",
            "alternate wrapper extraction or execution")

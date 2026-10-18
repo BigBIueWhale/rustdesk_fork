@@ -3,6 +3,9 @@ use std::{env, error::Error, io, path::PathBuf};
 #[path = "src/installer_package.rs"]
 mod installer_package;
 
+#[path = "src/package_format.rs"]
+mod package_format;
+
 #[cfg(windows)]
 #[path = "../../res/windows_resource.rs"]
 mod windows_resource;

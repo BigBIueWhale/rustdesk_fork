@@ -3387,11 +3387,17 @@ run_focused_rust_tests() {
                 libs/portable/tests/installer_package.rs libs/portable/src/installer_package.rs
                 libs/portable/tests/support/decoder_no_panic.rs
                 libs/portable/src/bin_reader.rs libs/portable/src/main.rs
+                libs/portable/src/package_format.rs
                 scripts/build-windows.ps1 scripts/win-guest-setup.ps1
                 scripts/verify-windows-harness.py
             )
             required_tests=(
                 decoder_no_panic::truncated_packages_do_not_panic
+                bin_reader::tests::truncated_packages_return_errors
+                bin_reader::tests::package_envelope_is_exact
+                bin_reader::tests::decompression_is_bounded
+                bin_reader::tests::decompression_requires_complete_single_stream
+                bin_reader::tests::invalid_payload_does_not_create_files
                 installer_package::tests::package_round_trips_through_installer_decoder
                 installer_package::tests::generation_is_deterministic_and_overwrites_old_outputs
                 installer_package::tests::extraction_refuses_existing_file_without_modification
@@ -4806,7 +4812,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             printf "INSTALLER_PACKAGE_ARTIFACT_AFTER=sha256=%s executable=%s status=%s unchanged=before-after\n" \
                                 "$artifact_sha" "$test_executable" "$test_status"
                             [ "$test_status" -eq 0 ] || exit "$test_status"
-                            printf "INSTALLER_PACKAGE_ARTIFACT=pass sha256=%s executable=%s tests=8 unchanged=before-after\n" \
+                            printf "INSTALLER_PACKAGE_ARTIFACT=pass sha256=%s executable=%s tests=13 unchanged=before-after\n" \
                                 "$artifact_sha" "$test_executable"
                             wrapper_sha="$(sha256sum "$wrapper_executable" | cut -d " " -f 1)"
                             printf "INSTALLER_WRAPPER_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
@@ -5119,7 +5125,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
         printf 'LINUX_XRANDR_QUERY_PROFILE=linux-xrandr-query stage=container-start tests=8 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
-        printf 'INSTALLER_PACKAGE_PROFILE=installer-package stage=container-start tests=10 bridge=absent\n'
+        printf 'INSTALLER_PACKAGE_PROFILE=installer-package stage=container-start tests=15 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
@@ -5460,7 +5466,7 @@ PY
             || fail 'xrandr-query artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
         [ "${#result_lines[@]}" -eq 2 ] || fail 'installer package summary count differs'
-        [ "$(grep -Ec '^INSTALLER_PACKAGE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/installer_package-[0-9a-f]{16} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^INSTALLER_PACKAGE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/installer_package-[0-9a-f]{16} tests=13 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'INSTALLER_PACKAGE_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^INSTALLER_WRAPPER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/rustdesk_portable_packer-[0-9a-f]{16} tests=2 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'INSTALLER_WRAPPER_ARTIFACT=' "$output")" -eq 1 ] \
@@ -5933,7 +5939,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = installer-package ]; then
-            grep -E '^INSTALLER_(PACKAGE|WRAPPER)_ARTIFACT(_BEFORE|_AFTER)?=|^INSTALLER_DECODER_|^test (decoder_no_panic|installer_package::tests|tests)::.* \.\.\. ok$|^verify-windows-harness: ok$' "$output"
+            grep -E '^INSTALLER_(PACKAGE|WRAPPER)_ARTIFACT(_BEFORE|_AFTER)?=|^INSTALLER_DECODER_|^test (bin_reader::tests|decoder_no_panic|installer_package::tests|tests)::.* \.\.\. ok$|^verify-windows-harness: ok$' "$output"
             printf 'INSTALLER_PACKAGE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-encoder-decoder-and-cli-contract windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

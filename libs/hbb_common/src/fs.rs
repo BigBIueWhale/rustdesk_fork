@@ -706,6 +706,22 @@ fn validate_transfer_file_names(files: &[FileEntry]) -> ResultType<()> {
     Ok(())
 }
 
+fn checked_file_mtime(seconds: u64) -> std::io::Result<filetime::FileTime> {
+    let invalid_time = || {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "file modification time is out of range",
+        )
+    };
+    let time = UNIX_EPOCH
+        .checked_add(Duration::from_secs(seconds))
+        .ok_or_else(invalid_time)?;
+    // The pinned filetime Unix backend converts seconds to the native time_t.
+    #[cfg(unix)]
+    crate::libc::time_t::try_from(seconds).map_err(|_| invalid_time())?;
+    Ok(filetime::FileTime::from_system_time(time))
+}
+
 pub fn validate_transfer_file_list(
     base: Option<&PathBuf>,
     files: &[FileEntry],
@@ -717,6 +733,9 @@ pub fn validate_transfer_file_list(
             files.len(),
             max_files
         );
+    }
+    for file in files {
+        checked_file_mtime(file.modified_time)?;
     }
     validate_transfer_file_names(files)?;
     if let Some(base) = base {
@@ -2683,7 +2702,7 @@ fn finish_recv_write_no_follow(
             "receive generation is already published",
         ));
     }
-    let mtime = filetime::FileTime::from_unix_time(modified_time as _, 0);
+    let mtime = checked_file_mtime(modified_time)?;
     #[cfg(unix)]
     {
         use std::os::unix::io::AsRawFd;

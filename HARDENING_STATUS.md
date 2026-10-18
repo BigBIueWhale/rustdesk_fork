@@ -358,6 +358,27 @@ executable digest, no host listener addition and joined cleanup. Retained
 `2209adceabf64a953d1a0eb84e6da4fa7f3b8d3f5821f4c8acaeb4e6fedf8819` binds that run.
 The lane omits `--self-test`; it establishes neither the seven suites nor native Windows acceptance.
 
+**Installer component resources — bounded RAM lane accepted; Windows product acceptance OPEN.**
+Current `bcd69d18` gives only `--installer-package-tests` a strict 4-GiB guest,
+6-GiB RAM scratch and 4-GiB QEMU file ceiling, with the existing 6-GiB headroom,
+1-GiB overhead, shared lock, monitor, joins and no disk fallback. Its fixed
+container uses 2 GiB, two Cargo jobs, no incremental cache/debug information and
+a 256-MiB `/tmp` tmpfs. The old generic allocation refused before QEMU:
+39,936 MiB required versus 21,557 MiB available. A first 2-GiB guest/1-GiB
+container experiment hit its cgroup ceiling during Cargo resolution and ran
+no tests; it is retained as unaccepted. The corrected complete transaction passes
+all six unchanged encoder/decoder cases in 91 outer seconds (94.736 supervisor),
+with a stable executable digest, 3,298,676,736-byte RAM scratch peak, zero endpoint
+deltas and joined RAM/private-root retirement. All portable sources, root lock
+and Windows source guard are byte-identical to `06f51621`. Source/raw/artifact,
+failed experiment and cleanup evidence are retained in
+`.harness-state/verifier-vm/installer-package-resources-bcd69d18.json`.
+This restores the Linux component gate; it does not run Windows or close the
+seven harness suites, installed/MSI lifecycle, cold artifacts or release review.
+The inherited self-extractor/cache/child-execution branch in
+`libs/portable/src/main.rs` remains a separate OPEN source item; this resource
+correction leaves its removal and native Windows acceptance outstanding.
+
 Further cleanup must classify remaining prose and purported tests by the current requirement or real behavior they
 protect, preserve load-bearing contracts and executable coverage, and delete obsolete history or make-believe proof.
 

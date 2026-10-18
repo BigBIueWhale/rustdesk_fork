@@ -2363,6 +2363,11 @@ the backend's explicit finalization result before replacement admission; failure
 Source timestamp state commits only after native frame acceptance. The hardware mux retains
 its existing local elapsed clock; native hardware evidence remains open.
 
+Software recording admission and private WebM track construction accept VP8/VP9 only.
+Disabled `Av1s` batches refuse before filename, context or epoch mutation; an existing
+VP8 recording remains usable. The AV1 backend/extension and dummy codec-private-data
+branches are deleted under Appendix C #87/#88.
+
 Earlier creation/stop and frame-rejection A/B receipts remain in
 `.harness-state/verifier-vm/recording-lifetime-accepted-51b6d4fa.json` and
 `recording-rejection-accepted-dd17dc38.json`. Their twelve real file/mux controls remain.
@@ -2385,8 +2390,16 @@ unexecuted. Combined runs are integration checkpoints; native failure skips pare
 Exact artifacts, unchanged tests/source captures, endpoint and joined RAM/VM cleanup evidence
 are in `.harness-state/verifier-vm/recording-timeline-accepted-b7b192f4.json` and its baselines.
 
+Disabled-codec baseline `731600f6` passes all twenty-six controls and fails three new
+cases: AV1 creates output, is accepted during active VP8, and native mux construction
+accepts AV1. Product `0a006007` passes the identical twenty-nine native tests, including
+continued VP8 output and actual timestamps after refusal. The transaction takes 295 VM
+seconds: library build 78s, native tests 0.05s and production-parent check 149s; app runtime
+is unexecuted. Exact source/artifact, baseline, bounded RAM and joined cleanup evidence is in
+`.harness-state/verifier-vm/recording-codec-accepted-0a006007.json`. Dependencies are unchanged.
+
 Initial parent-directory authority, caller/UI outcomes including keyframe requests, complete
-recording/playback including AV1 codec-private data, native allocation-failure/heap evidence,
+recording/playback, native allocation-failure/heap evidence,
 hardware and installed-root recording, and Windows/macOS acceptance remain OPEN.
 These named Linux component results establish no overall recording or LPE closure.
 

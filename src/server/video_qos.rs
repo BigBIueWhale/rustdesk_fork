@@ -73,11 +73,7 @@ impl UserDelay {
         };
         let delay = measured_delay.max(self.pending_delay.unwrap_or_default());
         if let Some(rtt) = self.rtt_calculator.get_rtt() {
-            if delay > rtt {
-                delay - rtt
-            } else {
-                delay
-            }
+            delay.saturating_sub(rtt)
         } else {
             delay
         }

@@ -1710,6 +1710,35 @@ loss, bandwidth/jitter/outage recovery, mobile/desktop combinations, input-to-vi
 numeric latency/recovery budgets and multi-hour drift/resource acceptance remain OPEN under R-F5.
 The receive-acquisition race and all other user-parked work remain OPEN/PARKED.
 
+**Video QoS baseline subtraction — SOURCE CORRECTED; native controller replay OPEN.**
+`UserDelay::avg_delay` now uses saturating subtraction of the learned RTT from the
+maximum of completed-delay average and pending-probe age. Equality produces zero
+excess delay; the previous strict-greater branch reintroduced the full baseline
+RTT at equality and could keep the FPS/quality controller in its congestion branch.
+The existing warmup, estimator/window, thresholds, pending-probe ownership, shared
+rate constraints and viewer limits are unchanged. Connection feedback remains
+derived from the server's retained monotonic probe timer, not the peer's timestamp.
+
+Three added production-controller cases cover constant 150/250/1000 ms baselines,
+three outage/recovery cycles with the same viewer and 20-FPS limit, and continued
+rate reduction for excess delay. The eight prior cases remain. The existing
+`--video-qos-tests` lane retains diagnostics and executable identity after both
+success and failure; no standalone model or new compiler lane is substituted.
+**These eleven cases have not executed or compiled in this slice.** The actual
+unchanged-product attempt at `249a6713` refused before VM/scratch creation:
+18,410 MiB available against the unchanged 20,480-MiB floor. A subsequent bounded
+45-second RAM observation remained below admission. Baseline `8789a96d` preserves
+the old production calculation and final eleven-case recipe for the pending A/B.
+No behavioral failure/pass or recovery deadline is claimed from source inspection.
+
+Source/refusal provenance and the separate fresh ledger count are retained in
+`.harness-state/verifier-vm/video-qos-baseline-source-8789a96d.json`.
+Run that baseline and the corrected source with identical cases when admission
+permits. Native Windows/Apple/mobile, real impaired peers, presented-frame and
+input-visible latency, numeric recovery/resource bounds and multi-hour R-F5
+acceptance remain OPEN. Earlier eight-case receipts do not validate this change;
+installed authority, broader release work and every explicit user park stay OPEN.
+
 **Per-viewer video QoS rate ownership — Linux controller ACCEPTED; full latency OPEN.**
 Each viewer's completed feedback updates its own retained FPS estimate, bounded by that
 viewer's requested limit. The shared stream still honors the minimum live estimate/requested limit, pending

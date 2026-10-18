@@ -12610,6 +12610,11 @@ fallback. Bash syntax and `git diff --check` pass; test modules and recipe are b
 across baseline/product. Compilation, the new runtime outcomes, full CPace integration and
 all other-platform/installed/latency/resource/LPE/release acceptance remain OPEN.
 
+R-T2 now states terminal-error and retained-writer ownership requirements directly.
+Its obsolete per-write-timeout walkthrough and alternative-design proposal are removed;
+R-T3/R-T8/R-T9/R-T14/R-T16/R-T18 retain independent control, ordering, drain, cancellation
+and EOF contracts. This specification cleanup supplies no compilation or native evidence.
+
 **Framing-only API (R-A3/R-S5) — native compiler and Linux transport cases PASS.**
 Product `593aff91` removes the unused raw-mode selector from `BytesCodec`,
 `FramedStream` and `Stream`, including the codec flag and unframed encode/decode

@@ -640,7 +640,7 @@ echo "$out6b"
 record_stage_status R-F1/R-D6
 # R-F1/R-D6/R-S5/R-A9: the canary made a full round trip THROUGH the box (viewer -> sealed -> box ->
 # local target -> echo -> box -> sealed -> viewer), proving the relay is restored AND functional AND
-# inside the secretbox (the box never set_raw'd — tcp.rs R-A3 would have panicked otherwise).
+# inside the secretbox through the framing-only transport API (R-A3).
 if grep -q 'PF-RELAY-ECHO-OK' <<<"$out6b"; then
   echo "  ok  R-F1/R-D6/R-S5/R-A9 port-forward/RDP tunnel RELAYS end-to-end inside the sealed session (canary round-tripped through the box's dial + sealed relay)"
 else

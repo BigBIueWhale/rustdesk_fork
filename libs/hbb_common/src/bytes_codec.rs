@@ -8,7 +8,6 @@ const MAX_PREALLOCATED_PAYLOAD_LEN: usize = 256 * 1024;
 #[derive(Debug, Clone, Copy)]
 pub struct BytesCodec {
     state: DecodeState,
-    raw: bool,
     max_packet_length: usize,
 }
 
@@ -28,13 +27,8 @@ impl BytesCodec {
     pub fn new() -> Self {
         Self {
             state: DecodeState::Head,
-            raw: false,
             max_packet_length: usize::MAX,
         }
-    }
-
-    pub fn set_raw(&mut self) {
-        self.raw = true;
     }
 
     pub fn set_max_packet_length(&mut self, n: usize) {
@@ -92,14 +86,6 @@ impl Decoder for BytesCodec {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<BytesMut>, io::Error> {
-        if self.raw {
-            if !src.is_empty() {
-                let len = src.len();
-                return Ok(Some(src.split_to(len)));
-            } else {
-                return Ok(None);
-            }
-        }
         let n = match self.state {
             DecodeState::Head => match self.decode_head(src)? {
                 Some(n) => {
@@ -123,7 +109,7 @@ impl Decoder for BytesCodec {
     fn decode_eof(&mut self, src: &mut BytesMut) -> io::Result<Option<BytesMut>> {
         match self.decode(src)? {
             Some(frame) => Ok(Some(frame)),
-            None if src.is_empty() && (self.raw || matches!(self.state, DecodeState::Head)) => {
+            None if src.is_empty() && matches!(self.state, DecodeState::Head) => {
                 Ok(None)
             }
             // A consumed header may leave an empty buffer while its payload is still missing.
@@ -139,11 +125,6 @@ impl Encoder<Bytes> for BytesCodec {
     type Error = io::Error;
 
     fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), io::Error> {
-        if self.raw {
-            buf.reserve(data.len());
-            buf.put(data);
-            return Ok(());
-        }
         if data.len() <= 0x3F {
             buf.put_u8((data.len() << 2) as u8);
         } else if data.len() <= 0x3FFF {
@@ -367,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn eof_preserves_complete_empty_coalesced_and_raw_frames() {
+    fn eof_preserves_complete_empty_coalesced_frames() {
         let mut codec = BytesCodec::new();
         let mut buf = BytesMut::new();
         for payload in [b"".as_slice(), b"message", b""] {
@@ -378,11 +359,6 @@ mod tests {
         for payload in [b"".as_slice(), b"message", b""] {
             assert_eq!(&codec.decode_eof(&mut buf).unwrap().unwrap()[..], payload);
         }
-        assert!(codec.decode_eof(&mut buf).unwrap().is_none());
-
-        codec.set_raw();
-        buf.extend_from_slice(b"unframed");
-        assert_eq!(&codec.decode_eof(&mut buf).unwrap().unwrap()[..], b"unframed");
         assert!(codec.decode_eof(&mut buf).unwrap().is_none());
     }
 

@@ -14885,25 +14885,11 @@ else
   echo "  ok  R-T17/PF-1..PF-5 immutable bounded targets, exclusive loopback bind, EOF-driven owned supervisor, bounded mapping/connection admission, full cancellation/drain, and post-PeerInfo local reads"
 fi
 
-# R-S5 / R-A3 / R-A9 / R-F1 / R-D6 (the port-forward/RDP tunnel rides the SEALED session stream): the
-# tunnel is RESTORED and WORKS ENCRYPTED. R-F1 makes "port-forward (incl. RDP) fully available" a MUST;
-# R-D6 pins enable-tunnel ON and requires the forward to "ride the sealed encrypted channel (R-S5)"; R-A9
-# requires the port-forwarded bytes to be "indistinguishable from random" on the wire. R-S5 itself permits
-# EITHER "keep the bytes inside the secretbox" OR "refuse the forward" — and R-F1/R-D6/R-A9 OVERRIDE the
-# refuse, so the fork takes R-S5 option 1: restore the relay but seal every byte. Upstream downgraded the
-# keyed stream with FramedStream::set_raw AFTER login to pass RAW plaintext (Appendix C #4, a Tier-1
-# finding); the fork MUST NOT. So the invariant to gate is NOT "the relay is deleted" (the prior gate,
-# which contradicted R-F1/R-D6/R-A9) but: the relay is PRESENT on both sides, rides send_bytes(seal)/next
-# (open) on the KEYED stream, NEVER calls set_raw in app code (which would panic on a keyed stream anyway),
-# the viewer asserts is_secured() before tunnelling, and an R-A9 test proves the actual wire bytes are
-# ciphertext. The hbb_common set_raw definition + its R-A3 keyed-stream panic remain the fail-closed backstop.
+# R-S5/R-A3/R-A9/R-F1/R-D6: supplementary sealed-relay source checks. The codec, TCP stream
+# and wrapper expose framing only; native compiler regressions reject each former raw-mode API.
+# The real wire test exercises framed ciphertext. Installed/peer acceptance remains separate.
 r_s5_missing=
-# The libs/hbb_common set_raw backstop is intact (definition + Unkeyed-only downgrade + keyed-stream panic).
-grep -q 'fn set_raw' libs/hbb_common/src/tcp.rs                                || r_s5_missing="$r_s5_missing set_raw-fn"
-grep -qF 'Unkeyed(framed) => framed.codec_mut().set_raw()' libs/hbb_common/src/tcp.rs || r_s5_missing="$r_s5_missing unkeyed-only-raw"
-grep -qF 'R-A3: set_raw on a keyed session stream' libs/hbb_common/src/tcp.rs   || r_s5_missing="$r_s5_missing a3-assert"
-# (a) ZERO set_raw CALLERS in the app tree (src/): the only set_raw is the libs backstop above; the relay
-#     must never downgrade the keyed stream to raw plaintext (that raw passthrough IS the R-S5 escape).
+# (a) No app call may select a raw mode.
 #     -rIn keeps the filename so the trailing comment-line filter (`:N: //…`) excludes doc mentions.
 if grep -rIn '\.set_raw(' src --include='*.rs' 2>/dev/null | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
   r_s5_missing="$r_s5_missing app-set_raw-caller-present"
@@ -14928,7 +14914,7 @@ grep -rqF 'ciphertext_on_the_wire' libs/cpace_it/tests/ || r_s5_missing="$r_s5_m
 if [ -n "$r_s5_missing" ]; then
   echo "  FAIL R-S5/R-A9: the SEALED port-forward/RDP tunnel invariant regressed (the relay must be present on both sides, ride the keyed Stream via send_bytes/next and NEVER set_raw in app code; the viewer must assert is_secured() before tunnelling; the R-A9 wire-ciphertext test must exist):$r_s5_missing"; rc=1
 else
-  echo "  ok  R-S5/R-A9/R-F1/R-D6 port-forward/RDP tunnel restored INSIDE the secretbox — relay rides send_bytes(seal)/next(open) on the keyed Stream (both sides), zero set_raw callers in app code, viewer asserts is_secured() pre-tunnel, R-A9 wire-ciphertext test present, hbb_common set_raw stays an assert-only backstop"
+  echo "  ok  R-S5/R-A9/R-F1/R-D6 supplementary sealed-relay source checks (framing API compiler and actual wire acceptance remain distinct)"
 fi
 # R-X7 (Rust OTP excision): the rotating one-time (temporary) password is EXCISED from the Rust tree
 # — the permanent password is the sole credential and sole CPace PRS (R-S9/R-P1). R-A6 names the

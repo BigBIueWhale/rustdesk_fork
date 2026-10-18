@@ -60,10 +60,6 @@ impl SecretboxCodec {
         }
     }
     #[inline]
-    fn set_raw(&mut self) {
-        self.inner.set_raw();
-    }
-    #[inline]
     fn set_max_packet_length(&mut self, n: usize) {
         self.inner.set_max_packet_length(n);
     }
@@ -520,22 +516,6 @@ impl FramedStream {
             Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
             addr,
         )
-    }
-
-    pub fn set_raw(&mut self) {
-        // R-A3 / R-S5: a keyed session stream MUST NOT be downgraded to raw — stripping the engaged
-        // secretbox would leak plaintext, and keeping it would break framing (raw mode cannot
-        // delimit framed secretbox output). set_raw()'s historical caller was the port-forward/tunnel;
-        // in this fork no live caller invokes it on a session stream (there is no `.set_raw()` call in
-        // src/). This is a fail-closed guard (R-A3/R-R2b): even under full access (enable-tunnel=Y,
-        // R-S16), a keyed stream reaching here is a bug — panic rather than downgrade.
-        match &mut self.state {
-            StreamState::Unkeyed(framed) => framed.codec_mut().set_raw(),
-            StreamState::Keyed(_) => {
-                panic!("R-A3: set_raw on a keyed session stream — refusing to downgrade")
-            }
-            StreamState::Keying => unreachable!("set_raw observed a mid-keying stream"),
-        }
     }
 
     /// Cap the inbound frame length before the first byte is read. Used to bound the

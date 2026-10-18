@@ -8355,9 +8355,8 @@ impl Connection {
     // plaintext to the service) and the KEYED session stream (`self.stream`, encrypted to the peer):
     //   local target --forward.next()-->  self.stream.send_bytes(..)  [SEALS -> ciphertext on wire]
     //   peer         --self.stream.next()--> forward.send(..)         [next() already DECRYPTED it]
-    // Critically it does NOT call self.stream.set_raw() (upstream did, dropping the secretbox to pass
-    // raw plaintext — the R-S5 "plaintext tunnel" escape). On a keyed stream set_raw would panic
-    // (tcp.rs R-A3) anyway; here it is simply absent so every relayed byte stays inside the seal.
+    // The session transport exposes only framing and keeps its directional cipher engaged;
+    // every relayed byte stays inside the seal (R-S5/R-A3).
     async fn try_port_forward_loop(
         &mut self,
         rx_from_cm: &mut crate::ui_cm_interface::CmEgressReceiver,

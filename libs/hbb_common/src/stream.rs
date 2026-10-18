@@ -13,13 +13,6 @@ pub enum Stream {
 
 impl Stream {
     #[inline]
-    pub fn set_raw(&mut self) {
-        match self {
-            Stream::Tcp(s) => s.set_raw(),
-        }
-    }
-
-    #[inline]
     pub async fn send_bytes(&mut self, bytes: bytes::Bytes) -> ResultType<()> {
         match self {
             Stream::Tcp(s) => s.send_bytes(bytes).await,

@@ -2384,6 +2384,29 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
+**Receive resume-length admission — Linux native component corrected; installed/platform acceptance OPEN.**
+Product `ad57ba2a` checks the opened partial file's length both before offering a
+resume offset and before publishing resume-stream ownership. The latter bound
+comes explicitly from the admitted file list; the cached peer digest cannot
+widen it. An overlong partial returns an error before stream cloning/seeking or
+job progress/confirmation changes. Refusal retires only the temporary lease and
+preserves the partial, digest and existing destination. No truncation or fallback.
+
+At unchanged-product test baseline `3b1b81e8`, two regressions failed: inspection
+offered offset four for a declared three-byte file, and resume admitted that
+four-byte partial with cached digest sizes of either three or four. Six controls
+passed. The identical complete test module and guest recipe pass all eight cases
+at `ad57ba2a`, including partial/full-length resume publication with exact bytes
+and sidecar retirement, plus the five timestamp/publication cases below.
+The existing `--file-metadata-tests` selector now requires those eight names;
+it retains the same VM/storage profile. Supervisor A/B times are 160.733/155.144s.
+Source before/live/after, exact artifacts, raw results, complete endpoint
+observations and joined RAM/private-root retirement are retained in
+`.harness-state/verifier-vm/receive-resume-size-ad57ba2a.json`.
+This is Linux library/native-file evidence. Peer/CM/viewer integration, other
+platforms, full filesystem acceptance, parked work, broader resource/latency,
+installed privilege/principal and release evidence remain OPEN.
+
 **File modification-time admission — Linux native component corrected; installed/platform acceptance OPEN.**
 Product `a69b64b8` removes the unsigned-to-signed timestamp cast from receive
 finalization. One checked conversion uses the platform's `SystemTime` range and

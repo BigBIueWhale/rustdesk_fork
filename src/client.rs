@@ -3013,7 +3013,13 @@ where
                             let mut pixelbuffer = true;
                             let mut tmp_chroma = None;
                             let format_changed = handler.decoder.format() != format;
-                            match handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma) {
+                            let decoded = handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma);
+                            if !video_receiver.generation_is_current(generation) {
+                                handler.reset(None);
+                                decoder_generation = None;
+                                continue;
+                            }
+                            match decoded {
                                 Ok(rendered) => {
                                     let decoded_at = std::time::Instant::now();
                                     if !video_frame_is_fresh(received_at, std::time::Instant::now()) {
@@ -3079,17 +3085,6 @@ where
                                     }
                                 }
                                 Err(e) => {
-                                    // This is a simple workaround.
-                                    //
-                                    // I only see the following error:
-                                    // FailedCall("errcode=1 scrap::common::vpxcodec:libs\\scrap\\src\\common\\vpxcodec.rs:433:9")
-                                    // When switching from all displays to one display, the error occurs.
-                                    // eg:
-                                    // 1. Connect to a device with two displays (A and B).
-                                    // 2. Switch to display A. The error occurs.
-                                    // 3. If the error does not occur. Switch from A to display B. The error occurs.
-                                    //
-                                    // to-do: fix the error
                                     log::error!("handle video frame error, {}", e);
                                     if video_receiver.invalidate_generation(generation) {
                                         if let Err(err) = session.refresh_video(display as _) {

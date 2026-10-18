@@ -11268,7 +11268,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   endpoints were unchanged; exact joins retired the VM and RAM/private workspace.
   `.harness-state/verifier-vm/github-automation-accepted-974aa907.json` binds the
   source, filesystem outcomes, initial admission refusal and cleanup. The generic
-  dependency inventory's complete replay remains OPEN. Local scripts and the
+  dependency inventory's manifest/index snapshot acceptance is recorded above;
+  complete dependency/source closure remains OPEN. Local scripts and the
   authenticated no-NIC verifier VM remain the execution authority. External
   repository settings, current artifacts, cold equality, release transactions
   and independent acceptance remain OPEN; file absence does not establish them.

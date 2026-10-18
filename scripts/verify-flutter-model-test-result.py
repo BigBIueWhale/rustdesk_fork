@@ -102,6 +102,8 @@ PASSWORD_FIELD_TESTS = {
     "password field retains focused obscured semantics",
 }
 SETTING_OPTION_TESTS = {
+    "favorite save owns its submitted IDs and waits for completion",
+    "failed favorite membership change reports failure and permits retry",
     "option save waits for its native completion",
     "native option failure reports feedback without success",
     "synchronous option dispatch failure is reported",

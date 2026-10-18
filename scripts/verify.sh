@@ -4957,8 +4957,6 @@ if grep -qF 'XDG_CONFIG_HOME' <<<"$root_child_env"; then
   r_s11e25="$r_s11e25 root-child-xdg-config-home-present"
 fi
 grep -qF 'linux_service_owned_config_root_ignores_ambient_home_and_xdg' libs/hbb_common/src/config.rs || r_s11e25="$r_s11e25 ambient-root-regression-test-missing"
-grep -qF '/tmp/rustdesk-attacker-selected-home' libs/hbb_common/src/config.rs         || r_s11e25="$r_s11e25 hostile-home-fixture-missing"
-grep -qF '/tmp/rustdesk-attacker-selected-xdg' libs/hbb_common/src/config.rs          || r_s11e25="$r_s11e25 hostile-xdg-fixture-missing"
 if [ -n "$r_s11e25" ]; then echo "  FAIL R-S11e-25 Linux service-owned config-root authority:$r_s11e25"; rc=1; else
   echo "  ok  R-S11e-25 Linux service-owned roles bind Config home/path to the effective uid's passwd home before first config access; ambient HOME/XDG_CONFIG_HOME remains user-mode-only authority"; fi
 

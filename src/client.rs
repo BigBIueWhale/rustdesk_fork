@@ -1289,7 +1289,7 @@ impl VideoHandler {
                     pixelbuffer,
                     chroma,
                 );
-                if res.as_ref().is_ok_and(|x| *x) {
+                if res.is_ok() {
                     self.fail_counter = 0;
                 } else {
                     if self.fail_counter < usize::MAX {

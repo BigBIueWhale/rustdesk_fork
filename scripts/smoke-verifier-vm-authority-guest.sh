@@ -3755,7 +3755,7 @@ run_focused_rust_tests() {
             memory=5g
             memory_bytes=5368709120
             source_fingerprints=(
-                Cargo.lock Cargo.toml src/lib.rs src/server/mod.rs
+                Cargo.lock Cargo.toml src/lib.rs src/server.rs
                 src/server/connection.rs src/server/video_qos.rs
                 scripts/run-video-qos-tests.sh scripts/linux-parent-test-build.sh
             )

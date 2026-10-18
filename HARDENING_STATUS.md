@@ -2340,7 +2340,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
-**Recording outputs — named Linux file/mux and I/O components accepted; installed/platform acceptance OPEN.**
+**Recording outputs — named Linux file/mux, I/O and timeline components accepted; installed/platform acceptance OPEN.**
 `libs/scrap/src/common/record.rs` creates output exclusively, borrows factory metadata and
 retains no pathname for deletion. Created short, unwritten and incomplete outputs remain.
 Unused recording events are absent. Native frame rejection returns an error, retires the
@@ -2354,6 +2354,15 @@ including constructor error exits. Dimensions, codec and native track admission 
 The application uses the existing pinned webm-sys directly; the high-level wrapper and its
 unsafe standalone record-screen example are removed from the source/dependency consumer graph.
 
+Recorder exclusively owns its private backend, context and last accepted source timestamp.
+Each WebM file starts at zero from its first accepted signed keyframe timestamp; checked
+subtraction, conversion and scaling preserve subsequent intervals or refuse invalid ones.
+Empty/nonkey input creates no file. Size/codec changes or clock rollback close the old file
+and wait for a keyframe before opening a uniquely named replacement. Epoch closure checks
+the backend's explicit finalization result before replacement admission; failure is terminal.
+Source timestamp state commits only after native frame acceptance. The hardware mux retains
+its existing local elapsed clock; native hardware evidence remains open.
+
 Earlier creation/stop and frame-rejection A/B receipts remain in
 `.harness-state/verifier-vm/recording-lifetime-accepted-51b6d4fa.json` and
 `recording-rejection-accepted-dd17dc38.json`. Their twelve real file/mux controls remain.
@@ -2363,14 +2372,20 @@ The Interrupted case reports native success but fails the actual output's EBML-h
 The nonseekable case reaches the pinned callback's unwrap panic. Child diagnostics are retained.
 Owner implementation `0395c8c4` with corrected lock graph `b3cc5328` passes the identical
 eighteen tests, including zero-write and absolute-seek refusal and destination-drop checks.
-The complete transaction takes 311 VM seconds: library build 85s, native execution 0.03s and
-production-parent check 162s. The parent check compiles both application callers without
-executing the application. Combined runs are integration checkpoints; failing native cases
-now exit before parent compilation. Source/artifact, failures, exact inventory, endpoint,
-bounded RAM and joined cleanup evidence are in
+Source/artifact, failures, exact inventory, endpoint, bounded RAM and joined cleanup evidence are in
 `.harness-state/verifier-vm/webm-writer-accepted-b3cc5328.json` and its referenced baselines.
 
-Initial parent-directory authority, caller/UI outcomes, timestamp validation, complete
+Timeline baseline `750b4499` passes nineteen controls and fails seven cases: nonzero and
+negative origins, rollback/key wait, rapid rotation, overflow, initial nonkey/empty input,
+and replacement after a real file-limit finalization failure. Product `b7b192f4` passes the
+identical twenty-six native tests. Actual finalized WebM blocks establish zero origin and
+preserved intervals. The transaction takes 293 VM seconds: library build 79s, native tests
+0.04s and production-parent check 150s. Both application callers compile; app runtime is
+unexecuted. Combined runs are integration checkpoints; native failure skips parent compilation.
+Exact artifacts, unchanged tests/source captures, endpoint and joined RAM/VM cleanup evidence
+are in `.harness-state/verifier-vm/recording-timeline-accepted-b7b192f4.json` and its baselines.
+
+Initial parent-directory authority, caller/UI outcomes including keyframe requests, complete
 recording/playback including AV1 codec-private data, native allocation-failure/heap evidence,
 hardware and installed-root recording, and Windows/macOS acceptance remain OPEN.
 These named Linux component results establish no overall recording or LPE closure.

@@ -2638,8 +2638,8 @@ Exact sources, generated API and artifact digests, named outcomes and cleanup ar
 The earlier Dart widget/action tests inject write/feedback callbacks; the newer probe
 establishes actual Linux Rust-to-Dart error delivery. Successful framed
 main-listener authorization, interactive desktop/mobile/audio effects, restart/concurrent
-writers and installed-platform acceptance remain OPEN. One unattributed endpoint appeared
-in the native after snapshot; harness-created host IP sockets were kernel-denied. It is
+writers and installed-platform acceptance remain OPEN. The earlier `2435fa92` run
+recorded one unattributed added endpoint; harness-created host IP sockets were kernel-denied. It is
 retained without attributing or changing foreign processes. The fifteen credential
 actions and R-S0 remain OPEN.
 

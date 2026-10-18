@@ -1322,7 +1322,6 @@ impl VideoHandler {
                 dir: crate::ui_interface::video_save_directory(false),
                 display_idx,
                 camera,
-                tx: None,
             })
             .map_or(Default::default(), |r| Arc::new(Mutex::new(Some(r))));
         } else {

@@ -12,7 +12,6 @@ use std::{
     fs::{File, OpenOptions},
     ops::{Deref, DerefMut},
     path::PathBuf,
-    sync::mpsc::Sender,
     time::Instant,
 };
 use webm::mux::{self, Segment, Track, VideoTrack, Writer};
@@ -29,7 +28,6 @@ pub struct RecorderContext {
     pub dir: String,
     pub display_idx: usize,
     pub camera: bool,
-    pub tx: Option<Sender<RecordState>>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,18 +73,10 @@ unsafe impl Send for Recorder {}
 unsafe impl Sync for Recorder {}
 
 pub trait RecorderApi {
-    fn new(ctx: RecorderContext, ctx2: RecorderContext2) -> ResultType<Self>
+    fn new(ctx: &RecorderContext2) -> ResultType<Self>
     where
         Self: Sized;
     fn write_video(&mut self, frame: &EncodedVideoFrame) -> bool;
-}
-
-#[derive(Debug)]
-pub enum RecordState {
-    NewFile(String),
-    NewFrame,
-    WriteTail,
-    RemoveFile,
 }
 
 pub struct Recorder {
@@ -155,19 +145,15 @@ impl Recorder {
         if self.inner.is_none() {
             self.inner = match format {
                 CodecFormat::VP8 | CodecFormat::VP9 | CodecFormat::AV1 => Some(Box::new(
-                    WebmRecorder::new(self.ctx.clone(), (*ctx2).clone())?,
+                    WebmRecorder::new(ctx2)?,
                 )),
                 #[cfg(feature = "hwcodec")]
-                _ => Some(Box::new(HwRecorder::new(
-                    self.ctx.clone(),
-                    (*ctx2).clone(),
-                )?)),
+                _ => Some(Box::new(HwRecorder::new(ctx2)?)),
                 #[cfg(not(feature = "hwcodec"))]
                 _ => bail!("unsupported codec type"),
             };
             // pts is None when new inner is created
             self.pts = None;
-            self.send_state(RecordState::NewFile(ctx2.filename.clone()));
         }
         Ok(())
     }
@@ -234,7 +220,6 @@ impl Recorder {
             }
             _ => bail!("unsupported frame type"),
         }
-        self.send_state(RecordState::NewFrame);
         Ok(())
     }
 
@@ -266,16 +251,11 @@ impl Recorder {
         }
         Ok(())
     }
-
-    fn send_state(&self, state: RecordState) {
-        self.ctx.tx.as_ref().map(|tx| tx.send(state));
-    }
 }
 
 struct WebmRecorder {
     vt: VideoTrack,
     webm: Option<Segment<Writer<File>>>,
-    ctx: RecorderContext,
     ctx2: RecorderContext2,
     key: bool,
     written: bool,
@@ -283,7 +263,7 @@ struct WebmRecorder {
 }
 
 impl RecorderApi for WebmRecorder {
-    fn new(ctx: RecorderContext, ctx2: RecorderContext2) -> ResultType<Self> {
+    fn new(ctx2: &RecorderContext2) -> ResultType<Self> {
         let out = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -314,8 +294,7 @@ impl RecorderApi for WebmRecorder {
         Ok(WebmRecorder {
             vt,
             webm: Some(webm),
-            ctx,
-            ctx2,
+            ctx2: ctx2.clone(),
             key: false,
             written: false,
             start: Instant::now(),
@@ -343,19 +322,15 @@ impl RecorderApi for WebmRecorder {
 impl Drop for WebmRecorder {
     fn drop(&mut self) {
         let _ = std::mem::replace(&mut self.webm, None).map_or(false, |webm| webm.finalize(None));
-        let mut state = RecordState::WriteTail;
         if !self.written || self.start.elapsed().as_secs() < MIN_SECS {
             std::fs::remove_file(&self.ctx2.filename).ok();
-            state = RecordState::RemoveFile;
         }
-        self.ctx.tx.as_ref().map(|tx| tx.send(state));
     }
 }
 
 #[cfg(feature = "hwcodec")]
 struct HwRecorder {
     muxer: Option<Muxer>,
-    ctx: RecorderContext,
     ctx2: RecorderContext2,
     written: bool,
     key: bool,
@@ -364,7 +339,7 @@ struct HwRecorder {
 
 #[cfg(feature = "hwcodec")]
 impl RecorderApi for HwRecorder {
-    fn new(ctx: RecorderContext, ctx2: RecorderContext2) -> ResultType<Self> {
+    fn new(ctx2: &RecorderContext2) -> ResultType<Self> {
         let muxer = Muxer::new(MuxContext {
             filename: ctx2.filename.clone(),
             width: ctx2.width,
@@ -375,8 +350,7 @@ impl RecorderApi for HwRecorder {
         .map_err(|_| anyhow!("Failed to create hardware muxer"))?;
         Ok(HwRecorder {
             muxer: Some(muxer),
-            ctx,
-            ctx2,
+            ctx2: ctx2.clone(),
             written: false,
             key: false,
             start: Instant::now(),
@@ -407,13 +381,10 @@ impl RecorderApi for HwRecorder {
 impl Drop for HwRecorder {
     fn drop(&mut self) {
         self.muxer.as_mut().map(|m| m.write_tail().ok());
-        let mut state = RecordState::WriteTail;
         if !self.written || self.start.elapsed().as_secs() < MIN_SECS {
             // The process cannot access the file because it is being used by another process
             self.muxer = None;
             std::fs::remove_file(&self.ctx2.filename).ok();
-            state = RecordState::RemoveFile;
         }
-        self.ctx.tx.as_ref().map(|tx| tx.send(state));
     }
 }

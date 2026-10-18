@@ -1736,17 +1736,12 @@ fn get_recorder(
     #[cfg(not(windows))]
     let root = false;
     let recorder = if record_incoming {
-        // R-SV6 / R-SV1: the session-record UPLOAD egress (a reqwest POST
-        // to {api-server}/api/record) is compiled out, not merely neutralized. Recording stays LOCAL
-        // and is never uploaded: the upload channel is always None, so the box dials nobody (R-D6).
-        let tx = None;
         Recorder::new(RecorderContext {
             server: true,
             id: Config::get_id(),
             dir: crate::ui_interface::video_save_directory(root),
             display_idx,
             camera,
-            tx,
         })
         .map_or(Default::default(), |r| Arc::new(Mutex::new(Some(r))))
     } else {

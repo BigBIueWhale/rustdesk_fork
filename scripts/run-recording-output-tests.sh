@@ -57,11 +57,39 @@ PY
     && [ "$(stat -c '%u:%g:%h' "$test_executable")" = 1000:1000:1 ]
 artifact_sha=$(sha256sum "$test_executable" | cut -d ' ' -f 1)
 printf 'RECORDING_OUTPUT_BUILD=pass seconds=%s artifact_sha256=%s\n' "$((SECONDS-build_started))" "$artifact_sha"
+parent_status=0
+timeout --signal=TERM --kill-after=5s 180s \
+    cargo check --offline --locked --lib --features linux-pkg-config \
+    --message-format=json --color never >"$WORK/parent-check.json" || parent_status=$?
+if [ "$parent_status" -ne 0 ]; then
+    tail -c 16000 "$WORK/parent-check.json" >&2
+    exit "$parent_status"
+fi
+python3 -I -S - "$WORK/parent-check.json" <<'PY'
+import json,sys
+with open(sys.argv[1], 'rb') as stream:
+    output=stream.read(4*1024*1024+1)
+if len(output)>4*1024*1024:
+    sys.exit('Recording parent-check metadata exceeds bound')
+finished=[];parents=[]
+for line in output.splitlines():
+    if not line.startswith(b'{'): continue
+    value=json.loads(line)
+    if value.get('reason')=='build-finished': finished.append(value.get('success'))
+    if (value.get('reason')=='compiler-artifact' and value.get('manifest_path')=='/source/Cargo.toml'
+            and value.get('target',{}).get('name')=='librustdesk'
+            and value.get('target',{}).get('src_path')=='/source/src/lib.rs'
+            and value.get('profile',{}).get('test') is False):
+        parents.append(value)
+if finished != [True] or len(parents)!=1:
+    sys.exit('Recording check lacks one exact successful production parent')
+print('RECORDING_OUTPUT_PARENT_CHECK=pass target=librustdesk features=linux-pkg-config runtime=unexecuted')
+PY
 execution_started=$SECONDS
 status=0
 timeout --signal=TERM --kill-after=5s 30s "$test_executable" common::record::tests:: \
     --color never --test-threads=1 || status=$?
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'RECORDING_OUTPUT_ARTIFACT=complete sha256=%s executable=%s tests=6 exit_code=%s unchanged=before-after execution_seconds=%s\n' \
+printf 'RECORDING_OUTPUT_ARTIFACT=complete sha256=%s executable=%s tests=10 exit_code=%s unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$status" "$((SECONDS-execution_started))"
 exit "$status"

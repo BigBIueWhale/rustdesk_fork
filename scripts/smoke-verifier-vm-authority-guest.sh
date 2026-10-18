@@ -3829,6 +3829,7 @@ run_focused_rust_tests() {
                 common::record::tests::native_webm_fast_rotation_keeps_distinct_outputs
                 common::record::tests::native_webm_interval_overflow_refused
                 common::record::tests::native_webm_initial_nonkey_waits_without_output
+                common::record::tests::native_recording_epoch_finalize_failure_stops_before_new_file
             )
         elif [ "$RUST_TEST_PROFILE" = viewer-video ]; then
             container_name=rustdesk-viewer-video-tests
@@ -5241,9 +5242,9 @@ PY
             || fail 'viewer credential artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = recording-output ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'recording output summary count differs'
-        [ "$(grep -Ec '^RECORDING_OUTPUT_ARTIFACT=complete sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=25 exit_code=0 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^RECORDING_OUTPUT_ARTIFACT=complete sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=26 exit_code=0 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'RECORDING_OUTPUT_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test common::record::tests::.* \.\.\. ok$' "$output")" -eq 25 ] \
+            && [ "$(grep -Ec '^test common::record::tests::.* \.\.\. ok$' "$output")" -eq 26 ] \
             && [ "$(grep -Fxc 'RECORDING_OUTPUT_PARENT_CHECK=pass target=librustdesk features=linux-pkg-config runtime=unexecuted' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'RECORDING_OUTPUT_PARENT_CHECK=' "$output")" -eq 1 ] \
             || fail 'recording output artifact or named outcomes differ'
@@ -5703,9 +5704,9 @@ PY
             printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=11 target=linux-x86_64 scope=production-peer-credentials-and-exported-session-factory rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = recording-output ]; then
-            [ "$tests_passed" -eq 25 ] || fail 'recording output total differs'
+            [ "$tests_passed" -eq 26 ] || fail 'recording output total differs'
             grep -E '^test common::record::tests::.* \.\.\. ok$|^RECORDING_OUTPUT_(BUILD|ARTIFACT|PARENT_CHECK)=|^RECORDING_OUTPUT_PARENT_BUILD=pass |^R-B10 canary:' "$output"
-            printf 'RECORDING_OUTPUT_VM=pass commit=%s tree=%s tests=25 target=linux-x86_64 scope=scrap-library-native-webm-and-parent-check rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            printf 'RECORDING_OUTPUT_VM=pass commit=%s tree=%s tests=26 target=linux-x86_64 scope=scrap-library-native-webm-and-parent-check rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-video ]; then

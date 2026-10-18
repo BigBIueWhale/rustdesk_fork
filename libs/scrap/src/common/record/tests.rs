@@ -661,3 +661,27 @@ fn native_webm_initial_nonkey_waits_without_output() {
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1);
     assert_eq!(webm_timestamps(&output), vec![0]);
 }
+
+#[test]
+fn native_recording_epoch_finalize_failure_stops_before_new_file() {
+    isolated_mux_case("native_recording_epoch_finalize_failure_stops_before_new_file", || {
+        let dir = TestDir::new();
+        let mut recorder = timeline_recorder(&dir);
+        let mut first = native_frames(VpxVideoCodecId::VP8).remove(0); first.pts = 1000;
+        let next = native_frames(VpxVideoCodecId::VP9).remove(0);
+        recorder.write_frame(&vp8_batch(first), 64, 48).unwrap();
+        let output = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+        let before = fs::read(&output).unwrap();
+        let limit = FileLimit::zero();
+        let result = recorder.write_frame(&video_frame::Union::Vp9s(hbb_common::message_proto::EncodedVideoFrames {
+            frames: vec![next], ..Default::default()
+        }), 64, 48);
+        drop(limit);
+        assert!(result.is_err(), "failed epoch finalization was reported as success");
+        assert!(recorder.inner.is_none());
+        assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1, "new output opened after close failure");
+        assert_eq!(fs::read(&output).unwrap(), before);
+        drop(recorder);
+        assert_eq!(fs::read(&output).unwrap(), before);
+    });
+}

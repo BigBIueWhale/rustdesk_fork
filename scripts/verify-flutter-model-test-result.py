@@ -101,6 +101,15 @@ PASSWORD_FIELD_TESTS = {
     "ordinary obscured field is a keyboard learning control",
     "password field retains focused obscured semantics",
 }
+AUTO_DISCONNECT_TESTS = {
+    "cancel and escape preserve the stored timeout",
+    "successful save waits for readback",
+    "unchanged readback keeps the dialog open for retry",
+    "pending save admits only one submission",
+    "dismissed dialog ignores its pending completion",
+    "save and read errors leave an editable dialog",
+    "timeout field preserves its numeric limits and empty default",
+}
 MODIFIER_RELEASE_TESTS = {
     "right Alt retains its own release identity",
     "modern modifier release preserves the other held side",
@@ -341,7 +350,7 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -360,6 +369,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"desktop_window_dispatch_test.dart"}
         expected_tests = len(WINDOW_DISPATCH_TESTS)
         expected_names = WINDOW_DISPATCH_TESTS
+    elif profile == "auto-disconnect":
+        expected_suites = {"auto_disconnect_timeout_dialog_test.dart"}
+        expected_tests = len(AUTO_DISCONNECT_TESTS)
+        expected_names = AUTO_DISCONNECT_TESTS
     elif profile == "modifier-release":
         expected_suites = {"input_modifier_release_test.dart"}
         expected_tests = len(MODIFIER_RELEASE_TESTS)
@@ -479,7 +492,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -494,6 +507,7 @@ def main():
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
         "modifier-release": "FLUTTER_MODIFIER_RELEASE_TEST_JSON",
+        "auto-disconnect": "FLUTTER_AUTO_DISCONNECT_TEST_JSON",
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",

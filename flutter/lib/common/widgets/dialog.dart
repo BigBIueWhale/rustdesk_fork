@@ -70,11 +70,16 @@ class RegexValidationRule extends ValidationRule {
 // is meaningless. The dialog's only FFI caller (`bind.mainChangeId`) is dropped with it
 // (the Rust `main_change_id` flutter export is removed; the Sciter `change_id` path is separate).
 
-Future<String> changeAutoDisconnectTimeout(String old) async {
+Future<String> changeAutoDisconnectTimeout(String old,
+    {OverlayDialogManager? dialogManager,
+    Future<void> Function(String value)? writeTimeout,
+    Future<String> Function()? readTimeout,
+    String Function(String text)? translateText}) async {
+  final text = translateText ?? translate;
   final controller = TextEditingController(text: old);
-  await gFFI.dialogManager.show((setState, close, context) {
+  await (dialogManager ?? gFFI.dialogManager).show((setState, close, context) {
     return CustomAlertDialog(
-      title: Text(translate("Timeout in minutes")),
+      title: Text(text("Timeout in minutes")),
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -104,12 +109,13 @@ Future<String> changeAutoDisconnectTimeout(String old) async {
         ],
       ),
       actions: [
-        dialogButton("Cancel", onPressed: close, isOutline: true),
+        dialogButton("Cancel", onPressed: close, isOutline: true,
+            translateText: text),
         dialogButton("OK", onPressed: () async {
-          await bind.mainSetOption(
-              key: kOptionAutoDisconnectTimeout, value: controller.text);
+          await (writeTimeout ?? (value) => bind.mainSetOption(
+              key: kOptionAutoDisconnectTimeout, value: value))(controller.text);
           close();
-        }),
+        }, translateText: text),
       ],
       onCancel: close,
     );

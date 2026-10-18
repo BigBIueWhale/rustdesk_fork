@@ -22,6 +22,7 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-d
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:peer-data \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-navigation \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:modifier-release \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:auto-disconnect \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:directory-ordering \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:direct-address \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:window-dispatch ]]; then

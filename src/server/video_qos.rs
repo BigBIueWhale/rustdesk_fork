@@ -85,7 +85,6 @@ impl UserDelay {
 struct UserData {
     auto_adjust_fps: Option<u32>, // reserve for compatibility
     custom_fps: Option<u32>,
-    quality: Option<(i64, Quality)>, // (time, quality)
     delay: UserDelay,
     record: bool,
 }
@@ -113,6 +112,8 @@ pub struct VideoQoS {
     fps: u32,
     ratio: f32,
     users: HashMap<i32, UserData>,
+    // One current choice per live viewer, ordered by its latest request.
+    qualities: Vec<(i32, Quality)>,
     displays: HashMap<String, DisplayData>,
     bitrate_store: u32,
     adjust_ratio_instant: Instant,
@@ -126,6 +127,7 @@ impl Default for VideoQoS {
             fps: FPS,
             ratio: BR_BALANCED,
             users: Default::default(),
+            qualities: Default::default(),
             displays: Default::default(),
             bitrate_store: 0,
             adjust_ratio_instant: Instant::now(),
@@ -192,6 +194,7 @@ impl VideoQoS {
     // Initialize new user session
     pub fn on_connection_open(&mut self, id: i32) {
         self.users.insert(id, UserData::default());
+        self.qualities.retain(|(owner, _)| *owner != id);
         self.abr_config = Config::get_option("enable-abr") != "N";
         self.new_user_instant = Instant::now();
     }
@@ -199,6 +202,7 @@ impl VideoQoS {
     // Clean up user session
     pub fn on_connection_close(&mut self, id: i32) {
         self.users.remove(&id);
+        self.qualities.retain(|(owner, _)| *owner != id);
         if self.users.is_empty() {
             *self = Default::default();
         } else {
@@ -238,11 +242,11 @@ impl VideoQoS {
             }
         };
 
-        let quality = Some((hbb_common::get_time(), convert_quality(image_quality)));
-        if let Some(user) = self.users.get_mut(&id) {
-            user.quality = quality;
-            // update ratio directly
-            self.ratio = self.latest_quality().ratio();
+        if self.users.contains_key(&id) {
+            let quality = convert_quality(image_quality);
+            self.qualities.retain(|(owner, _)| *owner != id);
+            self.qualities.push((id, quality));
+            self.ratio = quality.ratio();
         }
     }
 
@@ -406,14 +410,10 @@ impl VideoQoS {
 
     // Get latest quality settings from all users
     pub fn latest_quality(&self) -> Quality {
-        self.users
-            .iter()
-            .map(|(_, u)| u.quality)
-            .filter(|q| *q != None)
-            .max_by(|a, b| a.unwrap_or_default().0.cmp(&b.unwrap_or_default().0))
-            .flatten()
-            .unwrap_or((0, Quality::Balanced))
-            .1
+        self.qualities
+            .last()
+            .map(|(_, quality)| *quality)
+            .unwrap_or_default()
     }
 
     // Adjust quality ratio based on network delay and screen changes

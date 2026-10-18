@@ -2880,6 +2880,47 @@ remaining LocalConfig UI/geometry/last-peer setters remain OPEN. All fifteen
 installed credential actions, R-S0, latency/soak, cold artifacts, independent
 reproduction, external review and release acceptance remain OPEN.
 
+**Flutter UI preferences — persistence and error path corrected; interaction/platform acceptance OPEN.**
+Product `6af3228a` makes `LocalConfig::set_flutter_option` fallible.
+Its existing process-local write lock saves a private candidate before publishing
+memory. Failed replacement or removal preserves the prior cache and file; an
+identical healthy retry persists. Already-effective requests need no write.
+The general local-options and Flutter UI maps remain separate, including when
+they contain the same key. Only this complete method changes in production
+`config.rs`; credential and service-policy authority is unchanged.
+
+The Rust facade and supported Result export propagate failure through generated
+bindings. All native Flutter UI-preference callers use a shared helper that awaits
+the write and effective readback, reports errors, and distinguishes failure from
+a successful empty value. Peer view/sort controls publish validated readback after
+checking widget lifetime. Tab, toolbar and overlay changes retain live interaction;
+their persistence errors are reported. Floating mouse positions advance their
+saved checkpoint only after confirmed readback. A failed window-preference save
+clears only its still-current checkpoint so the same geometry can retry; existing
+per-peer continuation remains independent. No new task, queue, thread, runtime,
+dependency or privileged operation is introduced.
+
+Linux native verification passes all 15 library cases. The exact 418-byte
+`b335deff` setter executes alongside the correction in the same artifact and
+reproduces false publication plus skipped identical retry. The corrected test
+covers denied replacement/removal, durable retry, idempotence without write,
+same-key namespace isolation and unrelated favorite/keyboard preservation.
+The actual generated Dart AOT/native-library run passes two Rust cases and 20
+Dart cases, retaining the prior 16 and adding four UI-preference cases; both new
+denied writes arrive as `FfiException`/`RESULT_ERROR`.
+All four Flutter component suites pass 34 cases, including three new injected
+helper cases for delayed completion, confirmed readback, write/readback failure
+and retry. These helper tests do not establish full widget interaction.
+Accepted source freezes match before/after each run. Exact artifacts, commands,
+cases, raw logs, endpoint observations and joined bounded-RAM cleanup are retained
+in `.harness-state/verifier-vm/ui-preferences-6af3228a.json`.
+
+Full desktop/mobile tab, sorting, toolbar, overlay and geometry interactions;
+restart and cross-process writers; other LocalConfig setters and per-peer
+persistence; and Windows/macOS/Android/iOS/browser execution remain OPEN.
+All fifteen installed credential actions, R-S0, latency/soak, cold artifacts,
+independent reproduction, external review and release acceptance remain OPEN.
+
 **Ordinary option persistence — Linux library/handler corrected; broader acceptance OPEN.**
 Product `f895b8a0` makes `Config::set_option` fallible. Under the existing cache write
 lock, it persists a private candidate before publishing the new in-memory value.

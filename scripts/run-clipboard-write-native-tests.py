@@ -54,6 +54,7 @@ def main():
                 time.sleep(0.05)
             result = subprocess.run(
                 [str(executable), "clipboard::write_", "--ignored",
+                 "--skip", "screenshot_copy_reports_native_backend_error",
                  "--color", "never", "--test-threads=1", "--show-output"],
                 env=environment, capture_output=True, timeout=20)
             require(len(result.stdout) + len(result.stderr) <= 65536, "native clipboard output too large")
@@ -64,7 +65,31 @@ def main():
             require(digest() == artifact_sha, "clipboard artifact changed during execution")
             print(f"CLIPBOARD_WRITE_NATIVE_ARTIFACT=observed sha256={artifact_sha} "
                   f"tests=7 exit_code={result.returncode} unchanged=before-after", flush=True)
+            require(not os.path.lexists("/tmp/.X11-unix/X99")
+                    and not os.path.lexists("/tmp/.X99-lock"), "negative X11 endpoint exists")
+            absent_environment = dict(environment, DISPLAY=":99", RUSTDESK_SCREENSHOT_NO_DISPLAY="1")
+            backend = subprocess.run(
+                [str(executable), "clipboard::write_screenshot_native_tests::screenshot_copy_reports_native_backend_error",
+                 "--exact", "--ignored", "--color", "never", "--test-threads=1", "--show-output"],
+                env=absent_environment, capture_output=True, timeout=10)
+            require(len(backend.stdout) + len(backend.stderr) <= 16384, "backend error output too large")
+            backend_output = backend.stdout.decode("utf-8", errors="strict")
+            print(backend_output, end="", flush=True)
+            if backend.stderr:
+                sys.stderr.write(backend.stderr.decode("utf-8", errors="replace"))
+            require(digest() == artifact_sha, "clipboard artifact changed during backend refusal")
+            print(f"CLIPBOARD_SCREENSHOT_ERROR_ARTIFACT=observed sha256={artifact_sha} "
+                  f"tests=1 exit_code={backend.returncode} unchanged=before-after", flush=True)
             require(result.returncode == 0, f"native clipboard tests failed: {result.returncode}")
+            require(backend.returncode == 0 and re.findall(
+                r"^test (\S+) \.\.\. ok$", backend_output, re.MULTILINE) == [
+                "clipboard::write_screenshot_native_tests::screenshot_copy_reports_native_backend_error"],
+                "native screenshot backend refusal differs")
+            backend_summaries = re.findall(r"^test result: .*", backend_output, re.MULTILINE)
+            require(len(backend_summaries) == 1 and re.fullmatch(
+                r"test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; \d+ filtered out; finished in [0-9.]+s",
+                backend_summaries[0]),
+                "native screenshot backend result differs")
             expected = {
                 "clipboard::write_native_tests::live_owner_publishes_a_queued_peer_write_to_x11",
                 "clipboard::write_native_tests::retired_owner_cannot_publish_a_dequeued_write_after_the_native_lock",
@@ -94,7 +119,7 @@ def main():
                 raise RuntimeError("Xvfb required forced retirement")
             require(server.returncode == 0 and not os.path.lexists(socket)
                     and not os.path.lexists(lock), "Xvfb retirement differs")
-    print(f"CLIPBOARD_WRITE_NATIVE=pass tests=7 artifact_sha256={artifact_sha} "
+    print(f"CLIPBOARD_WRITE_NATIVE=pass tests=8 artifact_sha256={artifact_sha} "
           "queue=production native=x11 retired=unchanged live=published cleanup=joined", flush=True)
 
 

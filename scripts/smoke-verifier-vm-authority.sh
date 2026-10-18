@@ -6428,16 +6428,16 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         clipboard_write_sha=${clipboard_decode_artifacts[0]#*sha256=}
         clipboard_write_sha=${clipboard_write_sha%% *}
         require_exact_fixed_receipt \
-            "CLIPBOARD_WRITE_NATIVE=pass tests=7 artifact_sha256=$clipboard_write_sha queue=production native=x11 retired=unchanged live=published cleanup=joined" \
+            "CLIPBOARD_WRITE_NATIVE=pass tests=8 artifact_sha256=$clipboard_write_sha queue=production native=x11 retired=unchanged live=published cleanup=joined" \
             'native clipboard write ownership receipt'
         require_exact_fixed_receipt \
-            "CLIPBOARD_WRITE_ARTIFACT=pass sha256=$clipboard_write_sha tests=13 unchanged=before-after" \
+            "CLIPBOARD_WRITE_ARTIFACT=pass sha256=$clipboard_write_sha tests=14 unchanged=before-after" \
             'clipboard write ownership artifact receipt'
         require_exact_fixed_receipt \
             "SCREENSHOT_ACTION_ARTIFACT=observed sha256=$clipboard_write_sha tests=4 exit_code=0 unchanged=before-after" \
             'screenshot action artifact receipt'
         require_exact_fixed_receipt \
-            "CLIPBOARD_DECODE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=30 target=linux-x86_64 scope=production-clipboard-sanitizer-and-write-owner rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+            "CLIPBOARD_DECODE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=31 target=linux-x86_64 scope=production-clipboard-sanitizer-and-write-owner rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
             'focused clipboard decode receipt'
     else
         for label in COMPRESS TERMINAL; do

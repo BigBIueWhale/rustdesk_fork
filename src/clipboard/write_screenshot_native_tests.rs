@@ -28,6 +28,16 @@ fn screenshot_copy_waits_for_native_publication() {
     let native_lock = ARBOARD_MTX.lock().unwrap();
     let (done, completion) = mpsc::sync_channel(1);
     let caller = std::thread::spawn(move || done.send(screenshot(content)).unwrap());
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        match CLIPBOARD_CTX.try_lock() {
+            Err(std::sync::TryLockError::WouldBlock) => break,
+            Err(std::sync::TryLockError::Poisoned(_)) => panic!("clipboard context poisoned"),
+            Ok(context) => drop(context),
+        }
+        assert!(std::time::Instant::now() < deadline, "screenshot did not reach native admission");
+        std::thread::yield_now();
+    }
     let barrier = wait_for_native_lock();
     let premature = completion.recv_timeout(Duration::from_millis(150)).ok();
     let returned_early = premature.is_some();
@@ -82,4 +92,13 @@ fn screenshot_copy_returns_payload_refusal_without_changing_clipboard() {
     println!("SCREENSHOT_COPY_LIMIT=observed refused={} clipboard_unchanged={unchanged}", !error.is_empty());
     assert!(unchanged);
     assert!(!error.is_empty(), "oversized screenshot refusal was reported as copy success");
+}
+
+#[test]
+#[ignore = "requires a fresh process with an absent private X11 display"]
+fn screenshot_copy_reports_native_backend_error() {
+    assert_eq!(std::env::var("RUSTDESK_SCREENSHOT_NO_DISPLAY").as_deref(), Ok("1"));
+    let error = screenshot(bytes::Bytes::from(png()));
+    println!("SCREENSHOT_COPY_BACKEND=observed error_returned={}", !error.is_empty());
+    assert!(!error.is_empty(), "unavailable native clipboard was reported as screenshot copy success");
 }

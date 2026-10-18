@@ -2336,7 +2336,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
-**Recording outputs — Linux native creation and normal-stop ownership accepted; I/O faults and installed/platform acceptance OPEN.**
+**Recording outputs — named Linux creation, normal-stop and write-rejection components accepted; installed/platform acceptance OPEN.**
 `libs/scrap/src/common/record.rs` creates WebM output exclusively and retains its open File in
 the muxer. Factory metadata is borrowed only for construction. The unused `RecordState` channel
 and its two `None` producers are deleted. Neither recorder backend retains an output pathname
@@ -2344,19 +2344,28 @@ for deletion. Automatic short/unwritten-file deletion and its timer/state are re
 outputs, including short or incomplete recordings, are retained. WebM stop consumes the segment,
 releases the returned native writer and closes its File; finalization failure is logged.
 The native-writer release API is infallible, rather than a Result/Option panic operation.
-The earlier occupied-path truncation fix `1657f818` remains covered by four refusal controls.
-Baseline `68d6c21e` retained the old discard/cleanup behavior: those four controls passed,
-while six short-recording/replacement cases failed. Product `51b6d4fa` passes the identical ten
-actual scrap-library cases, including real VP8/VP9 mux output without elapsed-time backdating,
-an owned recording finalized after rename, and replacement regular files, symlinks and a substituted
-parent left intact. The complete `--recording-output-tests` transaction passed in 313 VM seconds:
-83-second library build, 0.01-second native execution and 156-second production-parent cargo-check.
-That check compiles both changed application callers; it does not execute the application.
-The combined command is a caller-integration checkpoint. Native cases run and publish progress
-before the separately bounded parent check. Source/artifact/input bindings, all endpoint snapshots,
-bounded RAM storage and joined cleanup are retained in
-`.harness-state/verifier-vm/recording-lifetime-accepted-51b6d4fa.json`; the lifetime baseline and
-earlier creation receipts remain retained. This accepts the named Linux file/mux transactions.
+Four refusal controls cover the occupied-path truncation fix `1657f818`. Normal-stop baseline
+`68d6c21e` passes those controls and fails six short-recording/replacement cases; `51b6d4fa`
+passes all ten. They exercise real VP8/VP9 mux output without clock backdating, finalization
+after rename and preserved replacement files, symlinks and parent substitution. Source/artifact,
+native results and joined cleanup remain in
+`.harness-state/verifier-vm/recording-lifetime-accepted-51b6d4fa.json` and its earlier receipts.
+Product `dd17dc38` also checks native frame acceptance, returns an error on rejection, closes the
+owned backend and blocks subsequent frames before filename/resize handling. The shared frame-list
+dispatch replaces five copies that discarded the native boolean. The identical two new regressions
+fail on baseline `0183cd23` and pass on the product; ten existing controls pass in both runs.
+Each new case first admits real encoded VP8 video. One then sends an empty frame; the other
+re-executes the exact native test in a separate process, sets and reads back zero `RLIMIT_FSIZE`,
+observes real `EFBIG` on an owned file and submits another encoded frame through the native muxer.
+Both corrected cases prove that later frames and resize cannot reopen the failed owner or change
+its retired output. The complete twelve-case transaction passes in 304 VM seconds: 84-second
+library build, native execution and 157-second production-parent check. That check compiles both
+application callers without executing the app. Exact source/artifact,
+baseline outcomes, endpoint snapshots and joined bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/recording-rejection-accepted-dd17dc38.json` and its baseline receipt.
+Baseline assertion text was not exported; its twelve live native outcomes and exit-101 artifact
+remain retained. The recipe now prefixes a bounded failure tail before parent compilation;
+that new failure-export branch has not been executed. All combined runs are integration checkpoints.
 Pinned supplier callbacks still need partial-write and fallible-seek correction/native fault cases,
 and constructor-failure native cleanup remains OPEN. Initial parent-directory authority, caller/UI
 error reporting, complete playback/recording behavior, installed-root recording and native

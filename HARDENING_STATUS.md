@@ -109,6 +109,28 @@ Product, verifier and test sources are unchanged. No parked advisory review resu
 and no installed/native/security obligation is closed. Whole-document role cleanup,
 all fifteen credential actions and broader release acceptance remain OPEN.
 
+The installer, policy-selector, Linux IPC-drain and FFI entries (#125, #131,
+#162 and #335) now also state enduring failure conditions instead of retired
+source chains, workaround chronology and an obsolete completed-drain claim.
+The first three required-disposition cells are byte-identical. The FFI disposition
+retains canonical `dart-sys` handle ownership, the exact feature/dependency edge,
+complete diagnostics, severe-output rejection before downstream builds even on
+zero exit, and separately evidenced integration/device/release acceptance. Its
+old mutation checklist, package-count note and per-slice compile/no-APK claims
+are deleted; R-S11ga's binding negative-control and source-review requirements
+remain unchanged. Git `0f9c2048` retains the historical material.
+
+This removes 2,724 bytes from the specification. All 411 requirement IDs,
+371 Appendix numbers, 36 anchor IDs and 214 links preserve their exact order;
+bytes outside those four rows are identical and changed-row tags balance.
+Product, verifier and test sources are unchanged. Classification, source
+comparisons, whole-document counts and joined bounded-RAM cleanup are retained
+in `.harness-state/verifier-vm/authority-history-0f9c2048.json`.
+This corrects document roles; no installed/native/security acceptance is closed.
+Whole-document cleanup, all fifteen credential actions and release acceptance
+remain OPEN.
+
+
 The duplicate transport-security claim map is removed. Its cipher, nonce, framing,
 admission, cancellation, limiter and threat-model obligations remain in the
 specification and the R-V3 audit scope. The deployment and PAKE guides link there.

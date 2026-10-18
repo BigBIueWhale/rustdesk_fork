@@ -92,9 +92,9 @@ R-T6/R-T7/R-T8/R-T16 retain buffered keying, whole-frame authentication, the sol
 reader/writer split, synchronous codec opening, ciphertext/allocation bounds and
 framing/EOF/cancellation regressions. The contradictory no-split instruction,
 outer-loop decryption description, retired cipher narrative and claims that
-coalescing itself fails authentication are removed. The shared gate's comment
-now agrees with its unchanged one-split checks. This specification correction
-does not supply new native or release acceptance.
+coalescing itself fails authentication are removed. The later writer-ownership
+correction below deletes the gate that required the shared framed-sink shape.
+Specification corrections alone do not supply native or release acceptance.
 
 R-T3/R-T18 now own one normative writer contract. The historical blocked-branch
 story, literal `try_*` publication requirement, duplicate R-S11gx/Appendix C #359
@@ -12142,7 +12142,7 @@ scenario, and evidence-layer scope; this reconciliation adds no behavior verdict
 
 Platforms: shared Android, iOS, Windows, Linux, and macOS viewer/controlled transport. Surface:
 ordinary and receipt-bearing post-CPace sends through `FramedStream`, its bounded `WriterCommand`
-FIFO, and the sole split-sink writer task.
+FIFO, and the sole writer task with independently owned framed output.
 
 The inherited defect was real: the 512-command Tokio channel returned capacity when the writer
 dequeued a frame, before `sink.send` completed, leaving the active ciphertext outside its stated
@@ -12215,8 +12215,47 @@ export retains bounded named transport outcomes and group summaries alongside ev
 failure, without changing the executable tests or their container execution sequence.
 `.harness-state/verifier-vm/writer-channel-component-537dcb90.json` binds baseline, both
 candidate observations, source/artifact identities, frozen controls, endpoints and joined RAM/VM
-cleanup. Current CPace integration, other platforms, full-app latency recovery and LPE acceptance
-remain OPEN.
+cleanup. That component run does not establish CPace integration, other-platform behavior,
+full-app latency recovery or LPE acceptance.
+
+**Encoded writer storage — real TCP failure/cancellation A/B PASS on Linux.**
+The old futures split shared the complete `Framed` between sink and reader. After a
+failed or aborted writer joined and returned every admission permit, the retained
+reader still owned its encoded output buffer. At baseline `56c8ed4f`, both new
+real-TCP ownership cases fail and all 49 existing wire/transport controls pass.
+Both cases observe an actual partial write and socket backpressure, then receive
+an authenticated control frame while output remains blocked. A peer reset causes
+a real write error; malformed incoming ciphertext causes reader-side poison and
+writer cancellation. After exact writer join, the buffer remains stream-owned;
+dropping the stream is the positive control that retires that ownership.
+
+Product `a9adf6dc` splits the I/O rather than sharing the complete framed object.
+The reader preserves its exact receive codec, decoder state and prefetched bytes
+through `FramedParts`. The sole writer independently owns its `FramedWrite`,
+active reservation, queued commands and current completion. Field order retires
+encoded output before active admission and completion on cancellation; explicit
+failure handling drops this owner before reporting the error. Failed flushes are
+not retried by close. R-T8 now states this ownership requirement; the 27-line
+source-string/split-count gate that forced the old shared frame is deleted.
+
+The unchanged two-case lifetime fixture and guest recipe pass at `a9adf6dc`:
+all 51 named cases pass (20 CPace wire, 13 writer-receipt, four EOF, twelve codec,
+two writer-lifetime). Both cases retain the stream through exact writer join and
+observe returned permits plus retired buffer ownership. The refcount witness
+deliberately retains a one-byte alias; this proves stream/task ownership retirement,
+not physical allocation release or total-process memory bounds. Both exact Cargo
+artifacts keep their digests across execution. Baseline and candidate take 175.136
+and 175.870 supervisor seconds, with RAM-scratch peaks 3,931,291,648 and
+3,932,270,592 bytes under the unchanged 6 GiB scratch/4 GiB QEMU ceiling.
+Both VMs join, RAM workspaces and private roots retire, and all four endpoint
+snapshots per run have zero additions/removals. The candidate has equal source
+freezes before and after execution; an independent live freeze was not captured.
+`.harness-state/verifier-vm/writer-buffer-ownership-a9adf6dc.json` retains source,
+artifact, every named result, raw logs, controls and cleanup. Linux transport
+integration is accepted for this slice. Production Drop still requests abort
+without joining; synchronous socket/task finality, the three parked filesystem
+race failures, installed/full-app and other-platform behavior, presentation latency,
+long-session memory bounds, LPE acceptance and release remain OPEN.
 
 **Earlier transport integration — all 20 CPace wire cases PASS.** Subsequent exact harness
 `c3b1ac6d` ran the unchanged `libs/cpace_it/tests/handshake.rs` suite against the current

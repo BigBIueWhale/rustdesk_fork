@@ -241,7 +241,7 @@ struct KeyedStream {
     writer_admission: WriterAdmission,
     /// A read-only handle to the counter owned by the retained receive codec.
     read_seq: Arc<AtomicU64>,
-    /// The dedicated writer task — aborted on drop so a write blocked on a dead socket cannot leak.
+    /// The sole writer, retained until joined. Hard drop can only request cancellation.
     writer: Option<JoinHandle<()>>,
 }
 
@@ -655,10 +655,8 @@ impl FramedStream {
     /// dropping `FramedStream` may abort the writer task before it ever writes the
     /// close frame.
     ///
-    /// This is deliberately bounded. Normal traffic reserves frame-channel capacity without
-    /// waiting; only shutdown/close asks the writer for an explicit
-    /// drain acknowledgement, and a peer that is already back-pressured or dead is
-    /// failed closed instead of stalling the session indefinitely.
+    /// Drain acknowledgement has a deadline. Failure closes admission and initiates cancellation;
+    /// the exact writer remains owned until joined. Normal traffic reserves capacity without waiting.
     pub async fn flush_writer(&mut self) -> ResultType<()> {
         if self.poison {
             self.poison_and_retire_writer().await;
@@ -698,16 +696,21 @@ impl FramedStream {
         result
     }
 
-    /// Retire keyed admission and its sole writer immediately after a fatal transport outcome.
-    /// Closing admission prevents future internal use; aborting drops the active command and the
-    /// receiver's queued commands, which returns every owned R-T18 permit without waiting for the
-    /// outer connection future to reach `Drop`.
+    /// Close admission and join the sole writer before reporting a fatal transport outcome.
     async fn poison_and_retire_writer(&mut self) {
         self.poison = true;
-        if let StreamState::Keyed(k) = &self.state {
+        if let StreamState::Keyed(k) = &mut self.state {
             k.writer_admission.close();
-            if let Some(writer) = &k.writer {
+            if let Some(writer) = &mut k.writer {
                 writer.abort();
+                // Await the borrowed handle so cancellation retains exact join ownership here.
+                let result = writer.await;
+                k.writer = None;
+                if let Err(error) = result {
+                    if !error.is_cancelled() {
+                        crate::log::error!("TCP writer retirement failed: {}", error);
+                    }
+                }
             }
         }
     }

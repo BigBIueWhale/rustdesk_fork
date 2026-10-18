@@ -1668,7 +1668,7 @@ performant across every supported viewer and controlled platform. Focus, visibil
 display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,
 fresh presentation, bounded resources, and final ownership without requiring reconnect as a recovery mechanism.
 
-**Video quality request ordering — source corrected; native controller acceptance OPEN.**
+**Video quality request ordering — Linux controller accepted; presentation OPEN.**
 Product `1dbe0b8d` replaces millisecond wall-clock ordering over the user HashMap with
 one current quality choice per live viewer, ordered by request admission. Updating a
 known viewer replaces its choice and selects its requested ratio directly; unknown
@@ -1680,14 +1680,23 @@ FPS, congestion thresholds or encoder scheduling.
 Test baseline `60983a61` preserves the prior production code and adds three cases:
 both viewer orders within one observed millisecond; updated/previous/oldest choices
 through disconnect; and unknown/unconfigured/replaced viewers plus custom/default quality.
-The existing `--video-qos-tests` profile now requires all fourteen cases; its eleven
-earlier cases are unchanged. The baseline launch refused before QEMU because 18,981 MiB
-was below its unchanged 20,480-MiB floor. The candidate was not launched after a fresh
-18,697-MiB observation. No compilation, native execution or empirical A/B result is
-claimed for this slice. `git diff --check` and Bash syntax checks pass. Exact source,
-test identity, refusal and limits are retained in
-`.harness-state/verifier-vm/video-qos-quality-source-1dbe0b8d.json`.
-Run the complete fourteen-case controller profile when admitted. Rendered settings,
+At `7e7410be`, the complete Linux parent library compiled under pinned Rust 1.75.0,
+and all fourteen controller cases passed, including the eleven unchanged earlier cases.
+The three quality cases observed both same-tick request orders, live-choice retirement,
+unknown-viewer refusal, replacement and custom/default quality. Existing controller
+congestion and three-cycle recovery observations also passed. The run took 296 outer
+seconds, including 228 compilation seconds; the behavioral summary reports 0.01 seconds.
+Source snapshots before, during and after matched. The exact QEMU child was joined,
+RAM scratch retired, and four complete host-listener snapshots had zero changes.
+The existing 20,480-MiB admission floor and storage/isolation limits were unchanged.
+
+The earlier baseline launch refused before QEMU at 18,981 MiB; no empirical old/new
+A/B result is claimed. Its source/refusal evidence remains in
+`.harness-state/verifier-vm/video-qos-quality-source-1dbe0b8d.json`. Native evidence is in
+`.harness-state/verifier-vm/video-qos-quality-native-7e7410be.json`.
+This run's outer receipt printed a stale `tests=11`; the guest's named cases, summary
+and artifact receipts required fourteen. Only that printed count was corrected afterward.
+`git diff --check` and Bash syntax checks pass. Rendered settings,
 native other-platform behavior and all R-F5 real-peer presentation, impairment recovery,
 input-visible latency, numeric budgets and multi-hour acceptance remain OPEN.
 

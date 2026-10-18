@@ -1601,6 +1601,33 @@ This is controller recovery evidence. R-F5 real-peer presented-frame/input-visib
 network impairment, numeric budgets, all supported roles and multi-hour acceptance remain OPEN.
 All user-parked work remains OPEN/PARKED.
 
+**Linux full-peer replay — resource/context corrections verified; complete replay OPEN.**
+Replay now has its own 10 GiB guest, 7 GiB RAM scratch and 6 GiB hard overlay/file ceiling,
+with 6 GiB host headroom and 1 GiB overhead (24 GiB admission), a 12 GiB logical disk and
+1,200-second integration budget. Both peers retain their 4 GiB container limits.
+The separate app build envelope is unchanged and remains unaccepted for execution.
+Replay derives app build-context roles from the exact committed producer pins; current
+harness pins still govern replay tools. The guest checks source/tree/recipe/engine and the
+existing materializer still requires the exact manifest, complete inventory and payload bytes.
+At `5461c9d0`, all 14 profile bindings, 22 wrong-guest refusals, five root-entry refusals
+and ignored-SIGCHLD refusal passed. An actual replay installed its limit before guest start.
+The first materialization rejection exposed a current-versus-producer project-lock mismatch;
+`32eb62b8` corrected that calculation and admitted the same retained `a3755044` app with
+the selected `63493887` engine. Initial fresh pixels took 94 ms; the three 2/6/12-second
+focus-loss checks kept the same connection, with focus recovery at most 5 ms and measured
+pixel age at most 319 ms. The full run FAILED its first server replacement because the
+historical app did not map the current protected input provider; no reconnect or complete
+six-lifecycle pass follows. Its loader's system paths omit the current fixed provider path.
+A compatible current app artifact is required; no search-path, preload or mapping-check
+fallback is added. All six lifecycle, pixel, provider, reconnect and resource criteria remain.
+Actual scratch peaked at 2,934,005,760 bytes; VM, RAM and transient run roots were joined
+and retired with unchanged endpoint observations. Intentional bounded failure evidence remains.
+`.harness-state/verifier-vm/flutter-replay-materialize-failure-5461c9d0.json` and
+`flutter-replay-native-partial-32eb62b8.json` bind the setup failure, native outcomes,
+exact artifacts/sources, storage and cleanup. This is partial retained-app integration,
+not current QoS execution, network-impairment/soak, installed/LPE or release acceptance.
+R-F5 remains OPEN. All user-parked consumer/allocator/libyuv/X11 work remains OPEN/PARKED.
+
 ### Current source disposition — not native closure
 
 Normative behavior and detailed mechanics live in the named requirements and Appendix C rows; dedicated status entries

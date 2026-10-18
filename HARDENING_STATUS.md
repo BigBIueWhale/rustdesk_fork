@@ -1713,6 +1713,29 @@ performant across every supported viewer and controlled platform. Focus, visibil
 display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,
 fresh presentation, bounded resources, and final ownership without requiring reconnect as a recovery mechanism.
 
+**Video quality request ordering — source corrected; native controller acceptance OPEN.**
+Product `1dbe0b8d` replaces millisecond wall-clock ordering over the user HashMap with
+one current quality choice per live viewer, ordered by request admission. Updating a
+known viewer replaces its choice and selects its requested ratio directly; unknown
+viewers cannot publish. Disconnect and same-ID replacement remove that viewer's choice,
+leaving the latest surviving choice or Balanced. There is no clock/sequence counter,
+request backlog, new task, runtime, dependency or change to quality decoding, delay/RTT,
+FPS, congestion thresholds or encoder scheduling.
+
+Test baseline `60983a61` preserves the prior production code and adds three cases:
+both viewer orders within one observed millisecond; updated/previous/oldest choices
+through disconnect; and unknown/unconfigured/replaced viewers plus custom/default quality.
+The existing `--video-qos-tests` profile now requires all fourteen cases; its eleven
+earlier cases are unchanged. The baseline launch refused before QEMU because 18,981 MiB
+was below its unchanged 20,480-MiB floor. The candidate was not launched after a fresh
+18,697-MiB observation. No compilation, native execution or empirical A/B result is
+claimed for this slice. `git diff --check` and Bash syntax checks pass. Exact source,
+test identity, refusal and limits are retained in
+`.harness-state/verifier-vm/video-qos-quality-source-1dbe0b8d.json`.
+Run the complete fourteen-case controller profile when admitted. Rendered settings,
+native other-platform behavior and all R-F5 real-peer presentation, impairment recovery,
+input-visible latency, numeric budgets and multi-hour acceptance remain OPEN.
+
 **Video QoS probe timing — Linux controller A/B ACCEPTED; full connection latency OPEN.**
 `VideoQoS` retains one pending elapsed value separately from completed probe measurements.
 Repeated timer observations no longer insert extra RTT/history samples. A reply clears its

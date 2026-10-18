@@ -20,6 +20,9 @@ use webm::mux::{self, Segment, Track, VideoTrack, Writer};
 
 const MIN_SECS: u64 = 1;
 
+#[cfg(all(test, target_os = "linux"))]
+mod tests;
+
 #[derive(Debug, Clone)]
 pub struct RecorderContext {
     pub server: bool,

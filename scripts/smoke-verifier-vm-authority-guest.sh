@@ -132,7 +132,7 @@ case "$#:${8:-}" in
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
-            || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
+            || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
             || "${13}" = --fusermount-process || "${13}" = --file-block \
             || "${13}" = --clipboard-response || "${13}" = --cliprdr-read || "${13}" = --android-client-drain || "${13}" = --cm-read-tick ]] || exit 2
@@ -3792,6 +3792,23 @@ run_focused_rust_tests() {
                 client::tests::r_p14c_viewer_credential_prompt_requires_typed_credential_failure
                 flutter::viewer_credential_bridge_tests::explicit_password_survives_all_session_factories_and_exact_retirement
             )
+        elif [ "$RUST_TEST_PROFILE" = recording-output ]; then
+            container_name=rustdesk-recording-output-tests
+            memory=5g
+            memory_bytes=5368709120
+            source_fingerprints=(
+                Cargo.lock Cargo.toml libs/scrap/Cargo.toml libs/scrap/src/lib.rs
+                libs/scrap/src/common/record.rs libs/scrap/src/common/record/tests.rs
+                libs/scrap/src/common/vpxcodec.rs scripts/run-recording-output-tests.sh
+            )
+            required_tests=(
+                common::record::tests::existing_regular_file_is_preserved
+                common::record::tests::existing_hardlink_target_is_preserved
+                common::record::tests::existing_symlink_target_is_preserved
+                common::record::tests::dangling_symlink_target_stays_absent
+                common::record::tests::fresh_vp8_recording_finalizes
+                common::record::tests::fresh_vp9_recording_finalizes
+            )
         elif [ "$RUST_TEST_PROFILE" = viewer-video ]; then
             container_name=rustdesk-viewer-video-tests
             memory=5g
@@ -4532,6 +4549,10 @@ run_focused_rust_tests() {
                             /bin/bash /source/scripts/run-viewer-credential-tests.sh
                             exit 0
                         fi
+                        if [ "$RUST_TEST_PROFILE" = recording-output ]; then
+                            /bin/bash /source/scripts/run-recording-output-tests.sh
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = viewer-video ]; then
                             /bin/bash /source/scripts/run-viewer-video-tests.sh
                             exit 0
@@ -4939,11 +4960,11 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+        && [[ "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
-            | awk '/^(VIEWER_VIDEO|VIDEO_QOS|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() }'; then
+            | awk '/^(RECORDING_OUTPUT|VIEWER_VIDEO|VIDEO_QOS|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() }'; then
             parent_start_status=("${PIPESTATUS[@]}")
         else
             parent_start_status=("${PIPESTATUS[@]}")
@@ -5197,6 +5218,12 @@ PY
         [ "$(grep -Ec '^VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=11 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_CREDENTIAL_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'viewer credential artifact receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = recording-output ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'recording output summary count differs'
+        [ "$(grep -Ec '^RECORDING_OUTPUT_ARTIFACT=complete sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=6 exit_code=0 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'RECORDING_OUTPUT_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^test common::record::tests::.* \.\.\. ok$' "$output")" -eq 6 ] \
+            || fail 'recording output artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-video ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'viewer video summary count differs'
         [ "$(grep -Ec '^VIEWER_VIDEO_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=8 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -5652,6 +5679,12 @@ PY
             [ "$tests_passed" -eq 11 ] || fail 'viewer credential total differs'
             printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=11 target=linux-x86_64 scope=production-peer-credentials-and-exported-session-factory rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = recording-output ]; then
+            [ "$tests_passed" -eq 6 ] || fail 'recording output total differs'
+            grep -E '^test common::record::tests::.* \.\.\. ok$|^RECORDING_OUTPUT_(BUILD|ARTIFACT)=' "$output"
+            printf 'RECORDING_OUTPUT_VM=pass commit=%s tree=%s tests=6 target=linux-x86_64 scope=scrap-library-filesystem-and-native-webm rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-video ]; then
             [ "$tests_passed" -eq 8 ] || fail 'viewer video total differs'
             grep -E '^test client::video_handler_tests::.* \.\.\. ok$|^VIEWER_VIDEO_BUILD=pass |^VIEWER_VIDEO_ARTIFACT=' "$output"

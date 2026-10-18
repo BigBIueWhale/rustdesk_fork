@@ -95,6 +95,6 @@ print('RECORDING_OUTPUT_PARENT_CHECK=pass target=librustdesk features=linux-pkg-
 PY
 printf 'RECORDING_OUTPUT_PARENT_BUILD=pass seconds=%s\n' "$((SECONDS-parent_started))"
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'RECORDING_OUTPUT_ARTIFACT=complete sha256=%s executable=%s tests=10 exit_code=%s unchanged=before-after execution_seconds=%s\n' \
+printf 'RECORDING_OUTPUT_ARTIFACT=complete sha256=%s executable=%s tests=12 exit_code=%s unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$status" "$execution_seconds"
 exit "$status"

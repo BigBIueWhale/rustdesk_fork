@@ -656,8 +656,8 @@ impl FramedStream {
     /// dropping `FramedStream` may abort the writer task before it ever writes the
     /// close frame.
     ///
-    /// This is deliberately bounded. Normal traffic keeps using non-blocking
-    /// `try_send` for frames; only shutdown/close asks the writer for an explicit
+    /// This is deliberately bounded. Normal traffic reserves frame-channel capacity without
+    /// waiting; only shutdown/close asks the writer for an explicit
     /// drain acknowledgement, and a peer that is already back-pressured or dead is
     /// failed closed instead of stalling the session indefinitely.
     pub async fn flush_writer(&mut self) -> ResultType<()> {

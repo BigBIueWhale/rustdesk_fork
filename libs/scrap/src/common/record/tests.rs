@@ -846,7 +846,7 @@ fn native_recording_unix_permissions_are_private() {
         for (codec, format, id) in [(VpxVideoCodecId::VP8, CodecFormat::VP8, b"V_VP8"),
             (VpxVideoCodecId::VP9, CodecFormat::VP9, b"V_VP9")] {
             for mask in [0, 0o022, 0o077] {
-                modes.push(recording_modes(&dir, &format!("{format}-{mask}.webm"), codec, format, mask, id));
+                modes.push(recording_modes(&dir, &format!("{format:?}-{mask}.webm"), codec, format, mask, id));
             }
         }
         assert_eq!(fs::metadata(&dir.0).unwrap().mode() & 0o777, 0o755);

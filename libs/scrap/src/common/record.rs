@@ -81,7 +81,7 @@ pub struct Recorder {
     ctx: RecorderContext,
     ctx2: Option<RecorderContext2>,
     pts: Option<i64>,
-    check_failed: bool,
+    failed: bool,
 }
 
 impl Deref for Recorder {
@@ -105,7 +105,7 @@ impl Recorder {
             ctx,
             ctx2: None,
             pts: None,
-            check_failed: false,
+            failed: false,
         })
     }
 
@@ -169,8 +169,8 @@ impl Recorder {
         w: usize,
         h: usize,
     ) -> ResultType<()> {
-        if self.check_failed {
-            bail!("check failed");
+        if self.failed {
+            bail!("recording failed");
         }
         let format = CodecFormat::from(frame);
         if format == CodecFormat::Unknown {
@@ -178,44 +178,30 @@ impl Recorder {
         }
         let res = self.check(w, h, format);
         if res.is_err() {
-            self.check_failed = true;
+            self.failed = true;
             log::error!("check failed: {:?}", res);
             res?;
         }
-        match frame {
-            video_frame::Union::Vp8s(vp8s) => {
-                for f in vp8s.frames.iter() {
-                    self.check_pts(f.pts, f.key, w, h, format)?;
-                    self.as_mut().map(|x| x.write_video(f));
-                }
-            }
-            video_frame::Union::Vp9s(vp9s) => {
-                for f in vp9s.frames.iter() {
-                    self.check_pts(f.pts, f.key, w, h, format)?;
-                    self.as_mut().map(|x| x.write_video(f));
-                }
-            }
-            video_frame::Union::Av1s(av1s) => {
-                for f in av1s.frames.iter() {
-                    self.check_pts(f.pts, f.key, w, h, format)?;
-                    self.as_mut().map(|x| x.write_video(f));
-                }
-            }
+        let frames = match frame {
+            video_frame::Union::Vp8s(frames)
+            | video_frame::Union::Vp9s(frames)
+            | video_frame::Union::Av1s(frames) => &frames.frames,
             #[cfg(feature = "hwcodec")]
-            video_frame::Union::H264s(h264s) => {
-                for f in h264s.frames.iter() {
-                    self.check_pts(f.pts, f.key, w, h, format)?;
-                    self.as_mut().map(|x| x.write_video(f));
-                }
-            }
-            #[cfg(feature = "hwcodec")]
-            video_frame::Union::H265s(h265s) => {
-                for f in h265s.frames.iter() {
-                    self.check_pts(f.pts, f.key, w, h, format)?;
-                    self.as_mut().map(|x| x.write_video(f));
-                }
-            }
+            video_frame::Union::H264s(frames) | video_frame::Union::H265s(frames) => &frames.frames,
             _ => bail!("unsupported frame type"),
+        };
+        for frame in frames {
+            self.check_pts(frame.pts, frame.key, w, h, format)?;
+            let written = match self.inner.as_mut() {
+                Some(recorder) => recorder.write_video(frame),
+                None => false,
+            };
+            if !written {
+                self.failed = true;
+                self.inner = None;
+                log::error!("Failed to write recording frame");
+                bail!("Failed to write recording frame");
+            }
         }
         Ok(())
     }
@@ -240,7 +226,7 @@ impl Recorder {
             self.ctx2 = None;
             let res = self.check(w, h, format);
             if res.is_err() {
-                self.check_failed = true;
+                self.failed = true;
                 log::error!("check failed: {:?}", res);
                 res?;
             }

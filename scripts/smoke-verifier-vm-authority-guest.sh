@@ -4971,7 +4971,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
-            | awk '/^(RECORDING_OUTPUT(_PARENT)?|VIEWER_VIDEO|VIDEO_QOS|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() } /^test common::record::tests::/ { print "RECORDING_OUTPUT_PROGRESS=" $0; fflush() }'; then
+            | awk '/^(RECORDING_OUTPUT(_PARENT)?|VIEWER_VIDEO|VIDEO_QOS|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() } /^test common::record::tests::/ { print "RECORDING_OUTPUT_PROGRESS=" $0; fflush() } /^RECORDING_OUTPUT_FAILURE=/ { print; fflush() }'; then
             parent_start_status=("${PIPESTATUS[@]}")
         else
             parent_start_status=("${PIPESTATUS[@]}")

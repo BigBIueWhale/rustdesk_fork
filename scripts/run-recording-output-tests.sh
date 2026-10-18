@@ -60,7 +60,11 @@ printf 'RECORDING_OUTPUT_BUILD=pass seconds=%s artifact_sha256=%s\n' "$((SECONDS
 execution_started=$SECONDS
 status=0
 timeout --signal=TERM --kill-after=5s 30s "$test_executable" common::record::tests:: \
-    --color never --test-threads=1 || status=$?
+    --color never --test-threads=1 >"$WORK/native.log" 2>&1 || status=$?
+cat "$WORK/native.log"
+if [ "$status" -ne 0 ]; then
+    tail -c 16000 "$WORK/native.log" | sed 's/^/RECORDING_OUTPUT_FAILURE=/'
+fi
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
 execution_seconds=$((SECONDS-execution_started))
 parent_started=$SECONDS

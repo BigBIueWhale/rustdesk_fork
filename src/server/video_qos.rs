@@ -627,6 +627,64 @@ mod tests {
     }
 
     #[test]
+    fn quality_requests_in_one_clock_tick_follow_request_order() {
+        let mut qos = healthy_pair();
+        for _ in 0..1024 {
+            let tick = hbb_common::get_time();
+            qos.user_image_quality(7, ImageQuality::Low.value());
+            qos.user_image_quality(8, ImageQuality::Best.value());
+            let forward = qos.latest_quality() == Quality::Best && qos.ratio() == BR_BEST;
+            qos.user_image_quality(8, ImageQuality::Low.value());
+            qos.user_image_quality(7, ImageQuality::Best.value());
+            let reverse = qos.latest_quality() == Quality::Best && qos.ratio() == BR_BEST;
+            if hbb_common::get_time() == tick {
+                println!("VIDEO_QOS_QUALITY_ORDER=observed same_tick=true forward={forward} reverse={reverse}");
+                assert!(forward && reverse, "latest request must win in either viewer order");
+                return;
+            }
+        }
+        panic!("could not observe four quality requests in one millisecond");
+    }
+
+    #[test]
+    fn closing_quality_requester_restores_latest_live_choice() {
+        let mut qos = healthy_pair();
+        qos.on_connection_open(9);
+        qos.user_image_quality(7, ImageQuality::Low.value());
+        qos.user_image_quality(8, ImageQuality::Balanced.value());
+        qos.user_image_quality(9, ImageQuality::Best.value());
+        qos.user_image_quality(8, ImageQuality::Low.value());
+        let updated = qos.latest_quality() == Quality::Low;
+        qos.on_connection_close(8);
+        let previous = qos.latest_quality() == Quality::Best;
+        qos.on_connection_close(9);
+        let oldest = qos.latest_quality() == Quality::Low;
+        qos.on_connection_close(7);
+        let reset = qos.latest_quality() == Quality::Balanced && qos.ratio() == BR_BALANCED;
+        println!("VIDEO_QOS_QUALITY_RETIRE=observed updated={updated} previous={previous} oldest={oldest} reset={reset}");
+        assert!(updated && previous && oldest && reset);
+    }
+
+    #[test]
+    fn quality_requests_require_a_live_viewer_and_retire_on_replacement() {
+        let mut qos = healthy_controller();
+        qos.user_image_quality(7, ImageQuality::Best.value());
+        qos.user_image_quality(999, ImageQuality::Low.value());
+        let unknown_refused = qos.latest_quality() == Quality::Best && qos.ratio() == BR_BEST;
+        qos.on_connection_open(8);
+        let unconfigured_preserved = qos.latest_quality() == Quality::Best;
+        qos.on_connection_open(7);
+        let replacement_retired = qos.latest_quality() == Quality::Balanced;
+        qos.user_image_quality(8, 75 << 8);
+        let custom_preserved = qos.latest_quality() == Quality::Custom(1.5);
+        qos.on_connection_close(8);
+        let live_default = qos.latest_quality() == Quality::Balanced;
+        println!("VIDEO_QOS_QUALITY_OWNER=observed unknown_refused={unknown_refused} unconfigured_preserved={unconfigured_preserved} replacement_retired={replacement_retired} custom_preserved={custom_preserved} live_default={live_default}");
+        assert!(unknown_refused && unconfigured_preserved && replacement_retired
+            && custom_preserved && live_default);
+    }
+
+    #[test]
     fn pending_peer_does_not_reduce_healthy_peer_estimate() {
         let mut qos = healthy_pair();
         qos.user_delay_response_elapsed(7, 4000);

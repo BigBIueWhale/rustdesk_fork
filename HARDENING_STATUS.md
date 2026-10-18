@@ -406,8 +406,8 @@ with one borrowed `InstallerPackage`. The constructor checks every field boundar
 the canonical MSI path and trailer, checksum syntax and exact end of input;
 malformed/truncated packages return errors before the installer flow is entered.
 Generic path normalization, lossy strings, file-list allocation and parser panics
-are removed. The encoder and decoder share format constants; wire-encoder bytes
-are unchanged. Windows extraction/cleanup now names only the fixed root MSI.
+are removed. The encoder and decoder share format constants; the wire encoder's
+function body is byte-identical to baseline. Windows extraction/cleanup names only the fixed root MSI.
 
 The production Brotli loop checks output against the shared 2-GiB MSI ceiling
 before vector growth, uses fallible reserve, and requires a complete single stream

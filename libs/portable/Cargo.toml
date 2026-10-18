@@ -16,6 +16,9 @@ md5 = "0.7"
 brotli = "3.4"
 md5 = "0.7"
 
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+libc = "0.2"
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
     "Win32_Foundation",

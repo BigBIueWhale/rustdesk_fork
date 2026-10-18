@@ -6181,6 +6181,7 @@ name = "rustdesk-portable-packer"
 version = "1.4.7"
 dependencies = [
  "brotli",
+ "libc",
  "md5",
  "windows 0.61.1",
 ]

@@ -159,6 +159,162 @@ mod tests {
         assert_eq!(fs::read(fixture.0.join("data.bin")).unwrap(), package);
     }
 
+    fn entries(path: &Path) -> std::collections::BTreeSet<std::ffi::OsString> {
+        fs::read_dir(path)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect()
+    }
+
+    #[test]
+    fn generation_invalid_input_preserves_published_output() {
+        let fixture = Fixture::new();
+        let msi = fixture.0.join("input.msi");
+        let output = fixture.0.join("data.bin");
+        let mut preserved = true;
+        for existing in [false, true] {
+            for content in [None, Some(b"".as_slice()), Some(b"not an MSI".as_slice())] {
+                if msi.exists() {
+                    fs::remove_file(&msi).unwrap();
+                }
+                if let Some(content) = content {
+                    fs::write(&msi, content).unwrap();
+                }
+                if output.exists() {
+                    fs::remove_file(&output).unwrap();
+                }
+                if existing {
+                    fs::write(&output, b"previous published package").unwrap();
+                }
+                let before = entries(&fixture.0);
+                assert!(generate(&msi, &fixture.0).is_err());
+                preserved &= entries(&fixture.0) == before;
+                preserved &= if existing {
+                    fs::read(&output).unwrap() == b"previous published package"
+                } else {
+                    !output.exists()
+                };
+            }
+        }
+        println!("INSTALLER_GENERATION_INVALID=observed cases=6 output_preserved={}", preserved);
+        assert!(preserved);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generation_replaces_output_without_mutating_existing_aliases() {
+        let fixture = Fixture::new();
+        let msi = fixture.msi();
+        let original = fs::read(&msi).unwrap();
+        let output = fixture.0.join("data.bin");
+        let alias = fixture.0.join("old-package-alias");
+        let previous = b"previous published package";
+        fs::write(&output, previous).unwrap();
+        fs::hard_link(&output, &alias).unwrap();
+        let mut reader = File::open(&output).unwrap();
+        let before = entries(&fixture.0);
+        generate(&msi, &fixture.0).unwrap();
+        let hard_link_preserved = fs::read(&alias).unwrap() == previous;
+        let mut retained = Vec::new();
+        reader.read_to_end(&mut retained).unwrap();
+        let reader_preserved = retained == previous;
+        let mut no_temporary_left = entries(&fixture.0) == before;
+        let encoded = fs::read(&output).unwrap();
+        let package = InstallerPackage::read_from(&encoded).unwrap();
+        let extracted = package.write_to_new_file(&fixture.0.join("hard-link-extract")).unwrap();
+        assert_eq!(fs::read(extracted).unwrap(), original);
+
+        fs::remove_file(&output).unwrap();
+        std::os::unix::fs::symlink(&msi, &output).unwrap();
+        let before = entries(&fixture.0);
+        let result = generate(&msi, &fixture.0);
+        let target_preserved = fs::read(&msi).unwrap() == original;
+        let mut symlink_replaced = false;
+        if result.is_ok() {
+            let metadata = fs::symlink_metadata(&output).unwrap();
+            symlink_replaced = metadata.is_file() && !metadata.file_type().is_symlink();
+            let encoded = fs::read(&output).unwrap();
+            let package = InstallerPackage::read_from(&encoded).unwrap();
+            let extracted = package.write_to_new_file(&fixture.0.join("symlink-extract")).unwrap();
+            assert_eq!(fs::read(extracted).unwrap(), original);
+            let mut expected = before;
+            expected.insert("symlink-extract".into());
+            no_temporary_left &= entries(&fixture.0) == expected;
+        } else {
+            no_temporary_left &= entries(&fixture.0) == before;
+        }
+        println!(
+            "INSTALLER_GENERATION_ALIASES=observed hard_link_preserved={} reader_preserved={} target_preserved={} symlink_replaced={} temporary_retired={}",
+            hard_link_preserved, reader_preserved, target_preserved, symlink_replaced, no_temporary_left,
+        );
+        assert!(hard_link_preserved && reader_preserved && target_preserved
+            && symlink_replaced && no_temporary_left);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn generation_write_failure_preserves_output_and_retires_owned_temp() {
+        const CHILD: &str = "RUSTDESK_INSTALLER_FSIZE_TEST_CHILD";
+        if let Some(directory) = std::env::var_os(CHILD) {
+            let directory = PathBuf::from(directory);
+            fn written_bytes() -> u64 {
+                fs::read_to_string("/proc/self/io").unwrap().lines()
+                    .find_map(|line| line.strip_prefix("wchar: "))
+                    .unwrap().parse().unwrap()
+            }
+            // Only this disposable test child changes its signal disposition and file-size limit.
+            unsafe {
+                assert_ne!(libc::signal(libc::SIGXFSZ, libc::SIG_IGN), libc::SIG_ERR);
+                let limit = libc::rlimit { rlim_cur: 8, rlim_max: 8 };
+                assert_eq!(libc::setrlimit(libc::RLIMIT_FSIZE, &limit), 0);
+            }
+            let before = written_bytes();
+            let error = generate(&directory.join("input.msi"), &directory).unwrap_err();
+            let written = written_bytes() - before;
+            assert_eq!(error.raw_os_error(), Some(libc::EFBIG));
+            assert_eq!(written, 8);
+            println!("INSTALLER_GENERATION_NATIVE_WRITE=observed bytes=8 error=EFBIG");
+            return;
+        }
+        let fixture = Fixture::new();
+        let msi = fixture.msi();
+        let original = fs::read(&msi).unwrap();
+        let output = fixture.0.join("data.bin");
+        fs::write(&output, b"previous published package").unwrap();
+        let before = entries(&fixture.0);
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "installer_package::tests::generation_write_failure_preserves_output_and_retires_owned_temp",
+                "--nocapture", "--quiet"])
+            .env(CHILD, &fixture.0)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn().unwrap();
+        let started = std::time::Instant::now();
+        loop {
+            if child.try_wait().unwrap().is_some() {
+                break;
+            }
+            if started.elapsed() > std::time::Duration::from_secs(3) {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                panic!("native write-failure child exceeded its deadline");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let result = child.wait_with_output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        let child_output = String::from_utf8(result.stdout).unwrap();
+        assert!(child_output.contains("INSTALLER_GENERATION_NATIVE_WRITE=observed bytes=8 error=EFBIG"));
+        let output_preserved = fs::read(&output).unwrap() == b"previous published package";
+        let temporary_retired = entries(&fixture.0) == before;
+        assert_eq!(fs::read(&msi).unwrap(), original);
+        println!(
+            "INSTALLER_GENERATION_FAILURE=observed native_written_bytes=8 error=EFBIG child_joined=true output_preserved={} temporary_retired={}",
+            output_preserved, temporary_retired,
+        );
+        assert!(output_preserved && temporary_retired);
+    }
+
     #[test]
     fn input_refuses_missing_empty_non_msi_and_oversized_files() {
         let fixture = Fixture::new();

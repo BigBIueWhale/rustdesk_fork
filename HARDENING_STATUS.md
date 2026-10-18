@@ -2467,16 +2467,46 @@ Two regressions failed while 25 controls passed. The identical four-test module
 and guest recipe pass all 27 cases at `217f0469`: malformed-selector refusal and
 unchanged destination bytes, canonical action/path round trips, real file create
 and overwrite, inert discard, returned I/O failure, plus the existing 23 clipboard
-sanitizer/owner/X11 controls. Copy selection is decoded; no new screenshot-PNG
-clipboard-completion or rendered-UI result is claimed. The existing clipboard VM
+sanitizer/owner/X11 controls. That earlier run decoded Copy selection without
+exercising screenshot-PNG completion or rendered UI. The existing clipboard VM
 profile compiles the Linux library with `linux-pkg-config`; storage limits and
 the 300-second budget are unchanged. A/B supervisor times are 225.987/218.553s.
 Exact sources/artifacts, raw cases and observations, complete endpoints and joined
 RAM/private-root retirement are retained in
 `.harness-state/verifier-vm/screenshot-action-217f0469.json`.
 UI/FFI/peer, other-platform and installed acceptance, save-destination link and
-publication safety, clipboard completion, broader resource/latency and release
+publication safety, frontend/other-platform clipboard completion, broader resource/latency and release
 evidence remain OPEN. This is an action-decoding correction, not LPE closure.
+
+**Screenshot clipboard completion — Linux native result path corrected; UI/platform acceptance OPEN.**
+Product `0faec382` makes the synchronous screenshot action return the existing
+clipboard worker's result through one bounded reply. Success follows the native
+setter's return; queue-full, unavailable/stopped dispatcher, payload refusal and
+native errors return an error through the unchanged FFI string result. The typed
+PNG request checks the existing byte ceiling before enqueue and bypasses the
+peer sanitizer's log-only outcome. Queue capacity and worker count are unchanged.
+The ordinary Rust FFI call runs on the pinned FRB worker pool; no Tokio runtime,
+async blocking, new production thread or retry is introduced. Flutter now awaits
+Copy's result and shows an error only while its originating session is current.
+That UI wiring is source-reviewed, not a rendered or generated-bridge execution claim.
+
+At unchanged-product baseline `39b337a2`, four real regressions failed while 23
+controls passed: premature success while the native write was blocked, success on
+a full queue, success on oversized refusal, and success with an unavailable X11
+backend. The byte-identical four-case module and native driver pass at `d93f9fa5`;
+the complete 31-case transaction passes in 209 outer seconds, including exact PNG
+readback by an independent clipboard observer, preserved prior work/text on refusal,
+the 23 sanitizer/owner/native controls and four screenshot-action/file controls.
+Only the guest summary assertion changes from four to five groups after the first
+all-green product run. Both corrected executions have the same artifact digest.
+The accepted serial retains five passing summaries and receipts plus 27 named cases;
+the preceding same-artifact run retains all 31 names/new diagnostics and remains an
+unaccepted outer transaction. Exact sources, observations, failure classifications,
+artifact bindings, endpoints and joined RAM/private-root retirement are retained in
+`.harness-state/verifier-vm/screenshot-copy-0faec382.json`.
+Native Windows/macOS, Wayland, rendered UI/FFI/mobile, backend wait/global-worker
+shutdown bounds, save-file publication, installed authority and release acceptance
+remain OPEN. This result establishes the named Linux clipboard operation only.
 
 **Receive resume-length admission — Linux native component corrected; installed/platform acceptance OPEN.**
 Product `ad57ba2a` checks the opened partial file's length both before offering a

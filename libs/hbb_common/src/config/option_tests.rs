@@ -20,8 +20,8 @@ fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
     fs::remove_dir_all(&root).unwrap();
     assert!(output.stdout.len() + output.stderr.len() <= 16384);
     for line in String::from_utf8(output.stdout).unwrap().lines() {
-        if line.starts_with("OPTION_COMMIT_") {
-            println!("{line}");
+        if let Some(start) = line.find("OPTION_COMMIT_") {
+            println!("{}", &line[start..]);
         }
     }
     assert!(output.status.success(), "option worker failed: {}", String::from_utf8_lossy(&output.stderr));
@@ -76,5 +76,25 @@ fn failed_pinned_entry_purge_remains_retryable() {
         let unrelated_preserved = stored.options.get("audio-input").map(String::as_str) == Some("original-source");
         println!("OPTION_COMMIT_PURGE=observed memory_preserved={memory_preserved} file_preserved={file_preserved} policy_preserved={policy_preserved} retry_purged={retry_purged} unrelated_preserved={unrelated_preserved}");
         assert!(memory_preserved && file_preserved && policy_preserved && retry_purged && unrelated_preserved);
+    });
+}
+
+#[test]
+fn results_distinguish_failed_saves_from_durable_and_idempotent_success() {
+    in_private_process("config::option_tests::results_distinguish_failed_saves_from_durable_and_idempotent_success", |_| {
+        Config::set_option("audio-input".into(), "original-source".into()).unwrap();
+        let file = Config2::file();
+        let parent = file.parent().unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        let failure_returned = Config::set_option("audio-input".into(), "replacement-source".into()).is_err();
+        let unchanged_accepted = Config::set_option("audio-input".into(), "original-source".into()).is_ok();
+        let pinned_accepted = Config::set_option("enable-keyboard".into(), "N".into()).is_ok()
+            && Config::get_option("enable-keyboard") == "Y";
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        let retry_accepted = Config::set_option("audio-input".into(), "replacement-source".into()).is_ok();
+        let stored: Config2 = load_path(file);
+        let retry_persisted = stored.options.get("audio-input").map(String::as_str) == Some("replacement-source");
+        println!("OPTION_COMMIT_RESULT=observed failure_returned={failure_returned} unchanged_accepted={unchanged_accepted} pinned_accepted={pinned_accepted} retry_accepted={retry_accepted} retry_persisted={retry_persisted}");
+        assert!(failure_returned && unchanged_accepted && pinned_accepted && retry_accepted && retry_persisted);
     });
 }

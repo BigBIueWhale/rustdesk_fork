@@ -38,7 +38,7 @@ async fn graceful_process_exit_retires_connection_workers() {
     let allow = unsafe { *provider.get::<unsafe extern "C" fn()>(b"cursor_recorder_allow").unwrap() };
     unsafe { init(); }
     // Exercise worker ownership without claiming an OS wake-inhibition facility.
-    Config::set_option(keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS.into(), "N".into());
+    Config::set_option(keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS.into(), "N".into()).unwrap();
     assert!(!Config::get_bool_option(keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS));
     let mut owner = session_owner(35000, AuthConnType::Remote).await.unwrap();
     owner.commit_publication().unwrap();

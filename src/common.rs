@@ -1772,7 +1772,8 @@ mod tests {
         Config::set_option(
             "key".to_owned(),
             "ATTACKER-REPOINTED-TRUST-ANCHOR=".to_owned(),
-        );
+        )
+        .unwrap();
         assert_eq!(
             Config::get_option("key"),
             "",

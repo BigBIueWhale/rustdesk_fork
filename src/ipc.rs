@@ -4777,23 +4777,30 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
                     effective: None,
                 };
             };
-            let applied = tokio::task::spawn_blocking(move || {
+            let applied = tokio::task::spawn_blocking(move || -> ResultType<MainStatusOption> {
                 let _permit = permit;
                 let _restart = CheckIfRestart::new();
                 let key = value.key;
                 let key_name = key.as_str().to_owned();
-                Config::set_option(key_name.clone(), value.value);
-                MainStatusOption {
+                Config::set_option(key_name.clone(), value.value)?;
+                Ok(MainStatusOption {
                     key,
                     value: Config::get_option(&key_name),
-                }
+                })
             })
             .await;
             match applied {
-                Ok(effective) => MainIpcResponse::OptionSet {
+                Ok(Ok(effective)) => MainIpcResponse::OptionSet {
                     result: IpcMutationResult::Applied,
                     effective: Some(effective),
                 },
+                Ok(Err(err)) => {
+                    log::error!("option persistence failed: {err}");
+                    MainIpcResponse::OptionSet {
+                        result: IpcMutationResult::InternalFailure,
+                        effective: None,
+                    }
+                }
                 Err(err) => {
                     log::error!("option mutation worker failed: {err}");
                     MainIpcResponse::OptionSet {
@@ -11663,6 +11670,64 @@ mod test {
             }
             _ => panic!("unexpected option mutation response"),
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn ordinary_option_ack_waits_for_persistence() {
+        use std::os::unix::fs::PermissionsExt;
+        const ROOT_ENV: &str = "RUSTDESK_OPTION_ACK_TEST_ROOT";
+        let Some(root) = std::env::var_os(ROOT_ENV) else {
+            let root = std::env::temp_dir().join(format!("option-ack-{}", hbb_common::uuid::Uuid::new_v4()));
+            std::fs::create_dir(&root).unwrap();
+            let output = tokio::process::Command::new(std::env::current_exe().unwrap())
+                .args(["ipc::test::ordinary_option_ack_waits_for_persistence", "--exact", "--color", "never", "--test-threads=1", "--nocapture"])
+                .env(ROOT_ENV, &root)
+                .env("XDG_CONFIG_HOME", &root)
+                .output().await.unwrap();
+            std::fs::remove_dir_all(&root).unwrap();
+            assert!(output.stdout.len() + output.stderr.len() <= 16384);
+            for line in String::from_utf8(output.stdout).unwrap().lines() {
+                if let Some(start) = line.find("OPTION_ACK_NATIVE=") {
+                    println!("{}", &line[start..]);
+                }
+            }
+            assert!(output.status.success(), "option acknowledgement worker failed: {}", String::from_utf8_lossy(&output.stderr));
+            return;
+        };
+        let root = std::path::PathBuf::from(root);
+        assert_ne!(unsafe { libc::geteuid() }, 0);
+        assert_eq!(MainIpcAuthority::for_current_process(), MainIpcAuthority::UserOwned);
+        let file = config::Config2::file();
+        assert!(file.starts_with(&root));
+        Config::set_option("enable-abr".into(), "N".into()).unwrap();
+        let original = std::fs::read(&file).unwrap();
+        let parent = file.parent().unwrap();
+        let socket_path = root.join("request.sock").to_str().unwrap().to_owned();
+        let mut incoming = Endpoint::new(socket_path.clone()).incoming().unwrap();
+        let (accepted, client) = tokio::join!(incoming.next(), Endpoint::connect(socket_path));
+        let stream = Connection::new_main(accepted.unwrap().unwrap());
+        let client = client.unwrap();
+        let request = || MainIpcRequest::SetOption(
+            MainStatusOption::from_pair("enable-abr", "Y".into()).unwrap()
+        );
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let refused = handle_main_ipc_request(request(), &stream).await;
+        let failure_reported = matches!(refused, MainIpcResponse::OptionSet {
+            result: IpcMutationResult::InternalFailure, effective: None,
+        });
+        let memory_preserved = Config::get_option("enable-abr") == "N";
+        let file_preserved = std::fs::read(&file).unwrap() == original;
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let applied = handle_main_ipc_request(request(), &stream).await;
+        let retry_applied = matches!(applied, MainIpcResponse::OptionSet {
+            result: IpcMutationResult::Applied, effective: Some(value),
+        } if value.key == MainStatusOptionKey::EnableAbr && value.value == "Y");
+        let stored: config::Config2 = config::load_path(file);
+        let retry_persisted = stored.options.get("enable-abr").map(String::as_str) == Some("Y");
+        drop((stream, client, incoming));
+        println!("OPTION_ACK_NATIVE=observed failure_reported={failure_reported} memory_preserved={memory_preserved} file_preserved={file_preserved} retry_applied={retry_applied} retry_persisted={retry_persisted} peer=unix");
+        assert!(failure_reported && memory_preserved && file_preserved && retry_applied && retry_persisted);
     }
 
     #[tokio::test(flavor = "current_thread")]

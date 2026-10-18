@@ -362,11 +362,15 @@ pub fn set_option(key: String, value: String) {
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        if &key == "audio-input" {
+        let audio_input = key == "audio-input";
+        if let Err(err) = Config::set_option(key, value) {
+            log::warn!("Failed to persist option: {err}");
+            return;
+        }
+        if audio_input {
             #[cfg(not(target_os = "ios"))]
             crate::audio_service::restart();
         }
-        Config::set_option(key, value);
     }
 }
 

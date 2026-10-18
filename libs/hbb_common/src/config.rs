@@ -1355,8 +1355,8 @@ impl Config2 {
         Config::file_("2")
     }
 
-    fn store(&self) {
-        Config::store_(self, "2");
+    fn store(&self) -> crate::ResultType<()> {
+        store_path(Self::file(), self)
     }
 }
 
@@ -3110,24 +3110,26 @@ impl Config {
         option2bool(k, &Self::get_option(k))
     }
 
-    pub fn set_option(k: String, v: String) {
-        if !is_option_can_save(&OVERWRITE_SETTINGS, &k, &DEFAULT_SETTINGS, &v) {
-            let mut config = CONFIG2.write().unwrap();
-            if config.options.remove(&k).is_some() {
-                config.store();
-            }
-            return;
-        }
+    pub fn set_option(k: String, v: String) -> crate::ResultType<()> {
+        let desired = (is_option_can_save(&OVERWRITE_SETTINGS, &k, &DEFAULT_SETTINGS, &v)
+            && !v.is_empty())
+            .then_some(v);
         let mut config = CONFIG2.write().unwrap();
-        let v2 = if v.is_empty() { None } else { Some(&v) };
-        if v2 != config.options.get(&k) {
-            if v2.is_none() {
-                config.options.remove(&k);
-            } else {
-                config.options.insert(k, v);
-            }
-            config.store();
+        if config.options.get(&k) == desired.as_ref() {
+            return Ok(());
         }
+        let mut candidate = config.clone();
+        match desired {
+            Some(value) => {
+                candidate.options.insert(k, value);
+            }
+            None => {
+                candidate.options.remove(&k);
+            }
+        }
+        candidate.store()?;
+        *config = candidate;
+        Ok(())
     }
 
     /// Sets the local permanent password.

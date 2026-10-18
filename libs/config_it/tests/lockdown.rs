@@ -91,14 +91,14 @@ fn pinned_policy_is_the_single_source_of_truth() {
     //    holds — in EITHER direction. A password-knower can neither WIDEN the policy (egress, kill
     //    the service) nor NARROW the pinned full-access policy (drop to view-only, disable the
     //    terminal) at runtime; the funnel rejects every write to a pinned key. ──
-    Config::set_option("access-mode".into(), "view".into()); // try to narrow to view-only
-    Config::set_option("approve-mode".into(), "click".into()); // silent click-to-accept
-    Config::set_option("api-server".into(), "https://evil.example".into()); // egress
-    Config::set_option("proxy-username".into(), "mitm-user".into()); // proxy credential
-    Config::set_option("proxy-password".into(), "mitm-pass".into()); // proxy credential
-    Config::set_option("key".into(), "ATTACKER-REPOINTED-TRUST-ANCHOR=".into()); // trust anchor
-    Config::set_option("enable-terminal".into(), "N".into()); // try to disable the terminal
-    Config::set_option("stop-service".into(), "Y".into()); // kill the service
+    Config::set_option("access-mode".into(), "view".into()).unwrap(); // try to narrow to view-only
+    Config::set_option("approve-mode".into(), "click".into()).unwrap(); // silent click-to-accept
+    Config::set_option("api-server".into(), "https://evil.example".into()).unwrap(); // egress
+    Config::set_option("proxy-username".into(), "mitm-user".into()).unwrap(); // proxy credential
+    Config::set_option("proxy-password".into(), "mitm-pass".into()).unwrap(); // proxy credential
+    Config::set_option("key".into(), "ATTACKER-REPOINTED-TRUST-ANCHOR=".into()).unwrap(); // trust anchor
+    Config::set_option("enable-terminal".into(), "N".into()).unwrap(); // try to disable the terminal
+    Config::set_option("stop-service".into(), "Y".into()).unwrap(); // kill the service
     assert_eq!(Config::get_option("access-mode"), "full");
     assert_eq!(Config::get_option("approve-mode"), "password");
     assert_eq!(Config::get_option("api-server"), "");
@@ -127,7 +127,7 @@ fn pinned_policy_is_the_single_source_of_truth() {
     }
 
     // ── A non-pinned key is unaffected: the funnel touches only the policy table. ──
-    Config::set_option("a-non-pinned-ui-key".into(), "hello".into());
+    Config::set_option("a-non-pinned-ui-key".into(), "hello".into()).unwrap();
     assert_eq!(Config::get_option("a-non-pinned-ui-key"), "hello");
 }
 

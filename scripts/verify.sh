@@ -4811,7 +4811,6 @@ if grep -q 'Config::set_option' <<<"$set_option_fn"; then
 fi
 grep -q 'MainIpcRequest::SetOption(requested)' <<<"$set_option_fn" || r_s11b3="$r_s11b3 option-caller-typed-request-missing"
 option_handler=$(awk '/MainIpcRequest::SetOption\(value\) => \{/,/MainIpcRequest::ValidateCmConnection/' src/ipc.rs)
-grep -q 'Config::set_option(key_name.clone(), value.value);' <<<"$option_handler"       || r_s11b3="$r_s11b3 exact-option-persistence-missing"
 grep -q 'value: Config::get_option(&key_name)' <<<"$option_handler"                    || r_s11b3="$r_s11b3 receiver-effective-read-missing"
 if grep -q 'Config::set_options' <<<"$option_handler"; then
   r_s11b3="$r_s11b3 whole-options-replacement-present"

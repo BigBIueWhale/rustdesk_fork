@@ -778,4 +778,76 @@ mod tests {
             "new feedback at the unrestricted rate must still allow adaptation");
     }
 
+    fn controller_with_baseline(round_trip: u32) -> VideoQoS {
+        let mut qos = VideoQoS::default();
+        qos.on_connection_open(7);
+        qos.new_user_instant = Instant::now().checked_sub(Duration::from_secs(2)).unwrap();
+        qos.new_display("monitor".to_owned());
+        qos.set_support_changing_quality("monitor", true);
+        qos.store_bitrate(2000);
+        for _ in 0..120 {
+            qos.user_network_delay(7, round_trip);
+            qos.adjust_ratio(true);
+        }
+        qos
+    }
+
+    #[test]
+    fn baseline_round_trip_is_not_congestion() {
+        let mut outcomes = Vec::new();
+        for round_trip in [150, 250, 1000] {
+            let mut qos = controller_with_baseline(round_trip);
+            let excess = qos.users[&7].delay.avg_delay();
+            let fps = qos.fps();
+            let quality_restored = qos.ratio() == qos.latest_quality().ratio();
+            println!("VIDEO_QOS_BASE_RTT=observed rtt_ms={round_trip} excess_ms={excess} fps={fps} quality_restored={quality_restored}");
+            outcomes.push(excess == 0 && fps == FPS && quality_restored);
+        }
+        assert!(outcomes.into_iter().all(|ok| ok),
+            "completed delay equal to its learned baseline has no excess congestion");
+    }
+
+    #[test]
+    fn baseline_round_trip_recovers_after_pending_outage() {
+        let mut qos = controller_with_baseline(250);
+        qos.user_custom_fps(7, 20);
+        let mut outcomes = Vec::new();
+        for cycle in 0..3 {
+            qos.user_delay_response_elapsed(7, 4000);
+            assert_eq!(qos.fps(), MIN_FPS + 1);
+            qos.adjust_ratio(true);
+            qos.user_network_delay(7, 4250);
+            for _ in 0..120 {
+                qos.user_network_delay(7, 250);
+                qos.adjust_ratio(true);
+            }
+            let excess = qos.users[&7].delay.avg_delay();
+            let fps = qos.fps();
+            let quality_restored = qos.ratio() == qos.latest_quality().ratio();
+            let pending_retired = qos.users[&7].delay.pending_delay.is_none();
+            let owner_preserved = qos.users.len() == 1 && qos.users[&7].custom_fps == Some(20);
+            println!("VIDEO_QOS_RECOVERY=observed cycle={cycle} excess_ms={excess} fps={fps} quality_restored={quality_restored} pending_retired={pending_retired} owner_preserved={owner_preserved}");
+            outcomes.push(excess == 0 && fps == 20 && quality_restored
+                && pending_retired && owner_preserved);
+        }
+        assert!(outcomes.into_iter().all(|ok| ok),
+            "fresh feedback must restore the same viewer's rate and quality after each outage");
+    }
+
+    #[test]
+    fn excess_delay_above_baseline_still_reduces_rate() {
+        let mut qos = controller_with_baseline(250);
+        let previous_fps = qos.fps();
+        let previous_ratio = qos.ratio();
+        for _ in 0..6 {
+            qos.user_network_delay(7, 1500);
+            qos.adjust_ratio(true);
+        }
+        let excess = qos.users[&7].delay.avg_delay();
+        let rate_reduced = qos.fps() < previous_fps;
+        let quality_not_increased = qos.ratio() <= previous_ratio;
+        println!("VIDEO_QOS_CONGESTION=observed excess_ms={excess} rate_reduced={rate_reduced} quality_not_increased={quality_not_increased}");
+        assert!(excess >= DELAY_THRESHOLD_150MS && rate_reduced && quality_not_increased);
+    }
+
 }

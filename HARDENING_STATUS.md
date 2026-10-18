@@ -2045,6 +2045,16 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   duplicate workspace validator are deleted because they missed this semantic mismatch and observed no runtime.
   Current compilation/execution is not claimed for this correction: the fixed rootless Docker socket was absent,
   and no host or rootful fallback was used. Target-native focus/background/presentation evidence remains open.
++  Native decoder-result accounting is corrected at `cdfcab53`: every successful decode clears the
+  error count, including a valid packet with no picture; native errors retain their existing policy.
+  The real libvpx/production-`VideoHandler` baseline `241dbfea` passed the visible/corrupt control
+  and failed three counter assertions (3 at startup, 5 after repeated hidden packets, 2 after
+  an error then hidden success). The identical four tests pass in the complete Linux parent
+  artifact in 292 VM seconds; visible follow-up frames produce RGB and corrupt packets remain errors.
+  `.harness-state/verifier-vm/viewer-video-accepted-cdfcab53.json` binds source, artifact, baseline,
+  unchanged inputs/endpoints and joined bounded-RAM cleanup. Two earlier fixture failures are retained.
+  This establishes native decoder accounting only; peer capability exchange, actual presentation,
+  network impairment, long-session recovery, installed authority and other platforms remain OPEN.
 - **R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication** — Source and focused
   generated-bridge/model execution are green. Each `(session, display)` owns one published token plus at most one
   latest pending frame. One exact atomic `take_latest` operation promotes the pending frame when present, returns

@@ -400,6 +400,32 @@ This establishes shared component behavior and source removal. Windows compilati
 renamed/canonical setup, UAC success/denial, MSI install/update/cleanup and installed
 negative-principal execution remain OPEN, as do cold artifacts and release review.
 
+**Installer generated package publication — Linux native A/B PASS; Windows acceptance OPEN.**
+Product `233689ce` replaces `generate`'s early `File::create(data.bin)` with one exclusively
+created sibling in Cargo's private `OUT_DIR`. The unchanged encoder streams to that file;
+successful write and sync precede close and rename into `data.bin`. Prepublication errors
+remove the staging file and return the primary error, augmented if cleanup fails. There is
+no truncate fallback or second full compressed-body copy. Decoder, extraction, Windows
+protected installation and the wire encoder body remain unchanged. The only dependency
+addition is a Linux test binding to already-locked `libc` for child-only failure injection.
+
+At `cdbc333c`, three new regressions fail while all fifteen existing component/CLI controls
+pass: invalid input damages the published output, successful generation mutates retained
+hard-link/open-reader aliases and follows an output symlink, and a real eight-byte write
+followed by `EFBIG` leaves the old output damaged. The same test module and recipe pass all
+eighteen cases at `233689ce`, including unchanged input/link targets, decoded new-package
+bytes, preserved prior output and retired staging files. Only the exact joined test child
+changes its signal disposition and file-size limit; the parent observes its real write count.
+
+The baseline and correction take 115.139/142.356 supervisor seconds; the successful outer
+run takes 136 seconds. The existing 4-GiB guest, 2-GiB container, 6-GiB RAM scratch,
+4-GiB QEMU ceiling, headroom and isolation are unchanged. Both VM/RAM/private roots retire,
+each run's four endpoint snapshots have zero additions/removals, and source freezes before,
+during and after each run agree. `.harness-state/verifier-vm/installer-generation-233689ce.json`
+retains artifacts, every named A/B result, failure observations and cleanup evidence.
+This proves shared build-component behavior. Native Windows compilation/publication,
+UAC/MSI lifecycle, installed principals/settings, cold release equality and review remain OPEN.
+
 **Installer payload decoder — fixed MSI, explicit errors and output bound; Windows acceptance OPEN.**
 Product `acf3b0ae` replaces the generic infallible file-list/startup-path reader
 with one borrowed `InstallerPackage`. The constructor checks every field boundary,

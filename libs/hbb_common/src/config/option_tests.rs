@@ -4,6 +4,19 @@ use std::os::unix::fs::PermissionsExt;
 mod before {
     use super::*;
 
+    pub fn set_flutter_option(k: String, v: String) {
+        let mut config = LOCAL_CONFIG.write().unwrap();
+        let v2 = if v.is_empty() { None } else { Some(&v) };
+        if v2 != config.ui_flutter.get(&k) {
+            if v2.is_none() {
+                config.ui_flutter.remove(&k);
+            } else {
+                config.ui_flutter.insert(k, v);
+            }
+            config.store();
+        }
+    }
+
     pub fn set_option(k: String, v: String) {
         if !is_option_can_save(&OVERWRITE_LOCAL_SETTINGS, &k, &DEFAULT_LOCAL_SETTINGS, &v) {
             let mut config = LOCAL_CONFIG.write().unwrap();
@@ -149,7 +162,7 @@ fn results_distinguish_failed_saves_from_durable_and_idempotent_success() {
 #[test]
 fn favorite_failure_preserves_state_and_retries_the_exact_membership_change() {
     in_private_process("config::option_tests::favorite_failure_preserves_state_and_retries_the_exact_membership_change", |_| {
-        LocalConfig::set_flutter_option("favorite-test".into(), "preserved".into());
+        LocalConfig::set_flutter_option("favorite-test".into(), "preserved".into()).unwrap();
         before::set_fav(vec!["original".into()]);
         let file = Config::file_("_local");
         let parent = file.parent().unwrap();
@@ -264,6 +277,53 @@ fn keyboard_layout_failure_preserves_mapping_and_allows_retry() {
         fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
         println!("OPTION_COMMIT_KEYBOARD_NATIVE=observed failure_reported={failed} memory_preserved={memory_preserved} file_preserved={file_preserved} retry_persisted={retry_persisted} unrelated_preserved={unrelated_preserved} idempotent_without_write={idempotent}");
         assert!(failed && memory_preserved && file_preserved && retry_persisted && unrelated_preserved && idempotent);
+    });
+}
+
+#[test]
+fn flutter_option_failure_preserves_state_and_retries_without_crossing_namespaces() {
+    in_private_process("config::option_tests::flutter_option_failure_preserves_state_and_retries_without_crossing_namespaces", |_| {
+        let key = "flutter-option-commit-test";
+        LocalConfig::set_option(key.into(), "general-preserved".into()).unwrap();
+        LocalConfig::set_favorites(vec!["preserved".into()], true).unwrap();
+        LocalConfig::set_kb_layout_type("ISO".into()).unwrap();
+        before::set_flutter_option(key.into(), "ui-original".into());
+        let file = Config::file_("_local");
+        let parent = file.parent().unwrap();
+        let original = fs::read(&file).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        before::set_flutter_option(key.into(), "ui-replacement".into());
+        let published = LocalConfig::get_flutter_option(key) == "ui-replacement";
+        let file_preserved = fs::read(&file).unwrap() == original;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        before::set_flutter_option(key.into(), "ui-replacement".into());
+        let retry_skipped = fs::read(&file).unwrap() == original;
+        println!("OPTION_COMMIT_UI_STATE_BEFORE=observed published_without_commit={published} file_preserved={file_preserved} retry_skipped={retry_skipped}");
+        assert!(published && file_preserved && retry_skipped);
+
+        for value in ["ui-replacement", ""] {
+            LocalConfig::set_flutter_option(key.into(), "ui-original".into()).unwrap();
+            let original = fs::read(&file).unwrap();
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+            let failed = LocalConfig::set_flutter_option(key.into(), value.into()).is_err();
+            let memory_preserved = LocalConfig::get_flutter_option(key) == "ui-original";
+            let file_preserved = fs::read(&file).unwrap() == original;
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            LocalConfig::set_flutter_option(key.into(), value.into()).unwrap();
+            let stored: LocalConfig = load_path(file.clone());
+            let retry_persisted = stored.ui_flutter.get(key).map(String::as_str).unwrap_or("") == value
+                && LocalConfig::get_flutter_option(key) == value;
+            let unrelated_preserved = LocalConfig::get_option(key) == "general-preserved"
+                && stored.options.get(key).map(String::as_str) == Some("general-preserved")
+                && stored.fav == ["preserved"] && stored.kb_layout_type == "ISO";
+            let durable = fs::read(&file).unwrap();
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+            LocalConfig::set_flutter_option(key.into(), value.into()).unwrap();
+            let idempotent = fs::read(&file).unwrap() == durable;
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            println!("OPTION_COMMIT_UI_STATE_NATIVE=observed removal={} failure_reported={failed} memory_preserved={memory_preserved} file_preserved={file_preserved} retry_persisted={retry_persisted} unrelated_preserved={unrelated_preserved} idempotent_without_write={idempotent}", value.is_empty());
+            assert!(failed && memory_preserved && file_preserved && retry_persisted && unrelated_preserved && idempotent);
+        }
     });
 }
 

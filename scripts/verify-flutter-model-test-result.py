@@ -111,6 +111,9 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SETTING_OPTION_TESTS = {
+    "Flutter UI preference save waits and returns effective readback",
+    "Flutter UI preference failure preserves readback and permits retry",
+    "Flutter UI preference readback failure reports uncertainty and permits retry",
     "local option save waits before publishing dependent effects",
     "local option failures report feedback and stop dependent effects",
     "local option failure permits the identical retry",

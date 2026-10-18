@@ -158,8 +158,9 @@ class _PeerTabPageState extends State<PeerTabPage>
                           ? null
                           : () async {
                               await handleTabSelection(t);
-                              await bind.setLocalFlutterOption(
-                                  k: kOptionPeerTabIndex, v: t.toString());
+                              if (!mounted) return;
+                              await saveLocalFlutterOption(
+                                  kOptionPeerTabIndex, t.toString());
                             },
                       onHover: (value) => hover.value = value,
                     ),
@@ -679,12 +680,18 @@ class _PeerViewDropdownState extends State<PeerViewDropdown> {
                           ? null
                           : (PeerUiType? v) async {
                               if (v != null) {
-                                peerCardUiType.value = v;
+                                final stored = await saveLocalFlutterOption(
+                                    kOptionPeerCardUiType, v.index.toString());
+                                if (stored == null || !mounted) return;
+                                final index = int.tryParse(stored);
+                                if (index == null ||
+                                    index < 0 ||
+                                    index >= PeerUiType.values.length) {
+                                  showToast(translate('Failed'));
+                                  return;
+                                }
+                                peerCardUiType.value = PeerUiType.values[index];
                                 setState(() {});
-                                await bind.setLocalFlutterOption(
-                                  k: kOptionPeerCardUiType,
-                                  v: peerCardUiType.value.index.toString(),
-                                );
                                 if (Navigator.canPop(context)) {
                                   Navigator.pop(context);
                                 }
@@ -736,10 +743,7 @@ class _PeerSortDropdownState extends State<PeerSortDropdown> {
 
   void _loadLocalOptions() {
     peerSort.value = PeerSortType.remoteId;
-    bind.setLocalFlutterOption(
-      k: kOptionPeerSorting,
-      v: peerSort.value,
-    );
+    saveLocalFlutterOption(kOptionPeerSorting, peerSort.value);
   }
 
   @override
@@ -763,11 +767,14 @@ class _PeerSortDropdownState extends State<PeerSortDropdown> {
                       Text(translate(e), style: style), e, peerSort.value,
                       dense: true, (String? v) async {
                     if (v != null) {
-                      peerSort.value = v;
-                      await bind.setLocalFlutterOption(
-                        k: kOptionPeerSorting,
-                        v: peerSort.value,
-                      );
+                      final stored =
+                          await saveLocalFlutterOption(kOptionPeerSorting, v);
+                      if (stored == null || !mounted) return;
+                      if (!PeerSortType.values.contains(stored)) {
+                        showToast(translate('Failed'));
+                        return;
+                      }
+                      peerSort.value = stored;
                     }
                   }),
                 ),

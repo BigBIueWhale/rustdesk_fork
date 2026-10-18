@@ -202,10 +202,7 @@ class _PeersViewState extends State<_PeersView> {
     // fallback to id sorting
     if (!PeerSortType.values.contains(sortedBy)) {
       sortedBy = PeerSortType.remoteId;
-      bind.setLocalFlutterOption(
-        k: kOptionPeerSorting,
-        v: sortedBy,
-      );
+      saveLocalFlutterOption(kOptionPeerSorting, sortedBy);
     }
 
     if (widget.peers.loadEvent != LoadEvent.recent) {

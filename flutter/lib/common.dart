@@ -839,10 +839,9 @@ class OverlayDialogManager {
 
   setMobileActionsOverlayVisible(bool v, {store = true}) {
     if (store) {
-      bind.setLocalFlutterOption(k: kOptionShowMobileAction, v: v ? 'Y' : 'N');
+      saveLocalFlutterOption(kOptionShowMobileAction, v ? 'Y' : 'N');
     }
-    // No need to read the value from local storage after setting it.
-    // It better to toggle the value directly.
+    // Visibility is live dialog state; saving its preference reports failure separately.
     mobileActionsOverlayVisible.value = v;
   }
 
@@ -1772,6 +1771,22 @@ Future<bool> mainSetLocalBoolOption(String key, bool value) async {
   return mainSetLocalOption(key, bool2option(key, value));
 }
 
+Future<String?> saveLocalFlutterOption(String key, String value,
+    {Future<void> Function(String key, String value)? writeOption,
+    String Function(String key)? readOption,
+    VoidCallback? showFailure}) async {
+  final write = writeOption ??
+      (key, value) => bind.setLocalFlutterOption(k: key, v: value);
+  final read = readOption ?? (key) => bind.getLocalFlutterOption(k: key);
+  String? effective;
+  final saved = await mainSetLocalOption(key, value,
+      writeOption: (key, value) async {
+        await write(key, value);
+        effective = read(key);
+      }, showFailure: showFailure);
+  return saved ? effective : null;
+}
+
 bool mainGetLocalBoolOptionSync(String key) {
   return option2bool(key, bind.mainGetLocalOption(key: key));
 }
@@ -1989,8 +2004,11 @@ Future<void> _saveWindowPositionActual(WindowKey key) async {
     debugPrint(
         "Saving frame: ${key.windowId}: ${pos.width}/${pos.height}, offset:${pos.offsetWidth}/${pos.offsetHeight}, isMaximized:${pos.isMaximized}, isFullscreen:${pos.isFullscreen}");
 
-    await bind.setLocalFlutterOption(
-        k: windowFramePrefix + key.type.name, v: pos.toString());
+    final stored = await saveLocalFlutterOption(
+        windowFramePrefix + key.type.name, pos.toString());
+    if (stored == null && identical(_lastWindowPosition, pos)) {
+      _lastWindowPosition = null;
+    }
 
     if ((key.type == WindowType.RemoteDesktop ||
             key.type == WindowType.ViewCamera) &&

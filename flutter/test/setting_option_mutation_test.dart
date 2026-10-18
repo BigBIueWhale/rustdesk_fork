@@ -4,6 +4,72 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Flutter UI preference save waits and returns effective readback', () async {
+    final completion = Completer<void>();
+    var reads = 0;
+    String? result;
+    final save = saveLocalFlutterOption('peer-view', 'requested',
+        writeOption: (key, value) {
+          expect(key, 'peer-view');
+          expect(value, 'requested');
+          return completion.future;
+        }, readOption: (key) {
+          expect(key, 'peer-view');
+          reads++;
+          return 'effective';
+        }, showFailure: () => fail('successful preference save reported failure'))
+        .then((value) => result = value);
+    await Future<void>.delayed(Duration.zero);
+    expect(reads, 0);
+    expect(result, isNull);
+    completion.complete();
+    await save;
+    expect(result, 'effective');
+    expect(reads, 1);
+  });
+
+  test('Flutter UI preference failure preserves readback and permits retry', () async {
+    var writes = 0;
+    var reads = 0;
+    var failures = 0;
+    Future<void> write(String key, String value) async {
+      expect(key, 'peer-view');
+      expect(value, '');
+      if (++writes == 1) throw StateError('save failed');
+    }
+    String read(String key) {
+      reads++;
+      return '';
+    }
+    expect(await saveLocalFlutterOption('peer-view', '', writeOption: write,
+        readOption: read, showFailure: () => failures++), isNull);
+    expect(reads, 0);
+    expect(await saveLocalFlutterOption('peer-view', '', writeOption: write,
+        readOption: read, showFailure: () => failures++), '');
+    expect(writes, 2);
+    expect(reads, 1);
+    expect(failures, 1);
+  });
+
+  test('Flutter UI preference readback failure reports uncertainty and permits retry', () async {
+    var writes = 0;
+    var reads = 0;
+    var failures = 0;
+    Future<void> write(String key, String value) async { writes++; }
+    String read(String key) {
+      if (++reads == 1) throw StateError('readback failed');
+      return 'confirmed';
+    }
+    expect(await saveLocalFlutterOption('peer-view', 'requested', writeOption: write,
+        readOption: read, showFailure: () => failures++), isNull);
+    expect(writes, 1);
+    expect(await saveLocalFlutterOption('peer-view', 'requested', writeOption: write,
+        readOption: read, showFailure: () => failures++), 'confirmed');
+    expect(writes, 2);
+    expect(reads, 2);
+    expect(failures, 1);
+  });
+
   test('local option save waits before publishing dependent effects', () async {
     final completion = Completer<void>();
     final calls = <String>[];

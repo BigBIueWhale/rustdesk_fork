@@ -451,8 +451,8 @@ pub fn get_local_flutter_option(k: String) -> SyncReturn<String> {
     SyncReturn(ui_interface::get_local_flutter_option(k))
 }
 
-pub fn set_local_flutter_option(k: String, v: String) {
-    ui_interface::set_local_flutter_option(k, v);
+pub fn set_local_flutter_option(k: String, v: String) -> Result<()> {
+    ui_interface::set_local_flutter_option(k, v)
 }
 
 pub fn get_local_kb_layout_type() -> SyncReturn<String> {

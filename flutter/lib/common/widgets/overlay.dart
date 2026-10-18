@@ -311,9 +311,7 @@ class DraggableKeyPosition {
   }
 
   _triggerStore() => _debouncerStore.value = _debouncerStore.value + 1;
-  _store() {
-    bind.setLocalFlutterOption(k: key, v: '${_pos.dx},${_pos.dy}');
-  }
+  _store() => saveLocalFlutterOption(key, '${_pos.dx},${_pos.dy}');
 }
 
 class DraggablePositions {

@@ -445,16 +445,19 @@ class _FloatingLeftRightButtonState extends State<FloatingLeftRightButton> {
     }
   }
 
-  void _trySavePosition() {
+  Future<void> _trySavePosition() async {
     if (_previousOrientation == null) return;
     if (((_position - _preSavedPos)).distanceSquared < 0.1) return;
+    final orientation = _previousOrientation!;
+    final position = _position;
     final pos = jsonEncode({
-      'x': _position.dx,
-      'y': _position.dy,
+      'x': position.dx,
+      'y': position.dy,
     });
-    bind.setLocalFlutterOption(
-        k: _getPositionKey(_previousOrientation!), v: pos);
-    _preSavedPos = _position;
+    final stored = await saveLocalFlutterOption(_getPositionKey(orientation), pos);
+    if (stored == null || !mounted || _previousOrientation != orientation) return;
+    final savedPosition = _loadPositionFromString(stored);
+    if (savedPosition != null) _preSavedPos = savedPosition;
   }
 
   void _restorePosition(Orientation ori) {

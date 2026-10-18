@@ -220,12 +220,9 @@ class PeerTabModel with ChangeNotifier {
         } else if (visible && visibleEnabledOrderedIndexs.length == 1) {
           _currentTab = index;
         }
-        try {
-          bind.setLocalFlutterOption(
-              k: kOptionPeerTabVisible, v: jsonEncode(_isVisible));
-        } catch (_) {}
         notifyListeners();
       }
+      saveLocalFlutterOption(kOptionPeerTabVisible, jsonEncode(_isVisible));
     }
   }
 
@@ -258,7 +255,7 @@ class PeerTabModel with ChangeNotifier {
       for (int i = 0; i < list.length; i++) {
         orders[i] = list[i];
       }
-      bind.setLocalFlutterOption(k: kOptionPeerTabOrder, v: jsonEncode(orders));
+      saveLocalFlutterOption(kOptionPeerTabOrder, jsonEncode(orders));
       notifyListeners();
     }
   }

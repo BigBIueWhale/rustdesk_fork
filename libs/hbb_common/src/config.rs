@@ -3930,17 +3930,21 @@ impl LocalConfig {
         .unwrap_or_default()
     }
 
-    pub fn set_flutter_option(k: String, v: String) {
+    pub fn set_flutter_option(k: String, v: String) -> crate::ResultType<()> {
         let mut config = LOCAL_CONFIG.write().unwrap();
         let v2 = if v.is_empty() { None } else { Some(&v) };
-        if v2 != config.ui_flutter.get(&k) {
-            if v2.is_none() {
-                config.ui_flutter.remove(&k);
-            } else {
-                config.ui_flutter.insert(k, v);
-            }
-            config.store();
+        if v2 == config.ui_flutter.get(&k) {
+            return Ok(());
         }
+        let mut candidate = config.clone();
+        if v2.is_none() {
+            candidate.ui_flutter.remove(&k);
+        } else {
+            candidate.ui_flutter.insert(k, v);
+        }
+        store_path(Config::file_("_local"), &candidate)?;
+        *config = candidate;
+        Ok(())
     }
 }
 

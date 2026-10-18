@@ -190,8 +190,8 @@ pub fn get_local_flutter_option(key: String) -> String {
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]
-pub fn set_local_flutter_option(key: String, value: String) {
-    LocalConfig::set_flutter_option(key, value);
+pub fn set_local_flutter_option(key: String, value: String) -> hbb_common::ResultType<()> {
+    LocalConfig::set_flutter_option(key, value)
 }
 
 #[cfg(feature = "flutter")]

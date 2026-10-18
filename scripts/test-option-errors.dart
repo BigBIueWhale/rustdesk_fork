@@ -264,4 +264,59 @@ Future<void> main(List<String> arguments) async {
   check(localErrors == 4, 'local preference native error count differs');
   print('LOCAL_PREF_WIRE_DART=pass cases=5 native_errors=4 error=RESULT_ERROR '
       'failed_state=preserved retry=durable language=explicit-empty input_source=durable idempotent=without-write unrelated=preserved');
+
+  const uiKey = 'flutter-state-wire-test';
+  await api.mainSetLocalOption(key: uiKey, value: 'general-preserved');
+  await api.setLocalFlutterOption(k: uiKey, v: 'ui-state-original');
+  check(api.getLocalFlutterOption(k: uiKey) == 'ui-state-original' &&
+      api.mainGetLocalOption(key: uiKey) == 'general-preserved',
+      'initial Flutter preference crossed configuration namespaces');
+  print('UI_STATE_WIRE_DART_CASE=pass name=initial_commit');
+  var uiErrors = 0;
+  for (final value in ['ui-state-replacement', '']) {
+    final beforeFiles = configFiles(config);
+    final beforeValue = api.getLocalFlutterOption(k: uiKey);
+    Object? failure;
+    permissions('0500');
+    try {
+      try {
+        await api.setLocalFlutterOption(k: uiKey, v: value);
+      } catch (error) {
+        failure = error;
+      }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'Flutter preference failure did not cross the native bridge');
+      uiErrors++;
+      check(api.getLocalFlutterOption(k: uiKey) == beforeValue,
+          'failed Flutter preference save changed its effective value');
+      final afterFiles = configFiles(config);
+      check(afterFiles.length == beforeFiles.length &&
+          beforeFiles.entries.every((entry) => afterFiles[entry.key] == entry.value),
+          'failed Flutter preference save changed durable configuration');
+    } finally {
+      permissions('0700');
+    }
+    await api.setLocalFlutterOption(k: uiKey, v: value);
+    final text = localFiles.single.readAsStringSync();
+    check(api.getLocalFlutterOption(k: uiKey) == value &&
+        (value.isEmpty ? !text.contains('ui-state-replacement') : text.contains(value)),
+        'identical Flutter preference retry was not durable');
+    permissions('0500');
+    try {
+      await api.setLocalFlutterOption(k: uiKey, v: value);
+    } finally {
+      permissions('0700');
+    }
+    print('UI_STATE_WIRE_DART_CASE=pass name=${value.isEmpty ? "failed_remove_retry" : "failed_replace_retry"}');
+  }
+  check(api.mainGetLocalOption(key: uiKey) == 'general-preserved' &&
+      localFiles.single.readAsStringSync().contains('$uiKey = "general-preserved"') &&
+      api.mainGetLocalOption(key: 'lang').isEmpty &&
+      api.getLocalKbLayoutType() == 'Not ISO' &&
+      jsonEncode(await api.mainGetFav()) == jsonEncode(current),
+      'Flutter preference save replaced unrelated configuration');
+  check(uiErrors == 2, 'Flutter preference native error count differs');
+  print('UI_STATE_WIRE_DART_CASE=pass name=idempotent_and_namespace_isolation');
+  print('UI_STATE_WIRE_DART=pass cases=4 native_errors=2 error=RESULT_ERROR '
+      'failed_state=preserved retry=durable idempotent=without-write namespaces=isolated unrelated=preserved');
 }

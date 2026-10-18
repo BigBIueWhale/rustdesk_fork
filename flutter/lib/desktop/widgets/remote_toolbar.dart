@@ -313,15 +313,12 @@ class ToolbarState {
   setPin(bool v) async {
     if (_pin.value != v) {
       _pin.value = v;
-      // Save everytime changed, as this func will not be called frequently
-      await _savePin();
     }
+    await _savePin();
   }
 
-  _savePin() async {
-    bind.setLocalFlutterOption(
-        k: kOptionRemoteMenubarState, v: jsonEncode({'pin': _pin.value}));
-  }
+  _savePin() => saveLocalFlutterOption(
+      kOptionRemoteMenubarState, jsonEncode({'pin': _pin.value}));
 }
 
 class _ToolbarTheme {

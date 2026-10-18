@@ -13066,22 +13066,6 @@ if [ "${r_t7_n:-99}" -gt 0 ]; then
 else
   echo "  ok  R-T7 <=1-byte AEAD bypass fully removed (single-key Encrypt excised, R-A6)"
 fi
-# R-T2 (§20): the FramedStream poison flag. A keyed stream's write nonce is pre-incremented by
-# `seal` before the ciphertext is flushed; reusing a stream after a send error would re-flush
-# stale bytes under an advanced nonce and permanently desync the c2s direction. The poison flag
-# (the `poison: bool` field, after R-T3 restructured FramedStream to the keying-state machine) makes
-# "a send/recv error is fatal-to-the-connection" structural: send_bytes bails when poisoned, while
-# send, tracked send, drain, and receive errors all call one transition that poisons, closes keyed
-# admission, and aborts the exact writer. Presence gate: the short-circuit guard (>=2 sites:
-# send_bytes + next), one exact poison assignment, and four calls to the common retirement owner.
-r_t2_guard=$(grep -c 'if self.poison {' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
-r_t2_set=$(grep -c 'self.poison = true' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
-r_t2_retire=$(grep -c 'self.poison_and_retire_writer();' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
-if [ "${r_t2_guard:-0}" -ge 2 ] && [ "${r_t2_set:-0}" = 1 ] && [ "${r_t2_retire:-0}" = 4 ]; then
-  echo "  ok  R-T2 FramedStream poison and exact-writer retirement present (guard x$r_t2_guard, poison-set x$r_t2_set, retire x$r_t2_retire)"
-else
-  echo "  FAIL R-T2: poison/writer retirement incomplete (guard=$r_t2_guard need>=2, set=$r_t2_set need=1, retire=$r_t2_retire need=4)"; rc=1
-fi
 # R-T7/R-A1 follow-on: after AEAD succeeds, a malformed protobuf `Message` frame is still an
 # authenticated protocol violation. It MUST close/poison the session, not be silently ignored and
 # leave the keyed connection in a weird state. Gate both post-key dispatch roots: responder

@@ -108,6 +108,7 @@ case "$#:${8:-}" in
             --fuse-reads) HBB_FUSE_READ_TESTS=1 ;;
             --send-digest) HBB_SEND_DIGEST_TESTS=1 ;;
             --file-metadata) RUST_TEST_PROFILE=file-metadata ;;
+            --writer-retirement) RUST_TEST_PROFILE=writer-retirement ;;
             *) exit 2 ;;
         esac
         ;;
@@ -3056,6 +3057,45 @@ run_focused_rust_tests() {
                 fs::atomic_write::unix::tests::late_error_never_removes_a_published_file
             )
         fi
+        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
+            required_tests=(
+                tcp::writer_receipt_tests::protobuf_send_refuses_before_encoding
+                tcp::writer_receipt_tests::protobuf_receipt_refuses_before_encoding
+                tcp::writer_receipt_tests::protobuf_refuses_failed_writer_before_encoding_and_sealing
+                tcp::writer_receipt_tests::protobuf_refuses_full_channel_before_encoding_and_sealing
+                tcp::writer_receipt_tests::protobuf_encoding_failure_retires_admission
+                tcp::writer_receipt_tests::r_s11gx_writer_admission_checks_size_count_and_bytes_before_ownership
+                tcp::writer_receipt_tests::r_s11fb_receipt_waits_for_the_exact_sink_send
+                tcp::writer_receipt_tests::r_s11fb_receipt_reports_the_exact_sink_failure
+                tcp::writer_receipt_tests::r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort
+                tcp::writer_receipt_tests::r_s11gx_failed_drain_retires_writer_admission
+                tcp::writer_receipt_tests::r_s11gx_oversized_plaintext_is_rejected_before_peer_delivery
+                tcp::writer_receipt_tests::r_s11fb_tracked_keyed_send_round_trips_the_exact_frame
+                tcp::writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read
+                tcp::eof_tests::unkeyed_tcp_truncation_is_fatal
+                tcp::eof_tests::keyed_tcp_truncation_is_fatal
+                tcp::eof_tests::tcp_complete_frames_finish_cleanly
+                tcp::eof_tests::buffered_eof_frames_require_authentication
+                bytes_codec::tests::test_codec1
+                bytes_codec::tests::test_codec2
+                bytes_codec::tests::test_codec3
+                bytes_codec::tests::test_codec4
+                bytes_codec::tests::test_codec5
+                bytes_codec::tests::test_codec6
+                bytes_codec::tests::decode_large_frame_header_caps_preallocation
+                bytes_codec::tests::decode_rejects_frame_over_max_packet_length_before_reserve
+                bytes_codec::tests::eof_rejects_partial_headers
+                bytes_codec::tests::eof_rejects_partial_payloads_after_consuming_each_header_width
+                bytes_codec::tests::eof_preserves_complete_empty_coalesced_frames
+                bytes_codec::tests::eof_preserves_oversized_frame_refusal
+                tcp::writer_lifetime_tests::tcp_failed_writer_retires_encoded_storage
+                tcp::writer_lifetime_tests::tcp_cancelled_writer_retires_encoded_storage
+                tcp::writer_lifetime_tests::tcp_fatal_send_returns_after_writer_retirement
+                tcp::writer_lifetime_tests::tcp_fatal_receive_returns_after_writer_retirement
+                tcp::writer_lifetime_tests::tcp_fatal_drain_returns_after_writer_retirement
+                tcp::writer_lifetime_tests::tcp_cancelled_retirement_keeps_writer_owned_until_retry
+            )
+        fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
             source_fingerprints+=(
                 libs/clipboard/Cargo.toml
@@ -3137,6 +3177,10 @@ run_focused_rust_tests() {
             r_a9_port_forward_relay_bytes_are_ciphertext_on_the_wire
             tcp::writer_lifetime_tests::tcp_failed_writer_retires_encoded_storage
             tcp::writer_lifetime_tests::tcp_cancelled_writer_retires_encoded_storage
+            tcp::writer_lifetime_tests::tcp_fatal_send_returns_after_writer_retirement
+            tcp::writer_lifetime_tests::tcp_fatal_receive_returns_after_writer_retirement
+            tcp::writer_lifetime_tests::tcp_fatal_drain_returns_after_writer_retirement
+            tcp::writer_lifetime_tests::tcp_cancelled_retirement_keeps_writer_owned_until_retry
         )
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         container_name=rustdesk-linux-pa-authority-tests
@@ -4551,6 +4595,19 @@ run_focused_rust_tests() {
                                     exit "$group_status"
                                 fi
                             done
+                        elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
+                            for group in tcp::writer_receipt_tests:: tcp::eof_tests:: \
+                                bytes_codec::tests:: tcp::writer_lifetime_tests::; do
+                                group_status=0
+                                timeout --signal=TERM --kill-after=5s 20s \
+                                    "$test_executable" "$group" --color never --test-threads=1 --show-output \
+                                    || group_status=$?
+                                [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                                if [ "$group_status" -ne 0 ]; then
+                                    printf "WRITER_RETIREMENT_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" "$artifact_sha" "$group_status"
+                                    exit "$group_status"
+                                fi
+                            done
                         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
                             timeout --signal=TERM --kill-after=5s 20s \
                                 "$test_executable" fs::tests::send_digest_ --color never --test-threads=1 --show-output
@@ -4649,7 +4706,7 @@ run_focused_rust_tests() {
                                 exit "$group_status"
                             fi
                         done
-                        printf "TCP_TRANSPORT_ARTIFACT=pass sha256=%s executable=%s tests=31 unchanged=before-between-after\n" \
+                        printf "TCP_TRANSPORT_ARTIFACT=pass sha256=%s executable=%s tests=35 unchanged=before-between-after\n" \
                             "$transport_sha" "$transport_executable"
                         [ "$(rustdoc --version)" = "rustdoc 1.75.0 (82e1608df 2023-12-21)" ]
                         export RUSTDOC="$(command -v rustdoc)"
@@ -5178,12 +5235,13 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'Shared-library failure artifact metadata could not be read\n' >&2
             awk '
-                /^test (tcp::(writer_receipt_tests|eof_tests)|bytes_codec::tests)::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ {
+                /^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests)::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ {
                     if (++cases <= 64) print
                 }
                 /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
                 /^test fs::(tests::(file_metadata_[[:alnum:]_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[[:alnum:]_]+) \.\.\. (ok|FAILED)$/ { if (++metadata_cases <= 13) print }
                 /^FILE_METADATA_/ { if (++metadata_observations <= 16) print }
+                /^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|RETIREMENT_ARTIFACT_STOP)=/ { if (++writer_observations <= 32) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'File-peer probe failure artifact metadata could not be read\n' >&2
@@ -5226,6 +5284,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=3; fi
+        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=4; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
@@ -5265,6 +5324,15 @@ PY
         hbb_test_artifact_sha=${hbb_artifact_receipts[0]#*sha256=}
         hbb_test_artifact_sha=${hbb_test_artifact_sha%% *}
         fi
+        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
+            local group count
+            for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
+                bytes_codec::tests:12 tcp::writer_lifetime_tests:6; do
+                count=${group##*:}; group=${group%:*}
+                [ "$(grep -Ec "^test ${group}::[[:alnum:]_]+ [.][.][.] ok$" "$output")" -eq "$count" ] \
+                    || fail "writer retirement test group differs: $group"
+            done
+        fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "${#result_lines[@]}" -eq 6 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
@@ -5278,12 +5346,12 @@ PY
         [ "$(grep -Fxc 'CPACE_PENDING_READ_CANCEL=pass stages=3 partial_socket_bytes=9 recv_counter=2' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CPACE_PENDING_READ_CANCEL=' "$output")" -eq 1 ] \
             || fail 'CPace pending-read cancellation observation is absent or differs'
-        [ "$(grep -Ec '^TCP_TRANSPORT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} tests=31 unchanged=before-between-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^TCP_TRANSPORT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} tests=35 unchanged=before-between-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'TCP_TRANSPORT_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'transport library artifact identity or stability is absent'
         local group count
         for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
-            bytes_codec::tests:12 tcp::writer_lifetime_tests:2; do
+            bytes_codec::tests:12 tcp::writer_lifetime_tests:6; do
             count=${group##*:}; group=${group%:*}
             [ "$(grep -Ec "^test ${group}::[[:alnum:]_]+ [.][.][.] ok$" "$output")" -eq "$count" ] \
                 || fail "transport test group differs: $group"
@@ -5770,6 +5838,9 @@ PY
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             [ "$tests_passed" -eq 13 ] || fail 'file metadata test total differs'
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_' "$output"
+        elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
+            [ "$tests_passed" -eq 35 ] || fail 'writer retirement test total differs'
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests)::[[:alnum:]_]+ [.][.][.] ok$|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME)=' "$output"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             [ "$tests_passed" -eq 2 ] || fail 'send digest test total differs'
             grep -E '^test fs::tests::send_digest_.* \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=' "$output"
@@ -5797,6 +5868,10 @@ PY
             printf 'FILE_METADATA_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
+            printf 'WRITER_RETIREMENT_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             printf 'FILE_SEND_DIGEST_VM=pass commit=%s tree=%s tests=2 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-size-admission cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$hbb_test_artifact_sha" \
@@ -5810,9 +5885,9 @@ PY
         fi
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
-        [ "$tests_passed" -eq 55 ] \
+        [ "$tests_passed" -eq 59 ] \
             || fail "CPace recovery test count differs: $tests_passed"
-        grep -E '^test [a-z0-9_:]+ \.\.\. ok$|^(CPACE_WIRE|TCP_TRANSPORT)_ARTIFACT(_START)?=|^CPACE_PENDING_READ_CANCEL=|^WRITER_BUFFER_LIFETIME=' "$output"
+        grep -E '^test [a-z0-9_:]+ \.\.\. ok$|^(CPACE_WIRE|TCP_TRANSPORT)_ARTIFACT(_START)?=|^CPACE_PENDING_READ_CANCEL=|^WRITER_(BUFFER_LIFETIME|FATAL_RETURN|RETIRE_CANCEL)=' "$output"
         grep -E '^test .*tcp.rs - tcp::FramedStream |^TCP_FRAMING_API=' "$output"
         printf 'CPACE_RECOVERY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

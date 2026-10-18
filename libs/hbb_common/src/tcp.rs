@@ -242,7 +242,7 @@ struct KeyedStream {
     /// A read-only handle to the counter owned by the retained receive codec.
     read_seq: Arc<AtomicU64>,
     /// The dedicated writer task — aborted on drop so a write blocked on a dead socket cannot leak.
-    writer: JoinHandle<()>,
+    writer: Option<JoinHandle<()>>,
 }
 
 /// The sole writer's complete lifetime, including an in-flight command.
@@ -600,6 +600,7 @@ impl FramedStream {
         completion: Option<oneshot::Sender<io::Result<()>>>,
     ) -> ResultType<()> {
         if self.poison {
+            self.poison_and_retire_writer().await;
             bail!("R-T2: refusing to send on a poisoned stream (a prior send/recv error)");
         }
 
@@ -643,7 +644,7 @@ impl FramedStream {
         }
         .await;
         if result.is_err() {
-            self.poison_and_retire_writer();
+            self.poison_and_retire_writer().await;
         }
         result
     }
@@ -660,6 +661,7 @@ impl FramedStream {
     /// failed closed instead of stalling the session indefinitely.
     pub async fn flush_writer(&mut self) -> ResultType<()> {
         if self.poison {
+            self.poison_and_retire_writer().await;
             bail!("R-T2/R-T9: refusing to flush a poisoned stream");
         }
         let result = match &mut self.state {
@@ -691,7 +693,7 @@ impl FramedStream {
             StreamState::Keying => unreachable!("flush_writer observed a mid-keying stream"),
         };
         if result.is_err() {
-            self.poison_and_retire_writer();
+            self.poison_and_retire_writer().await;
         }
         result
     }
@@ -700,11 +702,13 @@ impl FramedStream {
     /// Closing admission prevents future internal use; aborting drops the active command and the
     /// receiver's queued commands, which returns every owned R-T18 permit without waiting for the
     /// outer connection future to reach `Drop`.
-    fn poison_and_retire_writer(&mut self) {
+    async fn poison_and_retire_writer(&mut self) {
         self.poison = true;
         if let StreamState::Keyed(k) = &self.state {
             k.writer_admission.close();
-            k.writer.abort();
+            if let Some(writer) = &k.writer {
+                writer.abort();
+            }
         }
     }
 
@@ -712,6 +716,7 @@ impl FramedStream {
     pub async fn next(&mut self) -> Option<Result<BytesMut, Error>> {
         // R-T2: a poisoned stream behaves as EOF — never read again after a fatal error.
         if self.poison {
+            self.poison_and_retire_writer().await;
             return None;
         }
         // R-T5 (§20): reassembly AND decryption+`read_seq` advance happen atomically INSIDE the
@@ -733,7 +738,7 @@ impl FramedStream {
         if matches!(res, Some(Err(_))) {
             // R-T2: a read / framing / decrypt-auth failure is fatal — poison the stream so it is
             // never reused (the decrypt now lives in the codec, so this one check covers both).
-            self.poison_and_retire_writer();
+            self.poison_and_retire_writer().await;
         }
         res
     }
@@ -794,7 +799,7 @@ impl FramedStream {
             writer_tx,
             writer_admission,
             read_seq,
-            writer,
+            writer: Some(writer),
         });
     }
 
@@ -874,7 +879,9 @@ impl Drop for FramedStream {
         // reservations together until cancellation is observed and its future is dropped.
         if let StreamState::Keyed(k) = &self.state {
             k.writer_admission.close();
-            k.writer.abort();
+            if let Some(writer) = &k.writer {
+                writer.abort();
+            }
         }
     }
 }
@@ -989,6 +996,26 @@ impl AsyncWrite for DynTcpStream {
 impl<R: AsyncRead + AsyncWrite + Unpin> TcpStreamTrait for R {}
 
 #[cfg(test)]
+async fn join_test_writer(
+    stream: &mut FramedStream,
+    abort: bool,
+) -> Option<Result<(), tokio::task::JoinError>> {
+    if let StreamState::Keyed(keyed) = &mut stream.state {
+        if let Some(writer) = &mut keyed.writer {
+            if abort {
+                writer.abort();
+            }
+            let result = tokio::time::timeout(std::time::Duration::from_secs(2), writer)
+                .await
+                .unwrap();
+            keyed.writer = None;
+            return Some(result);
+        }
+    }
+    None
+}
+
+#[cfg(test)]
 mod eof_tests {
     use super::*;
     use std::time::Duration;
@@ -1015,15 +1042,8 @@ mod eof_tests {
     }
 
     async fn join_writer(stream: &mut FramedStream, abort: bool) {
-        if let StreamState::Keyed(keyed) = &mut stream.state {
-            if abort {
-                keyed.writer.abort();
-            }
-            let error = tokio::time::timeout(Duration::from_secs(2), &mut keyed.writer)
-                .await
-                .unwrap()
-                .unwrap_err();
-            assert!(error.is_cancelled());
+        if let Some(result) = join_test_writer(stream, abort).await {
+            assert!(result.unwrap_err().is_cancelled());
         }
     }
 
@@ -1191,7 +1211,16 @@ mod writer_lifetime_tests {
         }
     }
 
-    async fn assert_encoded_storage_retires(reset: bool) {
+    struct BlockedWriter {
+        stream: FramedStream,
+        peer: tokio::net::TcpStream,
+        observation: Arc<WriteObservation>,
+        witness: Bytes,
+        admission: WriterAdmission,
+        receipt: WriterReceipt,
+    }
+
+    async fn blocked_writer() -> BlockedWriter {
         let listener = TcpSocket::new_v4().unwrap();
         listener.set_recv_buffer_size(4_096).unwrap();
         listener.bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
@@ -1255,14 +1284,20 @@ mod writer_lifetime_tests {
             .await.unwrap().unwrap().unwrap();
         assert_eq!(&control[..], b"control");
         assert_eq!(stream.recv_counter(), 1);
+        BlockedWriter { stream, peer, observation, witness, admission, receipt }
+    }
+
+    async fn assert_encoded_storage_retires(reset: bool) {
+        let BlockedWriter {
+            mut stream, mut peer, observation, witness, admission, receipt,
+        } = blocked_writer().await;
         if reset {
             peer.set_linger(Some(Duration::ZERO)).unwrap();
             drop(peer);
             assert!(tokio::time::timeout(Duration::from_secs(2), receipt)
                 .await.unwrap().unwrap().is_err());
-            if let StreamState::Keyed(keyed) = &mut stream.state {
-                tokio::time::timeout(Duration::from_secs(2), &mut keyed.writer)
-                    .await.unwrap().unwrap();
+            if let Some(result) = join_test_writer(&mut stream, false).await {
+                result.unwrap();
             }
             assert!(observation.failures.load(Ordering::Relaxed) > 0);
         } else {
@@ -1270,10 +1305,8 @@ mod writer_lifetime_tests {
             assert!(tokio::time::timeout(Duration::from_secs(2), stream.next())
                 .await.unwrap().unwrap().is_err());
             assert!(stream.poison);
-            if let StreamState::Keyed(keyed) = &mut stream.state {
-                let error = tokio::time::timeout(Duration::from_secs(2), &mut keyed.writer)
-                    .await.unwrap().unwrap_err();
-                assert!(error.is_cancelled());
+            if let Some(result) = join_test_writer(&mut stream, false).await {
+                assert!(result.unwrap_err().is_cancelled());
             }
             assert!(receipt.await.is_err());
             drop(peer);
@@ -1298,6 +1331,86 @@ mod writer_lifetime_tests {
     #[tokio::test]
     async fn tcp_cancelled_writer_retires_encoded_storage() {
         assert_encoded_storage_retires(false).await;
+    }
+
+    async fn observe_then_join(fixture: &mut BlockedWriter, kind: &str) -> bool {
+        // Capture the public-return boundary before any test-side yield or cleanup.
+        let writer_joined = matches!(&fixture.stream.state,
+            StreamState::Keyed(keyed) if keyed.writer.is_none());
+        let storage_retired = fixture.witness.is_unique();
+        let permits_returned = fixture.admission.frames.available_permits() == WRITER_CHANNEL_CAP
+            && fixture.admission.ciphertext_bytes.available_permits() == 256 * 1_024;
+        let completion_retired = matches!(fixture.receipt.try_recv(),
+            Err(oneshot::error::TryRecvError::Closed));
+        println!(
+            "WRITER_FATAL_RETURN=observed kind={} storage_retired={} permits_returned={} completion_retired={} writer_joined={}",
+            kind, storage_retired, permits_returned, completion_retired, writer_joined,
+        );
+        if let Some(result) = join_test_writer(&mut fixture.stream, true).await {
+            assert!(result.unwrap_err().is_cancelled());
+        }
+        assert!(fixture.witness.is_unique());
+        assert_eq!(fixture.admission.frames.available_permits(), WRITER_CHANNEL_CAP);
+        assert_eq!(fixture.admission.ciphertext_bytes.available_permits(), 256 * 1_024);
+        if !completion_retired {
+            assert!(tokio::time::timeout(Duration::from_secs(2), &mut fixture.receipt)
+                .await.unwrap().is_err());
+        }
+        writer_joined && storage_retired && permits_returned && completion_retired
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn tcp_fatal_send_returns_after_writer_retirement() {
+        let mut fixture = blocked_writer().await;
+        assert!(fixture.stream.send_bytes(Bytes::from(vec![0; 128 * 1_024])).await.is_err());
+        assert!(fixture.stream.poison);
+        assert!(observe_then_join(&mut fixture, "send").await);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn tcp_fatal_receive_returns_after_writer_retirement() {
+        let mut fixture = blocked_writer().await;
+        fixture.peer.write_all(&[4 << 2, 1, 2, 3, 4]).await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_secs(2), fixture.stream.next())
+            .await.unwrap().unwrap().is_err());
+        assert!(fixture.stream.poison);
+        assert!(observe_then_join(&mut fixture, "receive").await);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn tcp_fatal_drain_returns_after_writer_retirement() {
+        let mut fixture = blocked_writer().await;
+        let error = tokio::time::timeout(Duration::from_secs(4), fixture.stream.flush_writer())
+            .await.unwrap().unwrap_err();
+        assert!(error.to_string().contains("timed out waiting for writer drain"));
+        assert!(fixture.stream.poison);
+        assert!(observe_then_join(&mut fixture, "drain").await);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn tcp_cancelled_retirement_keeps_writer_owned_until_retry() {
+        let mut all_retired = true;
+        for retry in ["send", "receive", "drain"] {
+            let mut fixture = blocked_writer().await;
+            let mut operation = Box::pin(fixture.stream.send_bytes(Bytes::from(vec![0; 128 * 1_024])));
+            let pending_before_cancel = matches!(futures::poll!(operation.as_mut()), Poll::Pending);
+            drop(operation);
+            let ownership_retained = matches!(&fixture.stream.state,
+                StreamState::Keyed(keyed) if keyed.writer.is_some());
+            let resumed_error = match retry {
+                "send" => fixture.stream.send_bytes(Bytes::new()).await.is_err(),
+                "receive" => fixture.stream.next().await.is_none(),
+                "drain" => fixture.stream.flush_writer().await.is_err(),
+                _ => unreachable!(),
+            };
+            println!(
+                "WRITER_RETIRE_CANCEL=observed retry={} pending_before_cancel={} ownership_retained={} resumed_error={}",
+                retry, pending_before_cancel, ownership_retained, resumed_error,
+            );
+            let retired = observe_then_join(&mut fixture, retry).await;
+            all_retired &= pending_before_cancel && ownership_retained && resumed_error && retired;
+        }
+        assert!(all_retired);
     }
 }
 
@@ -1375,12 +1488,8 @@ mod writer_receipt_tests {
     }
 
     async fn join_aborted_writer(stream: &mut FramedStream) {
-        if let StreamState::Keyed(keyed) = &mut stream.state {
-            let error = tokio::time::timeout(std::time::Duration::from_secs(1), &mut keyed.writer)
-                .await
-                .unwrap()
-                .unwrap_err();
-            assert!(error.is_cancelled());
+        if let Some(result) = join_test_writer(stream, false).await {
+            assert!(result.unwrap_err().is_cancelled());
         }
     }
 
@@ -1422,7 +1531,7 @@ mod writer_receipt_tests {
                 _ => None,
             };
             if reason == "poisoned" {
-                stream.poison_and_retire_writer();
+                stream.poison_and_retire_writer().await;
             }
             let message = observed_message();
             let result = if with_receipt {
@@ -1499,11 +1608,10 @@ mod writer_receipt_tests {
                         .unwrap()
                         .is_err()
                 );
-                if let StreamState::Keyed(keyed) = &mut stream.state {
-                    tokio::time::timeout(std::time::Duration::from_secs(1), &mut keyed.writer)
-                        .await
-                        .unwrap()
-                        .unwrap();
+                if let Some(result) = join_test_writer(&mut stream, false).await {
+                    result.unwrap();
+                }
+                if let StreamState::Keyed(keyed) = &stream.state {
                     assert!(keyed.writer_tx.is_closed());
                 }
                 expected_seal.seal(&[]);
@@ -1592,7 +1700,9 @@ mod writer_receipt_tests {
             // Join the old implementation's still-live writer before reporting its failed oracle.
             if !poisoned {
                 if let StreamState::Keyed(keyed) = &stream.state {
-                    keyed.writer.abort();
+                    if let Some(writer) = &keyed.writer {
+                        writer.abort();
+                    }
                 }
             }
             join_aborted_writer(&mut stream).await;
@@ -1850,11 +1960,13 @@ mod writer_receipt_tests {
         let admission = match &mut sender.state {
             StreamState::Keyed(keyed) => {
                 let admission = keyed.writer_admission.clone();
-                keyed.writer.abort();
-                let error = (&mut keyed.writer)
+                let writer = keyed.writer.as_mut().unwrap();
+                writer.abort();
+                let error = writer
                     .await
                     .expect_err("the deliberately aborted writer must not complete normally");
                 assert!(error.is_cancelled());
+                keyed.writer = None;
                 admission
             }
             _ => panic!("test stream must be keyed"),

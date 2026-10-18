@@ -16,7 +16,7 @@ const ELEVATED_INSTALL_ARG: &str = "--rustdesk-protected-install";
 const ELEVATED_SILENT_INSTALL_ARG: &str = "--rustdesk-protected-silent-install";
 
 #[cfg(any(windows, test))]
-fn parse_installer_invocation(args: &[String]) -> Result<(bool, bool), String> {
+fn parse_installer_invocation(args: &[std::ffi::OsString]) -> Result<(bool, bool), String> {
     match args {
         [] => Ok((false, false)),
         [arg] if arg == "--silent-install" => Ok((true, false)),
@@ -40,7 +40,7 @@ fn has_reparse_point(metadata: &std::fs::Metadata) -> bool {
 
 #[cfg(windows)]
 fn main() {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
     let (silent, protected) = match parse_installer_invocation(&args) {
         Ok(invocation) => invocation,
         Err(err) => {
@@ -480,7 +480,7 @@ mod tests {
         let args = |values: &[&str]| {
             values
                 .iter()
-                .map(|value| (*value).to_owned())
+                .map(|value| std::ffi::OsString::from(*value))
                 .collect::<Vec<_>>()
         };
         assert_eq!(parse_installer_invocation(&args(&[])), Ok((false, false)));
@@ -498,5 +498,52 @@ mod tests {
         );
         assert!(parse_installer_invocation(&args(&["--unknown"])).is_err());
         assert!(parse_installer_invocation(&args(&["--silent-install", "--unknown"])).is_err());
+        for value in [
+            "--SILENT-INSTALL",
+            "--silent-install ",
+            "--silent-install=1",
+            "\u{fffd}",
+        ] {
+            assert!(parse_installer_invocation(&args(&[value])).is_err());
+        }
+
+        #[cfg(unix)]
+        {
+            use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+            for prefix in [
+                "",
+                "--silent-install",
+                ELEVATED_INSTALL_ARG,
+                ELEVATED_SILENT_INSTALL_ARG,
+            ] {
+                let mut raw = prefix.as_bytes().to_vec();
+                raw.push(0xff);
+                let value = OsString::from_vec(raw);
+                assert!(value.to_str().is_none());
+                assert_eq!(
+                    parse_installer_invocation(&[value]),
+                    Err("invalid setup command line".to_owned())
+                );
+            }
+        }
+        #[cfg(windows)]
+        {
+            use std::{ffi::OsString, os::windows::ffi::OsStringExt};
+            for prefix in [
+                "",
+                "--silent-install",
+                ELEVATED_INSTALL_ARG,
+                ELEVATED_SILENT_INSTALL_ARG,
+            ] {
+                let mut raw = prefix.encode_utf16().collect::<Vec<_>>();
+                raw.push(0xd800);
+                let value = OsString::from_wide(&raw);
+                assert!(value.to_str().is_none());
+                assert_eq!(
+                    parse_installer_invocation(&[value]),
+                    Err("invalid setup command line".to_owned())
+                );
+            }
+        }
     }
 }

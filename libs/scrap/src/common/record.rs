@@ -54,10 +54,7 @@ impl RecorderContext2 {
                 Uuid::new_v4().simple()
             )
             + &self.format.to_string().to_lowercase()
-            + if self.format == CodecFormat::VP9
-                || self.format == CodecFormat::VP8
-                || self.format == CodecFormat::AV1
-            {
+            + if self.format == CodecFormat::VP9 || self.format == CodecFormat::VP8 {
                 ".webm"
             } else {
                 ".mp4"
@@ -112,7 +109,7 @@ impl Recorder {
         };
         ctx2.set_filename(&self.ctx)?;
         let inner: Box<dyn RecorderApi> = match format {
-            CodecFormat::VP8 | CodecFormat::VP9 | CodecFormat::AV1 => {
+            CodecFormat::VP8 | CodecFormat::VP9 => {
                 Box::new(WebmRecorder::new(&ctx2)?)
             }
             #[cfg(feature = "hwcodec")]
@@ -154,9 +151,7 @@ impl Recorder {
         }
         let format = CodecFormat::from(frame);
         let frames = match frame {
-            video_frame::Union::Vp8s(frames)
-            | video_frame::Union::Vp9s(frames)
-            | video_frame::Union::Av1s(frames) => &frames.frames,
+            video_frame::Union::Vp8s(frames) | video_frame::Union::Vp9s(frames) => &frames.frames,
             #[cfg(feature = "hwcodec")]
             video_frame::Union::H264s(frames) | video_frame::Union::H265s(frames) => &frames.frames,
             _ => bail!("unsupported frame type"),

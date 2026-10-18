@@ -108,7 +108,6 @@ impl<T: Write + Seek> WebmMux<T> {
         let codec = match ctx.format {
             CodecFormat::VP8 => ffi::VP8_CODEC_ID,
             CodecFormat::VP9 => ffi::VP9_CODEC_ID,
-            CodecFormat::AV1 => ffi::AV1_CODEC_ID,
             _ => bail!("Unsupported WebM codec"),
         };
         let mut mux = Self {
@@ -141,11 +140,6 @@ impl<T: Write + Seek> WebmMux<T> {
         mux.track = unsafe { ffi::video_track_base_mut(video) };
         if mux.track.is_null() {
             bail!("Failed to obtain WebM video track");
-        }
-        if ctx.format == CodecFormat::AV1
-            && !unsafe { ffi::segment_set_codec_private(mux.segment, number, [0; 4].as_ptr(), 4) }
-        {
-            bail!("Failed to set WebM codec private data");
         }
         Ok(mux)
     }

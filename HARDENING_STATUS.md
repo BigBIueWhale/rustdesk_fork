@@ -400,6 +400,23 @@ This establishes shared component behavior and source removal. Windows compilati
 renamed/canonical setup, UAC success/denial, MSI install/update/cleanup and installed
 negative-principal execution remain OPEN, as do cold artifacts and release review.
 
+**Installer OS argument decoding — Linux parser PASS; Windows entrypoint acceptance OPEN.**
+Product `0613ff17` changes the wrapper's command-line input to `args_os()` and its
+closed parser to borrowed `OsString` values. Invalid OS strings reach explicit
+refusal without Unicode conversion; the four accepted invocation forms and the
+complete protected-installation module are unchanged. Rust 1.75's `Args::next`
+unwraps a fallible Unicode conversion; the former entrypoint selected that iterator.
+The existing installer VM passes all eighteen component tests in 112 outer seconds,
+including the extended command-line test's four raw non-Unicode Unix values and
+four additional Unicode refusals. Its sixteen package cases and executable digest
+are unchanged; both executed artifacts retain before/after identity. The existing
+4-GiB guest/2-GiB container/6-GiB RAM-scratch profile and every limit remain unchanged.
+Exact source/artifacts, cases, endpoints and joined cleanup are retained in
+`.harness-state/verifier-vm/installer-os-args-0613ff17.json`.
+This executes the shared parser, not the Windows entrypoint. The four Windows
+unpaired-surrogate cases, native argv collection, UAC/MSI/installed behavior and
+release acceptance remain OPEN; no empirical old/new Windows comparison is claimed.
+
 **Installer generated package publication — Linux native A/B PASS; Windows acceptance OPEN.**
 Product `233689ce` replaces `generate`'s early `File::create(data.bin)` with one exclusively
 created sibling in Cargo's private `OUT_DIR`. The unchanged encoder streams to that file;

@@ -1,6 +1,7 @@
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::clipboard::copy_screenshot_to_clipboard;
 use hbb_common::ResultType;
+use std::convert::TryFrom;
 
 pub enum ScreenshotAction {
     SaveAs(String),
@@ -8,26 +9,17 @@ pub enum ScreenshotAction {
     Discard,
 }
 
-impl Default for ScreenshotAction {
-    fn default() -> Self {
-        Self::Discard
-    }
-}
+impl TryFrom<&str> for ScreenshotAction {
+    type Error = hbb_common::anyhow::Error;
 
-impl From<&str> for ScreenshotAction {
-    fn from(value: &str) -> Self {
-        match value.chars().next() {
-            Some('0') => {
-                if let Some((pos, _)) = value.char_indices().nth(2) {
-                    let substring = &value[pos..];
-                    Self::SaveAs(substring.to_string())
-                } else {
-                    Self::default()
-                }
-            }
-            Some('1') => Self::CopyToClipboard,
-            Some('2') => Self::default(),
-            _ => Self::default(),
+    fn try_from(value: &str) -> ResultType<Self> {
+        if let Some(path) = value.strip_prefix("0:").filter(|path| !path.is_empty()) {
+            return Ok(Self::SaveAs(path.to_owned()));
+        }
+        match value {
+            "1" => Ok(Self::CopyToClipboard),
+            "2" => Ok(Self::Discard),
+            _ => hbb_common::bail!("Invalid screenshot action"),
         }
     }
 }
@@ -43,7 +35,7 @@ impl Into<String> for ScreenshotAction {
 }
 
 fn handle_screenshot_(data: bytes::Bytes, action: String) -> ResultType<()> {
-    match ScreenshotAction::from(&action as &str) {
+    match ScreenshotAction::try_from(action.as_str())? {
         ScreenshotAction::SaveAs(p) => {
             std::fs::write(p, data)?;
         }

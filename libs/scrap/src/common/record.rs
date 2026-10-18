@@ -43,9 +43,16 @@ impl RecorderContext2 {
         if !PathBuf::from(&ctx.dir).exists() {
             std::fs::create_dir_all(&ctx.dir)?;
         }
+        let filename_hint: String = ctx.id.chars().take(64).map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        }).collect();
         let file = if ctx.server { "incoming" } else { "outgoing" }.to_string()
             + "_"
-            + &ctx.id
+            + &filename_hint
             + &chrono::Local::now().format("_%Y%m%d%H%M%S%3f_").to_string()
             + &format!(
                 "{}{}_{}_",

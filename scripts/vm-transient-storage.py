@@ -32,7 +32,7 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 8192, 'CPace storage profile requires its 8 GiB guest')
         return 6 * GIB, 4 * GIB
     if profile == 'installer-package':
-        require(memory_mib == 2048, 'installer package tests require their 2 GiB guest')
+        require(memory_mib == 4096, 'installer package tests require their 4 GiB guest')
         return 6 * GIB, 4 * GIB
     if profile == 'flutter-credential-dialog':
         require(memory_mib == 4096, 'dialog storage profile requires its 4 GiB guest')

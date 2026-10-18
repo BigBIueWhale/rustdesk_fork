@@ -110,7 +110,6 @@ pub const SEC30: Duration = Duration::from_secs(30);
 pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;
 pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);
 pub(crate) const MAX_PEER_VIDEO_DISPLAYS: usize = 16;
-const MAX_DECODE_FAIL_COUNTER: usize = 3;
 
 #[cfg(target_os = "linux")]
 pub const LOGIN_MSG_DESKTOP_NOT_INITED: &str = "Desktop env is not inited";
@@ -1242,8 +1241,6 @@ pub struct VideoHandler {
     recorder: Arc<Mutex<Option<Recorder>>>,
     record: bool,
     _display: usize, // useful for debug
-    fail_counter: usize,
-    first_frame: bool,
 }
 
 impl VideoHandler {
@@ -1263,8 +1260,6 @@ impl VideoHandler {
             recorder: Default::default(),
             record: false,
             _display,
-            fail_counter: 0,
-            first_frame: true,
         }
     }
 
@@ -1289,23 +1284,6 @@ impl VideoHandler {
                     pixelbuffer,
                     chroma,
                 );
-                if res.is_ok() {
-                    self.fail_counter = 0;
-                } else {
-                    if self.fail_counter < usize::MAX {
-                        if self.first_frame && self.fail_counter < MAX_DECODE_FAIL_COUNTER {
-                            log::error!("decode first frame failed");
-                            self.fail_counter = MAX_DECODE_FAIL_COUNTER;
-                        } else {
-                            self.fail_counter += 1;
-                        }
-                        log::error!(
-                            "Failed to handle video frame, fail counter: {}",
-                            self.fail_counter
-                        );
-                    }
-                }
-                self.first_frame = false;
                 if self.record {
                     self.recorder.lock().unwrap().as_mut().map(|r| {
                         let (w, h) = if *pixelbuffer {
@@ -1332,8 +1310,6 @@ impl VideoHandler {
         self.rgb.set_align(crate::get_dst_align_rgba());
         let format = format.unwrap_or(self.decoder.format());
         self.decoder = Decoder::new(format, None);
-        self.fail_counter = 0;
-        self.first_frame = true;
     }
 
     /// Start or stop screen record.
@@ -3102,15 +3078,13 @@ where
                         // check invalid decoders
                         let mut should_update_supported = false;
                         if let Some(handler) = video_handler.as_mut() {
-                            if !handler.decoder.valid()
-                                || handler.fail_counter >= MAX_DECODE_FAIL_COUNTER
-                            {
+                            if !handler.decoder.valid() {
                                 let mut lc = session.lc.write().unwrap();
                                 let format = handler.decoder.format();
                                 if !lc.mark_unsupported.contains(&format) {
                                     lc.mark_unsupported.push(format);
                                     should_update_supported = true;
-                                    log::info!("mark {format:?} decoder as unsupported, valid:{}, fail_counter:{}, all unsupported:{:?}", handler.decoder.valid(), handler.fail_counter, lc.mark_unsupported);
+                                    log::info!("mark {format:?} decoder as unsupported, all unsupported:{:?}", lc.mark_unsupported);
                                 }
                             }
                         }

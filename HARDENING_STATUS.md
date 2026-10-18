@@ -1357,59 +1357,29 @@ The 100 ms budget initiates cancellation; scheduling and exact drain can exceed 
 Private send-buffer/no-reply fault injection is not production throughput or proof
 for capture's separate connection. No installed identity, LPE or release closure follows.
 
-## RESOLVED — TCP tunneling hardening (2026-07-13)
+## Desktop TCP tunnels — native acceptance OPEN
 
-PF-1 through PF-5 are closed for desktop port-forward and RDP mappings while the
-sealed framed tunnel and `AuthConnType::PortForward` remain unchanged.
+R-T17/PF-1–PF-5 owns the complete desktop port-forward/RDP contract. The current
+source uses a private immutable `PortForwardTarget` in `src/client.rs`, exclusive
+loopback listeners in `libs/hbb_common/src/tcp.rs`, and mapping/connection admission,
+closed lifecycle controls and retained task owners in `src/port_forward.rs`.
+`src/ui_session_interface.rs` owns the independent supervisor, replacement ordering
+and global drain; the bounded process reaper owns OS-thread joins. Local relay
+readers are constructed only after authorized `PeerInfo`. Mobile tunnel construction
+and consumers remain excluded by R-S11/R-T17 and Appendix C #127.
 
-- **PF-1 — FIXED.** `LoginConfigHandler.port_forward` is deleted. The tunnel-only
-  `Client::start_port_forward` API requires a private-field `PortForwardTarget`
-  whose host is at most 253 bytes and is exactly an ASCII DNS name, IPv4 literal,
-  or bracketed parseable IPv6 literal; whitespace, control bytes, NUL, empty hosts,
-  unbracketed IPv6, and ports outside 1–65535 fail before connect/login. The target
-  is passed by value through setup and directly into that connection's proactive
-  login. Ordinary `Client::start` rejects `PORT_FORWARD`/`RDP` without the target.
-- **PF-2 — FIXED.** Mapping listeners use `tcp::new_exclusive_listener` on
-  `127.0.0.1`: no `SO_REUSEPORT` on Unix; Windows leaves `SO_REUSEADDR` unset and
-  sets `SO_EXCLUSIVEADDRUSE` before bind. The shared exclusive socket path
-  propagates option errors. Linux/macOS test a second exclusive bind; the native
-  Windows test explicitly enables `SO_REUSEADDR` on a hostile second socket and
-  proves that it cannot bind the occupied port.
-- **PF-3/PF-4 — FIXED.** Every mapping owns one cancellation token and a `JoinSet`
-  containing all accepted setup and relay work. A closed cancellation control and
-  one-slot coalescing RDP-launch channel replace general `Data` lifecycle queues.
-  Control close and sender EOF stop acceptance, cancel connect/CPace/login/relay,
-  and join every task. The bounded-command supervisor, mapping tasks, and all joins
-  live on a named OS thread with its own current-thread Tokio runtime. One
-  process-lifetime reaper owns a closed 32-slot handoff queue and is the only code
-  that calls `JoinHandle::join`. Normal close submits ownership with a completion
-  reply; outer-future cancellation and startup failure submit ownership without a
-  waiter. Every handoff is nonblocking. Reaper bootstrap failure, a full queue, or a
-  disconnected queue is process-fatal rather than blocking an executor or detaching
-  ownership. Command EOF globally closes and drains mappings before that independent
-  runtime is destroyed. No claim extends past process death. Removal replies only
-  after drain, and duplicate replacement creates/inserts the new mapping only after
-  the old mapping and all its children have completed.
-  Mapping ownership is process-bounded to 32 permits. Accepted connections are
-  nonblockingly bounded to 32 per mapping and 128 process-wide; both permits live
-  through setup and relay, and over-limit accepted sockets are dropped immediately.
-  Completed connection tasks are eagerly reaped before another accept so sustained
-  ready listeners cannot accumulate completed `JoinSet` entries.
-- **PF-5 — FIXED.** Setup no longer receives or polls the local application stream.
-  The local `Framed<TcpStream, BytesCodec>` reader is created only after `PeerInfo`;
-  before authorization, buffering is limited to the kernel socket receive buffer.
-  The obsolete pre-login `Vec`, `Data::Login`, and `Data::Message` setup paths are
-  deleted. Local/remote read and write errors terminate the connection explicitly.
+The shared verifier selects target, mapping, supervisor, admission, relay-gating and
+exclusive-bind Rust regressions. Apple source/cross-compile checks and test definitions
+are supplementary. Exact current Linux, macOS and Windows acceptance remains OPEN:
+execute allowed/refused targets, exclusive binds (including hostile Windows
+`SO_REUSEADDR`), cancellation through every setup/relay phase, EOF, removal,
+replacement, capacity exhaustion/recovery, eager reaping and cleanup. Observe native
+thread/task/socket finality, resource bounds and latency under concurrency and soak.
 
-Deterministic Rust tests cover immutable interleaved targets, bounded host/port and
-bracketed-IPv6 validation, cancellation in connect/keying/login/relay, control EOF,
-owned-task drain, duplicate replacement ordering, the literal 32/33 mapping boundary,
-the literal 32-per-mapping and 128-process connection boundaries with permit recovery,
-sustained completion reaping, authorization-before-relay, and exclusive second bind.
-Linux runs the shared native behavior tests. macOS and Windows retain source and
-cross-compile gates for the same implementation; their native builders must execute
-the platform bind test, including the Windows hostile-`SO_REUSEADDR` case. This Linux
-host does not claim native Windows execution.
+Transport evidence is limited to the exact named cipher, wire, framing and writer
+scenarios recorded in the current-verdict table and transport entries. Complete
+pre-key parser safety, installed behavior, R-S0/R-F5, cold R-B2/R-B10 equality,
+independent reproduction and R-V3 review remain OPEN.
 
 **Resolved source topology — excision and direct-only presentation backlog.** The obsolete host-pin,
 2FA/trusted-device, attended-accept, permission-widener, rendezvous-presence, relay-choice, account, numeric-ID,
@@ -1418,38 +1388,6 @@ host identity, host proof, known-hosts store, fingerprint UI, or pin CLI. The co
 `## Closed excision and direct-only presentation backlog`; commits `5a371ae`, `d5aec5b`, `6e9086d`, and
 `02320c1` retain the implementation history. Source closure does not satisfy the exact-current packaged/native,
 cold R-B2/R-B10, independent-reproduction, or external-review obligations.
-
-**§20 TCP active-router audit (2026-06-29).** The full TCP transport — both the
-controlled (responder) and viewer (initiator) sides — was audited under the
-*strongest* network-adversary model: both peers connected through a fully
-malicious router that can inject / drop / modify / replay / reorder / reset /
-segment / coalesce / flow-control-manipulate the connection at will. The
-cryptographic construction reduces this attacker to (at most) a DoS: post-key
-manipulation fails the Poly1305 tag (R-T7, no ≤1-byte bypass) → poison →
-fail-closed; reorder/replay/drop desync the per-direction monotonic nonce
-(R-A5); first-contact MITM fails the mutual PAKE; a substitute that does not know
-the password fails the PAKE (one that does is out of scope per §2 — peer identity
-rests on the shared password alone, with no host-key pin, R-P5); and the pre-key parsers
-(frame codec, protobuf 3.7.2, CPace fixed-length fields) are panic-free, so
-injected garbage cannot crash the `panic='abort'` process. One genuine DoS lever
-the model surfaced was **fixed** (`f1ecfb0`): the pre-key handshake *sends* had
-no deadline (only reads did), so a router stalling flow control (forged
-zero-window / dropped ACKs) could block a send forever and hold an R-T1
-handshake permit indefinitely — `send_cpace` now carries the same per-step
-deadline as `recv_cpace` (handshake fully step-bounded both directions; new
-verify.sh R-T1 gate). The accept-path bound (R-T1 semaphore + host-relative
-cgroup ceilings), cancellation safety (R-T2–T5 writer-task / poison / Drop
-cleanup), socket options (R-T10 keepalive / R-T11 no-`SO_REUSEPORT`), accept
-observability (R-T12), and graceful shutdown (R-T9) were each confirmed
-conformant on both sides.
-
-**Validation (2026-06-28/29):** `scripts/verify.sh` is **all-gates-green**
-(PAKE KATs + wire handshake + two-key cipher + R-S16 policy funnel + main-crate
-compile under `linux-pkg-config,unix-file-copy-paste` + the R-A6 done-set
-greps). The full server binary builds and the loopback runtime smoke
-(`scripts/smoke-server.sh`) exercises the one-TCP/zero-UDP surface, fail-closed
-startup, graceful shutdown, and the no-plaintext wire-capture. Reproducible-build checks passed for the
-historical commits recorded with that validation; this paragraph is not artifact evidence for the current tree.
 
 **R-S19 — `AuthConnType` capability confinement (CWE-863).**
 

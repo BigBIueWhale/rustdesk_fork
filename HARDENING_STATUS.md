@@ -1688,6 +1688,38 @@ performant across every supported viewer and controlled platform. Focus, visibil
 display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,
 fresh presentation, bounded resources, and final ownership without requiring reconnect as a recovery mechanism.
 
+**Video QoS delay window and averaging — Linux controller A/B accepted; full latency OPEN.**
+Product `ccacf295` enforces the declared two-completed-sample history and sums its
+`u32` measurements in `u64` before division. The resulting mean remains in the
+measurement domain. RTT learning, pending-probe handling, congestion thresholds,
+viewer ownership and transport behavior are unchanged; no task, queue, runtime,
+dependency or privilege transition is added.
+
+At test baseline `3314ce8c`, all fourteen existing cases pass and the three new cases
+fail. After a 2,020-ms spike and two fresh 20-ms replies, the controller still retains
+three samples, reports 666 ms of excess delay and stays at 1 FPS. The two large-value
+cases panic on checked addition before averaging. The byte-identical complete
+seventeen-case test module passes at the corrected source. It observes the exact
+4,294,967,294-ms mean without overflow, preserves the maximum pending-probe value,
+and retires the spike after two fresh replies with zero excess and 10 FPS in the
+same viewer/custom-limit owner. This is the initial rate increase; it is not a claim
+of full healthy FPS or presentation-latency recovery within two replies.
+
+The candidate integration takes 295 outer seconds, including 229 compilation seconds;
+its native summary reports 0.01 seconds. Both exact source-bound artifacts remain
+unchanged through execution. Before/during/after source freezes match, all eight
+complete endpoint comparisons show no delta, and both QEMU/RAM owners are joined.
+The failed baseline's exact 35-node private diagnostics tree is inventoried and
+removed after terminal through the owned-tree helper. Pinned inputs, sources,
+observations, artifacts and cleanup are retained in
+`.harness-state/verifier-vm/video-qos-delay-ccacf295.json`.
+
+These are actual Linux Rust controller calls with controlled measurement inputs.
+Real packet impairment, capture/encode/decode/presentation, input-visible latency,
+long-session drift, native other-platform and installed acceptance remain OPEN under
+R-F5. The service/credential authority source and all fifteen action obligations
+are unchanged and OPEN.
+
 **Video quality request ordering — Linux controller accepted; presentation OPEN.**
 Product `1dbe0b8d` replaces millisecond wall-clock ordering over the user HashMap with
 one current quality choice per live viewer, ordered by request admission. Updating a

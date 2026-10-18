@@ -19,6 +19,8 @@ use crate::{anyhow::anyhow, bail, get_version_number, message_proto::*, ResultTy
 use crate::{compress::compress, config::Config};
 
 mod file_block;
+mod atomic_write;
+pub use atomic_write::write_user_file_atomically;
 use file_block::SIZE as FILE_TRANSFER_BLOCK_SIZE;
 
 #[cfg(test)]
@@ -1643,7 +1645,7 @@ mod nt_nofollow {
         }
     }
 
-    unsafe fn nt_attributes(handle: HANDLE) -> io::Result<u32> {
+    pub(super) unsafe fn nt_attributes(handle: HANDLE) -> io::Result<u32> {
         let mut tag: FILE_ATTRIBUTE_TAG_INFORMATION = zeroed();
         let mut iosb: IO_STATUS_BLOCK = zeroed();
         let status = NtQueryInformationFile(
@@ -1660,7 +1662,7 @@ mod nt_nofollow {
         }
     }
 
-    fn nt_file_identity(handle: HANDLE) -> io::Result<(u32, u32, u32)> {
+    pub(super) fn nt_file_identity(handle: HANDLE) -> io::Result<(u32, u32, u32)> {
         let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { zeroed() };
         if unsafe { GetFileInformationByHandle(handle, &mut info) } == 0 {
             return Err(io::Error::last_os_error());
@@ -1706,16 +1708,17 @@ mod nt_nofollow {
 
     /// The core reparse-safe, handle-relative open — the `openat(O_NOFOLLOW)` analogue. `parent` is
     /// a directory HANDLE; `name` a bare component (UTF-16, not NUL-terminated). ALWAYS no-follow
-    /// (`FILE_OPEN_REPARSE_POINT`) + synchronous. The caller must explicitly require a regular
-    /// object, a reparse leaf, or either kind; that requirement is verified on the exact handle.
-    unsafe fn nt_open_at(
+    /// (`FILE_OPEN_REPARSE_POINT`) + synchronous. Creation authority is returned before metadata
+    /// validation so a creator can retire its exact new object if validation fails.
+    pub(super) unsafe fn nt_open_at_raw(
         parent: HANDLE,
         name: &[u16],
         desired_access: u32,
         disposition: u32,
         create_options: u32,
-        reparse_requirement: ReparseRequirement,
+        share_access: u32,
     ) -> io::Result<OwnedHandle> {
+        validate_component_wide(name)?;
         let nbytes = name
             .len()
             .checked_mul(2)
@@ -1744,7 +1747,7 @@ mod nt_nofollow {
             &mut iosb,
             null_mut(),
             FILE_ATTRIBUTE_NORMAL,
-            SHARE_ALL,
+            share_access,
             disposition,
             create_options | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
             null_mut(),
@@ -1754,8 +1757,20 @@ mod nt_nofollow {
             return Err(nt_err(status));
         }
         // Own the handle immediately so every error path closes it (no leak, no double-close).
-        let owned = OwnedHandle::from_raw_handle(handle as _);
+        Ok(OwnedHandle::from_raw_handle(handle as _))
+    }
 
+    /// Open and validate the endpoint's required reparse role on the retained handle.
+    unsafe fn nt_open_at(
+        parent: HANDLE,
+        name: &[u16],
+        desired_access: u32,
+        disposition: u32,
+        create_options: u32,
+        reparse_requirement: ReparseRequirement,
+    ) -> io::Result<OwnedHandle> {
+        let owned = nt_open_at_raw(parent, name, desired_access, disposition, create_options, SHARE_ALL)?;
+        let handle = owned.as_raw_handle() as HANDLE;
         let attributes = match nt_attributes(handle) {
             Ok(attributes) => attributes,
             Err(error) => {
@@ -2224,7 +2239,7 @@ mod nt_nofollow {
     /// analogue. `target` is the source file handle (needs DELETE); `new_parent` the directory the
     /// new name is relative to; `new_name` a bare component. Replaces the destination *name* (never
     /// follows a symlink at the destination), matching Unix `renameat`.
-    unsafe fn nt_rename_at(
+    pub(super) unsafe fn nt_rename_at(
         target: HANDLE,
         new_parent: HANDLE,
         new_name: &[u16],

@@ -37,7 +37,7 @@ impl Into<String> for ScreenshotAction {
 fn handle_screenshot_(data: bytes::Bytes, action: String) -> ResultType<()> {
     match ScreenshotAction::try_from(action.as_str())? {
         ScreenshotAction::SaveAs(p) => {
-            std::fs::write(p, data)?;
+            hbb_common::fs::write_user_file_atomically(std::path::Path::new(&p), data.as_ref())?;
         }
         ScreenshotAction::CopyToClipboard => {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]

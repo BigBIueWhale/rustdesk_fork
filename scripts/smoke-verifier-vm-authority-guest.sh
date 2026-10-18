@@ -2851,6 +2851,7 @@ run_focused_rust_tests() {
             libs/hbb_common/src/platform/linux.rs
             libs/hbb_common/src/config.rs
             libs/hbb_common/src/fs.rs
+            libs/hbb_common/src/fs/atomic_write.rs
             flutter/test/fixtures/direct_address.json
             src/client.rs
             src/ipc.rs
@@ -3048,6 +3049,11 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_resume_admission_refuses_overlong_partial
                 fs::tests::file_metadata_resume_valid_prefixes_publish_exact_bytes
                 fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file
+                fs::atomic_write::unix::tests::retained_parent_cannot_be_redirected_by_a_replaced_path
+                fs::atomic_write::unix::tests::replaced_temporary_name_is_refused_without_removing_foreign_data
+                fs::atomic_write::unix::tests::failed_publication_preserves_directory_and_cleans_temporary_file
+                fs::atomic_write::unix::tests::normal_paths_and_directory_links_preserve_bytes_and_requested_mode
+                fs::atomic_write::unix::tests::late_error_never_removes_a_published_file
             )
         fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
@@ -3452,6 +3458,7 @@ run_focused_rust_tests() {
                 src/clipboard/write_permission_native_tests.rs
                 src/clipboard/write_screenshot_native_tests.rs
                 src/client/screenshot.rs scripts/run-clipboard-write-native-tests.py
+                libs/hbb_common/src/fs.rs libs/hbb_common/src/fs/atomic_write.rs
                 scripts/smoke-xvfb-prepare.sh scripts/smoke-xvfb-packages.tsv scripts/smoke-xvfb-files.tsv
             )
             clipboard_tests=()
@@ -4530,7 +4537,7 @@ run_focused_rust_tests() {
                         cd /source/libs/hbb_common
                         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
                             for group in fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file \
-                                fs::tests::file_metadata_; do
+                                fs::tests::file_metadata_ fs::atomic_write::unix::tests::; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
@@ -5172,7 +5179,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                     if (++cases <= 64) print
                 }
                 /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
-                /^test fs::tests::(file_metadata_[[:alnum:]_]+|receive_post_publish_sync_failure_never_deletes_visible_file) \.\.\. (ok|FAILED)$/ { if (++metadata_cases <= 8) print }
+                /^test fs::(tests::(file_metadata_[[:alnum:]_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[[:alnum:]_]+) \.\.\. (ok|FAILED)$/ { if (++metadata_cases <= 13) print }
                 /^FILE_METADATA_/ { if (++metadata_observations <= 16) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
@@ -5192,11 +5199,11 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         fi
         if [ "$RUST_TEST_PROFILE" = clipboard ]; then
             awk '
-                /^test clipboard::(native_clipboard_limit_tests|write_owner::tests|write_native_tests|write_permission_native_tests)::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ { if (++controls <= 23) print }
-                /^test client::screenshot::tests::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ { if (++cases <= 4) print }
-                /^CLIPBOARD_(DECODE_(BUILD|ARTIFACT)|WRITE_(ARTIFACT|NATIVE))/ { if (++artifacts <= 8) print }
-                /^SCREENSHOT_ACTION_/ { if (++observations <= 16) print }
-                /^test result: (ok|FAILED)\./ { if (++summaries <= 4) print }
+                /^test clipboard::(native_clipboard_limit_tests|write_owner::tests|write_native_tests|write_permission_native_tests|write_screenshot_native_tests)::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ { if (++controls <= 27) print }
+                /^test client::screenshot::tests::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ { if (++cases <= 7) print }
+                /^CLIPBOARD_(DECODE_(BUILD|ARTIFACT)|WRITE_(ARTIFACT|NATIVE)|SCREENSHOT_ERROR_ARTIFACT)/ { if (++artifacts <= 12) print }
+                /^SCREENSHOT_(ACTION_|SAVE_|COPY_)/ { if (++observations <= 32) print }
+                /^test result: (ok|FAILED)\./ { if (++summaries <= 5) print }
             ' "$output" >&2 || printf 'Screenshot failure diagnostics could not be read\n' >&2
         fi
         tail -n 200 "$output" >&2
@@ -5215,7 +5222,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
-        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=2; fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=3; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
@@ -5758,8 +5765,8 @@ PY
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            [ "$tests_passed" -eq 8 ] || fail 'file metadata test total differs'
-            grep -E '^test fs::tests::(file_metadata_[a-z_]+|receive_post_publish_sync_failure_never_deletes_visible_file) [.][.][.] ok$|^FILE_METADATA_' "$output"
+            [ "$tests_passed" -eq 13 ] || fail 'file metadata test total differs'
+            grep -E '^test fs::(tests::(file_metadata_[a-z_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_' "$output"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             [ "$tests_passed" -eq 2 ] || fail 'send digest test total differs'
             grep -E '^test fs::tests::send_digest_.* \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=' "$output"

@@ -2558,6 +2558,37 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Desktop timeout editor — Linux Flutter component corrected; installed acceptance OPEN.**
+Product `c25fc184` replaces the build-local controller and reactive Apply flag with
+`AutoDisconnectTimeoutField`, whose state owns and disposes its controller.
+Parent rebuilds preserve a draft; an unedited field accepts a newer effective value.
+One pending save retains its submitted value and blocks duplicate or stale Apply
+callbacks even when the user edits a newer draft or disables/re-enables the field.
+Removal retires UI effects while the admitted future settles.
+
+The desktop callback awaits the fallible single-key export, then reads the existing
+option cache. A failed call or mismatched effective value leaves the draft editable
+with visible failure feedback and retry. Whole-value numeric validation preserves
+valid input after an invalid edit and retains the empty/default value.
+No IPC, credential, service, policy or privilege implementation changes.
+
+Fresh generated bridges and three Linux Flutter suites pass nineteen cases:
+eight inline-editor cases plus the unchanged seven dialog and four setting-action
+cases. They exercise pending draft edits and duplicate callbacks, controller/draft
+retention and disposal, clean refresh, synchronous/asynchronous errors and retry,
+mismatched readback, retired-owner completion, disabled/pending admission, and numeric
+limits/defaults. The bounded integration takes 328 outer seconds, with test execution
+at container seconds 164–176. Source freezes match before/during/after; four complete
+endpoint comparisons show no delta, and VM/RAM cleanup is joined. Sources, pinned
+inputs and exact receipts are retained in
+`.harness-state/verifier-vm/timeout-field-c25fc184.json`.
+
+The editor is actually rendered with controlled save/readback callbacks. No historical
+whole-app A/B run, real Rust-to-Dart/IPC delivery, interactive full settings page,
+installed/mobile acceptance, restart, cross-window or global concurrent-writer behavior
+is established by these tests. Those obligations, all fifteen credential actions,
+R-S0 and the broader release remain OPEN.
+
 **Ordinary option error propagation — Linux native export corrected; full settings acceptance OPEN.**
 Product `2435fa92` makes the UI setter and Flutter export return a fallible result.
 Desktop failure returns before any cache update or audio restart; success keeps the

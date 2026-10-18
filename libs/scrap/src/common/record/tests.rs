@@ -809,3 +809,101 @@ fn native_recording_label_uses_portable_component() {
     }
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 6);
 }
+
+struct UmaskGuard(crate::libc::mode_t);
+
+impl UmaskGuard {
+    fn new(mask: crate::libc::mode_t) -> Self { Self(unsafe { crate::libc::umask(mask) }) }
+}
+
+impl Drop for UmaskGuard {
+    fn drop(&mut self) { unsafe { crate::libc::umask(self.0); } }
+}
+
+fn recording_modes(dir: &TestDir, name: &str, codec: VpxVideoCodecId, format: CodecFormat,
+    mask: crate::libc::mode_t, codec_id: &[u8]) -> (u32, u32) {
+    let output = dir.0.join(name);
+    let ctx = dir.context(&output, format);
+    let guard = UmaskGuard::new(mask);
+    let created = WebmRecorder::new(&ctx);
+    drop(guard);
+    let mut recorder = created.unwrap();
+    let open_mode = fs::metadata(&output).unwrap().mode() & 0o777;
+    write_native_video(&mut recorder, codec);
+    drop(recorder);
+    assert_webm(&output, codec_id);
+    assert_eq!(webm_timestamps(&output), vec![0, 2_000_000_000]);
+    (open_mode, fs::metadata(&output).unwrap().mode() & 0o777)
+}
+
+#[test]
+fn native_recording_unix_permissions_are_private() {
+    isolated_mux_case("native_recording_unix_permissions_are_private", || {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TestDir::new();
+        fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o755)).unwrap();
+        let mut modes = Vec::new();
+        for (codec, format, id) in [(VpxVideoCodecId::VP8, CodecFormat::VP8, b"V_VP8"),
+            (VpxVideoCodecId::VP9, CodecFormat::VP9, b"V_VP9")] {
+            for mask in [0, 0o022, 0o077] {
+                modes.push(recording_modes(&dir, &format!("{format}-{mask}.webm"), codec, format, mask, id));
+            }
+        }
+        assert_eq!(fs::metadata(&dir.0).unwrap().mode() & 0o777, 0o755);
+        assert_eq!(modes, vec![(0o600, 0o600); 6], "recording open/final modes exceed owner access");
+    });
+}
+
+#[test]
+fn native_recording_unix_permissions_respect_stricter_umask() {
+    isolated_mux_case("native_recording_unix_permissions_respect_stricter_umask", || {
+        let dir = TestDir::new();
+        let vp8 = recording_modes(&dir, "vp8.webm", VpxVideoCodecId::VP8, CodecFormat::VP8, 0o200, b"V_VP8");
+        let vp9 = recording_modes(&dir, "vp9.webm", VpxVideoCodecId::VP9, CodecFormat::VP9, 0o200, b"V_VP9");
+        assert_eq!((vp8, vp9), ((0o400, 0o400), (0o400, 0o400)), "recording widened a restrictive umask");
+    });
+}
+
+fn access_acl(path: &Path) -> Vec<(u16, u16, u32)> {
+    let path = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+    let mut bytes = [0u8; 128];
+    let len = unsafe { crate::libc::getxattr(path.as_ptr(), b"system.posix_acl_access\0".as_ptr().cast(),
+        bytes.as_mut_ptr().cast(), bytes.len()) };
+    assert!(len >= 4 && len as usize <= bytes.len(), "read inherited ACL: {}", std::io::Error::last_os_error());
+    assert_eq!(&bytes[..4], &2u32.to_le_bytes());
+    assert_eq!((len as usize - 4) % 8, 0);
+    bytes[4..len as usize].chunks_exact(8).map(|e| (u16::from_le_bytes([e[0], e[1]]),
+        u16::from_le_bytes([e[2], e[3]]), u32::from_le_bytes([e[4], e[5], e[6], e[7]]))).collect()
+}
+
+#[test]
+fn native_recording_unix_permissions_bound_inherited_acl() {
+    isolated_mux_case("native_recording_unix_permissions_bound_inherited_acl", || {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TestDir::new();
+        fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o755)).unwrap();
+        let mut acl = 2u32.to_le_bytes().to_vec();
+        for (tag, id) in [(0x01u16, u32::MAX), (0x02, 4001), (0x04, u32::MAX),
+            (0x10, u32::MAX), (0x20, u32::MAX)] {
+            acl.extend_from_slice(&tag.to_le_bytes());
+            acl.extend_from_slice(&7u16.to_le_bytes());
+            acl.extend_from_slice(&id.to_le_bytes());
+        }
+        let path = std::ffi::CString::new(dir.0.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { crate::libc::setxattr(path.as_ptr(), b"system.posix_acl_default\0".as_ptr().cast(),
+            acl.as_ptr().cast(), acl.len(), 0) }, 0, "install default ACL: {}", std::io::Error::last_os_error());
+        let guard = UmaskGuard::new(0o077);
+        let canary = dir.0.join("acl-canary");
+        drop(OpenOptions::new().write(true).create_new(true).open(&canary).unwrap());
+        drop(guard);
+        assert_eq!(fs::metadata(&canary).unwrap().mode() & 0o777, 0o666, "default ACL canary did not widen access");
+        assert!(access_acl(&canary).contains(&(0x02, 7, 4001)));
+        let modes = recording_modes(&dir, "recording.webm", VpxVideoCodecId::VP8, CodecFormat::VP8, 0o077, b"V_VP8");
+        let inherited = access_acl(&dir.0.join("recording.webm"));
+        assert_eq!(fs::metadata(&dir.0).unwrap().mode() & 0o777, 0o755);
+        assert_eq!(modes, (0o600, 0o600), "default ACL widened recording access");
+        assert!(inherited.contains(&(0x02, 7, 4001)), "named-user ACL inheritance not exercised");
+        assert!(inherited.contains(&(0x10, 0, u32::MAX)), "inherited ACL mask still grants access");
+        assert!(inherited.contains(&(0x20, 0, u32::MAX)), "inherited other access remains");
+    });
+}

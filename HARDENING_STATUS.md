@@ -12280,6 +12280,35 @@ without joining; synchronous socket/task finality, the three parked filesystem
 race failures, installed/full-app and other-platform behavior, presentation latency,
 long-session memory bounds, LPE acceptance and release remain OPEN.
 
+**Framing-only API (R-A3/R-S5) — native compiler and Linux transport cases PASS.**
+Product `593aff91` removes the unused raw-mode selector from `BytesCodec`,
+`FramedStream` and `Stream`, including the codec flag and unframed encode/decode
+branches. No application caller used that mode. The old keyed setter already
+refused downgrade; this is removal of an unsupported alternate API, not a newly
+reproduced application plaintext exposure or LPE closure. `send_raw` remains a
+byte-payload send through framing and the engaged cipher. Normal cap, EOF,
+authentication, ordering, receipt and tunnel wire behavior remain covered.
+
+The identical 872-byte compiler fixture at baseline `44f25b0e` accepts the supported
+API and all three forbidden raw-mode calls; its three negative cases fail, while
+all 51 runtime controls pass. At `593aff91`, all 51 runtime cases and four compiler
+cases pass: supported setup compiles, and each former public raw-mode call refuses
+separately. The framed EOF case retains its empty/coalesced-frame checks; only its
+obsolete raw-mode tail is deleted. The guest recipe is identical across A/B.
+Both runs use pinned Rust/rustdoc 1.75, exact stable wire/library artifacts,
+zero-NIC Linux and guest-only networkless unprivileged Docker. Supervisor times
+are 199.338/217.949 seconds; admitted RAM scratch peaks at
+4,116,758,528/4,116,234,240 bytes. Before/live/after source freezes match within
+each run; complete endpoint observations have zero additions/removals. Exact
+joins and RAM/private-root retirement pass. R-A3 and Appendix C #4 now require
+mode absence, and the shared verifier runs the four compiler cases instead of
+requiring the obsolete setter/panic source strings. The full shared catalogue is
+unexecuted for this slice; its changed shell parses, and the exact compiler command
+ran in the focused VM. `.harness-state/verifier-vm/framing-only-api-593aff91.json`
+retains fixture, source, every named result, raw logs, artifact and cleanup bindings.
+Full app, installed/principal, other-platform, real-peer tunnel, latency/soak and
+release acceptance remain OPEN; parked filesystem failures are unchanged.
+
 **Earlier transport integration — all 20 CPace wire cases PASS.** Subsequent exact harness
 `c3b1ac6d` ran the unchanged `libs/cpace_it/tests/handshake.rs` suite against the current
 production source through `ec94f87b`. The 152-second zero-NIC transaction freshly built and

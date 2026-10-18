@@ -14889,6 +14889,16 @@ fi
 # and wrapper expose framing only; native compiler regressions reject each former raw-mode API.
 # The real wire test exercises framed ciphertext. Installed/peer acceptance remains separate.
 r_s5_missing=
+if framing_api_output=$(cargo test --offline --locked -p hbb_common --doc tcp::FramedStream \
+    --color never -- --test-threads=1 --show-output 2>&1); then
+  printf '%s\n' "$framing_api_output"
+  if ! grep -Eq '^test result: ok\. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in .+s$' <<<"$framing_api_output"; then
+    r_s5_missing="$r_s5_missing framing-api-case-count"
+  fi
+else
+  printf '%s\n' "$framing_api_output"
+  r_s5_missing="$r_s5_missing framing-api-compiler-tests"
+fi
 # (a) No app call may select a raw mode.
 #     -rIn keeps the filename so the trailing comment-line filter (`:N: //…`) excludes doc mentions.
 if grep -rIn '\.set_raw(' src --include='*.rs' 2>/dev/null | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then

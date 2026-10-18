@@ -6,6 +6,9 @@ use scrap::{
     CodecFormat,
 };
 
+const WIDTH: usize = 640;
+const HEIGHT: usize = 480;
+
 fn packet(data: Vec<u8>) -> VideoFrame {
     VpxEncoder::create_video_frame(
         VpxVideoCodecId::VP8,
@@ -20,8 +23,8 @@ fn packet(data: Vec<u8>) -> VideoFrame {
 fn visible_and_hidden_frames() -> (VideoFrame, VideoFrame) {
     let mut encoder = VpxEncoder::new(
         EncoderCfg::VPX(VpxEncoderConfig {
-            width: 16,
-            height: 16,
+            width: WIDTH as _,
+            height: HEIGHT as _,
             #[cfg(target_os = "android")]
             android_scale: 1,
             quality: 1.0,
@@ -31,8 +34,9 @@ fn visible_and_hidden_frames() -> (VideoFrame, VideoFrame) {
         false,
     )
     .expect("native VP8 encoder");
+    assert!(encoder.bitrate() > 0, "positive native encoder bitrate");
     let mut frames: Vec<_> = encoder
-        .encode(0, &[128; 16 * 16 * 3 / 2], 1)
+        .encode(0, &vec![128; WIDTH * HEIGHT * 3 / 2], 1)
         .expect("encode")
         .map(|frame| (frame.key, frame.data.to_vec()))
         .collect();
@@ -60,8 +64,8 @@ fn decode(handler: &mut VideoHandler, frame: VideoFrame) -> hbb_common::ResultTy
 
 fn assert_visible(handler: &mut VideoHandler, frame: VideoFrame) {
     assert!(decode(handler, frame).expect("native visible decode"));
-    assert_eq!((handler.rgb.w, handler.rgb.h), (16, 16));
-    assert!(handler.rgb.raw.len() >= 16 * 16 * 4);
+    assert_eq!((handler.rgb.w, handler.rgb.h), (WIDTH, HEIGHT));
+    assert!(handler.rgb.raw.len() >= WIDTH * HEIGHT * 4);
     assert!(handler.decoder.valid());
     assert_eq!(handler.fail_counter, 0);
 }

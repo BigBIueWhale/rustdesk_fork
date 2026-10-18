@@ -82,22 +82,29 @@ integration/release checkpoint.
 
 `requirements.html` owns the normative contract; this ledger owns current state and open obligations.
 Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
-Appendix C now states vulnerability classes and required dispositions without the
-June disclosure chronology, upstream-priority commentary, public-CVE absence claim,
-or duplicate inherited-handshake/proof-of-concept/upstream-repair boxes. Those boxes
-were historical source analysis, not additional product requirements; Git
-`703a2b61`, `b9a484f5` and the pre-cleanup `ad4c20a2` retain their provenance.
+Appendix C retains vulnerability classes and required dispositions. The disclosure
+chronology, upstream-priority commentary, public-CVE absence claim and duplicate
+inherited-handshake/proof-of-concept/upstream-repair boxes are removed. These were
+historical source analysis, not additional product requirements; Git `703a2b61`,
+`b9a484f5` and the pre-cleanup `ad4c20a2` retain their provenance.
 The live-wire key/nonce-reuse class remains distinct from at-rest configuration
 exposure (#14) and direct-IP plaintext (#2). Finding #1's per-direction-key,
 runtime-assertion and known-answer-test disposition is byte-identical.
+The earlier classification, original document role and isolated before/after counts
+are retained in `.harness-state/verifier-vm/appendix-c-role.json`.
 
-The specification shrinks by 8,644 bytes, from 1,780,126 to 1,771,482.
-All 411 requirement IDs, 371 numbered rows and 36 anchor IDs preserve order;
-all other bytes are unchanged. Changed-node tags balance. The only link addition
-points to this ledger (214 → 215 links), whose path exists. Original document role,
-classification, obligation mapping, full-document pinned before/after token counts,
-source freezes and isolated cleanup receipts are retained in
-`.harness-state/verifier-vm/appendix-c-role.json`.
+Findings #21–#23 also now describe the prohibited password-proof, viewer-secret and
+transport-downgrade behavior rather than inherited handler code, timing windows,
+an initiator-audit narrative or disclosure severity/history. Their three disposition
+cells are byte-identical, and #21 retains fresh per-connection `sid`/ephemeral-scalar
+ownership. The remaining disclosure banner is deleted. Git `703a2b61`, `14a1afbe`
+and `314a47ac` retain that historical analysis. This correction removes 2,532 bytes
+from the `04c7e32e` specification. All 411 requirement IDs, 371 numbered entries and
+36 anchor IDs preserve order; all bytes outside the three finding cells and banner
+are unchanged. Changed-row tags balance. The sole removed link is the historical
+upstream discussion; requirement and local-ledger links remain. Exact classification,
+source comparisons, pinned whole-document counts and joined RAM/VM cleanup are in
+`.harness-state/verifier-vm/login-inventory-role.json`.
 Product, verifier and test sources are unchanged. No parked advisory review resumes,
 and no installed/native/security obligation is closed. Whole-document role cleanup,
 all fifteen credential actions and broader release acceptance remain OPEN.
@@ -3512,6 +3519,10 @@ checklists are deleted: they matched password-module/Windows-facade wording rath
 than executing the advertised properties. Production, all remaining test bodies and
 the supplementary source validators are unchanged. No new test ran for this deletion;
 current target-native and installed acceptance remain OPEN.
+The current 28-case attempt at `04c7e32e` was refused before VM startup: standard
+RAM admission required 39,936 MiB, with 23,531 MiB available. No case executed;
+the guest, scratch limits and no-disk-fallback rule remain unchanged. The exact
+terminal refusal is retained in `login-inventory-role.json` and the audit journal.
 
 **Native logind:** `--linux-logind-tests`, source 68e596b3, artifact e12dac15;
 14 unit/seven PAM/logind cases, outer0/131s; PAM defaults passed.

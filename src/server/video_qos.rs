@@ -57,7 +57,7 @@ struct UserDelay {
 impl UserDelay {
     fn add_delay(&mut self, delay: u32) {
         self.rtt_calculator.update(delay);
-        if self.delay_history.len() > HISTORY_DELAY_LEN {
+        if self.delay_history.len() >= HISTORY_DELAY_LEN {
             self.delay_history.pop_front();
         }
         self.delay_history.push_back(delay);
@@ -67,7 +67,8 @@ impl UserDelay {
     fn avg_delay(&self) -> u32 {
         let len = self.delay_history.len();
         let measured_delay = if len > 0 {
-            self.delay_history.iter().sum::<u32>() / len as u32
+            let total: u64 = self.delay_history.iter().map(|&delay| u64::from(delay)).sum();
+            (total / len as u64) as u32
         } else {
             DELAY_THRESHOLD_150MS
         };

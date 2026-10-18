@@ -21,10 +21,14 @@ fn packet(data: Vec<u8>) -> VideoFrame {
 }
 
 fn visible_and_hidden_frames() -> (VideoFrame, VideoFrame) {
+    visible_and_hidden_frames_at(WIDTH, HEIGHT, 128)
+}
+
+fn visible_and_hidden_frames_at(width: usize, height: usize, luma: u8) -> (VideoFrame, VideoFrame) {
     let mut encoder = VpxEncoder::new(
         EncoderCfg::VPX(VpxEncoderConfig {
-            width: WIDTH as _,
-            height: HEIGHT as _,
+            width: width as _,
+            height: height as _,
             #[cfg(target_os = "android")]
             android_scale: 1,
             quality: 1.0,
@@ -35,8 +39,10 @@ fn visible_and_hidden_frames() -> (VideoFrame, VideoFrame) {
     )
     .expect("native VP8 encoder");
     assert!(encoder.bitrate() > 0, "positive native encoder bitrate");
+    let mut yuv = vec![128; width * height * 3 / 2];
+    yuv[..width * height].fill(luma);
     let mut frames: Vec<_> = encoder
-        .encode(0, &vec![128; WIDTH * HEIGHT * 3 / 2], 1)
+        .encode(0, &yuv, 1)
         .expect("encode")
         .map(|frame| (frame.key, frame.data.to_vec()))
         .collect();
@@ -107,6 +113,34 @@ fn visible_output_and_corrupt_packet_remain_distinct() {
     let mut handler = VideoHandler::new(CodecFormat::VP8, 0);
     assert_visible(&mut handler, visible);
     assert!(decode(&mut handler, packet(vec![0; 3])).is_err());
+    assert!(handler.decoder.valid());
+}
+
+#[test]
+fn visible_frame_survives_hidden_resolution_change_in_same_batch() {
+    use hbb_common::message_proto::video_frame::Union;
+
+    let (visible, _) = visible_and_hidden_frames_at(WIDTH, HEIGHT, 32);
+    let (resized, hidden) = visible_and_hidden_frames_at(1280, 720, 224);
+    let mut expected = VideoHandler::new(CodecFormat::VP8, 0);
+    assert_visible(&mut expected, visible.clone());
+    let expected_rgb = expected.rgb.raw;
+
+    let mut batch = visible;
+    let Some(Union::Vp8s(frames)) = &mut batch.union else {
+        panic!("visible VP8 batch");
+    };
+    let Some(Union::Vp8s(hidden)) = hidden.union else {
+        panic!("hidden VP8 batch");
+    };
+    frames.frames.extend(hidden.frames);
+    let mut handler = VideoHandler::new(CodecFormat::VP8, 0);
+    assert_visible(&mut handler, batch);
+    assert!(handler.rgb.raw == expected_rgb, "last visible pixels survived hidden resize");
+
+    assert!(decode(&mut handler, resized).expect("visible resized decode"));
+    assert_eq!((handler.rgb.w, handler.rgb.h), (1280, 720));
+    assert!(handler.rgb.raw.len() >= 1280 * 720 * 4);
     assert!(handler.decoder.valid());
 }
 

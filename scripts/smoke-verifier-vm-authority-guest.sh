@@ -5610,12 +5610,12 @@ PY
             && [ "$(grep -Fxc 'OPTION_ACK_NATIVE=observed failure_reported=true memory_preserved=true file_preserved=true retry_applied=true retry_persisted=true peer=unix' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_EXPORT_NATIVE=observed refused=true missing_receiver=true cache_preserved=true memory_preserved=true file_preserved=true' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_EXPORT_BEFORE=observed refused=false missing_receiver=false state_preserved=true' "$output")" -eq 1 ] \
-            || fail 'option acknowledgement artifact or native outcomes differ'
-        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=15 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            || { tail -c 262144 "$output" >&2; fail 'option acknowledgement artifact or native outcomes differ'; }
+        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=16 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_WIRE_DART=pass cases=4 native_errors=11 error=RESULT_ERROR cache=preserved config=preserved reads=sync-and-async' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_DART_CASE=' "$output")" -eq 4 ] \
-            || fail 'option bridge artifact or Dart outcomes differ'
+            || { tail -c 262144 "$output" >&2; fail 'option bridge artifact or Dart outcomes differ'; }
         for case_name in invalid_key oversized_value missing_receiver repeated_failure_and_readback; do
             [ "$(grep -Fxc "OPTION_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
                 || fail "option bridge case differs: $case_name"
@@ -5634,11 +5634,11 @@ PY
             [ "$(grep -Fxc "KEYBOARD_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
                 || fail "keyboard bridge case differs: $case_name"
         done
-        [ "$(grep -Fxc 'LOCAL_OPTION_WIRE_DART=pass cases=4 native_errors=3 error=RESULT_ERROR failed_state=preserved retry=durable language=explicit-empty idempotent=without-write unrelated=preserved' "$output")" -eq 1 ] \
-            && [ "$(grep -Fc 'LOCAL_OPTION_WIRE_DART_CASE=' "$output")" -eq 4 ] \
+        [ "$(grep -Fxc 'LOCAL_PREF_WIRE_DART=pass cases=5 native_errors=4 error=RESULT_ERROR failed_state=preserved retry=durable language=explicit-empty input_source=durable idempotent=without-write unrelated=preserved' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LOCAL_PREF_WIRE_DART_CASE=' "$output")" -eq 5 ] \
             || fail 'local option bridge outcomes differ'
-        for case_name in initial_commit failed_replace_retry failed_remove_retry system_language_and_idempotence; do
-            [ "$(grep -Fxc "LOCAL_OPTION_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
+        for case_name in initial_commit failed_replace_retry failed_remove_retry system_language_and_idempotence input_source_retry_and_idempotence; do
+            [ "$(grep -Fxc "LOCAL_PREF_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
                 || fail "local option bridge case differs: $case_name"
         done
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
@@ -6141,7 +6141,7 @@ PY
             grep -E '^test (ipc::test::ordinary_option_ack_waits_for_persistence|ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver) [.][.][.] ok$|^OPTION_(ACK_(BUILD=pass |ARTIFACT(_AFTER)?=|NATIVE=)|EXPORT_(NATIVE|BEFORE)=|WIRE_)' "$output"
             grep -E '^FAVORITES_WIRE_DART(_CASE)?=' "$output"
             grep -E '^KEYBOARD_WIRE_DART(_CASE)?=' "$output"
-            grep -E '^LOCAL_OPTION_WIRE_DART(_CASE)?=' "$output"
+            grep -E '^LOCAL_PREF_WIRE_DART(_CASE)?=' "$output"
             printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

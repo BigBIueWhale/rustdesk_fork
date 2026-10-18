@@ -3,6 +3,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
+import 'package:uuid/uuid.dart';
 
 import '../flutter/lib/generated_bridge.dart';
 
@@ -181,16 +182,21 @@ Future<void> main(List<String> arguments) async {
   await api.mainSetLocalOption(key: localKey, value: 'original');
   check(api.mainGetLocalOption(key: localKey) == 'original',
       'initial local preference was not saved');
-  print('LOCAL_OPTION_WIRE_DART_CASE=pass name=initial_commit');
+  print('LOCAL_PREF_WIRE_DART_CASE=pass name=initial_commit');
   var localErrors = 0;
-  Future<void> refusedLocalWrite(String key, String value) async {
+  Future<void> refusedLocalWrite(String key, String value,
+      {Future<void> Function()? write}) async {
     final beforeFiles = configFiles(config);
     final beforeValue = api.mainGetLocalOption(key: key);
     Object? failure;
     permissions('0500');
     try {
       try {
-        await api.mainSetLocalOption(key: key, value: value);
+        if (write == null) {
+          await api.mainSetLocalOption(key: key, value: value);
+        } else {
+          await write();
+        }
       } catch (error) {
         failure = error;
       }
@@ -215,7 +221,7 @@ Future<void> main(List<String> arguments) async {
         (value.isEmpty ? !text.contains('$localKey =') :
             text.contains('$localKey = "$value"')),
         'identical local preference retry was not durable');
-    print('LOCAL_OPTION_WIRE_DART_CASE=pass name=${value.isEmpty ? "failed_remove_retry" : "failed_replace_retry"}');
+    print('LOCAL_PREF_WIRE_DART_CASE=pass name=${value.isEmpty ? "failed_remove_retry" : "failed_replace_retry"}');
   }
   await api.mainSetLocalOption(key: 'lang', value: 'fr');
   await refusedLocalWrite('lang', 'default');
@@ -230,11 +236,32 @@ Future<void> main(List<String> arguments) async {
   } finally {
     permissions('0700');
   }
+  print('LOCAL_PREF_WIRE_DART_CASE=pass name=system_language_and_idempotence');
+  final inputSession = UuidValue('00000000-0000-4000-8000-000000000001');
+  await api.mainSetLocalOption(key: 'input-source', value: 'Input source 1');
+  final originalInputSource = api.mainGetInputSource();
+  await refusedLocalWrite('input-source', 'Input source 2',
+      write: () => api.mainSetInputSource(
+          sessionId: inputSession, value: 'Input source 2'));
+  check(api.mainGetInputSource() == originalInputSource,
+      'failed input source change altered effective readback');
+  await api.mainSetInputSource(
+      sessionId: inputSession, value: 'Input source 2');
+  check(api.mainGetInputSource() == 'Input source 2' &&
+      localFiles.single.readAsStringSync().contains('input-source = "Input source 2"'),
+      'input source retry was not durable');
+  permissions('0500');
+  try {
+    await api.mainSetInputSource(
+        sessionId: inputSession, value: 'Input source 2');
+  } finally {
+    permissions('0700');
+  }
+  print('LOCAL_PREF_WIRE_DART_CASE=pass name=input_source_retry_and_idempotence');
   check(api.getLocalKbLayoutType() == 'Not ISO' &&
       jsonEncode(await api.mainGetFav()) == jsonEncode(current),
       'local option save changed unrelated keyboard or favorite settings');
-  check(localErrors == 3, 'local preference native error count differs');
-  print('LOCAL_OPTION_WIRE_DART_CASE=pass name=system_language_and_idempotence');
-  print('LOCAL_OPTION_WIRE_DART=pass cases=4 native_errors=3 error=RESULT_ERROR '
-      'failed_state=preserved retry=durable language=explicit-empty idempotent=without-write unrelated=preserved');
+  check(localErrors == 4, 'local preference native error count differs');
+  print('LOCAL_PREF_WIRE_DART=pass cases=5 native_errors=4 error=RESULT_ERROR '
+      'failed_state=preserved retry=durable language=explicit-empty input_source=durable idempotent=without-write unrelated=preserved');
 }

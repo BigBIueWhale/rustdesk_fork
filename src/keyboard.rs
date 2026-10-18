@@ -1582,9 +1582,6 @@ pub mod input_source {
         {
             hbb_common::bail!("Input monitoring permission is unavailable");
         }
-        if get_cur_session_input_source() == input_source {
-            return Ok(());
-        }
         set_local_option(CONFIG_OPTION_INPUT_SOURCE.to_string(), input_source)?;
         let input_source = get_cur_session_input_source();
         if input_source == CONFIG_INPUT_SOURCE_1 {
@@ -1604,6 +1601,10 @@ pub mod input_source {
     pub fn get_cur_session_input_source() -> String {
         #[cfg(target_os = "linux")]
         if !crate::platform::linux::is_x11() {
+            return CONFIG_INPUT_SOURCE_2.to_string();
+        }
+        #[cfg(target_os = "macos")]
+        if !crate::platform::macos::is_can_input_monitoring(false) {
             return CONFIG_INPUT_SOURCE_2.to_string();
         }
         let input_source = get_local_option(CONFIG_OPTION_INPUT_SOURCE.to_string());

@@ -6375,7 +6375,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
         || fail 'option acknowledgement artifact receipt differs'
     mapfile -t option_wire_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=15 unchanged=before-after execution_seconds=[0-9]+$'
+            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=16 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#option_wire_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'OPTION_WIRE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -6411,13 +6411,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
     [ "$(/usr/bin/grep -Fc 'KEYBOARD_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 3 ] \
         || fail 'keyboard native bridge named case inventory differs'
     require_exact_fixed_receipt \
-        'LOCAL_OPTION_WIRE_DART=pass cases=4 native_errors=3 error=RESULT_ERROR failed_state=preserved retry=durable language=explicit-empty idempotent=without-write unrelated=preserved' \
+        'LOCAL_PREF_WIRE_DART=pass cases=5 native_errors=4 error=RESULT_ERROR failed_state=preserved retry=durable language=explicit-empty input_source=durable idempotent=without-write unrelated=preserved' \
         'local preference bridge failure and retry outcomes'
-    for case_name in initial_commit failed_replace_retry failed_remove_retry system_language_and_idempotence; do
-        require_exact_fixed_receipt "LOCAL_OPTION_WIRE_DART_CASE=pass name=$case_name" \
+    for case_name in initial_commit failed_replace_retry failed_remove_retry system_language_and_idempotence input_source_retry_and_idempotence; do
+        require_exact_fixed_receipt "LOCAL_PREF_WIRE_DART_CASE=pass name=$case_name" \
             "local preference bridge case $case_name"
     done
-    [ "$(/usr/bin/grep -Fc 'LOCAL_OPTION_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 4 ] \
+    [ "$(/usr/bin/grep -Fc 'LOCAL_PREF_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 5 ] \
         || fail 'local preference bridge named case inventory differs'
     require_exact_fixed_receipt \
         "OPTION_ACK_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \

@@ -2388,8 +2388,8 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 Product `a69b64b8` removes the unsigned-to-signed timestamp cast from receive
 finalization. One checked conversion uses the platform's `SystemTime` range and
 the pinned Unix backend's native `time_t` range, then constructs `FileTime` from
-that representable time. Every file-list entry is checked before path inspection
-or job admission, and the publication sink rechecks before changing the staged
+that representable time. File-list admission checks every timestamp before its
+path inspection or state changes, and the publication sink rechecks before changing the staged
 mtime, removing its digest or renaming it over the destination. Invalid values
 return an explicit error; no clamping, wrapping or fallback is introduced.
 

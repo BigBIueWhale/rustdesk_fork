@@ -4,13 +4,14 @@ use hbb_common::anyhow::anyhow;
 use hbb_common::{
     bail, chrono, log,
     message_proto::{message, video_frame, EncodedVideoFrame, Message},
+    uuid::Uuid,
     ResultType,
 };
 #[cfg(feature = "hwcodec")]
 use hwcodec::mux::{MuxContext, Muxer};
 use std::{
+    convert::TryFrom,
     fs::{File, OpenOptions},
-    ops::{Deref, DerefMut},
     path::PathBuf,
 };
 use self::webm_mux::WebmMux;
@@ -30,26 +31,27 @@ pub struct RecorderContext {
 }
 
 #[derive(Debug, Clone)]
-pub struct RecorderContext2 {
-    pub filename: String,
-    pub width: usize,
-    pub height: usize,
-    pub format: CodecFormat,
+struct RecorderContext2 {
+    filename: String,
+    width: usize,
+    height: usize,
+    format: CodecFormat,
 }
 
 impl RecorderContext2 {
-    pub fn set_filename(&mut self, ctx: &RecorderContext) -> ResultType<()> {
+    fn set_filename(&mut self, ctx: &RecorderContext) -> ResultType<()> {
         if !PathBuf::from(&ctx.dir).exists() {
             std::fs::create_dir_all(&ctx.dir)?;
         }
         let file = if ctx.server { "incoming" } else { "outgoing" }.to_string()
             + "_"
-            + &ctx.id.clone()
+            + &ctx.id
             + &chrono::Local::now().format("_%Y%m%d%H%M%S%3f_").to_string()
             + &format!(
-                "{}{}_",
+                "{}{}_{}_",
                 if ctx.camera { "camera" } else { "display" },
-                ctx.display_idx
+                ctx.display_idx,
+                Uuid::new_v4().simple()
             )
             + &self.format.to_string().to_lowercase()
             + if self.format == CodecFormat::VP9
@@ -71,33 +73,20 @@ impl RecorderContext2 {
 unsafe impl Send for Recorder {}
 unsafe impl Sync for Recorder {}
 
-pub trait RecorderApi {
+trait RecorderApi {
     fn new(ctx: &RecorderContext2) -> ResultType<Self>
     where
         Self: Sized;
     fn write_video(&mut self, frame: &EncodedVideoFrame) -> bool;
+    fn finish(&mut self) -> ResultType<()>;
 }
 
 pub struct Recorder {
-    pub inner: Option<Box<dyn RecorderApi>>,
+    inner: Option<Box<dyn RecorderApi>>,
     ctx: RecorderContext,
     ctx2: Option<RecorderContext2>,
     pts: Option<i64>,
     failed: bool,
-}
-
-impl Deref for Recorder {
-    type Target = Option<Box<dyn RecorderApi>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl DerefMut for Recorder {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
 }
 
 impl Recorder {
@@ -111,48 +100,37 @@ impl Recorder {
         })
     }
 
-    fn check(&mut self, w: usize, h: usize, format: CodecFormat) -> ResultType<()> {
-        match self.ctx2 {
-            Some(ref ctx2) => {
-                if ctx2.width != w || ctx2.height != h || ctx2.format != format {
-                    let mut ctx2 = RecorderContext2 {
-                        width: w,
-                        height: h,
-                        format,
-                        filename: Default::default(),
-                    };
-                    ctx2.set_filename(&self.ctx)?;
-                    self.ctx2 = Some(ctx2);
-                    self.inner = None;
-                }
-            }
-            None => {
-                let mut ctx2 = RecorderContext2 {
-                    width: w,
-                    height: h,
-                    format,
-                    filename: Default::default(),
-                };
-                ctx2.set_filename(&self.ctx)?;
-                self.ctx2 = Some(ctx2);
-                self.inner = None;
-            }
+    fn start(&mut self, w: usize, h: usize, format: CodecFormat) -> ResultType<()> {
+        if self.inner.is_some() {
+            return Ok(());
         }
-        let Some(ctx2) = &self.ctx2 else {
-            bail!("ctx2 is None");
+        let mut ctx2 = RecorderContext2 {
+            width: w,
+            height: h,
+            format,
+            filename: Default::default(),
         };
-        if self.inner.is_none() {
-            self.inner = match format {
-                CodecFormat::VP8 | CodecFormat::VP9 | CodecFormat::AV1 => Some(Box::new(
-                    WebmRecorder::new(ctx2)?,
-                )),
-                #[cfg(feature = "hwcodec")]
-                _ => Some(Box::new(HwRecorder::new(ctx2)?)),
-                #[cfg(not(feature = "hwcodec"))]
-                _ => bail!("unsupported codec type"),
-            };
-            // pts is None when new inner is created
-            self.pts = None;
+        ctx2.set_filename(&self.ctx)?;
+        let inner: Box<dyn RecorderApi> = match format {
+            CodecFormat::VP8 | CodecFormat::VP9 | CodecFormat::AV1 => {
+                Box::new(WebmRecorder::new(&ctx2)?)
+            }
+            #[cfg(feature = "hwcodec")]
+            _ => Box::new(HwRecorder::new(&ctx2)?),
+            #[cfg(not(feature = "hwcodec"))]
+            _ => bail!("unsupported codec type"),
+        };
+        self.inner = Some(inner);
+        self.ctx2 = Some(ctx2);
+        Ok(())
+    }
+
+    fn close_epoch(&mut self) -> ResultType<()> {
+        let inner = self.inner.take();
+        self.ctx2 = None;
+        self.pts = None;
+        if let Some(mut inner) = inner {
+            inner.finish()?;
         }
         Ok(())
     }
@@ -175,15 +153,6 @@ impl Recorder {
             bail!("recording failed");
         }
         let format = CodecFormat::from(frame);
-        if format == CodecFormat::Unknown {
-            bail!("unsupported frame type");
-        }
-        let res = self.check(w, h, format);
-        if res.is_err() {
-            self.failed = true;
-            log::error!("check failed: {:?}", res);
-            res?;
-        }
         let frames = match frame {
             video_frame::Union::Vp8s(frames)
             | video_frame::Union::Vp9s(frames)
@@ -193,7 +162,24 @@ impl Recorder {
             _ => bail!("unsupported frame type"),
         };
         for frame in frames {
-            self.check_pts(frame.pts, frame.key, w, h, format)?;
+            let changed = self.ctx2.as_ref().map_or(false, |ctx| {
+                ctx.width != w || ctx.height != h || ctx.format != format
+            });
+            if changed || self.pts.map_or(false, |pts| frame.pts < pts) {
+                if let Err(error) = self.close_epoch() {
+                    self.failed = true;
+                    log::error!("Failed to close recording epoch: {error:?}");
+                    return Err(error);
+                }
+            }
+            if self.pts.is_none() && !frame.key {
+                continue;
+            }
+            if let Err(error) = self.start(w, h, format) {
+                self.failed = true;
+                log::error!("Failed to start recording: {error:?}");
+                return Err(error);
+            }
             let written = match self.inner.as_mut() {
                 Some(recorder) => recorder.write_video(frame),
                 None => false,
@@ -204,35 +190,7 @@ impl Recorder {
                 log::error!("Failed to write recording frame");
                 bail!("Failed to write recording frame");
             }
-        }
-        Ok(())
-    }
-
-    fn check_pts(
-        &mut self,
-        pts: i64,
-        key: bool,
-        w: usize,
-        h: usize,
-        format: CodecFormat,
-    ) -> ResultType<()> {
-        // https://stackoverflow.com/questions/76379101/how-to-create-one-playable-webm-file-from-two-different-video-tracks-with-same-c
-        if self.pts.is_none() && !key {
-            bail!("first frame is not key frame");
-        }
-        let old_pts = self.pts;
-        self.pts = Some(pts);
-        if old_pts.clone().unwrap_or_default() > pts {
-            log::info!("pts {:?} -> {}, change record filename", old_pts, pts);
-            self.inner = None;
-            self.ctx2 = None;
-            let res = self.check(w, h, format);
-            if res.is_err() {
-                self.failed = true;
-                log::error!("check failed: {:?}", res);
-                res?;
-            }
-            self.pts = Some(pts);
+            self.pts = Some(frame.pts);
         }
         Ok(())
     }
@@ -240,7 +198,7 @@ impl Recorder {
 
 struct WebmRecorder {
     webm: Option<WebmMux<File>>,
-    key: bool,
+    origin: Option<i64>,
 }
 
 impl RecorderApi for WebmRecorder {
@@ -252,30 +210,47 @@ impl RecorderApi for WebmRecorder {
         let webm = WebmMux::new(out, ctx2)?;
         Ok(WebmRecorder {
             webm: Some(webm),
-            key: false,
+            origin: None,
         })
     }
 
     fn write_video(&mut self, frame: &EncodedVideoFrame) -> bool {
-        if frame.key {
-            self.key = true;
+        let origin = match self.origin {
+            Some(origin) => origin,
+            None if frame.key => frame.pts,
+            None => return false,
+        };
+        let timestamp = frame
+            .pts
+            .checked_sub(origin)
+            .and_then(|delta| u64::try_from(delta).ok())
+            .and_then(|delta| delta.checked_mul(1_000_000));
+        let Some(timestamp) = timestamp else {
+            return false;
+        };
+        let accepted = self.webm.as_mut().map_or(false, |webm| {
+            webm.add_frame(&frame.data, timestamp, frame.key)
+        });
+        if accepted {
+            self.origin = Some(origin);
         }
-        if self.key {
-            self.webm.as_mut().map(|webm| {
-                webm.add_frame(&frame.data, frame.pts as u64 * 1_000_000, frame.key)
-            }).unwrap_or(false)
-        } else {
-            false
+        accepted
+    }
+
+    fn finish(&mut self) -> ResultType<()> {
+        if let Some(webm) = self.webm.take() {
+            if !webm.finalize() {
+                bail!("Failed to finalize WebM recording");
+            }
         }
+        Ok(())
     }
 }
 
 impl Drop for WebmRecorder {
     fn drop(&mut self) {
-        if let Some(webm) = self.webm.take() {
-            if !webm.finalize() {
-                log::error!("Failed to finalize WebM recording");
-            }
+        if let Err(error) = self.finish() {
+            log::error!("{error:?}");
         }
     }
 }
@@ -316,15 +291,22 @@ impl RecorderApi for HwRecorder {
             false
         }
     }
+
+    fn finish(&mut self) -> ResultType<()> {
+        if let Some(mut muxer) = self.muxer.take() {
+            muxer
+                .write_tail()
+                .map_err(|error| anyhow!("Failed to finalize hardware recording: {error}"))?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(feature = "hwcodec")]
 impl Drop for HwRecorder {
     fn drop(&mut self) {
-        if let Some(muxer) = self.muxer.as_mut() {
-            if let Err(error) = muxer.write_tail() {
-                log::error!("Failed to finalize hardware recording: {error:?}");
-            }
+        if let Err(error) = self.finish() {
+            log::error!("{error:?}");
         }
     }
 }

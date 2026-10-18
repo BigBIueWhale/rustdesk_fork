@@ -5681,7 +5681,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = recording-output ]; then
             [ "$tests_passed" -eq 6 ] || fail 'recording output total differs'
-            grep -E '^test common::record::tests::.* \.\.\. ok$|^RECORDING_OUTPUT_(BUILD|ARTIFACT)=' "$output"
+            grep -E '^test common::record::tests::.* \.\.\. ok$|^RECORDING_OUTPUT_(BUILD|ARTIFACT)=|^R-B10 canary:' "$output"
             printf 'RECORDING_OUTPUT_VM=pass commit=%s tree=%s tests=6 target=linux-x86_64 scope=scrap-library-filesystem-and-native-webm rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

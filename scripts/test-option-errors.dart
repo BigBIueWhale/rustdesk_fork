@@ -135,4 +135,45 @@ Future<void> main(List<String> arguments) async {
   print('FAVORITES_WIRE_DART_CASE=pass name=concurrent_membership');
   print('FAVORITES_WIRE_DART=pass cases=4 native_errors=2 error=RESULT_ERROR '
       'failed_state=preserved retry=durable concurrent=preserved idempotent=without-write');
+
+  await api.setLocalKbLayoutType(kbLayoutType: 'ISO');
+  check(api.getLocalKbLayoutType() == 'ISO', 'initial keyboard type was not saved');
+  print('KEYBOARD_WIRE_DART_CASE=pass name=initial_commit');
+  final beforeKeyboard = configFiles(config);
+  Object? keyboardFailure;
+  permissions('0500');
+  try {
+    try {
+      await api.setLocalKbLayoutType(kbLayoutType: 'Not ISO');
+    } catch (error) {
+      keyboardFailure = error;
+    }
+    check(keyboardFailure is FfiException &&
+        (keyboardFailure as FfiException).code == 'RESULT_ERROR',
+        'keyboard persistence failure did not cross the native bridge');
+    check(api.getLocalKbLayoutType() == 'ISO',
+        'failed keyboard save changed the live mapping');
+    final currentFiles = configFiles(config);
+    check(currentFiles.length == beforeKeyboard.length &&
+        beforeKeyboard.entries.every((entry) => currentFiles[entry.key] == entry.value),
+        'failed keyboard save changed durable configuration');
+  } finally {
+    permissions('0700');
+  }
+  await api.setLocalKbLayoutType(kbLayoutType: 'Not ISO');
+  check(api.getLocalKbLayoutType() == 'Not ISO' &&
+      localFiles.single.readAsStringSync().contains('kb_layout_type = "Not ISO"'),
+      'identical keyboard retry was not durable');
+  check(jsonEncode(await api.mainGetFav()) == jsonEncode(current),
+      'keyboard save replaced unrelated favorite membership');
+  print('KEYBOARD_WIRE_DART_CASE=pass name=failed_write_retry');
+  permissions('0500');
+  try {
+    await api.setLocalKbLayoutType(kbLayoutType: 'Not ISO');
+  } finally {
+    permissions('0700');
+  }
+  print('KEYBOARD_WIRE_DART_CASE=pass name=idempotent_without_write');
+  print('KEYBOARD_WIRE_DART=pass cases=3 native_errors=1 error=RESULT_ERROR '
+      'failed_mapping=preserved failed_file=preserved retry=durable unrelated=preserved');
 }

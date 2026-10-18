@@ -3811,10 +3811,16 @@ impl LocalConfig {
         LOCAL_CONFIG.read().unwrap().kb_layout_type.clone()
     }
 
-    pub fn set_kb_layout_type(kb_layout_type: String) {
+    pub fn set_kb_layout_type(kb_layout_type: String) -> crate::ResultType<()> {
         let mut config = LOCAL_CONFIG.write().unwrap();
-        config.kb_layout_type = kb_layout_type;
-        config.store();
+        if config.kb_layout_type == kb_layout_type {
+            return Ok(());
+        }
+        let mut candidate = config.clone();
+        candidate.kb_layout_type = kb_layout_type;
+        store_path(Config::file_("_local"), &candidate)?;
+        *config = candidate;
+        Ok(())
     }
 
     pub fn get_size() -> Size {

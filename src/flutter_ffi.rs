@@ -459,7 +459,7 @@ pub fn get_local_kb_layout_type() -> SyncReturn<String> {
     SyncReturn(ui_interface::get_kb_layout_type())
 }
 
-pub fn set_local_kb_layout_type(kb_layout_type: String) {
+pub fn set_local_kb_layout_type(kb_layout_type: String) -> Result<()> {
     ui_interface::set_kb_layout_type(kb_layout_type)
 }
 

@@ -6,6 +6,7 @@ import 'package:flutter_hbb/models/platform_model.dart';
 
 import '../../common.dart';
 
+/// Saves the type and publishes confirmed readback to the shared choice model.
 typedef KBChosenCallback = Future<bool> Function(String);
 
 const double _kImageMarginVertical = 6.0;
@@ -67,31 +68,29 @@ class _KBChooser extends StatelessWidget {
   final String kbLayoutType;
   final double imageWidth;
   final RxString chosenType;
-  final KBChosenCallback cb;
+  final ValueChanged<String> cb;
+  final bool enabled;
   const _KBChooser({
     Key? key,
     required this.kbLayoutType,
     required this.imageWidth,
     required this.chosenType,
     required this.cb,
+    required this.enabled,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    onChanged(String? v) async {
+    onChanged(String? v) {
       if (v != null) {
-        if (await cb(v)) {
-          chosenType.value = v;
-        }
+        cb(v);
       }
     }
 
     return Column(
       children: [
         TextButton(
-          onPressed: () {
-            onChanged(kbLayoutType);
-          },
+          onPressed: enabled ? () => onChanged(kbLayoutType) : null,
           child: _KBImage(
             kbLayoutType: kbLayoutType,
             imageWidth: imageWidth,
@@ -106,26 +105,25 @@ class _KBChooser extends StatelessWidget {
                     splashRadius: 0,
                     value: kbLayoutType,
                     groupValue: chosenType.value,
-                    onChanged: onChanged,
+                    onChanged: enabled ? onChanged : null,
                   )),
               Text(kbLayoutType),
             ],
           ),
-          onPressed: () {
-            onChanged(kbLayoutType);
-          },
+          onPressed: enabled ? () => onChanged(kbLayoutType) : null,
         ),
       ],
     );
   }
 }
 
-class KBLayoutTypeChooser extends StatelessWidget {
+class KBLayoutTypeChooser extends StatefulWidget {
   final RxString chosenType;
   final double width;
   final double height;
   final double dividerWidth;
   final KBChosenCallback cb;
+  final String? failureText;
   KBLayoutTypeChooser({
     Key? key,
     required this.chosenType,
@@ -133,40 +131,93 @@ class KBLayoutTypeChooser extends StatelessWidget {
     required this.height,
     required this.dividerWidth,
     required this.cb,
+    this.failureText,
   }) : super(key: key);
 
   @override
+  State<KBLayoutTypeChooser> createState() => _KBLayoutTypeChooserState();
+}
+
+class _KBLayoutTypeChooserState extends State<KBLayoutTypeChooser> {
+  bool _pending = false;
+  bool _failed = false;
+
+  Future<void> _choose(String value) async {
+    if (!mounted || _pending) return;
+    setState(() {
+      _pending = true;
+      _failed = false;
+    });
+    var saved = false;
+    try {
+      saved = await widget.cb(value);
+    } catch (error) {
+      debugPrint('Failed to save local keyboard type: $error');
+    }
+    if (!mounted) return;
+    setState(() {
+      _pending = false;
+      _failed = !saved;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final imageWidth = width / 2 - dividerWidth;
+    final imageWidth = widget.width / 2 - widget.dividerWidth;
     return SizedBox(
-      width: width,
-      height: height,
-      child: Center(
-        child: Row(
-          children: [
-            _KBChooser(
-              kbLayoutType: _kKBLayoutTypeISO,
-              imageWidth: imageWidth,
-              chosenType: chosenType,
-              cb: cb,
+      width: widget.width,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: widget.height,
+            child: Center(
+              child: Row(
+                children: [
+                  _KBChooser(
+                    kbLayoutType: _kKBLayoutTypeISO,
+                    imageWidth: imageWidth,
+                    chosenType: widget.chosenType,
+                    cb: _choose,
+                    enabled: !_pending,
+                  ),
+                  VerticalDivider(width: widget.dividerWidth * 2),
+                  _KBChooser(
+                    kbLayoutType: _kKBLayoutTypeNotISO,
+                    imageWidth: imageWidth,
+                    chosenType: widget.chosenType,
+                    cb: _choose,
+                    enabled: !_pending,
+                  ),
+                ],
+              ),
             ),
-            VerticalDivider(
-              width: dividerWidth * 2,
+          ),
+          if (_pending) const LinearProgressIndicator(),
+          if (_failed)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(widget.failureText ?? translate('Failed')),
             ),
-            _KBChooser(
-              kbLayoutType: _kKBLayoutTypeNotISO,
-              imageWidth: imageWidth,
-              chosenType: chosenType,
-              cb: cb,
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
 }
 
 RxString KBLayoutType = ''.obs;
+
+Future<bool> saveLocalKeyboardLayoutType(String value,
+    {Future<void> Function(String)? writeType,
+    String Function()? readType}) async {
+  final write = writeType ??
+      (value) => bind.setLocalKbLayoutType(kbLayoutType: value);
+  final read = readType ?? (() => bind.getLocalKbLayoutType());
+  await write(value);
+  final effective = read();
+  KBLayoutType.value = effective;
+  return effective == value;
+}
 
 String getLocalPlatformForKBLayoutType(String peerPlatform) {
   String localPlatform = '';
@@ -213,11 +264,7 @@ showKBLayoutTypeChooser(
           width: 360,
           height: 200,
           dividerWidth: 4.0,
-          cb: (String v) async {
-            await bind.setLocalKbLayoutType(kbLayoutType: v);
-            KBLayoutType.value = bind.getLocalKbLayoutType();
-            return v == KBLayoutType.value;
-          }),
+          cb: saveLocalKeyboardLayoutType),
       actions: [dialogButton('Close', onPressed: close)],
       onCancel: close,
     );

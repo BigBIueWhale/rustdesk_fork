@@ -101,6 +101,15 @@ PASSWORD_FIELD_TESTS = {
     "ordinary obscured field is a keyboard learning control",
     "password field retains focused obscured semantics",
 }
+KEYBOARD_LAYOUT_TESTS = {
+    "keyboard chooser waits and blocks repeated choices",
+    "keyboard chooser displays save errors and retries the same choice",
+    "keyboard chooser exposes mismatched readback and permits retry",
+    "keyboard chooser retains its admitted save through parent rebuild",
+    "keyboard chooser disposal retires callbacks while the save settles",
+    "keyboard layout callback publishes only confirmed native readback",
+    "keyboard layout callback preserves its model after native failure",
+}
 SETTING_OPTION_TESTS = {
     "favorite save owns its submitted IDs and waits for completion",
     "failed favorite membership change reports failure and permits retry",
@@ -392,6 +401,7 @@ def parse_result(path, profile="models"):
             "auto_disconnect_timeout_dialog_test.dart": AUTO_DISCONNECT_TESTS,
             "auto_disconnect_timeout_field_test.dart": AUTO_DISCONNECT_FIELD_TESTS,
             "setting_option_mutation_test.dart": SETTING_OPTION_TESTS,
+            "keyboard_layout_type_chooser_test.dart": KEYBOARD_LAYOUT_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

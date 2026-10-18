@@ -202,8 +202,8 @@ pub fn get_kb_layout_type() -> String {
 
 #[cfg(feature = "flutter")]
 #[inline]
-pub fn set_kb_layout_type(kb_layout_type: String) {
-    LocalConfig::set_kb_layout_type(kb_layout_type);
+pub fn set_kb_layout_type(kb_layout_type: String) -> hbb_common::ResultType<()> {
+    LocalConfig::set_kb_layout_type(kb_layout_type)
 }
 
 #[inline]

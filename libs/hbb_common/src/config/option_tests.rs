@@ -13,6 +13,12 @@ mod before {
         lock.fav = fav;
         lock.store();
     }
+
+    pub fn set_kb_layout_type(kb_layout_type: String) {
+        let mut config = LOCAL_CONFIG.write().unwrap();
+        config.kb_layout_type = kb_layout_type;
+        config.store();
+    }
 }
 
 fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
@@ -193,5 +199,43 @@ fn concurrent_favorite_membership_changes_preserve_every_admitted_id() {
         let stored: LocalConfig = load_path(Config::file_("_local"));
         assert_eq!(stored.fav, current);
         println!("OPTION_COMMIT_FAVORITES_CONCURRENT=observed writers=8 ids=8 durable=equal cleanup=joined");
+    });
+}
+
+#[test]
+fn keyboard_layout_failure_preserves_mapping_and_allows_retry() {
+    in_private_process("config::option_tests::keyboard_layout_failure_preserves_mapping_and_allows_retry", |_| {
+        before::set_kb_layout_type("ISO".into());
+        let file = Config::file_("_local");
+        let parent = file.parent().unwrap();
+        let original = fs::read(&file).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        before::set_kb_layout_type("Not ISO".into());
+        let old_published = LocalConfig::get_kb_layout_type() == "Not ISO";
+        let old_file_preserved = fs::read(&file).unwrap() == original;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        println!("OPTION_COMMIT_KEYBOARD_BEFORE=observed published_without_commit={old_published} file_preserved={old_file_preserved}");
+        assert!(old_published && old_file_preserved);
+
+        LocalConfig::set_kb_layout_type("ISO".into()).unwrap();
+        LocalConfig::set_favorites(vec!["original".into()], true).unwrap();
+        let original = fs::read(&file).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        let failed = LocalConfig::set_kb_layout_type("Not ISO".into()).is_err();
+        let memory_preserved = LocalConfig::get_kb_layout_type() == "ISO";
+        let file_preserved = fs::read(&file).unwrap() == original;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        LocalConfig::set_kb_layout_type("Not ISO".into()).unwrap();
+        let stored: LocalConfig = load_path(file.clone());
+        let retry_persisted = stored.kb_layout_type == "Not ISO"
+            && LocalConfig::get_kb_layout_type() == stored.kb_layout_type;
+        let unrelated_preserved = stored.fav == ["original"];
+        let durable = fs::read(&file).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        LocalConfig::set_kb_layout_type("Not ISO".into()).unwrap();
+        let idempotent = fs::read(&file).unwrap() == durable;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        println!("OPTION_COMMIT_KEYBOARD_NATIVE=observed failure_reported={failed} memory_preserved={memory_preserved} file_preserved={file_preserved} retry_persisted={retry_persisted} unrelated_preserved={unrelated_preserved} idempotent_without_write={idempotent}");
+        assert!(failed && memory_preserved && file_preserved && retry_persisted && unrelated_preserved && idempotent);
     });
 }

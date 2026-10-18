@@ -1,48 +1,19 @@
 #![windows_subsystem = "windows"]
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-};
-
+#[cfg(windows)]
 use bin_reader::{relative_payload_path, BinaryReader};
 
-pub mod bin_reader;
 #[cfg(windows)]
-mod ui;
+mod bin_reader;
 
-#[cfg(windows)]
-const APP_METADATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/app_metadata.toml"));
-#[cfg(not(windows))]
-const APP_METADATA: &[u8] = &[];
-const APP_METADATA_CONFIG: &str = "meta.toml";
-const META_LINE_PREFIX_TIMESTAMP: &str = "timestamp = ";
-const APP_PREFIX: &str = "rustdesk";
-const APPNAME_RUNTIME_ENV_KEY: &str = "RUSTDESK_APPNAME";
+#[cfg(any(windows, test))]
 const ELEVATED_INSTALL_ARG: &str = "--rustdesk-protected-install";
+#[cfg(any(windows, test))]
 const ELEVATED_SILENT_INSTALL_ARG: &str = "--rustdesk-protected-silent-install";
-#[cfg(windows)]
-const SET_FOREGROUND_WINDOW_ENV_KEY: &str = "SET_FOREGROUND_WINDOW";
-const SETUP_EXE_NAME: &str = "rustdesk-setup.exe";
 #[cfg(windows)]
 const INSTALLER_MSI_NAME: &str = "rustdesk-installer.msi";
 
-fn is_installer_filename(exe: &str) -> bool {
-    let filename = exe.rsplit(['/', '\\']).next().unwrap_or_default();
-    filename.eq_ignore_ascii_case(SETUP_EXE_NAME)
-}
-
-#[cfg(windows)]
-fn current_exe_is_installer() -> Result<bool, String> {
-    let path = std::env::current_exe()
-        .map_err(|err| format!("failed to resolve current executable: {err}"))?;
-    Ok(path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(is_installer_filename))
-}
-
+#[cfg(any(windows, test))]
 fn parse_installer_invocation(args: &[String]) -> Result<(bool, bool), String> {
     match args {
         [] => Ok((false, false)),
@@ -53,256 +24,38 @@ fn parse_installer_invocation(args: &[String]) -> Result<(bool, bool), String> {
     }
 }
 
+#[cfg(any(windows, test))]
 fn is_accepted_msi_exit_code(code: u32) -> bool {
     matches!(code, 0 | 3010)
 }
 
-struct ExtractedPayload {
-    exe: PathBuf,
-}
-
-fn is_timestamp_matches(dir: &Path, ts: &mut u64) -> bool {
-    let Ok(app_metadata) = std::str::from_utf8(APP_METADATA) else {
-        return true;
-    };
-    for line in app_metadata.lines() {
-        if line.starts_with(META_LINE_PREFIX_TIMESTAMP) {
-            if let Ok(stored_ts) = line.replace(META_LINE_PREFIX_TIMESTAMP, "").parse::<u64>() {
-                *ts = stored_ts;
-                break;
-            }
-        }
-    }
-    if *ts == 0 {
-        return true;
-    }
-
-    if let Ok(content) = std::fs::read_to_string(dir.join(APP_METADATA_CONFIG)) {
-        for line in content.lines() {
-            if line.starts_with(META_LINE_PREFIX_TIMESTAMP) {
-                if let Ok(stored_ts) = line.replace(META_LINE_PREFIX_TIMESTAMP, "").parse::<u64>() {
-                    return *ts == stored_ts;
-                }
-            }
-        }
-    }
-    false
-}
-
-fn write_meta(dir: &Path, ts: u64) -> Result<(), String> {
-    let meta_file = dir.join(APP_METADATA_CONFIG);
-    if ts != 0 {
-        let content = format!("{}{}", META_LINE_PREFIX_TIMESTAMP, ts);
-        fs::write(&meta_file, content)
-            .map_err(|err| format!("failed to write {}: {err}", meta_file.display()))?;
-    }
-    Ok(())
-}
-
-fn remove_setup_dir(dir: &Path) -> Result<(), String> {
-    match fs::symlink_metadata(dir) {
-        Ok(metadata) => {
-            if metadata.file_type().is_symlink() || has_reparse_point(&metadata) {
-                return Err(format!(
-                    "refusing to remove reparse-point setup dir {}",
-                    dir.display()
-                ));
-            }
-            if !metadata.is_dir() {
-                return Err(format!("setup path is not a directory: {}", dir.display()));
-            }
-        }
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(err) => return Err(format!("failed to inspect {}: {err}", dir.display())),
-    }
-    fs::remove_dir_all(dir).map_err(|err| format!("failed to remove {}: {err}", dir.display()))
-}
-
 #[cfg(windows)]
-fn has_reparse_point(metadata: &fs::Metadata) -> bool {
+fn has_reparse_point(metadata: &std::fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt;
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
     metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 
-#[cfg(not(windows))]
-fn has_reparse_point(_: &fs::Metadata) -> bool {
-    false
-}
-
-fn extract_payload(reader: &BinaryReader, dir: &Path) -> Result<ExtractedPayload, String> {
-    for file in reader.files.iter() {
-        file.write_to_file(dir)?;
-    }
-    Ok(ExtractedPayload {
-        exe: dir.join(relative_payload_path(&reader.exe)?),
-    })
-}
-
-fn setup(
-    reader: BinaryReader,
-    dir: Option<PathBuf>,
-    clear: bool,
-    _args: &Vec<String>,
-    _ui: &mut bool,
-) -> Option<PathBuf> {
-    let dir = if let Some(dir) = dir {
-        dir
-    } else {
-        // home dir
-        if let Some(dir) = dirs::data_local_dir() {
-            dir.join(APP_PREFIX)
-        } else {
-            eprintln!("not found data local dir");
-            return None;
-        }
-    };
-
-    let mut ts = 0;
-    if clear || !is_timestamp_matches(&dir, &mut ts) {
-        #[cfg(windows)]
-        if _args.is_empty() {
-            *_ui = true;
-            ui::setup();
-        }
-        if let Err(err) = remove_setup_dir(&dir) {
-            eprintln!("{err}");
-            return None;
-        }
-    }
-    let payload = match extract_payload(&reader, &dir) {
-        Ok(payload) => payload,
-        Err(err) => {
-            eprintln!("{err}");
-            return None;
-        }
-    };
-    if let Err(err) = write_meta(&dir, ts) {
-        eprintln!("{err}");
-        return None;
-    }
-    #[cfg(linux)]
-    reader.configure_permission(&dir);
-    Some(payload.exe)
-}
-
-fn use_null_stdio() -> bool {
-    #[cfg(windows)]
-    {
-        // When running in CMD on Windows 7, using Stdio::inherit() with spawn returns an "invalid handle" error.
-        // Since using Stdio::null() didn’t cause any issues, and determining whether the program is launched from CMD or by double-clicking would require calling more APIs during startup, we also use Stdio::null() when launched by double-clicking on Windows 7.
-        let is_windows_7 = is_windows_7();
-        println!("is windows7: {}", is_windows_7);
-        return is_windows_7;
-    }
-    #[cfg(not(windows))]
-    false
-}
-
 #[cfg(windows)]
-fn is_windows_7() -> bool {
-    use windows::Wdk::System::SystemServices::RtlGetVersion;
-    use windows::Win32::System::SystemInformation::OSVERSIONINFOW;
-
-    unsafe {
-        let mut version_info = OSVERSIONINFOW::default();
-        version_info.dwOSVersionInfoSize = std::mem::size_of::<OSVERSIONINFOW>() as u32;
-
-        if RtlGetVersion(&mut version_info).is_ok() {
-            // Windows 7 is version 6.1
-            println!(
-                "Windows version: {}.{}",
-                version_info.dwMajorVersion, version_info.dwMinorVersion
-            );
-            return version_info.dwMajorVersion == 6 && version_info.dwMinorVersion == 1;
-        }
-    }
-    false
-}
-
-fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
-    println!("executing {}", path.display());
-    // setup env
-    let exe = std::env::current_exe().unwrap_or_default();
-    let exe_name = exe.file_name().unwrap_or_default();
-    // run executable
-    let mut cmd = Command::new(path);
-    cmd.args(args);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(winapi::um::winbase::CREATE_NO_WINDOW);
-        if _ui {
-            cmd.env(SET_FOREGROUND_WINDOW_ENV_KEY, "1");
-        }
-    }
-
-    cmd.env(APPNAME_RUNTIME_ENV_KEY, exe_name);
-    if use_null_stdio() {
-        cmd.stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-    } else {
-        cmd.stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit());
-    }
-    let _child = cmd.spawn();
-
-    #[cfg(windows)]
-    if _ui {
-        match _child {
-            Ok(child) => unsafe {
-                winapi::um::winuser::AllowSetForegroundWindow(child.id() as u32);
-            },
-            Err(e) => {
-                eprintln!("{:?}", e);
-            }
-        }
-    }
-}
-
 fn main() {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
-    #[cfg(windows)]
-    let installer_mode = match current_exe_is_installer() {
-        Ok(installer_mode) => installer_mode,
+    let (silent, protected) = match parse_installer_invocation(&args) {
+        Ok(invocation) => invocation,
         Err(err) => {
             eprintln!("{err}");
             std::process::exit(1);
         }
     };
-    #[cfg(windows)]
-    if installer_mode {
-        let (silent, protected) = match parse_installer_invocation(&args) {
-            Ok(invocation) => invocation,
-            Err(err) => {
-                eprintln!("{err}");
-                std::process::exit(1);
-            }
-        };
-        let reader = BinaryReader::default();
-        if let Err(err) = win::run_protected_installer(reader, silent, protected) {
-            eprintln!("{err}");
-            std::process::exit(1);
-        }
-        return;
-    }
-    #[cfg(windows)]
-    if args.iter().any(|arg| {
-        matches!(
-            arg.as_str(),
-            "--silent-install" | ELEVATED_INSTALL_ARG | ELEVATED_SILENT_INSTALL_ARG
-        )
-    }) {
-        eprintln!("installer-only argument requires {SETUP_EXE_NAME}");
+    if let Err(err) = win::run_protected_installer(BinaryReader::default(), silent, protected) {
+        eprintln!("{err}");
         std::process::exit(1);
     }
-    let mut ui = false;
-    let reader = BinaryReader::default();
-    if let Some(exe) = setup(reader, None, false, &args, &mut ui) {
-        execute(exe, args, ui);
-    }
+}
+
+#[cfg(not(windows))]
+fn main() {
+    eprintln!("This installer requires Windows.");
+    std::process::exit(1);
 }
 
 #[cfg(windows)]
@@ -802,21 +555,9 @@ mod win {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_accepted_msi_exit_code, is_installer_filename, parse_installer_invocation,
+        is_accepted_msi_exit_code, parse_installer_invocation,
         ELEVATED_INSTALL_ARG, ELEVATED_SILENT_INSTALL_ARG,
     };
-
-    #[test]
-    fn classifies_only_supported_installer_filenames() {
-        assert!(is_installer_filename("rustdesk-setup.exe"));
-        assert!(is_installer_filename(r"C:\\release\\RUSTDESK-SETUP.EXE"));
-        assert!(!is_installer_filename("rustdesk-1.4.7-install.exe"));
-        assert!(!is_installer_filename("install.exe"));
-        assert!(!is_installer_filename("rustdeskinstall.exe"));
-        assert!(!is_installer_filename("rustdesk-uninstall.exe"));
-        assert!(!is_installer_filename("rustdesk-setup.exe.bak"));
-        assert!(!is_installer_filename("rustdesk.exe"));
-    }
 
     #[test]
     fn accepts_only_windows_installer_success_statuses() {

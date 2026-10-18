@@ -2341,13 +2341,12 @@ if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_ui" -rInE 'goto_install|i
   r_s11e20="$r_s11e20 in-app-installer-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_ui")"
 fi
 
-grep -Fq 'const SETUP_EXE_NAME: &str = "rustdesk-setup.exe";' "$portable" || r_s11e20="$r_s11e20 exact-setup-name-missing"
-grep -Fq 'filename.eq_ignore_ascii_case(SETUP_EXE_NAME)' "$portable" || r_s11e20="$r_s11e20 setup-name-not-exact-case-insensitive"
-grep -Fq 'fn current_exe_is_installer() -> Result<bool, String>' "$portable" || r_s11e20="$r_s11e20 setup-mode-not-fallible-current-image-derived"
-grep -Fq 'let installer_mode = match current_exe_is_installer() {' "$portable" || r_s11e20="$r_s11e20 setup-dispatch-not-current-image-bound"
+grep -Fq 'win::run_protected_installer(BinaryReader::default(), silent, protected)' "$portable" || r_s11e20="$r_s11e20 protected-installer-entry-missing"
+if grep -Eq 'fn (setup|execute|current_exe_is_installer|is_timestamp_matches)\(|Command::new|dirs::data_local_dir|mod ui;' "$portable"; then
+  r_s11e20="$r_s11e20 alternate-wrapper-extraction-or-execution-leftover"
+fi
 grep -Fq 'fn parse_installer_invocation(args: &[String]) -> Result<(bool, bool), String>' "$portable" || r_s11e20="$r_s11e20 setup-command-line-parser-missing"
 grep -Fq '_ => Err("invalid setup command line".to_owned()),' "$portable" || r_s11e20="$r_s11e20 setup-command-line-not-closed"
-grep -Fq '"--silent-install" | ELEVATED_INSTALL_ARG | ELEVATED_SILENT_INSTALL_ARG' "$portable" || r_s11e20="$r_s11e20 installer-only-args-not-rejected-on-other-images"
 grep -Fq 'if protected {' "$portable" || r_s11e20="$r_s11e20 protected-marker-not-distinguished"
 grep -Fq 'protected installer invocation requires an elevated process' "$portable" || r_s11e20="$r_s11e20 protected-marker-not-elevation-gated"
 grep -Fq 'const INSTALLER_MSI_NAME: &str = "rustdesk-installer.msi";' "$portable" || r_s11e20="$r_s11e20 fixed-msi-name-missing"

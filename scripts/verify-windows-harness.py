@@ -23,6 +23,7 @@ FILES = {
     "cargo": "Cargo.toml",
     "portable_build": "libs/portable/build.rs",
     "portable_cargo": "libs/portable/Cargo.toml",
+    "portable_main": "libs/portable/src/main.rs",
     "resource": "res/windows_resource.rs",
     "host": "scripts/build-windows-vm.sh",
     "provision": "scripts/provision-windows-vm.sh",
@@ -304,6 +305,12 @@ def validate_sources(sources: dict[str, str]) -> None:
     cargo = sources["cargo"]
     portable_build = sources["portable_build"]
     portable_cargo = sources["portable_cargo"]
+    portable_main = sources["portable_main"]
+    require(portable_main, "win::run_protected_installer(BinaryReader::default(), silent, protected)",
+            "single protected installer entry")
+    reject(portable_main,
+           r"fn (?:setup|execute|current_exe_is_installer|is_timestamp_matches)\(|Command::new|dirs::data_local_dir|mod ui;",
+           "alternate wrapper extraction or execution")
     resource = sources["resource"]
     host = sources["host"]
     provision = sources["provision"]

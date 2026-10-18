@@ -44,51 +44,6 @@ impl BinaryData {
         Ok(buf)
     }
 
-    pub fn write_to_file(&self, prefix: &Path) -> Result<PathBuf, String> {
-        let p = prefix.join(relative_payload_path(&self.path)?);
-        if let Some(parent) = p.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent)
-                    .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
-            }
-        }
-        if p.exists() {
-            // check md5
-            let f = fs::read(&p).map_err(|err| format!("failed to read {}: {err}", p.display()))?;
-            let digest = format!("{:x}", md5::compute(&f));
-            let md5_record = String::from_utf8_lossy(self.md5_code);
-            if digest == md5_record {
-                // same, skip this file
-                println!("skip {}", &self.path);
-                return Ok(p);
-            } else {
-                println!("writing {}", p.display());
-                println!("{} -> {}", md5_record, digest)
-            }
-        }
-        let content = self.decompress()?;
-        let tmp = temporary_payload_path(&p)?;
-        let write_result = write_new_file(&tmp, &content);
-        if let Err(err) = write_result {
-            let _ = fs::remove_file(&tmp);
-            return Err(err);
-        }
-        if p.exists() {
-            fs::remove_file(&p)
-                .map_err(|err| format!("failed to replace {}: {err}", p.display()))?;
-        }
-        fs::rename(&tmp, &p).map_err(|err| {
-            let _ = fs::remove_file(&tmp);
-            format!(
-                "failed to move {} into {}: {err}",
-                tmp.display(),
-                p.display()
-            )
-        })?;
-        Ok(p)
-    }
-
-    #[cfg(windows)]
     pub fn write_to_new_file(&self, prefix: &Path) -> Result<PathBuf, String> {
         let path = prefix.join(relative_payload_path(&self.path)?);
         let parent = path
@@ -169,30 +124,6 @@ fn is_windows_safe_component(component: &str) -> bool {
     )
 }
 
-fn temporary_payload_path(path: &Path) -> Result<PathBuf, String> {
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| format!("payload path has no file name: {}", path.display()))?
-        .to_string_lossy();
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("payload path has no parent: {}", path.display()))?;
-    for attempt in 0..32 {
-        let tmp = parent.join(format!(
-            ".{file_name}.{}.{}.tmp",
-            std::process::id(),
-            attempt
-        ));
-        if !tmp.exists() {
-            return Ok(tmp);
-        }
-    }
-    Err(format!(
-        "failed to allocate temporary payload path for {}",
-        path.display()
-    ))
-}
-
 fn write_new_file(path: &Path, content: &[u8]) -> Result<(), String> {
     let mut file = OpenOptions::new()
         .write(true)
@@ -261,21 +192,5 @@ impl BinaryReader {
         // executable
         let executable = String::from_utf8_lossy(&data[base..]).to_string();
         (parsed, executable)
-    }
-
-    #[cfg(linux)]
-    pub fn configure_permission(&self, prefix: &Path) {
-        use std::os::unix::prelude::PermissionsExt;
-
-        let exe_path = prefix.join(&self.exe);
-        if exe_path.exists() {
-            if let Ok(f) = File::open(exe_path) {
-                if let Ok(meta) = f.metadata() {
-                    let mut permissions = meta.permissions();
-                    permissions.set_mode(0o755);
-                    f.set_permissions(permissions).ok();
-                }
-            }
-        }
     }
 }

@@ -6391,16 +6391,26 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linu
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
     mapfile -t installer_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'INSTALLER_PACKAGE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/installer_package-[0-9a-f]{16} tests=6 unchanged=before-after$'
+            'INSTALLER_PACKAGE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/installer_package-[0-9a-f]{16} tests=7 unchanged=before-after$'
     )
     [ "${#installer_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'INSTALLER_PACKAGE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'installer package artifact receipt is absent, malformed or duplicated'
     installer_before=${installer_artifacts[0]/INSTALLER_PACKAGE_ARTIFACT=pass /INSTALLER_PACKAGE_ARTIFACT_BEFORE=}
-    installer_before=${installer_before% tests=6 unchanged=before-after}
+    installer_before=${installer_before% tests=7 unchanged=before-after}
     require_exact_fixed_receipt "$installer_before" 'installer package artifact before execution'
+    mapfile -t wrapper_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'INSTALLER_WRAPPER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/rustdesk_portable_packer-[0-9a-f]{16} tests=2 unchanged=before-after$'
+    )
+    [ "${#wrapper_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'INSTALLER_WRAPPER_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'installer wrapper artifact receipt is absent, malformed or duplicated'
+    wrapper_before=${wrapper_artifacts[0]/INSTALLER_WRAPPER_ARTIFACT=pass /INSTALLER_WRAPPER_ARTIFACT_BEFORE=}
+    wrapper_before=${wrapper_before% tests=2 unchanged=before-after}
+    require_exact_fixed_receipt "$wrapper_before" 'installer wrapper artifact before execution'
     require_exact_fixed_receipt \
-        "INSTALLER_PACKAGE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=6 target=linux-x86_64 scope=production-encoder-decoder windows=unexecuted rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "INSTALLER_PACKAGE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=9 target=linux-x86_64 scope=production-encoder-decoder-and-cli-contract windows=unexecuted rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused installer package receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installer package cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
@@ -7595,7 +7605,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'LINUX_XRANDR_QUERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=production-query-result-and-output-identity network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = installer-package ]; then
-        printf 'INSTALLER_PACKAGE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-encoder-decoder windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'INSTALLER_PACKAGE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-encoder-decoder-and-cli-contract windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
         printf 'INPUT_LIFETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-input-worker-global-text-lifetime network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

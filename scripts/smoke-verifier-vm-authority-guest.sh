@@ -3392,10 +3392,13 @@ run_focused_rust_tests() {
             required_tests=(
                 installer_package::tests::package_round_trips_through_installer_decoder
                 installer_package::tests::generation_is_deterministic_and_overwrites_old_outputs
-                installer_package::tests::epoch_is_required_canonical_and_bounded
+                installer_package::tests::extraction_refuses_existing_file_without_modification
+                installer_package::tests::extraction_refuses_symlink_and_hard_link_targets
                 installer_package::tests::input_refuses_missing_empty_non_msi_and_oversized_files
                 installer_package::tests::input_refuses_symlink_without_reading_target
                 installer_package::tests::compression_and_length_patch_failures_are_returned
+                tests::accepts_only_windows_installer_success_statuses
+                tests::setup_command_line_is_closed
             )
         elif [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
             container_name=rustdesk-linux-password-admission-tests
@@ -4770,6 +4773,17 @@ else:
 finally:
     s.close()
 print("R-B10 canary: build confirmed network-isolated (offline compile stage).")'\''
+                            cargo test --offline --locked -p rustdesk-portable-packer --bin rustdesk-portable-packer \
+                                --no-run --color never
+                            wrapper_executable=
+                            for candidate in /cargo-target/debug/deps/rustdesk_portable_packer-*; do
+                                [[ "$candidate" =~ ^/cargo-target/debug/deps/rustdesk_portable_packer-[0-9a-f]{16}$ ]] || continue
+                                [ -f "$candidate" ] && [ ! -L "$candidate" ] && [ -x "$candidate" ] \
+                                    && [ "$(stat -c "%u:%g:%h" -- "$candidate")" = 1000:1000:1 ] || exit 95
+                                [ -z "$wrapper_executable" ] || exit 95
+                                wrapper_executable=$candidate
+                            done
+                            [ -n "$wrapper_executable" ] || exit 95
                             cargo test --offline --locked -p rustdesk-portable-packer --test installer_package \
                                 --no-run --color never
                             test_executable=
@@ -4786,8 +4800,15 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                                 "$artifact_sha" "$test_executable"
                             "$test_executable" --color never --test-threads=1
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
-                            printf "INSTALLER_PACKAGE_ARTIFACT=pass sha256=%s executable=%s tests=6 unchanged=before-after\n" \
+                            printf "INSTALLER_PACKAGE_ARTIFACT=pass sha256=%s executable=%s tests=7 unchanged=before-after\n" \
                                 "$artifact_sha" "$test_executable"
+                            wrapper_sha="$(sha256sum "$wrapper_executable" | cut -d " " -f 1)"
+                            printf "INSTALLER_WRAPPER_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
+                                "$wrapper_sha" "$wrapper_executable"
+                            "$wrapper_executable" --color never --test-threads=1
+                            [ "$(sha256sum "$wrapper_executable" | cut -d " " -f 1)" = "$wrapper_sha" ]
+                            printf "INSTALLER_WRAPPER_ARTIFACT=pass sha256=%s executable=%s tests=2 unchanged=before-after\n" \
+                                "$wrapper_sha" "$wrapper_executable"
                             exit 0
                         fi
                         clipboard_build_started=$SECONDS
@@ -5092,7 +5113,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
         printf 'LINUX_XRANDR_QUERY_PROFILE=linux-xrandr-query stage=container-start tests=8 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
-        printf 'INSTALLER_PACKAGE_PROFILE=installer-package stage=container-start tests=6 bridge=absent\n'
+        printf 'INSTALLER_PACKAGE_PROFILE=installer-package stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
@@ -5432,9 +5453,11 @@ PY
             && [ "$(grep -Fc 'LINUX_XRANDR_QUERY_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'xrandr-query artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
-        [ "${#result_lines[@]}" -eq 1 ] || fail 'installer package summary count differs'
-        [ "$(grep -Ec '^INSTALLER_PACKAGE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/installer_package-[0-9a-f]{16} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 2 ] || fail 'installer package summary count differs'
+        [ "$(grep -Ec '^INSTALLER_PACKAGE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/installer_package-[0-9a-f]{16} tests=7 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'INSTALLER_PACKAGE_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^INSTALLER_WRAPPER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/rustdesk_portable_packer-[0-9a-f]{16} tests=2 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'INSTALLER_WRAPPER_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'verify-windows-harness: ok' "$output")" -eq 1 ] \
             || fail 'installer package artifact or supplementary source receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
@@ -5904,8 +5927,8 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = installer-package ]; then
-            grep -E '^INSTALLER_PACKAGE_ARTIFACT(_BEFORE)?=|^test installer_package::tests::.* \.\.\. ok$|^verify-windows-harness: ok$' "$output"
-            printf 'INSTALLER_PACKAGE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-encoder-decoder windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^INSTALLER_(PACKAGE|WRAPPER)_ARTIFACT(_BEFORE)?=|^test (installer_package::tests|tests)::.* \.\.\. ok$|^verify-windows-harness: ok$' "$output"
+            printf 'INSTALLER_PACKAGE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-encoder-decoder-and-cli-contract windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then

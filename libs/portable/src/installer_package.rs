@@ -77,23 +77,6 @@ fn read_msi(path: &Path) -> io::Result<Vec<u8>> {
     Ok(content)
 }
 
-pub(crate) fn app_metadata(epoch: &str) -> io::Result<String> {
-    if epoch.is_empty()
-        || !epoch.bytes().all(|byte| byte.is_ascii_digit())
-        || (epoch.len() > 1 && epoch.starts_with('0'))
-    {
-        return Err(invalid(
-            "SOURCE_DATE_EPOCH must be canonical unsigned decimal seconds",
-        ));
-    }
-    let milliseconds = epoch
-        .parse::<u64>()
-        .ok()
-        .and_then(|seconds| seconds.checked_mul(1000))
-        .ok_or_else(|| invalid("SOURCE_DATE_EPOCH milliseconds overflow"))?;
-    Ok(format!("timestamp = {milliseconds}\n"))
-}
-
 pub(crate) fn write_package(path: &Path, output: &mut (impl Write + Seek)) -> io::Result<()> {
     let content = read_msi(path)?;
     output.write_all(MAGIC)?;
@@ -115,11 +98,9 @@ pub(crate) fn write_package(path: &Path, output: &mut (impl Write + Seek)) -> io
     output.flush()
 }
 
-pub(crate) fn generate(path: &Path, output_dir: &Path, epoch: &str) -> io::Result<()> {
-    let metadata = app_metadata(epoch)?;
+pub(crate) fn generate(path: &Path, output_dir: &Path) -> io::Result<()> {
     let mut data = File::create(output_dir.join("data.bin"))?;
-    write_package(path, &mut data)?;
-    fs::write(output_dir.join("app_metadata.toml"), metadata)
+    write_package(path, &mut data)
 }
 
 #[cfg(test)]
@@ -172,7 +153,7 @@ mod tests {
             files[0].md5_code,
             format!("{:x}", md5::compute(&original)).as_bytes()
         );
-        let extracted = files[0].write_to_file(&fixture.0.join("extract")).unwrap();
+        let extracted = files[0].write_to_new_file(&fixture.0.join("extract")).unwrap();
         assert_eq!(extracted.file_name().unwrap(), "rustdesk-installer.msi");
         assert_eq!(fs::read(extracted).unwrap(), original);
     }
@@ -181,33 +162,11 @@ mod tests {
     fn generation_is_deterministic_and_overwrites_old_outputs() {
         let fixture = Fixture::new();
         let msi = fixture.msi();
-        generate(&msi, &fixture.0, "1720000000").unwrap();
+        generate(&msi, &fixture.0).unwrap();
         let package = fs::read(fixture.0.join("data.bin")).unwrap();
-        fs::write(fixture.0.join("app_metadata.toml"), "stale wall clock").unwrap();
-        generate(&msi, &fixture.0, "1720000000").unwrap();
+        fs::write(fixture.0.join("data.bin"), "stale package").unwrap();
+        generate(&msi, &fixture.0).unwrap();
         assert_eq!(fs::read(fixture.0.join("data.bin")).unwrap(), package);
-        assert_eq!(
-            fs::read(fixture.0.join("app_metadata.toml")).unwrap(),
-            b"timestamp = 1720000000000\n"
-        );
-    }
-
-    #[test]
-    fn epoch_is_required_canonical_and_bounded() {
-        assert_eq!(app_metadata("0").unwrap(), "timestamp = 0\n");
-        assert_eq!(
-            app_metadata("18446744073709551").unwrap(),
-            "timestamp = 18446744073709551000\n"
-        );
-        for value in [
-            "", "01", "-1", "+1", "1.0", "1\n", " 1",
-            "18446744073709552", "18446744073709551616",
-        ] {
-            assert!(app_metadata(value).is_err(), "accepted {value:?}");
-        }
-        let fixture = Fixture::new();
-        assert!(generate(&fixture.msi(), &fixture.0, "").is_err());
-        assert!(!fixture.0.join("data.bin").exists());
     }
 
     #[test]
@@ -232,6 +191,44 @@ mod tests {
         let path = fixture.0.join("linked.msi");
         std::os::unix::fs::symlink(fixture.msi(), &path).unwrap();
         assert!(write_package(&path, &mut Cursor::new(Vec::new())).is_err());
+    }
+
+    #[test]
+    fn extraction_refuses_existing_file_without_modification() {
+        let fixture = Fixture::new();
+        let mut package = Cursor::new(Vec::new());
+        write_package(&fixture.msi(), &mut package).unwrap();
+        let (files, _) = BinaryReader::read_from(Box::leak(package.into_inner().into_boxed_slice()));
+        let destination = fixture.0.join("rustdesk-installer.msi");
+        fs::write(&destination, "existing").unwrap();
+        assert!(files[0].write_to_new_file(&fixture.0).is_err());
+        assert_eq!(fs::read(&destination).unwrap(), b"existing");
+        fs::remove_file(&destination).unwrap();
+        files[0].write_to_new_file(&fixture.0).unwrap();
+        let original = fs::read(&destination).unwrap();
+        assert!(files[0].write_to_new_file(&fixture.0).is_err());
+        assert_eq!(fs::read(&destination).unwrap(), original);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn extraction_refuses_symlink_and_hard_link_targets() {
+        let fixture = Fixture::new();
+        let mut package = Cursor::new(Vec::new());
+        write_package(&fixture.msi(), &mut package).unwrap();
+        let (files, _) = BinaryReader::read_from(Box::leak(package.into_inner().into_boxed_slice()));
+        let sentinel = fixture.0.join("sentinel");
+        let destination = fixture.0.join("rustdesk-installer.msi");
+        fs::write(&sentinel, "sentinel").unwrap();
+        std::os::unix::fs::symlink(&sentinel, &destination).unwrap();
+        assert!(files[0].write_to_new_file(&fixture.0).is_err());
+        assert!(fs::symlink_metadata(&destination).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(&sentinel).unwrap(), b"sentinel");
+        fs::remove_file(&destination).unwrap();
+        fs::hard_link(&sentinel, &destination).unwrap();
+        assert!(files[0].write_to_new_file(&fixture.0).is_err());
+        assert_eq!(fs::read(&sentinel).unwrap(), b"sentinel");
+        assert_eq!(fs::read(&destination).unwrap(), b"sentinel");
     }
 
     #[test]

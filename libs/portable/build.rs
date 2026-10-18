@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let output = PathBuf::from(env::var_os("OUT_DIR").ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "OUT_DIR is not set")
         })?);
-        installer_package::generate(&msi, &output, &env::var("SOURCE_DATE_EPOCH")?)?;
+        installer_package::generate(&msi, &output)?;
     }
     #[cfg(windows)]
     compile_windows_resource()?;

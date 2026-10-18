@@ -12627,6 +12627,9 @@ R-T2 now states terminal-error and retained-writer ownership requirements direct
 Its obsolete per-write-timeout walkthrough and alternative-design proposal are removed;
 R-T3/R-T8/R-T9/R-T14/R-T16/R-T18 retain independent control, ordering, drain, cancellation
 and EOF contracts. This specification cleanup supplies no compilation or native evidence.
+The duplicate §20 preamble and its false cross-backend zero-byte cancellation claim are
+deleted. R-T5/R-T14 retain frame preservation and target-native read/accept ownership proof;
+the referenced keying, cipher, replay, boundary and TCP-only requirements remain unchanged.
 
 **Framing-only API (R-A3/R-S5) — native compiler and Linux transport cases PASS.**
 Product `593aff91` removes the unused raw-mode selector from `BytesCodec`,

@@ -5,6 +5,7 @@ use crate::{
 };
 use hbb_common::{bytes::Bytes, uuid::Uuid};
 use std::{
+    convert::TryFrom,
     fs,
     os::unix::fs::{symlink, DirBuilderExt, MetadataExt},
     path::Path,
@@ -472,4 +473,191 @@ fn native_invalid_mux_configuration_is_refused() {
         assert!(refused, "invalid mux configuration accepted");
         assert!(fs::read(&output).unwrap().is_empty());
     }
+}
+
+fn ebml_vint(bytes: &[u8], offset: &mut usize, marker: bool) -> u64 {
+    let first = bytes[*offset];
+    let len = first.leading_zeros() as usize + 1;
+    assert!((1..=8).contains(&len));
+    let end = offset.checked_add(len).unwrap();
+    assert!(end <= bytes.len());
+    let mut value = if marker { first as u64 } else { first as u64 & (0xff >> len) };
+    for byte in &bytes[*offset + 1..end] { value = (value << 8) | *byte as u64; }
+    if !marker { assert_ne!(value, (1u64 << (7 * len)) - 1, "unknown size in finalized fixture"); }
+    *offset = end;
+    value
+}
+
+fn ebml_elements(bytes: &[u8]) -> Vec<(u64, &[u8])> {
+    let mut offset = 0;
+    let mut elements = Vec::new();
+    while offset < bytes.len() {
+        let id = ebml_vint(bytes, &mut offset, true);
+        let len = ebml_vint(bytes, &mut offset, false);
+        let end = offset.checked_add(usize::try_from(len).unwrap()).unwrap();
+        assert!(end <= bytes.len());
+        elements.push((id, &bytes[offset..end]));
+        offset = end;
+    }
+    elements
+}
+
+fn webm_timestamps(path: &Path) -> Vec<u64> {
+    let bytes = fs::read(path).unwrap();
+    assert!(bytes.len() <= 1024 * 1024);
+    let root = ebml_elements(&bytes);
+    let segments: Vec<_> = root.iter().filter(|(id, _)| *id == 0x18538067).collect();
+    assert_eq!(segments.len(), 1);
+    let children = ebml_elements(segments[0].1);
+    let uint = |data: &[u8]| {
+        assert!((1..=8).contains(&data.len()));
+        data.iter().fold(0u64, |value, byte| (value << 8) | *byte as u64)
+    };
+    let info = children.iter().find(|(id, _)| *id == 0x1549a966).unwrap();
+    let scale = ebml_elements(info.1).iter().find(|(id, _)| *id == 0x2ad7b1)
+        .map(|(_, data)| uint(data)).unwrap_or(1_000_000);
+    let mut result = Vec::new();
+    for (_, cluster) in children.iter().filter(|(id, _)| *id == 0x1f43b675) {
+        let elements = ebml_elements(cluster);
+        let ticks = uint(elements.iter().find(|(id, _)| *id == 0xe7).unwrap().1);
+        assert!(!elements.iter().any(|(id, _)| *id == 0xa0), "unexpected BlockGroup in simple-frame fixture");
+        for (_, block) in elements.iter().filter(|(id, _)| *id == 0xa3) {
+            let mut offset = 0;
+            assert_eq!(ebml_vint(block, &mut offset, false), 1);
+            assert!(block.len() > offset + 3);
+            let relative = i16::from_be_bytes([block[offset], block[offset + 1]]);
+            assert_eq!(block[offset + 2] & 0x06, 0, "unexpected lacing");
+            let absolute = i128::from(ticks) + i128::from(relative);
+            result.push(u64::try_from(absolute).unwrap().checked_mul(scale).unwrap());
+        }
+    }
+    assert!(!result.is_empty(), "no native frame timestamps");
+    result
+}
+
+fn timeline_recorder(dir: &TestDir) -> Recorder {
+    Recorder::new(RecorderContext {
+        server: false, id: "timeline".into(), dir: dir.0.to_str().unwrap().into(),
+        display_idx: 0, camera: false,
+    }).unwrap()
+}
+
+fn recording_clock_origin(origin: i64) {
+    let dir = TestDir::new();
+    let mut recorder = timeline_recorder(&dir);
+    let mut frames = native_frames(VpxVideoCodecId::VP8);
+    frames[0].pts = origin;
+    frames[1].pts = origin.checked_add(2000).unwrap();
+    recorder.write_frame(&video_frame::Union::Vp8s(hbb_common::message_proto::EncodedVideoFrames {
+        frames, ..Default::default()
+    }), 64, 48).unwrap();
+    let output = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+    drop(recorder);
+    assert_eq!(webm_timestamps(&output), vec![0, 2_000_000_000]);
+}
+
+#[test]
+fn native_webm_clock_origin_is_zero() { recording_clock_origin(3_600_000); }
+
+#[test]
+fn native_webm_negative_clock_origin() {
+    isolated_mux_case("native_webm_negative_clock_origin", || recording_clock_origin(-10_000));
+}
+
+#[test]
+fn native_webm_zero_clock_intervals_preserved() { recording_clock_origin(0); }
+
+fn native_interframes() -> Vec<EncodedVideoFrame> {
+    let mut encoder = VpxEncoder::new(EncoderCfg::VPX(VpxEncoderConfig {
+        width: 64, height: 48, quality: 1.0, codec: VpxVideoCodecId::VP8, keyframe_interval: None,
+    }), false).unwrap();
+    let mut frames = Vec::new();
+    for index in 0..3 {
+        let yuv = vec![128 + index as u8; 64 * 48 * 3 / 2];
+        frames.extend(encoder.encode(index * 40, &yuv, 1).unwrap().map(|frame| EncodedVideoFrame {
+            data: Bytes::copy_from_slice(frame.data), key: frame.key, pts: frame.pts,
+            ..Default::default()
+        }));
+    }
+    assert_eq!(frames.len(), 3);
+    assert!(frames[0].key && !frames[1].key && !frames[2].key);
+    frames
+}
+
+#[test]
+fn native_webm_clock_rollback_waits_for_key() {
+    let dir = TestDir::new();
+    let mut recorder = timeline_recorder(&dir);
+    let mut frames = native_interframes();
+    frames[0].pts = 10_000;
+    recorder.write_frame(&vp8_batch(frames[0].clone()), 64, 48).unwrap();
+    let first = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+    frames[1].pts = 9000;
+    frames[2].pts = 10_001;
+    let mut key = frames[0].clone(); key.pts = 10_002;
+    let mut later = key.clone(); later.pts = 12_002;
+    let batch = video_frame::Union::Vp8s(hbb_common::message_proto::EncodedVideoFrames {
+        frames: vec![frames[1].clone(), frames[2].clone(), key, later], ..Default::default()
+    });
+    recorder.write_frame(&batch, 64, 48).unwrap();
+    let second = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+    drop(recorder);
+    assert_ne!(first, second);
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 2);
+    assert_eq!(webm_timestamps(&first), vec![0]);
+    assert_eq!(webm_timestamps(&second), vec![0, 2_000_000_000]);
+}
+
+#[test]
+fn native_webm_fast_rotation_keeps_distinct_outputs() {
+    let dir = TestDir::new();
+    let mut recorder = timeline_recorder(&dir);
+    let mut key = native_frames(VpxVideoCodecId::VP8).remove(0);
+    let mut paths = std::collections::HashSet::new();
+    for _ in 0..16 {
+        key.pts = 0;
+        recorder.write_frame(&vp8_batch(key.clone()), 64, 48).unwrap();
+        assert!(paths.insert(recorder.ctx2.as_ref().unwrap().filename.clone()));
+        key.pts = 1000;
+        recorder.write_frame(&vp8_batch(key.clone()), 64, 48).unwrap();
+    }
+    drop(recorder);
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 16);
+    for path in paths { assert_eq!(webm_timestamps(Path::new(&path)), vec![0, 1_000_000_000]); }
+}
+
+#[test]
+fn native_webm_interval_overflow_refused() {
+    isolated_mux_case("native_webm_interval_overflow_refused", || {
+        let dir = TestDir::new();
+        let mut recorder = timeline_recorder(&dir);
+        let mut frames = native_frames(VpxVideoCodecId::VP8);
+        recorder.write_frame(&vp8_batch(frames.remove(0)), 64, 48).unwrap();
+        let output = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+        frames[0].pts = i64::MAX;
+        assert!(recorder.write_frame(&vp8_batch(frames.remove(0)), 64, 48).is_err());
+        assert!(recorder.inner.is_none());
+        let before = fs::read(&output).unwrap();
+        assert!(recorder.write_frame(&vp8_batch(native_frames(VpxVideoCodecId::VP8).remove(0)), 64, 48).is_err());
+        drop(recorder);
+        assert_eq!(fs::read(&output).unwrap(), before);
+        assert_eq!(webm_timestamps(&output), vec![0]);
+    });
+}
+
+#[test]
+fn native_webm_initial_nonkey_waits_without_output() {
+    let dir = TestDir::new();
+    let mut recorder = timeline_recorder(&dir);
+    let mut frames = native_interframes();
+    recorder.write_frame(&video_frame::Union::Vp8s(Default::default()), 64, 48).unwrap();
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
+    recorder.write_frame(&vp8_batch(frames.remove(1)), 64, 48).unwrap();
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
+    let mut key = frames.remove(0); key.pts = 100;
+    recorder.write_frame(&vp8_batch(key), 64, 48).unwrap();
+    let output = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+    drop(recorder);
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1);
+    assert_eq!(webm_timestamps(&output), vec![0]);
 }

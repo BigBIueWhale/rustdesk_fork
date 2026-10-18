@@ -2046,19 +2046,26 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   The current receive-time path compiles in the complete Linux parent library below; native
   network-to-presentation freshness and focus/background acceptance remain OPEN.
 
-  Native recovery at `435ef339` separates input errors from decoder availability. The obsolete
-  error counter and first-error blacklist are deleted; only failed decoder construction can
-  withdraw a codec. Current errors invalidate their GOP and use the existing reset/keyframe path.
-  Retired outcomes reset local decoder/generation state before recovery or capability effects;
-  the later publication guard remains. Valid hidden packets produce no picture without disabling
-  the initialized decoder. Real libvpx/`VideoHandler`/worker tests failed current-error recovery
-  at `54f81425` (five passes, one failure). The identical six cases pass in 283 VM seconds after
-  correction, including four corruption/reset/keyframe/RGB cycles on the same worker and retained
-  stale-result recovery. `.harness-state/verifier-vm/viewer-codec-recovery-accepted-435ef339.json`
-  binds source/artifact, native baseline, frozen inputs/endpoints and joined bounded-RAM cleanup.
-  Earlier decoder-accounting and retired-result receipts remain retained. These are native worker/
-  callback results; actual backend-init fault injection, wire capability exchange, full peers,
-  compositor presentation, impairment/long-session R-F5, installed authority and other platforms remain OPEN.
+  Software decoding separates input errors from backend availability: only failed construction
+  can withdraw a codec. Current errors invalidate their GOP and use reset/keyframe recovery;
+  retired outcomes reset local decoder/generation state before recovery or capability effects.
+  Valid hidden packets produce no picture without disabling the initialized decoder.
+  Libvpx output now borrows its owning decoder. Each call's last displayed image is converted
+  into owned RGB before that decoder's next decode or flush. The unbound image iterator,
+  null-image constructor and image destructor are deleted. A hidden subframe preserves the
+  last owned visible pixels, and a later visible subframe replaces them. Native errors and
+  existing batch/byte bounds remain effective.
+  At `ac5e5f48`, six native controls pass while a visible/hidden-resize batch fails exact visible
+  RGB equality. Correction `675d4e3e` passes all seven unchanged cases plus a VP9 batch/reset
+  pixel control in 317 VM seconds on the complete Linux parent library. The VP8 case
+  also renders the subsequent visible resized frame; existing controls retain four corruption/
+  reset/keyframe/RGB cycles on one worker and stale-result recovery.
+  `.harness-state/verifier-vm/vpx-image-lifetime-accepted-675d4e3e.json` binds source/artifact,
+  baseline, native outcomes, frozen inputs/endpoints and joined bounded-RAM cleanup.
+  Earlier `viewer-codec-recovery-accepted-435ef339.json`, decoder-accounting and retired-result
+  receipts remain retained. These are native codec/worker/RGB results; backend-init fault
+  injection, wire capability exchange, full peers, compositor presentation, impairment/
+  long-session R-F5, installed authority, other platforms and release acceptance remain OPEN.
 
 - **R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication** — Source and focused
   generated-bridge/model execution are green. Each `(session, display)` owns one published token plus at most one

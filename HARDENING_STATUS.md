@@ -375,9 +375,30 @@ failed experiment and cleanup evidence are retained in
 `.harness-state/verifier-vm/installer-package-resources-bcd69d18.json`.
 This restores the Linux component gate; it does not run Windows or close the
 seven harness suites, installed/MSI lifecycle, cold artifacts or release review.
-The inherited self-extractor/cache/child-execution branch in
-`libs/portable/src/main.rs` remains a separate OPEN source item; this resource
-correction leaves its removal and native Windows acceptance outstanding.
+The subsequent wrapper source correction is recorded below; native Windows
+acceptance remains outstanding.
+
+**Windows installer wrapper — one protected entry; native acceptance OPEN.**
+`9dc753b4` removes filename-selected generic extraction and child execution from
+`libs/portable/src/main.rs`. Every Windows invocation parses the closed installer
+arguments and enters the protected MSI flow; renaming the wrapper cannot select
+a user-cache launcher. The old timestamp cache, replacement writer, spinner/UI
+assets, unused dependencies and stale nested lock are deleted. The MSI wire
+encoder, exclusive extraction body and complete Windows protected-installation
+module remain byte-identical to `94a95ff3`. Global build epoch handling remains
+with the build transaction; the unused cache-metadata producer/test is removed.
+
+The bounded installer VM lane passes seven real Linux encoder/extraction cases
+and both retained command-line/status tests in 103 outer seconds. Occupied,
+matching-content, symlink and hard-link destinations are refused without changing
+their contents/targets; package round trips, deterministic generation and error
+controls pass. Both executed artifacts have stable before/after hashes. Locked
+offline Cargo accepts the pruned graph using unchanged authenticated vendor input.
+Source/raw/artifacts, endpoint observations and joined RAM/private-root retirement
+are retained in `.harness-state/verifier-vm/installer-wrapper-9dc753b4.json`.
+This establishes shared component behavior and source removal. Windows compilation,
+renamed/canonical setup, UAC success/denial, MSI install/update/cleanup and installed
+negative-principal execution remain OPEN, as do cold artifacts and release review.
 
 Further cleanup must classify remaining prose and purported tests by the current requirement or real behavior they
 protect, preserve load-bearing contracts and executable coverage, and delete obsolete history or make-believe proof.

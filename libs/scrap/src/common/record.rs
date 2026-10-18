@@ -9,6 +9,8 @@ use hbb_common::{
 };
 #[cfg(feature = "hwcodec")]
 use hwcodec::mux::{MuxContext, Muxer};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::{
     convert::TryFrom,
     fs::{File, OpenOptions},
@@ -205,10 +207,11 @@ struct WebmRecorder {
 
 impl RecorderApi for WebmRecorder {
     fn new(ctx2: &RecorderContext2) -> ResultType<Self> {
-        let out = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&ctx2.filename)?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let out = options.open(&ctx2.filename)?;
         let webm = WebmMux::new(out, ctx2)?;
         Ok(WebmRecorder {
             webm: Some(webm),

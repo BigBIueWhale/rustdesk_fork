@@ -12583,6 +12583,33 @@ without joining; synchronous socket/task finality, the three parked filesystem
 race failures, installed/full-app and other-platform behavior, presentation latency,
 long-session memory bounds, LPE acceptance and release remain OPEN.
 
+**Fatal-operation writer retirement — source corrected; current native acceptance OPEN.**
+Product `08fe0fd7` makes fatal send, receive and drain paths close admission, request
+cancellation and await the exact writer before returning their original error. The stream
+retains `Option<JoinHandle<()>>` across the borrowed await and clears it only after joining;
+poisoned entry guards resume an interrupted join. Clean EOF keeps its existing semantics.
+The pinned Tokio 1.44.2 `runtime/task/join.rs` documents borrowed-handle cancellation safety
+and that requesting abort does not establish completion. No worker, queue, runtime,
+dependency, reconnect or privilege transition is added. Hard synchronous Drop still only
+requests cancellation; read-owned socket finality and physical memory release remain OPEN.
+
+Baseline `cb575f82` preserves abort-only behavior with the same private handle representation,
+four new real-TCP/backpressure regressions and the same guest recipe. The regressions inspect
+writer join, encoded-buffer ownership, returned permits and completion before test cleanup;
+the cancellation case retries through send, receive and drain entry guards. The focused
+`--writer-retirement-tests` lane selects 35 complete-library cases: 13 writer-receipt, four
+EOF, twelve codec and six lifetime cases. It retains the existing 6 GiB guest, 6 GiB RAM
+scratch, 4 GiB QEMU ceiling and 6 GiB headroom; full CPace integration retains its larger
+profile and now selects 59 cases. The obsolete 16-line R-T2 presence/count gate is deleted:
+its four-call count included a test and could not establish retirement behavior.
+
+Neither baseline nor corrected native tests have executed: RAM admission refused the
+baseline at 17,776 MiB and the corrected attempts at 18,453 and 18,932 MiB, below the
+unchanged 19,456 MiB floor. Each refused before QEMU/workspace creation, without disk
+fallback. Bash syntax and `git diff --check` pass; test modules and recipe are byte-identical
+across baseline/product. Compilation, the new runtime outcomes, full CPace integration and
+all other-platform/installed/latency/resource/LPE/release acceptance remain OPEN.
+
 **Framing-only API (R-A3/R-S5) — native compiler and Linux transport cases PASS.**
 Product `593aff91` removes the unused raw-mode selector from `BytesCodec`,
 `FramedStream` and `Stream`, including the codec flag and unframed encode/decode

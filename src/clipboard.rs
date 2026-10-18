@@ -69,6 +69,7 @@ enum ClipboardUpdateRequest {
     },
     SetScreenshot {
         png: bytes::Bytes,
+        completion: SyncSender<Result<(), String>>,
     },
     #[cfg(test)]
     Barrier(std::sync::mpsc::SyncSender<()>),
@@ -1032,15 +1033,37 @@ impl ClipboardWriter {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(crate) fn copy_screenshot_to_clipboard(png: bytes::Bytes) {
-    enqueue_clipboard_update(
-        ClipboardUpdateRequest::SetScreenshot { png },
+pub(crate) fn copy_screenshot_to_clipboard(png: bytes::Bytes) -> ResultType<()> {
+    if png.len() > MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES {
+        bail!("screenshot exceeds the native clipboard payload limit");
+    }
+    let (completion, result) = mpsc::sync_channel(1);
+    try_enqueue_clipboard_update(
+        ClipboardUpdateRequest::SetScreenshot { png, completion },
         "native clipboard dispatcher busy; refusing to queue screenshot copy",
-    )
+    )?;
+    result
+        .recv()
+        .map_err(|error| {
+            hbb_common::anyhow::anyhow!(
+                "native clipboard dispatcher stopped before screenshot completion: {error}"
+            )
+        })?
+        .map_err(|error| hbb_common::anyhow::anyhow!(error))
 }
 
 #[cfg(not(target_os = "android"))]
 fn enqueue_clipboard_update(request: ClipboardUpdateRequest, busy_message: &'static str) {
+    if let Err(error) = try_enqueue_clipboard_update(request, busy_message) {
+        log::warn!("{error}");
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn try_enqueue_clipboard_update(
+    request: ClipboardUpdateRequest,
+    busy_message: &'static str,
+) -> ResultType<()> {
     let sender = CLIPBOARD_UPDATE_TX.get_or_init(|| {
         let (tx, rx) =
             mpsc::sync_channel::<ClipboardUpdateRequest>(CLIPBOARD_UPDATE_QUEUE_CAPACITY);
@@ -1058,17 +1081,16 @@ fn enqueue_clipboard_update(request: ClipboardUpdateRequest, busy_message: &'sta
     let sender = match sender {
         Ok(sender) => sender,
         Err(err) => {
-            log::warn!("native clipboard dispatcher unavailable; refusing clipboard SET: {err}");
-            return;
+            bail!("native clipboard dispatcher unavailable; refusing clipboard SET: {err}");
         }
     };
     match sender.try_send(request) {
-        Ok(()) => {}
+        Ok(()) => Ok(()),
         Err(TrySendError::Full(_)) => {
-            log::warn!("{busy_message}");
+            bail!("{busy_message}");
         }
         Err(TrySendError::Disconnected(_)) => {
-            log::warn!("native clipboard dispatcher stopped; refusing clipboard SET");
+            bail!("native clipboard dispatcher stopped; refusing clipboard SET");
         }
     }
 }
@@ -1081,15 +1103,18 @@ fn handle_clipboard_update_request(request: ClipboardUpdateRequest) {
             side,
             owner,
         } => update_clipboard_(multi_clipboards, side, Some(&owner)),
-        ClipboardUpdateRequest::SetScreenshot { png } => update_clipboard_(
-            vec![Clipboard {
-                content: png,
-                format: hbb_common::message_proto::ClipboardFormat::ImagePng.into(),
-                ..Default::default()
-            }],
-            ClipboardSide::Client,
-            None,
-        ),
+        ClipboardUpdateRequest::SetScreenshot { png, completion } => {
+            let result = set_native_clipboard_data(
+                vec![ClipboardData::Image(arboard::ImageData::png(
+                    png.to_vec().into(),
+                ))],
+                ClipboardSide::Client,
+            )
+            .map_err(|error| error.to_string());
+            if completion.send(result).is_err() {
+                log::debug!("screenshot caller retired before native clipboard completion");
+            }
+        }
         #[cfg(test)]
         ClipboardUpdateRequest::Barrier(completion) => {
             if completion.send(()).is_err() {

@@ -801,10 +801,15 @@ class FfiModel with ChangeNotifier {
         });
       }
 
-      copyToClipboard() {
+      copyToClipboard() async {
         if (!_isCurrentSession(sessionId)) return;
-        bind.sessionHandleScreenshot(
+        final res = await bind.sessionHandleScreenshot(
             sessionId: sessionId, screenshotId: screenshotId, action: '1');
+        if (!_isCurrentSession(sessionId)) return;
+        if (res.isNotEmpty) {
+          msgBox(sessionId, 'custom-nook-nocancel-hasclose-error',
+              'Take screenshot', res, '', dialogManager);
+        }
       }
 
       cancel() {

@@ -42,7 +42,7 @@ fn handle_screenshot_(data: bytes::Bytes, action: String) -> ResultType<()> {
         ScreenshotAction::CopyToClipboard => {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                copy_screenshot_to_clipboard(data);
+                copy_screenshot_to_clipboard(data)?;
             }
         }
         ScreenshotAction::Discard => {}

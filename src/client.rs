@@ -82,6 +82,8 @@ pub mod file_trait;
 pub mod helper;
 pub mod io_loop;
 pub mod screenshot;
+#[cfg(test)]
+mod video_handler_tests;
 
 mod audio_mailbox;
 #[cfg(all(test, target_os = "linux"))]

@@ -190,6 +190,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=viewer-credentials
         ;;
+    1:--viewer-video-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'viewer video test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=viewer-video
+        ;;
     1:--video-qos-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'video QoS test input/run overrides are forbidden' >&2; exit 2; }
@@ -756,7 +762,7 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    if [[ "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+    if [[ "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
         readonly VM_TIMEOUT_SECONDS=900
     elif [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         readonly VM_TIMEOUT_SECONDS=600
@@ -766,7 +772,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         readonly VM_TIMEOUT_SECONDS=2400
     fi
     readonly OVERLAY_SIZE=40G
-    if [[ "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller \
+    if [[ "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller \
         || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick \
         || "$RUST_TEST_PROFILE" = input-revocation \
         || "$RUST_TEST_PROFILE" = clipboard ]]; then
@@ -6207,6 +6213,18 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = view
         'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' \
         'fresh direct-password generated API absence'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'viewer credential cloud-init completion'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-video ]; then
+    mapfile -t viewer_video_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'VIEWER_VIDEO_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=4 unchanged=before-after execution_seconds=[0-9]+$'
+    )
+    [ "${#viewer_video_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'VIEWER_VIDEO_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'viewer video artifact receipt differs'
+    require_exact_fixed_receipt \
+        "VIEWER_VIDEO_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=4 target=linux-x86_64 scope=complete-parent-library-native-decoder-outcomes rust=1.75.0 features=linux-pkg-config vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'viewer video compilation and native result'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'viewer video cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
     mapfile -t video_qos_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -7425,6 +7443,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
         printf 'VIEWER_CREDENTIAL_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=11 scope=production-peer-credentials-and-exported-session-factory network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = viewer-video ]; then
+        printf 'VIEWER_VIDEO_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=4 scope=complete-parent-library-native-decoder-outcomes network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
         printf 'VIDEO_QOS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=complete-parent-library-and-probe-recovery network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

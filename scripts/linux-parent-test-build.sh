@@ -5,6 +5,7 @@ build_linux_parent_test() {
     local work=$1 receipt_prefix=$2
     [[ "$work:$receipt_prefix" = /tmp/pa-runtime:PA_RUNTIME \
         || "$work:$receipt_prefix" = /tmp/video-qos:VIDEO_QOS \
+        || "$work:$receipt_prefix" = /tmp/viewer-video:VIEWER_VIDEO \
         || "$work:$receipt_prefix" = /tmp/resolution-parent:RESOLUTION_PARENT \
         || "$work:$receipt_prefix" = /tmp/file-receive-caller:FILE_RECEIVE_PARENT \
         || "$work:$receipt_prefix" = /tmp/viewer-credentials:VIEWER_CREDENTIAL \

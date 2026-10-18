@@ -293,7 +293,7 @@ fn native_file_limit_failure_is_terminal() {
         .env(CHILD, "1").output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(output.status.success(), "isolated file-limit case: {stdout}\n{stderr}");
+    assert!(output.status.success(), "isolated file-limit case: {}\n{}", stdout, stderr);
     assert_eq!(stdout.matches("test result: ok. 1 passed; 0 failed;").count(), 1);
     assert!(stdout.contains("test common::record::tests::native_file_limit_failure_is_terminal ... ok"));
 }
@@ -369,7 +369,7 @@ fn native_writer_fault(mode: &'static str) {
     } else if mode == "seek" {
         assert!(accepted && !finalized, "absolute seek failure not reported at finalization");
     } else {
-        assert!(accepted && finalized, "resumable writer I/O rejected: {mode}");
+        assert!(accepted && finalized, "resumable writer I/O rejected: {}", mode);
         assert_webm(&output, b"V_VP8");
     }
 }
@@ -408,7 +408,7 @@ fn isolated_mux_case(name: &str, run: impl FnOnce()) {
         .env(CHILD, &test).env("RUST_BACKTRACE", "0").output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(output.status.success(), "isolated mux case {test}: {stdout}\n{stderr}");
+    assert!(output.status.success(), "isolated mux case {}: {}\n{}", test, stdout, stderr);
     assert_eq!(stdout.matches("test result: ok. 1 passed; 0 failed;").count(), 1);
     assert!(stdout.contains(&format!("test {test} ... ok")));
 }
@@ -423,7 +423,7 @@ fn native_nonseekable_file_is_refused() {
             .env(CHILD, "1").env("RUST_BACKTRACE", "0").output().unwrap();
         let stdout = String::from_utf8(output.stdout).unwrap();
         let stderr = String::from_utf8(output.stderr).unwrap();
-        assert!(output.status.success(), "isolated nonseekable case: {stdout}\n{stderr}");
+        assert!(output.status.success(), "isolated nonseekable case: {}\n{}", stdout, stderr);
         assert_eq!(stdout.matches("test result: ok. 1 passed; 0 failed;").count(), 1);
         return;
     }

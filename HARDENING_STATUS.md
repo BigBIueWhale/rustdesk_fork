@@ -156,9 +156,19 @@ contract. Sciter build history, a live `hbb_common` submodule and historical dep
 are removed. The toolchain default's comments now agree with the release manifest; its parsed
 configuration is unchanged. First-pin provenance, independent corroboration, compiler/codegen
 identities, captured Windows inputs, SHA-1 residual review and moving-ref refusal remain required.
-Current `Cargo.lock` has 34 Git records while `dependency-inventory.py` expects 36; the Pub lock
-has three, not the specification's former six. The inventory expectation/source-closure review
-remains OPEN and must precede any expectation refresh. No native or release acceptance follows.
+The dependency inventory snapshot is reconciled at `9b1c643f`: 894 Cargo packages, 34 Git records
+from 24 Git sources, 65 direct Flutter dependencies, 198 Pub-lock packages with three Git records,
+and seven indexed build scripts. History review accounts for the retired TFC, alternate X11,
+libxdo and address_it records, existing dependency-edge changes, fake_async's direct-test role,
+the committed xterm path and the retained camera fixture's build script. No lockfile, dependency
+pin or parser behavior changes in this slice. The actual checker first reports fifteen snapshot
+differences on `dac06f59`, then passes on `9b1c643f` in 17 VM seconds with identical inventory data.
+`scripts/smoke-verifier-vm-authority.sh --dependency-inventory` uses the actual complete Git index,
+read-only inputs and a nonroot, capability-free, networkless guest; joined RAM/VM cleanup and
+unchanged host endpoints pass. Baseline and accepted receipts are retained under
+`.harness-state/verifier-vm/dependency-inventory-{drift-dac06f59,accepted-9b1c643f}.json`.
+This accepts the manifest/index snapshot only. Complete dependency/source closure, advisory,
+provenance, native product and release acceptance remain OPEN.
 
 The inherited `libs/scrap/README.md` and `libs/enigo/README.md` are deleted.
 Scrap's standalone crates.io example, byte-array frame contract and platform-minimum

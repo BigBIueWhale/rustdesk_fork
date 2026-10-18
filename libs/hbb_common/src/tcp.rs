@@ -6,10 +6,7 @@ use crate::{
 };
 use anyhow::Context as AnyhowCtx;
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::{
-    stream::{SplitSink, SplitStream},
-    SinkExt, StreamExt,
-};
+use futures::{SinkExt, StreamExt};
 use protobuf::Message;
 use std::{
     convert::TryFrom,
@@ -24,12 +21,12 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::{
-    io::{AsyncRead, AsyncWrite, ReadBuf},
+    io::{AsyncRead, AsyncWrite, ReadBuf, ReadHalf, WriteHalf},
     net::{lookup_host, TcpListener, TcpSocket, ToSocketAddrs},
     sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore, TryAcquireError},
     task::JoinHandle,
 };
-use tokio_util::codec::{Decoder, Encoder, Framed};
+use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts, FramedWrite};
 
 pub trait TcpStreamTrait: AsyncRead + AsyncWrite + Unpin {}
 pub struct DynTcpStream(pub Box<dyn TcpStreamTrait + Send + Sync>);
@@ -46,11 +43,8 @@ pub struct DynTcpStream(pub Box<dyn TcpStreamTrait + Send + Sync>);
 /// length-decoder state; dropping the borrowed future does not discard that state. A partial frame
 /// returns `Ok(None)` without calling the cipher. A complete authentication failure is terminal.
 ///
-/// R-T3 (§20): `encode` is the inverse-asymmetric half — it ONLY length-frames, it does NOT seal.
-/// The send-side seal (advancing `write_seq`) happens on the single-producer enqueue side
-/// ([`FramedStream::send_bytes`]) so the nonce advances in exact channel-FIFO order, and the
-/// dedicated writer task (the sole sink consumer, R-T8) feeds already-sealed frames here to be
-/// length-framed only. Seal order == channel order == wire order.
+/// `encode` length-frames the unkeyed handshake. After keying, the sole writer owns a separate
+/// `BytesCodec` and output buffer; the producer seals before that writer length-frames its FIFO.
 pub struct SecretboxCodec {
     inner: BytesCodec,
     /// The recv-direction cipher (R-T3): present once keyed, used by `decode` only. The send
@@ -124,9 +118,6 @@ impl Encoder<Bytes> for SecretboxCodec {
     type Error = Error;
 
     fn encode(&mut self, data: Bytes, dst: &mut BytesMut) -> Result<(), Error> {
-        // R-T3: length-frame ONLY — the producer (`FramedStream::send_bytes`) already sealed the
-        // bytes under the send key before enqueuing them to the writer task. Pre-key, `data` is a
-        // raw handshake frame; post-key, it is sealed ciphertext. Either way the codec just frames.
         self.inner.encode(data, dst)
     }
 }
@@ -145,11 +136,9 @@ impl Encoder<Bytes> for SecretboxCodec {
 ///   borrow checker alone forbids two simultaneous writers;
 /// * the type owns its socket through a `Box<dyn>` (`DynTcpStream`) and is
 ///   deliberately **not** `Clone` — there is no way to obtain a second owner;
-/// * the ONLY `.split()` is the R-T3 keying transition (`set_session_keys`): it
-///   splits the `Framed` into the read half (kept here) and a write half moved into
-///   a SINGLE dedicated writer task — the sole sink consumer — so the split yields
-///   one reader + one writer, never two writers; the stream is **never** wrapped in
-///   `Arc<Mutex<_>>` for writing.
+/// * key installation splits the I/O into one `ReadHalf` and one `WriteHalf`. The retained
+///   receive `Framed` cannot implement `Sink` because its I/O is read-only. A single dedicated
+///   writer exclusively owns its `FramedWrite`, active reservation, FIFO and completion.
 ///
 /// The fork's many output producers (video / audio / clipboard / camera / the
 /// connection-manager) therefore do **not** hold the stream; each holds a *clone of
@@ -157,10 +146,7 @@ impl Encoder<Bytes> for SecretboxCodec {
 /// enqueues into the writer channel (non-blocking). `seal` advances the write
 /// counter on that single-producer enqueue side (R-T3), and the lone writer task
 /// drains the channel in FIFO order, so seal order = channel order = wire order (the
-/// nonce never races). A second writable handle must remain a compile-visible error,
-/// never a silent wire corruption — `scripts/verify.sh` gates that the only
-/// `.split()` is the R-T3 writer-task one and that no `Arc<Mutex<FramedStream>>`
-/// write-wrapper exists.
+/// nonce never races). No second writable stream handle is exposed.
 ///
 /// # Framing + processing-order contract (R-T16 / R-T5 / R-T7, §20)
 ///
@@ -192,7 +178,7 @@ impl Encoder<Bytes> for SecretboxCodec {
 ///
 /// # Field layout
 /// `state` the keying-state machine — pre-key holds the whole [`Framed`]; post-key (R-T3) holds the
-/// read half ([`SplitStream`]) plus the send-side [`SealCipher`], exact writer admission, and the
+/// read-only `Framed` plus the send-side [`SealCipher`], exact writer admission, and the
 /// bounded channel to the dedicated writer task · `local_addr` peer addr · `poison` flag (R-T2).
 pub struct FramedStream {
     state: StreamState,
@@ -226,7 +212,7 @@ enum StreamState {
 /// The post-key half of a [`FramedStream`] (R-T3).
 struct KeyedStream {
     /// The read half — decode + recv-AEAD happen here (R-T5 cancel-safe).
-    read: SplitStream<Framed<DynTcpStream, SecretboxCodec>>,
+    read: Framed<ReadHalf<DynTcpStream>, SecretboxCodec>,
     /// The send-side cipher (R-T3): `send_bytes` seals on this single-producer enqueue side so the
     /// nonce advances in exact channel-FIFO order.
     seal: SealCipher,
@@ -235,11 +221,21 @@ struct KeyedStream {
     writer_tx: mpsc::Sender<WriterCommand>,
     /// Nonblocking count-and-ciphertext admission held through the exact sink send (R-T18).
     writer_admission: WriterAdmission,
-    /// A handle to the codec's recv counter, so `recv_counter` can read `read_seq` after the codec
-    /// is moved into `read` (the `SplitStream` exposes no codec accessor).
+    /// A read-only handle to the counter owned by the retained receive codec.
     read_seq: Arc<AtomicU64>,
     /// The dedicated writer task — aborted on drop so a write blocked on a dead socket cannot leak.
     writer: JoinHandle<()>,
+}
+
+/// The sole writer's complete lifetime, including an in-flight command.
+///
+/// Fields drop in declaration order: encoded sink storage retires before active admission,
+/// queued commands drop their bytes before their permits, and current completion retires last.
+struct KeyedWriter {
+    sink: FramedWrite<WriteHalf<DynTcpStream>, BytesCodec>,
+    active: Option<WriterFrameReservation>,
+    commands: mpsc::Receiver<WriterCommand>,
+    completion: Option<oneshot::Sender<io::Result<()>>>,
 }
 
 /// Commands consumed by the sole R-T3 writer task.
@@ -720,8 +716,7 @@ impl FramedStream {
         // codec's `decode` (see `SecretboxCodec`) — there is no `.await` between a frame leaving the
         // buffer and the AEAD `open`. Partial frames and cancelled pending reads cannot advance
         // the counter; a complete decrypt/auth failure (R-T7) surfaces as `Some(Err(_))`. Post-key the
-        // read half is a `SplitStream` (R-T3) that forwards the same `Framed`-owned codec `decode`,
-        // so this property is unchanged by the writer-task split.
+        // read-only Framed retains that exact decoder and input buffer, independently of output.
         //
         // R-T14: tokio-util's Framed documents next() as borrowing the stream and never losing a
         // value on cancellation. Its persistent owner may already hold partial socket input:
@@ -754,8 +749,8 @@ impl FramedStream {
     /// restructure to the R-T3 writer-task transport. The keys are role-oriented (the caller's
     /// send/recv slots), so a single key can never end up engaged in both directions.
     ///
-    /// This splits the `Framed`: the read half stays here (decode + recv-AEAD), and the write half
-    /// is moved into a dedicated writer task (R-T3) that is the SOLE sink consumer (R-T8). It is a
+    /// The receive codec and buffered input stay here; the write I/O, framing codec and encoded
+    /// buffer move to the sole writer task (R-T3/R-T8). It is a
     /// synchronous one-shot Unkeyed → Keyed transition; the transient `Keying` state it swaps in is
     /// never observed because no `.await` sits between the take and the re-set.
     pub fn set_session_keys(&mut self, keys: DirectionalKeys) {
@@ -777,10 +772,18 @@ impl FramedStream {
         // distinctness is asserted inside split_session_keys.
         let (seal, open) = split_session_keys(&keys);
         let read_seq = open.read_seq_handle();
-        // Engage the recv cipher in the codec for DECODE (the encode side stays raw — the producer
-        // pre-seals), then split: the read half stays here, the write half feeds the writer task.
+        // Keep the exact receive codec and buffered input, but give encoded output its own owner.
         framed.codec_mut().open_cipher = Some(open);
-        let (sink, read) = framed.split();
+        let backpressure_boundary = framed.backpressure_boundary();
+        let parts = framed.into_parts();
+        let writer_codec = parts.codec.inner;
+        let (read_io, write_io) = tokio::io::split(parts.io);
+        let mut read_parts = FramedParts::new(read_io, parts.codec);
+        read_parts.read_buf = parts.read_buf;
+        let read = Framed::from_parts(read_parts);
+        let mut sink = FramedWrite::new(write_io, writer_codec);
+        *sink.write_buffer_mut() = parts.write_buf;
+        sink.set_backpressure_boundary(backpressure_boundary);
         let (writer_tx, writer_rx) = mpsc::channel::<WriterCommand>(WRITER_CHANNEL_CAP);
         let writer = tokio::spawn(writer_task(sink, writer_rx));
         self.state = StreamState::Keyed(KeyedStream {
@@ -812,61 +815,61 @@ const WRITER_CHANNEL_CAP: usize = 512;
 const WRITER_RETAINED_CIPHERTEXT_PACKETS: usize = 2;
 const WRITER_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
-/// R-T3/R-T8 (§20): the dedicated writer task — the SOLE consumer of the split sink. It drains
+/// R-T3/R-T8 (§20): the dedicated writer owns its framed output and is the SOLE sink consumer. It drains
 /// already-sealed frames in channel-FIFO order (so flush order == seal order == wire order) and
 /// writes each. A socket write error ends the task (the connection is dead); `send_bytes` then
 /// observes the closed channel on its next enqueue and poisons the stream (R-T2).
 async fn writer_task(
-    mut sink: SplitSink<Framed<DynTcpStream, SecretboxCodec>, Bytes>,
-    mut writer_rx: mpsc::Receiver<WriterCommand>,
+    sink: FramedWrite<WriteHalf<DynTcpStream>, BytesCodec>,
+    writer_rx: mpsc::Receiver<WriterCommand>,
 ) {
-    while let Some(cmd) = writer_rx.recv().await {
-        match cmd {
+    let mut writer = KeyedWriter {
+        sink,
+        active: None,
+        commands: writer_rx,
+        completion: None,
+    };
+    while let Some(cmd) = writer.commands.recv().await {
+        let result = match cmd {
             WriterCommand::Frame {
                 bytes,
                 reservation,
                 completion,
             } => {
-                let result = sink.send(bytes).await;
-                let failed = result.is_err();
-                if failed {
-                    // A failed Framed sink may retain encoded bytes. Drop that sink before releasing
-                    // their exact reservation, then report the failure and retire this writer.
-                    drop(sink);
-                    drop(reservation);
-                    if let Some(completion) = completion {
-                        let _ = completion.send(result);
-                    }
-                    return;
-                }
-                // Successful `SinkExt::send` includes flush completion. Keep the reservation alive
-                // across that await, then release it before publishing exact completion.
-                drop(reservation);
-                if let Some(completion) = completion {
-                    let _ = completion.send(result);
-                }
+                writer.active = Some(reservation);
+                writer.completion = completion;
+                writer.sink.send(bytes).await
             }
             WriterCommand::Drain(done) => {
-                let res = sink.flush().await;
-                let failed = res.is_err();
-                let _ = done.send(res);
-                if failed {
-                    break;
-                }
+                writer.completion = Some(done);
+                writer.sink.flush().await
             }
+        };
+        let completion = writer.completion.take();
+        if result.is_err() {
+            // Retire encoded storage and every reservation before reporting the exact failure.
+            drop(writer);
+            if let Some(completion) = completion {
+                let _ = completion.send(result);
+            }
+            return;
+        }
+        // SinkExt::send includes flush; its encoded payload is gone before admission returns.
+        drop(writer.active.take());
+        if let Some(completion) = completion {
+            let _ = completion.send(result);
         }
     }
-    // The channel closed (the FramedStream dropped) or a write failed — close the sink to flush and
-    // shut the write half down cleanly (R-T9).
-    let _ = sink.close().await;
+    // The channel closed after the last command; flush and shut down the write half (R-T9).
+    if let Err(error) = writer.sink.close().await {
+        crate::log::debug!("TCP writer shutdown failed: {}", error);
+    }
 }
 
 impl Drop for FramedStream {
     fn drop(&mut self) {
-        // R-T3: tear down the writer task so a write blocked on a dead/back-pressured socket cannot
-        // leak the task (and its half of the split `Framed`, holding the socket open) past the
-        // connection's lifetime. Dropping `writer_tx` also closes the channel, but an abort is
-        // immediate even if the task is parked inside `sink.send`.
+        // Close admission before requesting cancellation. The task owns its encoded storage and
+        // reservations together until cancellation is observed and its future is dropped.
         if let StreamState::Keyed(k) = &self.state {
             k.writer_admission.close();
             k.writer.abort();
@@ -1627,11 +1630,12 @@ mod writer_receipt_tests {
         }
     }
 
-    fn writer_sink<T>(stream: T) -> SplitSink<Framed<DynTcpStream, SecretboxCodec>, Bytes>
+    fn writer_sink<T>(stream: T) -> FramedWrite<WriteHalf<DynTcpStream>, BytesCodec>
     where
         T: TcpStreamTrait + Send + Sync + 'static,
     {
-        framed(stream).split().0
+        let (_, write) = tokio::io::split(DynTcpStream(Box::new(stream)));
+        FramedWrite::new(write, BytesCodec::new())
     }
 
     #[test]

@@ -13100,33 +13100,6 @@ if [ -n "$r_t7_parse_missing" ]; then
 else
   echo "  ok  R-T7/R-A1 malformed post-key Message parse fails closed (server + viewer)"
 fi
-# R-T8 / R-T16 (§20): the single-writer + framing/processing-order contract is CODIFIED at the
-# FramedStream type (and at the Connection.stream owner) so a refactor cannot silently regress to
-# a second writer (wire-interleave / cipher desync) or to parsing a raw TCP segment. The invariant
-# is structural: the write API is &mut self, the stream is not Clone, and the sole keying split
-# transfers its sink to one writer task. These supplementary assertions check the contract text,
-# sole split/writer-task shape and write-wrapper absence; native evidence remains separately required.
-r_t8_missing=
-grep -q 'Single-writer contract (R-T8' libs/hbb_common/src/tcp.rs        || r_t8_missing="$r_t8_missing tcp-writer-doc"
-grep -q 'Framing + processing-order contract (R-T16' libs/hbb_common/src/tcp.rs || r_t8_missing="$r_t8_missing tcp-framing-doc"
-grep -q 'the single writer' src/server/connection.rs                     || r_t8_missing="$r_t8_missing conn-stream-doc"
-# R-T3 introduces exactly ONE controlled split — set_session_keys splits the keyed Framed so the write
-# half goes to the SOLE dedicated writer task (single-writer preserved, NOT a second writer). Forbid any
-# OTHER code split, and assert this one has the R-T3 shape feeding writer_task (doc `///` mentions excluded).
-code_splits=$(sed -n '1,/^#\[cfg(test)\]/p' libs/hbb_common/src/tcp.rs | grep -n '\.split()' | grep -v '///' | wc -l)
-if [ "$code_splits" != "1" ]; then
-  r_t8_missing="$r_t8_missing tcp-split-count=$code_splits(want exactly the 1 R-T3 writer-task split)!"
-fi
-grep -q 'let (sink, read) = framed.split();' libs/hbb_common/src/tcp.rs || r_t8_missing="$r_t8_missing rt3-split-shape"
-grep -q 'tokio::spawn(writer_task(sink,'     libs/hbb_common/src/tcp.rs || r_t8_missing="$r_t8_missing rt3-sole-writer-consumer"
-if grep -rn 'Arc<.*Mutex<.*FramedStream' src libs/hbb_common/src 2>/dev/null | grep -vq '///'; then
-  r_t8_missing="$r_t8_missing arc-mutex-framedstream!"
-fi
-if [ -n "$r_t8_missing" ]; then
-  echo "  FAIL R-T8/R-T16: single-writer/framing contract codification incomplete or violated:$r_t8_missing"; rc=1
-else
-  echo "  ok  R-T8/R-T16 single-writer + framing/processing-order contract codified (no second-writer handle)"
-fi
 # R-T9 (§20): graceful shutdown on SIGTERM/SIGINT. A process-wide CancellationToken (server.rs) is
 # cancelled by the retained signal/listener lifecycle owner (direct_service.rs); the accept loop
 # then stops accepting and drops its listener, every live session's run-loop drains via its

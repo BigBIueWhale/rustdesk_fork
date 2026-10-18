@@ -1118,7 +1118,7 @@ pub fn main_get_fav() -> Vec<String> {
     get_fav()
 }
 
-pub fn main_set_favorites(ids: Vec<String>, favorite: bool) -> ResultType<()> {
+pub fn main_set_favorites(ids: Vec<String>, favorite: bool) -> Result<()> {
     set_favorites(ids, favorite)
 }
 

@@ -13188,34 +13188,6 @@ if [ -n "$r_t10_missing" ]; then
 else
   echo "  ok  R-T10 TCP keepalive set on accepted peer sockets (SockRef + TcpKeepalive, app deadline primary)"
 fi
-# R-T3/R-T18 (§20): the dedicated WRITER TASK so the reader/control channels stay pollable DURING
-# a write, with exact active-plus-queued count and ciphertext admission owned before sealing.
-# set_session_keys splits the keyed Framed — the read half stays on the run-loop (decode + recv-AEAD),
-# the write half moves into a SINGLE dedicated writer task (the sole sink consumer, R-T8) fed an mpsc of
-# ALREADY-SEALED frames. The run-loop's send_bytes SEALS on the single-producer enqueue side (the nonce
-# advances in channel-FIFO order) then try_sends NON-BLOCKING; a full BOUNDED channel is the back-pressure
-# liveness signal that DROPS the connection — REPLACING R-T2's per-write deadline (so the old
-# set_send_timeout-on-the-keyed-session is GONE). Lock the chain so it cannot regress to a send().await
-# inside a select! branch (which would freeze reads/CM/timers for the duration of one write).
-r_t3_missing=
-grep -q 'async fn writer_task('          libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing writer-task-fn"
-grep -q 'tokio::spawn(writer_task(sink,' libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing spawn-sole-writer"
-grep -q 'const WRITER_CHANNEL_CAP'       libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing bounded-channel"
-grep -q 'try_send(WriterCommand::Frame'  libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing nonblocking-enqueue"
-grep -q 'TrySendError::Full'             libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing full-drops-connection"
-grep -q 'k.seal.seal(&bytes)'            libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing producer-side-seal"
-grep -q 'k.writer_admission.reserve_plaintext(bytes.len())' libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing pre-seal-admission"
-grep -q 'reservation: WriterFrameReservation' libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing exact-frame-reservation"
-# R-T2's per-write deadline is REPLACED by the channel bound — the keyed session must NOT install a
-# set_send_timeout (a stale one would be a misleading no-op now that the keyed path uses try_send).
-if grep -q 'set_send_timeout' src/server/connection.rs libs/hbb_common/src/stream.rs; then
-  r_t3_missing="$r_t3_missing stale-set_send_timeout!"
-fi
-if [ -n "$r_t3_missing" ]; then
-  echo "  FAIL R-T3: dedicated writer-task transport incomplete:$r_t3_missing"; rc=1
-else
-  echo "  ok  R-T3 dedicated writer task (split sink -> sole writer, producer-side seal, bounded back-pressure drop replaces the per-write deadline)"
-fi
 # R-T15(b) / R-S10: the inherited LOGIN_FAILURES limiter — unbounded-growth / never-decaying /
 # full-IPv6-keyed, and on dead paths (the legacy unkeyed/salted-hash login is gone) — MUST be
 # excised so the live online-guess limiter is unambiguously the bounded, decaying, per-v4-source

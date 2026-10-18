@@ -614,7 +614,15 @@ impl FramedStream {
                     framed.send(encode()?).await?;
                 }
                 StreamState::Keyed(k) => {
-                    // Reserve before allocating the serialized payload or advancing the send nonce.
+                    // Own channel capacity and retained bytes before encoding or advancing the nonce.
+                    let slot = k.writer_tx.try_reserve().map_err(|e| match e {
+                        mpsc::error::TrySendError::Full(_) => {
+                            anyhow::anyhow!("R-T3: writer channel full — dropping the back-pressured connection")
+                        }
+                        mpsc::error::TrySendError::Closed(_) => {
+                            anyhow::anyhow!("R-T3: writer task gone — connection is dead")
+                        }
+                    })?;
                     let plaintext_bytes = measure()?;
                     let reservation = k.writer_admission.reserve_plaintext(plaintext_bytes)?;
                     let bytes = encode()?;
@@ -625,20 +633,11 @@ impl FramedStream {
                     if sealed.len() != reservation.ciphertext_bytes {
                         bail!("R-T18: secretbox ciphertext length disagrees with reserved bytes");
                     }
-                    k.writer_tx
-                        .try_send(WriterCommand::Frame {
-                            bytes: sealed,
-                            reservation,
-                            completion,
-                        })
-                        .map_err(|e| match e {
-                            mpsc::error::TrySendError::Full(_) => {
-                                anyhow::anyhow!("R-T3: writer channel full — dropping the back-pressured connection")
-                            }
-                            mpsc::error::TrySendError::Closed(_) => {
-                                anyhow::anyhow!("R-T3: writer task gone — connection is dead")
-                            }
-                        })?;
+                    slot.send(WriterCommand::Frame {
+                        bytes: sealed,
+                        reservation,
+                        completion,
+                    });
                 }
                 StreamState::Keying => unreachable!("send_payload observed a mid-keying stream"),
             }

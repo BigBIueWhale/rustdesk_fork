@@ -12610,7 +12610,7 @@ without joining; synchronous socket/task finality, the three parked filesystem
 race failures, installed/full-app and other-platform behavior, presentation latency,
 long-session memory bounds, LPE acceptance and release remain OPEN.
 
-**Fatal-operation writer retirement — Linux library cases PASS; broader acceptance OPEN.**
+**Fatal-operation writer retirement — Linux transport integration PASS; broader acceptance OPEN.**
 Product `08fe0fd7` makes fatal send, receive and drain paths close admission, request
 cancellation and await the exact writer before returning their original error. The stream
 retains `Option<JoinHandle<()>>` across the borrowed await and clears it only after joining;
@@ -12620,35 +12620,31 @@ and that requesting abort does not establish completion. No worker, queue, runti
 dependency, reconnect or privilege transition is added. Hard synchronous Drop still only
 requests cancellation; read-owned socket finality and physical memory release remain OPEN.
 
-Baseline `cb575f82` preserves abort-only behavior with the same private handle representation,
-four new real-TCP/backpressure regressions and the same guest recipe. The regressions inspect
-writer join, encoded-buffer ownership, returned permits and completion before test cleanup;
-the cancellation case retries through send, receive and drain entry guards. The focused
-`--writer-retirement-tests` lane selects 35 complete-library cases: 13 writer-receipt, four
-EOF, twelve codec and six lifetime cases. It retains the existing 6 GiB guest, 6 GiB RAM
-scratch, 4 GiB QEMU ceiling and 6 GiB headroom; full CPace integration retains its larger
-profile and now selects 59 cases. The obsolete 16-line R-T2 presence/count gate is deleted:
-its four-call count included a test and could not establish retirement behavior.
+At `10ff6494`, the unchanged `--cpace-recovery-tests` profile passes all 59 cases with
+pinned Rust/rustdoc 1.75.0: 20 CPace wire, 13 writer-receipt, four EOF, twelve codec,
+six lifetime and four framing API compiler cases. The wire cases include actual pending
+reads after one/two/nine TCP bytes and exact later frame/counter recovery. Fatal send,
+receive and drain observe writer join, encoded-buffer ownership retirement, returned
+permits and completion retirement before test cleanup. Cancelling retirement preserves
+the handle; send/read/drain entry guards finish the join. These are Linux transport and
+compiler observations, not physical memory release or whole-process bounds.
 
-At `99fa6b07`, the complete Linux shared library compiles with pinned Rust 1.75.0 and all
-35 selected cases pass on one Cargo artifact. Fatal send, receive and drain return only
-after writer join, encoded-buffer ownership retirement, permit return and completion
-retirement. Cancelling a pending retirement preserves the handle; each poisoned entry
-guard finishes the join. The existing 31 controls, including clean EOF, pass. This proves
-component ownership behavior, not physical memory release or whole-process bounds.
-The abort-only baseline has not executed: RAM admission refused that run. Its test
-modules and recipe are byte-identical to the corrected product; no native A/B failure
-is claimed. Earlier corrected attempts also refused before QEMU/workspace creation.
-
-The successful run takes 167 outer/172.275 supervisor seconds, peaks at 3,588,722,688 bytes
-of RAM scratch under the unchanged limits, joins its VM and retires both workspaces.
-All four endpoint snapshots have zero additions/removals; source freezes before, during
-and after execution are equal. The artifact digest is
+The run takes 200 outer/202.938 supervisor seconds; its six behavioral/compiler summaries
+total 2.91 seconds. RAM scratch peaks at 4,121,268,224 bytes under the unchanged 8 GiB
+guest/6 GiB scratch/4 GiB QEMU ceiling/6 GiB headroom profile. Exact QEMU join, RAM/private
+root retirement, four complete endpoint comparisons with zero changes and equal source
+snapshots before/during/after pass. The transport artifact is byte-identical to the earlier
+35-case `99fa6b07` result:
 `c1d92cc9c89a61dadd3d9c9708f42f09416baa6b6e10084dec0f886e76dd8c5e`.
-`.harness-state/verifier-vm/writer-fatal-retirement-native-99fa6b07.json` retains source,
-all named results, lifetime observations, artifact/recipe binding and cleanup evidence.
-Bash syntax and `git diff --check` pass. Full 59-case CPace integration and all
-other-platform/installed/latency/resource/LPE/release acceptance remain OPEN.
+Current source, all named results, artifacts, observations and cleanup are retained in
+`.harness-state/verifier-vm/cpace-integration-59-10ff6494.json`; the earlier component
+receipt remains in `writer-fatal-retirement-native-99fa6b07.json` in the same directory.
+
+Abort-only baseline `cb575f82` has the identical test modules and recipe but was refused
+by RAM admission before execution; no native A/B failure is claimed. The deleted R-T2
+presence/count gate could not establish retirement behavior. This integration pass adds
+no product or test change. Hard Drop, read-owned socket finality, physical memory bounds,
+other-platform/installed behavior, full-app latency/soak, LPE and release acceptance remain OPEN.
 
 R-T2 now states terminal-error and retained-writer ownership requirements directly.
 Its obsolete per-write-timeout walkthrough and alternative-design proposal are removed;

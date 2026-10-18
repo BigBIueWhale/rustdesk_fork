@@ -202,6 +202,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                           : () async {
                               final timeout = await changeAutoDisconnectTimeout(
                                   _autoDisconnectTimeout);
+                              if (!mounted) return;
                               setState(() {
                                 _autoDisconnectTimeout = timeout;
                               });

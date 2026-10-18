@@ -5,6 +5,7 @@ import 'package:bot_toast/bot_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
+import 'package:flutter_hbb/common/widgets/auto_disconnect_timeout_dialog.dart';
 import 'package:flutter_hbb/common/widgets/connect_password_dialog.dart';
 import 'package:flutter_hbb/common/widgets/password_text_field.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
@@ -75,52 +76,37 @@ Future<String> changeAutoDisconnectTimeout(String old,
     Future<void> Function(String value)? writeTimeout,
     Future<String> Function()? readTimeout,
     String Function(String text)? translateText}) async {
-  final text = translateText ?? translate;
-  final controller = TextEditingController(text: old);
-  await (dialogManager ?? gFFI.dialogManager).show((setState, close, context) {
-    return CustomAlertDialog(
-      title: Text(text("Timeout in minutes")),
-      content: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 8.0),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                        maxLines: null,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                            hintText: '10',
-                            isCollapsed: true,
-                            suffix: IconButton(
-                                padding: EdgeInsets.zero,
-                                icon: const Icon(Icons.clear, size: 16),
-                                onPressed: () => controller.clear())),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(
-                              r'^([0-9]|[1-9]\d|[1-9]\d{2}|[1-9]\d{3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])$')),
-                        ],
-                        controller: controller,
-                        autofocus: true),
-              ),
-            ],
-          ),
-        ],
-      ),
-      actions: [
-        dialogButton("Cancel", onPressed: close, isOutline: true,
-            translateText: text),
-        dialogButton("OK", onPressed: () async {
-          await (writeTimeout ?? (value) => bind.mainSetOption(
-              key: kOptionAutoDisconnectTimeout, value: value))(controller.text);
-          close();
-        }, translateText: text),
-      ],
-      onCancel: close,
-    );
-  });
-  return controller.text;
+  final write = writeTimeout ??
+      (value) => bind.mainSetOption(
+          key: kOptionAutoDisconnectTimeout, value: value);
+  final read = readTimeout ??
+      () => bind.mainGetOption(key: kOptionAutoDisconnectTimeout);
+  Future<String>? pendingSave;
+  final result = await (dialogManager ?? gFFI.dialogManager).show<String>(
+    (_, close, __) => AutoDisconnectTimeoutDialog(
+      initialValue: old,
+      saveTimeout: (value) {
+        final operation = Future<String>.sync(() async {
+          await write(value);
+          return read();
+        });
+        pendingSave = operation;
+        return operation;
+      },
+      close: close,
+      translateText: translateText ?? translate,
+    ),
+  );
+  if (result != null) return result;
+  final admitted = pendingSave;
+  if (admitted != null) {
+    try {
+      return await admitted;
+    } catch (error) {
+      debugPrint('Failed to save auto-disconnect timeout: $error');
+    }
+  }
+  return old;
 }
 
 class DialogTextField extends StatelessWidget {

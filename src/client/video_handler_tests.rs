@@ -31,10 +31,20 @@ fn visible_and_hidden_frames() -> (VideoFrame, VideoFrame) {
         false,
     )
     .expect("native VP8 encoder");
-    let mut frames = encoder.encode(0, &[128; 16 * 16 * 3 / 2], 1).expect("encode");
-    let frame = frames.next().expect("encoded keyframe");
-    assert!(frame.key);
-    let mut data = frame.data.to_vec();
+    let mut frames: Vec<_> = encoder
+        .encode(0, &[128; 16 * 16 * 3 / 2], 1)
+        .expect("encode")
+        .map(|frame| (frame.key, frame.data.to_vec()))
+        .collect();
+    frames.extend(
+        encoder
+            .flush()
+            .expect("flush")
+            .map(|frame| (frame.key, frame.data.to_vec())),
+    );
+    assert_eq!(frames.len(), 1, "one native keyframe after flush");
+    let (key, mut data) = frames.pop().expect("encoded keyframe");
+    assert!(key);
     assert!(data.len() >= 10);
     assert_eq!(data[0] & 1, 0, "native VP8 keyframe tag");
     assert_ne!(data[0] & 0x10, 0, "native visible frame tag");

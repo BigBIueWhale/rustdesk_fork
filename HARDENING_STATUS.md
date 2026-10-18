@@ -2043,28 +2043,22 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   fresh. Pre- and post-decode checks enforce the one-second budget, and endpoint loss is terminal rather than a
   healthy empty queue. The executable Rust regressions remain; the source-wording/mutation verifier and its
   duplicate workspace validator are deleted because they missed this semantic mismatch and observed no runtime.
-  Current compilation/execution is not claimed for this correction: the fixed rootless Docker socket was absent,
-  and no host or rootful fallback was used. Target-native focus/background/presentation evidence remains open.
+  The current receive-time path compiles in the complete Linux parent library below; native
+  network-to-presentation freshness and focus/background acceptance remain OPEN.
 
-  Native decoder-result accounting is corrected at `cdfcab53`: every successful decode clears the
-  error count, including a valid packet with no picture; native errors retain their existing policy.
-  The real libvpx/production-`VideoHandler` baseline `241dbfea` passed the visible/corrupt control
-  and failed three counter assertions (3 at startup, 5 after repeated hidden packets, 2 after
-  an error then hidden success). The identical four tests pass in the complete Linux parent
-  artifact in 292 VM seconds; visible follow-up frames produce RGB and corrupt packets remain errors.
-  `.harness-state/verifier-vm/viewer-video-accepted-cdfcab53.json` binds source, artifact, baseline,
-  unchanged inputs/endpoints and joined bounded-RAM cleanup. Two earlier fixture failures are retained.
-  This establishes native decoder accounting only; peer capability exchange, actual presentation,
-  network impairment, long-session recovery, installed authority and other platforms remain OPEN.
-
-  Native worker result ownership is corrected at `d512f482`: a retired decode outcome resets
-  its local decoder/generation before recovery or unsupported-codec effects. The later publication
-  guard remains. Actual `start_video_thread`/mailbox/libvpx tests at `6219b866` reproduced
-  replacement loss through an old error (five passes, one failure); the identical six cases pass
-  in 286 VM seconds after correction. Replacement RGB arrives, while the current-error policy
-  control retains its prior outcome. `.harness-state/verifier-vm/viewer-retired-error-accepted-d512f482.json`
-  binds native source/artifact, baseline, frozen inputs/endpoints and joined bounded-RAM cleanup.
-  These are worker/callback results; actual peer capability exchange and full R-F5 acceptance remain OPEN.
+  Native recovery at `435ef339` separates input errors from decoder availability. The obsolete
+  error counter and first-error blacklist are deleted; only failed decoder construction can
+  withdraw a codec. Current errors invalidate their GOP and use the existing reset/keyframe path.
+  Retired outcomes reset local decoder/generation state before recovery or capability effects;
+  the later publication guard remains. Valid hidden packets produce no picture without disabling
+  the initialized decoder. Real libvpx/`VideoHandler`/worker tests failed current-error recovery
+  at `54f81425` (five passes, one failure). The identical six cases pass in 283 VM seconds after
+  correction, including four corruption/reset/keyframe/RGB cycles on the same worker and retained
+  stale-result recovery. `.harness-state/verifier-vm/viewer-codec-recovery-accepted-435ef339.json`
+  binds source/artifact, native baseline, frozen inputs/endpoints and joined bounded-RAM cleanup.
+  Earlier decoder-accounting and retired-result receipts remain retained. These are native worker/
+  callback results; actual backend-init fault injection, wire capability exchange, full peers,
+  compositor presentation, impairment/long-session R-F5, installed authority and other platforms remain OPEN.
 
 - **R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication** — Source and focused
   generated-bridge/model execution are green. Each `(session, display)` owns one published token plus at most one

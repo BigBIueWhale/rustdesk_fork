@@ -63,24 +63,23 @@ impl UserDelay {
         self.delay_history.push_back(delay);
     }
 
-    // Average delay minus RTT
+    // Completed delay average or outstanding-probe age, minus RTT.
     fn avg_delay(&self) -> u32 {
         let len = self.delay_history.len();
-        if len > 0 {
-            let avg_delay = self.delay_history.iter().sum::<u32>() / len as u32;
-
-            // If RTT is available, subtract it from average delay to get actual network latency
-            if let Some(rtt) = self.rtt_calculator.get_rtt() {
-                if avg_delay > rtt {
-                    avg_delay - rtt
-                } else {
-                    avg_delay
-                }
-            } else {
-                avg_delay
-            }
+        let measured_delay = if len > 0 {
+            self.delay_history.iter().sum::<u32>() / len as u32
         } else {
             DELAY_THRESHOLD_150MS
+        };
+        let delay = measured_delay.max(self.pending_delay.unwrap_or_default());
+        if let Some(rtt) = self.rtt_calculator.get_rtt() {
+            if delay > rtt {
+                delay - rtt
+            } else {
+                delay
+            }
+        } else {
+            delay
         }
     }
 }
@@ -263,6 +262,7 @@ impl VideoQoS {
         if let Some(user) = self.users.get_mut(&id) {
             let delay = delay.max(10);
             let old_avg_delay = user.delay.avg_delay();
+            user.delay.pending_delay = None;
             user.delay.add_delay(delay);
             let mut avg_delay = user.delay.avg_delay();
             avg_delay = avg_delay.max(10);
@@ -335,11 +335,9 @@ impl VideoQoS {
 
     pub fn user_delay_response_elapsed(&mut self, id: i32, elapsed: u128) {
         if let Some(user) = self.users.get_mut(&id) {
-            user.delay.pending_delay = (elapsed > 2000).then_some(elapsed as u32);
-            if user.delay.pending_delay.is_some() {
-                user.delay.add_delay(elapsed as u32);
-                self.adjust_fps();
-            }
+            user.delay.pending_delay = (elapsed > 2000)
+                .then(|| elapsed.min(u32::MAX as u128) as u32);
+            self.adjust_fps();
         }
     }
 }

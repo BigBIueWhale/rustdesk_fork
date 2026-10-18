@@ -890,9 +890,15 @@ elif [ "$MODE" = apple-conform ]; then
         readonly VM_MEMORY=16384
     fi
 elif [ "$MODE" = flutter-peer-presentation ]; then
-    readonly VM_TIMEOUT_SECONDS=7200
-    readonly OVERLAY_SIZE=48G
-    readonly VM_MEMORY=24576
+    if [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
+        readonly VM_TIMEOUT_SECONDS=1200
+        readonly OVERLAY_SIZE=12G
+        readonly VM_MEMORY=10240
+    else
+        readonly VM_TIMEOUT_SECONDS=7200
+        readonly OVERLAY_SIZE=48G
+        readonly VM_MEMORY=24576
+    fi
 elif [ "$MODE" = dart-audit ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
@@ -4963,7 +4969,7 @@ elif [ "$MODE" = host-network-tests ]; then
         'host network test guest cleanup'
     /usr/bin/grep -Eo 'VM_HOST_NETWORK_NATIVE=\{.*\}' "$SERIAL_LOG"
 elif [ "$MODE" = ledger-token-count ]; then
-    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=13 refusals=20 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=14 refusals=22 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
         'VM storage profile limits and guest binding'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'

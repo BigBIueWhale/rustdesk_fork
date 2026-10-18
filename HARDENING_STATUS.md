@@ -1581,6 +1581,26 @@ loss, bandwidth/jitter/outage recovery, mobile/desktop combinations, input-to-vi
 numeric latency/recovery budgets and multi-hour drift/resource acceptance remain OPEN under R-F5.
 The receive-acquisition race and all other user-parked work remain OPEN/PARKED.
 
+**Per-viewer video QoS rate ownership — Linux controller ACCEPTED; full latency OPEN.**
+Each viewer's completed feedback updates its own retained FPS estimate, bounded by that
+viewer's requested limit. The shared stream still honors the minimum live estimate/requested limit, pending
+congestion and startup cap. A shared restriction cannot lower another viewer's estimate or
+justify probing a higher rate; new unrestricted feedback still permits normal adaptation.
+Removing a viewer immediately recalculates the rate from remaining live owners.
+At test-only baseline `4d99946f`, three controller cases failed and the four earlier probe
+controls passed. Source `6c9eeaf3` passed all eight cases in 317 VM seconds on the
+complete Linux parent library: all seven baseline cases remain byte-identical; the extra
+control covers restricted-rate nonincrease followed by unrestricted adaptation to 120 FPS.
+Custom/automatic limits, pending congestion, remaining owner identity/limits and final reset
+are exercised with controlled elapsed/RTT inputs. No real socket impairment or pixels ran.
+Artifact `358d9a4a028296784403cc59831edcf1436c638a8135e236aed705d6b2cced15` is stable before/after. Source,
+raw results, limits, endpoint observations and joined RAM/VM/private-root retirement are in
+`.harness-state/verifier-vm/video-qos-peer-baseline-4d99946f.json` and
+`video-qos-peer-accepted-6c9eeaf3.json`. The existing bounded parent profile is unchanged.
+This is controller recovery evidence. R-F5 real-peer presented-frame/input-visible latency,
+network impairment, numeric budgets, all supported roles and multi-hour acceptance remain OPEN.
+All user-parked work remains OPEN/PARKED.
+
 ### Current source disposition — not native closure
 
 Normative behavior and detailed mechanics live in the named requirements and Appendix C rows; dedicated status entries

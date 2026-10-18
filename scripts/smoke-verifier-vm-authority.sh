@@ -6375,7 +6375,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
         || fail 'option acknowledgement artifact receipt differs'
     mapfile -t option_wire_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=24 unchanged=before-after execution_seconds=[0-9]+$'
+            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=25 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#option_wire_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'OPTION_WIRE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -6429,19 +6429,19 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
     [ "$(/usr/bin/grep -Fc 'UI_STATE_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 4 ] \
         || fail 'Flutter preference bridge named case inventory differs'
     require_exact_fixed_receipt \
-        'VOICE_INPUT_EXPORT_BEFORE=observed failure_reported=false viewer_preserved=true' \
+        'VOICE_INPUT_EXPORT_BEFORE=observed failure_reported=false failed_read_default=true viewer_preserved=true' \
         'historical voice-call input export hides missing-receiver failure'
     require_exact_fixed_receipt \
-        'VOICE_INPUT_EXPORT_NATIVE=observed failure_reported=true viewer_selected=true viewer_preserved=true config_preserved=true' \
+        'VOICE_INPUT_EXPORT_NATIVE=observed failure_reported=true read_failure_reported=true viewer_selected=true viewer_preserved=true config_preserved=true' \
         'voice-call input export reports failure and preserves viewer state'
     require_exact_fixed_receipt \
-        'VOICE_INPUT_WIRE_DART=pass cases=4 native_errors=2 error=RESULT_ERROR viewer=selected-and-default cm_failure=reported retry=reported state=preserved config=unchanged' \
+        'VOICE_INPUT_WIRE_DART=pass cases=5 native_errors=3 error=RESULT_ERROR viewer=selected-and-default cm_failure=reported read_failure=reported retry=reported state=preserved config=unchanged' \
         'voice-call input native bridge outcomes'
-    for case_name in viewer_selection viewer_default cm_missing_receiver cm_retry_preserves_viewer; do
+    for case_name in viewer_selection viewer_default cm_missing_receiver cm_retry_preserves_viewer cm_read_failure; do
         require_exact_fixed_receipt "VOICE_INPUT_WIRE_DART_CASE=pass name=$case_name" \
             "voice-call input native bridge case $case_name"
     done
-    [ "$(/usr/bin/grep -Fc 'VOICE_INPUT_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 4 ] \
+    [ "$(/usr/bin/grep -Fc 'VOICE_INPUT_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 5 ] \
         || fail 'voice-call input native bridge named case inventory differs'
     require_exact_fixed_receipt \
         "OPTION_ACK_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \

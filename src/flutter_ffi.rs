@@ -1632,18 +1632,19 @@ pub fn set_voice_call_input_device(_is_cm: bool, _device: String) -> Result<()> 
     }
 }
 
-pub fn get_voice_call_input_device(_is_cm: bool) -> String {
+pub fn get_voice_call_input_device(_is_cm: bool) -> Result<String> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    if _is_cm {
-        match crate::ipc::get_config("voice-call-input") {
-            Ok(Some(device)) => device,
-            _ => "".to_owned(),
+    {
+        if _is_cm {
+            crate::ipc::get_config("voice-call-input").map(Option::unwrap_or_default)
+        } else {
+            Ok(crate::audio_service::get_voice_call_input_device().unwrap_or_default())
         }
-    } else {
-        crate::audio_service::get_voice_call_input_device().unwrap_or_default()
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
-    "".to_owned()
+    {
+        bail!("Voice-call input-device selection is unavailable on mobile")
+    }
 }
 
 pub fn main_get_last_remote_id() -> String {

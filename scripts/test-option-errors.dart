@@ -349,7 +349,20 @@ Future<void> main(List<String> arguments) async {
         'voice-call input selection changed durable configuration');
     print('VOICE_INPUT_WIRE_DART_CASE=pass name=$name');
   }
-  check(voiceErrors == 2, 'voice-call input native error count differs');
-  print('VOICE_INPUT_WIRE_DART=pass cases=4 native_errors=2 error=RESULT_ERROR '
-      'viewer=selected-and-default cm_failure=reported retry=reported state=preserved config=unchanged');
+  Object? voiceReadFailure;
+  try {
+    await api.getVoiceCallInputDevice(isCm: true);
+  } catch (error) {
+    voiceReadFailure = error;
+  }
+  check(voiceReadFailure is FfiException &&
+      (voiceReadFailure as FfiException).code == 'RESULT_ERROR',
+      'failed CM voice-call input read was reported as a default device');
+  voiceErrors++;
+  check(await api.getVoiceCallInputDevice(isCm: false) == 'viewer-microphone',
+      'failed CM voice-call input read changed viewer state');
+  print('VOICE_INPUT_WIRE_DART_CASE=pass name=cm_read_failure');
+  check(voiceErrors == 3, 'voice-call input native error count differs');
+  print('VOICE_INPUT_WIRE_DART=pass cases=5 native_errors=3 error=RESULT_ERROR '
+      'viewer=selected-and-default cm_failure=reported read_failure=reported retry=reported state=preserved config=unchanged');
 }

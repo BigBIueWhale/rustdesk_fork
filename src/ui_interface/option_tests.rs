@@ -73,12 +73,14 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
     crate::flutter_ffi::set_voice_call_input_device(false, "viewer-microphone".into()).result().unwrap();
     let viewer_selected = crate::audio_service::get_voice_call_input_device().as_deref() == Some("viewer-microphone");
     let before_voice_failure = before_voice::set_voice_call_input_device(true, "cm-microphone".into()).result().is_err();
+    let before_read_default = before_voice::get_voice_call_input_device(true).is_empty();
     let before_viewer_preserved = crate::audio_service::get_voice_call_input_device().as_deref() == Some("viewer-microphone");
-    println!("VOICE_INPUT_EXPORT_BEFORE=observed failure_reported={before_voice_failure} viewer_preserved={before_viewer_preserved}");
-    assert!(!before_voice_failure && before_viewer_preserved);
+    println!("VOICE_INPUT_EXPORT_BEFORE=observed failure_reported={before_voice_failure} failed_read_default={before_read_default} viewer_preserved={before_viewer_preserved}");
+    assert!(!before_voice_failure && before_read_default && before_viewer_preserved);
     let voice_failure = crate::flutter_ffi::set_voice_call_input_device(true, "cm-microphone".into()).result().is_err();
+    let read_failure = crate::flutter_ffi::get_voice_call_input_device(true).is_err();
     let viewer_preserved = crate::audio_service::get_voice_call_input_device().as_deref() == Some("viewer-microphone");
     let config_preserved = std::fs::read(&file).unwrap() == original;
-    println!("VOICE_INPUT_EXPORT_NATIVE=observed failure_reported={voice_failure} viewer_selected={viewer_selected} viewer_preserved={viewer_preserved} config_preserved={config_preserved}");
-    assert!(voice_failure && viewer_selected && viewer_preserved && config_preserved);
+    println!("VOICE_INPUT_EXPORT_NATIVE=observed failure_reported={voice_failure} read_failure_reported={read_failure} viewer_selected={viewer_selected} viewer_preserved={viewer_preserved} config_preserved={config_preserved}");
+    assert!(voice_failure && read_failure && viewer_selected && viewer_preserved && config_preserved);
 }

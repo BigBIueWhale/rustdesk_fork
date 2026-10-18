@@ -5022,6 +5022,12 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$MODE" = hbb-common-fs ]; then
             awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'Shared-library failure artifact metadata could not be read\n' >&2
+            awk '
+                /^test (tcp::(writer_receipt_tests|eof_tests)|bytes_codec::tests)::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ {
+                    if (++cases <= 64) print
+                }
+                /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
+            ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'File-peer probe failure artifact metadata could not be read\n' >&2
         fi

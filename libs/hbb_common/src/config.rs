@@ -1343,6 +1343,9 @@ fn patch(path: PathBuf) -> PathBuf {
     path
 }
 
+#[cfg(all(test, target_os = "linux"))]
+mod option_tests;
+
 impl Config2 {
     fn load() -> Config2 {
         Config::load_::<Config2>("2")

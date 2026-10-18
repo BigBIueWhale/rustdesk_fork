@@ -64,7 +64,7 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'verifier-VM input/run overrides are lifecycle-internal' >&2; exit 2; }
         ;;
-    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests|1:--file-send-digest-tests|1:--file-metadata-tests|1:--writer-retirement-tests)
+    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests|1:--file-send-digest-tests|1:--file-metadata-tests|1:--writer-retirement-tests|1:--config-options-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Rust-test input/run overrides are forbidden' >&2; exit 2; }
@@ -79,6 +79,8 @@ case "$#:${1:-}" in
             RUST_TEST_PROFILE=file-metadata
         elif [ "$1" = --writer-retirement-tests ]; then
             RUST_TEST_PROFILE=writer-retirement
+        elif [ "$1" = --config-options-tests ]; then
+            RUST_TEST_PROFILE=config-options
         fi
         ;;
     1:--cpace-recovery-tests)
@@ -542,6 +544,7 @@ case "$#:${1:-}" in
         printf 'Send digest size admission: %s --file-send-digest-tests\n' "${0##*/}" >&2
         printf 'File metadata admission/finality: %s --file-metadata-tests\n' "${0##*/}" >&2
         printf 'TCP writer retirement: %s --writer-retirement-tests\n' "${0##*/}" >&2
+        printf 'Ordinary option persistence: %s --config-options-tests\n' "${0##*/}" >&2
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
@@ -4501,6 +4504,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
         guest_invocation+=' --file-metadata'
     elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
         guest_invocation+=' --writer-retirement'
+    elif [ "$RUST_TEST_PROFILE" = config-options ]; then
+        guest_invocation+=' --config-options'
     fi
 elif [ "$MODE" = cpace-recovery-tests ]; then
     guest_invocation+=" --cpace-recovery-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
@@ -5736,6 +5741,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
         hbb_receipt_kind=FILE_METADATA_VM
     elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
         hbb_receipt_kind=WRITER_RETIREMENT_VM
+    elif [ "$RUST_TEST_PROFILE" = config-options ]; then
+        hbb_receipt_kind=CONFIG_OPTIONS_VM
     fi
     if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         hbb_image_index=$DEV_CHECK_IMAGE_ID
@@ -5752,7 +5759,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
     HBB_COMMON_FS_ARTIFACT_SHA256=${hbb_common_fs_receipts[0]#*artifact_sha256=}
     HBB_COMMON_FS_ARTIFACT_SHA256=${HBB_COMMON_FS_ARTIFACT_SHA256%% *}
     printf '%s\n' "${hbb_common_fs_receipts[0]}"
-    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ] && [ "$HBB_SEND_DIGEST_TESTS" -eq 0 ] && [ "$RUST_TEST_PROFILE" != file-metadata ] && [ "$RUST_TEST_PROFILE" != writer-retirement ]; then
+    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ] && [ "$HBB_SEND_DIGEST_TESTS" -eq 0 ] && [ "$RUST_TEST_PROFILE" != file-metadata ] && [ "$RUST_TEST_PROFILE" != writer-retirement ] && [ "$RUST_TEST_PROFILE" != config-options ]; then
         mapfile -t peer_probe_artifacts < <(
             /usr/bin/grep -Eo 'FILE_PEER_PROBE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/examples/probe_client-[0-9a-f]{16} tests=5 unchanged=before-after' "$SERIAL_LOG"
         )
@@ -7511,6 +7518,10 @@ elif [ "$MODE" = hbb-common-fs ]; then
     elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test fs::tests::send_digest_[a-z_]+ \.\.\. ok|SEND_DIGEST_(BEFORE|SIZE)=.*'
         printf 'FILE_SEND_DIGEST_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=2 artifact_sha256=%s scope=send-digest-size-admission network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+            "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = config-options ]; then
+        printf 'CONFIG_OPTIONS_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s scope=production-option-persistence network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then

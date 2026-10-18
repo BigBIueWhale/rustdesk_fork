@@ -109,6 +109,7 @@ case "$#:${8:-}" in
             --send-digest) HBB_SEND_DIGEST_TESTS=1 ;;
             --file-metadata) RUST_TEST_PROFILE=file-metadata ;;
             --writer-retirement) RUST_TEST_PROFILE=writer-retirement ;;
+            --config-options) RUST_TEST_PROFILE=config-options ;;
             *) exit 2 ;;
         esac
         ;;
@@ -3057,6 +3058,17 @@ run_focused_rust_tests() {
                 fs::atomic_write::unix::tests::late_error_never_removes_a_published_file
             )
         fi
+        if [ "$RUST_TEST_PROFILE" = config-options ]; then
+            source_fingerprints+=(libs/hbb_common/src/config/option_tests.rs)
+            required_tests=(
+                config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal
+                config::tests::config_transaction_traverses_search_only_existing_ancestor
+                config::tests::config_transaction_creates_missing_parent_components_privately
+                config::tests::config_transaction_rejects_symlink_parent_and_replaces_final_link_itself
+                config::option_tests::failed_write_preserves_memory_and_allows_the_same_retry
+                config::option_tests::failed_pinned_entry_purge_remains_retryable
+            )
+        fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             required_tests=(
                 tcp::writer_receipt_tests::protobuf_send_refuses_before_encoding
@@ -4599,6 +4611,19 @@ run_focused_rust_tests() {
                                     exit "$group_status"
                                 fi
                             done
+                        elif [ "$RUST_TEST_PROFILE" = config-options ]; then
+                            for group in config::tests::config_transaction_ config::option_tests::; do
+                                group_status=0
+                                timeout --signal=TERM --kill-after=5s 20s \
+                                    "$test_executable" "$group" --color never --test-threads=1 --show-output \
+                                    || group_status=$?
+                                [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                                if [ "$group_status" -ne 0 ]; then
+                                    printf "CONFIG_OPTIONS_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
+                                        "$artifact_sha" "$group_status"
+                                    exit "$group_status"
+                                fi
+                            done
                         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
                             for group in tcp::writer_receipt_tests:: tcp::eof_tests:: \
                                 bytes_codec::tests:: tcp::writer_lifetime_tests::; do
@@ -5289,6 +5314,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=3; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=4; fi
+        if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=2; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
@@ -5842,6 +5868,9 @@ PY
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             [ "$tests_passed" -eq 13 ] || fail 'file metadata test total differs'
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_' "$output"
+        elif [ "$RUST_TEST_PROFILE" = config-options ]; then
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'
+            grep -E '^test config::(tests::config_transaction_[[:alnum:]_]+|option_tests::[[:alnum:]_]+) [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq 35 ] || fail 'writer retirement test total differs'
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests)::[[:alnum:]_]+ [.][.][.] ok$|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME)=' "$output"
@@ -5870,6 +5899,10 @@ PY
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             printf 'FILE_METADATA_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = config-options ]; then
+            printf 'CONFIG_OPTIONS_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then

@@ -5791,8 +5791,8 @@ PY
             cat "$native_output"
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            printf 'FILE_METADATA_VM=pass commit=%s tree=%s tests=8 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
-                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$hbb_test_artifact_sha" \
+            printf 'FILE_METADATA_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             printf 'FILE_SEND_DIGEST_VM=pass commit=%s tree=%s tests=2 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-size-admission cleanup=joined\n' \

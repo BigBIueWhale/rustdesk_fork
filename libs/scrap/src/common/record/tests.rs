@@ -754,3 +754,58 @@ fn native_disabled_av1_mux_is_refused() {
     assert!(refused, "disabled AV1 mux configuration accepted");
     assert!(fs::read(&output).unwrap().is_empty());
 }
+
+fn record_label(dir: &Path, label: &str) -> PathBuf {
+    let mut recorder = Recorder::new(RecorderContext {
+        server: false, id: label.into(), dir: dir.to_str().unwrap().into(),
+        display_idx: 0, camera: false,
+    }).unwrap();
+    for frame in native_frames(VpxVideoCodecId::VP8) {
+        recorder.write_frame(&vp8_batch(frame), 64, 48).expect("recording label must remain usable");
+    }
+    let output = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+    drop(recorder);
+    assert_webm(&output, b"V_VP8");
+    assert_eq!(webm_timestamps(&output), vec![0, 2_000_000_000]);
+    output
+}
+
+#[test]
+fn native_recording_label_cannot_escape_directory() {
+    let root = TestDir::new();
+    let selected = root.0.join("recordings");
+    fs::create_dir(&selected).unwrap();
+    fs::create_dir(selected.join("outgoing_child")).unwrap();
+    let output = record_label(&selected, "child/../../escaped");
+    let resolved = output.canonicalize().unwrap();
+    assert_eq!(resolved.parent(), Some(selected.as_path()), "recording escaped selected directory");
+    assert_eq!(fs::read_dir(&root.0).unwrap().count(), 1);
+    assert!(fs::read_dir(selected.join("outgoing_child")).unwrap().next().is_none());
+}
+
+#[test]
+fn native_recording_long_label_still_records() {
+    let dir = TestDir::new();
+    let label = format!("{}.{}.{}.{}", "a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(61));
+    assert_eq!(label.len(), 253);
+    let output = record_label(&dir.0, &label);
+    assert!(output.file_name().unwrap().len() <= 200, "unbounded recording filename");
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1);
+}
+
+#[test]
+fn native_recording_label_uses_portable_component() {
+    let dir = TestDir::new();
+    for label in ["192.0.2.1", "[2001:db8::1]:21118", "node\\share:*?<>|\"", "日本語\0\n", "", "CON"] {
+        let output = record_label(&dir.0, label);
+        let component = output.file_name().unwrap().to_str().unwrap();
+        assert!(component.len() <= 200);
+        assert!(component.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')),
+            "nonportable recording filename: {}", component);
+        assert_eq!(output.parent(), Some(dir.0.as_path()));
+        if label == "192.0.2.1" {
+            assert!(component.starts_with("outgoing_192.0.2.1_"), "ordinary address hint lost");
+        }
+    }
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 6);
+}

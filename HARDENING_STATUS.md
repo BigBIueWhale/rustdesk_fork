@@ -2345,6 +2345,10 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 retains no pathname for deletion. Created short, unwritten and incomplete outputs remain.
 Unused recording events are absent. Native frame rejection returns an error, retires the
 backend and closes this recorder's later frame/resize admission.
+Connection labels supply only a bounded ASCII filename hint: at most 64 characters,
+with non-alphanumeric/dot/underscore/hyphen characters replaced. Ordinary IPv4 hints
+remain readable, and the existing per-file UUID supplies uniqueness. Raw labels cannot
+insert directory components or consume the output component's complete length budget.
 The private `record/webm_mux.rs` owns its boxed I/O, native writer, segment and track.
 Callbacks complete buffers with write_all, retry Interrupted, latch I/O errors and return
 native signed -1/false on position/seek failure. No fallible-seek unwrap or escaped copyable
@@ -2368,35 +2372,24 @@ Disabled `Av1s` batches refuse before filename, context or epoch mutation; an ex
 VP8 recording remains usable. The AV1 backend/extension and dummy codec-private-data
 branches are deleted under Appendix C #87/#88.
 
-Earlier creation/stop and frame-rejection A/B receipts remain in
-`.harness-state/verifier-vm/recording-lifetime-accepted-51b6d4fa.json` and
-`recording-rejection-accepted-dd17dc38.json`. Their twelve real file/mux controls remain.
-Writer baseline `ab16c68c` passes fourteen controls and fails four new cases: partial-write
-completion, Interrupted output, a real kernel ESPIPE destination and invalid configuration.
-The Interrupted case reports native success but fails the actual output's EBML-header oracle.
-The nonseekable case reaches the pinned callback's unwrap panic. Child diagnostics are retained.
-Owner implementation `0395c8c4` with corrected lock graph `b3cc5328` passes the identical
-eighteen tests, including zero-write and absolute-seek refusal and destination-drop checks.
-Source/artifact, failures, exact inventory, endpoint, bounded RAM and joined cleanup evidence are in
-`.harness-state/verifier-vm/webm-writer-accepted-b3cc5328.json` and its referenced baselines.
+Product `32c1f4c5` passes 32 actual Linux native tests. Identical baseline `b20efce3`
+passes 29 controls and fails three filename cases: actual selected-directory escape
+inside the owned fixture root, kernel ENAMETOOLONG for a 253-byte label, and a finalized
+IPv6-label filename outside the portable character contract. Corrected cases preserve
+selected-directory placement and produce complete native VP8 data with timestamps at
+zero and two seconds. The portable-character check runs on Linux; Windows execution is open.
+The transaction takes 290 VM seconds: library build 80s, native tests 0.05s and actual
+production-parent check 149s. Both application callers compile; app runtime is unexecuted.
+Combined runs are integration checkpoints; native failure skips parent compilation.
+`.harness-state/verifier-vm/recording-label-accepted-32c1f4c5.json` binds the unchanged
+tests, exact source/artifact, baseline, endpoints, bounded RAM and joined cleanup.
+Dependencies and pins are unchanged.
 
-Timeline baseline `750b4499` passes nineteen controls and fails seven cases: nonzero and
-negative origins, rollback/key wait, rapid rotation, overflow, initial nonkey/empty input,
-and replacement after a real file-limit finalization failure. Product `b7b192f4` passes the
-identical twenty-six native tests. Actual finalized WebM blocks establish zero origin and
-preserved intervals. The transaction takes 293 VM seconds: library build 79s, native tests
-0.04s and production-parent check 150s. Both application callers compile; app runtime is
-unexecuted. Combined runs are integration checkpoints; native failure skips parent compilation.
-Exact artifacts, unchanged tests/source captures, endpoint and joined RAM/VM cleanup evidence
-are in `.harness-state/verifier-vm/recording-timeline-accepted-b7b192f4.json` and its baselines.
-
-Disabled-codec baseline `731600f6` passes all twenty-six controls and fails three new
-cases: AV1 creates output, is accepted during active VP8, and native mux construction
-accepts AV1. Product `0a006007` passes the identical twenty-nine native tests, including
-continued VP8 output and actual timestamps after refusal. The transaction takes 295 VM
-seconds: library build 78s, native tests 0.05s and production-parent check 149s; app runtime
-is unexecuted. Exact source/artifact, baseline, bounded RAM and joined cleanup evidence is in
-`.harness-state/verifier-vm/recording-codec-accepted-0a006007.json`. Dependencies are unchanged.
+Earlier lifetime, frame-rejection, native writer, timeline and disabled-codec A/B evidence
+remains in `.harness-state/verifier-vm/recording-lifetime-accepted-51b6d4fa.json`,
+`recording-rejection-accepted-dd17dc38.json`, `webm-writer-accepted-b3cc5328.json`,
+`recording-timeline-accepted-b7b192f4.json` and `recording-codec-accepted-0a006007.json`,
+including their referenced failures. Their named controls remain in the current suite.
 
 Initial parent-directory authority, caller/UI outcomes including keyframe requests, complete
 recording/playback, native allocation-failure/heap evidence,

@@ -1710,8 +1710,8 @@ loss, bandwidth/jitter/outage recovery, mobile/desktop combinations, input-to-vi
 numeric latency/recovery budgets and multi-hour drift/resource acceptance remain OPEN under R-F5.
 The receive-acquisition race and all other user-parked work remain OPEN/PARKED.
 
-**Video QoS baseline subtraction — SOURCE CORRECTED; native controller replay OPEN.**
-`UserDelay::avg_delay` now uses saturating subtraction of the learned RTT from the
+**Video QoS baseline subtraction — Linux controller ACCEPTED; full latency OPEN.**
+Product `8a05385e` makes `UserDelay::avg_delay` use saturating subtraction of the learned RTT from the
 maximum of completed-delay average and pending-probe age. Equality produces zero
 excess delay; the previous strict-greater branch reintroduced the full baseline
 RTT at equality and could keep the FPS/quality controller in its congestion branch.
@@ -1719,25 +1719,29 @@ The existing warmup, estimator/window, thresholds, pending-probe ownership, shar
 rate constraints and viewer limits are unchanged. Connection feedback remains
 derived from the server's retained monotonic probe timer, not the peer's timestamp.
 
-Three added production-controller cases cover constant 150/250/1000 ms baselines,
-three outage/recovery cycles with the same viewer and 20-FPS limit, and continued
-rate reduction for excess delay. The eight prior cases remain. The existing
-`--video-qos-tests` lane retains diagnostics and executable identity after both
-success and failure; no standalone model or new compiler lane is substituted.
-**These eleven cases have not executed or compiled in this slice.** The actual
-unchanged-product attempt at `249a6713` refused before VM/scratch creation:
-18,410 MiB available against the unchanged 20,480-MiB floor. A subsequent bounded
-45-second RAM observation remained below admission. Baseline `8789a96d` preserves
-the old production calculation and final eleven-case recipe for the pending A/B.
-No behavioral failure/pass or recovery deadline is claimed from source inspection.
+The complete Linux parent library at `8a05385e` passes all eleven controller
+cases in the existing `--video-qos-tests` lane on Rust 1.75: constant
+150/250/1000-ms RTT baselines yield zero excess, 30 FPS and target quality; three
+pending-outage/recovery cycles restore the same viewer's 20-FPS limit and target
+quality without reopening; 1,250 ms of excess delay still reduces the rate.
+All eight earlier pending-probe/shared-viewer controls pass. The run takes 339
+outer seconds, including 243 reported build seconds; the test phase is below the
+driver's one-second reporting resolution. These are controlled elapsed/RTT inputs
+to production methods, not actual packets, pixels or a timed recovery deadline.
 
-Source/refusal provenance and the separate fresh ledger count are retained in
-`.harness-state/verifier-vm/video-qos-baseline-source-8789a96d.json`.
-Run that baseline and the corrected source with identical cases when admission
-permits. Native Windows/Apple/mobile, real impaired peers, presented-frame and
+The executable digest stays identical before/after execution. All eleven names,
+seven new observations, exact source/recipe/artifact bindings, complete endpoint
+records and joined bounded RAM/private-root retirement are retained in
+`.harness-state/verifier-vm/video-qos-rtt-8a05385e.json`.
+Earlier source/refusal provenance remains in
+`video-qos-baseline-source-8789a96d.json`. The byte-identical eleven-case module and
+recipe are preserved at old-product `8789a96d`, but that source did not execute.
+The harness requires one checked-out pushed master; this current-source pass is
+not an empirical A/B comparison. Admission, limits and source authority are unchanged.
+Native Windows/Apple/mobile, real impaired peers, presented-frame and
 input-visible latency, numeric recovery/resource bounds and multi-hour R-F5
-acceptance remain OPEN. Earlier eight-case receipts do not validate this change;
-installed authority, broader release work and every explicit user park stay OPEN.
+acceptance remain OPEN. Installed authority, broader release work and every
+explicit user park stay OPEN.
 
 **Per-viewer video QoS rate ownership — Linux controller ACCEPTED; full latency OPEN.**
 Each viewer's completed feedback updates its own retained FPS estimate, bounded by that

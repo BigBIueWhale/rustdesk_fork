@@ -904,4 +904,55 @@ mod tests {
         assert!(excess >= DELAY_THRESHOLD_150MS && rate_reduced && quality_not_increased);
     }
 
+    #[test]
+    fn two_fresh_replies_retire_a_completed_delay_spike() {
+        let mut qos = healthy_controller();
+        qos.user_custom_fps(7, 20);
+        qos.user_network_delay(7, 2020);
+        qos.user_network_delay(7, 20);
+        assert!(qos.users[&7].delay.avg_delay() >= DELAY_THRESHOLD_150MS);
+        qos.user_network_delay(7, 20);
+        let excess = qos.users[&7].delay.avg_delay();
+        let retained = qos.users[&7].delay.delay_history.len();
+        let owner_preserved = qos.users.len() == 1 && qos.users[&7].custom_fps == Some(20);
+        println!("VIDEO_QOS_DELAY_WINDOW=observed excess_ms={excess} retained={retained} fps={} owner_preserved={owner_preserved}", qos.fps());
+        assert_eq!(excess, 0, "two fresh replies must retire the preceding spike");
+        assert_eq!(retained, 2);
+        assert!(qos.fps() >= 10 && owner_preserved);
+    }
+
+    #[test]
+    fn delay_average_accepts_the_full_u32_measurement_domain() {
+        let mut delay = UserDelay::default();
+        delay.add_delay(u32::MAX);
+        delay.add_delay(u32::MAX - 2);
+        let average = delay.avg_delay();
+        delay.pending_delay = Some(u32::MAX);
+        let pending = delay.avg_delay();
+        println!("VIDEO_QOS_DELAY_RANGE=observed average_ms={average} pending_ms={pending}");
+        assert_eq!(average, u32::MAX - 1);
+        assert_eq!(pending, u32::MAX);
+    }
+
+    #[test]
+    fn large_completed_delays_recover_in_the_same_controller() {
+        let mut qos = healthy_controller();
+        qos.user_custom_fps(7, 20);
+        qos.user_network_delay(7, u32::MAX);
+        qos.user_network_delay(7, u32::MAX - 2);
+        let excess = qos.users[&7].delay.avg_delay();
+        assert!(excess >= DELAY_THRESHOLD_150MS && qos.fps() == MIN_FPS);
+        qos.user_delay_response_elapsed(7, u128::MAX);
+        let pending_excess = qos.users[&7].delay.avg_delay();
+        assert!(pending_excess >= excess);
+        qos.user_network_delay(7, 20);
+        qos.user_network_delay(7, 20);
+        let recovered = qos.users[&7].delay.avg_delay();
+        let owner_preserved = qos.users.len() == 1 && qos.users[&7].custom_fps == Some(20)
+            && qos.users[&7].delay.pending_delay.is_none();
+        println!("VIDEO_QOS_DELAY_RECOVERY=observed excess_ms={excess} pending_excess_ms={pending_excess} recovered_ms={recovered} fps={} owner_preserved={owner_preserved}", qos.fps());
+        assert_eq!(recovered, 0);
+        assert!(qos.fps() >= 10 && owner_preserved);
+    }
+
 }

@@ -2610,8 +2610,7 @@ export test executes the byte-identical historical setter/export leaves from
 21ebced8 and their current counterparts against the same private config/IPC environment.
 Historical calls return normally after a rejected key and missing receiver; current calls
 return errors while cache, memory and file remain unchanged. This is a controlled leaf
-comparison, not execution of an old whole-app binary. The initial baseline compilation
-stopped at a missing fixture import and supplies no behavioral verdict.
+comparison, not execution of an old whole-app binary.
 
 Fresh generated bridges and both Flutter suites pass eleven tests: four setting-action
 future/feedback/retry cases and the unchanged complete seven-case timeout dialog module.
@@ -2620,8 +2619,24 @@ exact artifact/source/case receipts, complete endpoint observations, joined RAM 
 and the failed private-root inventory are retained in
 `.harness-state/verifier-vm/option-errors-2435fa92.json`.
 
-The native export calls are Rust calls into the actual function; Dart tests inject the
-write/feedback callbacks. Real Rust-to-Dart wire error delivery, successful framed
+At `7ff56e42`, a newly generated Dart AOT client loads the fresh Linux Flutter native
+library and calls the actual export. Four cases cover an invalid key, a 4,097-byte
+value, an unavailable receiver, and eight identical retries after that failure.
+All eleven failed writes arrive as `FfiException` with `RESULT_ERROR` and their expected
+native causes. Positive native calls run first; synchronous/asynchronous option reads
+continue after every error. The option cache and private configuration file bytes remain
+unchanged. Both existing Rust regressions pass in the same transaction. The native
+library build reuses the dependency target from the library test build; builds take
+37/251 seconds and the bounded integration takes 638 outer seconds. Storage admission,
+VM/container limits and time budgets remain unchanged. Source freezes match
+before/during/after, both artifacts remain unchanged through execution, and VM/RAM
+cleanup is joined. Four complete endpoint records show no additions; one baseline
+endpoint disappears in the after snapshot without process attribution or intervention.
+Exact sources, generated API and artifact digests, named outcomes and cleanup are in
+`.harness-state/verifier-vm/option-wire-7ff56e42.json`.
+
+The earlier Dart widget/action tests inject write/feedback callbacks; the newer probe
+establishes actual Linux Rust-to-Dart error delivery. Successful framed
 main-listener authorization, interactive desktop/mobile/audio effects, restart/concurrent
 writers and installed-platform acceptance remain OPEN. One unattributed endpoint appeared
 in the native after snapshot; harness-created host IP sockets were kernel-denied. It is

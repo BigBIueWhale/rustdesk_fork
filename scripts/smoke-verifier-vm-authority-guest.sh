@@ -8968,6 +8968,8 @@ run_flutter_model_tests() {
                 file_navigation_stage() {
                     if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
                         printf "FLUTTER_FILE_NAVIGATION_STAGE=%s seconds=%s\n" "$1" "$SECONDS"
+                    elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
+                        printf "FLUTTER_AUTO_DISCONNECT_STAGE=%s seconds=%s\n" "$1" "$SECONDS"
                     fi
                 }
                 file_navigation_stage extract-toolchains
@@ -9311,6 +9313,9 @@ run_flutter_model_tests() {
                     exit 1
                 fi
                 file_navigation_stage source-postconditions
+                if [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
+                    cat /work/test.json
+                fi
                 if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
                     [ "$file_navigation_bridge_before" = "$(sha256sum \
                         lib/generated_bridge.dart lib/generated_bridge.freezed.dart)" ]
@@ -9436,13 +9441,13 @@ run_flutter_model_tests() {
     elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
         printf 'FLUTTER_TERMINAL_OUTPUT_STAGE=run-production-terminal-tests\n'
     fi
-    if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         local -a flutter_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
             | while IFS= read -r progress_line; do
                 case "$progress_line" in
-                    FLUTTER_FILE_NAVIGATION_STAGE=*)
+                    FLUTTER_FILE_NAVIGATION_STAGE=*|FLUTTER_AUTO_DISCONNECT_STAGE=*)
                         printf '%s\n' "$progress_line" || exit 1 ;;
                 esac
               done; then

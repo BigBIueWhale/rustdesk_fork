@@ -2343,6 +2343,9 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 **Recording outputs — named Linux file/mux, I/O and timeline components accepted; installed/platform acceptance OPEN.**
 `libs/scrap/src/common/record.rs` creates output exclusively, borrows factory metadata and
 retains no pathname for deletion. Created short, unwritten and incomplete outputs remain.
+Unix WebM creation requests mode 0600 in the same exclusive open. Stricter owner-bit
+umasks remain effective; no later chmod, production umask change or directory relabeling
+is used. Linux native cases observe open/final modes and actual inherited POSIX ACLs.
 Unused recording events are absent. Native frame rejection returns an error, retires the
 backend and closes this recorder's later frame/resize admission.
 Connection labels supply only a bounded ASCII filename hint: at most 64 characters,
@@ -2372,28 +2375,35 @@ Disabled `Av1s` batches refuse before filename, context or epoch mutation; an ex
 VP8 recording remains usable. The AV1 backend/extension and dummy codec-private-data
 branches are deleted under Appendix C #87/#88.
 
-Product `32c1f4c5` passes 32 actual Linux native tests. Identical baseline `b20efce3`
-passes 29 controls and fails three filename cases: actual selected-directory escape
-inside the owned fixture root, kernel ENAMETOOLONG for a 253-byte label, and a finalized
-IPv6-label filename outside the portable character contract. Corrected cases preserve
-selected-directory placement and produce complete native VP8 data with timestamps at
-zero and two seconds. The portable-character check runs on Linux; Windows execution is open.
-The transaction takes 290 VM seconds: library build 80s, native tests 0.05s and actual
-production-parent check 149s. Both application callers compile; app runtime is unexecuted.
+Product `5e9d5b5f` passes 35 actual Linux native tests. Identical baseline `48efadde`
+passes 32 controls and fails three permission cases. VP8/VP9 files were 0666/0644
+under umask 000/022, including before frames; restrictive umask 0200 produced 0466.
+An actual permissive default ACL made the canary and recording 0666 despite umask 077.
+Corrected VP8/VP9 files have maximum 0600, or 0400 under the stricter mask, and native
+output/timestamps remain complete. The inherited named-user ACL remains present with
+mask/other permissions 0; the selected directory stays 0755. Native Apple ACL and Windows
+execution remain open.
+The transaction takes 292 VM seconds: library build 79s, native tests 0.08s and actual
+production-parent check 147s. Both application callers compile; app runtime is unexecuted.
 Combined runs are integration checkpoints; native failure skips parent compilation.
-`.harness-state/verifier-vm/recording-label-accepted-32c1f4c5.json` binds the unchanged
+`.harness-state/verifier-vm/recording-permissions-accepted-5e9d5b5f.json` binds the unchanged
 tests, exact source/artifact, baseline, endpoints, bounded RAM and joined cleanup.
+Complete endpoint records retain unattributed changes: baseline after 13 added/0 removed,
+candidate after 0 added/1 removed. Owned IP sockets are kernel-denied; no global endpoint
+invariance or process ownership is inferred, and pre-existing listeners are untouched.
 Dependencies and pins are unchanged.
 
 Earlier lifetime, frame-rejection, native writer, timeline and disabled-codec A/B evidence
 remains in `.harness-state/verifier-vm/recording-lifetime-accepted-51b6d4fa.json`,
 `recording-rejection-accepted-dd17dc38.json`, `webm-writer-accepted-b3cc5328.json`,
-`recording-timeline-accepted-b7b192f4.json` and `recording-codec-accepted-0a006007.json`,
+`recording-timeline-accepted-b7b192f4.json`, `recording-codec-accepted-0a006007.json`
+and `recording-label-accepted-32c1f4c5.json`,
 including their referenced failures. Their named controls remain in the current suite.
 
 Initial parent-directory authority, caller/UI outcomes including keyframe requests, complete
 recording/playback, native allocation-failure/heap evidence,
-hardware and installed-root recording, and Windows/macOS acceptance remain OPEN.
+hardware and installed-root recording, creator/wrong-principal and authorized UI/read
+transactions, native Apple ACLs and Windows/macOS acceptance remain OPEN.
 These named Linux component results establish no overall recording or LPE closure.
 
 **Frame EOF handling — Linux common codec/TCP component ACCEPTED; installed/platform evidence OPEN.**

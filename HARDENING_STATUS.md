@@ -2384,6 +2384,34 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
+**File modification-time admission — Linux native component corrected; installed/platform acceptance OPEN.**
+Product `a69b64b8` removes the unsigned-to-signed timestamp cast from receive
+finalization. One checked conversion uses the platform's `SystemTime` range and
+the pinned Unix backend's native `time_t` range, then constructs `FileTime` from
+that representable time. Every file-list entry is checked before path inspection
+or job admission, and the publication sink rechecks before changing the staged
+mtime, removing its digest or renaming it over the destination. Invalid values
+return an explicit error; no clamping, wrapping or fallback is introduced.
+
+At identical test baseline `ccc5b9b6`, the manifest and job accepted `u64::MAX`,
+and the real native sink published its content with mtime **−1 Unix second**.
+Three regressions fail and both publication controls pass. The unchanged fixture
+and guest recipe pass all five cases at `a69b64b8`, including protobuf round trip,
+refusal of `u64::MAX` and `2^63`, unchanged admission/files after refusal, valid
+readmission, unchanged staged mtime/digest/destination at sink refusal, and exact
+native publication at epoch zero and 1,600,000,000 seconds. The existing control
+runs its ordinary publication branch; no new storage-fault result is claimed.
+The focused `--file-metadata-tests` selector uses the existing filesystem VM
+profile and exact Cargo-selected library artifact. A/B supervisor times are
+148.275/152.117s; source before/live/after, stable executable digests, complete
+endpoint observations and joined RAM/private-root retirement are retained in
+`.harness-state/verifier-vm/file-metadata-time-a69b64b8.json`.
+This is Linux library/native-file evidence, not installed privilege/principal or
+real peer/UI execution. Full filesystem acceptance, the three parked pre-I/O
+race failures, native Windows/Apple/mobile, filesystem-specific range/rounding
+fidelity, broader lifecycle/resource/latency and release evidence remain OPEN.
+The parked cases and their names are unchanged and are not executed by this selector.
+
 **Recording outputs — named Linux file/mux, I/O and timeline components accepted; installed/platform acceptance OPEN.**
 `libs/scrap/src/common/record.rs` creates output exclusively, borrows factory metadata and
 retains no pathname for deletion. Created short, unwritten and incomplete outputs remain.

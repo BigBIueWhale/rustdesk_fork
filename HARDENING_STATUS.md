@@ -2826,6 +2826,60 @@ all fifteen installed credential actions, R-S0, latency/soak, cold artifacts,
 independent reproduction, external review and release acceptance remain OPEN.
 
 
+**Local preferences — transaction/error path corrected; full interaction/platform acceptance OPEN.**
+Product `ddb77e68`, with correction `1b43a349`, makes `LocalConfig::set_option`
+fallible and uses its existing process-local write lock to save a private candidate
+before publishing memory.
+Replacement, removal and override/default purges preserve prior state on failure;
+an identical healthy retry remains effective. The explicit system-language value
+still stores an empty override, distinct from removing the language preference.
+Already-effective requests need no write. Only this complete LocalConfig method
+changes in production `config.rs`; credential/service policy remains unchanged.
+
+The Rust facade and supported Result exports propagate failures. Texture-render
+notifications follow successful persistence and use effective readback. Input-source
+changes validate their value/platform permission and save before changing active
+grab state; the initializer reports persistence errors. The selector always retries
+persistence before applying a choice. macOS readback uses its nonprompting permission
+check to report the supported Flutter mode; macOS native acceptance remains OPEN.
+Flutter local-preference callers use a shared failure-aware helper before theme/language, control/model,
+reload, file-picker or closing effects. Models use effective readback and retain
+session ownership across awaits; widgets check lifetime. Touch choice and close
+confirmation own one pending submission. No product task, queue, runtime,
+dependency or privilege transition is added.
+
+At `ddb77e68`, the Linux library passes fourteen cases, retaining the previous eleven.
+The byte-identical 1,010-byte historical setter from `31977dc5` reproduces premature
+publication and a skipped identical retry under real permission denial in the same
+current artifact. Corrected replacement/removal and both override/default purges
+preserve memory/file, apply retry and retain unrelated values. Explicit system
+language, removal restoring a custom default and no-write idempotence pass.
+The integration takes 157 outer seconds. At `1b43a349`, fresh bindings and a
+Dart AOT client loading the complete Linux native library pass two existing Rust
+regressions and sixteen actual bridge cases in 562 outer seconds, including
+five local-preference cases and four real `FfiException`/`RESULT_ERROR` failures.
+
+The first bridge attempt rejects colliding receipt names before exporting native
+case/artifact acceptance. `1b43a349` uses distinct local-preference records and retains
+bounded output on relevant gate failures; all prior cases remain required. The failed
+attempt's private root was inventoried and removed by the exact-root helper after termination.
+
+At `ddb77e68`, fresh bindings and all 31 Flutter component cases pass in 329 outer seconds.
+The three new local-preference cases use controlled callbacks for completion,
+synchronous/asynchronous failure, dependent-effect refusal and identical retry.
+Actual persistence and error delivery are established by the native probe above.
+The input-source bridge case has no live peer or native grab activation.
+Full settings pages, mobile gesture controls and physical input effects have not
+been exercised by these component tests. Exact sources, artifacts/cases,
+complete endpoints and joined bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/local-options-ddb77e68.json`.
+
+Restart/cross-process preferences, concurrent platform effects, full interactive
+settings/input acceptance, Windows/macOS/Android/iOS/browser execution and the
+remaining LocalConfig UI/geometry/last-peer setters remain OPEN. All fifteen
+installed credential actions, R-S0, latency/soak, cold artifacts, independent
+reproduction, external review and release acceptance remain OPEN.
+
 **Ordinary option persistence — Linux library/handler corrected; broader acceptance OPEN.**
 Product `f895b8a0` makes `Config::set_option` fallible. Under the existing cache write
 lock, it persists a private candidate before publishing the new in-memory value.

@@ -10,7 +10,6 @@ use hbb_common::{
 use hwcodec::mux::{MuxContext, Muxer};
 use std::{
     fs::{File, OpenOptions},
-    io,
     ops::{Deref, DerefMut},
     path::PathBuf,
     sync::mpsc::Sender,
@@ -285,16 +284,10 @@ struct WebmRecorder {
 
 impl RecorderApi for WebmRecorder {
     fn new(ctx: RecorderContext, ctx2: RecorderContext2) -> ResultType<Self> {
-        let out = match {
-            OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&ctx2.filename)
-        } {
-            Ok(file) => file,
-            Err(ref e) if e.kind() == io::ErrorKind::AlreadyExists => File::create(&ctx2.filename)?,
-            Err(e) => return Err(e.into()),
-        };
+        let out = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&ctx2.filename)?;
         let mut webm = match mux::Segment::new(mux::Writer::new(out)) {
             Some(v) => v,
             None => bail!("Failed to create webm mux"),

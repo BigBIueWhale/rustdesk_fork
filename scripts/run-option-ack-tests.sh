@@ -25,3 +25,5 @@ printf 'OPTION_ACK_ARTIFACT_AFTER=observed sha256=%s tests=2 exit_code=%s unchan
 [ "$execution_status" -eq 0 ] || exit "$execution_status"
 printf 'OPTION_ACK_ARTIFACT=pass sha256=%s executable=%s tests=2 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"
+/bin/bash /source/scripts/run-option-bridge-tests.sh
+[ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]

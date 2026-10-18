@@ -6373,6 +6373,25 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
     [ "${#option_ack_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'OPTION_ACK_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'option acknowledgement artifact receipt differs'
+    mapfile -t option_wire_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=4 unchanged=before-after execution_seconds=[0-9]+$'
+    )
+    [ "${#option_wire_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'OPTION_WIRE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'option bridge artifact receipt differs'
+    require_exact_fixed_receipt \
+        'OPTION_WIRE_DART_BUILD=pass compiler=flutter-3.24.5 format=aot-executable generated_api=exact source=exact-pushed' \
+        'option bridge Dart client compilation'
+    require_exact_fixed_receipt \
+        'OPTION_WIRE_DART=pass cases=4 native_errors=11 error=RESULT_ERROR cache=preserved config=preserved reads=sync-and-async' \
+        'option bridge native errors and unchanged state'
+    for case_name in invalid_key oversized_value missing_receiver repeated_failure_and_readback; do
+        require_exact_fixed_receipt "OPTION_WIRE_DART_CASE=pass name=$case_name" \
+            "option bridge case $case_name"
+    done
+    [ "$(/usr/bin/grep -Fc 'OPTION_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 4 ] \
+        || fail 'option bridge named case inventory differs'
     require_exact_fixed_receipt \
         "OPTION_ACK_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'option acknowledgement compilation and native result'

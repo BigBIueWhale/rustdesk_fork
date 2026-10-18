@@ -2701,20 +2701,26 @@ generate_focused_rust_flutter_bridge() {
                 printf "DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh\n"
                 install -m 0444 /source/src/bridge_generated.rs /bridge/bridge_generated.rs
                 install -m 0444 /source/src/bridge_generated.io.rs /bridge/bridge_generated.io.rs
-                if [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
+                if [[ "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = option-ack ]]; then
                     mkdir /bridge/dart
                     for generated in /source/flutter/lib/generated_bridge*.dart; do
                         [ -f "$generated" ] && [ ! -L "$generated" ]
                         install -m 0444 "$generated" /bridge/dart/
                     done
+                    dart_probe=/source/scripts/test-local-file-listing.dart
+                    dart_prefix=LOCAL_FILE_LISTING
+                    if [ "$RUST_TEST_PROFILE" = option-ack ]; then
+                        dart_probe=/source/scripts/test-option-errors.dart
+                        dart_prefix=OPTION_WIRE
+                    fi
                     timeout --signal=TERM --kill-after=5s 60s \
                         dart compile exe \
                             --packages=/source/flutter/.dart_tool/package_config.json \
-                            /source/scripts/test-local-file-listing.dart \
+                            "$dart_probe" \
                             --output=/bridge/dart/client
                     [ "$(stat -c %s /bridge/dart/client)" -le 33554432 ]
                     chmod 0555 /bridge/dart/client
-                    printf "LOCAL_FILE_LISTING_DART_BUILD=pass compiler=flutter-3.24.5 format=aot-executable generated_api=exact source=exact-pushed\n"
+                    printf "%s_DART_BUILD=pass compiler=flutter-3.24.5 format=aot-executable generated_api=exact source=exact-pushed\n" "$dart_prefix"
                 fi
                 [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
                 printf "ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s source=exact-pushed network=none outputs=readonly-publication\n" \
@@ -2793,6 +2799,11 @@ generate_focused_rust_flutter_bridge() {
             && [ "$(stat -c '%u:%g:%a:%h' "$bridge_root/dart/client")" = 1000:1000:555:1 ] \
             || fail 'local file-listing Dart compilation receipt or artifact differs'
         printf 'LOCAL_FILE_LISTING_DART_BUILD=pass compiler=flutter-3.24.5 format=aot-executable generated_api=exact source=exact-pushed\n'
+    elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
+        [ "$(grep -Fxc 'OPTION_WIRE_DART_BUILD=pass compiler=flutter-3.24.5 format=aot-executable generated_api=exact source=exact-pushed' "$output")" -eq 1 ] \
+            && [ "$(stat -c '%u:%g:%a:%h' "$bridge_root/dart/client")" = 1000:1000:555:1 ] \
+            || fail 'option bridge Dart compilation receipt or artifact differs'
+        printf 'OPTION_WIRE_DART_BUILD=pass compiler=flutter-3.24.5 format=aot-executable generated_api=exact source=exact-pushed\n'
     fi
     printf '%s\n' "$freshness_line"
     printf 'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh\n'
@@ -4002,6 +4013,7 @@ run_focused_rust_tests() {
                 scripts/fixtures/option-export-before-errors.rs
                 libs/hbb_common/src/config.rs
                 scripts/run-option-ack-tests.sh scripts/linux-parent-test-build.sh
+                scripts/run-option-bridge-tests.sh scripts/test-option-errors.dart
             )
             required_tests=(
                 ipc::test::ordinary_option_ack_waits_for_persistence
@@ -4401,6 +4413,9 @@ run_focused_rust_tests() {
             if [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
                 bridge_mounts+=(--mount "type=bind,source=$ROOT/focused-rust-bridge/dart,target=/listing-dart,readonly")
                 (cd "$ROOT/focused-rust-bridge/dart" && sha256sum ./*) >"$ROOT/listing-dart-before.sha256"
+            elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
+                bridge_mounts+=(--mount "type=bind,source=$ROOT/focused-rust-bridge/dart,target=/option-dart,readonly")
+                (cd "$ROOT/focused-rust-bridge/dart" && sha256sum ./*) >"$ROOT/option-dart-before.sha256"
             fi
         fi
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$image_archive")" = \
@@ -5258,7 +5273,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
-            | awk '/^(RECORDING_OUTPUT(_PARENT)?|VIEWER_VIDEO|VIDEO_QOS|OPTION_ACK|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() } /^test common::record::tests::/ { print "RECORDING_OUTPUT_PROGRESS=" $0; fflush() } /^RECORDING_OUTPUT_FAILURE=/ { print; fflush() }'; then
+            | awk '/^(RECORDING_OUTPUT(_PARENT)?|VIEWER_VIDEO|VIDEO_QOS|OPTION_ACK|OPTION_WIRE|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() } /^test common::record::tests::/ { print "RECORDING_OUTPUT_PROGRESS=" $0; fflush() } /^RECORDING_OUTPUT_FAILURE=/ { print; fflush() }'; then
             parent_start_status=("${PIPESTATUS[@]}")
         else
             parent_start_status=("${PIPESTATUS[@]}")
@@ -5586,6 +5601,15 @@ PY
             && [ "$(grep -Fxc 'OPTION_EXPORT_NATIVE=observed refused=true missing_receiver=true cache_preserved=true memory_preserved=true file_preserved=true' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_EXPORT_BEFORE=observed refused=false missing_receiver=false state_preserved=true' "$output")" -eq 1 ] \
             || fail 'option acknowledgement artifact or native outcomes differ'
+        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=4 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'OPTION_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'OPTION_WIRE_DART=pass cases=4 native_errors=11 error=RESULT_ERROR cache=preserved config=preserved reads=sync-and-async' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'OPTION_WIRE_DART_CASE=' "$output")" -eq 4 ] \
+            || fail 'option bridge artifact or Dart outcomes differ'
+        for case_name in invalid_key oversized_value missing_receiver repeated_failure_and_readback; do
+            [ "$(grep -Fxc "OPTION_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
+                || fail "option bridge case differs: $case_name"
+        done
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
         [ "$(grep -Ec '^VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=14 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -5866,6 +5890,13 @@ PY
             printf 'LOCAL_FILE_LISTING_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
+        elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
+            (cd "$ROOT/focused-rust-bridge/dart" && sha256sum --check "$ROOT/option-dart-before.sha256") \
+                || fail 'option generated Dart bridge or executable changed during parent execution'
+            cat "$ROOT/option-dart-before.sha256"
+            printf 'OPTION_WIRE_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
+                "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
+                "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             printf 'VIEWER_RESUME_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
@@ -6076,7 +6107,7 @@ PY
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
             [ "$tests_passed" -eq 2 ] || fail 'option acknowledgement total differs'
-            grep -E '^test (ipc::test::ordinary_option_ack_waits_for_persistence|ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver) [.][.][.] ok$|^OPTION_(ACK_(BUILD=pass |ARTIFACT(_AFTER)?=|NATIVE=)|EXPORT_(NATIVE|BEFORE)=)' "$output"
+            grep -E '^test (ipc::test::ordinary_option_ack_waits_for_persistence|ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver) [.][.][.] ok$|^OPTION_(ACK_(BUILD=pass |ARTIFACT(_AFTER)?=|NATIVE=)|EXPORT_(NATIVE|BEFORE)=|WIRE_)' "$output"
             printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

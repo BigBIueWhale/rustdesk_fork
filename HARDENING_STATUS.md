@@ -156,16 +156,20 @@ contract. Sciter build history, a live `hbb_common` submodule and historical dep
 are removed. The toolchain default's comments now agree with the release manifest; its parsed
 configuration is unchanged. First-pin provenance, independent corroboration, compiler/codegen
 identities, captured Windows inputs, SHA-1 residual review and moving-ref refusal remain required.
-The dependency inventory snapshot is reconciled at `9b1c643f`: 894 Cargo packages, 34 Git records
-from 24 Git sources, 65 direct Flutter dependencies, 198 Pub-lock packages with three Git records,
-and seven indexed build scripts. History review accounts for the retired TFC, alternate X11,
-libxdo and address_it records, existing dependency-edge changes, fake_async's direct-test role,
-the committed xterm path and the retained camera fixture's build script. No lockfile, dependency
-pin or parser behavior changes in this slice. The actual checker first reports fifteen snapshot
-differences on `dac06f59`, then passes on `9b1c643f` in 17 VM seconds with identical inventory data.
+The current dependency inventory at `b3cc5328` has 889 Cargo packages, 33 Git records from
+24 unchanged Git sources, 65 direct Flutter dependencies, 198 Pub-lock packages with three
+Git records, and seven indexed build scripts. The WebM consumer migration removes webm,
+quest and its exclusive rpassword2/kernel32-sys/winapi0.2 chain. No surviving package identity,
+version, source or checksum changes; only scrap's resolved dependency edges change.
+Redundant winapi/rpassword version qualifiers are normalized. All 889 records are reachable
+from actual path/workspace records. Only five derived Cargo EXPECTED facts change in the
+checker; its parser/selftests and other inventory fields remain unchanged. The actual complete
+checker passes in 13 VM seconds; source/index, results and joined cleanup are retained in
+`.harness-state/verifier-vm/webm-writer-accepted-b3cc5328.json`.
 `scripts/smoke-verifier-vm-authority.sh --dependency-inventory` uses the actual complete Git index,
 read-only inputs and a nonroot, capability-free, networkless guest; joined RAM/VM cleanup and
-unchanged host endpoints pass. Baseline and accepted receipts are retained under
+unchanged host endpoints pass. The earlier snapshot reconciliation at `9b1c643f`, including
+TFC/X11/libxdo/address_it, fake_async, xterm and camera-build-script classifications, remains in
 `.harness-state/verifier-vm/dependency-inventory-{drift-dac06f59,accepted-9b1c643f}.json`.
 This accepts the manifest/index snapshot only. Complete dependency/source closure, advisory,
 provenance, native product and release acceptance remain OPEN.
@@ -2336,40 +2340,40 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
-**Recording outputs — named Linux creation, normal-stop and write-rejection components accepted; installed/platform acceptance OPEN.**
-`libs/scrap/src/common/record.rs` creates WebM output exclusively and retains its open File in
-the muxer. Factory metadata is borrowed only for construction. The unused `RecordState` channel
-and its two `None` producers are deleted. Neither recorder backend retains an output pathname
-for deletion. Automatic short/unwritten-file deletion and its timer/state are removed; created
-outputs, including short or incomplete recordings, are retained. WebM stop consumes the segment,
-releases the returned native writer and closes its File; finalization failure is logged.
-The native-writer release API is infallible, rather than a Result/Option panic operation.
-Four refusal controls cover the occupied-path truncation fix `1657f818`. Normal-stop baseline
-`68d6c21e` passes those controls and fails six short-recording/replacement cases; `51b6d4fa`
-passes all ten. They exercise real VP8/VP9 mux output without clock backdating, finalization
-after rename and preserved replacement files, symlinks and parent substitution. Source/artifact,
-native results and joined cleanup remain in
-`.harness-state/verifier-vm/recording-lifetime-accepted-51b6d4fa.json` and its earlier receipts.
-Product `dd17dc38` also checks native frame acceptance, returns an error on rejection, closes the
-owned backend and blocks subsequent frames before filename/resize handling. The shared frame-list
-dispatch replaces five copies that discarded the native boolean. The identical two new regressions
-fail on baseline `0183cd23` and pass on the product; ten existing controls pass in both runs.
-Each new case first admits real encoded VP8 video. One then sends an empty frame; the other
-re-executes the exact native test in a separate process, sets and reads back zero `RLIMIT_FSIZE`,
-observes real `EFBIG` on an owned file and submits another encoded frame through the native muxer.
-Both corrected cases prove that later frames and resize cannot reopen the failed owner or change
-its retired output. The complete twelve-case transaction passes in 304 VM seconds: 84-second
-library build, native execution and 157-second production-parent check. That check compiles both
-application callers without executing the app. Exact source/artifact,
-baseline outcomes, endpoint snapshots and joined bounded-RAM cleanup are retained in
-`.harness-state/verifier-vm/recording-rejection-accepted-dd17dc38.json` and its baseline receipt.
-Baseline assertion text was not exported; its twelve live native outcomes and exit-101 artifact
-remain retained. The recipe now prefixes a bounded failure tail before parent compilation;
-that new failure-export branch has not been executed. All combined runs are integration checkpoints.
-Pinned supplier callbacks still need partial-write and fallible-seek correction/native fault cases,
-and constructor-failure native cleanup remains OPEN. Initial parent-directory authority, caller/UI
-error reporting, complete playback/recording behavior, installed-root recording and native
-Windows/macOS acceptance remain OPEN. No overall recording or LPE closure follows.
+**Recording outputs — named Linux file/mux and I/O components accepted; installed/platform acceptance OPEN.**
+`libs/scrap/src/common/record.rs` creates output exclusively, borrows factory metadata and
+retains no pathname for deletion. Created short, unwritten and incomplete outputs remain.
+Unused recording events are absent. Native frame rejection returns an error, retires the
+backend and closes this recorder's later frame/resize admission.
+The private `record/webm_mux.rs` owns its boxed I/O, native writer, segment and track.
+Callbacks complete buffers with write_all, retry Interrupted, latch I/O errors and return
+native signed -1/false on position/seek failure. No fallible-seek unwrap or escaped copyable
+track remains in the application consumer. Consuming finalization checks native completion
+and destination flush; Drop deletes segment then writer before the boxed destination,
+including constructor error exits. Dimensions, codec and native track admission are checked.
+The application uses the existing pinned webm-sys directly; the high-level wrapper and its
+unsafe standalone record-screen example are removed from the source/dependency consumer graph.
+
+Earlier creation/stop and frame-rejection A/B receipts remain in
+`.harness-state/verifier-vm/recording-lifetime-accepted-51b6d4fa.json` and
+`recording-rejection-accepted-dd17dc38.json`. Their twelve real file/mux controls remain.
+Writer baseline `ab16c68c` passes fourteen controls and fails four new cases: partial-write
+completion, Interrupted output, a real kernel ESPIPE destination and invalid configuration.
+The Interrupted case reports native success but fails the actual output's EBML-header oracle.
+The nonseekable case reaches the pinned callback's unwrap panic. Child diagnostics are retained.
+Owner implementation `0395c8c4` with corrected lock graph `b3cc5328` passes the identical
+eighteen tests, including zero-write and absolute-seek refusal and destination-drop checks.
+The complete transaction takes 311 VM seconds: library build 85s, native execution 0.03s and
+production-parent check 162s. The parent check compiles both application callers without
+executing the application. Combined runs are integration checkpoints; failing native cases
+now exit before parent compilation. Source/artifact, failures, exact inventory, endpoint,
+bounded RAM and joined cleanup evidence are in
+`.harness-state/verifier-vm/webm-writer-accepted-b3cc5328.json` and its referenced baselines.
+
+Initial parent-directory authority, caller/UI outcomes, timestamp validation, complete
+recording/playback including AV1 codec-private data, native allocation-failure/heap evidence,
+hardware and installed-root recording, and Windows/macOS acceptance remain OPEN.
+These named Linux component results establish no overall recording or LPE closure.
 
 **Frame EOF handling — Linux common codec/TCP component ACCEPTED; installed/platform evidence OPEN.**
 `libs/hbb_common/src/bytes_codec.rs` reports `UnexpectedEof` for an unfinished header or

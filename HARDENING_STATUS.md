@@ -3295,7 +3295,11 @@ Outer0/168s; raw receipt: audit.
 seven coordinator/23 raw-module cases, five groups, outer0/221s, artifact 72ad80c1.
 Four AF_UNIX cases cover pre-header readiness, bad/truncated/expired frames, fragments, empty/max/auth bodies.
 Early refusal=NotSent; started write=uncertain. Half-close/wiping/replay/expiry/shutdown pass.
-Two wording cases are supplementary.
+The current selection has seven coordinator and 21 protocol cases. Two source-text
+checklists are deleted: they matched password-module/Windows-facade wording rather
+than executing the advertised properties. Production, all remaining test bodies and
+the supplementary source validators are unchanged. No new test ran for this deletion;
+current target-native and installed acceptance remain OPEN.
 
 **Native logind:** `--linux-logind-tests`, source 68e596b3, artifact e12dac15;
 14 unit/seven PAM/logind cases, outer0/131s; PAM defaults passed.

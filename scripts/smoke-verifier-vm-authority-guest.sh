@@ -3484,8 +3484,6 @@ run_focused_rust_tests() {
                 ipc::password::tests::explicit_erasure_overwrites_origin_and_inbound_storage
                 ipc::password::tests::status_wire_is_fixed_canonical_and_operation_bound
                 ipc::password::tests::acknowledgement_wire_is_fixed_canonical_and_operation_bound
-                ipc::password::tests::password_types_have_no_serde_or_generic_framing_surface
-                ipc::password::tests::windows_sensitive_facade_retains_raw_pipe_and_cancellation_invariants
                 ipc::password::tests::unix_request_parser_accepts_every_fragmentation_boundary
                 ipc::password::tests::unix_request_parser_rejects_eof_at_every_offset
                 ipc::password::tests::unix_request_parser_times_out_without_abandoning_partial_input
@@ -4980,7 +4978,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                                 "$clipboard_executable" ipc::password::tests:: --color never --test-threads=1
                             [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
                             python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
-                            printf "LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=%s executable=%s tests=30 groups=5 unchanged=before-between-after\n" \
+                            printf "LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=%s executable=%s tests=28 groups=5 unchanged=before-between-after\n" \
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             exit 0
                         fi
@@ -5682,7 +5680,7 @@ PY
                 && [ "$(grep -Fxc 'INPUT_RELEASE_X11=pass server=owned network=none endpoint=absent cleanup=joined' "$output")" -eq 1 ] \
                 || fail 'native input-release observations differ'
         elif [ "$RUST_TEST_PROFILE" = linux-password-admission ]; then
-            [ "$(grep -Ec '^LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=30 groups=5 unchanged=before-between-after$' "$output")" -eq 1 ] \
+            [ "$(grep -Ec '^LINUX_PASSWORD_ADMISSION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=28 groups=5 unchanged=before-between-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'LINUX_PASSWORD_ADMISSION_ARTIFACT=' "$output")" -eq 1 ] \
                 || fail 'Linux password admission artifact receipt differs'
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then

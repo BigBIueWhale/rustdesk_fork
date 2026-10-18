@@ -800,7 +800,8 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         || "$RUST_TEST_PROFILE" = linux-resolution-lifetime || "$RUST_TEST_PROFILE" = audio-mailbox \
         || "$RUST_TEST_PROFILE" = audio-buffer || "$RUST_TEST_PROFILE" = fusermount-fd \
         || "$RUST_TEST_PROFILE" = fusermount-process || "$RUST_TEST_PROFILE" = file-block \
-        || "$RUST_TEST_PROFILE" = clipboard-response || "$RUST_TEST_PROFILE" = cliprdr-read ]]; then
+        || "$RUST_TEST_PROFILE" = clipboard-response || "$RUST_TEST_PROFILE" = cliprdr-read \
+        || "$RUST_TEST_PROFILE" = installer-package ]]; then
         readonly VM_MEMORY=2048
     else
         readonly VM_MEMORY=16384

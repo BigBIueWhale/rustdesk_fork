@@ -902,6 +902,7 @@ for profile, memory, scratch, overlay in (
         ('standard', 2048, 16, 8),
         ('hbb-common-fs', 6144, 6, 4),
         ('cpace-recovery-tests', 8192, 6, 4),
+        ('installer-package', 2048, 6, 4),
         ('flutter-credential-dialog', 4096, 7, 6),
         ('linux-service-build', 8192, 7, 6),
         ('linux-service-receiver', 4096, 6, 5),
@@ -918,6 +919,7 @@ for profile, memory, scratch, overlay in (
 for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 4096),
                         ('ledger-token-count', 8192), ('unknown', 2048),
                         ('cpace-recovery-tests', 6144), ('cpace-recovery-tests', 8193),
+                        ('installer-package', 1024), ('installer-package', 4096),
                         ('x11-focus', 4095), ('x11-focus', 8192),
                         ('linux-parent-libtest', 4096), ('linux-parent-libtest', 8192),
                         ('linux-flutter-replay', 10239), ('linux-flutter-replay', 24576),
@@ -934,7 +936,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=14 refusals=22 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=15 refusals=24 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -3377,6 +3379,9 @@ run_focused_rust_tests() {
         )
         if [ "$RUST_TEST_PROFILE" = installer-package ]; then
             container_name=rustdesk-installer-package-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=256m
             source_fingerprints=(
                 Cargo.lock libs/portable/Cargo.toml libs/portable/build.rs
                 libs/portable/tests/installer_package.rs libs/portable/src/installer_package.rs
@@ -4751,6 +4756,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             exit 0
                         fi
                         if [ "$RUST_TEST_PROFILE" = installer-package ]; then
+                            export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 \
+                                CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
                             python3 -I -S /source/scripts/verify-windows-harness.py --repo /source
                             python3 -I -S -c '\''import errno, socket
 s = socket.socket()

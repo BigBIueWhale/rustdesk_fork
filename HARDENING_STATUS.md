@@ -2558,6 +2558,45 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Ordinary option error propagation — Linux native export corrected; full settings acceptance OPEN.**
+Product `2435fa92` makes the UI setter and Flutter export return a fallible result.
+Desktop failure returns before any cache update or audio restart; success keeps the
+receiver-derived single-key cache update and releases its lock before audio restart.
+Mobile persistence errors and the active-client permission refusal reach the export.
+The existing background sound-input caller now logs its returned error explicitly.
+No credential/service authority or Config/IPC implementation changes.
+
+The shared Flutter setting action catches rejected futures, reports failure, and returns
+a save status. Desktop timeout Apply reopens for retry after failure and preserves a newer
+draft; the audio selector waits for its callback before refreshing. Mobile auto-disconnect
+updates from readback instead of changing its model before the write. Async settings
+callbacks check page lifetime. The timeout dialog retains its own visible error path.
+Three statement-wording guards are deleted; single-key protocol/policy guards remain.
+
+One source-bound Linux/Flutter library artifact passes both native tests: the actual
+typed receiver still preserves failed persistence and applies a healthy retry, while the
+export test executes the byte-identical historical setter/export leaves from
+21ebced8 and their current counterparts against the same private config/IPC environment.
+Historical calls return normally after a rejected key and missing receiver; current calls
+return errors while cache, memory and file remain unchanged. This is a controlled leaf
+comparison, not execution of an old whole-app binary. The initial baseline compilation
+stopped at a missing fixture import and supplies no behavioral verdict.
+
+Fresh generated bridges and both Flutter suites pass eleven tests: four setting-action
+future/feedback/retry cases and the unchanged complete seven-case timeout dialog module.
+Native/UI integrations take 538/277 outer seconds. Pinned inputs,
+exact artifact/source/case receipts, complete endpoint observations, joined RAM cleanup
+and the failed private-root inventory are retained in
+`.harness-state/verifier-vm/option-errors-2435fa92.json`.
+
+The native export calls are Rust calls into the actual function; Dart tests inject the
+write/feedback callbacks. Real Rust-to-Dart wire error delivery, successful framed
+main-listener authorization, interactive desktop/mobile/audio effects, restart/concurrent
+writers and installed-platform acceptance remain OPEN. One unattributed endpoint appeared
+in the native after snapshot; harness-created host IP sockets were kernel-denied. It is
+retained without attributing or changing foreign processes. The fifteen credential
+actions and R-S0 remain OPEN.
+
 **Auto-disconnect timeout dialog — Linux Flutter component corrected; integration/device acceptance OPEN.**
 Product `059bc53c` replaces the external text controller and unconditional draft return
 with a dialog-owned controller and explicit save/readback outcome. Cancel and Escape

@@ -49,9 +49,11 @@ void main() {
     final manager = await _manager(tester);
     var writes = 0;
     for (final escape in [false, true]) {
-      final result = _open(manager, write: (_) async {
-        writes++;
-      }, read: () async => '10');
+      final result = _open(manager,
+          write: (_) async {
+            writes++;
+          },
+          read: () async => '10');
       await tester.pump();
       await tester.enterText(find.byType(TextField), '27');
       if (escape) {
@@ -100,17 +102,20 @@ void main() {
     var stored = '10';
     var writes = 0;
     String? result;
-    _open(manager, write: (value) async {
-      writes++;
-      if (writes > 1) stored = value;
-    }, read: () async => stored).then((value) => result = value);
+    _open(manager,
+        write: (value) async {
+          writes++;
+          if (writes > 1) stored = value;
+        },
+        read: () async => stored).then((value) => result = value);
     await tester.pump();
     await tester.enterText(find.byType(TextField), '27');
     await tester.tap(find.text('OK'));
     await tester.pump();
     expect(result, isNull);
-    expect(find.text('Failed to save'), findsOneWidget);
-    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '27');
+    expect(find.text('Failed'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '27');
     await tester.tap(find.text('OK'));
     await tester.pump();
     expect(writes, 2);
@@ -123,10 +128,12 @@ void main() {
     final write = Completer<void>();
     var writes = 0;
     String? result;
-    _open(manager, write: (_) {
-      writes++;
-      return write.future;
-    }, read: () async => '27').then((value) => result = value);
+    _open(manager,
+        write: (_) {
+          writes++;
+          return write.future;
+        },
+        read: () async => '27').then((value) => result = value);
     await tester.pump();
     await tester.enterText(find.byType(TextField), '27');
     final submit = _button(tester, 'OK');
@@ -144,18 +151,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('dismissed dialog ignores its pending completion', (tester) async {
+  testWidgets('dismissed dialog ignores its pending completion',
+      (tester) async {
     final manager = await _manager(tester);
     final write = Completer<void>();
     var reads = 0;
     var writes = 0;
-    final result = _open(manager, write: (_) {
+    String? result;
+    _open(manager, write: (_) {
       writes++;
       return write.future;
     }, read: () async {
       reads++;
       return '27';
-    });
+    }).then((value) => result = value);
     await tester.pump();
     await tester.enterText(find.byType(TextField), '27');
     final submit = _button(tester, 'OK');
@@ -164,11 +173,12 @@ void main() {
     final next = manager.show<void>((_, __, ___) => const Text('next dialog'));
     submit();
     await tester.pump();
-    expect(await result, '10');
+    expect(result, isNull);
     expect(writes, 1);
     write.complete();
     await tester.pump();
-    expect(reads, 0);
+    expect(reads, 1);
+    expect(result, '27');
     expect(find.text('next dialog'), findsOneWidget);
     expect(tester.takeException(), isNull);
     manager.dismissAll();
@@ -192,7 +202,7 @@ void main() {
       await tester.pump();
       expect(tester.takeException(), isNull);
       expect(result, isNull);
-      expect(find.text('Failed to save'), findsOneWidget);
+      expect(find.text('Failed'), findsOneWidget);
       expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
       fail = false;
       await tester.tap(find.text('OK'));
@@ -205,9 +215,11 @@ void main() {
       (tester) async {
     final manager = await _manager(tester);
     var stored = '10';
-    final result = _open(manager, write: (value) async {
-      stored = value;
-    }, read: () async => stored);
+    final result = _open(manager,
+        write: (value) async {
+          stored = value;
+        },
+        read: () async => stored);
     await tester.pump();
     final field = find.byType(TextField);
     await tester.enterText(field, '65535');

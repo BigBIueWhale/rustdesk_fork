@@ -4,7 +4,7 @@ import 'package:flutter_hbb/models/platform_model.dart';
 
 const _kSystemSound = 'System Sound';
 
-typedef AudioINputSetDevice = void Function(String device);
+typedef AudioINputSetDevice = Future<void> Function(String device);
 typedef AudioInputBuilder = Widget Function(
     List<String> devices, String currentDevice, AudioINputSetDevice setDevice);
 
@@ -45,10 +45,15 @@ class AudioInput extends StatelessWidget {
   static Future<void> setDevice(
       String device, bool isCm, bool isVoiceCall) async {
     if (device == getDefault()) device = '';
-    if (isVoiceCall) {
-      await bind.setVoiceCallInputDevice(isCm: isCm, device: device);
-    } else {
-      await bind.mainSetOption(key: 'audio-input', value: device);
+    try {
+      if (isVoiceCall) {
+        await bind.setVoiceCallInputDevice(isCm: isCm, device: device);
+      } else {
+        await mainSetOption('audio-input', device);
+      }
+    } catch (error) {
+      debugPrint('Failed to set audio input: $error');
+      showToast(translate('Failed'));
     }
   }
 
@@ -72,9 +77,8 @@ class AudioInput extends StatelessWidget {
         if (devices.isEmpty) {
           return const Offstage();
         }
-        return builder(devices, currentDevice, (devices) {
-          setDevice(devices, isCm, isVoiceCall);
-        });
+        return builder(devices, currentDevice,
+            (device) => setDevice(device, isCm, isVoiceCall));
       },
     );
   }

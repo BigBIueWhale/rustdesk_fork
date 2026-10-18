@@ -514,7 +514,8 @@ class _GeneralState extends State<_General> {
         values: devices,
         initialKey: currentDevice,
         onChanged: (key) async {
-          setDevice(key);
+          await setDevice(key);
+          if (!mounted) return;
           setState(() {});
         },
       ).marginOnly(left: _kContentHMargin);
@@ -860,10 +861,13 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                     onPressed:
                         applyEnabled.value && enabled && !isOptFixed
                             ? () async {
+                                final requested = controller.text;
                                 applyEnabled.value = false;
-                                await bind.mainSetOption(
-                                    key: kOptionAutoDisconnectTimeout,
-                                    value: controller.text);
+                                final saved = await mainSetOption(
+                                    kOptionAutoDisconnectTimeout, requested);
+                                if (!mounted) return;
+                                applyEnabled.value =
+                                    !saved || controller.text != requested;
                               }
                             : null,
                     child: Text(
@@ -1079,7 +1083,8 @@ class _DisplayState extends State<_Display> {
 
     final key = 'privacy-mode-impl-key';
     onChanged(String value) async {
-      await bind.mainSetOption(key: key, value: value);
+      await mainSetOption(key, value);
+      if (!mounted) return;
       setState(() {});
     }
 

@@ -337,45 +337,32 @@ pub fn get_sound_inputs() -> Vec<String> {
 mod option_tests;
 
 #[inline]
-pub fn set_option(key: String, value: String) {
-    // R-X9/R-X10: the installed desktop service is ALWAYS present + auto-start and is un-killable at
-    // runtime. The `stop-service` set_option special-case (value=="Y" -> uninstall_service, else ->
-    // install_service) is REMOVED so NO local UI/FFI/IPC option-write can disable the headless host's
-    // service — it was the live service-kill path (the sciter "Enable service"/"Start service" toggle,
-    // macos.rs, any ipc::set_option). The key stays pinned "N" + in the is_option_can_save reject set
-    // (R-S16/R-S11), so a write now falls through inert. On Android there is no stop-service config toggle at all: the
-    // controlled-side stop is the OS foreground-service lifecycle (MainService.onDestroy -> the JNI
-    // deactivateServer, which drives the direct listener's exact-generation teardown, R-D7a), not
-    // a Config write — so no option-write path reaches the Android listener either.
+pub fn set_option(key: String, value: String) -> hbb_common::ResultType<()> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        match ipc::set_option(&key, &value) {
-            Ok(effective) => {
-                let mut options = OPTIONS.lock().unwrap();
-                if effective.is_empty() {
-                    options.remove(&key);
-                } else {
-                    options.insert(key.clone(), effective);
-                }
-                if &key == "audio-input" {
-                    crate::audio_service::restart();
-                }
+        let effective = ipc::set_option(&key, &value)?;
+        {
+            let mut options = OPTIONS.lock().unwrap();
+            if effective.is_empty() {
+                options.remove(&key);
+            } else {
+                options.insert(key.clone(), effective);
             }
-            Err(err) => log::warn!("Failed to set option via IPC: key={}, err={}", key, err),
+        }
+        if key == "audio-input" {
+            crate::audio_service::restart();
         }
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         let audio_input = key == "audio-input";
-        if let Err(err) = Config::set_option(key, value) {
-            log::warn!("Failed to persist option: {err}");
-            return;
-        }
+        Config::set_option(key, value)?;
         if audio_input {
             #[cfg(not(target_os = "ios"))]
             crate::audio_service::restart();
         }
     }
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

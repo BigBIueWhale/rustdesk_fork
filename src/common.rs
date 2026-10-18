@@ -329,7 +329,9 @@ pub fn set_sound_input(device: String) {
     if prior_device != device {
         log::info!("switch to audio input device {}", device);
         std::thread::spawn(move || {
-            set_option("audio-input".to_owned(), device);
+            if let Err(error) = set_option("audio-input".to_owned(), device) {
+                log::warn!("Failed to set audio input: {error}");
+            }
         });
     } else {
         log::info!("audio input is already set to {}", device);

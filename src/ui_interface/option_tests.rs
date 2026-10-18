@@ -1,6 +1,9 @@
 use super::*;
 use hbb_common::ResultType;
 
+#[path = "../../scripts/fixtures/option-export-before-errors.rs"]
+mod before;
+
 // FRB treats a unit-returning export as a successful completion. This adapter
 // lets the same behavioral probe execute the pre-fix and fallible exports.
 trait ExportOutcome {
@@ -13,9 +16,9 @@ impl ExportOutcome for () {
     }
 }
 
-impl ExportOutcome for ResultType<String> {
+impl ExportOutcome for ResultType<()> {
     fn result(self) -> ResultType<String> {
-        self
+        self.map(|()| String::new())
     }
 }
 
@@ -33,7 +36,7 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
         std::fs::remove_dir_all(&root).unwrap();
         assert!(output.stdout.len() + output.stderr.len() <= 16384);
         for line in String::from_utf8(output.stdout).unwrap().lines() {
-            if let Some(start) = line.find("OPTION_EXPORT_NATIVE=") {
+            if let Some(start) = line.find("OPTION_EXPORT_") {
                 println!("{}", &line[start..]);
             }
         }
@@ -41,12 +44,20 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
         return;
     };
     let root = std::path::PathBuf::from(root);
-    assert_ne!(unsafe { libc::geteuid() }, 0);
+    assert_ne!(unsafe { hbb_common::libc::geteuid() }, 0);
     let file = config::Config2::file();
     assert!(file.starts_with(&root));
     Config::set_option("enable-abr".into(), "N".into()).unwrap();
     OPTIONS.lock().unwrap().insert("enable-abr".into(), "N".into());
     let original = std::fs::read(&file).unwrap();
+
+    let before_refused = before::main_set_option("not-an-option".into(), "fixture-value".into()).result().is_err();
+    let before_missing_receiver = before::main_set_option("enable-abr".into(), "Y".into()).result().is_err();
+    let before_preserved = OPTIONS.lock().unwrap().get("enable-abr").map(String::as_str) == Some("N")
+        && Config::get_option("enable-abr") == "N"
+        && std::fs::read(&file).unwrap() == original;
+    println!("OPTION_EXPORT_BEFORE=observed refused={before_refused} missing_receiver={before_missing_receiver} state_preserved={before_preserved}");
+    assert!(!before_refused && !before_missing_receiver && before_preserved);
 
     let refused = crate::flutter_ffi::main_set_option("not-an-option".into(), "fixture-value".into()).result().is_err();
     let missing_receiver = crate::flutter_ffi::main_set_option("enable-abr".into(), "Y".into()).result().is_err();

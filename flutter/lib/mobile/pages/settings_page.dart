@@ -161,6 +161,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
             : (v) async {
                 await mainSetBoolOption(kOptionEnableAbr, v);
                 final newValue = await mainGetBoolOption(kOptionEnableAbr);
+                if (!mounted) return;
                 setState(() {
                   _enableAbr = newValue;
                 });
@@ -212,12 +213,15 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
         onToggle: isOptionFixed(kOptionAllowAutoDisconnect)
             ? null
             : (_) async {
-                _allowAutoDisconnect = !_allowAutoDisconnect;
                 String value = bool2option(
-                    kOptionAllowAutoDisconnect, _allowAutoDisconnect);
-                await bind.mainSetOption(
-                    key: kOptionAllowAutoDisconnect, value: value);
-                setState(() {});
+                    kOptionAllowAutoDisconnect, !_allowAutoDisconnect);
+                await mainSetOption(kOptionAllowAutoDisconnect, value);
+                final effective =
+                    await mainGetBoolOption(kOptionAllowAutoDisconnect);
+                if (!mounted) return;
+                setState(() {
+                  _allowAutoDisconnect = effective;
+                });
               },
       )
     ];
@@ -344,14 +348,14 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                   onToggle: isOptionFixed(kOptionAllowAutoRecordIncoming)
                       ? null
                       : (v) async {
-                          await bind.mainSetOption(
-                              key: kOptionAllowAutoRecordIncoming,
-                              value: bool2option(
-                                  kOptionAllowAutoRecordIncoming, v));
+                          await mainSetOption(
+                              kOptionAllowAutoRecordIncoming,
+                              bool2option(kOptionAllowAutoRecordIncoming, v));
                           final newValue = option2bool(
                               kOptionAllowAutoRecordIncoming,
                               await bind.mainGetOption(
                                   key: kOptionAllowAutoRecordIncoming));
+                          if (!mounted) return;
                           setState(() {
                             _autoRecordIncomingSession = newValue;
                           });

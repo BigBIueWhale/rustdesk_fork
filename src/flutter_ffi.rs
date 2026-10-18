@@ -1066,7 +1066,7 @@ pub fn main_get_error() -> String {
     get_error()
 }
 
-pub fn main_set_option(key: String, value: String) {
+pub fn main_set_option(key: String, value: String) -> Result<()> {
     #[cfg(target_os = "android")]
     {
         let is_permission_option = key.eq(config::keys::OPTION_ENABLE_CLIPBOARD)
@@ -1080,24 +1080,10 @@ pub fn main_set_option(key: String, value: String) {
             && !allow_perm_change_in_accept_window
             && crate::ui_cm_interface::has_active_clients()
         {
-            log::info!(
-                "blocked main_set_option by policy, key={}, value={}",
-                key,
-                value
-            );
-            return;
+            bail!("Permission changes are unavailable while clients are connected");
         }
     }
-    // R-S19: the Android `switch_permission_all` push on ENABLE_KEYBOARD / ENABLE_CLIPBOARD toggle
-    // is removed with the rest of the runtime permission-widener (`Data::SwitchPermission` is
-    // excised). The toggle still persists below and new sessions read it at authorization time,
-    // where capabilities are derived from AuthConnType — mid-session widening had no live effect.
-
-    // R-D4/R-G1/R-D5/R-SV6: the mediator-restart-on-network-option-change is REMOVED. Every option it
-    // watched is excised or inert — custom-rendezvous-server/api-server are lockdown-pinned, the
-    // rendezvous mediator is gone (test_rendezvous_server dials nobody, R-D6), and allow-websocket/
-    // disable-udp/allow-insecure-tls-fallback are dead. Just persist the option.
-    set_option(key, value.clone());
+    set_option(key, value)
 }
 
 pub fn main_get_options() -> String {

@@ -1698,9 +1698,27 @@ String bool2option(String option, bool b) {
   return res;
 }
 
-mainSetBoolOption(String key, bool value) async {
-  String v = bool2option(key, value);
-  await bind.mainSetOption(key: key, value: v);
+Future<bool> mainSetOption(String key, String value,
+    {Future<void> Function(String key, String value)? writeOption,
+    VoidCallback? showFailure}) async {
+  final write = writeOption ??
+      (key, value) => bind.mainSetOption(key: key, value: value);
+  try {
+    await write(key, value);
+    return true;
+  } catch (error) {
+    debugPrint('Failed to set option: $error');
+    if (showFailure != null) {
+      showFailure();
+    } else {
+      showToast(translate('Failed'));
+    }
+    return false;
+  }
+}
+
+Future<void> mainSetBoolOption(String key, bool value) async {
+  await mainSetOption(key, bool2option(key, value));
 }
 
 Future<bool> mainGetBoolOption(String key) async {

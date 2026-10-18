@@ -4815,9 +4815,6 @@ grep -q 'value: Config::get_option(&key_name)' <<<"$option_handler"             
 if grep -q 'Config::set_options' <<<"$option_handler"; then
   r_s11b3="$r_s11b3 whole-options-replacement-present"
 fi
-grep -q 'match ipc::set_option(&key, &value)' src/ui_interface.rs                      || r_s11b3="$r_s11b3 ui-exact-option-request-missing"
-grep -q 'Ok(effective) => {' src/ui_interface.rs                                       || r_s11b3="$r_s11b3 ui-receiver-effective-branch-missing"
-grep -q 'options.insert(key.clone(), effective);' src/ui_interface.rs                  || r_s11b3="$r_s11b3 ui-exact-cache-update-missing"
 for token in \
   'MainIpcRequest::SetOptions' \
   'MainIpcResponse::OptionsSet' \

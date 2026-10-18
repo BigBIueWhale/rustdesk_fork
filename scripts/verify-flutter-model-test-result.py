@@ -101,6 +101,12 @@ PASSWORD_FIELD_TESTS = {
     "ordinary obscured field is a keyboard learning control",
     "password field retains focused obscured semantics",
 }
+SETTING_OPTION_TESTS = {
+    "option save waits for its native completion",
+    "native option failure reports feedback without success",
+    "synchronous option dispatch failure is reported",
+    "failed option save permits the identical retry",
+}
 AUTO_DISCONNECT_TESTS = {
     "cancel and escape preserve the stored timeout",
     "successful save waits for readback",
@@ -370,9 +376,13 @@ def parse_result(path, profile="models"):
         expected_tests = len(WINDOW_DISPATCH_TESTS)
         expected_names = WINDOW_DISPATCH_TESTS
     elif profile == "auto-disconnect":
-        expected_suites = {"auto_disconnect_timeout_dialog_test.dart"}
-        expected_tests = len(AUTO_DISCONNECT_TESTS)
-        expected_names = AUTO_DISCONNECT_TESTS
+        expected_by_suite = {
+            "auto_disconnect_timeout_dialog_test.dart": AUTO_DISCONNECT_TESTS,
+            "setting_option_mutation_test.dart": SETTING_OPTION_TESTS,
+        }
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     elif profile == "modifier-release":
         expected_suites = {"input_modifier_release_test.dart"}
         expected_tests = len(MODIFIER_RELEASE_TESTS)

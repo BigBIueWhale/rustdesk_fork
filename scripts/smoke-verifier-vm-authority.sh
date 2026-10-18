@@ -5765,8 +5765,20 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
         'CPACE_PENDING_READ_CANCEL=pass stages=3 partial_socket_bytes=9 recv_counter=2' \
         'actual pending TCP-read cancellation and exact recovery'
     require_exact_fixed_receipt \
-        "CPACE_RECOVERY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=20 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "CPACE_RECOVERY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=51 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused CPace recovery receipt'
+    mapfile -t transport_artifacts < <(
+        /usr/bin/grep -Eo 'TCP_TRANSPORT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} tests=31 unchanged=before-between-after' "$SERIAL_LOG"
+    )
+    [ "${#transport_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fo 'TCP_TRANSPORT_ARTIFACT=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
+        || fail 'transport library artifact receipt differs'
+    printf '%s\n' "${transport_artifacts[0]}"
+    for transport_case in reset cancel; do
+        require_exact_fixed_receipt \
+            "WRITER_BUFFER_LIFETIME=observed case=$transport_case partial_write=true blocked=true control_read=true writer_joined=true permits_returned=true stream_buffer_retired=true owner_drop_control=true" \
+            'actual TCP write-buffer retirement'
+    done
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused CPace recovery cloud-init completion marker'

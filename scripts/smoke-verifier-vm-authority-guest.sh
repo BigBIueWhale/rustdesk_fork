@@ -3114,6 +3114,8 @@ run_focused_rust_tests() {
             responder_rejects_duplicate_first_frame
             responder_rejects_malformed_length_field
             r_a9_port_forward_relay_bytes_are_ciphertext_on_the_wire
+            tcp::writer_lifetime_tests::tcp_failed_writer_retires_encoded_storage
+            tcp::writer_lifetime_tests::tcp_cancelled_writer_retires_encoded_storage
         )
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         container_name=rustdesk-linux-pa-authority-tests
@@ -4556,6 +4558,35 @@ run_focused_rust_tests() {
                         [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                         printf "CPACE_WIRE_ARTIFACT=pass sha256=%s tests=20 unchanged=before-after\n" \
                             "$artifact_sha"
+                        cargo test --offline --locked -p hbb_common --lib --no-run \
+                            --message-format=json-render-diagnostics --color never \
+                            >/cargo-target/transport-build.json
+                        transport_executable="$(python3 -I -S \
+                            /source/scripts/select-hbb-common-test-artifact.py \
+                            /cargo-target/transport-build.json)"
+                        [ -f "$transport_executable" ] && [ ! -L "$transport_executable" ] \
+                            && [ -x "$transport_executable" ] \
+                            && [ "$(stat -c "%u:%g:%h" -- "$transport_executable")" = 1000:1000:1 ] \
+                            || exit 95
+                        transport_sha="$(sha256sum "$transport_executable" | cut -d " " -f 1)"
+                        printf "TCP_TRANSPORT_ARTIFACT_START=observed sha256=%s executable=%s\n" \
+                            "$transport_sha" "$transport_executable"
+                        cd /source/libs/hbb_common
+                        for group in tcp::writer_receipt_tests:: tcp::eof_tests:: \
+                            bytes_codec::tests:: tcp::writer_lifetime_tests::; do
+                            group_status=0
+                            timeout --signal=TERM --kill-after=5s 20s \
+                                "$transport_executable" "$group" --color never --test-threads=1 --show-output \
+                                || group_status=$?
+                            [ "$(sha256sum "$transport_executable" | cut -d " " -f 1)" = "$transport_sha" ]
+                            if [ "$group_status" -ne 0 ]; then
+                                printf "TCP_TRANSPORT_ARTIFACT_STOP=observed sha256=%s group=%s status=%s unchanged=before-after\n" \
+                                    "$transport_sha" "$group" "$group_status"
+                                exit "$group_status"
+                            fi
+                        done
+                        printf "TCP_TRANSPORT_ARTIFACT=pass sha256=%s executable=%s tests=31 unchanged=before-between-after\n" \
+                            "$transport_sha" "$transport_executable"
                         ;;
                     linux-pa-authority-tests)
                         if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
@@ -5051,6 +5082,13 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'File-peer probe failure artifact metadata could not be read\n' >&2
+        elif [ "$MODE" = cpace-recovery-tests ]; then
+            awk '
+                /^(CPACE_WIRE|TCP_TRANSPORT)_ARTIFACT/ { if (++artifacts <= 8) print }
+                /^test [[:alnum:]_:]+ \.\.\. (ok|FAILED)$/ { if (++cases <= 64) print }
+                /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
+                /^WRITER_BUFFER_LIFETIME=/ { if (++observations <= 8) print }
+            ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
         fi
         if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
             awk '/^WHITEBOARD_HELPER_(BUILD|ARTIFACT_BEFORE)=/ { print }' "$output" >&2 \
@@ -5112,7 +5150,7 @@ PY
         hbb_test_artifact_sha=${hbb_test_artifact_sha%% *}
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
-        [ "${#result_lines[@]}" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 5 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
         [ "$(grep -Ec '^CPACE_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CPACE_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
@@ -5120,6 +5158,16 @@ PY
         [ "$(grep -Fxc 'CPACE_PENDING_READ_CANCEL=pass stages=3 partial_socket_bytes=9 recv_counter=2' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CPACE_PENDING_READ_CANCEL=' "$output")" -eq 1 ] \
             || fail 'CPace pending-read cancellation observation is absent or differs'
+        [ "$(grep -Ec '^TCP_TRANSPORT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} tests=31 unchanged=before-between-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'TCP_TRANSPORT_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'transport library artifact identity or stability is absent'
+        local group count
+        for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
+            bytes_codec::tests:12 tcp::writer_lifetime_tests:2; do
+            count=${group##*:}; group=${group%:*}
+            [ "$(grep -Ec "^test ${group}::[[:alnum:]_]+ [.][.][.] ok$" "$output")" -eq "$count" ] \
+                || fail "transport test group differs: $group"
+        done
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
             [ "${#result_lines[@]}" -eq 1 ] || fail 'playback result summary differs'
@@ -5630,9 +5678,9 @@ PY
         fi
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
-        [ "$tests_passed" -eq 20 ] \
+        [ "$tests_passed" -eq 51 ] \
             || fail "CPace recovery test count differs: $tests_passed"
-        grep -E '^test [a-z0-9_]+ \.\.\. ok$|^CPACE_WIRE_ARTIFACT(_START)?=|^CPACE_PENDING_READ_CANCEL=' "$output"
+        grep -E '^test [a-z0-9_:]+ \.\.\. ok$|^(CPACE_WIRE|TCP_TRANSPORT)_ARTIFACT(_START)?=|^CPACE_PENDING_READ_CANCEL=|^WRITER_BUFFER_LIFETIME=' "$output"
         printf 'CPACE_RECOVERY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \

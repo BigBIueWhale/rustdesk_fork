@@ -1127,6 +1127,176 @@ mod eof_tests {
 }
 
 #[cfg(test)]
+mod writer_lifetime_tests {
+    use super::*;
+    use std::{sync::atomic::AtomicUsize, time::Duration};
+    use tokio::io::AsyncWriteExt;
+
+    #[derive(Default)]
+    struct WriteObservation {
+        written: AtomicUsize,
+        pending_ptr: AtomicUsize,
+        pending_len: AtomicUsize,
+        failures: AtomicUsize,
+    }
+
+    struct ObservedTcp {
+        io: tokio::net::TcpStream,
+        observation: Arc<WriteObservation>,
+    }
+
+    impl AsyncRead for ObservedTcp {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.io).poll_read(cx, buf)
+        }
+    }
+
+    impl AsyncWrite for ObservedTcp {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            let result = Pin::new(&mut self.io).poll_write(cx, buf);
+            match &result {
+                Poll::Pending => {
+                    self.observation.pending_ptr.store(buf.as_ptr() as usize, Ordering::Relaxed);
+                    self.observation.pending_len.store(buf.len(), Ordering::Relaxed);
+                }
+                Poll::Ready(Ok(n)) => {
+                    self.observation.written.fetch_add(*n, Ordering::Relaxed);
+                }
+                Poll::Ready(Err(_)) => {
+                    self.observation.failures.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            result
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.io).poll_flush(cx)
+        }
+
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.io).poll_shutdown(cx)
+        }
+    }
+
+    async fn assert_encoded_storage_retires(reset: bool) {
+        let listener = TcpSocket::new_v4().unwrap();
+        listener.set_recv_buffer_size(4_096).unwrap();
+        listener.bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
+        let listener = listener.listen(1).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let outgoing = TcpSocket::new_v4().unwrap();
+        outgoing.set_send_buffer_size(4_096).unwrap();
+        let (outgoing, (mut peer, _)) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::try_join!(outgoing.connect(addr), listener.accept())
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        drop(listener);
+        let observation = Arc::new(WriteObservation::default());
+        let io = ObservedTcp { io: outgoing, observation: Arc::clone(&observation) };
+        let mut framed = Framed::new(DynTcpStream(Box::new(io)), SecretboxCodec::new());
+        let mut buffer = BytesMut::with_capacity(128 * 1_024);
+        buffer.extend_from_slice(&[0, 0]);
+        let witness = buffer.split_to(1).freeze();
+        buffer.clear();
+        let buffer_start = buffer.as_ptr() as usize;
+        let buffer_end = buffer_start + buffer.capacity();
+        assert!(!witness.is_unique());
+        *framed.write_buffer_mut() = buffer;
+        let mut stream = FramedStream::from_parts(framed, addr);
+        stream.set_max_packet_length(128 * 1_024);
+        stream.set_session_keys(DirectionalKeys { send: [0x19; 32], recv: [0x2a; 32] });
+        assert!(!witness.is_unique(), "keying must preserve the seeded write buffer");
+        let admission = match &stream.state {
+            StreamState::Keyed(keyed) => keyed.writer_admission.clone(),
+            _ => panic!("stream must be keyed"),
+        };
+        let mut screenshot = crate::message_proto::ScreenshotResponse::new();
+        screenshot.data = vec![0x5a; 64 * 1_024].into();
+        let mut message = crate::message_proto::Message::new();
+        message.set_screenshot_response(screenshot);
+        let receipt = stream.send_with_receipt(&message).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while observation.pending_len.load(Ordering::Relaxed) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let pending_ptr = observation.pending_ptr.load(Ordering::Relaxed);
+        let pending_len = observation.pending_len.load(Ordering::Relaxed);
+        assert!(observation.written.load(Ordering::Relaxed) > 0);
+        assert!(pending_ptr >= buffer_start && pending_ptr + pending_len <= buffer_end);
+        assert_eq!(admission.frames.available_permits(), WRITER_CHANNEL_CAP - 1);
+        assert!(!witness.is_unique());
+
+        // A real incoming control frame must remain readable while the outgoing socket is blocked.
+        let (mut seal, _) = split_session_keys(&DirectionalKeys {
+            send: [0x2a; 32], recv: [0x19; 32],
+        });
+        let mut wire = BytesMut::new();
+        BytesCodec::new().encode(seal.seal(b"control").into(), &mut wire).unwrap();
+        peer.write_all(&wire).await.unwrap();
+        let control = tokio::time::timeout(Duration::from_secs(2), stream.next())
+            .await.unwrap().unwrap().unwrap();
+        assert_eq!(&control[..], b"control");
+        assert_eq!(stream.recv_counter(), 1);
+        if reset {
+            peer.set_linger(Some(Duration::ZERO)).unwrap();
+            drop(peer);
+            assert!(tokio::time::timeout(Duration::from_secs(2), receipt)
+                .await.unwrap().unwrap().is_err());
+            if let StreamState::Keyed(keyed) = &mut stream.state {
+                tokio::time::timeout(Duration::from_secs(2), &mut keyed.writer)
+                    .await.unwrap().unwrap();
+            }
+            assert!(observation.failures.load(Ordering::Relaxed) > 0);
+        } else {
+            peer.write_all(&[4 << 2, 1, 2, 3, 4]).await.unwrap();
+            assert!(tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await.unwrap().unwrap().is_err());
+            assert!(stream.poison);
+            if let StreamState::Keyed(keyed) = &mut stream.state {
+                let error = tokio::time::timeout(Duration::from_secs(2), &mut keyed.writer)
+                    .await.unwrap().unwrap_err();
+                assert!(error.is_cancelled());
+            }
+            assert!(receipt.await.is_err());
+            drop(peer);
+        }
+        let retired_after_join = witness.is_unique();
+        assert_eq!(admission.frames.available_permits(), WRITER_CHANNEL_CAP);
+        assert_eq!(admission.ciphertext_bytes.available_permits(), 256 * 1_024);
+        drop(stream);
+        assert!(witness.is_unique(), "dropping the stream must retire every buffer alias");
+        println!(
+            "WRITER_BUFFER_LIFETIME=observed case={} partial_write=true blocked=true control_read=true writer_joined=true permits_returned=true stream_buffer_retired={} owner_drop_control=true",
+            if reset { "reset" } else { "cancel" }, retired_after_join,
+        );
+        assert!(retired_after_join, "the read owner retained the retired writer's encoded storage");
+    }
+
+    #[tokio::test]
+    async fn tcp_failed_writer_retires_encoded_storage() {
+        assert_encoded_storage_retires(true).await;
+    }
+
+    #[tokio::test]
+    async fn tcp_cancelled_writer_retires_encoded_storage() {
+        assert_encoded_storage_retires(false).await;
+    }
+}
+
+#[cfg(test)]
 mod writer_receipt_tests {
     use super::*;
     use tokio::io::duplex;
@@ -1457,6 +1627,13 @@ mod writer_receipt_tests {
         }
     }
 
+    fn writer_sink<T>(stream: T) -> SplitSink<Framed<DynTcpStream, SecretboxCodec>, Bytes>
+    where
+        T: TcpStreamTrait + Send + Sync + 'static,
+    {
+        framed(stream).split().0
+    }
+
     #[test]
     fn r_s11gx_writer_admission_checks_size_count_and_bytes_before_ownership() {
         let count_admission = WriterAdmission::new(4_096);
@@ -1521,7 +1698,7 @@ mod writer_receipt_tests {
     #[tokio::test]
     async fn r_s11fb_receipt_waits_for_the_exact_sink_send() {
         let (writer_side, reader_side) = duplex(64);
-        let (sink, _) = framed(writer_side).split();
+        let sink = writer_sink(writer_side);
         let mut peer = framed(reader_side);
         let (writer_tx, writer_rx) = mpsc::channel(1);
         let writer = tokio::spawn(writer_task(sink, writer_rx));
@@ -1565,7 +1742,7 @@ mod writer_receipt_tests {
     async fn r_s11fb_receipt_reports_the_exact_sink_failure() {
         let (writer_side, reader_side) = duplex(64);
         drop(reader_side);
-        let (sink, _) = framed(writer_side).split();
+        let sink = writer_sink(writer_side);
         let (writer_tx, writer_rx) = mpsc::channel(1);
         let writer = tokio::spawn(writer_task(sink, writer_rx));
         let (completion, receipt) = oneshot::channel();

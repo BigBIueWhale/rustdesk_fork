@@ -2508,6 +2508,44 @@ Native Windows/macOS, Wayland, rendered UI/FFI/mobile, backend wait/global-worke
 shutdown bounds, save-file publication, installed authority and release acceptance
 remain OPEN. This result establishes the named Linux clipboard operation only.
 
+**Screenshot save publication — Linux native file/handler corrected; platform acceptance OPEN.**
+Product `68120a10` replaces direct destination truncation in `src/client/screenshot.rs`
+with `hbb_common::fs::write_user_file_atomically`. The caller supplies the already
+selected output path and owns action authority. One retained directory anchors
+exclusive temporary creation, complete write/sync and replacement of the selected
+leaf; existing aliases and open readers retain their old file. The temporary handle
+is owned before metadata validation. Prepublication errors retire only the checked
+temporary output and report cleanup failures; publication is recorded before any
+later fallible check, so late errors cannot delete the visible destination. There
+is no truncate fallback, retry, new dependency, runtime, thread or service operation.
+Unix requests mode 0600; Windows retains normal inherited file permissions and uses
+an exclusive pending handle with handle-relative rename. Explicit directory links
+and relative paths remain supported; a subsequently renamed directory stays the
+captured output directory. This user-selected output API is not credential storage.
+
+At unchanged-product baseline `8ed81ff3`, three actual handler regressions failed
+while 31 controls passed: symlink-target modification, hard-link/open-reader
+modification, and original-file damage after native `EFBIG` during a limited child
+process write. The byte-identical seven-case screenshot module passes at `5f4a6843`;
+all 34 handler/clipboard cases pass in 211 outer seconds, including unchanged
+clipboard completion/error controls. The focused filesystem transaction passes all
+13 cases at `68120a10` in 151 seconds: eight prior controls and five new cases for
+retained-directory identity, temporary-name replacement refusal, failed-rename
+cleanup, ordinary/link/relative/non-UTF8 paths, and preservation after a synthetic
+late error through the real completion branch. The last case is not an actual
+fsync-fault test. Its raw serial retains all 13 names and summaries; the receipt
+incorrectly printed eight. `5f4a6843` corrects that label from the validated count;
+that formatting-only correction has no fresh helper execution claim. Exact A/B
+sources, artifacts, diagnostics, complete endpoint observations and joined bounded
+RAM/private-root retirement are retained in
+`.harness-state/verifier-vm/screenshot-save-68120a10.json`.
+
+Native Windows compilation/runtime, Apple/mobile and rendered UI/FFI, installed
+authority/settings, filesystem-specific durability/crash recovery and hostile
+directory-writer final exchange races remain OPEN. Unix identity checks do not
+make a by-name rename/unlink conditional on the checked inode. No whole-product
+LPE closure follows; all user parks and broader release obligations remain intact.
+
 **Receive resume-length admission — Linux native component corrected; installed/platform acceptance OPEN.**
 Product `ad57ba2a` checks the opened partial file's length both before offering a
 resume offset and before publishing resume-stream ownership. The latter bound

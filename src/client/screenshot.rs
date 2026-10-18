@@ -131,4 +131,95 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"replacement");
         std::fs::remove_dir_all(&root).unwrap();
     }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn save_replaces_symlink_without_changing_its_target() {
+        let root = output_directory();
+        let target = root.join("target.png");
+        let selected = root.join("selected.png");
+        std::fs::write(&target, b"original").unwrap();
+        std::os::unix::fs::symlink(&target, &selected).unwrap();
+        let error = handle_screenshot(
+            bytes::Bytes::from_static(b"replacement image"),
+            format!("0:{}", selected.to_str().unwrap()),
+        );
+        let target_preserved = std::fs::read(&target).unwrap() == b"original";
+        let selected_regular = std::fs::symlink_metadata(&selected).unwrap().is_file();
+        let selected_exact = std::fs::read(&selected).unwrap() == b"replacement image";
+        println!("SCREENSHOT_SAVE_SYMLINK=observed success={} target_preserved={target_preserved} selected_regular={selected_regular} selected_exact={selected_exact}", error.is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(error.is_empty());
+        assert!(target_preserved && selected_regular && selected_exact);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn save_replaces_hard_link_without_changing_alias_or_open_reader() {
+        use std::io::Read;
+        let root = output_directory();
+        let alias = root.join("alias.png");
+        let selected = root.join("selected.png");
+        std::fs::write(&alias, b"original").unwrap();
+        std::fs::hard_link(&alias, &selected).unwrap();
+        let mut reader = std::fs::File::open(&selected).unwrap();
+        let error = handle_screenshot(
+            bytes::Bytes::from_static(b"replacement image"),
+            format!("0:{}", selected.to_str().unwrap()),
+        );
+        let alias_preserved = std::fs::read(&alias).unwrap() == b"original";
+        let mut retained = Vec::new();
+        reader.read_to_end(&mut retained).unwrap();
+        let reader_preserved = retained == b"original";
+        let selected_exact = std::fs::read(&selected).unwrap() == b"replacement image";
+        println!("SCREENSHOT_SAVE_HARDLINK=observed success={} alias_preserved={alias_preserved} reader_preserved={reader_preserved} selected_exact={selected_exact}", error.is_empty());
+        drop(reader);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(error.is_empty());
+        assert!(alias_preserved && reader_preserved && selected_exact);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn save_write_failure_preserves_existing_destination() {
+        use hbb_common::libc;
+        if std::env::var("RUSTDESK_SCREENSHOT_FILE_LIMIT_CHILD").as_deref() != Ok("1") {
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "client::screenshot::tests::save_write_failure_preserves_existing_destination",
+                    "--exact", "--color", "never", "--test-threads=1", "--show-output",
+                ])
+                .env("RUSTDESK_SCREENSHOT_FILE_LIMIT_CHILD", "1")
+                .output().unwrap();
+            assert!(child.stdout.len() + child.stderr.len() <= 16384);
+            for line in std::str::from_utf8(&child.stdout).unwrap().lines() {
+                if line.starts_with("SCREENSHOT_SAVE_") {
+                    println!("{line}");
+                }
+            }
+            assert!(child.status.success(), "file-limit child failed: {}", String::from_utf8_lossy(&child.stderr));
+            return;
+        }
+        let root = output_directory();
+        let selected = root.join("selected.png");
+        std::fs::write(&selected, b"original").unwrap();
+        let mut old_limit = unsafe { std::mem::zeroed::<libc::rlimit>() };
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_FSIZE, &mut old_limit) }, 0);
+        let old_signal = unsafe { libc::signal(libc::SIGXFSZ, libc::SIG_IGN) };
+        assert_ne!(old_signal, libc::SIG_ERR);
+        let limited = libc::rlimit { rlim_cur: 2, rlim_max: old_limit.rlim_max };
+        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &limited) }, 0);
+        let error = handle_screenshot(
+            bytes::Bytes::from_static(b"replacement image"),
+            format!("0:{}", selected.to_str().unwrap()),
+        );
+        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &old_limit) }, 0);
+        assert_ne!(unsafe { libc::signal(libc::SIGXFSZ, old_signal) }, libc::SIG_ERR);
+        let native_limit_error = error.contains(&format!("os error {}", libc::EFBIG));
+        let destination_preserved = std::fs::read(&selected).unwrap() == b"original";
+        let no_temporary_entries = std::fs::read_dir(&root).unwrap().count() == 1;
+        println!("SCREENSHOT_SAVE_LIMIT=observed error_returned={} native_efbig={native_limit_error} destination_preserved={destination_preserved} no_temporary_entries={no_temporary_entries}", !error.is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(native_limit_error && destination_preserved && no_temporary_entries);
+    }
 }

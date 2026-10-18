@@ -3482,6 +3482,9 @@ run_focused_rust_tests() {
                 client::screenshot::tests::malformed_save_selectors_preserve_the_destination
                 client::screenshot::tests::canonical_actions_round_trip_without_altering_paths
                 client::screenshot::tests::valid_save_discard_and_io_error_preserve_file_behavior
+                client::screenshot::tests::save_replaces_symlink_without_changing_its_target
+                client::screenshot::tests::save_replaces_hard_link_without_changing_alias_or_open_reader
+                client::screenshot::tests::save_write_failure_preserves_existing_destination
             )
         elif [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
             container_name=rustdesk-cliprdr-read-component-tests
@@ -4986,7 +4989,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                                 "$clipboard_executable" client::screenshot::tests:: \
                                 --color never --test-threads=1 --show-output || screenshot_status=$?
                             [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
-                            printf "SCREENSHOT_ACTION_ARTIFACT=observed sha256=%s tests=4 exit_code=%s unchanged=before-after\n" \
+                            printf "SCREENSHOT_ACTION_ARTIFACT=observed sha256=%s tests=7 exit_code=%s unchanged=before-after\n" \
                                 "$clipboard_artifact_sha" "$screenshot_status"
                             [ "$screenshot_status" -eq 0 ] || exit "$screenshot_status"
                             exit 0
@@ -5106,7 +5109,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'viewer credential fixture mounts differ'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
-        printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=31 bridge=absent native=x11\n'
+        printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=34 bridge=absent native=x11\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
         printf 'CLIPRDR_READ_PROFILE=cliprdr-read stage=container-start tests=12 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
@@ -5616,7 +5619,7 @@ PY
                     && [ "$(grep -Ec '^CLIPBOARD_WRITE_NATIVE=pass tests=8 artifact_sha256=[0-9a-f]{64} queue=production native=x11 retired=unchanged live=published cleanup=joined$' "$output")" -eq 1 ] \
                     && [ "$(grep -Fc 'CLIPBOARD_WRITE_NATIVE=' "$output")" -eq 1 ] \
                     || fail 'clipboard write ownership receipt differs'
-                [ "$(grep -Ec '^SCREENSHOT_ACTION_ARTIFACT=observed sha256=[0-9a-f]{64} tests=4 exit_code=0 unchanged=before-after$' "$output")" -eq 1 ] \
+                [ "$(grep -Ec '^SCREENSHOT_ACTION_ARTIFACT=observed sha256=[0-9a-f]{64} tests=7 exit_code=0 unchanged=before-after$' "$output")" -eq 1 ] \
                     && [ "$(grep -Fc 'SCREENSHOT_ACTION_ARTIFACT=' "$output")" -eq 1 ] \
                     || fail 'screenshot action artifact receipt differs'
             fi
@@ -6015,9 +6018,9 @@ PY
             grep -E '^CLIPBOARD_DECODE_ARTIFACT_BEFORE=sha256=' "$output"
             grep -E '^CLIPBOARD_DECODE_ARTIFACT=pass ' "$output"
             grep -E '^CLIPBOARD_DECODE_BUILD=pass elapsed_seconds=[0-9]+ features=linux-pkg-config$' "$output"
-            grep -E '^test clipboard::(native_clipboard_limit_tests|write_owner::tests|write_native_tests|write_permission_native_tests)::.* \.\.\. ok$' "$output"
-            grep -E '^test client::screenshot::tests::.* \.\.\. ok$|^SCREENSHOT_ACTION_' "$output"
-            grep -E '^CLIPBOARD_WRITE_(ARTIFACT|NATIVE)=' "$output"
+            grep -E '^test clipboard::(native_clipboard_limit_tests|write_owner::tests|write_native_tests|write_permission_native_tests|write_screenshot_native_tests)::.* \.\.\. ok$' "$output"
+            grep -E '^test client::screenshot::tests::.* \.\.\. ok$|^SCREENSHOT_(ACTION_|SAVE_|COPY_)' "$output"
+            grep -E '^CLIPBOARD_WRITE_(ARTIFACT|NATIVE|NATIVE_ARTIFACT)=|^CLIPBOARD_SCREENSHOT_ERROR_ARTIFACT=' "$output"
             printf 'CLIPBOARD_DECODE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-clipboard-sanitizer-and-write-owner rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

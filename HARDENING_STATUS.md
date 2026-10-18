@@ -2735,6 +2735,56 @@ is covered above; cross-dialog/concurrent writers and broader settings/credentia
 acceptance remain OPEN.
 The fifteen credential-action obligations and R-S0 remain OPEN.
 
+**Favorite membership — Linux transaction/bridge accepted; full UI/platform acceptance OPEN.**
+Product `69eda111`, with export correction `829f0751`, replaces whole-list
+`set_fav`/`store_fav`/`main_store_fav` writes with typed ID/membership changes.
+The existing process-local `LocalConfig` write lock owns the membership decision,
+private-candidate persistence and cache publication. Failed persistence preserves
+the prior cache and file; the identical retry remains a real write. Additions retain
+order without inserting duplicates, removals affect only the requested IDs, and
+already-satisfied membership avoids a write. Concurrent calls in that process do
+not replace one another's list snapshots. No credential/service authority, task,
+queue, runtime, dependency or privilege transition is added.
+
+The fallible Rust facade/export reaches the generated bridge. All five Flutter
+actions await the shared save helper, which owns its submitted ID copy, catches
+failure and reports feedback. Failed writes return before success feedback,
+selection retirement or reload. Bulk actions check page lifetime after completion.
+The web adapter follows the typed API and dispatches its read/mutate/write without
+an intervening await; browser execution remains unverified.
+
+At `69eda111`, ten Linux library cases pass in 160 outer seconds. The same native
+executable runs the byte-identical historical setter body from `bd03deb4`: a
+denied store publishes the new list in memory while preserving the file, and an
+identical healthy retry skips persistence. Corrected add/remove failures preserve
+memory/file and unrelated preferences, then persist their exact retries. Ordering,
+idempotence and eight concurrent writers with matching durable readback pass.
+The four existing storage-transaction controls and three ordinary-option cases
+remain green. Production `config.rs` changes only the complete favorite setter.
+
+At `829f0751`, fresh generated bindings, the complete Linux Flutter library and a
+Dart AOT client pass two existing Rust regressions and eight actual native-bridge
+cases, including four new favorite cases. Both denied membership changes arrive
+as `FfiException`/`RESULT_ERROR`, preserve memory/file and persist on retry;
+concurrent additions and idempotent calls also pass. Builds take 244/37 seconds;
+the integration takes 630 outer seconds. The initial `69eda111` bridge attempt
+rejected the unsupported `ResultType` export alias before native tests; its failed
+receipt is retained. The export uses the file's existing supported `Result` type.
+
+At `c0477258`, the unchanged product code and fresh bridge pass all 21 Flutter
+component tests in 326 outer seconds: nineteen existing cases and two new
+submitted-ID/wait/failure/retry cases. The result parser requires the exact new
+case names. These are controlled callback tests, not clicks through all five
+actions. Each accepted source freeze matches before/after its run. Pinned inputs,
+artifact digests, named outcomes, complete unchanged endpoint observations,
+joined bounded-RAM cleanup and failed-root inventory/retirement are retained in
+`.harness-state/verifier-vm/favorites-69eda111.json`.
+
+Real desktop/mobile action flows, restart/cross-process writers, Windows/macOS/
+Android/iOS/browser execution and broader security/release acceptance remain OPEN.
+Other `LocalConfig` setters still publish before best-effort storage; their
+failure/retry workflows remain OPEN. All fifteen credential actions remain OPEN.
+
 **Ordinary option persistence — Linux library/handler corrected; broader acceptance OPEN.**
 Product `f895b8a0` makes `Config::set_option` fallible. Under the existing cache write
 lock, it persists a private candidate before publishing the new in-memory value.

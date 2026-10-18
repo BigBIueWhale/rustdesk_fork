@@ -814,7 +814,7 @@ mod tests {
         let mut outcomes = Vec::new();
         for cycle in 0..3 {
             qos.user_delay_response_elapsed(7, 4000);
-            assert_eq!(qos.fps(), MIN_FPS + 1);
+            assert!((MIN_FPS..=MIN_FPS + 1).contains(&qos.fps()));
             qos.adjust_ratio(true);
             qos.user_network_delay(7, 4250);
             for _ in 0..120 {

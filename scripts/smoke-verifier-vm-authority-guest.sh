@@ -126,7 +126,7 @@ case "$#:${8:-}" in
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
-            || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
+            || "${13}" = --video-qos || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
             || "${13}" = --fusermount-process || "${13}" = --file-block \
             || "${13}" = --clipboard-response || "${13}" = --cliprdr-read || "${13}" = --android-client-drain || "${13}" = --cm-read-tick ]] || exit 2
@@ -3750,6 +3750,21 @@ run_focused_rust_tests() {
                 client::tests::r_p14c_viewer_credential_prompt_requires_typed_credential_failure
                 flutter::viewer_credential_bridge_tests::explicit_password_survives_all_session_factories_and_exact_retirement
             )
+        elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
+            container_name=rustdesk-video-qos-tests
+            memory=5g
+            memory_bytes=5368709120
+            source_fingerprints=(
+                Cargo.lock Cargo.toml src/lib.rs src/server/mod.rs
+                src/server/connection.rs src/server/video_qos.rs
+                scripts/run-video-qos-tests.sh scripts/linux-parent-test-build.sh
+            )
+            required_tests=(
+                server::video_qos::tests::pending_probe_observation_preserves_completed_rtt_history
+                server::video_qos::tests::completed_probe_reply_retires_pending_congestion
+                server::video_qos::tests::pending_probe_congestion_controls_rate_and_quality
+                server::video_qos::tests::fresh_probes_after_outage_restore_rate_without_reopening_user
+            )
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             container_name=rustdesk-resolution-parent-tests
             memory=5g
@@ -4450,6 +4465,10 @@ run_focused_rust_tests() {
                             /bin/bash /source/scripts/run-viewer-credential-tests.sh
                             exit 0
                         fi
+                        if [ "$RUST_TEST_PROFILE" = video-qos ]; then
+                            /bin/bash /source/scripts/run-video-qos-tests.sh
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
                             /bin/bash /source/scripts/run-resolution-parent-tests.sh
                             exit 0
@@ -4849,11 +4868,11 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+        && [[ "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
-            | awk '/^(RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() }'; then
+            | awk '/^(VIDEO_QOS|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() }'; then
             parent_start_status=("${PIPESTATUS[@]}")
         else
             parent_start_status=("${PIPESTATUS[@]}")
@@ -5107,6 +5126,12 @@ PY
         [ "$(grep -Ec '^VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=11 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_CREDENTIAL_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'viewer credential artifact receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
+        [ "$(grep -Ec '^VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=4 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'VIDEO_QOS_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^test server::video_qos::tests::.* \.\.\. ok$' "$output")" -eq 4 ] \
+            || fail 'video QoS artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution parent summary count differs'
         [ "$(grep -Ec '^RESOLUTION_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -5550,6 +5575,12 @@ PY
             [ "$tests_passed" -eq 11 ] || fail 'viewer credential total differs'
             printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=11 target=linux-x86_64 scope=production-peer-credentials-and-exported-session-factory rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
+            [ "$tests_passed" -eq 4 ] || fail 'video QoS total differs'
+            grep -E '^test server::video_qos::tests::.* \.\.\. ok$|^VIDEO_QOS_BUILD=pass |^VIDEO_QOS_ARTIFACT=' "$output"
+            printf 'VIDEO_QOS_VM=pass commit=%s tree=%s tests=4 target=linux-x86_64 scope=complete-parent-library-and-probe-recovery rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             [ "$tests_passed" -eq 3 ] || fail 'resolution parent total differs'
             grep -E '^test server::connection::resolution_work::tests::.* \.\.\. ok$|^RESOLUTION_PARENT_BUILD=pass |^RESOLUTION_PARENT_ARTIFACT=' "$output"

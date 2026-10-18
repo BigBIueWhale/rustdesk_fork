@@ -46,7 +46,7 @@ const DELAY_THRESHOLD_150MS: u32 = 150; // 150ms is the threshold for good netwo
 
 #[derive(Default, Debug, Clone)]
 struct UserDelay {
-    response_delayed: bool,
+    pending_delay: Option<u32>,
     delay_history: VecDeque<u32>,
     fps: Option<u32>,
     rtt_calculator: RttCalculator,
@@ -335,8 +335,8 @@ impl VideoQoS {
 
     pub fn user_delay_response_elapsed(&mut self, id: i32, elapsed: u128) {
         if let Some(user) = self.users.get_mut(&id) {
-            user.delay.response_delayed = elapsed > 2000;
-            if user.delay.response_delayed {
+            user.delay.pending_delay = (elapsed > 2000).then_some(elapsed as u32);
+            if user.delay.pending_delay.is_some() {
                 user.delay.add_delay(elapsed as u32);
                 self.adjust_fps();
             }
@@ -518,7 +518,7 @@ impl VideoQoS {
             .min()
             .unwrap_or(INIT_FPS);
 
-        if self.users.iter().any(|u| u.1.delay.response_delayed) {
+        if self.users.iter().any(|u| u.1.delay.pending_delay.is_some()) {
             if fps > MIN_FPS + 1 {
                 fps = MIN_FPS + 1;
             }
@@ -591,5 +591,89 @@ impl RttCalculator {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn healthy_controller() -> VideoQoS {
+        let mut qos = VideoQoS::default();
+        qos.on_connection_open(7);
+        qos.new_user_instant = Instant::now().checked_sub(Duration::from_secs(2)).unwrap();
+        for _ in 0..60 {
+            qos.user_network_delay(7, 20);
+        }
+        assert_eq!(qos.fps(), FPS);
+        qos
+    }
+
+    #[test]
+    fn pending_probe_observation_preserves_completed_rtt_history() {
+        let mut qos = healthy_controller();
+        let samples = qos.users[&7].delay.rtt_calculator.samples.clone();
+        let delays = qos.users[&7].delay.delay_history.clone();
+        for elapsed in [2001, 3000, 5000] {
+            qos.user_delay_response_elapsed(7, elapsed);
+            assert_eq!(qos.fps(), MIN_FPS + 1);
+        }
+        assert_eq!(qos.users[&7].delay.rtt_calculator.samples, samples,
+            "one unanswered probe cannot manufacture completed RTT measurements");
+        assert_eq!(qos.users[&7].delay.delay_history, delays);
+        assert!(qos.users[&7].delay.avg_delay() >= 4980);
+    }
+
+    #[test]
+    fn completed_probe_reply_retires_pending_congestion() {
+        let mut qos = healthy_controller();
+        qos.user_delay_response_elapsed(7, 2500);
+        assert!(qos.users[&7].delay.pending_delay.is_some());
+        qos.user_network_delay(7, 2500);
+        assert!(qos.users[&7].delay.pending_delay.is_none(),
+            "an observed reply completes the pending probe immediately");
+        assert_eq!(qos.users[&7].delay.delay_history.back(), Some(&2500));
+        assert_eq!(qos.users[&7].delay.rtt_calculator.samples.back(), Some(&2500));
+    }
+
+    #[test]
+    fn pending_probe_congestion_controls_rate_and_quality() {
+        let mut qos = healthy_controller();
+        qos.new_display("monitor".to_owned());
+        qos.set_support_changing_quality("monitor", true);
+        qos.store_bitrate(2000);
+        qos.user_delay_response_elapsed(7, 2000);
+        assert_eq!(qos.fps(), FPS);
+        let ratio = qos.ratio();
+        qos.user_delay_response_elapsed(7, 4000);
+        assert_eq!(qos.fps(), MIN_FPS + 1);
+        assert!(qos.users[&7].delay.avg_delay() >= DELAY_THRESHOLD_150MS);
+        qos.adjust_ratio(true);
+        assert!(qos.ratio() < ratio,
+            "an unanswered probe must still lower the sending bitrate");
+        qos.user_delay_response_elapsed(999, 4000);
+        assert_eq!(qos.users.len(), 1);
+        assert_eq!(qos.fps(), MIN_FPS + 1);
+    }
+
+    #[test]
+    fn fresh_probes_after_outage_restore_rate_without_reopening_user() {
+        let mut qos = healthy_controller();
+        qos.user_custom_fps(7, 20);
+        for _ in 0..3 {
+            qos.user_delay_response_elapsed(7, 2500);
+            assert_eq!(qos.fps(), MIN_FPS + 1);
+            qos.user_network_delay(7, 2500);
+            for _ in 0..60 {
+                qos.user_delay_response_elapsed(7, 0);
+                qos.user_network_delay(7, 20);
+                assert!((MIN_FPS..=20).contains(&qos.fps()));
+            }
+            assert_eq!(qos.fps(), 20);
+            assert_eq!(qos.users.len(), 1);
+        }
+        qos.on_connection_close(7);
+        assert!(qos.users.is_empty());
+        assert_eq!(qos.fps(), FPS);
     }
 }

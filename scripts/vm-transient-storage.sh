@@ -31,6 +31,7 @@ elif [ "${MODE:-}:${LINUX_RECEIVER_PROFILE:-}" = linux-service-receiver-tests:au
 elif [ "${MODE:-}:${X11_FOCUS_ONLY:-0}" = x11-display-tests:1 ]; then
     readonly VM_STORAGE_PROFILE=x11-focus
 elif [ "${MODE:-}:${LINUX_PA_PLAYBACK:-0}" = linux-pa-authority-tests:1 ] \
+    || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:video-qos ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:resolution-parent ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:viewer-credentials ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:viewer-resume ] \

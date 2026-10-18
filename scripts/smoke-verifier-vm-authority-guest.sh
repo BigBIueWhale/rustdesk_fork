@@ -3765,11 +3765,11 @@ run_focused_rust_tests() {
             )
             required_tests=(
                 client::video_handler_tests::hidden_first_packet_preserves_healthy_decoder
-                client::video_handler_tests::repeated_hidden_packets_do_not_accumulate_failures
-                client::video_handler_tests::hidden_packet_clears_prior_decode_failure
+                client::video_handler_tests::repeated_hidden_packets_preserve_visible_recovery
+                client::video_handler_tests::hidden_packet_after_corruption_preserves_native_recovery
                 client::video_handler_tests::visible_output_and_corrupt_packet_remain_distinct
                 client::video_handler_tests::worker_tests::retired_decode_failure_keeps_replacement_codec_available
-                client::video_handler_tests::worker_tests::current_decode_failure_keeps_existing_unsupported_policy
+                client::video_handler_tests::worker_tests::current_decode_failure_recovers_same_codec_after_refresh
             )
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
             container_name=rustdesk-video-qos-tests

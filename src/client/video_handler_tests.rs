@@ -1,4 +1,4 @@
-use super::{VideoHandler, MAX_DECODE_FAIL_COUNTER};
+use super::VideoHandler;
 use hbb_common::{bytes::Bytes, message_proto::EncodedVideoFrame, message_proto::VideoFrame};
 use scrap::{
     codec::{EncoderApi, EncoderCfg},
@@ -67,7 +67,6 @@ fn assert_visible(handler: &mut VideoHandler, frame: VideoFrame) {
     assert_eq!((handler.rgb.w, handler.rgb.h), (WIDTH, HEIGHT));
     assert!(handler.rgb.raw.len() >= WIDTH * HEIGHT * 4);
     assert!(handler.decoder.valid());
-    assert_eq!(handler.fail_counter, 0);
 }
 
 #[test]
@@ -77,32 +76,28 @@ fn hidden_first_packet_preserves_healthy_decoder() {
     assert!(!decode(&mut handler, hidden).expect("native hidden decode"));
     assert!(handler.decoder.valid());
     assert!(handler.rgb.raw.is_empty());
-    assert_eq!(handler.fail_counter, 0);
     assert_visible(&mut handler, visible);
 }
 
 #[test]
-fn repeated_hidden_packets_do_not_accumulate_failures() {
+fn repeated_hidden_packets_preserve_visible_recovery() {
     let (visible, hidden) = visible_and_hidden_frames();
     let mut handler = VideoHandler::new(CodecFormat::VP8, 0);
     assert_visible(&mut handler, visible.clone());
-    for _ in 0..MAX_DECODE_FAIL_COUNTER + 2 {
+    for _ in 0..5 {
         assert!(!decode(&mut handler, hidden.clone()).expect("native hidden decode"));
     }
     assert!(handler.decoder.valid());
-    assert_eq!(handler.fail_counter, 0);
     assert_visible(&mut handler, visible);
 }
 
 #[test]
-fn hidden_packet_clears_prior_decode_failure() {
+fn hidden_packet_after_corruption_preserves_native_recovery() {
     let (visible, hidden) = visible_and_hidden_frames();
     let mut handler = VideoHandler::new(CodecFormat::VP8, 0);
     assert_visible(&mut handler, visible.clone());
     assert!(decode(&mut handler, packet(vec![0; 3])).is_err());
-    assert_eq!(handler.fail_counter, 1);
     assert!(!decode(&mut handler, hidden).expect("native hidden decode"));
-    assert_eq!(handler.fail_counter, 0);
     assert_visible(&mut handler, visible);
 }
 
@@ -112,7 +107,6 @@ fn visible_output_and_corrupt_packet_remain_distinct() {
     let mut handler = VideoHandler::new(CodecFormat::VP8, 0);
     assert_visible(&mut handler, visible);
     assert!(decode(&mut handler, packet(vec![0; 3])).is_err());
-    assert_eq!(handler.fail_counter, 1);
     assert!(handler.decoder.valid());
 }
 
@@ -205,13 +199,13 @@ mod worker_tests {
             if replace {
                 visible.generation = 3;
                 assert_eq!(
-                    sender.admit_received_frame(visible, true, Instant::now()),
+                    sender.admit_received_frame(visible.clone(), true, Instant::now()),
                     VideoFrameAdmission::Queued
                 );
             }
             drop(login);
 
-            let recovered = if replace {
+            let receive_rgb = || {
                 match publication.recv_timeout(Duration::from_secs(2)) {
                     Ok((w, h, bytes)) => {
                         assert_eq!((w, h), (WIDTH, HEIGHT));
@@ -221,10 +215,35 @@ mod worker_tests {
                     Err(mpsc::RecvTimeoutError::Timeout) => false,
                     Err(error) => panic!("replacement RGB callback disconnected: {error}"),
                 }
-            } else {
-                wait_until(|| session.lc.read().unwrap().mark_unsupported.contains(&CodecFormat::VP8));
-                false
             };
+            let refresh = |mut frame: VideoFrame, generation| {
+                wait_until(|| sender.shared.state.lock().unwrap().awaiting_keyframe);
+                assert!(sender.begin_refresh(), "native refresh admission");
+                frame.generation = generation;
+                assert_eq!(
+                    sender.admit_received_frame(frame, true, Instant::now()),
+                    VideoFrameAdmission::Queued
+                );
+            };
+            if !replace {
+                refresh(visible.clone(), 3);
+            }
+            let mut recovered = receive_rgb();
+            if !replace && recovered {
+                for cycle in 0..3 {
+                    let mut corrupt = packet(vec![0; 3]);
+                    corrupt.generation = 4 + cycle * 2;
+                    assert_eq!(
+                        sender.admit_received_frame(corrupt, true, Instant::now()),
+                        VideoFrameAdmission::Queued
+                    );
+                    refresh(visible.clone(), 5 + cycle * 2);
+                    recovered = receive_rgb();
+                    if !recovered {
+                        break;
+                    }
+                }
+            }
             let unsupported = session.lc.read().unwrap().mark_unsupported.contains(&CodecFormat::VP8);
             (unsupported, recovered)
         }));
@@ -243,9 +262,9 @@ mod worker_tests {
     }
 
     #[test]
-    fn current_decode_failure_keeps_existing_unsupported_policy() {
+    fn current_decode_failure_recovers_same_codec_after_refresh() {
         let (unsupported, recovered) = decode_failure_schedule(false);
-        assert!(unsupported);
-        assert!(!recovered);
+        assert!(!unsupported, "corrupt input permanently disabled the initialized codec");
+        assert!(recovered, "current-error refresh did not restore RGB output");
     }
 }

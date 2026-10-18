@@ -89,14 +89,16 @@ class _KBChooser extends StatelessWidget {
 
     return Column(
       children: [
-        TextButton(
-          onPressed: enabled ? () => onChanged(kbLayoutType) : null,
-          child: _KBImage(
-            kbLayoutType: kbLayoutType,
-            imageWidth: imageWidth,
-            chosenType: chosenType,
+        Expanded(
+          child: TextButton(
+            onPressed: enabled ? () => onChanged(kbLayoutType) : null,
+            child: _KBImage(
+              kbLayoutType: kbLayoutType,
+              imageWidth: imageWidth,
+              chosenType: chosenType,
+            ),
+            style: TextButton.styleFrom(padding: EdgeInsets.zero),
           ),
-          style: TextButton.styleFrom(padding: EdgeInsets.zero),
         ),
         TextButton(
           child: Row(

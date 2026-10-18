@@ -2558,6 +2558,38 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Auto-disconnect timeout dialog — Linux Flutter component corrected; integration/device acceptance OPEN.**
+Product `059bc53c` replaces the external text controller and unconditional draft return
+with a dialog-owned controller and explicit save/readback outcome. Cancel and Escape
+preserve the prior value. A mismatched readback or callback error keeps the dialog
+editable with visible failure feedback; retry uses the same draft. One pending save
+disables competing actions, stale callbacks cannot act on another dialog, and dismissal
+retains the admitted future through readback before returning. The mobile caller checks
+that its page remains mounted. Full-value numeric validation preserves the prior input
+on an out-of-range edit and retains the empty/default value.
+
+At `a8a197dc`, fresh generated bridges and actual Flutter dialog execution reproduced
+all seven failing scenarios: unsaved Cancel result, missing readback, false successful
+close, duplicate submission, premature dismissal result, unhandled callback failure,
+and erasure of valid input by an invalid edit. The identical complete seven-case module
+passes at `059bc53c` in 357 outer seconds with pinned Flutter 3.24.5,
+Rust 1.75.0, LLVM and FRB inputs. The A/B integration uses a zero-NIC VM and nonroot,
+networkless guest container with read-only source/root and dropped capabilities.
+The dedicated integration budget is 600 seconds; existing 4 GiB guest/3 GiB container,
+7 GiB RAM scratch, 6 GiB file ceiling and 6 GiB headroom remain unchanged.
+The earlier formatter refusal and 300-second deadline are unaccepted setup evidence.
+Baseline case events and candidate parser attestation, sources, stage timings, endpoint
+comparisons, joined VM/RAM cleanup
+and private-root reconciliation are retained in
+`.harness-state/verifier-vm/timeout-dialog-059bc53c.json`.
+
+The writers/readers are controlled callbacks. This proves the rendered Linux Flutter
+dialog and result/lifetime flow with freshly generated Dart bindings, not real Rust
+IPC or durable persistence, native Android/iOS, or installed service behavior.
+Desktop readback still uses the existing option cache; direct FFI error propagation,
+cross-dialog/concurrent writers and broader settings/credential acceptance remain OPEN.
+The fifteen credential-action obligations and R-S0 remain OPEN.
+
 **Ordinary option persistence — Linux library/handler corrected; broader acceptance OPEN.**
 Product `f895b8a0` makes `Config::set_option` fallible. Under the existing cache write
 lock, it persists a private candidate before publishing the new in-memory value.

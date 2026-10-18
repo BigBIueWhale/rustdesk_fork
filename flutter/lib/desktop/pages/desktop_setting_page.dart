@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
+import 'package:flutter_hbb/common/widgets/auto_disconnect_timeout_field.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
@@ -820,9 +821,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
   }
 
   List<Widget> autoDisconnect(BuildContext context) {
-    TextEditingController controller = TextEditingController();
     update(bool v) => setState(() {});
-    RxBool applyEnabled = false.obs;
     return [
       _OptionCheckBox(
           context, 'auto_disconnect_option_tip', kOptionAllowAutoDisconnect,
@@ -830,51 +829,22 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
       () {
         bool enabled = option2bool(kOptionAllowAutoDisconnect,
             bind.mainGetOptionSync(key: kOptionAllowAutoDisconnect));
-        if (!enabled) applyEnabled.value = false;
-        controller.text =
-            bind.mainGetOptionSync(key: kOptionAutoDisconnectTimeout);
         final isOptFixed = isOptionFixed(kOptionAutoDisconnectTimeout);
         return Offstage(
           offstage: !enabled,
           child: _SubLabeledWidget(
             context,
             'Timeout in minutes',
-            Row(children: [
-              SizedBox(
-                width: 95,
-                child: TextField(
-                  controller: controller,
-                  enabled: enabled && !isOptFixed,
-                  onChanged: (_) => applyEnabled.value = true,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(
-                        r'^([0-9]|[1-9]\d|[1-9]\d{2}|[1-9]\d{3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])$')),
-                  ],
-                  decoration: const InputDecoration(
-                    hintText: '10',
-                    contentPadding:
-                        EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                  ),
-                ).marginOnly(right: 15),
-              ),
-              Obx(() => ElevatedButton(
-                    onPressed:
-                        applyEnabled.value && enabled && !isOptFixed
-                            ? () async {
-                                final requested = controller.text;
-                                applyEnabled.value = false;
-                                final saved = await mainSetOption(
-                                    kOptionAutoDisconnectTimeout, requested);
-                                if (!mounted) return;
-                                applyEnabled.value =
-                                    !saved || controller.text != requested;
-                              }
-                            : null,
-                    child: Text(
-                      translate('Apply'),
-                    ),
-                  ))
-            ]),
+            AutoDisconnectTimeoutField(
+              value: bind.mainGetOptionSync(key: kOptionAutoDisconnectTimeout),
+              enabled: enabled && !isOptFixed,
+              saveTimeout: (requested) async {
+                await bind.mainSetOption(
+                    key: kOptionAutoDisconnectTimeout, value: requested);
+                return bind.mainGetOptionSync(key: kOptionAutoDisconnectTimeout);
+              },
+              translateText: translate,
+            ),
             enabled: enabled && !isOptFixed,
           ),
         );

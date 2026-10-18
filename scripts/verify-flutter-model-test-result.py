@@ -107,6 +107,16 @@ SETTING_OPTION_TESTS = {
     "synchronous option dispatch failure is reported",
     "failed option save permits the identical retry",
 }
+AUTO_DISCONNECT_FIELD_TESTS = {
+    "inline timeout keeps one save while a newer draft is edited",
+    "inline timeout retains its controller and draft across rebuilds",
+    "inline timeout refreshes an unedited effective value",
+    "inline timeout reports failure and permits the identical retry",
+    "inline timeout refuses a mismatched effective value",
+    "retired inline timeout cannot update its replacement",
+    "disabled inline timeout cannot save or bypass a pending write",
+    "inline timeout preserves valid input and the empty default",
+}
 AUTO_DISCONNECT_TESTS = {
     "cancel and escape preserve the stored timeout",
     "successful save waits for readback",
@@ -378,6 +388,7 @@ def parse_result(path, profile="models"):
     elif profile == "auto-disconnect":
         expected_by_suite = {
             "auto_disconnect_timeout_dialog_test.dart": AUTO_DISCONNECT_TESTS,
+            "auto_disconnect_timeout_field_test.dart": AUTO_DISCONNECT_FIELD_TESTS,
             "setting_option_mutation_test.dart": SETTING_OPTION_TESTS,
         }
         expected_suites = set(expected_by_suite)

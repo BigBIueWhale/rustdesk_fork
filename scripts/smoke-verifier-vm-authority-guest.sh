@@ -8708,7 +8708,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_AUTO_DISCONNECT_TEST_JSON
-            expected_result='suites=2 tests=11'
+            expected_result='suites=3 tests=19'
         elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
             memory=3g
             memory_bytes=3221225472
@@ -9233,7 +9233,7 @@ run_flutter_model_tests() {
                     tests=(test/input_modifier_release_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
-                    tests=(test/auto_disconnect_timeout_dialog_test.dart test/setting_option_mutation_test.dart)
+                    tests=(test/auto_disconnect_timeout_dialog_test.dart test/auto_disconnect_timeout_field_test.dart test/setting_option_mutation_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
                     tests=(test_probes/file_navigation_ordering_test.dart)
@@ -9368,6 +9368,7 @@ run_flutter_model_tests() {
                         diff -r --exclude=generated_bridge.dart \
                             --exclude=generated_bridge.freezed.dart /source/flutter/lib lib
                         cmp /source/flutter/test/auto_disconnect_timeout_dialog_test.dart test/auto_disconnect_timeout_dialog_test.dart
+                        cmp /source/flutter/test/auto_disconnect_timeout_field_test.dart test/auto_disconnect_timeout_field_test.dart
                         cmp /source/flutter/test/setting_option_mutation_test.dart test/setting_option_mutation_test.dart
                     elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
                         diff -r --exclude=generated_bridge.dart \
@@ -9577,7 +9578,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
-        printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=2 tests=11 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
+        printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=3 tests=19 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

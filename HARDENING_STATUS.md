@@ -1558,6 +1558,29 @@ performant across every supported viewer and controlled platform. Focus, visibil
 display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,
 fresh presentation, bounded resources, and final ownership without requiring reconnect as a recovery mechanism.
 
+**Video QoS probe timing — Linux controller A/B ACCEPTED; full connection latency OPEN.**
+`VideoQoS` retains one pending elapsed value separately from completed probe measurements.
+Repeated timer observations no longer insert extra RTT/history samples. A reply clears its
+pending value before recording the completed measurement and recalculating the sending rate.
+Pending elapsed time still contributes its current lower bound to congestion control, including
+frame-rate and bitrate reduction; a new probe can clear the pending cap without waiting for
+another frame. Existing user limits, sample-window policy and connection ownership remain.
+At behavior-preserving state extraction `50570c81`, two actual controller regressions failed:
+polls changed completed RTT history and a received reply retained pending state. Both controls
+passed. The identical four-test module at `7c537a6c` passed in 296 VM seconds after
+compiling the complete Linux parent library, including rate/quality reduction while waiting,
+no new state for unknown users, three outage/recovery input cycles, retained user identity/custom FPS cap,
+and final user retirement. Inputs are controlled elapsed/RTT values, not real impaired packets.
+Artifact `0e3de08603f896b25e6c3956e8b8f9bb920c9e9025ffe9626652a7fef107cc54` is unchanged before/after.
+`.harness-state/verifier-vm/video-qos-probe-baseline-50570c81.json` and
+`video-qos-probe-accepted-7c537a6c.json` bind sources, native results, setup failure,
+unchanged controls/endpoints, existing 20 GiB admission and joined RAM/VM/private-root cleanup.
+The earlier bad fingerprint ran no application test and is not behavioral evidence.
+This corrects controller bookkeeping. Capture-to-actual-presentation age, real-peer random/burst
+loss, bandwidth/jitter/outage recovery, mobile/desktop combinations, input-to-visible response,
+numeric latency/recovery budgets and multi-hour drift/resource acceptance remain OPEN under R-F5.
+The receive-acquisition race and all other user-parked work remain OPEN/PARKED.
+
 ### Current source disposition — not native closure
 
 Normative behavior and detailed mechanics live in the named requirements and Appendix C rows; dedicated status entries

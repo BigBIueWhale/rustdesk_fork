@@ -2989,6 +2989,8 @@ run_focused_rust_tests() {
                 bytes_codec::tests::eof_preserves_oversized_frame_refusal
                 tcp::writer_receipt_tests::protobuf_send_refuses_before_encoding
                 tcp::writer_receipt_tests::protobuf_receipt_refuses_before_encoding
+                tcp::writer_receipt_tests::protobuf_refuses_failed_writer_before_encoding_and_sealing
+                tcp::writer_receipt_tests::protobuf_refuses_full_channel_before_encoding_and_sealing
                 tcp::writer_receipt_tests::protobuf_encoding_failure_retires_admission
                 tcp::writer_receipt_tests::r_s11gx_writer_admission_checks_size_count_and_bytes_before_ownership
                 tcp::writer_receipt_tests::r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort

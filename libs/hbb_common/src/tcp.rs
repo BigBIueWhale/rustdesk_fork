@@ -1297,6 +1297,105 @@ mod writer_receipt_tests {
         assert_protobuf_refusal_before_encoding(true).await;
     }
 
+    async fn assert_writer_channel_refusal_before_encoding(closed: bool) {
+        use tokio::io::AsyncReadExt;
+
+        let keys = DirectionalKeys {
+            send: [0x57; 32],
+            recv: [0x68; 32],
+        };
+        let mut observations = Vec::new();
+        for with_receipt in [false, true] {
+            let (sender_side, peer) = duplex(8_192);
+            let mut peer = Some(peer);
+            let mut stream = FramedStream::from(sender_side, SocketAddr::from(([127, 0, 0, 1], 0)));
+            stream.set_max_packet_length(4_096);
+            stream.set_session_keys(keys.clone());
+            let (mut expected_seal, _) = split_session_keys(&keys);
+            if closed {
+                drop(peer.take());
+                let receipt = stream
+                    .send_with_receipt(&crate::message_proto::Message::new())
+                    .await
+                    .unwrap();
+                assert!(
+                    tokio::time::timeout(std::time::Duration::from_secs(1), receipt)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .is_err()
+                );
+                if let StreamState::Keyed(keyed) = &mut stream.state {
+                    tokio::time::timeout(std::time::Duration::from_secs(1), &mut keyed.writer)
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    assert!(keyed.writer_tx.is_closed());
+                }
+                expected_seal.seal(&[]);
+            } else if let StreamState::Keyed(keyed) = &stream.state {
+                // The current-thread test has not yielded since spawning the writer. Fill its
+                // channel with drain commands, which do not consume frame or byte admission.
+                for _ in 0..WRITER_CHANNEL_CAP {
+                    let (ack, _) = oneshot::channel();
+                    assert!(keyed.writer_tx.try_send(WriterCommand::Drain(ack)).is_ok());
+                }
+                assert_eq!(keyed.writer_tx.capacity(), 0);
+            }
+
+            let message = observed_message();
+            let result = if with_receipt {
+                stream.send_with_receipt(&message).await.map(|_| ())
+            } else {
+                stream.send(&message).await
+            };
+            assert!(result.is_err());
+            assert!(stream.poison);
+            if !closed {
+                join_aborted_writer(&mut stream).await;
+            }
+            if let StreamState::Keyed(keyed) = &mut stream.state {
+                observations.push((
+                    message.encodes.load(Ordering::Relaxed),
+                    keyed.seal.seal(b"next nonce") == expected_seal.seal(b"next nonce"),
+                ));
+                assert!(keyed.writer_admission.frames.is_closed());
+                assert!(keyed.writer_admission.ciphertext_bytes.is_closed());
+                assert_eq!(
+                    keyed.writer_admission.frames.available_permits(),
+                    WRITER_CHANNEL_CAP
+                );
+                assert_eq!(
+                    keyed.writer_admission.ciphertext_bytes.available_permits(),
+                    8_192
+                );
+            }
+            drop(stream);
+            if let Some(mut peer) = peer {
+                let mut received = Vec::new();
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(1),
+                    peer.read_to_end(&mut received),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                assert!(received.is_empty());
+            }
+        }
+        assert_eq!(observations, [(0, true), (0, true)]);
+    }
+
+    #[tokio::test]
+    async fn protobuf_refuses_failed_writer_before_encoding_and_sealing() {
+        assert_writer_channel_refusal_before_encoding(true).await;
+    }
+
+    #[tokio::test]
+    async fn protobuf_refuses_full_channel_before_encoding_and_sealing() {
+        assert_writer_channel_refusal_before_encoding(false).await;
+    }
+
     #[tokio::test]
     async fn protobuf_encoding_failure_retires_admission() {
         for with_receipt in [false, true] {

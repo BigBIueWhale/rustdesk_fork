@@ -2336,6 +2336,24 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 
 ### Current authority and source closure
 
+**WebM recording creation — Linux native constructor A/B accepted; recording lifetime and installed/platform acceptance OPEN.**
+`libs/scrap/src/common/record.rs::WebmRecorder::new` creates its output exclusively and
+propagates an occupied-path error. The `AlreadyExists` retry through `File::create` is deleted;
+no existing regular file, hardlink or final symlink becomes a recording output through that retry.
+The six actual scrap-library tests at `267526cc` reproduced four collision failures: construction
+and drop removed each occupied entry. Both fresh VP8/VP9 controls passed. Product `1657f818`
+passes the identical six tests, preserving refused entries' identity, bytes and symlink targets,
+while real encoded VP8/VP9 frames still mux and finalize with the expected WebM header and codec.
+This is constructor/filesystem and native mux evidence, with no playback or whole-app claim.
+The complete `--recording-output-tests` transaction at `15e3045b` passed in 154 VM seconds
+(83-second library build), with the same artifact as the earlier six-case pass whose wrapper
+correctly rejected a missing network canary. The entry now executes and retains the actual
+canary. Exact artifact/source/input bindings, all endpoint snapshots, bounded RAM storage and
+joined cleanup are retained in `.harness-state/verifier-vm/recording-output-accepted-1657f818.json`;
+the baseline and rejected partial transaction remain separately retained. Parent-directory
+authority, replacement during recording/cleanup, caller/UI error reporting, installed-root
+recording and native Windows/macOS acceptance remain OPEN. No overall recording or LPE closure follows.
+
 **Frame EOF handling — Linux common codec/TCP component ACCEPTED; installed/platform evidence OPEN.**
 `libs/hbb_common/src/bytes_codec.rs` reports `UnexpectedEof` for an unfinished header or
 payload, including an empty buffer after the header has moved into decoder state.

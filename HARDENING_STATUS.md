@@ -12,6 +12,8 @@ The reproducible ledger metric is fixed `tiktoken 0.12.0` / `cl100k_base` /
 treating special-token spellings literally. It is a named document metric, not a
 universal model count. Reproduce it with
 `/bin/bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count`.
+Add `--requirements` to count the sealed `requirements.html` in the same VM with
+the same method, controls and round trip; each result binds its own complete input.
 Its storage profile admits the unchanged 2 GiB guest, 4 GiB RAM scratch,
 6 GiB host headroom and 1 GiB overhead. QEMU has a 1 GiB hard file ceiling;
 prepared inputs must leave that capacity free. Memory/storage monitoring and
@@ -93,6 +95,25 @@ outer-loop decryption description, retired cipher narrative and claims that
 coalescing itself fails authentication are removed. The shared gate's comment
 now agrees with its unchanged one-split checks. This specification correction
 does not supply new native or release acceptance.
+
+R-T3/R-T18 now own one normative writer contract. The historical blocked-branch
+story, literal `try_*` publication requirement, duplicate R-S11gx/Appendix C #359
+implementation descriptions and instruction to keep normative rules in the ledger
+are removed. R-S11gx retains platform/send-path coverage and #359 retains the failure
+class; both refer to R-T18. Channel reservation precedes encoding and nonce advance,
+and publication consumes that reservation. Exact retained limits, sole-writer/FIFO
+ordering, failure ownership, abort/finality distinction, prohibited recovery routes,
+Android persistence and executable/native/installed/soak/review obligations remain.
+Commit `deb907f8` changes exactly four HTML nodes; the remaining bytes, 411 requirement
+IDs, 369 numbered rows and 214 links keep their contents and order. Strict parsing
+of changed nodes confirms balanced tags; this is document evidence only.
+Pinned VM counts are 396,681 → 395,902 tokens and 1,793,734 → 1,790,332 bytes for the
+complete specification. Optional counting at `5bb885f4` preserves the original
+ledger-only command and uses the unchanged authenticated tokenizer recipe.
+`.harness-state/verifier-vm/writer-contract-doc-role-deb907f8.json` retains the
+classification, obligation mapping, exact counts and source/cleanup bindings.
+Product source and runtime verdicts are unchanged; whole-document cleanup and all
+native/installed/release obligations remain OPEN.
 
 R-X3/R-X4 now state the direct-only configuration and password-only authentication
 contract. The inherited local server-list/no-op rewrite permission and instruction

@@ -107,6 +107,7 @@ case "$#:${8:-}" in
             --native-logind) HBB_LOGIND_NATIVE=1 ;;
             --fuse-reads) HBB_FUSE_READ_TESTS=1 ;;
             --send-digest) HBB_SEND_DIGEST_TESTS=1 ;;
+            --file-metadata) RUST_TEST_PROFILE=file-metadata ;;
             *) exit 2 ;;
         esac
         ;;
@@ -3006,7 +3007,7 @@ run_focused_rust_tests() {
                 tcp::eof_tests::buffered_eof_frames_require_authentication
                 bytes_codec::tests::eof_rejects_partial_headers
                 bytes_codec::tests::eof_rejects_partial_payloads_after_consuming_each_header_width
-                bytes_codec::tests::eof_preserves_complete_empty_coalesced_and_raw_frames
+                bytes_codec::tests::eof_preserves_complete_empty_coalesced_frames
                 bytes_codec::tests::eof_preserves_oversized_frame_refusal
                 tcp::writer_receipt_tests::protobuf_send_refuses_before_encoding
                 tcp::writer_receipt_tests::protobuf_receipt_refuses_before_encoding
@@ -3033,6 +3034,15 @@ run_focused_rust_tests() {
             required_tests=(
                 fs::tests::send_digest_refuses_changed_lengths_before_cm_wait
                 fs::tests::send_digest_refuses_changed_lengths_before_wire_publication
+            )
+        fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+            required_tests=(
+                fs::tests::file_metadata_manifest_refuses_unrepresentable_times
+                fs::tests::file_metadata_job_refuses_bad_time_before_admission
+                fs::tests::file_metadata_sink_refuses_wrap_before_publication
+                fs::tests::file_metadata_valid_times_preserve_native_publication
+                fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file
             )
         fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
@@ -4487,7 +4497,20 @@ run_focused_rust_tests() {
                         printf "HBB_COMMON_FS_ARTIFACT_START=observed sha256=%s executable=%s\n" \
                             "$artifact_sha" "$test_executable"
                         cd /source/libs/hbb_common
-                        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
+                        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+                            for group in fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file \
+                                fs::tests::file_metadata_; do
+                                group_status=0
+                                timeout --signal=TERM --kill-after=5s 20s \
+                                    "$test_executable" "$group" --color never --test-threads=1 --show-output \
+                                    || group_status=$?
+                                [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                                if [ "$group_status" -ne 0 ]; then
+                                    printf "FILE_METADATA_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" "$artifact_sha" "$group_status"
+                                    exit "$group_status"
+                                fi
+                            done
+                        elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
                             timeout --signal=TERM --kill-after=5s 20s \
                                 "$test_executable" fs::tests::send_digest_ --color never --test-threads=1 --show-output
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
@@ -5086,6 +5109,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                     if (++cases <= 64) print
                 }
                 /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
+                /^test fs::tests::(file_metadata_[[:alnum:]_]+|receive_post_publish_sync_failure_never_deletes_visible_file) \.\.\. (ok|FAILED)$/ { if (++metadata_cases <= 8) print }
+                /^FILE_METADATA_/ { if (++metadata_observations <= 16) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'File-peer probe failure artifact metadata could not be read\n' >&2
@@ -5118,6 +5143,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=2; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
@@ -5654,7 +5680,10 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
-        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+            [ "$tests_passed" -eq 5 ] || fail 'file metadata test total differs'
+            grep -E '^test fs::tests::(file_metadata_[a-z_]+|receive_post_publish_sync_failure_never_deletes_visible_file) [.][.][.] ok$|^FILE_METADATA_' "$output"
+        elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             [ "$tests_passed" -eq 2 ] || fail 'send digest test total differs'
             grep -E '^test fs::tests::send_digest_.* \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=' "$output"
         else
@@ -5677,7 +5706,11 @@ PY
             grep -E '^test platform::linux::tests::r_s11e40_.* \.\.\. ok$' "$output"
             cat "$native_output"
         fi
-        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+            printf 'FILE_METADATA_VM=pass commit=%s tree=%s tests=5 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             printf 'FILE_SEND_DIGEST_VM=pass commit=%s tree=%s tests=2 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-size-admission cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

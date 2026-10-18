@@ -64,7 +64,7 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'verifier-VM input/run overrides are lifecycle-internal' >&2; exit 2; }
         ;;
-    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests|1:--file-send-digest-tests)
+    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests|1:--file-send-digest-tests|1:--file-metadata-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Rust-test input/run overrides are forbidden' >&2; exit 2; }
@@ -75,6 +75,8 @@ case "$#:${1:-}" in
             HBB_FUSE_READ_TESTS=1
         elif [ "$1" = --file-send-digest-tests ]; then
             HBB_SEND_DIGEST_TESTS=1
+        elif [ "$1" = --file-metadata-tests ]; then
+            RUST_TEST_PROFILE=file-metadata
         fi
         ;;
     1:--cpace-recovery-tests)
@@ -536,6 +538,7 @@ case "$#:${1:-}" in
         printf 'Exact CM read-tick ownership: %s --cm-read-tick-tests\n' "${0##*/}" >&2
         printf 'Blocked-worker owner transitions: %s --android-client-drain-tests\n' "${0##*/}" >&2
         printf 'Send digest size admission: %s --file-send-digest-tests\n' "${0##*/}" >&2
+        printf 'File timestamp admission/finality: %s --file-metadata-tests\n' "${0##*/}" >&2
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
@@ -4489,6 +4492,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
         guest_invocation+=' --fuse-reads'
     elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
         guest_invocation+=' --send-digest'
+    elif [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+        guest_invocation+=' --file-metadata'
     fi
 elif [ "$MODE" = cpace-recovery-tests ]; then
     guest_invocation+=" --cpace-recovery-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
@@ -5720,6 +5725,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
     elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
         hbb_receipt_kind=FILE_SEND_DIGEST_VM
         hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-size-admission cleanup=joined'
+    elif [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+        hbb_receipt_kind=FILE_METADATA_VM
     fi
     if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         hbb_image_index=$DEV_CHECK_IMAGE_ID
@@ -5736,7 +5743,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
     HBB_COMMON_FS_ARTIFACT_SHA256=${hbb_common_fs_receipts[0]#*artifact_sha256=}
     HBB_COMMON_FS_ARTIFACT_SHA256=${HBB_COMMON_FS_ARTIFACT_SHA256%% *}
     printf '%s\n' "${hbb_common_fs_receipts[0]}"
-    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ] && [ "$HBB_SEND_DIGEST_TESTS" -eq 0 ]; then
+    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ] && [ "$HBB_SEND_DIGEST_TESTS" -eq 0 ] && [ "$RUST_TEST_PROFILE" != file-metadata ]; then
         mapfile -t peer_probe_artifacts < <(
             /usr/bin/grep -Eo 'FILE_PEER_PROBE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/examples/probe_client-[0-9a-f]{16} tests=5 unchanged=before-after' "$SERIAL_LOG"
         )

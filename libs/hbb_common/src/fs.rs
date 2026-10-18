@@ -4444,6 +4444,114 @@ mod tests {
     use crate::protobuf::Message as _;
 
     #[test]
+    fn file_metadata_manifest_refuses_unrepresentable_times() {
+        for modified_time in [0, 1_600_000_000, u64::MAX, i64::MAX as u64 + 1] {
+            let entry = FileEntry {
+                name: "incoming.bin".into(),
+                modified_time,
+                size: 3,
+                ..Default::default()
+            };
+            let decoded = FileEntry::parse_from_bytes(&entry.write_to_bytes().unwrap()).unwrap();
+            let result = validate_transfer_file_list(None, &[decoded], 1);
+            let expected = modified_time <= 1_600_000_000;
+            println!("FILE_METADATA_MANIFEST=observed seconds={modified_time} accepted={}", result.is_ok());
+            assert_eq!(result.is_ok(), expected);
+            if let Err(error) = result {
+                assert!(error.to_string().contains("modification time"));
+            }
+        }
+    }
+
+    #[test]
+    fn file_metadata_job_refuses_bad_time_before_admission() {
+        let tmp = TestTempDir::new("rustdesk_file_metadata_admission");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let final_path = tmp.join("incoming.bin");
+        std::fs::write(&final_path, b"original").unwrap();
+        for modified_time in [u64::MAX, i64::MAX as u64 + 1] {
+            let mut job = TransferJob::new_write(
+                77, JobType::Generic, String::new(), tmp.path.clone(), 0, false, false, false,
+            );
+            let entry = FileEntry {
+                name: "incoming.bin".into(), modified_time, size: 3, ..Default::default()
+            };
+            let result = job.set_files(vec![entry]);
+            let unchanged = job.files.is_empty() && !job.files_admitted && job.total_size == 0
+                && job.file_num == 0;
+            let files_unchanged = std::fs::read(&final_path).unwrap() == b"original"
+                && !recv_sidecar_path(&final_path, ".download").exists()
+                && !recv_sidecar_path(&final_path, ".digest").exists()
+                && !recv_sidecar_path(&final_path, ".download.lock").exists();
+            println!("FILE_METADATA_ADMISSION=observed seconds={modified_time} refused={} job_unchanged={unchanged} files_unchanged={files_unchanged}", result.is_err());
+            assert!(result.is_err());
+            assert!(unchanged && files_unchanged);
+            job.set_files(vec![FileEntry {
+                name: "incoming.bin".into(), modified_time: 1_600_000_000,
+                size: 3, ..Default::default()
+            }]).expect("a valid manifest remains admissible after refusal");
+            assert_eq!(job.total_size, 3);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_metadata_sink_refuses_wrap_before_publication() {
+        use std::io::Write;
+        let tmp = TestTempDir::new("rustdesk_file_metadata_sink");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let final_path = tmp.join("incoming.bin");
+        std::fs::write(&final_path, b"original").unwrap();
+        let (mut stream, mut claim) = ReceiveWriteClaim::start_new(
+            final_path.clone(), FileDigest { size: 3, modified: 1_600_000_000 },
+        ).unwrap();
+        stream.write_all(b"new").unwrap();
+        drop(stream);
+        filetime::set_file_handle_times(&claim.download_file, None,
+            Some(filetime::FileTime::from_unix_time(1_600_000_000, 0))).unwrap();
+        let digest_path = recv_sidecar_path(&final_path, ".digest");
+        let digest_before = std::fs::read(&digest_path).unwrap();
+        let result = claim.finish(3, u64::MAX);
+        let published = claim.published;
+        let observed_seconds = filetime::FileTime::from_last_modification_time(
+            &claim.download_file.metadata().unwrap()).unix_seconds();
+        let unchanged = observed_seconds == 1_600_000_000
+            && std::fs::read(&final_path).unwrap() == b"original"
+            && std::fs::read(&digest_path).ok().as_ref() == Some(&digest_before);
+        let refused = result.is_err();
+        claim.cleanup().expect("retire the exact claim after observing its outcome");
+        println!("FILE_METADATA_SINK=observed seconds={} refused={refused} published={published} unchanged={unchanged} observed_seconds={observed_seconds}", u64::MAX);
+        assert!(refused && !published && unchanged);
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_metadata_valid_times_preserve_native_publication() {
+        use std::io::Write;
+        for modified in [0, 1_600_000_000] {
+            let tmp = TestTempDir::new("rustdesk_file_metadata_valid");
+            let final_path = tmp.join("incoming.bin");
+            let (mut stream, mut claim) = ReceiveWriteClaim::start_new(
+                final_path.clone(), FileDigest { size: 3, modified },
+            ).unwrap();
+            stream.write_all(b"new").unwrap();
+            drop(stream);
+            claim.finish(3, modified).unwrap();
+            assert!(claim.published);
+            assert_eq!(std::fs::read(&final_path).unwrap(), b"new");
+            let observed = filetime::FileTime::from_last_modification_time(
+                &std::fs::metadata(&final_path).unwrap());
+            assert_eq!(observed.unix_seconds(), i64::try_from(modified).unwrap());
+            assert_eq!(observed.nanoseconds(), 0);
+            claim.cleanup().unwrap();
+            for suffix in [".download", ".digest", ".download.lock"] {
+                assert!(!recv_sidecar_path(&final_path, suffix).exists());
+            }
+        }
+    }
+
+    #[test]
     fn file_job_id_allocator_never_reuses_or_wraps() {
         // Normalize the historical integer API and the fallible API so the same native
         // regression can observe a reissued positive ID on the earlier implementation.

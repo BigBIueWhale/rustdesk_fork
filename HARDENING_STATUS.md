@@ -2057,6 +2057,15 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   This establishes native decoder accounting only; peer capability exchange, actual presentation,
   network impairment, long-session recovery, installed authority and other platforms remain OPEN.
 
+  Native worker result ownership is corrected at `d512f482`: a retired decode outcome resets
+  its local decoder/generation before recovery or unsupported-codec effects. The later publication
+  guard remains. Actual `start_video_thread`/mailbox/libvpx tests at `6219b866` reproduced
+  replacement loss through an old error (five passes, one failure); the identical six cases pass
+  in 286 VM seconds after correction. Replacement RGB arrives, while the current-error policy
+  control retains its prior outcome. `.harness-state/verifier-vm/viewer-retired-error-accepted-d512f482.json`
+  binds native source/artifact, baseline, frozen inputs/endpoints and joined bounded-RAM cleanup.
+  These are worker/callback results; actual peer capability exchange and full R-F5 acceptance remain OPEN.
+
 - **R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication** — Source and focused
   generated-bridge/model execution are green. Each `(session, display)` owns one published token plus at most one
   latest pending frame. One exact atomic `take_latest` operation promotes the pending frame when present, returns

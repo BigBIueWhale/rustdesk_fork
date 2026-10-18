@@ -3764,6 +3764,9 @@ run_focused_rust_tests() {
                 server::video_qos::tests::completed_probe_reply_retires_pending_congestion
                 server::video_qos::tests::pending_probe_congestion_controls_rate_and_quality
                 server::video_qos::tests::fresh_probes_after_outage_restore_rate_without_reopening_user
+                server::video_qos::tests::pending_peer_does_not_reduce_healthy_peer_estimate
+                server::video_qos::tests::peer_fps_limits_do_not_reduce_other_peers_estimates
+                server::video_qos::tests::closing_pending_peer_recalculates_rate_without_another_frame
             )
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             container_name=rustdesk-resolution-parent-tests
@@ -5128,9 +5131,9 @@ PY
             || fail 'viewer credential artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
-        [ "$(grep -Ec '^VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=4 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=7 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIDEO_QOS_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test server::video_qos::tests::.* \.\.\. ok$' "$output")" -eq 4 ] \
+            && [ "$(grep -Ec '^test server::video_qos::tests::.* \.\.\. ok$' "$output")" -eq 7 ] \
             || fail 'video QoS artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution parent summary count differs'
@@ -5576,9 +5579,9 @@ PY
             printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=11 target=linux-x86_64 scope=production-peer-credentials-and-exported-session-factory rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
-            [ "$tests_passed" -eq 4 ] || fail 'video QoS total differs'
+            [ "$tests_passed" -eq 7 ] || fail 'video QoS total differs'
             grep -E '^test server::video_qos::tests::.* \.\.\. ok$|^VIDEO_QOS_BUILD=pass |^VIDEO_QOS_ARTIFACT=' "$output"
-            printf 'VIDEO_QOS_VM=pass commit=%s tree=%s tests=4 target=linux-x86_64 scope=complete-parent-library-and-probe-recovery rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            printf 'VIDEO_QOS_VM=pass commit=%s tree=%s tests=7 target=linux-x86_64 scope=complete-parent-library-and-probe-recovery rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then

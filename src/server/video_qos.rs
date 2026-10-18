@@ -607,6 +607,76 @@ mod tests {
         qos
     }
 
+    fn healthy_pair() -> VideoQoS {
+        let mut qos = healthy_controller();
+        qos.on_connection_open(8);
+        qos.new_user_instant = Instant::now().checked_sub(Duration::from_secs(2)).unwrap();
+        for _ in 0..60 {
+            qos.user_network_delay(7, 20);
+            qos.user_network_delay(8, 20);
+        }
+        assert_eq!(qos.fps(), FPS);
+        assert_eq!(qos.users[&8].delay.fps, Some(FPS));
+        qos
+    }
+
+    #[test]
+    fn pending_peer_does_not_reduce_healthy_peer_estimate() {
+        let mut qos = healthy_pair();
+        qos.user_delay_response_elapsed(7, 4000);
+        assert_eq!(qos.fps(), MIN_FPS + 1);
+        for _ in 0..60 {
+            qos.user_network_delay(8, 20);
+            assert_eq!(qos.fps(), MIN_FPS + 1,
+                "the shared stream must retain pending-peer congestion control");
+        }
+        assert_eq!(qos.users[&8].delay.fps, Some(FPS),
+            "a healthy peer's estimate must not inherit another peer's pending cap");
+        qos.on_connection_close(7);
+        assert_eq!(qos.fps(), FPS);
+        assert_eq!(qos.users.len(), 1);
+    }
+
+    #[test]
+    fn peer_fps_limits_do_not_reduce_other_peers_estimates() {
+        for automatic in [false, true] {
+            let mut qos = healthy_pair();
+            if automatic {
+                qos.user_auto_adjust_fps(7, 5);
+            } else {
+                qos.user_custom_fps(7, 5);
+            }
+            for _ in 0..60 {
+                qos.user_network_delay(7, 20);
+                qos.user_network_delay(8, 20);
+                assert_eq!(qos.fps(), 5,
+                    "the shared stream must honor the remaining peer's requested limit");
+            }
+            assert_eq!(qos.users[&7].delay.fps, Some(5));
+            assert_eq!(qos.users[&8].delay.fps, Some(FPS),
+                "a peer's requested limit must not become another peer's estimate");
+            qos.on_connection_close(7);
+            assert_eq!(qos.fps(), FPS);
+        }
+    }
+
+    #[test]
+    fn closing_pending_peer_recalculates_rate_without_another_frame() {
+        let mut qos = healthy_pair();
+        qos.user_custom_fps(8, 20);
+        qos.user_delay_response_elapsed(7, 4000);
+        assert_eq!(qos.fps(), MIN_FPS + 1);
+        assert_eq!(qos.users[&8].delay.fps, Some(FPS));
+        qos.on_connection_close(7);
+        assert_eq!(qos.fps(), 20,
+            "retirement must immediately derive the rate from the remaining live peers");
+        assert_eq!(qos.users[&8].custom_fps, Some(20));
+        assert_eq!(qos.users.len(), 1);
+        qos.on_connection_close(8);
+        assert!(qos.users.is_empty());
+        assert_eq!(qos.fps(), FPS);
+    }
+
     #[test]
     fn pending_probe_observation_preserves_completed_rtt_history() {
         let mut qos = healthy_controller();

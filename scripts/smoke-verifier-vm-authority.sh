@@ -302,6 +302,11 @@ case "$#:${1:-}" in
             || { echo 'Debian polkit-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=debian-polkit-tests
         ;;
+    1:--dependency-inventory)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'dependency inventory input/run overrides are forbidden' >&2; exit 2; }
+        MODE=dependency-inventory
+        ;;
     1:--ledger-token-count)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'ledger token-count input/run overrides are forbidden' >&2; exit 2; }
@@ -832,7 +837,7 @@ elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
-elif [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ]; then
+elif [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ]; then
     readonly VM_TIMEOUT_SECONDS=150
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
@@ -2298,7 +2303,7 @@ frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-   || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+   || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
         && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; }; then
@@ -2322,6 +2327,27 @@ for source in "$VM_HOST_NETWORK_SOURCE" "$VM_HOST_NETWORK_TEST"; do
     verify_committed_test_source "$source"
 done
 host_network_sources_before="$(/usr/bin/sha256sum "$VM_HOST_NETWORK_SOURCE" "$VM_HOST_NETWORK_TEST")"
+if [ "$MODE" = dependency-inventory ]; then
+    inventory_sources=(
+        scripts/dependency-inventory.py Cargo.lock flutter/pubspec.yaml flutter/pubspec.lock
+        .github/workflows/DISABLED.md build.rs libs/clipboard/build.rs libs/enigo/build.rs
+        libs/hbb_common/build.rs libs/portable/build.rs libs/scrap/build.rs
+    )
+    for source in "${inventory_sources[@]}"; do
+        verify_committed_test_source "$REPO_ROOT/$source"
+    done
+    [ -f "$REPO_ROOT/.git/index" ] && [ ! -L "$REPO_ROOT/.git/index" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%h' "$REPO_ROOT/.git/index")" = "$HOST_UID:$HOST_GID:1" ] \
+        && [ "$(/usr/bin/stat -c '%s' "$REPO_ROOT/.git/index")" -le 16777216 ] \
+        || fail 'dependency inventory index authority or bound differs'
+    inventory_index_sha=$(/usr/bin/sha256sum "$REPO_ROOT/.git/index" | /usr/bin/awk '{print $1}')
+    inventory_helper_sha=$(/usr/bin/sha256sum "$SCRIPT_DIR/dependency-inventory.py" | /usr/bin/awk '{print $1}')
+    inventory_sources_before=$(
+        cd "$REPO_ROOT"
+        /usr/bin/sha256sum .git/index "${inventory_sources[@]}"
+        /usr/bin/find .github/workflows -printf '%P:%y:%D:%i:%U:%G:%m:%s:%T@:%C@\n' | LC_ALL=C /usr/bin/sort
+    )
+fi
 if [ "$MODE" = ledger-token-count ]; then
     for source in "$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE"; do
         [ -f "$source" ] && [ ! -L "$source" ] || fail 'ledger token-count source is absent or ambiguous'
@@ -3068,7 +3094,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
     if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-       || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+       || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
     fi
@@ -4074,6 +4100,19 @@ elif { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ];
         /usr/bin/chmod 400 "$debian_elf_baseline"
         lifecycle_payload_grafts+=("repo/scripts/debian-elf-role-baseline.py=$debian_elf_baseline")
     fi
+elif [ "$MODE" = dependency-inventory ]; then
+    payload_identity=(-uid 1000 -gid 1000)
+    inventory_git=$VM_TRANSIENT/inventory-git
+    git_closed -c init.defaultBranch=master \
+        init --quiet --template= --object-format=sha1 "$inventory_git"
+    /usr/bin/cp -- "$REPO_ROOT/.git/index" "$inventory_git/.git/index"
+    [ "$(/usr/bin/sha256sum "$inventory_git/.git/index" | /usr/bin/awk '{print $1}')" = "$inventory_index_sha" ] \
+        || fail 'dependency inventory index changed while staging'
+    lifecycle_payload_grafts=("repo/.git=$inventory_git/.git" "repo/.github/workflows=$REPO_ROOT/.github/workflows")
+    for source in "${inventory_sources[@]}"; do
+        [ "$source" != .github/workflows/DISABLED.md ] || continue
+        lifecycle_payload_grafts+=("repo/$source=$REPO_ROOT/$source")
+    done
 elif [ "$MODE" = ledger-token-count ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -4389,6 +4428,8 @@ elif [ "$MODE" = debian-elf-role-tests ]; then
     guest_invocation+=' --debian-elf-role-tests'
 elif [ "$MODE" = debian-polkit-tests ]; then
     guest_invocation+=' --debian-polkit-tests'
+elif [ "$MODE" = dependency-inventory ]; then
+    guest_invocation+=" --dependency-inventory $inventory_index_sha $inventory_helper_sha"
 elif [ "$MODE" = ledger-token-count ]; then
     guest_invocation+=" --ledger-token-count $ledger_input_sha $ledger_recipe_sha"
 elif [ "$MODE" = host-network-tests ]; then
@@ -5025,6 +5066,11 @@ elif [ "$MODE" = host-network-tests ]; then
     require_exact_fixed_receipt 'VM_HOST_NETWORK_VM=pass uid=4000 caps=none source=readonly network=none cleanup=joined' \
         'host network test guest cleanup'
     /usr/bin/grep -Eo 'VM_HOST_NETWORK_NATIVE=\{.*\}' "$SERIAL_LOG"
+elif [ "$MODE" = dependency-inventory ]; then
+    require_exact_fixed_receipt \
+        "DEPENDENCY_INVENTORY_VM=pass uid=1000 gid=1000 caps=none nnp=yes index_sha256=$inventory_index_sha helper_sha256=$inventory_helper_sha source=readonly network=none cleanup=joined" \
+        'actual dependency inventory and index binding'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'dependency inventory guest completion'
 elif [ "$MODE" = ledger-token-count ]; then
     require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=14 refusals=22 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
         'VM storage profile limits and guest binding'
@@ -7203,6 +7249,17 @@ fi
     || fail 'Linux app-capsule source changed during execution'
 [ "$(/usr/bin/sha256sum "$VM_HOST_NETWORK_SOURCE" "$VM_HOST_NETWORK_TEST")" = "$host_network_sources_before" ] \
     || fail 'host network policy or fixture source changed'
+if [ "$MODE" = dependency-inventory ]; then
+    [ "$(
+        cd "$REPO_ROOT"
+        /usr/bin/sha256sum .git/index "${inventory_sources[@]}"
+        /usr/bin/find .github/workflows -printf '%P:%y:%D:%i:%U:%G:%m:%s:%T@:%C@\n' | LC_ALL=C /usr/bin/sort
+    )" = "$inventory_sources_before" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'dependency inventory source or index changed'
+fi
 if [ "$MODE" = ledger-token-count ]; then
     [ "$(/usr/bin/sha256sum "$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE" "$LEDGER_TOKENIZER_ARCHIVE")" = "$ledger_token_inputs_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
@@ -7301,6 +7358,9 @@ elif [ "$MODE" = host-network-tests ]; then
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
         "$(/usr/bin/sha256sum "$VM_HOST_NETWORK_SOURCE" | /usr/bin/awk '{print $1}')" \
         "$(/usr/bin/sha256sum "$VM_HOST_NETWORK_TEST" | /usr/bin/awk '{print $1}')" "$vm_elapsed_seconds"
+elif [ "$MODE" = dependency-inventory ]; then
+    printf 'DEPENDENCY_INVENTORY_OUTER=pass host_uid=%s commit=%s tree=%s index_sha256=%s helper_sha256=%s network=none listeners=no-harness-addition source=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$inventory_index_sha" "$inventory_helper_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = ledger-token-count ]; then
     printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"

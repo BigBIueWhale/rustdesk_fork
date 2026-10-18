@@ -42,6 +42,12 @@ case "$#:${8:-}" in
     8:--debian-elf-role-tests)
         MODE=debian-elf-role-tests
         ;;
+    10:--dependency-inventory)
+        MODE=dependency-inventory
+        [[ "${9}" =~ ^[0-9a-f]{64}$ ]] && [[ "${10}" =~ ^[0-9a-f]{64}$ ]] || exit 2
+        INVENTORY_INDEX_SHA256=${9}
+        INVENTORY_HELPER_SHA256=${10}
+        ;;
     10:--ledger-token-count)
         MODE=ledger-token-count
         [[ "${9}" =~ ^[0-9a-f]{64}$ ]] && [[ "${10}" =~ ^[0-9a-f]{64}$ ]] || exit 2
@@ -827,6 +833,40 @@ run_host_network_tests() {
     stop_docker_authority
     cat "$output"
     printf 'VM_HOST_NETWORK_VM=pass uid=4000 caps=none source=readonly network=none cleanup=joined\n'
+}
+
+run_dependency_inventory() {
+    local helper=$VERIFY_REPO/scripts/dependency-inventory.py
+    local index=$VERIFY_REPO/.git/index
+    local output=$ROOT/dependency-inventory.out
+    local status=0
+    [ "$(sha256sum "$helper" | awk '{print $1}')" = "$INVENTORY_HELPER_SHA256" ] \
+        && [ "$(sha256sum "$index" | awk '{print $1}')" = "$INVENTORY_INDEX_SHA256" ] \
+        || fail 'dependency inventory admitted source differs'
+    setpriv --reuid=1000 --regid=1000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent GIT_OPTIONAL_LOCKS=0 \
+        /usr/bin/prlimit --as=536870912 --cpu=30 --nofile=64 --core=0 --fsize=65536 \
+        /usr/bin/python3 -B -I -S "$helper" >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' "$output")" -le 65536 ] || fail 'dependency inventory output exceeds bound'
+    /usr/bin/python3 -B -I -S - "$output" "$status" <<'PY'
+import json,sys
+from pathlib import Path
+raw=Path(sys.argv[1]).read_text()
+try:
+    result=json.loads(raw)
+except json.JSONDecodeError:
+    print(raw,flush=True)
+    raise
+print('DEPENDENCY_INVENTORY_RESULT='+json.dumps({'exit_code':int(sys.argv[2]),'result':result},sort_keys=True,separators=(',',':')))
+PY
+    [ "$(sha256sum "$helper" | awk '{print $1}')" = "$INVENTORY_HELPER_SHA256" ] \
+        && [ "$(sha256sum "$index" | awk '{print $1}')" = "$INVENTORY_INDEX_SHA256" ] \
+        || fail 'dependency inventory source changed during execution'
+    stop_docker_authority
+    [ "$status" -eq 0 ] || fail "dependency inventory exited with status $status"
+    printf 'DEPENDENCY_INVENTORY_VM=pass uid=1000 gid=1000 caps=none nnp=yes index_sha256=%s helper_sha256=%s source=readonly network=none cleanup=joined\n' \
+        "$INVENTORY_INDEX_SHA256" "$INVENTORY_HELPER_SHA256"
 }
 
 run_ledger_token_count() {
@@ -10133,6 +10173,10 @@ fi
 
 if [ "$MODE" = host-network-tests ]; then
     run_host_network_tests
+    exit 0
+fi
+if [ "$MODE" = dependency-inventory ]; then
+    run_dependency_inventory
     exit 0
 fi
 if [ "$MODE" = ledger-token-count ]; then

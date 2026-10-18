@@ -6,7 +6,7 @@ VM_STORAGE_MONITOR_PID=
 readonly VM_STORAGE_SOURCE="$SCRIPT_DIR/vm-transient-storage.py"
 if [ "${MODE:-}" = ledger-token-count ]; then
     readonly VM_STORAGE_PROFILE=ledger-token-count
-elif [ "${MODE:-}" = authority-smoke ]; then
+elif [ "${MODE:-}" = authority-smoke ] || [ "${MODE:-}" = dependency-inventory ]; then
     readonly VM_STORAGE_PROFILE=authority-smoke
 elif [ "${MODE:-}:${REQUEST:-}" = transaction:--maintenance-stage-xrandr-runtime-candidate ]; then
     readonly VM_STORAGE_PROFILE=xrandr-acquisition

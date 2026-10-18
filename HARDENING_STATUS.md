@@ -2785,6 +2785,47 @@ Android/iOS/browser execution and broader security/release acceptance remain OPE
 Other `LocalConfig` setters still publish before best-effort storage; their
 failure/retry workflows remain OPEN. All fifteen credential actions remain OPEN.
 
+**Keyboard layout selection — Linux persistence/bridge/component corrected; peer/platform acceptance OPEN.**
+Products `234d57e0` and `5724a5cd` keep the existing process-local
+`LocalConfig` write lock through private-candidate persistence and publication.
+A failed save returns an error without changing the active mapping or file;
+the identical healthy retry persists, while an unchanged choice needs no write.
+The Rust facade/export propagates the result through the supported bridge type.
+No credential/service authority, dependency, task, queue or runtime is added.
+
+The chooser owns one pending save across image/radio actions and parent rebuilds,
+reports failed or mismatched readback, and permits retry. Its callback publishes
+only native readback; disposal retires widget effects while the admitted save
+settles. The illustrations use the remaining bounded height above their controls.
+
+At `234d57e0`, all eleven Linux library cases pass, including a byte-identical
+historical setter leaf from `3d492cf7` that reproduces premature memory publication
+after real permission denial. The corrected path preserves memory/file and unrelated
+favorites, persists retry and accepts a no-write repeated choice. This compares
+setter leaves in the same current artifact, not two whole-app binaries.
+The integration takes 157 outer seconds. Fresh generated Rust/Dart bindings,
+the complete Linux Flutter library and a Dart AOT client then pass two existing
+Rust regressions and eleven actual native-bridge cases in 620 outer seconds.
+The three new keyboard cases exercise commit, denied-write/error delivery,
+durable retry and idempotence; the denial arrives as `FfiException`/`RESULT_ERROR`.
+
+The first rendered run exposes a 28-pixel overflow in all five chooser cases.
+`5724a5cd` fits the illustration above its controls; the tests and 200-pixel
+height are unchanged. Fresh bindings and all 28 component cases pass in 308 outer
+seconds: the existing 21 plus five rendered chooser and two callback cases.
+These UI cases inject storage callbacks; actual native persistence/error delivery
+is established separately above. Accepted source freezes match before/after.
+Pinned inputs, exact artifacts/cases, the failed rendered receipt and private-root
+inventory/retirement, complete endpoint observations and joined bounded-RAM
+cleanup are retained in `.harness-state/verifier-vm/keyboard-layout-234d57e0.json`.
+
+Physical keyboard-to-Mac peer effects, full desktop/mobile interactions,
+restart/cross-process preference writers and Windows/macOS/Android/iOS/browser
+execution remain OPEN. Other `LocalConfig` setters' failure/retry behavior,
+all fifteen installed credential actions, R-S0, latency/soak, cold artifacts,
+independent reproduction, external review and release acceptance remain OPEN.
+
+
 **Ordinary option persistence — Linux library/handler corrected; broader acceptance OPEN.**
 Product `f895b8a0` makes `Config::set_option` fallible. Under the existing cache write
 lock, it persists a private candidate before publishing the new in-memory value.

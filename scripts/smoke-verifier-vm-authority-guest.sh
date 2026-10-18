@@ -3042,6 +3042,9 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_job_refuses_bad_time_before_admission
                 fs::tests::file_metadata_sink_refuses_wrap_before_publication
                 fs::tests::file_metadata_valid_times_preserve_native_publication
+                fs::tests::file_metadata_resume_inspection_refuses_overlong_partial
+                fs::tests::file_metadata_resume_admission_refuses_overlong_partial
+                fs::tests::file_metadata_resume_valid_prefixes_publish_exact_bytes
                 fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file
             )
         fi
@@ -5681,7 +5684,7 @@ PY
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            [ "$tests_passed" -eq 5 ] || fail 'file metadata test total differs'
+            [ "$tests_passed" -eq 8 ] || fail 'file metadata test total differs'
             grep -E '^test fs::tests::(file_metadata_[a-z_]+|receive_post_publish_sync_failure_never_deletes_visible_file) [.][.][.] ok$|^FILE_METADATA_' "$output"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             [ "$tests_passed" -eq 2 ] || fail 'send digest test total differs'
@@ -5707,7 +5710,7 @@ PY
             cat "$native_output"
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            printf 'FILE_METADATA_VM=pass commit=%s tree=%s tests=5 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            printf 'FILE_METADATA_VM=pass commit=%s tree=%s tests=8 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then

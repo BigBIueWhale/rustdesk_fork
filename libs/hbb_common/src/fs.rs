@@ -4462,6 +4462,110 @@ mod tests {
     use crate::compress::try_decompress;
     use crate::protobuf::Message as _;
 
+    fn file_metadata_resume_fixture(
+        tmp: &TestTempDir,
+        stored_size: u64,
+        partial: &[u8],
+    ) -> (PathBuf, Vec<u8>) {
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let path = tmp.join("incoming.bin");
+        std::fs::write(&path, b"original").unwrap();
+        std::fs::write(recv_sidecar_path(&path, ".download"), partial).unwrap();
+        let digest = json!(FileDigest { size: stored_size, modified: 1_600_000_000 })
+            .to_string().into_bytes();
+        std::fs::write(recv_sidecar_path(&path, ".digest"), &digest).unwrap();
+        (path, digest)
+    }
+
+    #[test]
+    fn file_metadata_resume_inspection_refuses_overlong_partial() {
+        let tmp = TestTempDir::new("rustdesk_resume_inspection_size");
+        let (path, digest_before) = file_metadata_resume_fixture(&tmp, 3, b"long");
+        let result = inspect_write_destination(true, path.to_str().unwrap(), &FileTransferDigest {
+            id: 78, file_num: 0, file_size: 3, last_modified: 1_600_000_000,
+            ..Default::default()
+        });
+        let advertised_offset = match &result {
+            Ok(DigestCheckResult::NeedConfirm(digest)) => digest.transferred_size,
+            _ => 0,
+        };
+        let unchanged = std::fs::read(&path).unwrap() == b"original"
+            && std::fs::read(recv_sidecar_path(&path, ".download")).unwrap() == b"long"
+            && std::fs::read(recv_sidecar_path(&path, ".digest")).unwrap() == digest_before
+            && !recv_sidecar_path(&path, ".download.lock").exists();
+        println!("FILE_METADATA_RESUME=observed scope=inspection declared=3 available=4 refused={} advertised_offset={advertised_offset} unchanged={unchanged}", result.is_err());
+        assert!(result.is_err() && unchanged);
+        assert!(result.err().unwrap().to_string().contains("exceeds declared file size"));
+    }
+
+    #[tokio::test]
+    async fn file_metadata_resume_admission_refuses_overlong_partial() {
+        let mut outcomes = Vec::new();
+        for stored_size in [3, 4] {
+            let tmp = TestTempDir::new("rustdesk_resume_admission_size");
+            let (path, digest_before) = file_metadata_resume_fixture(&tmp, stored_size, b"long");
+            let mut job = TransferJob::new_write(
+                79, JobType::Generic, String::new(), tmp.path.clone(), 0, false, false, true,
+            ).with_files(vec![FileEntry {
+                name: "incoming.bin".into(), size: 3, modified_time: 1_600_000_000,
+                ..Default::default()
+            }]).unwrap();
+            job.set_digest(stored_size, 1_600_000_000);
+            let result = job.confirm_with_offset(0, 1).await;
+            let unadmitted = !job.file_confirmed() && job.data_stream.is_none()
+                && job.receive_write_claim.is_none() && job.receive_file_offset == 0
+                && job.finished_size() == 0 && job.transferred() == 0;
+            let unchanged = std::fs::read(&path).unwrap() == b"original"
+                && std::fs::read(recv_sidecar_path(&path, ".download")).unwrap() == b"long"
+                && std::fs::read(recv_sidecar_path(&path, ".digest")).unwrap() == digest_before
+                && !recv_sidecar_path(&path, ".download.lock").exists();
+            println!("FILE_METADATA_RESUME=observed scope=admission declared=3 digest_size={stored_size} available=4 refused={} unadmitted={unadmitted} unchanged={unchanged}", result.is_err());
+            outcomes.push(result.is_err() && unadmitted && unchanged);
+            job.retire_current_file_state().unwrap();
+        }
+        assert!(outcomes.into_iter().all(|passed| passed));
+    }
+
+    #[tokio::test]
+    async fn file_metadata_resume_valid_prefixes_publish_exact_bytes() {
+        for available in [1, 3] {
+            let tmp = TestTempDir::new("rustdesk_resume_valid_size");
+            let (path, _) = file_metadata_resume_fixture(&tmp, 3, &b"new"[..available]);
+            let probe = inspect_write_destination(true, path.to_str().unwrap(), &FileTransferDigest {
+                id: 80, file_num: 0, file_size: 3, last_modified: 1_600_000_000,
+                ..Default::default()
+            }).unwrap();
+            match probe {
+                DigestCheckResult::NeedConfirm(digest) => {
+                    assert!(digest.is_identical);
+                    assert_eq!(digest.transferred_size, available as u64);
+                }
+                _ => panic!("a matching valid prefix must be offered for resume"),
+            }
+            let mut job = TransferJob::new_write(
+                80, JobType::Generic, String::new(), tmp.path.clone(), 0, false, false, true,
+            ).with_files(vec![FileEntry {
+                name: "incoming.bin".into(), size: 3, modified_time: 1_600_000_000,
+                ..Default::default()
+            }]).unwrap();
+            job.set_digest(3, 1_600_000_000);
+            job.confirm_with_offset(0, available as u64).await.unwrap();
+            if available < 3 {
+                job.write(FileTransferBlock {
+                    id: 80, file_num: 0, data: b"new"[available..].to_vec().into(),
+                    ..Default::default()
+                }).await.unwrap();
+            }
+            job.finalize_write(1).await.unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), b"new");
+            assert_eq!(job.finished_size(), 3);
+            for suffix in [".download", ".digest", ".download.lock"] {
+                assert!(!recv_sidecar_path(&path, suffix).exists());
+            }
+            println!("FILE_METADATA_RESUME=observed scope=valid declared=3 available={available} published=true exact_bytes=true sidecars=absent");
+        }
+    }
+
     #[test]
     fn file_metadata_manifest_refuses_unrepresentable_times() {
         for modified_time in [0, 1_600_000_000, u64::MAX, i64::MAX as u64 + 1] {

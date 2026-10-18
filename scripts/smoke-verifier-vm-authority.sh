@@ -25,6 +25,7 @@ RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
 HBB_FUSE_READ_TESTS=0
 HBB_SEND_DIGEST_TESTS=0
+COUNT_REQUIREMENTS=0
 LINUX_PA_PLAYBACK=0
 APPLE_CURSOR_ONLY=0
 APPLE_FILE_MODE_ONLY=0
@@ -313,9 +314,13 @@ case "$#:${1:-}" in
             || { echo 'dependency inventory input/run overrides are forbidden' >&2; exit 2; }
         MODE=dependency-inventory
         ;;
-    1:--ledger-token-count)
+    1:--ledger-token-count|2:--ledger-token-count)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'ledger token-count input/run overrides are forbidden' >&2; exit 2; }
+        if [ "$#" -eq 2 ]; then
+            [ "$2" = --requirements ] || { echo 'unknown token-count option' >&2; exit 2; }
+            COUNT_REQUIREMENTS=1
+        fi
         MODE=ledger-token-count
         ;;
     1:--host-network-tests)
@@ -2356,7 +2361,15 @@ if [ "$MODE" = dependency-inventory ]; then
     )
 fi
 if [ "$MODE" = ledger-token-count ]; then
-    for source in "$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE"; do
+    ledger_count_sources=("$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE")
+    requirements_input_sha=
+    requirements_input_bytes=0
+    if [ "$COUNT_REQUIREMENTS" -eq 1 ]; then
+        ledger_count_sources+=("$REQUIREMENTS_SOURCE")
+        requirements_input_sha=$(/usr/bin/sha256sum "$REQUIREMENTS_SOURCE" | /usr/bin/awk '{print $1}')
+        requirements_input_bytes=$(/usr/bin/stat -c '%s' "$REQUIREMENTS_SOURCE")
+    fi
+    for source in "${ledger_count_sources[@]}"; do
         [ -f "$source" ] && [ ! -L "$source" ] || fail 'ledger token-count source is absent or ambiguous'
         verify_committed_test_source "$source"
     done
@@ -2365,7 +2378,8 @@ if [ "$MODE" = ledger-token-count ]; then
             "$HOST_UID:$HOST_GID:400:1:$LEDGER_TOKENIZER_ARCHIVE_SIZE" ] \
         || fail 'ledger tokenizer candidate authority differs'
     verify_sha256 "$LEDGER_TOKENIZER_ARCHIVE" "$SHA256_LEDGER_TOKENIZER_ARCHIVE"
-    ledger_token_inputs_before="$(/usr/bin/sha256sum "$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE" "$LEDGER_TOKENIZER_ARCHIVE")"
+    ledger_count_sources+=("$LEDGER_TOKENIZER_ARCHIVE")
+    ledger_token_inputs_before="$(/usr/bin/sha256sum "${ledger_count_sources[@]}")"
     ledger_input_sha=$(/usr/bin/sha256sum "$HARDENING_SOURCE" | /usr/bin/awk '{print $1}')
     ledger_recipe_sha=$(/usr/bin/sha256sum "$LEDGER_TOKEN_COUNT_SOURCE" | /usr/bin/awk '{print $1}')
 fi
@@ -4439,6 +4453,9 @@ elif [ "$MODE" = dependency-inventory ]; then
     guest_invocation+=" --dependency-inventory $inventory_index_sha $inventory_helper_sha"
 elif [ "$MODE" = ledger-token-count ]; then
     guest_invocation+=" --ledger-token-count $ledger_input_sha $ledger_recipe_sha"
+    if [ "$COUNT_REQUIREMENTS" -eq 1 ]; then
+        guest_invocation+=" $requirements_input_sha"
+    fi
 elif [ "$MODE" = host-network-tests ]; then
     guest_invocation+=" --host-network-tests"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
@@ -5090,30 +5107,39 @@ elif [ "$MODE" = ledger-token-count ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'ledger token-count guest completion'
     /usr/bin/python3 -B -I -S - "$SERIAL_LOG" "$ledger_input_sha" "$ledger_recipe_sha" \
         "$SHA256_LEDGER_TOKENIZER_ARCHIVE" "$SHA256_LEDGER_TOKENIZER_WHEEL" \
-        "$SHA256_LEDGER_TOKENIZER_RANKS" "$(/usr/bin/stat -c '%s' "$HARDENING_SOURCE")" <<'PY'
+        "$SHA256_LEDGER_TOKENIZER_RANKS" "$(/usr/bin/stat -c '%s' "$HARDENING_SOURCE")" \
+        "$requirements_input_sha" "$requirements_input_bytes" <<'PY'
 import json
 import re
 import sys
 from pathlib import Path
 raw = Path(sys.argv[1]).read_bytes()
-records = re.findall(rb'LEDGER_TOKEN_COUNT=(\{[^\r\n]*\})\r?(?:\n|$)', raw)
-if len(records) != 1 or raw.count(b'LEDGER_TOKEN_COUNT=') != 1:
-    raise SystemExit("Actual ledger count is missing or duplicated")
-result = json.loads(records[0])
 expected = dict(zip(("input_sha256", "recipe_sha256", "archive_sha256",
                      "wheel_sha256", "ranks_sha256"), sys.argv[2:7]))
 expected.update(method="tiktoken-0.12.0/cl100k_base/encode_ordinary",
                 text_handling="whole-file-strict-UTF8-no-normalization-literal-specials",
-                input_bytes=int(sys.argv[7]), round_trip=True, known_controls=7)
-if any(result.get(key) != value for key, value in expected.items()):
-    raise SystemExit("Actual ledger count context differs")
-if type(result.get("tokens")) is not int or not 0 < result["tokens"] <= result["input_bytes"]:
-    raise SystemExit("Actual ledger token count is invalid")
-if not re.fullmatch(r"3\.11\.[0-9]+", result.get("python", "")):
-    raise SystemExit("Tokenizer Python runtime differs")
-if not re.fullmatch(r"[0-9a-f]{64}", result.get("native_sha256", "")):
-    raise SystemExit("Executed tokenizer identity is absent")
-print("LEDGER_TOKEN_COUNT=" + json.dumps(result, sort_keys=True, separators=(",", ":")))
+                round_trip=True, known_controls=7)
+documents = [("LEDGER_TOKEN_COUNT", sys.argv[2], int(sys.argv[7]))]
+if sys.argv[8]:
+    documents.append(("REQUIREMENTS_TOKEN_COUNT", sys.argv[8], int(sys.argv[9])))
+elif b'REQUIREMENTS_TOKEN_COUNT=' in raw:
+    raise SystemExit("Unrequested requirements token count")
+for label, input_sha, input_bytes in documents:
+    key = label.encode() + b'='
+    records = re.findall(re.escape(key) + rb'(\{[^\r\n]*\})\r?(?:\n|$)', raw)
+    if len(records) != 1 or raw.count(key) != 1:
+        raise SystemExit("Actual document count is missing or duplicated: " + label)
+    result = json.loads(records[0])
+    context = dict(expected, input_sha256=input_sha, input_bytes=input_bytes)
+    if any(result.get(key) != value for key, value in context.items()):
+        raise SystemExit("Actual document count context differs: " + label)
+    if type(result.get("tokens")) is not int or not 0 < result["tokens"] <= input_bytes:
+        raise SystemExit("Actual document token count is invalid: " + label)
+    if not re.fullmatch(r"3\.11\.[0-9]+", result.get("python", "")):
+        raise SystemExit("Tokenizer Python runtime differs")
+    if not re.fullmatch(r"[0-9a-f]{64}", result.get("native_sha256", "")):
+        raise SystemExit("Executed tokenizer identity is absent")
+    print(label + "=" + json.dumps(result, sort_keys=True, separators=(",", ":")))
 PY
     printf '%s\n' "$ledger_vm_receipt"
 elif [ "$MODE" = fixed-archive-tests ]; then
@@ -7280,7 +7306,7 @@ if [ "$MODE" = dependency-inventory ]; then
         || fail 'dependency inventory source or index changed'
 fi
 if [ "$MODE" = ledger-token-count ]; then
-    [ "$(/usr/bin/sha256sum "$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE" "$LEDGER_TOKENIZER_ARCHIVE")" = "$ledger_token_inputs_before" ] \
+    [ "$(/usr/bin/sha256sum "${ledger_count_sources[@]}")" = "$ledger_token_inputs_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \

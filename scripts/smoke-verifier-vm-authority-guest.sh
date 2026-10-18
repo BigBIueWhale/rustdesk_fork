@@ -16,6 +16,7 @@ RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
 HBB_FUSE_READ_TESTS=0
 HBB_SEND_DIGEST_TESTS=0
+LEDGER_REQUIREMENTS_SHA256=
 LINUX_PA_PLAYBACK=0
 APPLE_CURSOR_ONLY=0
 APPLE_FILE_MODE_ONLY=0
@@ -48,11 +49,15 @@ case "$#:${8:-}" in
         INVENTORY_INDEX_SHA256=${9}
         INVENTORY_HELPER_SHA256=${10}
         ;;
-    10:--ledger-token-count)
+    10:--ledger-token-count|11:--ledger-token-count)
         MODE=ledger-token-count
         [[ "${9}" =~ ^[0-9a-f]{64}$ ]] && [[ "${10}" =~ ^[0-9a-f]{64}$ ]] || exit 2
         LEDGER_INPUT_SHA256=${9}
         LEDGER_RECIPE_SHA256=${10}
+        if [ "$#" -eq 11 ]; then
+            [[ "${11}" =~ ^[0-9a-f]{64}$ ]] || exit 2
+            LEDGER_REQUIREMENTS_SHA256=${11}
+        fi
         ;;
     8:--host-network-tests)
         MODE=host-network-tests
@@ -875,7 +880,14 @@ run_ledger_token_count() {
     local helper=$VERIFY_REPO/scripts/count-ledger-tokens.py
     local input=$VERIFY_REPO/HARDENING_STATUS.md
     local archive=/mnt/rustdesk-verifier-inputs/ledger-tokenizer-inputs.tar.gz
-    local output=$ROOT/ledger-token-count.out
+    local document_index
+    local -a count_inputs=("$input") count_hashes=("$LEDGER_INPUT_SHA256")
+    local -a count_outputs=("$ROOT/ledger-token-count.out")
+    if [ -n "$LEDGER_REQUIREMENTS_SHA256" ]; then
+        count_inputs+=("$VERIFY_REPO/requirements.html")
+        count_hashes+=("$LEDGER_REQUIREMENTS_SHA256")
+        count_outputs+=("$ROOT/requirements-token-count.out")
+    fi
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
         /usr/bin/python3 -B -I -S - "$storage_helper" <<'PY'
@@ -947,7 +959,7 @@ os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
         && grep -Fxq 'ValueError: QEMU supervisor requires waitable children' "$ROOT/storage-no-wait.err" \
         || fail 'VM storage supervisor did not refuse inherited child auto-reaping'
     printf 'VM_TRANSIENT_WAIT_REFUSAL=pass principal=4000 sigchld=ignored qemu=not-started\n'
-    source_before="$(sha256sum "$helper" "$input" "$archive" "$VERIFY_REPO/scripts/pins.env")"
+    source_before="$(sha256sum "$helper" "${count_inputs[@]}" "$archive" "$VERIFY_REPO/scripts/pins.env")"
     [ "$(sha256sum "$helper" | awk '{print $1}')" = "$LEDGER_RECIPE_SHA256" ] \
         && [ "$(sha256sum "$input" | awk '{print $1}')" = "$LEDGER_INPUT_SHA256" ] \
         || fail 'ledger token-count admitted source differs'
@@ -958,20 +970,26 @@ os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
     [ "$(stat -c '%u:%g:%a' "$work")" = 4000:4000:700 ] \
         || fail 'ledger token-count scratch authority differs'
     work_id="$(stat -c '%d:%i' "$work")"
-    setpriv --reuid=4000 --regid=4000 --clear-groups \
-        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
-        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
-        /usr/bin/prlimit --as=1073741824 --cpu=60 --nofile=64 \
-        /usr/bin/python3 -B -I -S "$helper" \
-        --input "$input" --input-sha256 "$LEDGER_INPUT_SHA256" \
-        --archive "$archive" --archive-sha256 "$SHA256_LEDGER_TOKENIZER_ARCHIVE" \
-        --wheel-sha256 "$SHA256_LEDGER_TOKENIZER_WHEEL" \
-        --ranks-sha256 "$SHA256_LEDGER_TOKENIZER_RANKS" >"$output" 2>&1 || status=$?
-    [ "$(stat -c '%s' "$output")" -le 65536 ] || fail 'ledger token-count diagnostics exceed their bound'
-    [ "$status" -eq 0 ] || { cat "$output" >&2; fail "ledger token count failed with status $status"; }
-    [ "$(wc -l <"$output")" -eq 1 ] && [ "$(grep -c '^LEDGER_TOKEN_COUNT={' "$output")" -eq 1 ] \
-        || fail 'actual ledger token count is absent or unexpected'
-    [ "$(sha256sum "$helper" "$input" "$archive" "$VERIFY_REPO/scripts/pins.env")" = "$source_before" ] \
+    for document_index in "${!count_inputs[@]}"; do
+        status=0
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+            /usr/bin/prlimit --as=1073741824 --cpu=60 --nofile=64 \
+            /usr/bin/python3 -B -I -S "$helper" \
+            --input "${count_inputs[$document_index]}" --input-sha256 "${count_hashes[$document_index]}" \
+            --archive "$archive" --archive-sha256 "$SHA256_LEDGER_TOKENIZER_ARCHIVE" \
+            --wheel-sha256 "$SHA256_LEDGER_TOKENIZER_WHEEL" \
+            --ranks-sha256 "$SHA256_LEDGER_TOKENIZER_RANKS" >"${count_outputs[$document_index]}" 2>&1 || status=$?
+        [ "$(stat -c '%s' "${count_outputs[$document_index]}")" -le 65536 ] \
+            || fail 'document token-count diagnostics exceed their bound'
+        [ "$status" -eq 0 ] \
+            || { cat "${count_outputs[$document_index]}" >&2; fail "document token count failed with status $status"; }
+        [ "$(wc -l <"${count_outputs[$document_index]}")" -eq 1 ] \
+            && [ "$(grep -c '^LEDGER_TOKEN_COUNT={' "${count_outputs[$document_index]}")" -eq 1 ] \
+            || fail 'actual document token count is absent or unexpected'
+    done
+    [ "$(sha256sum "$helper" "${count_inputs[@]}" "$archive" "$VERIFY_REPO/scripts/pins.env")" = "$source_before" ] \
         || fail 'ledger token-count source or inputs changed'
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
@@ -981,7 +999,10 @@ os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
         --remove-empty-private-root "$work" --expected-identity "$work_id" \
         || fail 'ledger token-count scratch did not retire'
     stop_docker_authority
-    cat "$output"
+    cat "${count_outputs[0]}"
+    if [ -n "$LEDGER_REQUIREMENTS_SHA256" ]; then
+        sed 's/^LEDGER_TOKEN_COUNT=/REQUIREMENTS_TOKEN_COUNT=/' "${count_outputs[1]}"
+    fi
     printf 'LEDGER_TOKEN_COUNT_VM=pass uid=4000 gid=4000 caps=none nnp=yes input_sha256=%s recipe_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
         "$LEDGER_INPUT_SHA256" "$LEDGER_RECIPE_SHA256"
 }

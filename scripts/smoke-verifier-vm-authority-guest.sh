@@ -4969,7 +4969,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
-            | awk '/^(RECORDING_OUTPUT|VIEWER_VIDEO|VIDEO_QOS|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() }'; then
+            | awk '/^(RECORDING_OUTPUT(_PARENT)?|VIEWER_VIDEO|VIDEO_QOS|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() } /^test common::record::tests::/ { print "RECORDING_OUTPUT_PROGRESS=" $0; fflush() }'; then
             parent_start_status=("${PIPESTATUS[@]}")
         else
             parent_start_status=("${PIPESTATUS[@]}")
@@ -5688,7 +5688,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = recording-output ]; then
             [ "$tests_passed" -eq 10 ] || fail 'recording output total differs'
-            grep -E '^test common::record::tests::.* \.\.\. ok$|^RECORDING_OUTPUT_(BUILD|ARTIFACT|PARENT_CHECK)=|^R-B10 canary:' "$output"
+            grep -E '^test common::record::tests::.* \.\.\. ok$|^RECORDING_OUTPUT_(BUILD|ARTIFACT|PARENT_CHECK)=|^RECORDING_OUTPUT_PARENT_BUILD=pass |^R-B10 canary:' "$output"
             printf 'RECORDING_OUTPUT_VM=pass commit=%s tree=%s tests=10 target=linux-x86_64 scope=scrap-library-native-webm-and-parent-check rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

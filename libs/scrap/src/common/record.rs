@@ -12,11 +12,8 @@ use std::{
     fs::{File, OpenOptions},
     ops::{Deref, DerefMut},
     path::PathBuf,
-    time::Instant,
 };
 use webm::mux::{self, Segment, Track, VideoTrack, Writer};
-
-const MIN_SECS: u64 = 1;
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests;
@@ -256,10 +253,7 @@ impl Recorder {
 struct WebmRecorder {
     vt: VideoTrack,
     webm: Option<Segment<Writer<File>>>,
-    ctx2: RecorderContext2,
     key: bool,
-    written: bool,
-    start: Instant,
 }
 
 impl RecorderApi for WebmRecorder {
@@ -294,10 +288,7 @@ impl RecorderApi for WebmRecorder {
         Ok(WebmRecorder {
             vt,
             webm: Some(webm),
-            ctx2: ctx2.clone(),
             key: false,
-            written: false,
-            start: Instant::now(),
         })
     }
 
@@ -306,13 +297,8 @@ impl RecorderApi for WebmRecorder {
             self.key = true;
         }
         if self.key {
-            let ok = self
-                .vt
-                .add_frame(&frame.data, frame.pts as u64 * 1_000_000, frame.key);
-            if ok {
-                self.written = true;
-            }
-            ok
+            self.vt
+                .add_frame(&frame.data, frame.pts as u64 * 1_000_000, frame.key)
         } else {
             false
         }
@@ -321,9 +307,16 @@ impl RecorderApi for WebmRecorder {
 
 impl Drop for WebmRecorder {
     fn drop(&mut self) {
-        let _ = std::mem::replace(&mut self.webm, None).map_or(false, |webm| webm.finalize(None));
-        if !self.written || self.start.elapsed().as_secs() < MIN_SECS {
-            std::fs::remove_file(&self.ctx2.filename).ok();
+        if let Some(webm) = self.webm.take() {
+            let (writer, finalized) = match webm.try_finalize(None) {
+                Ok(writer) => (writer, true),
+                Err(writer) => (writer, false),
+            };
+            // This consuming API releases the native writer and returns its File.
+            drop(mux::Writer::unwrap(writer));
+            if !finalized {
+                log::error!("Failed to finalize WebM recording");
+            }
         }
     }
 }
@@ -331,10 +324,7 @@ impl Drop for WebmRecorder {
 #[cfg(feature = "hwcodec")]
 struct HwRecorder {
     muxer: Option<Muxer>,
-    ctx2: RecorderContext2,
-    written: bool,
     key: bool,
-    start: Instant,
 }
 
 #[cfg(feature = "hwcodec")]
@@ -350,10 +340,7 @@ impl RecorderApi for HwRecorder {
         .map_err(|_| anyhow!("Failed to create hardware muxer"))?;
         Ok(HwRecorder {
             muxer: Some(muxer),
-            ctx2: ctx2.clone(),
-            written: false,
             key: false,
-            start: Instant::now(),
         })
     }
 
@@ -362,15 +349,10 @@ impl RecorderApi for HwRecorder {
             self.key = true;
         }
         if self.key {
-            let ok = self
-                .muxer
+            self.muxer
                 .as_mut()
                 .map(|m| m.write_video(&frame.data, frame.key).is_ok())
-                .unwrap_or_default();
-            if ok {
-                self.written = true;
-            }
-            ok
+                .unwrap_or_default()
         } else {
             false
         }
@@ -380,11 +362,10 @@ impl RecorderApi for HwRecorder {
 #[cfg(feature = "hwcodec")]
 impl Drop for HwRecorder {
     fn drop(&mut self) {
-        self.muxer.as_mut().map(|m| m.write_tail().ok());
-        if !self.written || self.start.elapsed().as_secs() < MIN_SECS {
-            // The process cannot access the file because it is being used by another process
-            self.muxer = None;
-            std::fs::remove_file(&self.ctx2.filename).ok();
+        if let Some(muxer) = self.muxer.as_mut() {
+            if let Err(error) = muxer.write_tail() {
+                log::error!("Failed to finalize hardware recording: {error:?}");
+            }
         }
     }
 }

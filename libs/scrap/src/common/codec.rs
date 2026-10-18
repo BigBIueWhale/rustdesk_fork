@@ -13,7 +13,7 @@ use crate::mediacodec::{MediaCodecDecoder, H264_DECODER_SUPPORT, H265_DECODER_SU
 use crate::vram::*;
 use crate::{
     common::GoogleImage,
-    vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId},
+    vpxcodec::{VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId},
     CodecFormat, EncodeInput, EncodeYuvFormat, ImageRgb, ImageTexture,
 };
 
@@ -764,24 +764,20 @@ impl Decoder {
         chroma: &mut Option<Chroma>,
     ) -> ResultType<bool> {
         validate_native_video_frames("vpx", vpxs)?;
-        let mut last_frame = vpxcodec::Image::new();
+        let mut rendered = false;
         for vpx in vpxs.frames.iter() {
-            for frame in decoder.decode(&vpx.data)? {
-                drop(last_frame);
-                last_frame = frame;
+            if let Some(frame) = decoder.decode(&vpx.data)? {
+                *chroma = Some(frame.chroma());
+                frame.to(rgb)?;
+                rendered = true;
             }
         }
-        for frame in decoder.flush()? {
-            drop(last_frame);
-            last_frame = frame;
+        if let Some(frame) = decoder.flush()? {
+            *chroma = Some(frame.chroma());
+            frame.to(rgb)?;
+            rendered = true;
         }
-        if last_frame.is_null() {
-            Ok(false)
-        } else {
-            *chroma = Some(last_frame.chroma());
-            last_frame.to(rgb)?;
-            Ok(true)
-        }
+        Ok(rendered)
     }
 
     // rgb [in/out] fmt and stride must be set in ImageRgb

@@ -498,12 +498,12 @@ impl VpxDecoder {
         Ok(Self { ctx })
     }
 
-    /// Feed some compressed data to the encoder
+    /// Feed compressed data to the decoder and borrow its last displayed image.
     ///
     /// The `data` slice is sent to the decoder
     ///
     /// It matches a call to `vpx_codec_decode`.
-    pub fn decode<'a>(&'a mut self, data: &[u8]) -> Result<DecodeFrames<'a>> {
+    pub fn decode(&mut self, data: &[u8]) -> Result<Option<Image<'_>>> {
         call_vpx!(vpx_codec_decode(
             &mut self.ctx,
             data.as_ptr(),
@@ -512,14 +512,11 @@ impl VpxDecoder {
             0,
         ));
 
-        Ok(DecodeFrames {
-            ctx: &mut self.ctx,
-            iter: ptr::null(),
-        })
+        Ok(self.last_image())
     }
 
     /// Notify the decoder to return any pending frame
-    pub fn flush<'a>(&'a mut self) -> Result<DecodeFrames<'a>> {
+    pub fn flush(&mut self) -> Result<Option<Image<'_>>> {
         call_vpx!(vpx_codec_decode(
             &mut self.ctx,
             ptr::null(),
@@ -527,10 +524,22 @@ impl VpxDecoder {
             ptr::null_mut(),
             0
         ));
-        Ok(DecodeFrames {
-            ctx: &mut self.ctx,
-            iter: ptr::null(),
-        })
+        Ok(self.last_image())
+    }
+
+    fn last_image(&mut self) -> Option<Image<'_>> {
+        let mut iter = ptr::null();
+        let mut last = ptr::null_mut();
+        loop {
+            let image = unsafe { vpx_codec_get_frame(&mut self.ctx, &mut iter) };
+            if image.is_null() {
+                break;
+            }
+            last = image;
+        }
+        // libvpx owns the image until the next decode call. Borrowing the decoder
+        // keeps that call, and decoder destruction, after the image's final use.
+        unsafe { last.as_ref() }.map(Image)
     }
 }
 
@@ -545,36 +554,8 @@ impl Drop for VpxDecoder {
     }
 }
 
-pub struct DecodeFrames<'a> {
-    ctx: &'a mut vpx_codec_ctx_t,
-    iter: vpx_codec_iter_t,
-}
-
-impl<'a> Iterator for DecodeFrames<'a> {
-    type Item = Image;
-    fn next(&mut self) -> Option<Self::Item> {
-        let img = unsafe { vpx_codec_get_frame(self.ctx, &mut self.iter) };
-        if img.is_null() {
-            return None;
-        } else {
-            return Some(Image(img));
-        }
-    }
-}
-
-// https://chromium.googlesource.com/webm/libvpx/+/bali/vpx/src/vpx_image.c
-pub struct Image(*mut vpx_image_t);
-impl Image {
-    #[inline]
-    pub fn new() -> Self {
-        Self(std::ptr::null_mut())
-    }
-
-    #[inline]
-    pub fn is_null(&self) -> bool {
-        self.0.is_null()
-    }
-
+pub struct Image<'a>(&'a vpx_image_t);
+impl Image<'_> {
     #[inline]
     pub fn format(&self) -> vpx_img_fmt_t {
         // VPX_IMG_FMT_I420
@@ -583,11 +564,11 @@ impl Image {
 
     #[inline]
     pub fn inner(&self) -> &vpx_image_t {
-        unsafe { &*self.0 }
+        self.0
     }
 }
 
-impl GoogleImage for Image {
+impl GoogleImage for Image<'_> {
     #[inline]
     fn width(&self) -> usize {
         self.inner().d_w as _
@@ -612,14 +593,6 @@ impl GoogleImage for Image {
         match self.inner().fmt {
             vpx_img_fmt::VPX_IMG_FMT_I444 => Chroma::I444,
             _ => Chroma::I420,
-        }
-    }
-}
-
-impl Drop for Image {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe { vpx_img_free(self.0) };
         }
     }
 }

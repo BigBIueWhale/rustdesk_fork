@@ -144,6 +144,52 @@ fn visible_frame_survives_hidden_resolution_change_in_same_batch() {
     assert!(handler.decoder.valid());
 }
 
+#[test]
+fn vp9_visible_batch_and_decoder_reset_preserve_native_output() {
+    let mut encoder = VpxEncoder::new(
+        EncoderCfg::VPX(VpxEncoderConfig {
+            width: WIDTH as _,
+            height: HEIGHT as _,
+            #[cfg(target_os = "android")]
+            android_scale: 1,
+            quality: 1.0,
+            codec: VpxVideoCodecId::VP9,
+            keyframe_interval: None,
+        }),
+        false,
+    )
+    .expect("native VP9 encoder");
+    let mut frames: Vec<_> = encoder
+        .encode(0, &vec![128; WIDTH * HEIGHT * 3 / 2], 1)
+        .expect("encode VP9")
+        .map(|frame| EncodedVideoFrame {
+            data: Bytes::copy_from_slice(frame.data),
+            key: frame.key,
+            ..Default::default()
+        })
+        .collect();
+    frames.extend(
+        encoder.flush().expect("flush VP9").map(|frame| EncodedVideoFrame {
+            data: Bytes::copy_from_slice(frame.data),
+            key: frame.key,
+            ..Default::default()
+        }),
+    );
+    assert_eq!(frames.len(), 1, "one native VP9 keyframe");
+    assert!(frames[0].key);
+    let single = VpxEncoder::create_video_frame(VpxVideoCodecId::VP9, frames.clone());
+    let mut handler = VideoHandler::new(CodecFormat::VP9, 0);
+    assert_visible(&mut handler, single);
+    let expected = handler.rgb.raw.clone();
+    frames.extend(frames.clone());
+    let batch = VpxEncoder::create_video_frame(VpxVideoCodecId::VP9, frames);
+    assert_visible(&mut handler, batch.clone());
+    assert!(handler.rgb.raw == expected, "last visible VP9 batch pixels");
+    handler.reset(None);
+    assert_visible(&mut handler, batch);
+    assert!(handler.rgb.raw == expected, "visible VP9 pixels after decoder reset");
+}
+
 #[cfg(target_os = "linux")]
 mod worker_tests {
     use super::*;

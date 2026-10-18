@@ -70,4 +70,69 @@ Future<void> main(List<String> arguments) async {
   print('OPTION_WIRE_DART_CASE=pass name=repeated_failure_and_readback');
   print('OPTION_WIRE_DART=pass cases=4 native_errors=11 error=RESULT_ERROR '
       'cache=preserved config=preserved reads=sync-and-async');
+
+  await api.mainSetFavorites(ids: ['first'], favorite: true);
+  check(jsonEncode(await api.mainGetFav()) == '["first"]',
+      'initial favorite membership was not published');
+  final localFiles = config.listSync(recursive: true).whereType<File>()
+      .where((file) => file.path.endsWith('_local.toml')).toList();
+  check(localFiles.length == 1, 'exact private local config is missing');
+  final parent = localFiles.single.parent;
+  void permissions(String mode) {
+    final result = Process.runSync('/bin/chmod', [mode, parent.path]);
+    check(result.exitCode == 0, 'private config permission change failed');
+  }
+  print('FAVORITES_WIRE_DART_CASE=pass name=initial_commit');
+  for (final favorite in [true, false]) {
+    final beforeFavs = jsonEncode(await api.mainGetFav());
+    final beforeFiles = configFiles(config);
+    Object? failure;
+    permissions('0500');
+    try {
+      try {
+        await api.mainSetFavorites(ids: ['second'], favorite: favorite);
+      } catch (error) {
+        failure = error;
+      }
+      check(failure is FfiException &&
+          (failure as FfiException).code == 'RESULT_ERROR',
+          'favorite persistence failure did not cross the native bridge');
+      check(jsonEncode(await api.mainGetFav()) == beforeFavs,
+          'failed favorite save changed memory');
+      final currentFiles = configFiles(config);
+      check(currentFiles.length == beforeFiles.length &&
+          beforeFiles.entries.every((entry) => currentFiles[entry.key] == entry.value),
+          'failed favorite save changed durable configuration');
+    } finally {
+      permissions('0700');
+    }
+    await api.mainSetFavorites(ids: ['second'], favorite: favorite);
+    check((await api.mainGetFav()).contains('second') == favorite,
+        'identical favorite retry failed');
+    final disk = localFiles.single.readAsStringSync();
+    check(disk.contains('"second"') == favorite && disk.contains('"first"'),
+        'favorite retry did not reach the durable file');
+    print('FAVORITES_WIRE_DART_CASE=pass name=${favorite ? 'failed_add_retry' : 'failed_remove_retry'}');
+  }
+  await Future.wait([
+    api.mainSetFavorites(ids: ['third'], favorite: true),
+    api.mainSetFavorites(ids: ['fourth'], favorite: true),
+  ]);
+  final current = await api.mainGetFav();
+  check(current.length == 3 && current.contains('first') &&
+      current.contains('third') && current.contains('fourth'),
+      'concurrent native membership changes overwrote one another');
+  final concurrentDisk = localFiles.single.readAsStringSync();
+  check(concurrentDisk.contains('"third"') && concurrentDisk.contains('"fourth"'),
+      'concurrent favorite changes did not reach durable configuration');
+  permissions('0500');
+  try {
+    await api.mainSetFavorites(ids: ['first'], favorite: true);
+    await api.mainSetFavorites(ids: ['absent'], favorite: false);
+  } finally {
+    permissions('0700');
+  }
+  print('FAVORITES_WIRE_DART_CASE=pass name=concurrent_membership');
+  print('FAVORITES_WIRE_DART=pass cases=4 native_errors=2 error=RESULT_ERROR '
+      'failed_state=preserved retry=durable concurrent=preserved idempotent=without-write');
 }

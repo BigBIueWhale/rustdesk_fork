@@ -1698,6 +1698,25 @@ String bool2option(String option, bool b) {
   return res;
 }
 
+Future<bool> mainSetFavorites(List<String> ids, bool favorite,
+    {Future<void> Function(List<String> ids, bool favorite)? writeFavorites,
+    VoidCallback? showFailure}) async {
+  final write = writeFavorites ??
+      (ids, favorite) => bind.mainSetFavorites(ids: ids, favorite: favorite);
+  try {
+    await write(List<String>.of(ids), favorite);
+    return true;
+  } catch (error) {
+    debugPrint('Failed to save favorites: $error');
+    if (showFailure != null) {
+      showFailure();
+    } else {
+      showToast(translate('Failed'));
+    }
+    return false;
+  }
+}
+
 Future<bool> mainSetOption(String key, String value,
     {Future<void> Function(String key, String value)? writeOption,
     VoidCallback? showFailure}) async {

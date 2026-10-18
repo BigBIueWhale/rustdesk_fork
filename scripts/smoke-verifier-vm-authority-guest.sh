@@ -3079,6 +3079,9 @@ run_focused_rust_tests() {
                 config::option_tests::failed_write_preserves_memory_and_allows_the_same_retry
                 config::option_tests::failed_pinned_entry_purge_remains_retryable
                 config::option_tests::results_distinguish_failed_saves_from_durable_and_idempotent_success
+                config::option_tests::favorite_failure_preserves_state_and_retries_the_exact_membership_change
+                config::option_tests::favorite_membership_preserves_order_and_avoids_idempotent_writes
+                config::option_tests::concurrent_favorite_membership_changes_preserve_every_admitted_id
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
@@ -5604,7 +5607,7 @@ PY
             && [ "$(grep -Fxc 'OPTION_EXPORT_NATIVE=observed refused=true missing_receiver=true cache_preserved=true memory_preserved=true file_preserved=true' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_EXPORT_BEFORE=observed refused=false missing_receiver=false state_preserved=true' "$output")" -eq 1 ] \
             || fail 'option acknowledgement artifact or native outcomes differ'
-        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=4 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=8 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_WIRE_DART=pass cases=4 native_errors=11 error=RESULT_ERROR cache=preserved config=preserved reads=sync-and-async' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_DART_CASE=' "$output")" -eq 4 ] \
@@ -5612,6 +5615,13 @@ PY
         for case_name in invalid_key oversized_value missing_receiver repeated_failure_and_readback; do
             [ "$(grep -Fxc "OPTION_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
                 || fail "option bridge case differs: $case_name"
+        done
+        [ "$(grep -Fxc 'FAVORITES_WIRE_DART=pass cases=4 native_errors=2 error=RESULT_ERROR failed_state=preserved retry=durable concurrent=preserved idempotent=without-write' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'FAVORITES_WIRE_DART_CASE=' "$output")" -eq 4 ] \
+            || fail 'favorite bridge outcomes differ'
+        for case_name in initial_commit failed_add_retry failed_remove_retry concurrent_membership; do
+            [ "$(grep -Fxc "FAVORITES_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
+                || fail "favorite bridge case differs: $case_name"
         done
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
@@ -6111,6 +6121,7 @@ PY
         elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
             [ "$tests_passed" -eq 2 ] || fail 'option acknowledgement total differs'
             grep -E '^test (ipc::test::ordinary_option_ack_waits_for_persistence|ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver) [.][.][.] ok$|^OPTION_(ACK_(BUILD=pass |ARTIFACT(_AFTER)?=|NATIVE=)|EXPORT_(NATIVE|BEFORE)=|WIRE_)' "$output"
+            grep -E '^FAVORITES_WIRE_DART(_CASE)?=' "$output"
             printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
@@ -8742,7 +8753,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_AUTO_DISCONNECT_TEST_JSON
-            expected_result='suites=3 tests=19'
+            expected_result='suites=3 tests=21'
         elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
             memory=3g
             memory_bytes=3221225472
@@ -9612,7 +9623,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
-        printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=3 tests=19 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
+        printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=3 tests=21 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

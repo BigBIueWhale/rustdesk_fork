@@ -498,8 +498,8 @@ pub fn get_fav() -> Vec<String> {
 }
 
 #[inline]
-pub fn store_fav(fav: Vec<String>) {
-    LocalConfig::set_fav(fav);
+pub fn set_favorites(ids: Vec<String>, favorite: bool) -> hbb_common::ResultType<()> {
+    LocalConfig::set_favorites(ids, favorite)
 }
 
 #[inline]

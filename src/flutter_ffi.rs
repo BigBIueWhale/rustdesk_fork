@@ -1118,8 +1118,8 @@ pub fn main_get_fav() -> Vec<String> {
     get_fav()
 }
 
-pub fn main_store_fav(favs: Vec<String>) {
-    store_fav(favs)
+pub fn main_set_favorites(ids: Vec<String>, favorite: bool) -> ResultType<()> {
+    set_favorites(ids, favorite)
 }
 
 pub fn main_get_peer_sync(id: String) -> SyncReturn<String> {

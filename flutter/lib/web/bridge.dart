@@ -919,9 +919,23 @@ class RustdeskImpl {
     return Future.value(favs);
   }
 
-  Future<void> mainStoreFav({required List<String> favs, dynamic hint}) {
-    return Future(
-        () => js.context.callMethod('setByName', ['fav', jsonEncode(favs)]));
+  Future<void> mainSetFavorites(
+      {required List<String> ids, required bool favorite, dynamic hint}) {
+    final requested = List<String>.of(ids);
+    return Future(() {
+      final stored = js.context.callMethod('getByName', ['fav']);
+      final favs = stored == null || stored == ''
+          ? <String>[]
+          : (jsonDecode(stored) as List<dynamic>).cast<String>();
+      if (favorite) {
+        for (final id in requested) {
+          if (!favs.contains(id)) favs.add(id);
+        }
+      } else {
+        favs.removeWhere(requested.contains);
+      }
+      js.context.callMethod('setByName', ['fav', jsonEncode(favs)]);
+    });
   }
 
   String mainGetPeerSync({required String id, dynamic hint}) {

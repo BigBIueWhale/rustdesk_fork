@@ -680,11 +680,8 @@ abstract class BasePeerCard extends StatelessWidget {
               bind.mainLoadRecentPeers();
               break;
             case PeerTabIndex.fav:
-              final favs = (await bind.mainGetFav()).toList();
-              if (favs.remove(id)) {
-                await bind.mainStoreFav(favs: favs);
-                bind.mainLoadFavPeers();
-              }
+              if (!await mainSetFavorites([id], false)) return;
+              bind.mainLoadFavPeers();
               break;
           }
           showToast(translate('Successful'));
@@ -737,11 +734,7 @@ abstract class BasePeerCard extends StatelessWidget {
       ),
       proc: () {
         () async {
-          final favs = (await bind.mainGetFav()).toList();
-          if (!favs.contains(id)) {
-            favs.add(id);
-            await bind.mainStoreFav(favs: favs);
-          }
+          if (!await mainSetFavorites([id], true)) return;
           showToast(translate('Successful'));
         }();
       },
@@ -772,11 +765,8 @@ abstract class BasePeerCard extends StatelessWidget {
       ),
       proc: () {
         () async {
-          final favs = (await bind.mainGetFav()).toList();
-          if (favs.remove(id)) {
-            await bind.mainStoreFav(favs: favs);
-            await reloadFunc();
-          }
+          if (!await mainSetFavorites([id], false)) return;
+          await reloadFunc();
           showToast(translate('Successful'));
         }();
       },

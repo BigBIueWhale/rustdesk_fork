@@ -3844,13 +3844,24 @@ impl LocalConfig {
         LOCAL_CONFIG.read().unwrap().remote_id.clone()
     }
 
-    pub fn set_fav(fav: Vec<String>) {
-        let mut lock = LOCAL_CONFIG.write().unwrap();
-        if lock.fav == fav {
-            return;
+    pub fn set_favorites(ids: Vec<String>, favorite: bool) -> crate::ResultType<()> {
+        let mut config = LOCAL_CONFIG.write().unwrap();
+        let mut candidate = config.clone();
+        if favorite {
+            for id in ids {
+                if !candidate.fav.contains(&id) {
+                    candidate.fav.push(id);
+                }
+            }
+        } else {
+            candidate.fav.retain(|id| !ids.contains(id));
         }
-        lock.fav = fav;
-        lock.store();
+        if candidate.fav == config.fav {
+            return Ok(());
+        }
+        store_path(Config::file_("_local"), &candidate)?;
+        *config = candidate;
+        Ok(())
     }
 
     pub fn get_fav() -> Vec<String> {

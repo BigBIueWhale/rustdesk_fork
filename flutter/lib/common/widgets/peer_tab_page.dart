@@ -353,11 +353,9 @@ class _PeerTabPageState extends State<PeerTabPage>
                 bind.mainLoadRecentPeers();
                 break;
               case 1:
-                final favs = (await bind.mainGetFav()).toList();
-                peers.map((p) {
-                  favs.remove(p.id);
-                }).toList();
-                await bind.mainStoreFav(favs: favs);
+                if (!await mainSetFavorites(
+                    peers.map((p) => p.id).toList(), false)) return;
+                if (!mounted) return;
                 bind.mainLoadFavPeers();
                 break;
               default:
@@ -382,13 +380,9 @@ class _PeerTabPageState extends State<PeerTabPage>
         toolTip: translate('Add to Favorites'),
         onTap: () async {
           final peers = model.selectedPeers;
-          final favs = (await bind.mainGetFav()).toList();
-          for (var p in peers) {
-            if (!favs.contains(p.id)) {
-              favs.add(p.id);
-            }
-          }
-          await bind.mainStoreFav(favs: favs);
+          if (!await mainSetFavorites(
+              peers.map((p) => p.id).toList(), true)) return;
+          if (!mounted) return;
           model.setMultiSelectionMode(false);
           showToast(translate('Successful'));
         },

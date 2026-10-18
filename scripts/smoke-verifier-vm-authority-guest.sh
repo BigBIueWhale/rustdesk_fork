@@ -5547,7 +5547,7 @@ PY
         elif [ "$RUST_TEST_PROFILE" = input-release ]; then
             expected_groups=2
         elif [ "$RUST_TEST_PROFILE" = clipboard ]; then
-            expected_groups=4
+            expected_groups=5
         elif [ "$RUST_TEST_PROFILE" != integration ]; then
             expected_groups=1
         fi

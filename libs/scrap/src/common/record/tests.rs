@@ -685,3 +685,72 @@ fn native_recording_epoch_finalize_failure_stops_before_new_file() {
         assert_eq!(fs::read(&output).unwrap(), before);
     });
 }
+
+#[test]
+fn native_disabled_av1_recording_creates_no_output() {
+    let dir = TestDir::new();
+    let mut accepted = Vec::new();
+    for frames in [
+        Vec::new(),
+        vec![EncodedVideoFrame { key: false, ..Default::default() }],
+        vec![EncodedVideoFrame {
+            data: Bytes::from_static(b"unsupported codec payload"), key: true,
+            ..Default::default()
+        }],
+    ] {
+        let mut recorder = timeline_recorder(&dir);
+        let frame = video_frame::Union::Av1s(hbb_common::message_proto::EncodedVideoFrames {
+            frames, ..Default::default()
+        });
+        accepted.push(recorder.write_frame(&frame, 64, 48).is_ok());
+        drop(recorder);
+    }
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0, "disabled AV1 created output");
+    assert_eq!(accepted, vec![false; 3], "disabled AV1 batch was admitted");
+}
+
+#[test]
+fn native_disabled_av1_preserves_active_vp8_epoch() {
+    let dir = TestDir::new();
+    let mut recorder = timeline_recorder(&dir);
+    let mut frames = native_frames(VpxVideoCodecId::VP8);
+    recorder.write_frame(&vp8_batch(frames.remove(0)), 64, 48).unwrap();
+    let output = recorder.ctx2.as_ref().unwrap().filename.clone();
+    let pts = recorder.pts;
+    let disabled = video_frame::Union::Av1s(hbb_common::message_proto::EncodedVideoFrames {
+        frames: vec![EncodedVideoFrame {
+            data: Bytes::from_static(b"unsupported codec payload"), key: true, pts: 100,
+            ..Default::default()
+        }], ..Default::default()
+    });
+    let refused = recorder.write_frame(&disabled, 128, 96).is_err();
+    let preserved = recorder.ctx2.as_ref().map(|ctx| ctx.filename.as_str()) == Some(output.as_str())
+        && recorder.pts == pts && recorder.inner.is_some();
+    recorder.write_frame(&vp8_batch(frames.remove(0)), 64, 48).unwrap();
+    drop(recorder);
+    assert!(refused, "disabled AV1 batch was admitted");
+    assert!(preserved, "disabled codec changed the active recording epoch");
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1);
+    assert_webm(Path::new(&output), b"V_VP8");
+    assert_eq!(webm_timestamps(Path::new(&output)), vec![0, 2_000_000_000]);
+}
+
+#[test]
+fn native_disabled_av1_mux_is_refused() {
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    let dir = TestDir::new();
+    let output = dir.0.join("disabled.webm");
+    let ctx = dir.context(&output, CodecFormat::AV1);
+    let dropped = Arc::new(AtomicBool::new(false));
+    let file = FaultFile {
+        file: OpenOptions::new().write(true).create_new(true).open(&output).unwrap(), mode: "none",
+        observed: Arc::new(AtomicBool::new(false)), seek_fail: Arc::new(AtomicBool::new(false)),
+        dropped: dropped.clone(),
+    };
+    let result = WebmMux::new(file, &ctx);
+    let refused = result.is_err();
+    drop(result);
+    assert!(dropped.load(Ordering::SeqCst), "disabled codec retained its destination");
+    assert!(refused, "disabled AV1 mux configuration accepted");
+    assert!(fs::read(&output).unwrap().is_empty());
+}

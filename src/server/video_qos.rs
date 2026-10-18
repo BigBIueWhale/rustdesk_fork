@@ -94,6 +94,18 @@ struct UserData {
     record: bool,
 }
 
+impl UserData {
+    fn requested_fps(&self) -> u32 {
+        let mut fps = self.custom_fps.unwrap_or(FPS);
+        if let Some(auto_adjust_fps) = self.auto_adjust_fps {
+            if fps == 0 || auto_adjust_fps < fps {
+                fps = auto_adjust_fps;
+            }
+        }
+        fps
+    }
+}
+
 #[derive(Default, Debug, Clone)]
 struct DisplayData {
     send_counter: usize, // Number of times encode during period
@@ -193,6 +205,8 @@ impl VideoQoS {
         self.users.remove(&id);
         if self.users.is_empty() {
             *self = Default::default();
+        } else {
+            self.adjust_fps();
         }
     }
 
@@ -243,7 +257,7 @@ impl VideoQoS {
     }
 
     pub fn user_network_delay(&mut self, id: i32, delay: u32) {
-        let highest_fps = self.highest_fps();
+        let sending_fps = self.fps.min(self.highest_fps());
         let target_ratio = self.latest_quality().ratio();
 
         // For bad network, small fps means quick reaction and high quality
@@ -260,13 +274,15 @@ impl VideoQoS {
 
         let mut adjust_ratio = false;
         if let Some(user) = self.users.get_mut(&id) {
+            let highest_fps = user.requested_fps().clamp(MIN_FPS, MAX_FPS);
             let delay = delay.max(10);
             let old_avg_delay = user.delay.avg_delay();
             user.delay.pending_delay = None;
             user.delay.add_delay(delay);
             let mut avg_delay = user.delay.avg_delay();
             avg_delay = avg_delay.max(10);
-            let mut fps = self.fps;
+            let previous_fps = user.delay.fps.unwrap_or(INIT_FPS);
+            let mut fps = previous_fps;
 
             // Adaptive FPS adjustment based on network delay:
             if avg_delay < 50 {
@@ -322,6 +338,10 @@ impl VideoQoS {
             }
 
             fps = fps.clamp(MIN_FPS, highest_fps);
+            // A limited shared stream cannot probe an increase in this user's rate.
+            if sending_fps < previous_fps {
+                fps = fps.min(previous_fps);
+            }
             // first network delay message
             adjust_ratio = user.delay.fps.is_none();
             user.delay.fps = Some(fps);
@@ -377,20 +397,10 @@ impl VideoQoS {
 
     #[inline]
     fn highest_fps(&self) -> u32 {
-        let user_fps = |u: &UserData| {
-            let mut fps = u.custom_fps.unwrap_or(FPS);
-            if let Some(auto_adjust_fps) = u.auto_adjust_fps {
-                if fps == 0 || auto_adjust_fps < fps {
-                    fps = auto_adjust_fps;
-                }
-            }
-            fps
-        };
-
         let fps = self
             .users
-            .iter()
-            .map(|(_, u)| user_fps(u))
+            .values()
+            .map(UserData::requested_fps)
             .filter(|u| *u >= MIN_FPS)
             .min()
             .unwrap_or(FPS);
@@ -744,4 +754,28 @@ mod tests {
         assert!(qos.users.is_empty());
         assert_eq!(qos.fps(), FPS);
     }
+
+    #[test]
+    fn shared_rate_limit_does_not_manufacture_higher_rate_estimates() {
+        let mut qos = healthy_pair();
+        qos.user_custom_fps(8, MAX_FPS);
+        qos.user_custom_fps(7, 5);
+        // A newly requested shared limit is effective before its owner's next reply.
+        qos.user_network_delay(8, 20);
+        for _ in 0..60 {
+            qos.user_network_delay(7, 20);
+            qos.user_network_delay(8, 20);
+            assert_eq!(qos.fps(), 5);
+        }
+        assert_eq!(qos.users[&8].delay.fps, Some(FPS),
+            "low delay at a restricted sending rate cannot prove higher capacity");
+        qos.on_connection_close(7);
+        assert_eq!(qos.fps(), FPS);
+        for _ in 0..60 {
+            qos.user_network_delay(8, 20);
+        }
+        assert_eq!(qos.fps(), MAX_FPS,
+            "new feedback at the unrestricted rate must still allow adaptation");
+    }
+
 }

@@ -2625,8 +2625,9 @@ and private-root reconciliation are retained in
 The writers/readers are controlled callbacks. This proves the rendered Linux Flutter
 dialog and result/lifetime flow with freshly generated Dart bindings, not real Rust
 IPC or durable persistence, native Android/iOS, or installed service behavior.
-Desktop readback still uses the existing option cache; direct FFI error propagation,
-cross-dialog/concurrent writers and broader settings/credential acceptance remain OPEN.
+Desktop readback still uses the existing option cache. Linux export error propagation
+is covered above; cross-dialog/concurrent writers and broader settings/credential
+acceptance remain OPEN.
 The fifteen credential-action obligations and R-S0 remain OPEN.
 
 **Ordinary option persistence — Linux library/handler corrected; broader acceptance OPEN.**

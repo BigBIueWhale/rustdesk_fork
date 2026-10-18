@@ -115,6 +115,29 @@ classification, obligation mapping, exact counts and source/cleanup bindings.
 Product source and runtime verdicts are unchanged; whole-document cleanup and all
 native/installed/release obligations remain OPEN.
 
+R-T9/R-T10/R-T11/R-T12/R-T13/R-T15 now state transport lifecycle and
+authentication obligations without inherited-code repair narratives. Removed are
+the old `pkill` story, claims that keepalive/network callbacks are absent, the
+obsolete public-listener constructor diagnosis, accept-loop pseudocode and retired
+authentication-path history. Retained are bounded shutdown with exact accepted-work
+retirement and truthful outcomes; 30/10-second keepalive and supported Unix retry
+settings; IPv4/exclusive OS-aware binds; bounded error/source audit summaries;
+exact Android callback and wake-lock lifetimes; exhaustive secret wiping, one
+bounded/decaying guess limiter and absence of legacy challenge emission.
+Windows listener exclusivity now agrees with the existing R-T17 contract rather
+than suggesting that omitting SO_REUSEADDR alone proves exclusive ownership.
+R-T13 also corrects the assumption that a partial wake lock establishes Doze
+reachability: Android may suspend networking and ignore wake locks. Forced Doze
+entry/exit, network replacement, stale callbacks, listener/wake-lock retirement
+and post-resumption R-F5 freshness require actual device/emulator evidence and
+remain OPEN. This is a specification correction; product/verifier source and
+runtime verdicts are unchanged. All other HTML bytes, 411 requirement IDs,
+369 numbered rows and 214 links preserve content/order; changed-node tags balance
+and references resolve. `.harness-state/verifier-vm/transport-lifecycle-document-role.json`
+retains the old/new nodes, obligation mapping, research, exact document metrics and
+frozen controls. Whole-document cleanup and native/installed/release acceptance
+remain OPEN.
+
 R-X3/R-X4 now state the direct-only configuration and password-only authentication
 contract. The inherited local server-list/no-op rewrite permission and instruction
 to bake and pin a rendezvous trust anchor are removed. All three remote mutation routes,

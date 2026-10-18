@@ -2525,7 +2525,7 @@ generate_focused_rust_flutter_bridge() {
     local load_output container_status=0 inspect namespace_inspect freshness_line
     local codegen_memory=8g
     local codegen_memory_bytes=8589934592
-    if [[ "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+    if [[ "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = option-ack ]]; then
         codegen_memory=3g
         codegen_memory_bytes=3221225472
     fi
@@ -2765,7 +2765,7 @@ generate_focused_rust_flutter_bridge() {
     CONTAINER_ID=
     "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
     rm -rf -- "$codegen_source" "$codegen_work"
-    if [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+    if [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = option-ack ]]; then
         [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
             && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
             || fail 'bridge preparation left a container or image before storage retirement'
@@ -3998,10 +3998,14 @@ run_focused_rust_tests() {
             memory_bytes=5368709120
             source_fingerprints=(
                 Cargo.lock Cargo.toml src/lib.rs src/ipc.rs src/ui_interface.rs
+                src/flutter_ffi.rs src/ui_interface/option_tests.rs
                 libs/hbb_common/src/config.rs
                 scripts/run-option-ack-tests.sh scripts/linux-parent-test-build.sh
             )
-            required_tests=(ipc::test::ordinary_option_ack_waits_for_persistence)
+            required_tests=(
+                ipc::test::ordinary_option_ack_waits_for_persistence
+                ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver
+            )
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
             container_name=rustdesk-video-qos-tests
             memory=5g
@@ -4226,7 +4230,7 @@ run_focused_rust_tests() {
         || fail 'cannot extract the exact focused-test source archive'
     chown -R 1000:1000 "$source_root"
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = option-ack ]]; then
         install -o 1000 -g 1000 -m 0444 /dev/null \
             "$source_root/src/bridge_generated.rs"
         install -o 1000 -g 1000 -m 0444 /dev/null \
@@ -4344,7 +4348,7 @@ run_focused_rust_tests() {
             || fail "Debian-builder image receipt differs: $load_output"
     else
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = option-ack ]]; then
             bridge_inputs=(
                 "$rust_archive:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
                 "$flutter_archive:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
@@ -4365,7 +4369,7 @@ run_focused_rust_tests() {
                 || fail "sealed Android Rust bridge input differs: $path"
         done
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = option-ack ]]; then
             [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
               "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
                 && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
@@ -4385,7 +4389,7 @@ run_focused_rust_tests() {
         fi
         local file_bridge_sources_before=
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = option-ack ]]; then
             generate_focused_rust_flutter_bridge
             bridge_mounts=(
                 --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.rs,target=/source/src/bridge_generated.rs,readonly"
@@ -5574,10 +5578,11 @@ PY
             && [ "$(grep -Ec '^test client::video_handler_tests::.* \.\.\. ok$' "$output")" -eq 8 ] \
             || fail 'viewer video artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = option-ack ]; then
-        [ "${#result_lines[@]}" -eq 1 ] || fail 'option acknowledgement summary count differs'
-        [ "$(grep -Ec '^OPTION_ACK_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 2 ] || fail 'option acknowledgement summary count differs'
+        [ "$(grep -Ec '^OPTION_ACK_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_ACK_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_ACK_NATIVE=observed failure_reported=true memory_preserved=true file_preserved=true retry_applied=true retry_persisted=true peer=unix' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'OPTION_EXPORT_NATIVE=observed refused=true missing_receiver=true cache_preserved=true memory_preserved=true file_preserved=true' "$output")" -eq 1 ] \
             || fail 'option acknowledgement artifact or native outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
@@ -5827,7 +5832,7 @@ PY
       )" ] \
         || fail 'focused Rust-test source inputs changed during execution'
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = option-ack ]]; then
         post_pub_receipt="$(
             setpriv --reuid=1000 --regid=1000 --clear-groups \
                 env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
@@ -6068,9 +6073,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
-            [ "$tests_passed" -eq 1 ] || fail 'option acknowledgement total differs'
-            grep -E '^test ipc::test::ordinary_option_ack_waits_for_persistence [.][.][.] ok$|^OPTION_ACK_(BUILD=pass |ARTIFACT(_AFTER)?=|NATIVE=)' "$output"
-            printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=1 target=linux-x86_64 scope=complete-parent-library-option-persistence rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 2 ] || fail 'option acknowledgement total differs'
+            grep -E '^test (ipc::test::ordinary_option_ack_waits_for_persistence|ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver) [.][.][.] ok$|^OPTION_(ACK_(BUILD=pass |ARTIFACT(_AFTER)?=|NATIVE=)|EXPORT_NATIVE=)' "$output"
+            printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then

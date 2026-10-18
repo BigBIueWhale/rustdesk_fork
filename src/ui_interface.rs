@@ -332,6 +332,10 @@ pub fn get_sound_inputs() -> Vec<String> {
     a
 }
 
+#[cfg(all(test, target_os = "linux", feature = "flutter"))]
+#[path = "ui_interface/option_tests.rs"]
+mod option_tests;
+
 #[inline]
 pub fn set_option(key: String, value: String) {
     // R-X9/R-X10: the installed desktop service is ALWAYS present + auto-start and is un-killable at

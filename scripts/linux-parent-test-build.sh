@@ -23,7 +23,7 @@ build_linux_parent_test() {
     if [[ "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = LOCAL_FILE_LISTING || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK ]]; then build_budget=240; fi
     printf '%s_BUILD=started target=linux-libtest budget_seconds=%s\n' "$receipt_prefix" "$build_budget"
     local features=linux-pkg-config
-    if [[ "$receipt_prefix" = FILE_RECEIVE_PARENT || "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = LOCAL_FILE_LISTING || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK ]]; then
+    if [[ "$receipt_prefix" = OPTION_ACK || "$receipt_prefix" = FILE_RECEIVE_PARENT || "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = LOCAL_FILE_LISTING || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK ]]; then
         features=linux-pkg-config,flutter
     fi
     local build_started=$SECONDS

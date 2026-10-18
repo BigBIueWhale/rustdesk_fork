@@ -2902,6 +2902,36 @@ remaining LocalConfig UI/geometry/last-peer setters remain OPEN. All fifteen
 installed credential actions, R-S0, latency/soak, cold artifacts, independent
 reproduction, external review and release acceptance remain OPEN.
 
+**Voice-call input export outcomes — Linux API corrected; capture/installed/platform acceptance OPEN.**
+Products `e15ffa03`/`d514e666` make both voice-call input-device exports return
+supported Result values. A CM write returns the existing typed IPC outcome; a
+CM read preserves transport/receiver failure instead of inventing an empty default.
+Viewer selection and readback remain process-local, including the empty default.
+The previously empty mobile implementations return explicit unsupported errors.
+The existing AudioInput writer awaits the export inside its failure handler;
+read failure propagates through its Future instead of publishing a device value.
+Only these two complete adjacent FFI functions change in product source.
+Receiver authority/value/capacity checks and service-owned refusal are unchanged.
+No task, queue, worker, runtime, dependency or privileged operation is added.
+
+The existing Linux integration passes two Rust cases and 25 actual Dart/native
+cases. Its native fixture runs the byte-identical historical 301-byte setter and
+457-byte getter from `643ac037` beside the correction: a missing receiver formerly
+looked like write success and a valid empty read. Corrected outcomes report both
+errors while preserving viewer state and configuration. All prior 20 Dart cases
+remain required. Five added cases cover selected/default viewer readback, missing
+CM receiver, identical retry and failed CM read; three actual failures arrive as
+`FfiException`/`RESULT_ERROR`. No microphone or live CM daemon is started.
+Accepted source freezes match before/after. Exact sources, artifacts, commands,
+cases, superseded preparatory-run retirement, endpoint observations and joined
+bounded-RAM cleanup are in `.harness-state/verifier-vm/voice-input-d514e666.json`.
+
+Physical capture/device switching, rendered audio controls/error presentation,
+live authorized/refused CM/service receivers, mobile/Windows/macOS/browser,
+concurrent call ownership and installed/platform acceptance remain OPEN.
+All fifteen credential actions, R-S0, latency/soak, cold artifacts,
+independent reproduction, external review and release acceptance remain OPEN.
+
 **Flutter UI preferences — persistence and error path corrected; interaction/platform acceptance OPEN.**
 Product `6af3228a` makes `LocalConfig::set_flutter_option` fallible.
 Its existing process-local write lock saves a private candidate before publishing

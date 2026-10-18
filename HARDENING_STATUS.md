@@ -2558,6 +2558,39 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Ordinary option persistence — Linux library/handler corrected; broader acceptance OPEN.**
+Product `f895b8a0` makes `Config::set_option` fallible. Under the existing cache write
+lock, it persists a private candidate before publishing the new in-memory value.
+The private Config2 store propagates errors. Failed replacement, removal or stale
+pinned-entry purge therefore preserves prior memory and remains retryable. The
+existing receiver authority gate, single-key protocol and compile-time policy funnel
+still apply. The typed IPC handler returns `InternalFailure` with no effective value
+on a failed store; the desktop caller keeps its previous cache. The mobile caller
+handles the error before audio restart and restarts only after successful persistence.
+The obsolete statement grep requiring a discarded store result is deleted.
+
+At baseline `2c9875ff`, four storage-transaction controls passed and two new filesystem
+regressions failed. The failed removal retained the file but changed memory, and the
+identical retry skipped persistence. Both scenario bodies remain byte-identical in
+the product; all seven corrected component cases pass in 153 outer seconds, including
+a new typed-result/idempotence control. The child diagnostic extractor also now
+handles libtest's inline prefix; the capsule retains the baseline output limitation.
+
+The complete Linux parent library compiles with pinned Rust 1.75.0, and its actual
+typed SetOption handler passes a denied-save/healthy-retry case in 330 outer seconds.
+With a private Unix connection, it observes the failure acknowledgement, unchanged
+memory/file, and then an applied, receiver-derived value matching durable readback.
+Source snapshots before/during/after each run match; exact VM joins, RAM/private-root
+retirement and all four complete endpoint comparisons per run pass. Exact A/B sources,
+artifacts, named cases, observations and cleanup are retained in
+`.harness-state/verifier-vm/option-persistence-f895b8a0.json`.
+
+The handler test calls the typed receiver directly; it does not exercise request
+framing, main-listener authorization, installed/root-service principals or rendered UI.
+Native Windows/macOS/Android/iOS, settings error presentation, restart/concurrency and
+installed acceptance remain OPEN, together with the fifteen credential-action and
+broader R-S0 obligations. Credential/service authority implementations are unchanged.
+
 **Screenshot action decoding — Linux native library corrected; UI/platform acceptance OPEN.**
 Product `217f0469` replaces infallible `From` and implicit default-to-discard with
 fallible exact decoding: `1`, `2`, or `0:` followed by a nonempty path. Save paths

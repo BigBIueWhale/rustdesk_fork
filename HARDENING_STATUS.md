@@ -2486,6 +2486,63 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
 
+### Credential action authority — R-S11ia through R-S11io
+
+**Source implemented; current installed/native acceptance remains OPEN for all fifteen actions.**
+The table records the current owners and missing observations. The complete contracts remain in
+`requirements.html` R-S11ia–R-S11io and Appendix C #386–#400; their algorithms and API restrictions
+are not duplicated here. The shared implementations are in `src/ipc.rs` and `src/ipc/auth.rs`,
+with Windows transport in `src/platform/windows.rs`, macOS authorization in
+`src/platform/macos.mm` and `src/platform/macos.rs`, and the nonpersistent PRS sink in
+`libs/hbb_common/src/config.rs`.
+
+| Contract / Appendix C | Current source owner and action | Native observation still required |
+| --- | --- | --- |
+| R-S11ia / R-S11e-264 / #386 | The accepted macOS LaunchAgent requester retains its socket generation and complete argv through the signed-app/launchd proof and final credential-response admission. | Installed LaunchDaemon-to-LaunchAgent exchange; changed requester, launchd state, token or descriptor ownership must prevent disclosure. |
+| R-S11ib / R-S11e-265 / #387 | `WindowsServiceOwnedShareRdpRequester` retains the elevated UI process, creation time, identity and equal pipe/process token proof until its consuming HKLM commit. | Real settings-page allow/refusal with observed 64-bit registry effects, process/token/image/argv races and pipe-handle sharing. |
+| R-S11ic / R-S11e-266 / #388 | Distinct Windows credential/control requester capabilities retain the launch-bound LocalSystem supervisor across request reads and final actions. Prepared shutdown retains authority across its acknowledgement and replays before the latch. | Installed credential quiesce/apply/query/resume, session count and shutdown; wrong endpoint/principal, failed acknowledgement or post-acknowledgement replay must cause no protected action. |
+| R-S11id / R-S11e-267 / #389 | `MacosServiceOwnedPasswordAdmission` owns exact requester and authorization proof through the typed `Prepared` transition; only the preparation owner retains the secret. | Authorization Services allow/deny/expiry/replay/cleanup, exact-role and last-owner races, secret-free status and admitted-operation finality. |
+| R-S11ie / R-S11e-268 / #390 | `LinuxServiceOwnedPasswordAdmission` retains the post-polkit requester through the exact `Authorizing` to `Committing` transition. Denial cancels only its matching pending claim. | Real polkit allow/deny/timeout/shutdown, exact requester replay and installed allowed/refused principals; admitted work must survive requester exit. |
+| R-S11if / R-S11e-269 / #391 | Windows endpoint-derived typed requests retain user/service admissions through the bounded queue. User admission fixes its action; fresh service `Active` insertion consumes service admission. | Installed user and LocalSystem endpoints, UAC, wrong endpoint/token, queue lifetime, request races, retry and crash recovery. |
+| R-S11ig / R-S11e-270 / #392 | Linux credential response admission consumes the exact child requester and retains its UUID; only that owner reads and sends the runtime PRS. | Child identity/ancestry/runtime-generation and socket races, malformed/trailing requests, child exit and response failure. |
+| R-S11ih / R-S11e-271 / #393 | `LinuxServiceOwnedPasswordReplicaWriter` retains the exact child; only a typed PRS reread after durable commit selects convergence. The consuming send preserves `NotSent` versus `Uncertain`. | Root-supervisor/active-user-child exchanges, final role/UID/ancestry replay and connect/pre-send/send/response uncertainty with bounded recovery. |
+| R-S11ii / R-S11e-272 / #394 | The Linux child receiver retains the root launch/direct-parent generation through consuming runtime-PRS admission; a dedicated typed worker owns nonpersistent installation, separate from durable mutation. | Parent exit/PID reuse/UID/PPID/start-time/launch-parent races, replay, malformed input, shutdown and error finality before and after irreversible admission. |
+| R-S11ij / R-S11e-273 / #395 | The macOS credential receiver retains the fixed stream and opaque helper authorization through one UUID exchange, final full-token replay and consuming runtime-only install. | Exact signed child/helper allow/refusal, helper exit/token/PID/descriptor changes, malformed or mismatched response, deadline and reconnect finality. |
+| R-S11ik / R-S11e-274 / #396 | The Linux initial credential receiver retains its stream and root-parent PID/UID/start time through response/deadline replay and consuming runtime-only install; the debug fixture is clear-only. | Installed root supervisor/active-user child across desktops/init systems; changed parent, UID/PPID/start time, descriptor handoff, malformed/replayed response and socket races. |
+| R-S11il / R-S11e-275 / #397 | `MacosServiceOwnedCredentialReplicaAdmission` consumes the exact signed requester and retains it with the wire UUID through the PRS read and response. | LaunchAgent generation/last-owner races, response/timeout/shutdown finality and cleanup on the exact signed installed transaction. |
+| R-S11im / R-S11e-276 / #398 | `MacosServiceOwnedPasswordRightAdmission::ensure_ready` consumes exact administrative requester authority and owns the sole fixed policy-write action. | Installed authorized/refused roles and requester UID/PID/token/argv/descriptor/socket races; observe the policy write and prompt/failure outcome. |
+| R-S11in / R-S11e-277 / #399 | Native verification is read-only: exact policy reads bracket noninteractive evaluation and checked imported-right destruction. Only their conjunction permits admission. | Missing/malformed/denied/expired/drifted policy, cleanup failure and concurrent privileged policy changes; verify no repair or mutation on refusal. |
+| R-S11io / R-S11e-278 / #400 | The macOS creator preclears output, externalizes locally, checks default-flags reference release, then conditionally publishes and wipes; Rust retains bounded zeroizing storage. | Creation/preauthorization/externalization/release failures leave zero output; later helper import, prompts, retries and repeated-operation cleanup must work. |
+
+The retained Windows-only
+`ipc::ipc_auth::tests::windows_service_owned_share_rdp_client_role_is_exact_interactive_ui`
+checks the finite role predicate. The R-S11hg wire regression checks closed deserialization.
+The password/credential source validators inspect declarations and ordering. None of these supplies
+installed process/token authorization, real polkit, Authorization Services, named-pipe impersonation
+or protected-action evidence.
+
+**Shared acceptance still required.** Each action needs current target-OS compilation and focused
+tests, the exact installed artifact and authorized/refused principals; its authorized effect,
+persistence or runtime-only behavior,
+and restart as applicable;
+malformed, oversized, trailing, wrong-UUID and wrong-role input; request/response, timeout,
+cancellation, acknowledgement, shutdown, replay and recovery failures. Exercise visible identity
+changes before admission and requester exit after admission. Race coverage includes PID reuse,
+UID/session, process start/creation time, complete image/argv, role and token/audit-token changes,
+plus socket, descriptor and pipe-handle handoff. Once a mutation reaches its irreversible
+`Prepared`, `Committing` or `Active` point, the owning service/child must complete its durable commit
+or runtime-only installation, replica convergence, replay/recovery and drain without depending on
+requester survival.
+Measure latency, CPU, memory, descriptors/handles, queues and cleanup over repeated operations.
+Bind exact Debian or signed Windows/macOS artifacts as applicable, prove cold R-B2/R-B10 equality,
+and obtain independent reproduction and R-V3 external review.
+
+The identity limits remain explicit: Darwin connected-peer/last-owner and Windows connected-process/
+last-message consistency do not prove exclusive request-frame authorship or complete descriptor/
+pipe-handle-handoff detection. The macOS policy reads provide last-observed consistency, not an atomic
+lock against an independently privileged administrator. None of these open limitations is erased
+by consolidating the ledger. All separately parked work remains OPEN/PARKED.
+
 ### Current authority and source closure
 
 **Screenshot action decoding — Linux native library corrected; UI/platform acceptance OPEN.**
@@ -14218,301 +14275,6 @@ races, all admitted roles and refusals, installed LaunchDaemon policy state, rep
 cleanup, latency, CPU, memory, and handles; prove cold R-B2/R-B10 artifact identity; obtain
 independent reproduction and R-V3 external review.
 
-### R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality
-
-**State.** Source implementation is present and focused/shared source checks cover accepted
-generation retention, launchd-bound role replay, and PRS-load ordering. Signed native macOS,
-installed LaunchDaemon/LaunchAgent, race, resource/performance, release-artifact,
-independent-reproduction, and external-review evidence remain open.
-
-**Boundary and current implementation.** Before task transfer, the bodyless
-`_service_credential` listener retains the accepted UID, effective PID, and full
-`LOCAL_PEERTOKEN`; generic bounded proof returns that exact snapshot rather than a Boolean.
-The action proof requires the exact endpoint, fresh root/current-console authority, the live signed
-installed-app generation and trusted layout, exact `--server --service-owned-server` argv, and a
-trusted LaunchAgent record whose top-level PID and plist path match the requester. Complete argv is
-retained across the bounded `launchctl` query, then installed generation, process name/liveness,
-argv equality, and finite role are replayed.
-
-Immediately before PRS access, the handler requires a fresh exact endpoint/UID/effective-PID/full-
-token snapshot to equal the retained requester. Only the resulting admission may load and send the
-operation-bound runtime PRS replica. The final snapshot is current-last-owner consistency, not
-exclusive request authorship or complete descriptor-handoff proof. The response remains deadline-
-and-capacity-bounded, root-sourced, operation-bound, and nonpersistent at the child.
-
-**Evidence.** Current source inspection finds the retained authorization in the macOS credential
-listener, action-specific launchd proof and post-query replay in `src/ipc.rs` and
-`src/ipc/auth.rs`, and PRS access only after `MacosServiceOwnedCredentialRequester::admit`.
-The focused macOS credential verifier and shared/Apple checks protect these source relationships;
-they are not installed macOS execution.
-
-**Open evidence.** Compile and execute the exact signed candidate on macOS; exercise
-audit-token/PID-reuse/argv/descriptor-sharing and launchd-state races, malformed/changed requesters,
-installed LaunchDaemon-to-LaunchAgent replica exchange, operation binding, restart behavior,
-latency, CPU, memory, handles, and cleanup; prove cold R-B2/R-B10 artifact identity; obtain
-independent reproduction and R-V3 external review.
-
-### R-S11ib/R-S11e-265 — retained Windows RDP-policy requester through final mutation
-
-**State.** Source implementation is present and the Windows-only exact-role regression remains.
-Dedicated requester-capability and installed policy-mutation evidence is missing; native Windows,
-adversarial race, resource/performance, release-artifact, independent-reproduction, and
-external-review evidence remain open for this action.
-
-**Boundary and current implementation.** `authorize_windows_service_owned_share_rdp_requester`
-returns `WindowsServiceOwnedShareRdpRequester`, not a Boolean. It owns the opened process handle,
-creation-time generation, fresh executable/complete-argv identity, and equal accepted pipe/process
-token proof for the elevated no-argument UI. Its consuming commit rechecks pipe PID, retained-handle
-liveness and creation time, fresh identity/current executable/exact role, fresh equality of both
-token sources to the accepted elevated proof, then repeats stable PID and liveness. The current-
-product 64-bit HKLM writer is the final action while the process handle remains owned; the handler
-cannot call it directly.
-
-The Win32 evidence provides connected-process and last-message consistency, not proof that a pipe
-handle was never inherited or duplicated or that one process authored every byte. Every visible
-PID, generation, executable, argv, token, elevation, role, or liveness change still fails closed.
-
-**Evidence.** Current source inspection finds the capability, retained process/token fields, full
-admission and final replay in `src/ipc/auth.rs`, and capability-only dispatch in `src/ipc.rs`.
-`ipc::ipc_auth::tests::windows_service_owned_share_rdp_client_role_is_exact_interactive_ui` executes
-the finite role predicate only on Windows. It does not exercise process retention, revalidation,
-named-pipe impersonation, or the final registry mutation. The deleted combined Python checker only
-matched source text and was not an installed SCM transaction through the real settings page.
-
-**Open evidence.** Compile and run the exact candidate in a disposable Windows VM; exercise the
-real settings-page request against an installed LocalSystem SCM service with allowed/denied actors,
-process exit and PID reuse, token/argv/image changes, pipe-handle inheritance/duplication, and
-registry-write observation; measure latency, CPU, memory, handles, and cleanup; bind signed
-artifacts, prove cold R-B2/R-B10 identity, and obtain independent reproduction and R-V3 external
-review.
-
-### R-S11ic/R-S11e-266 — retained Windows service-main supervisor authority through exact actions
-
-**State.** Source implementation and the closed-protocol wire regression are present. Dedicated
-current installed supervisor-authority and protected-action evidence is missing. Native Windows,
-adversarial race, resource/performance, release-artifact, independent-reproduction, and
-external-review evidence remain open.
-
-**Boundary and current implementation.** The SYSTEM-only `_service_credential` and
-`_service_main_control` listeners construct distinct `WindowsServiceCredentialRequester` and
-`WindowsServiceControlRequester` capabilities around a private retained supervisor requester.
-Admission owns the opened synchronized process handle and creation time, fresh executable/complete
-argv, equal independent pipe and process LocalSystem token proofs, exact launch-bound supervisor
-PID/generation, fixed service image, exact `--service` role, liveness, and stable pipe PID. The
-endpoint capability moves into its bounded transaction and remains owned across request-read
-`await`; cached identity, a post-read Boolean, or cross-endpoint authority is unavailable.
-
-Immediately before credential quiesce/apply/query/resume or port-forward session count, the
-consuming capability revalidates pipe PID, process liveness/generation, fresh executable/argv,
-fixed-image role, and both live token proofs against the accepted LocalSystem proof, then repeats
-PID and liveness with the protected operation last. Handlers do not name the protected replica,
-connection registry, or shutdown latch. Shutdown first consumes control authority into a prepared
-capability, retains it across the bounded `ShutdownAccepted` write, and repeats complete
-revalidation before the latch; failed acknowledgement or replay performs no shutdown. These checks
-provide connected-process and last-message consistency, not exclusive byte authorship or complete
-pipe-handle-handoff detection.
-
-**Evidence.** Current source inspection finds the distinct capability types, retained shared proof,
-admission, and common revalidation in `src/ipc/auth.rs`; listener ownership across await and
-capability-only action dispatch are in `src/ipc.rs`. The retained executable R-S11hg regression
-proves closed wire deserialization only. It cannot prove LocalSystem authorization, launch-bound
-supervisor identity, capability lifetime across `await`, protected-action ordering, or
-post-acknowledgement replay. The deleted Python checker executed none of those properties.
-
-**Open evidence.** Compile and run the exact candidate in a disposable Windows VM; exercise real
-installed LocalSystem credential/control exchanges with authorized and wrong principals,
-PID/process/token/argv/image changes, pipe-handle inheritance/duplication, request failure,
-acknowledgement failure, shutdown replay failure, service restart, and replica state transitions;
-measure latency, CPU, memory, handles, queues, and cleanup; bind signed artifacts, prove cold
-R-B2/R-B10 identity, and obtain independent reproduction and R-V3 external review.
-
-### R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission
-
-**State.** The source implementation is present. Exact-current signed macOS, installed-service,
-performance/resource, release-artifact, independent-reproduction, and external-review evidence remains
-open.
-
-**Boundary and current implementation.** The bounded Security.framework path grants one private,
-non-cloneable `MacosServiceOwnedPasswordAdmission` only after the exact right, imported external
-authorization, and installed-app requester generation/argv/role succeed. Its consuming preparation
-revalidates the operation/value, requester, and post-request stream UID/effective PID/full audit token,
-then calls the capability-typed coordinator. There is one capability construction and one
-capability-owned coordinator call. Only an owned new `Prepared` transition retains the secret and
-reaches the mutation handler; replay/status is a separate secret-free result. After `Prepared`, the
-root service owns commit, recovery, replay, drain, and failure finality without depending on requester
-survival. The stream replay proves current-last-owner and process-generation consistency, not exclusive
-frame authorship or absence of descriptor sharing.
-
-**Evidence.** The current call graph is anchored by
-`grant_macos_service_owned_password_admission`,
-`MacosServiceOwnedPasswordAdmission::prepare_mutation`, and
-`PasswordMutationCoordinator::prepare_macos_service_owned` in `src/ipc.rs`. The focused password
-IPC verifier, shared/Apple analyzers, and independent workspace validator contain guards for typed
-grant, sole construction/call sites, exact replay ordering, secret-free status handling, and
-Boolean/direct-handler bypass absence. R-S11id and Appendix C #389 specify the same boundary. These
-source contracts do not constitute native macOS evidence.
-
-**Open evidence.** Compile and execute the exact signed candidate on macOS; exercise Authorization
-Services allow, deny, expiry, replay, and cleanup; attack audit-token/PID/argv/descriptor-sharing races;
-run every legitimate and refused role against the installed LaunchDaemon; measure latency, CPU, memory,
-handles, and cleanup; prove clean cold R-B2/R-B10 artifact equality; obtain independent reproduction and
-R-V3 external review.
-
-### R-S11ie/R-S11e-268 — typed Linux post-polkit password authority through ledger admission
-
-**State.** The source implementation is present. Exact-current Linux native/unit, real-polkit,
-installed-service, performance/resource, release-artifact, independent-reproduction, and external-review
-evidence remains open.
-
-**Boundary and current implementation.** Successful bounded `pkcheck` plus exact post-authorization
-requester replay grants one private, non-cloneable `LinuxServiceOwnedPasswordAdmission` retaining the
-complete socket-derived `PeerProcessIdentity`. Its consuming `admit_commit` validates operation and
-value, freshly replays that requester, and is the sole caller of the coordinator transition requiring
-the typed admission. The coordinator rederives the caller and exact-matches service-owned kind, keyed
-fingerprint, caller, and `Authorizing` before `Committing`. Denial can cancel only the exact matching
-pre-admission claim. `Committing`, `Recoverable`, and `Complete` work remains service-owned and is
-never cancelled or reauthorized merely because the requester exits.
-
-**Evidence.** Current `src/ipc.rs` contains
-`grant_linux_service_owned_password_admission`,
-`LinuxServiceOwnedPasswordAdmission::admit_commit`,
-`LinuxPasswordAdmissionCoordinator::admit_authorized`, and exact pending-claim cancellation. The
-focused password IPC verifier and shared/Apple/independent analyzers bind non-cloneability, sole
-construction/call sites, operation/value/requester replay, exact transition/cancellation, detached
-Boolean absence, and post-admission finality. R-S11ie and Appendix C #390 define the corresponding
-contract. These source contracts do not establish native polkit or installed-service behavior.
-
-**Open evidence.** Compile and run exact-current Linux tests; execute real polkit
-allow/deny/timeout/shutdown paths; attack PID/UID/start-time/argv/generation races; run the installed
-service with authorized and unauthorized local principals; measure latency, CPU, memory, handles, and
-cleanup; prove clean cold R-B2/R-B10 artifact equality; obtain independent reproduction and R-V3
-external review.
-
-### R-S11if/R-S11e-269 — typed Windows named-pipe password authority through user/service admission
-
-**State.** The source implementation is present. Exact-current Windows native/unit, installed
-LocalSystem/user endpoint, UAC/race, performance/resource, release-artifact, independent-reproduction,
-and external-review evidence remains open.
-
-**Boundary and current implementation.** The raw message-mode named-pipe listener uses endpoint-specific
-DACL/security and retains the complete process, immutable identity, process-token, impersonated-pipe-
-token, endpoint, generation, liveness, and deadline proof through full frame validation. A private typed
-sender derives the endpoint and consumes that proof into a non-cloneable user-owned or service-owned
-admission carried through the bounded queue. The user entry and shutdown disposition consume user
-admission and fix the action; receiver-derived local eligibility/policy may further deny it but is not
-requester authority. Service replay/shutdown queries borrow service admission, while fresh keyed
-`Active` insertion consumes it. After `Active`, LocalSystem owns persistence, child convergence,
-replay, drain, and finality without retaining a stale process handle. There is no public generic
-postfix/request pairing or cross-action fallback.
-
-**Evidence.** The current typed transport and endpoint derivation are in
-`src/platform/windows.rs` (`WindowsUserOwnedPasswordRequest`,
-`WindowsServiceOwnedPasswordRequest`, and `WindowsSensitivePasswordRequestSender`); final consuming
-mints are in `src/ipc/auth.rs`; admissions and ledger entry points are in `src/ipc.rs`. Focused,
-shared, Apple, independent-workspace, and native-build gate definitions cover final proof replay,
-endpoint/type pairing, queue retention, consumer signatures, fresh admission, and generic/direct bypass
-absence. R-S11if and Appendix C #391 define the same boundary. These source contracts are not Windows
-native or installed-service evidence.
-
-**Open evidence.** Compile and execute the exact candidate in a disposable Windows VM; exercise
-installed LocalSystem and user endpoints, UAC allow/deny, timeout/shutdown, wrong endpoint, wrong token,
-PID/process-generation/identity/endpoint/process-exit races, retry, crash recovery, and cleanup; measure
-latency, CPU, memory, handles, and queue bounds; prove clean cold R-B2/R-B10 artifact equality; obtain
-independent reproduction and R-V3 external review.
-
-### R-S11ig/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response
-
-**State.** The source implementation is present. Exact-current Linux native/unit, installed-service,
-adversarial identity-race, performance/resource, release-artifact, independent-reproduction, and
-external-review evidence remains open.
-
-**Boundary and current implementation.** The fixed `_service_credential` listener authenticates the
-exact current `--server --service-owned-server` child into one private, non-cloneable requester
-retaining complete `PeerProcessIdentity` before reading the bodyless request. Its consuming admission
-repeats the fixed executable/argv/direct-parent/launch-parent/runtime-generation proof, requires complete
-identity equality, and binds the wire UUID. Only the consuming admission may read
-`service_owned_runtime_prs_replica("Linux")` and send it under that UUID. The handler cannot name the
-generic proof, PRS reader, or raw writer; the postfix-selectable proof is parent-module-private.
-
-**Evidence.** `LinuxServiceOwnedCredentialReplicaRequester::authenticate` and `::admit`, plus
-`LinuxServiceOwnedCredentialReplicaAdmission::respond`, form the current sole path in `src/ipc.rs`.
-The focused Linux password/credential gate and shared/Apple/independent validators bind fixed-endpoint
-construction, non-cloneability, retained identity, consuming final replay, sole admission construction,
-operation binding, protected read/write ownership, proof visibility, and handler-bypass absence.
-R-S11ig and Appendix C #392 define the same action boundary. These source contracts are not
-installed-service or native race evidence.
-
-**Open evidence.** Compile and execute exact-current Linux tests; run installed-service exchanges and
-adversarial PID/start-time/UID/executable/argv/direct-parent/launch-parent/runtime-generation/socket
-races; test malformed/trailing requests, child exit, response failure, and cleanup; measure latency,
-CPU, memory, handles, and bounded resources; prove clean cold R-B2/R-B10 artifact equality; obtain
-independent reproduction and R-V3 external review.
-
-### R-S11ih/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority
-
-**State.** The source implementation is present. Exact-current Linux native/unit, installed-service,
-adversarial identity-race, performance/resource, release-artifact, independent-reproduction, and
-external-review evidence remains open.
-
-**Boundary and current implementation.** After durable service-owned password persistence, the root
-service rereads a distinct non-cloneable `ServiceOwnedRuntimePrsReplica`; plaintext cannot be
-reclassified as that type. A typed main-completion request selects user-owned behavior or Linux
-service-owned convergence without a caller-supplied mode Boolean. Only root in the exact `--service`
-supervisor role may mint a non-cloneable writer by selecting the current child UID, deriving that UID's
-fixed `_password` endpoint, and retaining the connected stream plus complete proved child identity.
-The consuming begin method freshly replays role and identity, accepts only the typed PRS, uses the same
-operation UUID for request and response, and preserves `NotSent` versus `Uncertain`; admitted
-uncertainty remains in bounded recovery/finality. The ordinary connector contains no service-owned
-routing or proof.
-
-**Evidence.** Current `src/ipc.rs` separates `ServiceOwnedRuntimePrsReplica`,
-`MainPasswordMutationRequest`, `LinuxServiceOwnedPasswordReplicaWriter`, and
-`LinuxServiceOwnedPasswordReplicaAttempt`; the only service convergence path consumes the typed writer
-and borrows the typed PRS. Focused/shared/Apple/independent gate definitions cover exact root role, UID
-and fixed path, retained child identity, final replay, same UUID, uncertainty, generic-route absence,
-typed call sites, and plaintext separation. R-S11ih and Appendix C #393 carry the same contract. These
-source contracts do not prove installed-service behavior or native resource bounds.
-
-**Open evidence.** Compile and execute exact-current Linux tests; run the installed root
-supervisor/active-user child and adversarial PID/start-time/UID/executable/argv/direct-parent/
-launch-parent/runtime-generation/socket races; inject connect/pre-send/send/response uncertainty and
-observe recovery/finality; measure latency, CPU, memory, handles, and cleanup; prove clean cold
-R-B2/R-B10 artifact equality; obtain independent reproduction and R-V3 external review.
-
-### R-S11ii/R-S11e-272 — typed Linux child-side runtime PRS receiver authority
-
-**State.** The source implementation is present. Exact-current Linux native/unit, installed
-root-service/active-user-child, adversarial parent-race, replay/finality, performance/resource,
-release-artifact, independent-reproduction, and external-review evidence remains open.
-
-**Boundary and current implementation.** Only the exact service-owned child role may create a
-non-cloneable receiver for the fixed `_password` endpoint. It retains kernel socket PID/UID plus
-`/proc/<pid>/stat` start time after requiring UID 0, socket/proc UID equality, and launch-parent/live
-direct-parent equality. Ptrace-gated root executable/argv inspection is deliberately not substituted
-for that kernel/direct-parent proof. A typed authority carries the receiver; its kind projection only
-classifies capacity. After full canonical request validation, consuming admission freshly replays child
-role and the complete root-parent generation. The ledger consumes that admission with a typed
-`ServiceOwnedRuntimePrsReplica`; a dedicated bounded worker alone installs it through the runtime-only
-sink. The generic password worker remains durable-store-only. Parent survival is required through
-pre-ledger admission, while the child owns replay, completion, shutdown drain, and failure finality
-after irreversible preparation.
-
-**Evidence.** The current path is expressed by
-`LinuxServiceOwnedPasswordReplicaReceiver`,
-`SensitiveMainPasswordAuthority::ServiceOwnedRuntimePrs`,
-`LinuxServiceOwnedRuntimePrsAdmission`,
-`begin_linux_service_owned_runtime_prs_mutation`, and the dedicated runtime worker in `src/ipc.rs`.
-Focused/shared/Apple/independent gates bind retained parent generation, initial/final role and endpoint,
-consuming admission and ledger inputs, typed worker/sink, fixed action kind, and durable-worker
-separation. R-S11ii and Appendix C #394 define the same boundary. These source contracts do not prove
-native installed-service, race, or resource behavior.
-
-**Open evidence.** Compile and execute exact-current Linux tests; run the installed root parent and
-active-user child with authorized and unauthorized principals; attack parent exit, PID reuse, UID/PPID,
-launch-parent, socket, malformed/trailing input, replay, shutdown, and error-finality cases; measure
-latency, CPU, memory, handles, and cleanup; prove clean cold R-B2/R-B10 artifact equality; obtain
-independent reproduction and R-V3 external review.
-
 ### R-S11iw/R-S11e-286 — exact software-RGBA event-stream replacement
 
 **SOURCE IMPLEMENTED; EXACT GENERATED-BRIDGE AND FOCUSED RUST EXECUTION GREEN;
@@ -16028,167 +15790,3 @@ Neither these controlled-side CM schedules nor portable model checks explain
 or close the reported Android outgoing-viewer hang or Windows display-only
 focus delay. Earlier incremental and invalid runs remain in the deep-audit
 journal and Git history, not this current-state ledger.
-
-### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
-
-**State.** The source implements checked creator-reference cleanup and output commit. Focused source
-validation exists, but no exact-current signed macOS execution proves the native resource and failure
-semantics. This item is source-supported and native-evidence-open.
-
-**Boundary and current implementation.** The UI-side creator validates the exact administrator-only
-right, clears the validated caller buffer before fallible work, keeps the external form in a zeroed
-local object, and uses the existing interactive preauthorization flags. It releases exactly the
-creator reference with `kAuthorizationFlagDefaults`, retains that status, publishes the form exactly
-once only when externalization and release both succeed, wipes the local form, and returns their
-conjunction. Creator-side rights destruction is forbidden because it would invalidate the transferable
-authorization before helper import. The Rust wrapper owns the result in bounded, zeroizing
-`SensitiveAuthorization` storage.
-
-**Evidence.** `src/platform/macos.mm` contains the native transaction and distinct creator/verifier
-cleanup flags; `src/platform/macos.rs` contains the bounded sensitive wrapper. The focused password
-IPC, Apple conformance, independent workspace, and native-watch validators bind output preclear,
-release cardinality/flag/status/order, conditional single publication, local wipe, conjunctive return,
-and the R-S11io/Appendix C #400 documentation identity. This is source evidence only.
-
-**Open evidence.** Run the exact signed candidate on macOS and inject authorization creation,
-preauthorization, externalization, and creator-release failures; prove zero output on every failure,
-successful later helper import, bounded handles/memory, prompt and retry behavior, installed
-LaunchDaemon interaction, repeated-operation cleanup, artifact identity, cold R-B2/R-B10 equality,
-independent reproduction, and external review.
-
-### R-S11in/R-S11e-277 — read-only macOS password authorization verification
-
-**State.** Verification is separated from policy creation in source and requires checked imported-right
-cleanup. Focused source validation exists; exact-current native Authorization Services behavior remains
-unproved.
-
-**Boundary and current implementation.** `AuthorizationRightSet` is reachable only through the typed
-readiness action. Password admission performs read-only external-form verification, then fresh complete
-requester-generation replay, then constructs the typed admission. Native verification requires the
-exact right definition before import, evaluates the named right without interaction, calls
-`AuthorizationFree` exactly once with `kAuthorizationFlagDestroyRights`, requires its status, repeats
-the exact definition read after cleanup, and accepts only the conjunction of evaluation, cleanup, and
-final-policy success. Missing, malformed, denied, expired, cleanup-failed, or drifted state fails closed
-and is never repaired by verification.
-
-**Evidence.** `src/ipc.rs` contains the ordered Rust admission grant; `src/platform/macos.mm` contains
-the read-only native verifier and sole policy writer. Focused password IPC, Apple conformance,
-independent workspace, and native-watch validators bind writer cardinality and absence, the two policy
-reads, noninteractive evaluation, checked destroy/free ordering, the three-result conjunction, and the
-R-S11in/Appendix C #399 identity. These validators do not execute Authorization Services.
-
-**Open evidence.** Run real allow, deny, malformed, expired, missing-definition, drift, cleanup-failure,
-and privileged concurrent-policy-change cases on the exact signed macOS candidate. Measure rights and
-handle cleanup, repeated prompt/recovery behavior, installed LaunchDaemon behavior, latency and resource
-bounds, artifact identity, cold R-B2/R-B10 equality, independent reproduction, and external review.
-The two policy reads provide last-observed consistency, not an atomic lock against another privileged
-administrator.
-
-### R-S11im/R-S11e-276 — typed macOS password-right policy-write authority
-
-**State.** The source carries exact requester authority through a typed consuming policy-write action.
-Focused source validation exists; exact-current signed macOS and installed Authorization Services
-execution remain open.
-
-**Boundary and current implementation.** A private, non-cloneable
-`MacosServiceOwnedPasswordRightAdmission` retains the complete exact administrative requester. Its sole
-grant consumes that requester and the fresh post-request service-socket authorization and requires the
-fixed endpoint plus exact UID, effective PID, and audit-token equality. Only its consuming
-`ensure_ready` action may replay installed-app identity, argv, finite administrative role, and process
-generation, then invoke the fixed policy writer as the final conjunct. The response Boolean reports
-only the completed operation and carries no authority.
-
-**Evidence.** `src/ipc.rs` contains the admission, sole grant, consuming action, and closed
-authenticate-to-grant-to-action flow. Focused password IPC, Apple conformance, independent workspace,
-and native-watch validators bind type privacy/non-cloneability, consuming requester ownership, exact
-post-request equality, sole construction, final live replay/write, direct-writer absence, and the
-R-S11im/Appendix C #398 identity. This is source evidence, not a native policy-write result.
-
-**Open evidence.** Exercise the exact signed macOS candidate against installed LaunchDaemon and
-Authorization Services with authorized and unauthorized roles, requester exit, PID reuse, UID,
-audit-token, argv, descriptor-handoff, and socket races. Measure prompt/failure finality, latency,
-handles and memory, repeated operations, artifact identity, cold R-B2/R-B10 equality, independent
-reproduction, and external review.
-
-### R-S11il/R-S11e-275 — typed macOS credential-replica response authority
-
-**State.** The source binds the password-equivalent PRS response to a consuming exact-requester
-admission. Focused source validation exists; no exact-current signed macOS execution proves the
-LaunchDaemon/LaunchAgent transaction.
-
-**Boundary and current implementation.** The private non-cloneable
-`MacosServiceOwnedCredentialRequester` retains the complete signed installed-app socket identity and
-exact argv. After a canonical bodyless request, only its consuming `admit` method may take a fresh
-fixed-`_service_credential` same-stream snapshot and require exact UID, effective-PID, and audit-token
-continuity. The resulting private non-cloneable
-`MacosServiceOwnedCredentialReplicaAdmission` retains the requester and wire UUID. Only its consuming
-`respond` method may read the root runtime PRS and send it under that UUID while retaining the
-requester. The handler has no Boolean-authority, generic-secret, raw-writer, or direct-read fallback.
-
-**Evidence.** `src/ipc.rs` contains the requester, sole consuming admission, response owner, and
-closed handler call graph. The focused macOS credential IPC, Apple conformance, independent workspace,
-and native-watch validators bind the final snapshot/equality, sole construction, retained UUID and
-requester, capability-owned PRS read/write, and the R-S11il/Appendix C #397 identity. This proves source
-structure only and retains the documented last-owner limitation.
-
-**Open evidence.** Run the exact signed installed macOS transaction with legitimate and adversarial
-LaunchAgent/requester generations, exit, PID reuse, audit-token, descriptor-handoff, request/response,
-timeout, shutdown, and socket races. Measure response finality, latency, memory and handle cleanup,
-artifact identity, cold R-B2/R-B10 equality, independent reproduction, and external review. Darwin
-last-owner continuity is not exclusive request-frame authorship or complete handoff detection.
-
-### R-S11ik/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority
-
-**State.** The source retains the exact root-parent generation through typed runtime-only installation.
-Focused source validation exists; exact-current installed Linux service execution remains open.
-
-**Boundary and current implementation.** A private non-cloneable
-`LinuxServiceOwnedCredentialReplicaReceiver` owns the fixed-`_service_credential` stream and accepted
-PID/UID/start-time `LinuxProcessIdentity`. Connection requires the exact service-owned child role,
-UID-0 endpoint, root launch/direct-parent proof, and deadline. Its consuming transaction uses one UUID,
-validates the complete canonical response, reauthenticates the retained stream, rechecks the deadline,
-and requires complete parent-generation equality. Only the resulting typed admission may consume the
-runtime-only PRS sink. The normal wrapper is `connect -> receive_and_admit -> install`; the debug-only
-unsupervised fixture receives no credential and may only clear runtime PRS.
-
-**Evidence.** `src/ipc.rs` contains the receiver/admission graph and
-`libs/hbb_common/src/config.rs` contains the canonical validating nonpersistent sink. The focused
-Linux password IPC, shared, Apple, independent workspace, and native-watch validators bind fixed
-endpoint and role, retained stream/generation, same-UUID exchange, final proof/deadline/equality,
-consuming install, debug-fixture separation, and the R-S11ik/Appendix C #396 identity. This is source
-evidence rather than an installed-service result.
-
-**Open evidence.** Run the exact candidate as an installed root supervisor and active-user child
-inside a disposable Linux VM across supported desktops and init systems. Test parent exit and restart,
-PID reuse, UID/PPID/start-time, launch-parent, descriptor-handoff, timeout, malformed response, socket
-race, replay, shutdown, and error finality. Measure latency, CPU, memory, descriptors and cleanup; bind
-the Debian artifact; complete cold R-B2/R-B10 equality, independent reproduction, and external review.
-
-### R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority
-
-**State.** The source retains exact privileged-helper authority through typed runtime-only
-installation. Focused source validation exists; exact-current signed macOS and installed helper
-execution remain open.
-
-**Boundary and current implementation.** `MacosServiceServerAuthorization` privately retains the
-socket-derived UID, effective PID, and full audit token after UID-0 and exact signed-helper validation.
-A private non-cloneable `MacosServiceOwnedCredentialReplicaReceiver` owns that authorization and the
-fixed-`_service_credential` stream. Its consuming transaction freshly checks the exact child role,
-uses one UUID for request and response, validates the complete canonical PRS, snapshots and reproves
-the retained peer, and requires full UID/PID/audit-token equality. Only the resulting typed admission
-may consume the validating nonpersistent runtime sink; the public wrapper has no raw, generic-secret,
-proof, endpoint, config-sink, or Boolean fallback.
-
-**Evidence.** `src/ipc/auth.rs` contains the opaque helper authorization and exact continuity
-comparison; `src/ipc.rs` contains the receiver, admission, and closed wrapper; the shared sink is in
-`libs/hbb_common/src/config.rs`. The focused macOS credential IPC, shared, Apple, independent
-workspace, and native-watch validators bind the typed proof return, fixed role/path, retained stream
-and full identity, same-UUID exchange, final proof/equality, consuming install, and the
-R-S11ij/Appendix C #395 identity. This is source evidence only.
-
-**Open evidence.** Run the exact signed installed macOS child/helper flow with authorized and
-unauthorized peers, helper exit, PID reuse, changed audit token, descriptor handoff, malformed and
-mismatched responses, timeout, shutdown, and socket races. Measure install/reconnect finality,
-latency, CPU, memory and handles, bind exact artifacts, and complete cold R-B2/R-B10 equality,
-independent reproduction, and external review. The source model proves connected-peer/last-owner
-consistency, not exclusive frame authorship or complete descriptor-handoff detection.

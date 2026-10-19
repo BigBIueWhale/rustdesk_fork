@@ -4,6 +4,25 @@ use std::os::unix::fs::PermissionsExt;
 mod before {
     use super::*;
 
+    trait HistoricalLocalStore {
+        fn store(&self);
+    }
+
+    impl HistoricalLocalStore for LocalConfig {
+        fn store(&self) {
+            Config::store_(self, "_local");
+        }
+    }
+
+    pub fn set_remote_id(remote_id: &str) {
+        let mut config = LOCAL_CONFIG.write().unwrap();
+        if remote_id == config.remote_id {
+            return;
+        }
+        config.remote_id = remote_id.into();
+        config.store();
+    }
+
     pub fn set_flutter_option(k: String, v: String) {
         let mut config = LOCAL_CONFIG.write().unwrap();
         let v2 = if v.is_empty() { None } else { Some(&v) };
@@ -85,6 +104,77 @@ fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
         }
     }
     assert!(output.status.success(), "option worker failed: {}", String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
+fn last_peer_failure_preserves_state_and_retries_the_identical_value() {
+    in_private_process("config::option_tests::last_peer_failure_preserves_state_and_retries_the_identical_value", |_| {
+        LocalConfig::set_option("last-peer-test".into(), "preserved".into()).unwrap();
+        LocalConfig::set_favorites(vec!["favorite-peer".into()], true).unwrap();
+        before::set_remote_id("127.0.0.1:24001");
+        let file = Config::file_("_local");
+        let parent = file.parent().unwrap();
+        let original = fs::read(&file).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        before::set_remote_id("127.0.0.1:24002");
+        let old_published = LocalConfig::get_remote_id() == "127.0.0.1:24002";
+        let old_file_preserved = fs::read(&file).unwrap() == original;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        before::set_remote_id("127.0.0.1:24002");
+        let old_retry_skipped = fs::read(&file).unwrap() == original;
+        println!("OPTION_COMMIT_LAST_PEER_BEFORE=observed published_without_commit={old_published} file_preserved={old_file_preserved} retry_skipped={old_retry_skipped}");
+        assert!(old_published && old_file_preserved && old_retry_skipped);
+
+        for requested in ["127.0.0.1:24002", ""] {
+            before::set_remote_id("127.0.0.1:24001");
+            let original = fs::read(&file).unwrap();
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+            let failed = LocalConfig::set_remote_id(requested).is_err();
+            let memory_preserved = LocalConfig::get_remote_id() == "127.0.0.1:24001";
+            let file_preserved = fs::read(&file).unwrap() == original;
+            let unchanged_accepted = LocalConfig::set_remote_id("127.0.0.1:24001").is_ok();
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            LocalConfig::set_remote_id(requested).unwrap();
+            let stored: LocalConfig = load_path(file.clone());
+            let retry_persisted = stored.remote_id == requested
+                && LocalConfig::get_remote_id() == requested;
+            let unrelated_preserved = stored.options.get("last-peer-test").map(String::as_str) == Some("preserved")
+                && stored.fav == ["favorite-peer"];
+            println!("OPTION_COMMIT_LAST_PEER_NATIVE=observed empty={} failure_reported={failed} memory_preserved={memory_preserved} file_preserved={file_preserved} unchanged_accepted={unchanged_accepted} retry_persisted={retry_persisted} unrelated_preserved={unrelated_preserved}", requested.is_empty());
+            assert!(failed && memory_preserved && file_preserved && unchanged_accepted && retry_persisted && unrelated_preserved);
+        }
+    });
+}
+
+#[test]
+fn retired_local_geometry_is_ignored_without_losing_live_preferences() {
+    in_private_process("config::option_tests::retired_local_geometry_is_ignored_without_losing_live_preferences", |_| {
+        let legacy = r#"
+remote_id = "127.0.0.1:24001"
+kb_layout_type = "iso"
+size = [10, 20, 800, 600]
+fav = ["favorite-peer"]
+[options]
+last-peer-test = "preserved"
+[ui_flutter]
+peer-view = "grid"
+"#;
+        let loaded: LocalConfig = toml::from_str(legacy).unwrap();
+        let file = Config::file_("_local");
+        store_path(file.clone(), &loaded).unwrap();
+        *LOCAL_CONFIG.write().unwrap() = loaded;
+        LocalConfig::set_remote_id("127.0.0.1:24002").unwrap();
+        let stored: LocalConfig = load_path(file.clone());
+        let serialized: toml::Value = toml::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        let geometry_absent = serialized.get("size").is_none();
+        let preferences_preserved = stored.kb_layout_type == "iso"
+            && stored.fav == ["favorite-peer"]
+            && stored.options.get("last-peer-test").map(String::as_str) == Some("preserved")
+            && stored.ui_flutter.get("peer-view").map(String::as_str) == Some("grid");
+        let history_persisted = stored.remote_id == "127.0.0.1:24002";
+        println!("OPTION_COMMIT_LAST_PEER_LEGACY=observed retired_geometry_absent={geometry_absent} preferences_preserved={preferences_preserved} history_persisted={history_persisted}");
+        assert!(geometry_absent && preferences_preserved && history_persisted);
+    });
 }
 
 #[test]

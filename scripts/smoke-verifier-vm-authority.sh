@@ -6435,6 +6435,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
         'VOICE_INPUT_EXPORT_NATIVE=observed failure_reported=true read_failure_reported=true viewer_selected=true viewer_preserved=true config_preserved=true' \
         'voice-call input export reports failure and preserves viewer state'
     require_exact_fixed_receipt \
+        'LAST_PEER_EXPORT_NATIVE=observed history_preserved=true session_admitted=true no_peer_started=true duplicate_refused=true duplicate_history_preserved=true retry_persisted=true' \
+        'last-peer persistence failure preserves session admission and permits durable retry'
+    require_exact_fixed_receipt \
         'VOICE_INPUT_WIRE_DART=pass cases=5 native_errors=3 error=RESULT_ERROR viewer=selected-and-default cm_failure=reported read_failure=reported retry=reported state=preserved config=unchanged' \
         'voice-call input native bridge outcomes'
     for case_name in viewer_selection viewer_default cm_missing_receiver cm_retry_preserves_viewer cm_read_failure; do

@@ -3787,8 +3787,6 @@ pub struct LocalConfig {
     remote_id: String, // latest used one
     #[serde(default, deserialize_with = "deserialize_string")]
     kb_layout_type: String,
-    #[serde(default, deserialize_with = "deserialize_size")]
-    size: Size,
     #[serde(default, deserialize_with = "deserialize_vec_string")]
     pub fav: Vec<String>,
     #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
@@ -3801,10 +3799,6 @@ pub struct LocalConfig {
 impl LocalConfig {
     fn load() -> LocalConfig {
         Config::load_::<LocalConfig>("_local")
-    }
-
-    fn store(&self) {
-        Config::store_(self, "_local");
     }
 
     pub fn get_kb_layout_type() -> String {
@@ -3823,27 +3817,16 @@ impl LocalConfig {
         Ok(())
     }
 
-    pub fn get_size() -> Size {
-        LOCAL_CONFIG.read().unwrap().size
-    }
-
-    pub fn set_size(x: i32, y: i32, w: i32, h: i32) {
-        let mut config = LOCAL_CONFIG.write().unwrap();
-        let size = (x, y, w, h);
-        if size == config.size || size.2 < 300 || size.3 < 300 {
-            return;
-        }
-        config.size = size;
-        config.store();
-    }
-
-    pub fn set_remote_id(remote_id: &str) {
+    pub fn set_remote_id(remote_id: &str) -> crate::ResultType<()> {
         let mut config = LOCAL_CONFIG.write().unwrap();
         if remote_id == config.remote_id {
-            return;
+            return Ok(());
         }
-        config.remote_id = remote_id.into();
-        config.store();
+        let mut candidate = config.clone();
+        candidate.remote_id = remote_id.into();
+        store_path(Config::file_("_local"), &candidate)?;
+        *config = candidate;
+        Ok(())
     }
 
     pub fn get_remote_id() -> String {

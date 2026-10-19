@@ -1,4 +1,5 @@
 use super::*;
+use crate::client::Interface;
 use hbb_common::ResultType;
 
 #[path = "../../scripts/fixtures/option-export-before-errors.rs"]
@@ -39,7 +40,10 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
         std::fs::remove_dir_all(&root).unwrap();
         assert!(output.stdout.len() + output.stderr.len() <= 16384);
         for line in String::from_utf8(output.stdout).unwrap().lines() {
-            if let Some(start) = line.find("OPTION_EXPORT_").or_else(|| line.find("VOICE_INPUT_EXPORT_")) {
+            if let Some(start) = line.find("OPTION_EXPORT_")
+                .or_else(|| line.find("VOICE_INPUT_EXPORT_"))
+                .or_else(|| line.find("LAST_PEER_EXPORT_"))
+            {
                 println!("{}", &line[start..]);
             }
         }
@@ -83,4 +87,53 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
     let config_preserved = std::fs::read(&file).unwrap() == original;
     println!("VOICE_INPUT_EXPORT_NATIVE=observed failure_reported={voice_failure} read_failure_reported={read_failure} viewer_selected={viewer_selected} viewer_preserved={viewer_preserved} config_preserved={config_preserved}");
     assert!(voice_failure && read_failure && viewer_selected && viewer_preserved && config_preserved);
+
+    use std::os::unix::fs::PermissionsExt;
+    LocalConfig::set_remote_id("127.0.0.1:24001").unwrap();
+    let history_file = Config::file_("_local");
+    let history_parent = history_file.parent().unwrap();
+    let original_history = std::fs::read(&history_file).unwrap();
+    let peer = "127.0.0.1:24002";
+    let owner = crate::flutter_ffi::SessionID::new_v4();
+    let session_id = crate::flutter_ffi::SessionID::new_v4();
+    std::fs::set_permissions(history_parent, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let added = crate::flutter_ffi::session_add_sync(
+        session_id, owner, peer.into(), false, false, false, false, false,
+        "explicit-password".into(), None,
+    );
+    let history_preserved = crate::flutter_ffi::main_get_last_remote_id() == "127.0.0.1:24001"
+        && std::fs::read(&history_file).unwrap() == original_history;
+    std::fs::set_permissions(history_parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let session = crate::flutter::sessions::get_session_by_session_id(&session_id).unwrap();
+    let session_admitted = added.0.is_empty()
+        && crate::flutter::sessions::session_has_client_owner(&session_id, &owner)
+        && session.get_connect_password() == "explicit-password";
+    let no_peer_started = session.sender.read().unwrap().is_none();
+    let duplicate = crate::flutter_ffi::session_add_sync(
+        session_id, owner, peer.into(), false, false, false, false, false,
+        "other-password".into(), None,
+    );
+    let duplicate_refused = !duplicate.0.is_empty()
+        && session.get_connect_password() == "explicit-password";
+    let duplicate_history_preserved = crate::flutter_ffi::main_get_last_remote_id() == "127.0.0.1:24001"
+        && std::fs::read(&history_file).unwrap() == original_history;
+    let retired = crate::flutter::sessions::remove_session_by_exact_ui_owner(&session_id, &owner).unwrap();
+    assert!(std::sync::Arc::ptr_eq(&retired, &session));
+    drop(retired);
+    drop(session);
+    let retry_id = crate::flutter_ffi::SessionID::new_v4();
+    let retried = crate::flutter_ffi::session_add_sync(
+        retry_id, owner, peer.into(), false, false, false, false, false,
+        "explicit-password".into(), None,
+    );
+    let durable: hbb_common::toml::Value =
+        hbb_common::toml::from_str(&std::fs::read_to_string(&history_file).unwrap()).unwrap();
+    let retry_persisted = retried.0.is_empty()
+        && crate::flutter_ffi::main_get_last_remote_id() == peer
+        && durable.get("remote_id").and_then(hbb_common::toml::Value::as_str) == Some(peer);
+    let retired = crate::flutter::sessions::remove_session_by_exact_ui_owner(&retry_id, &owner).unwrap();
+    assert!(retired.sender.read().unwrap().is_none());
+    drop(retired);
+    println!("LAST_PEER_EXPORT_NATIVE=observed history_preserved={history_preserved} session_admitted={session_admitted} no_peer_started={no_peer_started} duplicate_refused={duplicate_refused} duplicate_history_preserved={duplicate_history_preserved} retry_persisted={retry_persisted}");
+    assert!(history_preserved && session_admitted && no_peer_started && duplicate_refused && duplicate_history_preserved && retry_persisted);
 }

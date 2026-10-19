@@ -2821,7 +2821,9 @@ pub fn session_add(
         conn_type,
         candidate,
     )?;
-    LocalConfig::set_remote_id(&id);
+    if let Err(error) = LocalConfig::set_remote_id(id) {
+        log::warn!("Failed to remember the last remote peer: {error}");
+    }
 
     #[cfg(target_os = "android")]
     drop(owner_admission);

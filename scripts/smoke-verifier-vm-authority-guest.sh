@@ -3087,6 +3087,8 @@ run_focused_rust_tests() {
                 config::option_tests::local_option_failure_preserves_state_and_retries_replacement_and_removal
                 config::option_tests::local_option_purge_failure_preserves_overrides_and_defaults
                 config::option_tests::local_system_language_is_explicit_durable_and_retryable
+                config::option_tests::last_peer_failure_preserves_state_and_retries_the_identical_value
+                config::option_tests::retired_local_geometry_is_ignored_without_losing_live_preferences
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
@@ -4018,6 +4020,7 @@ run_focused_rust_tests() {
             source_fingerprints=(
                 Cargo.lock Cargo.toml src/lib.rs src/ipc.rs src/ui_interface.rs
                 src/flutter_ffi.rs src/ui_interface/option_tests.rs
+                src/flutter.rs
                 scripts/fixtures/option-export-before-errors.rs
                 scripts/fixtures/voice-input-before-errors.rs
                 libs/hbb_common/src/config.rs
@@ -6162,6 +6165,7 @@ PY
             grep -E '^LOCAL_PREF_WIRE_DART(_CASE)?=' "$output"
             grep -E '^UI_STATE_WIRE_DART(_CASE)?=' "$output"
             grep -E '^VOICE_INPUT_EXPORT_(BEFORE|NATIVE)=|^VOICE_INPUT_WIRE_DART(_CASE)?=' "$output"
+            grep -Fx 'LAST_PEER_EXPORT_NATIVE=observed history_preserved=true session_admitted=true no_peer_started=true duplicate_refused=true duplicate_history_preserved=true retry_persisted=true' "$output"
             printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

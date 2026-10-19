@@ -3144,6 +3144,38 @@ All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshnes
 cold artifacts, independent reproduction, external review, release, document-role
 cleanup and all parked work remain OPEN. The broad goal remains active.
 
+**Keyboard-mode refresh — Linux Dart model corrected; native/UI lifecycle acceptance OPEN.**
+`3ea76fb9` captures the exact session/client owner before reading native mode.
+One model generation admits only the latest refresh to publish. Publication rechecks
+that owner and the current Flutter-input policy; synchronous Flutter map/legacy
+selection supersedes an older pending native read. Explicit mode retirement clears
+runtime mode and rejects older replies, and the mobile reset calls that primitive.
+Read failures or malformed readback retain the last confirmed mode and return failure;
+the toolbar checks that outcome. Existing map-before-legacy compatibility, null-to-legacy
+fallback and mobile no-op behavior remain. No worker, queue, dependency, Rust or IPC change.
+
+The controlled historical asynchronous assignment from `d4a54dd4` reproduces an older
+reply replacing a newer mode. Eight new cases execute the production model with
+controlled futures and owner/policy callbacks: ordering, retirement/refused admission,
+forced Flutter choice, changed input source, current/late/synchronous failures,
+compatibility/null fallback, explicit retirement/fresh reuse and exact-owner adapter
+refusal before native access.
+Run `oLbOBXNY7V` passes all six suites and 91 cases in 272 outer seconds, with
+fresh bindings and all 83 preceding cases retained. The three parser controls pass.
+Full allowed native adapter/keyboard/menu effects and the complete mobile reset
+are not exercised by those cases. Previous native persistence evidence is reused
+only against byte-identical Rust/libs trees, Cargo inputs, native fixtures and probe;
+no new native Rust/bridge execution is claimed.
+
+Exact sources, assignment provenance, results, unchanged native-input comparison,
+complete endpoint records and joined bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/keyboard-refresh-3ea76fb9.json`.
+Full event/source synchronization, cross-window/process writers, physical input,
+mobile/native reset and Windows/macOS/Android/iOS/browser/installed acceptance remain
+OPEN. All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshness,
+cold artifacts, independent reproduction, external review, release, whole-document
+role cleanup and every parked item remain OPEN.
+
 **Session keyboard mode — Linux native persistence corrected; full input/platform acceptance OPEN.**
 `6fc32220` makes the handler, session facade and generated export return the committed
 mode or a real error. The existing handler write guard owns closed-mode/peer-support
@@ -3171,7 +3203,7 @@ Exact source/fixture/artifact identities, complete endpoint records and joined
 bounded-RAM cleanup are retained in
 `.harness-state/verifier-vm/keyboard-mode-6fc32220.json`.
 
-Physical/native keyboard effects, full toolbar interaction, readback generations,
+Physical/native keyboard effects, full toolbar interaction, event/source synchronization,
 cross-window/process writers and Windows/macOS/Android/iOS/browser/installed
 acceptance remain OPEN. All fifteen credential actions, R-S0, actual R-F5
 impairment/multi-hour freshness, cold artifacts, independent reproduction, external

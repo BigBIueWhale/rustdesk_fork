@@ -6377,7 +6377,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
             'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=85 unchanged=before-after execution_seconds=[0-9]+$'
     )
-    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec '^FLUTTER_KEYBOARD_ARTIFACT=observed sha256=[0-9a-f]{64} tests=12 exit_code=0$')" -eq 1 ] \
+    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'FLUTTER_KEYBOARD_ARTIFACT=observed sha256=[0-9a-f]{64} tests=12 exit_code=0$')" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'FLUTTER_KEYBOARD_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'Flutter keyboard native artifact receipt differs'
     [ "${#option_wire_artifacts[@]}" -eq 1 ] \

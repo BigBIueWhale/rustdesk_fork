@@ -121,7 +121,7 @@ async fn modern_and_raw_releases_reuse_the_encoded_press() {
     fixture.session.lc.write().unwrap().set_keyboard_fixture("legacy", true);
     fixture.release(1, 2, Some(1)).unwrap();
     assert_eq!(fixture.wire_batch(&mut viewer, &mut peer).await, [expected_release(down)]);
-    assert_eq!(peer.recv_counter(), 4);
+    assert_eq!(peer.as_framed_tcp_mut().unwrap().recv_counter(), 4);
     // A refused oversize send closes admission and joins the exact stream writer before return.
     let oversized = hbb_common::bytes::Bytes::from(vec![0; hbb_common::cpace::MAX_SESSION_PACKET + 1]);
     assert!(viewer.send_bytes(oversized.clone()).await.is_err());

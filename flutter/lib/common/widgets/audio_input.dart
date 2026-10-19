@@ -7,17 +7,29 @@ const _kSystemSound = 'System Sound';
 typedef AudioINputSetDevice = Future<void> Function(String device);
 typedef AudioInputBuilder = Widget Function(
     List<String> devices, String currentDevice, AudioINputSetDevice setDevice);
+typedef AudioInputDeviceLoader = Future<Map<String, Object>> Function(
+    bool isCm, bool isVoiceCall);
+typedef AudioInputDeviceWriter = Future<void> Function(
+    String device, bool isCm, bool isVoiceCall);
 
 class AudioInput extends StatelessWidget {
   final AudioInputBuilder builder;
   final bool isCm;
   final bool isVoiceCall;
+  final AudioInputDeviceLoader? loadDevicesInfo;
+  final AudioInputDeviceWriter? writeDevice;
+  final String? failureText;
+  final String? retryText;
 
   const AudioInput(
       {Key? key,
       required this.builder,
       required this.isCm,
-      required this.isVoiceCall})
+      required this.isVoiceCall,
+      this.loadDevicesInfo,
+      this.writeDevice,
+      this.failureText,
+      this.retryText})
       : super(key: key);
 
   static String getDefault() {
@@ -70,7 +82,7 @@ class AudioInput extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return futureBuilder(
-      future: getDevicesInfo(isCm, isVoiceCall),
+      future: (loadDevicesInfo ?? getDevicesInfo)(isCm, isVoiceCall),
       hasData: (data) {
         String currentDevice = data['current'];
         List<String> devices = data['devices'] as List<String>;
@@ -78,7 +90,7 @@ class AudioInput extends StatelessWidget {
           return const Offstage();
         }
         return builder(devices, currentDevice,
-            (device) => setDevice(device, isCm, isVoiceCall));
+            (device) => (writeDevice ?? setDevice)(device, isCm, isVoiceCall));
       },
     );
   }

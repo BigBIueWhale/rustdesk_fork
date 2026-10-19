@@ -111,6 +111,14 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SETTING_OPTION_TESTS = {
+    "audio load failure stays visible and retries in a narrow view",
+    "audio parent rebuild retains its pending read and later refreshes",
+    "audio stale retry cannot start duplicate pending reads",
+    "audio role replacement ignores old data and error completion",
+    "audio retired retry cannot read after replacement or disposal",
+    "audio empty default and absent devices remain valid load outcomes",
+    "audio admitted write drains while retired callbacks cannot dispatch",
+    "audio live write waits then publishes confirmed readback",
     "Flutter UI preference save waits and returns effective readback",
     "Flutter UI preference failure preserves readback and permits retry",
     "Flutter UI preference readback failure reports uncertainty and permits retry",

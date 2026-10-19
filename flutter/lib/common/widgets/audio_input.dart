@@ -88,6 +88,7 @@ class _AudioInputState extends State<AudioInput> {
   Object _owner = Object();
   Object? _readToken;
   bool _readPending = false;
+  bool _writePending = false;
 
   Future<Map<String, Object>> _readDevices() {
     final token = Object();
@@ -116,7 +117,9 @@ class _AudioInputState extends State<AudioInput> {
         oldWidget.loadDevicesInfo != widget.loadDevicesInfo ||
         oldWidget.writeDevice != widget.writeDevice;
     if (ownerChanged) _owner = Object();
-    if (ownerChanged || !_readPending) _devices = _readDevices();
+    if (ownerChanged || (!_readPending && !_writePending)) {
+      _devices = _readDevices();
+    }
   }
 
   @override
@@ -133,7 +136,7 @@ class _AudioInputState extends State<AudioInput> {
     final write = widget.writeDevice ?? AudioInput.setDevice;
     final isCm = widget.isCm;
     final isVoiceCall = widget.isVoiceCall;
-    return FutureBuilder<Map<String, Object>>(
+    final controls = FutureBuilder<Map<String, Object>>(
       future: read,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
@@ -149,6 +152,7 @@ class _AudioInputState extends State<AudioInput> {
               TextButton(
                 onPressed: () {
                   if (!mounted ||
+                      _writePending ||
                       !identical(owner, _owner) ||
                       !identical(read, _devices)) return;
                   setState(() {
@@ -166,19 +170,27 @@ class _AudioInputState extends State<AudioInput> {
         if (devices.isEmpty) return const Offstage();
         return widget.builder(devices, currentDevice, (device) async {
           if (!mounted ||
+              _writePending ||
               !identical(owner, _owner) ||
               !identical(read, _devices)) return;
+          setState(() { _writePending = true; });
           try {
             await write(device, isCm, isVoiceCall);
           } finally {
-            if (mounted && identical(owner, _owner)) {
+            if (mounted) {
               setState(() {
-                _devices = _readDevices();
+                _writePending = false;
+                if (identical(owner, _owner)) _devices = _readDevices();
               });
             }
           }
         });
       },
     );
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      if (_writePending)
+        const SizedBox(height: 2, child: LinearProgressIndicator()),
+      AbsorbPointer(absorbing: _writePending, child: controls),
+    ]);
   }
 }

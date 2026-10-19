@@ -270,6 +270,7 @@ CANVAS_IMAGE_TESTS = {
 TWO_FINGER_TAP_TESTS = {
     "two finger tap accepts one complete overlapping pair",
     "two finger tap supports repeated completed sequences",
+    "two finger tap completes rapid pairs without waiting for timeout",
     "two finger tap cancellation retires the old deadline before retry",
     "two finger tap arena rejection cancels the complete sequence",
     "two finger tap single pointer timeout releases arena sweep",

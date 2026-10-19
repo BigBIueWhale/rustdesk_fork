@@ -105,6 +105,21 @@ void main() {
       expect(f.fallbackAccepts, 0);
     }));
 
+  testWidgets('two finger tap completes rapid pairs without waiting for timeout', (tester) =>
+    _run(tester, (f) async {
+      for (var i = 0; i < 20; i++) {
+        final a = await f.down(tester, 1 + i * 2);
+        final b = await f.down(tester, 2 + i * 2);
+        await a.up();
+        await b.up();
+        expect(f.taps, hasLength(i + 1));
+      }
+      await tester.pump(kDoubleTapTimeout);
+      expect(f.taps, hasLength(20));
+      expect(f.cancellations, 0);
+      expect(f.fallbackAccepts, 0);
+    }));
+
   testWidgets('two finger tap cancellation retires the old deadline before retry', (tester) =>
     _run(tester, (f) async {
       final a = await f.down(tester, 1);

@@ -528,6 +528,7 @@ class DoubleFinerTapGestureRecognizer extends GestureRecognizer {
     if (event is PointerUpEvent) {
       GestureBinding.instance.pointerRouter.removeRoute(event.pointer, _handleEvent);
       _upTap.add(event.pointer);
+      if (_trackers.length == 2 && _upTap.length == 2) _finish(true);
     } else if (event is PointerCancelEvent ||
         (event is PointerMoveEvent &&
             (event.position - tracker.down.position).distance > kDoubleTapTouchSlop)) {
@@ -544,7 +545,7 @@ class DoubleFinerTapGestureRecognizer extends GestureRecognizer {
   }
 
   void _timeoutCheck() {
-    _finish(_trackers.length == 2 && _upTap.length == 2);
+    _finish(false);
   }
 
   void _finish(bool accepted) {

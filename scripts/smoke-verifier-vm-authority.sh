@@ -6373,6 +6373,8 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
     require_exact_fixed_receipt \
         'OPTION_ACK_FRAMED=observed cases=10 rejected=10 preserved=10 peer=unix transaction=production' \
         'framed main IPC refusals and preserved settings'
+    [ "$(/usr/bin/grep -Fc 'OPTION_ACK_FRAME_CASE=' "$SERIAL_LOG")" -eq 10 ] \
+        || fail 'framed main IPC case inventory differs'
     [ "${#option_ack_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'OPTION_ACK_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'option acknowledgement artifact receipt differs'

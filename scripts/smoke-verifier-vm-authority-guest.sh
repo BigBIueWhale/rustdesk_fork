@@ -6205,7 +6205,7 @@ PY
         elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
             grep -E '^test flutter::keyboard_input_tests::[a-z_]+ [.][.][.] ok$|^FLUTTER_KEYBOARD_(ARTIFACT|WIRE)=' "$output"
             grep -E '^MODIFIER_INPUT_WIRE_DART(_CASE)?=' "$output"
-            grep -E '^test (ipc::test::ordinary_option_ack_waits_for_persistence|ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver) [.][.][.] ok$|^OPTION_(ACK_(BUILD=pass |ARTIFACT(_AFTER)?=|NATIVE=)|EXPORT_(NATIVE|BEFORE)=|WIRE_)' "$output"
+            grep -E '^test (ipc::test::ordinary_option_ack_waits_for_persistence|ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver) [.][.][.] ok$|^OPTION_(ACK_(BUILD=pass |ARTIFACT(_AFTER)?=|NATIVE=|FRAMED=|FRAME_CASE=)|EXPORT_(NATIVE|BEFORE)=|WIRE_)' "$output"
             grep -E '^FAVORITES_WIRE_DART(_CASE)?=' "$output"
             grep -E '^KEYBOARD_WIRE_DART(_CASE)?=' "$output"
             grep -E '^LOCAL_PREF_WIRE_DART(_CASE)?=' "$output"

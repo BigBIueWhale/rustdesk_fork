@@ -143,10 +143,18 @@ impl FlutterKeyboardState {
         if self.active.as_ref().is_some_and(|active| !active.sender.same_round(&sender)) {
             bail!("Previous keyboard connection round is still active");
         }
+        if self.active.as_ref().is_some_and(|active|
+            Arc::ptr_eq(&active.owner, owner) && epoch < active.epoch) {
+            bail!("Flutter keyboard input epoch was superseded");
+        }
         let same_owner = self.active.as_ref().is_some_and(|active|
             Arc::ptr_eq(&active.owner, owner) && active.epoch == epoch);
         if same_owner && slot.is_some_and(|slot| self.active.as_ref().is_some_and(|a|
             a.held[slot].is_some() && a.pressed_at[slot] >= sequence)) {
+            return Ok(());
+        }
+        if same_owner && slot.is_some_and(|slot| self.active.as_ref().is_some_and(|a| a.held[slot].is_some()))
+            && prepared.events.iter().all(|event| event.press) {
             return Ok(());
         }
         if prepared.events.is_empty() { return Ok(()) }

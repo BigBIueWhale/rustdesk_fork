@@ -43,16 +43,21 @@ class _Backend implements FlutterKeyboardInputBackend {
   Future<String> readRound(common.SessionID session, common.SessionID client) =>
       onRead?.call() ?? Future.value(round);
   @override
-  Future<void> send(FlutterKeyboardTarget target, int sequence, int? slot, FlutterKeyStroke stroke) {
+  Future<void> send(FlutterKeyboardTarget target, int sequence, int? slot,
+      FlutterKeyStroke stroke) {
     sends.add((target, sequence, slot, stroke));
     return onSend?.call() ?? Future.value();
   }
+
   @override
-  Future<void> release(FlutterKeyboardTarget target, int sequence, int? slot) async {
+  Future<void> release(
+      FlutterKeyboardTarget target, int sequence, int? slot) async {
     releases.add((target, sequence, slot));
   }
+
   @override
-  void enterOrLeave(common.SessionID session, bool enter) => boundaries.add(enter);
+  void enterOrLeave(common.SessionID session, bool enter) =>
+      boundaries.add(enter);
 }
 
 class _Session implements FFI {
@@ -77,10 +82,12 @@ class _Session implements FFI {
   late final InputModel inputModel;
   bool current = true;
   @override
-  bool isCurrentSessionOwner(common.SessionID session, common.SessionID client) =>
+  bool isCurrentSessionOwner(
+          common.SessionID session, common.SessionID client) =>
       current && session == sessionId && client == clientOwnerId;
   @override
-  bool isCurrentSession(common.SessionID session) => current && session == sessionId;
+  bool isCurrentSession(common.SessionID session) =>
+      current && session == sessionId;
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -293,7 +300,8 @@ void main() {
     });
 
     test('focus leave releases the captured owner in one batch', () {
-      input.handleKeyEvent(keyEvent(LogicalKeyboardKey.controlLeft, down: true));
+      input
+          .handleKeyEvent(keyEvent(LogicalKeyboardKey.controlLeft, down: true));
       final admitted = backend.sends.single.$1;
       session.sessionId = const Uuid().v4obj();
       session.clientOwnerId = const Uuid().v4obj();
@@ -320,36 +328,45 @@ void main() {
     });
 
     test('raw key up bypasses changed input source and clears its slot', () {
-      input.handleRawKeyEvent(rawEvent(LogicalKeyboardKey.shiftRight, down: true));
+      input.handleRawKeyEvent(
+          rawEvent(LogicalKeyboardKey.shiftRight, down: true));
       final admitted = backend.sends.single;
       backend.useFlutterInput = false;
-      input.handleRawKeyEvent(rawEvent(LogicalKeyboardKey.shiftRight, down: false));
+      input.handleRawKeyEvent(
+          rawEvent(LogicalKeyboardKey.shiftRight, down: false));
       expect(backend.releases.single.$2, admitted.$2);
       expect(backend.releases.single.$3, 1);
       expect(pendingRaw(input.toReleaseRawKeys), isEmpty);
     });
 
-    test('permission revocation retires modifiers before blocking new input', () {
-      input.handleKeyEvent(keyEvent(LogicalKeyboardKey.controlRight, down: true));
-      session.ffiModel.updatePermission({'name': 'permission', 'keyboard': 'false'}, session.id);
+    test('permission revocation retires modifiers before blocking new input',
+        () {
+      input.handleKeyEvent(
+          keyEvent(LogicalKeyboardKey.controlRight, down: true));
+      session.ffiModel.updatePermission(
+          {'name': 'permission', 'keyboard': 'false'}, session.id);
       expect(backend.releases.single.$3, isNull);
-      input.handleKeyEvent(keyEvent(LogicalKeyboardKey.controlRight, down: false));
+      input.handleKeyEvent(
+          keyEvent(LogicalKeyboardKey.controlRight, down: false));
       input.handleKeyEvent(keyEvent(LogicalKeyboardKey.keyA, down: true));
       expect(backend.sends.length, 1);
       expect(input.ctrl, isFalse);
     });
 
     test('view only retires modifiers and refuses later new input', () {
-      input.handleRawKeyEvent(rawEvent(LogicalKeyboardKey.altRight, down: true));
+      input
+          .handleRawKeyEvent(rawEvent(LogicalKeyboardKey.altRight, down: true));
       session.ffiModel.setViewOnly(session.id, true);
       expect(backend.releases.single.$3, isNull);
-      input.handleRawKeyEvent(rawEvent(LogicalKeyboardKey.altRight, down: false));
+      input.handleRawKeyEvent(
+          rawEvent(LogicalKeyboardKey.altRight, down: false));
       input.inputKey('a');
       expect(backend.sends.length, 1);
       expect(input.alt, isFalse);
     });
 
-    test('focus cleanup fences a down whose bridge completion is pending', () async {
+    test('focus cleanup fences a down whose bridge completion is pending',
+        () async {
       final pending = Completer<void>();
       backend.onSend = () => pending.future;
       input.handleKeyEvent(keyEvent(LogicalKeyboardKey.shiftLeft, down: true));
@@ -364,7 +381,8 @@ void main() {
       expect(backend.releases.length, 2);
     });
 
-    test('modifier repeats share a sequence and a later press gets a new one', () {
+    test('modifier repeats share a sequence and a later press gets a new one',
+        () {
       final down = keyEvent(LogicalKeyboardKey.shiftLeft, down: true);
       input.handleKeyEvent(down);
       input.handleKeyEvent(down);
@@ -374,7 +392,8 @@ void main() {
       expect(backend.sends.last.$2, greaterThan(backend.releases.single.$2));
     });
 
-    test('connection suspension refuses input until a new round is installed', () async {
+    test('connection suspension refuses input until a new round is installed',
+        () async {
       input.inputKey('Control_L', down: true, press: false, modifierSlot: 2);
       final old = backend.sends.single.$1;
       input.suspendKeyboardInput();
@@ -399,7 +418,8 @@ void main() {
       expect(backend.sends, isEmpty);
     });
 
-    test('changing the owner during a round read refuses later dispatch', () async {
+    test('changing the owner during a round read refuses later dispatch',
+        () async {
       final read = Completer<String>();
       backend.onRead = () => read.future;
       final resuming = input.resumeKeyboardInput();

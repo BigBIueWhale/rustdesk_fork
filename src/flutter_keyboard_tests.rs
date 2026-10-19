@@ -68,6 +68,8 @@ async fn cleanup_keeps_the_accepted_swap_and_mode() {
     let down = fixture.batch().await.remove(0);
     assert_eq!(down.control_key(), ControlKey::Meta);
     fixture.session.lc.write().unwrap().set_keyboard_fixture("translate", false);
+    let rebuilt = fixture.session.prepare_legacy_key("Control_L", false, false, false, false, false, false);
+    assert_ne!(rebuilt.events, [expected_release(down.clone())]);
     fixture.release(1, 0, None).unwrap();
     assert_eq!(fixture.batch().await, [expected_release(down)]);
 }
@@ -109,8 +111,10 @@ async fn focus_retirement_fences_queued_input_but_admits_the_next_epoch() {
     fixture.release(1, 0, None).unwrap();
     assert!(fixture.legacy(1, 1, 0, "Shift_L").is_err());
     fixture.empty().await;
-    fixture.legacy(2, 2, 0, "Shift_L").unwrap();
+    fixture.legacy(10, 2, 0, "Shift_L").unwrap();
     assert!(fixture.batch().await[0].down);
+    assert!(fixture.legacy(3, 3, 4, "Alt_L").is_err());
+    fixture.empty().await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -134,6 +138,8 @@ async fn aliases_and_repeats_own_one_physical_release() {
     let down = fixture.batch().await.remove(0);
     fixture.legacy(1, 1, 6, "Meta_L").unwrap();
     fixture.legacy(1, 2, 8, "Meta_L").unwrap();
+    api::session_input_key(fixture.id, fixture.client, 1, fixture.round.clone(), 3, Some(6),
+        "Meta_L".to_owned(), false, true, false, false, false, false).unwrap();
     fixture.release(1, 1, Some(6)).unwrap();
     fixture.empty().await;
     fixture.release(1, 2, Some(8)).unwrap();

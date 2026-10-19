@@ -3720,6 +3720,22 @@ pub mod sessions {
     }
 
     #[inline]
+    pub fn get_session_by_exact_ui_owner(
+        id: &SessionID,
+        client_owner_id: &SessionID,
+    ) -> Option<FlutterSession> {
+        SESSIONS
+            .read()
+            .unwrap()
+            .values()
+            .find(|session| {
+                session.ui_handler.session_handlers.read().unwrap().get(id)
+                    .is_some_and(|handler| handler.client_owner_id.as_ref() == Some(client_owner_id))
+            })
+            .cloned()
+    }
+
+    #[inline]
     pub fn get_session_by_peer_id(peer_id: String, conn_type: ConnType) -> Option<FlutterSession> {
         SESSIONS.read().unwrap().get(&(peer_id, conn_type)).cloned()
     }

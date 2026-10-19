@@ -9,6 +9,28 @@ import stat
 import sys
 
 
+REVERSE_WHEEL_TESTS = {
+    "reverse wheel reads and writes capture both owner identifiers",
+    "reverse wheel bounds admission before native dispatch",
+    "reverse wheel write failure and mismatch preserve the confirmed value",
+    "reverse wheel retired read cannot publish into replacement owner",
+    "reverse wheel admitted write remains owned after owner retirement",
+    "reverse wheel disposal retains pending capacity without late notification",
+    "reverse wheel initial read is singular through rebuilds",
+    "reverse wheel failed read stays unknown and retries explicitly",
+    "reverse wheel visual value waits for acknowledged write",
+    "reverse wheel failed write retries requested true",
+    "reverse wheel failed write retries requested false",
+    "reverse wheel mismatched acknowledgement is visible and retryable",
+    "reverse wheel shared controls observe one write and confirmed value",
+    "reverse wheel retarget rejects captured callbacks and old completion",
+    "reverse wheel disable and reenable retire old callbacks",
+    "reverse wheel replacement reads while old control read is pending",
+    "reverse wheel disposed deferred listener cannot start another read",
+    "reverse wheel stale retry cannot target replacement session",
+    "reverse wheel mobile control uses the same confirmed state",
+}
+
 EXPECTED_SUITES = {
     "android_permission_request_coordinator_test.dart",
     "blockable_overlay_test.dart",
@@ -621,6 +643,7 @@ def parse_result(path, profile="models"):
             "custom_scale_controls_test.dart": CUSTOM_SCALE_TESTS,
             "scroll_preferences_test.dart": SCROLL_PREFERENCE_TESTS,
             "owned_image_paint_test.dart": CANVAS_IMAGE_TESTS,
+            "reverse_mouse_wheel_test.dart": REVERSE_WHEEL_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

@@ -1021,6 +1021,72 @@ Future<void> main(List<String> arguments) async {
     check(thicknessErrors == 9, 'edge scroll thickness native error inventory differs');
     print('EDGE_THICKNESS_WIRE_DART=pass cases=5 native_errors=9 error=RESULT_ERROR '
         'failed_state=preserved retry=durable bounds=refused no_peer_started=true');
+    var reverseErrors = 0;
+    Future<void> reverseRefused(Future<bool> Function() operation) async {
+      Object? failure;
+      try { await operation(); } catch (error) { failure = error; }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'reverse mouse wheel error did not cross the generated native bridge');
+      reverseErrors++;
+    }
+    Future<bool> reverseRead() => api.sessionGetReverseMouseWheel(
+        sessionId: trackpadSession, clientOwnerId: trackpadOwner);
+    Future<bool> reverseWrite(bool value) => api.sessionSetReverseMouseWheel(
+        sessionId: trackpadSession, clientOwnerId: trackpadOwner, value: value);
+    Future<void> reverseCommit(bool value) async {
+      check(await reverseWrite(value) == value && await reverseRead() == value &&
+          file.readAsStringSync().contains('reverse_mouse_wheel = "${value ? "Y" : "N"}"'),
+          'reverse mouse wheel acknowledgement preceded durable value');
+      durable(240);
+    }
+    await reverseCommit(true);
+    await reverseCommit(false);
+    print('REVERSE_WHEEL_WIRE_DART_CASE=pass name=committed_roundtrip');
+    for (final denyRead in [false, true]) {
+      final before = configFiles(config);
+      final requested = !denyRead;
+      chmod(denyRead ? '0000' : '0500', denyRead ? file.path : file.parent.path);
+      try {
+        await reverseRefused(() => reverseWrite(requested));
+        check(await reverseRead() == !requested, 'failed reverse mouse wheel save changed cache');
+      } finally {
+        chmod(denyRead ? '0600' : '0700', denyRead ? file.path : file.parent.path);
+      }
+      unchanged(before);
+      await reverseCommit(requested);
+      print('REVERSE_WHEEL_WIRE_DART_CASE=pass name=${denyRead ? "unreadable_source_retry" : "failed_write_retry"}');
+    }
+    final beforeWrongOwner = configFiles(config);
+    for (final wrongSession in [true, false]) {
+      final id = wrongSession ? Uuid().v4obj() : trackpadSession;
+      final owner = wrongSession ? trackpadOwner : Uuid().v4obj();
+      await reverseRefused(() => api.sessionGetReverseMouseWheel(sessionId: id, clientOwnerId: owner));
+      await reverseRefused(() => api.sessionSetReverseMouseWheel(sessionId: id, clientOwnerId: owner, value: true));
+    }
+    unchanged(beforeWrongOwner);
+    check(!await reverseRead(), 'wrong owner changed current preference');
+    print('REVERSE_WHEEL_WIRE_DART_CASE=pass name=missing_or_wrong_owner');
+    await reopenEditedPreference('reverse_mouse_wheel', 'bad');
+    final beforeInvalidReverse = configFiles(config);
+    await reverseRefused(reverseRead);
+    unchanged(beforeInvalidReverse);
+    await reverseCommit(false);
+    print('REVERSE_WHEEL_WIRE_DART_CASE=pass name=invalid_stored_value');
+    final oldDefaultReverse = api.mainGetUserDefaultOption(key: 'reverse_mouse_wheel');
+    try {
+      await api.mainSetUserDefaultOption(key: 'reverse_mouse_wheel', value: 'Y');
+      await reopenEditedPreference('reverse_mouse_wheel', '');
+      check(await reverseRead(), 'empty preference did not resolve the user default');
+      await reverseCommit(false);
+      await reopenEditedPreference('reverse_mouse_wheel', 'N');
+      check(!await reverseRead(), 'explicit false was lost to the true default');
+    } finally {
+      await api.mainSetUserDefaultOption(key: 'reverse_mouse_wheel', value: oldDefaultReverse);
+    }
+    print('REVERSE_WHEEL_WIRE_DART_CASE=pass name=inherited_default');
+    check(reverseErrors == 7, 'reverse mouse wheel native error inventory differs');
+    print('REVERSE_WHEEL_WIRE_DART=pass cases=6 native_errors=7 error=RESULT_ERROR '
+        'failed_state=preserved retry=durable source_failure=refused owner=exact invalid_read=refused default_override=durable no_peer_started=true');
   } finally {
     await api.sessionClose(sessionId: trackpadSession, clientOwnerId: trackpadOwner);
   }

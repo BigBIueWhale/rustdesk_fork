@@ -543,19 +543,23 @@ pub fn session_set_keyboard_mode(session_id: SessionID, value: String) -> Result
     Ok(value)
 }
 
-pub fn session_get_reverse_mouse_wheel_sync(session_id: SessionID) -> SyncReturn<Option<String>> {
-    let res = if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        Some(session.get_reverse_mouse_wheel())
-    } else {
-        None
-    };
-    SyncReturn(res)
+pub fn session_get_reverse_mouse_wheel(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+) -> Result<bool> {
+    let session = sessions::get_session_by_exact_ui_owner(&session_id, &client_owner_id)
+        .ok_or_else(|| anyhow!("Session owner is unavailable"))?;
+    session.get_reverse_mouse_wheel()
 }
 
-pub fn session_set_reverse_mouse_wheel(session_id: SessionID, value: String) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.save_reverse_mouse_wheel(value);
-    }
+pub fn session_set_reverse_mouse_wheel(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    value: bool,
+) -> Result<bool> {
+    let session = sessions::get_session_by_exact_ui_owner(&session_id, &client_owner_id)
+        .ok_or_else(|| anyhow!("Session owner is unavailable"))?;
+    session.save_reverse_mouse_wheel(value)
 }
 
 pub fn session_get_displays_as_individual_windows(

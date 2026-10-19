@@ -937,26 +937,6 @@ List<TToggleMenu> toolbarKeyboardToggles(FFI ffi) {
         child: Text(translate('Relative mouse mode'))));
   }
 
-  // reverse mouse wheel
-  if (ffiModel.keyboard) {
-    var optionValue =
-        bind.sessionGetReverseMouseWheelSync(sessionId: sessionId) ?? '';
-    if (optionValue == '') {
-      optionValue = bind.mainGetUserDefaultOption(key: kKeyReverseMouseWheel);
-    }
-    onChanged(bool? value) async {
-      if (value == null) return;
-      await bind.sessionSetReverseMouseWheel(
-          sessionId: sessionId, value: value ? 'Y' : 'N');
-    }
-
-    final enabled = !ffi.ffiModel.viewOnly;
-    v.add(TToggleMenu(
-        value: optionValue == 'Y',
-        onChanged: enabled ? onChanged : null,
-        child: Text(translate('Reverse mouse wheel'))));
-  }
-
   // swap left right mouse
   if (ffiModel.keyboard) {
     final option = 'swap-left-right-mouse';

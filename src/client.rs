@@ -1596,15 +1596,20 @@ impl LoginConfigHandler {
         Ok(value)
     }
 
-    /// Save reverse mouse wheel ("", "Y") to the current config.
-    ///
-    /// # Arguments
-    ///
-    /// * `value` - The reverse mouse wheel ("", "Y").
-    pub fn save_reverse_mouse_wheel(&mut self, value: String) {
-        let mut config = self.load_config();
-        config.reverse_mouse_wheel = value;
-        self.save_config(config);
+    pub fn reverse_mouse_wheel(&self) -> ResultType<bool> {
+        match self.config.reverse_mouse_wheel.as_str() {
+            "Y" => Ok(true),
+            "N" | "" => Ok(false),
+            _ => bail!("Invalid reverse mouse wheel preference"),
+        }
+    }
+
+    pub fn save_reverse_mouse_wheel(&mut self, value: bool) -> ResultType<()> {
+        let mut config = PeerConfig::load_for_write(&self.id)?;
+        config.reverse_mouse_wheel = if value { "Y" } else { "N" }.into();
+        config.store(&self.id)?;
+        self.config.reverse_mouse_wheel = config.reverse_mouse_wheel;
+        Ok(())
     }
 
     /// Save "displays_as_individual_windows" ("", "Y") to the current config.

@@ -488,8 +488,8 @@ impl<T: InvokeUiSession> Session<T> {
         self.lc.write().unwrap().save_keyboard_mode(value)
     }
 
-    pub fn get_reverse_mouse_wheel(&self) -> String {
-        self.lc.read().unwrap().reverse_mouse_wheel.clone()
+    pub fn get_reverse_mouse_wheel(&self) -> ResultType<bool> {
+        self.lc.read().unwrap().reverse_mouse_wheel()
     }
 
     pub fn get_displays_as_individual_windows(&self) -> String {
@@ -508,8 +508,9 @@ impl<T: InvokeUiSession> Session<T> {
             .clone()
     }
 
-    pub fn save_reverse_mouse_wheel(&self, value: String) {
-        self.lc.write().unwrap().save_reverse_mouse_wheel(value);
+    pub fn save_reverse_mouse_wheel(&self, value: bool) -> ResultType<bool> {
+        self.lc.write().unwrap().save_reverse_mouse_wheel(value)?;
+        Ok(value)
     }
 
     pub fn save_displays_as_individual_windows(&self, value: String) {

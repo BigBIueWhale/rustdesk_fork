@@ -519,18 +519,29 @@ class RustdeskImpl {
     return value;
   }
 
-  String? sessionGetReverseMouseWheelSync(
-      {required UuidValue sessionId, dynamic hint}) {
-    return js.context
+  Future<bool> sessionGetReverseMouseWheel(
+      {required UuidValue sessionId, required UuidValue clientOwnerId, dynamic hint}) async {
+    final String? stored = js.context
         .callMethod('getByName', ['option:session', 'reverse_mouse_wheel']);
+    final value = stored == null || stored.isEmpty
+        ? mainGetUserDefaultOption(key: kKeyReverseMouseWheel) : stored;
+    if (value == 'Y') return true;
+    if (value == 'N' || value.isEmpty) return false;
+    throw StateError('Invalid reverse mouse wheel preference');
   }
 
-  Future<void> sessionSetReverseMouseWheel(
-      {required UuidValue sessionId, required String value, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
+  Future<bool> sessionSetReverseMouseWheel(
+      {required UuidValue sessionId, required UuidValue clientOwnerId,
+      required bool value, dynamic hint}) async {
+    js.context.callMethod('setByName', [
           'option:session',
-          jsonEncode({'name': 'reverse_mouse_wheel', 'value': value})
-        ]));
+          jsonEncode({'name': 'reverse_mouse_wheel', 'value': value ? 'Y' : 'N'})
+        ]);
+    if (await sessionGetReverseMouseWheel(
+        sessionId: sessionId, clientOwnerId: clientOwnerId) != value) {
+      throw StateError('Reverse mouse wheel was not applied');
+    }
+    return value;
   }
 
   String? sessionGetDisplaysAsIndividualWindows(

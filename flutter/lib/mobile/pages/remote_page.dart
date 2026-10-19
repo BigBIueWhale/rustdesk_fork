@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/common/widgets/toolbar.dart';
+import 'package:flutter_hbb/common/widgets/reverse_mouse_wheel.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/mobile/widgets/floating_mouse.dart';
 import 'package:flutter_hbb/mobile/widgets/floating_mouse_widgets.dart';
@@ -1347,6 +1348,9 @@ void showOptions(
       ...cursorTogglesList,
       if (cursorToggles.isNotEmpty) const Divider(color: MyTheme.border),
       ...displayTogglesList,
+      if (gFFI.ffiModel.keyboard) ReverseMouseWheelControl(
+          key: ValueKey((gFFI, gFFI.sessionId, gFFI.clientOwnerId)),
+          ffi: gFFI, enabled: !gFFI.ffiModel.viewOnly),
     ];
 
     Widget privacyModeWidget = Offstage();

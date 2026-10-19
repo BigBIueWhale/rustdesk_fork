@@ -18,6 +18,7 @@ import '../../models/platform_model.dart';
 import '../../models/state_model.dart';
 import 'input_modifier_utils.dart';
 import 'relative_mouse_model.dart';
+import 'reverse_mouse_wheel.dart';
 import '../common.dart';
 import '../consts.dart';
 
@@ -315,6 +316,8 @@ class ToReleaseKeys {
 }
 
 class InputModel {
+  late final reverseMouseWheel = ReverseMouseWheelPreferences(parent);
+
   // Side mouse button support for Linux.
   // Flutter's Linux embedder drops X11 button 8/9 events, so we capture them
   // natively via GDK and forward through the platform channel.

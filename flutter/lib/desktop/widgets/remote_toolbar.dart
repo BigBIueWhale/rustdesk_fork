@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/common/widgets/toolbar.dart';
+import 'package:flutter_hbb/common/widgets/reverse_mouse_wheel.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/consts.dart';
@@ -2186,6 +2187,9 @@ class _KeyboardMenu extends StatelessWidget {
                 showMyCursor(),
               Divider(),
               ...toolbarToggles(),
+              ReverseMouseWheelControl(
+                  key: ValueKey((ffi, ffi.sessionId, ffi.clientOwnerId)),
+                  ffi: ffi, enabled: !ffi.ffiModel.viewOnly),
               ...mouseSpeed(),
               ...mobileActions(),
             ]);

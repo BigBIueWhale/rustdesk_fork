@@ -27,6 +27,9 @@ mod before_session_flutter;
 #[path = "../../scripts/fixtures/session-scroll-preference-before-errors.rs"]
 mod before_scroll;
 
+#[path = "../../scripts/fixtures/reverse-mouse-wheel-before-errors.rs"]
+mod before_reverse_wheel;
+
 // FRB treats a unit-returning export as a successful completion. This adapter
 // lets the same behavioral probe execute the pre-fix and fallible exports.
 trait ExportOutcome {
@@ -69,6 +72,7 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
                 .or_else(|| line.find("VIEW_STYLE_EXPORT_"))
                 .or_else(|| line.find("SESSION_FLUTTER_EXPORT_"))
                 .or_else(|| line.find("SCROLL_PREF_EXPORT_"))
+                .or_else(|| line.find("REVERSE_WHEEL_EXPORT_"))
             {
                 println!("{}", &line[start..]);
             }
@@ -173,6 +177,111 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
     view_style_commits_before_publication(&root);
     session_flutter_preferences_commit_before_publication(&root);
     scroll_preferences_commit_before_publication(&root);
+    reverse_mouse_wheel_commit_before_publication(&root);
+}
+
+fn reverse_mouse_wheel_commit_before_publication(root: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    use futures::FutureExt;
+    let peers = Config::file().parent().unwrap().join("peers");
+    assert!(peers.starts_with(root));
+    let peer = "127.0.0.1:24016";
+    let old_peer = "127.0.0.1:24017";
+    let old_files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|e| e.unwrap().path()).collect();
+    let mut config = PeerConfig::default();
+    config.reverse_mouse_wheel = "N".into();
+    config.info.username = "runtime-user".into();
+    config.password_prs = b"reverse-wheel-preserved-prs".to_vec();
+    config.options.insert("unrelated".into(), "preserved".into());
+    config.store(peer).unwrap();
+    let files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|e| e.unwrap().path())
+        .filter(|p| !old_files.contains(p)).collect();
+    assert_eq!(files.len(), 1);
+    let file = &files[0];
+    config.store(old_peer).unwrap();
+    let id = crate::flutter_ffi::SessionID::new_v4();
+    let owner = crate::flutter_ffi::SessionID::new_v4();
+    let old_id = crate::flutter_ffi::SessionID::new_v4();
+    let old_owner = crate::flutter_ffi::SessionID::new_v4();
+    for (session_id, client_owner, target) in [(id, owner, peer), (old_id, old_owner, old_peer)] {
+        assert!(crate::flutter_ffi::session_add_sync(session_id, client_owner, target.into(),
+            false, false, false, false, false, "explicit-password".into(), None).0.is_empty());
+    }
+    let session = crate::flutter::sessions::get_session_by_session_id(&id).unwrap();
+    let no_peer = session.sender.read().unwrap().is_none();
+    let (sender, mut receiver) = crate::client::viewer_command_channel();
+    *session.sender.write().unwrap() = Some(sender);
+    let mut mouse = |reversed: bool| {
+        for mask in [crate::input::MOUSE_TYPE_WHEEL, crate::input::MOUSE_TYPE_TRACKPAD, 0] {
+            session.send_mouse(mask, 3, -7, false, false, false, false);
+            let data = receiver.recv().now_or_never().unwrap().unwrap().unwrap();
+            let crate::client::Data::Message(message) = data else { panic!("unexpected command") };
+            let Some(message::Union::MouseEvent(event)) = message.union else { panic!("missing mouse event") };
+            assert_eq!(event.mask, mask);
+            assert_eq!((event.x, event.y), if reversed && mask != 0 { (-3, 7) } else { (3, -7) });
+        }
+        assert!(receiver.recv().now_or_never().is_none());
+    };
+    mouse(false);
+    let mut stored = PeerConfig::load_for_write(peer).unwrap();
+    stored.info.username = "file-user".into();
+    stored.store(peer).unwrap();
+    let all_files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|e| e.unwrap().path()).collect();
+    let originals: Vec<_> = all_files.iter().map(|p| std::fs::read(p).unwrap()).collect();
+    let unchanged = || all_files.iter().zip(&originals).all(|(p, b)| std::fs::read(p).unwrap() == *b);
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o500)).unwrap();
+    before_reverse_wheel::session_set_reverse_mouse_wheel(old_id, "Y".into());
+    let old_cache = crate::flutter_ffi::session_get_reverse_mouse_wheel(old_id, old_owner).unwrap();
+    let old_preserved = unchanged();
+    println!("REVERSE_WHEEL_EXPORT_BEFORE=observed normal_return=true cache_without_commit={old_cache} files_preserved={old_preserved}");
+    assert!(old_cache && old_preserved);
+    let refused = crate::flutter_ffi::session_set_reverse_mouse_wheel(id, owner, true).is_err();
+    let cache_preserved = !session.get_reverse_mouse_wheel().unwrap();
+    let files_preserved = unchanged();
+    mouse(false);
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(refused && cache_preserved && files_preserved);
+    for value in [true, false] {
+        assert_eq!(crate::flutter_ffi::session_set_reverse_mouse_wheel(id, owner, value).unwrap(), value);
+        assert_eq!(crate::flutter_ffi::session_get_reverse_mouse_wheel(id, owner).unwrap(), value);
+        assert_eq!(PeerConfig::load_for_write(peer).unwrap().reverse_mouse_wheel, if value { "Y" } else { "N" });
+        mouse(value);
+    }
+    let original = std::fs::read(file).unwrap();
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let unreadable = crate::flutter_ffi::session_set_reverse_mouse_wheel(id, owner, true).is_err();
+    assert!(!session.get_reverse_mouse_wheel().unwrap());
+    mouse(false);
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    assert!(crate::flutter_ffi::session_set_reverse_mouse_wheel(id, owner, true).unwrap());
+    mouse(true);
+    session.lc.write().unwrap().get_config().reverse_mouse_wheel = "bad".into();
+    let invalid_read = crate::flutter_ffi::session_get_reverse_mouse_wheel(id, owner).is_err();
+    session.lc.write().unwrap().get_config().reverse_mouse_wheel.clear();
+    assert!(!crate::flutter_ffi::session_get_reverse_mouse_wheel(id, owner).unwrap());
+    mouse(false);
+    assert!(!crate::flutter_ffi::session_set_reverse_mouse_wheel(id, owner, false).unwrap());
+    let original = std::fs::read(file).unwrap();
+    let missing = crate::flutter_ffi::SessionID::new_v4();
+    let owner_refused = [(id, missing), (missing, owner)].into_iter().all(|(id, owner)|
+        crate::flutter_ffi::session_get_reverse_mouse_wheel(id, owner).is_err()
+        && crate::flutter_ffi::session_set_reverse_mouse_wheel(id, owner, true).is_err());
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    mouse(false);
+    let stored = PeerConfig::load_for_write(peer).unwrap();
+    let unrelated = stored.info.username == "file-user" && session.lc.read().unwrap().info.username == "runtime-user"
+        && stored.password_prs == b"reverse-wheel-preserved-prs"
+        && stored.options.get("unrelated").map(String::as_str) == Some("preserved");
+    drop(mouse);
+    session.sender.write().unwrap().take();
+    drop(receiver);
+    for (id, owner) in [(id, owner), (old_id, old_owner)] {
+        let removed = crate::flutter::sessions::remove_session_by_exact_ui_owner(&id, &owner).unwrap();
+        assert!(removed.sender.read().unwrap().is_none());
+    }
+    println!("REVERSE_WHEEL_EXPORT_NATIVE=observed failure_reported={refused} cache_preserved={cache_preserved} files_preserved={files_preserved} retry_durable=true unreadable_refused={unreadable} invalid_read_refused={invalid_read} missing_or_wrong_owner_refused={owner_refused} unrelated_preserved={unrelated} mouse_commands=wheel-trackpad-move no_peer_started={no_peer} cleanup=joined");
+    assert!(unreadable && invalid_read && owner_refused && unrelated && no_peer);
 }
 
 fn scroll_preferences_commit_before_publication(root: &std::path::Path) {

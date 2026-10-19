@@ -4040,6 +4040,7 @@ run_focused_rust_tests() {
                 scripts/fixtures/view-style-before-errors.rs
                 scripts/fixtures/session-flutter-preference-before-errors.rs
                 scripts/fixtures/session-scroll-preference-before-errors.rs
+                scripts/fixtures/reverse-mouse-wheel-before-errors.rs
                 libs/hbb_common/src/config.rs
                 scripts/run-option-ack-tests.sh scripts/linux-parent-test-build.sh
                 scripts/run-option-bridge-tests.sh scripts/test-option-errors.dart
@@ -5636,7 +5637,7 @@ PY
             && [ "$(grep -Fxc 'VOICE_INPUT_EXPORT_BEFORE=observed failure_reported=false failed_read_default=true viewer_preserved=true' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'VOICE_INPUT_EXPORT_NATIVE=observed failure_reported=true read_failure_reported=true viewer_selected=true viewer_preserved=true config_preserved=true' "$output")" -eq 1 ] \
             || { tail -c 262144 "$output" >&2; fail 'option acknowledgement artifact or native outcomes differ'; }
-        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=79 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=85 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_WIRE_DART=pass cases=4 native_errors=11 error=RESULT_ERROR cache=preserved config=preserved reads=sync-and-async' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_DART_CASE=' "$output")" -eq 4 ] \
@@ -6192,6 +6193,7 @@ PY
             grep -E '^VIEW_STYLE_EXPORT_(BEFORE|NATIVE)=|^VIEW_STYLE_WIRE_DART(_CASE)?=' "$output"
             grep -E '^SESSION_FLUTTER_EXPORT_(BEFORE|NATIVE)=|^CUSTOM_SCALE_WIRE_DART(_CASE)?=|^SAVED_CANVAS_WIRE_DART(_CASE)?=' "$output"
             grep -E '^SCROLL_PREF_EXPORT_(BEFORE|NATIVE)=|^SCROLL_STYLE_WIRE_DART(_CASE)?=|^EDGE_THICKNESS_WIRE_DART(_CASE)?=' "$output"
+            grep -E '^REVERSE_WHEEL_EXPORT_(BEFORE|NATIVE)=|^REVERSE_WHEEL_WIRE_DART(_CASE)?=' "$output"
             printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
@@ -8823,7 +8825,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_AUTO_DISCONNECT_TEST_JSON
-            expected_result='suites=9 tests=229'
+            expected_result='suites=10 tests=248'
         elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
             memory=3g
             memory_bytes=3221225472
@@ -9348,7 +9350,7 @@ run_flutter_model_tests() {
                     tests=(test/input_modifier_release_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
-                    tests=(test/auto_disconnect_timeout_dialog_test.dart test/auto_disconnect_timeout_field_test.dart test/setting_option_mutation_test.dart test/keyboard_layout_type_chooser_test.dart test/trackpad_speed_dialog_test.dart test/input_keyboard_mode_test.dart test/custom_scale_controls_test.dart test/scroll_preferences_test.dart test/owned_image_paint_test.dart)
+                    tests=(test/auto_disconnect_timeout_dialog_test.dart test/auto_disconnect_timeout_field_test.dart test/setting_option_mutation_test.dart test/keyboard_layout_type_chooser_test.dart test/trackpad_speed_dialog_test.dart test/input_keyboard_mode_test.dart test/custom_scale_controls_test.dart test/scroll_preferences_test.dart test/owned_image_paint_test.dart test/reverse_mouse_wheel_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
                     tests=(test_probes/file_navigation_ordering_test.dart)
@@ -9490,6 +9492,7 @@ run_flutter_model_tests() {
                         cmp /source/flutter/test/input_keyboard_mode_test.dart test/input_keyboard_mode_test.dart
                         cmp /source/flutter/test/custom_scale_controls_test.dart test/custom_scale_controls_test.dart
                         cmp /source/flutter/test/scroll_preferences_test.dart test/scroll_preferences_test.dart
+                        cmp /source/flutter/test/reverse_mouse_wheel_test.dart test/reverse_mouse_wheel_test.dart
                         cmp /source/flutter/test/owned_image_paint_test.dart test/owned_image_paint_test.dart
                     elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
                         diff -r --exclude=generated_bridge.dart \
@@ -9699,7 +9702,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
-        printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=9 tests=229 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
+        printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=10 tests=248 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

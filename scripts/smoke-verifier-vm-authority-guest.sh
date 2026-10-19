@@ -3069,6 +3069,12 @@ run_focused_rust_tests() {
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             required_tests=(
+                fs::tests::directory_entry_vanished_file_preserves_the_remaining_listing
+                fs::tests::directory_entry_vanished_directory_preserves_the_remaining_listing
+                fs::tests::directory_entry_vanished_names_still_consume_the_scan_budget
+                fs::tests::directory_entry_missing_root_remains_an_error
+                fs::tests::directory_entry_broken_link_keeps_its_own_metadata
+                fs::tests::directory_enumeration_refuses_metadata_permission_failure
                 fs::tests::file_metadata_manifest_refuses_unrepresentable_times
                 fs::tests::file_metadata_job_refuses_bad_time_before_admission
                 fs::tests::file_metadata_sink_refuses_wrap_before_publication
@@ -4693,7 +4699,9 @@ run_focused_rust_tests() {
                         cd /source/libs/hbb_common
                         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
                             for group in fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file \
-                                fs::tests::file_metadata_ fs::atomic_write::unix::tests::; do
+                                fs::tests::file_metadata_ fs::atomic_write::unix::tests:: \
+                                fs::tests::directory_enumeration_refuses_metadata_permission_failure \
+                                fs::tests::directory_entry_; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
@@ -5409,7 +5417,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
-        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=3; fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=5; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=4; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=2; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
@@ -6037,8 +6045,8 @@ PY
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            [ "$tests_passed" -eq 13 ] || fail 'file metadata test total differs'
-            grep -E '^test fs::(tests::(file_metadata_[a-z_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_' "$output"
+            [ "$tests_passed" -eq 19 ] || fail 'file metadata test total differs'
+            grep -E '^test fs::(tests::(file_metadata_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_refuses_metadata_permission_failure|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^DIRECTORY_ENTRY_' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'
             grep -E '^test config::(tests::config_transaction_[[:alnum:]_]+|option_tests::[[:alnum:]_]+) [.][.][.] ok$|^OPTION_COMMIT_' "$output"

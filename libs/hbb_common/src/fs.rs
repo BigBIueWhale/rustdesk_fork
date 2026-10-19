@@ -240,9 +240,9 @@ fn read_dir_entries_with_usage(
     usage.enter_dir(depth, budget)?;
     path.to_str()
         .ok_or_else(|| anyhow!("directory path is not valid UTF-8"))?;
-    let mut entries = Vec::new();
     #[cfg(windows)]
     if "/" == &get_string(path) {
+        let mut entries = Vec::new();
         let drives = unsafe { winapi::um::fileapi::GetLogicalDrives() };
         for i in 0..32 {
             if drives & (1 << i) != 0 {
@@ -260,7 +260,18 @@ fn read_dir_entries_with_usage(
         }
         return Ok(entries);
     }
-    for entry in path.read_dir()? {
+    read_dir_entries(path.read_dir()?, prefix, include_hidden, budget, usage)
+}
+
+fn read_dir_entries(
+    directory: impl IntoIterator<Item = std::io::Result<std::fs::DirEntry>>,
+    prefix: &Path,
+    include_hidden: bool,
+    budget: FileEnumerationBudget,
+    usage: &mut FileEnumerationUsage,
+) -> ResultType<Vec<FileEntry>> {
+    let mut entries = Vec::new();
+    for entry in directory {
         let entry = entry?;
         let p = entry.path();
         let file_name = entry.file_name();
@@ -9788,6 +9799,97 @@ mod tests {
             expected,
             err
         );
+    }
+
+    fn directory_entry_fixture(
+        directory: bool,
+    ) -> (TestTempDir, Vec<std::io::Result<std::fs::DirEntry>>) {
+        let tmp = TestTempDir::new("rustdesk_directory_entry");
+        std::fs::create_dir_all(&tmp.path).expect("create entry parent");
+        if directory {
+            std::fs::create_dir(tmp.join("a-vanished")).expect("create disappearing directory");
+        } else {
+            std::fs::write(tmp.join("a-vanished"), b"old").expect("create disappearing file");
+        }
+        std::fs::write(tmp.join("b-visible"), b"retained").expect("create visible sibling");
+        let mut entries = std::fs::read_dir(&tmp.path)
+            .expect("enumerate the real parent")
+            .collect::<std::io::Result<Vec<_>>>()
+            .expect("retain its real directory entries");
+        entries.sort_by_key(std::fs::DirEntry::file_name);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].file_name(), "a-vanished");
+        if directory {
+            std::fs::remove_dir(entries[0].path()).expect("remove the enumerated directory");
+        } else {
+            std::fs::remove_file(entries[0].path()).expect("remove the enumerated file");
+        }
+        assert_eq!(std::fs::symlink_metadata(entries[0].path()).unwrap_err().kind(),
+            std::io::ErrorKind::NotFound);
+        (tmp, entries.into_iter().map(Ok).collect())
+    }
+
+    fn assert_directory_entry_disappearance(directory: bool) {
+        let (tmp, entries) = directory_entry_fixture(directory);
+        let mut usage = FileEnumerationUsage::default();
+        let result = read_dir_entries(entries, Path::new(""), true,
+            FileEnumerationBudget::for_max_entries(8), &mut usage);
+        println!("DIRECTORY_ENTRY_DISAPPEARED=observed kind={} result={} charged={}",
+            if directory { "directory" } else { "file" },
+            if result.is_ok() { "ok" } else { "error" }, usage.entries);
+        let listed = result.expect("a disappeared entry must not suppress its sibling");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "b-visible");
+        assert_eq!(listed[0].entry_type.enum_value(), Ok(FileType::File));
+        assert_eq!(listed[0].size, 8);
+        assert_eq!(usage.entries, 2);
+        assert_eq!(std::fs::read(tmp.join("b-visible")).unwrap(), b"retained");
+        let public = read_dir(&tmp.path, true).expect("the directory remains listable");
+        assert_eq!(public.entries, listed);
+    }
+
+    #[test]
+    fn directory_entry_vanished_file_preserves_the_remaining_listing() {
+        assert_directory_entry_disappearance(false);
+    }
+
+    #[test]
+    fn directory_entry_vanished_directory_preserves_the_remaining_listing() {
+        assert_directory_entry_disappearance(true);
+    }
+
+    #[test]
+    fn directory_entry_vanished_names_still_consume_the_scan_budget() {
+        let (tmp, entries) = directory_entry_fixture(false);
+        let mut usage = FileEnumerationUsage::default();
+        let error = read_dir_entries(entries, Path::new(""), true,
+            FileEnumerationBudget::for_max_entries(1), &mut usage)
+            .expect_err("a removed entry must not increase the scan allowance");
+        assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED);
+        assert_eq!(usage.entries, 1);
+        assert_eq!(std::fs::read(tmp.join("b-visible")).unwrap(), b"retained");
+    }
+
+    #[test]
+    fn directory_entry_missing_root_remains_an_error() {
+        let tmp = TestTempDir::new("rustdesk_directory_entry_missing_root");
+        let error = read_dir(&tmp.path, true).expect_err("a missing root cannot become a listing");
+        assert_eq!(error.downcast_ref::<std::io::Error>().map(std::io::Error::kind),
+            Some(std::io::ErrorKind::NotFound));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn directory_entry_broken_link_keeps_its_own_metadata() {
+        let tmp = TestTempDir::new("rustdesk_directory_entry_broken_link");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        std::os::unix::fs::symlink(tmp.join("missing-target"), tmp.join("link")).unwrap();
+        let directory = read_dir(&tmp.path, true).expect("list the symlink itself");
+        assert_eq!(directory.entries.len(), 1);
+        assert_eq!(directory.entries[0].name, "link");
+        assert_eq!(directory.entries[0].entry_type.enum_value(), Ok(FileType::FileLink));
+        assert_eq!(directory.entries[0].size, 0);
+        assert!(std::fs::symlink_metadata(tmp.join("link")).unwrap().is_symlink());
     }
 
     #[test]

@@ -599,6 +599,12 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_NAVIGATION_SUITES = {
+    "file_rename_dialog_test.dart": {
+        "rename admits one request until its exact result settles",
+        "retired rename callbacks cannot admit a file operation",
+        "rename failure after dismissal leaves the retired widget alone",
+        "rename failure stays visible and permits an explicit retry",
+    },
     "file_navigation_sort_test.dart": FILE_NAVIGATION_TESTS,
     "file_command_session_ownership_test.dart": FILE_COMMAND_TESTS,
     "file_dialog_event_loop_test.dart": {

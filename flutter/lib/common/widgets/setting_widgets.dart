@@ -147,7 +147,8 @@ customImageQualityWidget(
   );
 }
 
-customImageQualitySetting() {
+customImageQualitySetting(
+    {required Future<String?> Function(String key, String value) saveOption}) {
   final qualityKey = 'custom_image_quality';
   final fpsKey = 'custom-fps';
 
@@ -166,13 +167,12 @@ customImageQualitySetting() {
       setQuality: isQuanlityFixed
           ? null
           : (v) {
-              bind.mainSetUserDefaultOption(
-                  key: qualityKey, value: v.toString());
+              return saveOption(qualityKey, v.toString());
             },
       setFps: isFpsFixed
           ? null
           : (v) {
-              bind.mainSetUserDefaultOption(key: fpsKey, value: v.toString());
+              return saveOption(fpsKey, v.toString());
             },
       showFps: true,
       showMoreQuality: true);

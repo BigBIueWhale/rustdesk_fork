@@ -40,6 +40,54 @@ Widget _audioControls(AudioInputDeviceLoader load,
     );
 
 void main() {
+  test('default option save waits and returns the effective native value', () async {
+    final completion = Completer<String>();
+    String? result;
+    final save = saveUserDefaultOption('custom-fps', '25.0',
+        writeOption: (key, value) {
+          expect(key, 'custom-fps');
+          expect(value, '25.0');
+          return completion.future;
+        }, showFailure: () => fail('successful default save reported failure'))
+        .then((value) => result = value);
+    await Future<void>.delayed(Duration.zero);
+    expect(result, isNull);
+    completion.complete('25');
+    await save;
+    expect(result, '25');
+  });
+
+  test('default option failure is visible and the identical retry stays usable', () async {
+    for (final synchronous in [false, true]) {
+      var calls = 0;
+      var failures = 0;
+      Future<String> write(String key, String value) {
+        expect(key, 'view-style');
+        expect(value, 'adaptive');
+        if (++calls == 1) {
+          if (synchronous) throw StateError('default save failed');
+          return Future.error(StateError('default save failed'));
+        }
+        return Future.value('adaptive');
+      }
+      expect(await saveUserDefaultOption('view-style', 'adaptive',
+          writeOption: write, showFailure: () => failures++), isNull);
+      expect(failures, 1);
+      expect(await saveUserDefaultOption('view-style', 'adaptive',
+          writeOption: write, showFailure: () => failures++), 'adaptive');
+      expect(calls, 2);
+      expect(failures, 1);
+    }
+  });
+
+  test('default option empty effective value is distinct from failure', () async {
+    var failures = 0;
+    expect(await saveUserDefaultOption('default-test', '',
+        writeOption: (key, value) async => '',
+        showFailure: () => failures++), '');
+    expect(failures, 0);
+  });
+
   testWidgets('audio load failure stays visible and retries in a narrow view',
       (tester) async {
     for (final synchronous in [false, true]) {

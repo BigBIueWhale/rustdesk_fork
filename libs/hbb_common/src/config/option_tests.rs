@@ -1,6 +1,9 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+#[path = "../../../../scripts/fixtures/default-options-before-transaction.rs"]
+mod before_defaults;
+
 mod before {
     use super::*;
 
@@ -104,6 +107,126 @@ fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
         }
     }
     assert!(output.status.success(), "option worker failed: {}", String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
+fn default_single_key_writes_preserve_other_keys_and_concurrent_writers() {
+    in_private_process("config::option_tests::default_single_key_writes_preserve_other_keys_and_concurrent_writers", |_| {
+        let mut left = UserDefaultConfig::load();
+        let mut right = UserDefaultConfig::load();
+        left.set("left".into(), "one".into());
+        right.set("right".into(), "two".into());
+        let old = UserDefaultConfig::load();
+        let old_lost_update = old.get("left").is_empty() && old.get("right") == "two";
+        println!("OPTION_COMMIT_DEFAULT_BEFORE=observed stale_snapshot_erased_other_key={old_lost_update}");
+        assert!(old_lost_update);
+        assert_eq!(UserDefaultConfig::set_option("left".into(), "one".into()).unwrap(), "one");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let writers: Vec<_> = (0..8).map(|i| {
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                let key = format!("default-worker-{i}");
+                assert_eq!(UserDefaultConfig::set_option(key, i.to_string()).unwrap(), i.to_string());
+            })
+        }).collect();
+        for writer in writers { writer.join().unwrap(); }
+        let stored = UserDefaultConfig::load();
+        let all_preserved = stored.get("left") == "one" && stored.get("right") == "two"
+            && (0..8).all(|i| stored.get(&format!("default-worker-{i}")) == i.to_string());
+        let cache_current = USER_DEFAULT_CONFIG.read().unwrap().0.options == stored.options;
+        println!("OPTION_COMMIT_DEFAULT_CONCURRENT=observed writers=8 keys_preserved={all_preserved} cache_current={cache_current} cleanup=joined");
+        assert!(all_preserved && cache_current);
+    });
+}
+
+#[test]
+fn default_write_failure_preserves_cache_file_and_identical_retry() {
+    in_private_process("config::option_tests::default_write_failure_preserves_cache_file_and_identical_retry", |_| {
+        UserDefaultConfig::set_option("default-unrelated".into(), "preserved".into()).unwrap();
+        let file = Config::file_("_default");
+        let parent = file.parent().unwrap();
+        UserDefaultConfig::set_option(keys::OPTION_VIEW_STYLE.into(), "adaptive".into()).unwrap();
+        let mut historical = UserDefaultConfig::load();
+        let original = fs::read(&file).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        historical.set(keys::OPTION_VIEW_STYLE.into(), "original".into());
+        let old_snapshot_changed = historical.options.get(keys::OPTION_VIEW_STYLE).map(String::as_str) == Some("original");
+        let old_file_preserved = fs::read(&file).unwrap() == original;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        println!("OPTION_COMMIT_DEFAULT_WRITE_BEFORE=observed returned_without_error=true snapshot_changed={old_snapshot_changed} file_preserved={old_file_preserved}");
+        assert!(old_snapshot_changed && old_file_preserved);
+        for requested in ["original", ""] {
+            UserDefaultConfig::set_option(keys::OPTION_VIEW_STYLE.into(), "adaptive".into()).unwrap();
+            let original = fs::read(&file).unwrap();
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+            let failed = UserDefaultConfig::set_option(keys::OPTION_VIEW_STYLE.into(), requested.into()).is_err();
+            let cache_preserved = USER_DEFAULT_CONFIG.read().unwrap().0.get(keys::OPTION_VIEW_STYLE) == "adaptive";
+            let file_preserved = fs::read(&file).unwrap() == original;
+            let unchanged = UserDefaultConfig::set_option(keys::OPTION_VIEW_STYLE.into(), "adaptive".into()).unwrap() == "adaptive";
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            let effective = UserDefaultConfig::set_option(keys::OPTION_VIEW_STYLE.into(), requested.into()).unwrap();
+            let stored = UserDefaultConfig::load();
+            let retry_persisted = effective == "original" && stored.get(keys::OPTION_VIEW_STYLE) == effective;
+            let cache_current = UserDefaultConfig::read(keys::OPTION_VIEW_STYLE) == effective;
+            let unrelated_preserved = stored.get("default-unrelated") == "preserved";
+            println!("OPTION_COMMIT_DEFAULT_NATIVE=observed removal={} failure_reported={failed} cache_preserved={cache_preserved} file_preserved={file_preserved} unchanged_without_write={unchanged} retry_persisted={retry_persisted} cache_current={cache_current} unrelated_preserved={unrelated_preserved}", requested.is_empty());
+            assert!(failed && cache_preserved && file_preserved && unchanged && retry_persisted && cache_current && unrelated_preserved);
+        }
+    });
+}
+
+#[test]
+fn default_purge_is_retryable_and_returns_effective_normalized_values() {
+    in_private_process("config::option_tests::default_purge_is_retryable_and_returns_effective_normalized_values", |_| {
+        let file = Config::file_("_default");
+        for overwritten in [false, true] {
+            UserDefaultConfig::set_option("default-purge".into(), "stored".into()).unwrap();
+            let policy = if overwritten { &*OVERWRITE_DISPLAY_SETTINGS } else { &*DEFAULT_DISPLAY_SETTINGS };
+            policy.write().unwrap().insert("default-purge".into(), "policy".into());
+            let original = fs::read(&file).unwrap();
+            let parent = file.parent().unwrap();
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+            let failed = UserDefaultConfig::set_option("default-purge".into(), "policy".into()).is_err();
+            let file_preserved = fs::read(&file).unwrap() == original;
+            let cache_preserved = USER_DEFAULT_CONFIG.read().unwrap().0.options.get("default-purge").map(String::as_str) == Some("stored");
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            let effective = UserDefaultConfig::set_option("default-purge".into(), "policy".into()).unwrap();
+            let retry_purged = effective == "policy" && !UserDefaultConfig::load().options.contains_key("default-purge");
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+            let idempotent = UserDefaultConfig::set_option("default-purge".into(), "policy".into()).unwrap() == "policy";
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            policy.write().unwrap().clear();
+            println!("OPTION_COMMIT_DEFAULT_PURGE=observed overwritten={overwritten} failure_reported={failed} cache_preserved={cache_preserved} file_preserved={file_preserved} retry_purged={retry_purged} idempotent_without_write={idempotent}");
+            assert!(failed && cache_preserved && file_preserved && retry_purged && idempotent);
+        }
+        let normalized = UserDefaultConfig::set_option(keys::OPTION_CUSTOM_FPS.into(), "25.0".into()).unwrap() == "25"
+            && UserDefaultConfig::read(keys::OPTION_CUSTOM_FPS) == "25";
+        let fallback = UserDefaultConfig::set_option(keys::OPTION_CUSTOM_FPS.into(), "9999".into()).unwrap() == "30"
+            && UserDefaultConfig::read(keys::OPTION_CUSTOM_FPS) == "30";
+        println!("OPTION_COMMIT_DEFAULT_EFFECTIVE=observed normalized={normalized} existing_fallback_reported={fallback}");
+        assert!(normalized && fallback);
+    });
+}
+
+#[test]
+fn default_unreadable_source_refuses_mutation_without_losing_existing_values() {
+    in_private_process("config::option_tests::default_unreadable_source_refuses_mutation_without_losing_existing_values", |_| {
+        UserDefaultConfig::set_option("default-read-test".into(), "original".into()).unwrap();
+        let file = Config::file_("_default");
+        let original = fs::read(&file).unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
+        USER_DEFAULT_CONFIG.write().unwrap().1 = Instant::now() - Duration::from_secs(2);
+        let read_preserved = UserDefaultConfig::get_option("default-read-test") == "original";
+        let failed = UserDefaultConfig::set_option("default-read-test".into(), "replacement".into()).is_err();
+        let cache_preserved = USER_DEFAULT_CONFIG.read().unwrap().0.get("default-read-test") == "original";
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+        let file_preserved = fs::read(&file).unwrap() == original;
+        let retried = UserDefaultConfig::set_option("default-read-test".into(), "replacement".into()).unwrap() == "replacement"
+            && UserDefaultConfig::load().get("default-read-test") == "replacement";
+        println!("OPTION_COMMIT_DEFAULT_READ=observed last_confirmed_read_preserved={read_preserved} failure_reported={failed} cache_preserved={cache_preserved} file_preserved={file_preserved} retry_persisted={retried}");
+        assert!(read_preserved && failed && cache_preserved && file_preserved && retried);
+    });
 }
 
 #[test]

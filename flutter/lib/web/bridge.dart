@@ -1091,13 +1091,13 @@ class RustdeskImpl {
     throw UnimplementedError("mainVideoSaveDirectory");
   }
 
-  Future<void> mainSetUserDefaultOption(
+  Future<String> mainSetUserDefaultOption(
       {required String key, required String value, dynamic hint}) {
     js.context.callMethod('setByName', [
       'option:user:default',
       jsonEncode({'name': key, 'value': value})
     ]);
-    return Future.value();
+    return Future.value(mainGetUserDefaultOption(key: key));
   }
 
   String mainGetUserDefaultOption({required String key, dynamic hint}) {

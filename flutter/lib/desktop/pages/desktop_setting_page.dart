@@ -863,6 +863,13 @@ class _Display extends StatefulWidget {
 }
 
 class _DisplayState extends State<_Display> {
+  Future<String?> _saveDefaultOption(String key, String value) async {
+    if (!mounted) return null;
+    final effective = await saveUserDefaultOption(key, value);
+    if (mounted) setState(() {});
+    return effective;
+  }
+
   @override
   Widget build(BuildContext context) {
     final scrollController = ScrollController();
@@ -880,8 +887,7 @@ class _DisplayState extends State<_Display> {
   Widget viewStyle(BuildContext context) {
     final isOptFixed = isOptionFixed(kOptionViewStyle);
     onChanged(String value) async {
-      await bind.mainSetUserDefaultOption(key: kOptionViewStyle, value: value);
-      setState(() {});
+      await _saveDefaultOption(kOptionViewStyle, value);
     }
 
     final groupValue = bind.mainGetUserDefaultOption(key: kOptionViewStyle);
@@ -902,17 +908,14 @@ class _DisplayState extends State<_Display> {
   Widget scrollStyle(BuildContext context) {
     final isOptFixed = isOptionFixed(kOptionScrollStyle);
     onChanged(String value) async {
-      await bind.mainSetUserDefaultOption(
-          key: kOptionScrollStyle, value: value);
-      setState(() {});
+      await _saveDefaultOption(kOptionScrollStyle, value);
     }
 
     final groupValue = bind.mainGetUserDefaultOption(key: kOptionScrollStyle);
 
     onEdgeScrollEdgeThicknessChanged(double value) async {
-      await bind.mainSetUserDefaultOption(
-          key: kOptionEdgeScrollEdgeThickness, value: value.round().toString());
-      setState(() {});
+      await _saveDefaultOption(
+          kOptionEdgeScrollEdgeThickness, value.round().toString());
     }
 
     return _Card(title: 'Default Scroll Style', children: [
@@ -948,9 +951,7 @@ class _DisplayState extends State<_Display> {
 
   Widget imageQuality(BuildContext context) {
     onChanged(String value) async {
-      await bind.mainSetUserDefaultOption(
-          key: kOptionImageQuality, value: value);
-      setState(() {});
+      await _saveDefaultOption(kOptionImageQuality, value);
     }
 
     final isOptFixed = isOptionFixed(kOptionImageQuality);
@@ -978,7 +979,7 @@ class _DisplayState extends State<_Display> {
           onChanged: isOptFixed ? null : onChanged),
       Offstage(
         offstage: groupValue != kRemoteImageQualityCustom,
-        child: customImageQualitySetting(),
+        child: customImageQualitySetting(saveOption: _saveDefaultOption),
       )
     ]);
   }
@@ -988,9 +989,8 @@ class _DisplayState extends State<_Display> {
         (int.tryParse(bind.mainGetUserDefaultOption(key: kKeyTrackpadSpeed)) ??
             kDefaultTrackpadSpeed);
     final curSpeed = SimpleWrapper(initSpeed);
-    void onDebouncer(int v) {
-      bind.mainSetUserDefaultOption(
-          key: kKeyTrackpadSpeed, value: v.toString());
+    onDebouncer(int v) async {
+      await _saveDefaultOption(kKeyTrackpadSpeed, v.toString());
       // It's better to notify all sessions that the default speed is changed.
       // But it may also be ok to take effect in the next connection.
     }
@@ -1005,9 +1005,7 @@ class _DisplayState extends State<_Display> {
 
   Widget codec(BuildContext context) {
     onChanged(String value) async {
-      await bind.mainSetUserDefaultOption(
-          key: kOptionCodecPreference, value: value);
-      setState(() {});
+      await _saveDefaultOption(kOptionCodecPreference, value);
     }
 
     final groupValue =
@@ -1081,12 +1079,10 @@ class _DisplayState extends State<_Display> {
     final value = bind.mainGetUserDefaultOption(key: key) == 'Y';
     final isOptFixed = isOptionFixed(key);
     onChanged(bool b) async {
-      await bind.mainSetUserDefaultOption(
-          key: key,
-          value: b
+      await _saveDefaultOption(
+          key, b
               ? 'Y'
               : (key == kOptionEnableFileCopyPaste ? 'N' : defaultOptionNo));
-      setState(() {});
     }
 
     return GestureDetector(

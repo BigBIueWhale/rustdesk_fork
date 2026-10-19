@@ -537,6 +537,13 @@ class _DisplayPage extends StatefulWidget {
 }
 
 class __DisplayPageState extends State<_DisplayPage> {
+  Future<String?> _saveDefaultOption(String key, String value) async {
+    if (!mounted) return null;
+    final effective = await saveUserDefaultOption(key, value);
+    if (mounted) setState(() {});
+    return effective;
+  }
+
   @override
   Widget build(BuildContext context) {
     // R-R2b / R-G1 (§19): the H264/H265 hardware-decode radios are removed, not hidden. They only
@@ -575,8 +582,7 @@ class __DisplayPageState extends State<_DisplayPage> {
               asyncSetter: isOptionFixed(kOptionViewStyle)
                   ? null
                   : (value) async {
-                      await bind.mainSetUserDefaultOption(
-                          key: kOptionViewStyle, value: value);
+                      return _saveDefaultOption(kOptionViewStyle, value);
                     },
             ),
             _getPopupDialogRadioEntry(
@@ -596,12 +602,15 @@ class __DisplayPageState extends State<_DisplayPage> {
               asyncSetter: isOptionFixed(kOptionImageQuality)
                   ? null
                   : (value) async {
-                      await bind.mainSetUserDefaultOption(
-                          key: kOptionImageQuality, value: value);
-                      showCustomImageQuality.value =
-                          value == kRemoteImageQualityCustom;
+                      final effective =
+                          await _saveDefaultOption(kOptionImageQuality, value);
+                      if (mounted && effective != null) {
+                        showCustomImageQuality.value =
+                            effective == kRemoteImageQualityCustom;
+                      }
+                      return effective;
                     },
-              tail: customImageQualitySetting(),
+              tail: customImageQualitySetting(saveOption: _saveDefaultOption),
               showTail: showCustomImageQuality,
               notCloseValue: kRemoteImageQualityCustom,
             ),
@@ -613,8 +622,7 @@ class __DisplayPageState extends State<_DisplayPage> {
               asyncSetter: isOptionFixed(kOptionCodecPreference)
                   ? null
                   : (value) async {
-                      await bind.mainSetUserDefaultOption(
-                          key: kOptionCodecPreference, value: value);
+                      return _saveDefaultOption(kOptionCodecPreference, value);
                     },
             ),
           ],
@@ -637,9 +645,7 @@ class __DisplayPageState extends State<_DisplayPage> {
       onToggle: isOptFixed
           ? null
           : (b) async {
-              await bind.mainSetUserDefaultOption(
-                  key: key, value: b ? 'Y' : defaultOptionNo);
-              setState(() {});
+              await _saveDefaultOption(key, b ? 'Y' : defaultOptionNo);
             },
     );
   }
@@ -652,7 +658,7 @@ class _RadioEntry {
 }
 
 typedef _RadioEntryGetter = String Function();
-typedef _RadioEntrySetter = Future<void> Function(String);
+typedef _RadioEntrySetter = Future<String?> Function(String);
 
 SettingsTile _getPopupDialogRadioEntry({
   required String title,
@@ -677,15 +683,22 @@ SettingsTile _getPopupDialogRadioEntry({
   init();
 
   void showDialog() async {
+    bool pending = false;
     gFFI.dialogManager.show((setState, close, context) {
       final onChanged = asyncSetter == null
           ? null
           : (String? value) async {
-              if (value == null) return;
-              await asyncSetter(value);
-              init();
-              if (value != notCloseValue) {
-                close();
+              if (value == null || !context.mounted || pending) return;
+              pending = true;
+              try {
+                final effective = await asyncSetter(value);
+                if (!context.mounted || effective == null) return;
+                init();
+                if (effective != notCloseValue) {
+                  close();
+                }
+              } finally {
+                pending = false;
               }
             };
 

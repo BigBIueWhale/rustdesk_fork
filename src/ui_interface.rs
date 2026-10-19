@@ -824,15 +824,15 @@ pub fn start_main_status_sync() {
 }
 
 #[cfg(feature = "flutter")]
-pub fn set_user_default_option(key: String, value: String) {
+pub fn set_user_default_option(key: String, value: String) -> hbb_common::ResultType<String> {
     use hbb_common::config::UserDefaultConfig;
-    UserDefaultConfig::load().set(key, value);
+    UserDefaultConfig::set_option(key, value)
 }
 
 #[cfg(feature = "flutter")]
 pub fn get_user_default_option(key: String) -> String {
     use hbb_common::config::UserDefaultConfig;
-    UserDefaultConfig::load().get(&key)
+    UserDefaultConfig::get_option(&key)
 }
 
 #[inline]

@@ -1459,8 +1459,8 @@ pub fn main_video_save_directory(root: bool) -> SyncReturn<String> {
     SyncReturn(video_save_directory(root))
 }
 
-pub fn main_set_user_default_option(key: String, value: String) {
-    set_user_default_option(key, value);
+pub fn main_set_user_default_option(key: String, value: String) -> Result<String> {
+    set_user_default_option(key, value)
 }
 
 pub fn main_get_user_default_option(key: String) -> SyncReturn<String> {

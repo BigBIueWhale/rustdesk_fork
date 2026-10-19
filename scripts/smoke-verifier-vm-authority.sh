@@ -6375,7 +6375,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
         || fail 'option acknowledgement artifact receipt differs'
     mapfile -t option_wire_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=25 unchanged=before-after execution_seconds=[0-9]+$'
+            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=30 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#option_wire_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'OPTION_WIRE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -6437,6 +6437,15 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
     require_exact_fixed_receipt \
         'LAST_PEER_EXPORT_NATIVE=observed history_preserved=true session_admitted=true no_peer_started=true duplicate_refused=true duplicate_history_preserved=true retry_persisted=true' \
         'last-peer persistence failure preserves session admission and permits durable retry'
+    require_exact_fixed_receipt \
+        'DEFAULT_PREF_WIRE_DART=pass cases=5 native_errors=3 error=RESULT_ERROR failed_state=preserved retry=durable source_failure=refused concurrent_keys=preserved effective=normalized idempotent=without-write' \
+        'default preference transaction and native effective acknowledgement'
+    for case_name in initial_commit failed_replace_retry failed_remove_retry concurrent_single_key unreadable_source_refusal; do
+        require_exact_fixed_receipt "DEFAULT_PREF_WIRE_DART_CASE=pass name=$case_name" \
+            "default preference native bridge case $case_name"
+    done
+    [ "$(/usr/bin/grep -Fc 'DEFAULT_PREF_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 5 ] \
+        || fail 'default preference native bridge named case inventory differs'
     require_exact_fixed_receipt \
         'VOICE_INPUT_WIRE_DART=pass cases=5 native_errors=3 error=RESULT_ERROR viewer=selected-and-default cm_failure=reported read_failure=reported retry=reported state=preserved config=unchanged' \
         'voice-call input native bridge outcomes'
@@ -7128,7 +7137,7 @@ else
             'focused Flutter modifier release receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=4 tests=42 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined" \
+            "FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=4 tests=45 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined" \
             'focused Flutter auto-disconnect timeout receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
         require_exact_fixed_receipt \

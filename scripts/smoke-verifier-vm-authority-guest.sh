@@ -3070,7 +3070,10 @@ run_focused_rust_tests() {
             )
         fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then
-            source_fingerprints+=(libs/hbb_common/src/config/option_tests.rs)
+            source_fingerprints+=(
+                libs/hbb_common/src/config/option_tests.rs
+                scripts/fixtures/default-options-before-transaction.rs
+            )
             required_tests=(
                 config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal
                 config::tests::config_transaction_traverses_search_only_existing_ancestor
@@ -3089,6 +3092,10 @@ run_focused_rust_tests() {
                 config::option_tests::local_system_language_is_explicit_durable_and_retryable
                 config::option_tests::last_peer_failure_preserves_state_and_retries_the_identical_value
                 config::option_tests::retired_local_geometry_is_ignored_without_losing_live_preferences
+                config::option_tests::default_single_key_writes_preserve_other_keys_and_concurrent_writers
+                config::option_tests::default_write_failure_preserves_cache_file_and_identical_retry
+                config::option_tests::default_purge_is_retryable_and_returns_effective_normalized_values
+                config::option_tests::default_unreadable_source_refuses_mutation_without_losing_existing_values
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
@@ -6166,6 +6173,7 @@ PY
             grep -E '^UI_STATE_WIRE_DART(_CASE)?=' "$output"
             grep -E '^VOICE_INPUT_EXPORT_(BEFORE|NATIVE)=|^VOICE_INPUT_WIRE_DART(_CASE)?=' "$output"
             grep -Fx 'LAST_PEER_EXPORT_NATIVE=observed history_preserved=true session_admitted=true no_peer_started=true duplicate_refused=true duplicate_history_preserved=true retry_persisted=true' "$output"
+            grep -E '^DEFAULT_PREF_WIRE_DART(_CASE)?=' "$output"
             printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
@@ -8797,7 +8805,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_AUTO_DISCONNECT_TEST_JSON
-            expected_result='suites=4 tests=42'
+            expected_result='suites=4 tests=45'
         elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
             memory=3g
             memory_bytes=3221225472
@@ -9668,7 +9676,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
-        printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=4 tests=42 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
+        printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=4 tests=45 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

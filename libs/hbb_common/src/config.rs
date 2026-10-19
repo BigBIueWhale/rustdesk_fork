@@ -3947,21 +3947,23 @@ pub struct UserDefaultConfig {
 impl UserDefaultConfig {
     fn read(key: &str) -> String {
         let mut cfg = USER_DEFAULT_CONFIG.write().unwrap();
-        // we do so, because default config may changed in another process, but we don't sync it
-        // but no need to read every time, give a small interval to avoid too many redundant read waste
+        // Refresh external changes at most once a second, retaining confirmed values on failure.
         if cfg.1.elapsed() > Duration::from_secs(1) {
-            *cfg = (Self::load(), Instant::now());
+            let loaded = load_path_with_status::<Self>(Config::file_("_default"));
+            if matches!(loaded.status, ConfigLoadStatus::Loaded | ConfigLoadStatus::NotFound) {
+                cfg.0 = loaded.value;
+            }
+            cfg.1 = Instant::now();
         }
         cfg.0.get(key)
     }
 
-    pub fn load() -> UserDefaultConfig {
-        Config::load_::<UserDefaultConfig>("_default")
+    pub fn get_option(key: &str) -> String {
+        Self::read(key)
     }
 
-    #[inline]
-    fn store(&self) {
-        Config::store_(self, "_default");
+    pub fn load() -> UserDefaultConfig {
+        Config::load_::<UserDefaultConfig>("_default")
     }
 
     pub fn get(&self, key: &str) -> String {
@@ -3991,24 +3993,33 @@ impl UserDefaultConfig {
         }
     }
 
-    pub fn set(&mut self, key: String, value: String) {
+    pub fn set_option(key: String, value: String) -> crate::ResultType<String> {
+        let mut cache = USER_DEFAULT_CONFIG.write().unwrap();
+        let file = Config::file_("_default");
+        let loaded = load_path_with_status::<Self>(file.clone());
+        if !matches!(
+            loaded.status,
+            ConfigLoadStatus::Loaded | ConfigLoadStatus::NotFound
+        ) {
+            return Err(anyhow!("Failed to read default settings"));
+        }
+        let mut candidate = loaded.value.clone();
         if !is_option_can_save(
             &OVERWRITE_DISPLAY_SETTINGS,
             &key,
             &DEFAULT_DISPLAY_SETTINGS,
             &value,
-        ) {
-            if self.options.remove(&key).is_some() {
-                self.store();
-            }
-            return;
-        }
-        if value.is_empty() {
-            self.options.remove(&key);
+        ) || value.is_empty() {
+            candidate.options.remove(&key);
         } else {
-            self.options.insert(key, value);
+            candidate.options.insert(key.clone(), value);
         }
-        self.store();
+        let effective = candidate.get(&key);
+        if candidate.options != loaded.value.options {
+            store_path(file, &candidate)?;
+        }
+        *cache = (candidate, Instant::now());
+        Ok(effective)
     }
 
     #[inline]

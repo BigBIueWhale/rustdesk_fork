@@ -1771,6 +1771,24 @@ Future<bool> mainSetLocalBoolOption(String key, bool value) async {
   return mainSetLocalOption(key, bool2option(key, value));
 }
 
+Future<String?> saveUserDefaultOption(String key, String value,
+    {Future<String> Function(String key, String value)? writeOption,
+    VoidCallback? showFailure}) async {
+  final write = writeOption ??
+      (key, value) => bind.mainSetUserDefaultOption(key: key, value: value);
+  try {
+    return await write(key, value);
+  } catch (error) {
+    debugPrint('Failed to save default option: $error');
+    if (showFailure != null) {
+      showFailure();
+    } else {
+      showToast(translate('Failed'));
+    }
+    return null;
+  }
+}
+
 Future<String?> saveLocalFlutterOption(String key, String value,
     {Future<void> Function(String key, String value)? writeOption,
     String Function(String key)? readOption,

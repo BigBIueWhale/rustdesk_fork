@@ -365,4 +365,91 @@ Future<void> main(List<String> arguments) async {
   check(voiceErrors == 3, 'voice-call input native error count differs');
   print('VOICE_INPUT_WIRE_DART=pass cases=5 native_errors=3 error=RESULT_ERROR '
       'viewer=selected-and-default cm_failure=reported read_failure=reported retry=reported state=preserved config=unchanged');
+
+  const defaultKey = 'default-wire-value';
+  check(await api.mainSetUserDefaultOption(key: defaultKey, value: 'original') == 'original' &&
+      api.mainGetUserDefaultOption(key: defaultKey) == 'original',
+      'default option acknowledgement differs from effective readback');
+  final defaultFiles = config.listSync(recursive: true).whereType<File>()
+      .where((file) => file.path.endsWith('_default.toml')).toList();
+  check(defaultFiles.length == 1, 'exact private default configuration is missing');
+  final defaultFile = defaultFiles.single;
+  print('DEFAULT_PREF_WIRE_DART_CASE=pass name=initial_commit');
+  var defaultErrors = 0;
+  for (final requested in ['replacement', '']) {
+    final beforeFiles = configFiles(config);
+    final beforeValue = api.mainGetUserDefaultOption(key: defaultKey);
+    Object? failure;
+    permissions('0500');
+    try {
+      try {
+        await api.mainSetUserDefaultOption(key: defaultKey, value: requested);
+      } catch (error) {
+        failure = error;
+      }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'failed default save did not cross the generated native bridge');
+      defaultErrors++;
+      final afterFiles = configFiles(config);
+      check(api.mainGetUserDefaultOption(key: defaultKey) == beforeValue &&
+          afterFiles.length == beforeFiles.length &&
+          beforeFiles.entries.every((entry) => afterFiles[entry.key] == entry.value),
+          'failed default save changed effective or durable state');
+    } finally {
+      permissions('0700');
+    }
+    check(await api.mainSetUserDefaultOption(key: defaultKey, value: requested) == requested &&
+        api.mainGetUserDefaultOption(key: defaultKey) == requested,
+        'identical default save retry was not applied');
+    final text = defaultFile.readAsStringSync();
+    check(requested.isEmpty ? !text.contains(defaultKey) : text.contains(requested),
+        'identical default save retry was not durable');
+    permissions('0500');
+    try {
+      check(await api.mainSetUserDefaultOption(key: defaultKey, value: requested) == requested,
+          'unchanged default value required a write');
+    } finally {
+      permissions('0700');
+    }
+    print('DEFAULT_PREF_WIRE_DART_CASE=pass name=' +
+        (requested.isEmpty ? 'failed_remove_retry' : 'failed_replace_retry'));
+  }
+  await Future.wait([
+    api.mainSetUserDefaultOption(key: 'view_style', value: 'adaptive'),
+    api.mainSetUserDefaultOption(key: 'scroll_style', value: 'scrollbar'),
+  ]);
+  check(api.mainGetUserDefaultOption(key: 'view_style') == 'adaptive' &&
+      api.mainGetUserDefaultOption(key: 'scroll_style') == 'scrollbar' &&
+      await api.mainSetUserDefaultOption(key: 'custom-fps', value: '25.0') == '25',
+      'default single-key writers lost a value or normalized acknowledgement');
+  print('DEFAULT_PREF_WIRE_DART_CASE=pass name=concurrent_single_key');
+  final beforeUnreadable = configFiles(config);
+  final deny = Process.runSync('/bin/chmod', ['0000', defaultFile.path]);
+  check(deny.exitCode == 0, 'private default read denial failed');
+  Object? readFailure;
+  try {
+    check(api.mainGetUserDefaultOption(key: 'view_style') == 'adaptive',
+        'unreadable source replaced the last confirmed default read');
+    try {
+      await api.mainSetUserDefaultOption(key: defaultKey, value: 'after-read-failure');
+    } catch (error) {
+      readFailure = error;
+    }
+  } finally {
+    final restore = Process.runSync('/bin/chmod', ['0600', defaultFile.path]);
+    check(restore.exitCode == 0, 'private default read permission restore failed');
+  }
+  check(readFailure is FfiException && (readFailure as FfiException).code == 'RESULT_ERROR',
+      'unreadable default source was silently replaced');
+  defaultErrors++;
+  final afterUnreadable = configFiles(config);
+  check(afterUnreadable.length == beforeUnreadable.length &&
+      beforeUnreadable.entries.every((entry) => afterUnreadable[entry.key] == entry.value) &&
+      api.mainGetUserDefaultOption(key: 'view_style') == 'adaptive' &&
+      await api.mainSetUserDefaultOption(key: defaultKey, value: 'after-read-failure') == 'after-read-failure',
+      'default read failure lost values or blocked healthy retry');
+  print('DEFAULT_PREF_WIRE_DART_CASE=pass name=unreadable_source_refusal');
+  check(defaultErrors == 3, 'default native error count differs');
+  print('DEFAULT_PREF_WIRE_DART=pass cases=5 native_errors=3 error=RESULT_ERROR '
+      'failed_state=preserved retry=durable source_failure=refused concurrent_keys=preserved effective=normalized idempotent=without-write');
 }

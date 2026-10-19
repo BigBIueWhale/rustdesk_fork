@@ -111,6 +111,9 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SETTING_OPTION_TESTS = {
+    "default option save waits and returns the effective native value",
+    "default option failure is visible and the identical retry stays usable",
+    "default option empty effective value is distinct from failure",
     "audio load failure stays visible and retries in a narrow view",
     "audio parent rebuild retains its pending read and later refreshes",
     "audio stale retry cannot start duplicate pending reads",

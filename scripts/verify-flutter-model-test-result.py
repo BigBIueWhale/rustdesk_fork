@@ -293,6 +293,23 @@ CUSTOM_TOUCH_TESTS = {
     "custom touch three finger start retains transformed coordinates",
 }
 
+HOLD_DRAG_TESTS = {
+    "hold drag accepts tap hold movement and release",
+    "hold drag quick second release cannot end or start a drag",
+    "hold drag movement admission resolves both exact arenas",
+    "hold drag repeated completion leaves no earlier arena owners",
+    "hold drag active movement can return inside initial tolerance",
+    "hold drag active cancellation ends once and permits retry",
+    "hold drag active disposal ends once without late start",
+    "hold drag pending cancellation releases the first tap hold",
+    "hold drag state retires when the end callback is absent",
+    "hold drag refuses a first tap that moved beyond tolerance",
+    "hold drag preserves the real quick double tap recognizer",
+    "hold drag extra pointer retires the pending sequence",
+    "hold drag start retains device and transformed coordinates",
+    "hold drag first tap timeout releases fallback and permits retry",
+}
+
 SETTING_OPTION_TESTS = {
     "view style choice joins persistence before canvas publication",
     "view style refusal and mismatch leave the canvas and preserve retry",
@@ -684,6 +701,7 @@ def parse_result(path, profile="models"):
             "reverse_mouse_wheel_test.dart": REVERSE_WHEEL_TESTS,
             "two_finger_tap_test.dart": TWO_FINGER_TAP_TESTS,
             "custom_touch_gestures_test.dart": CUSTOM_TOUCH_TESTS,
+            "hold_tap_move_test.dart": HOLD_DRAG_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

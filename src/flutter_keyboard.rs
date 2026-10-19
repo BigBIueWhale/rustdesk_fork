@@ -176,7 +176,9 @@ impl FlutterKeyboardState {
             if releases.len() > 8 { bail!("Modifier release representation is oversized"); }
             if releases.is_empty() { None } else {
                 let alias = if same_owner {
-                    self.active.as_ref().and_then(|active| active.held.iter().flatten().find(|held|
+                    self.active.as_ref().and_then(|active| active.held.iter().enumerate()
+                        .filter(|(index, _)| Some(*index) != slot)
+                        .filter_map(|(_, held)| held.as_ref()).find(|held|
                         prepared.physical.is_some() && prepared.physical == held.physical
                         || held.releases == releases)).cloned()
                 } else { None };

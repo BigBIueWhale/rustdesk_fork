@@ -157,13 +157,21 @@ async fn focus_retirement_fences_queued_input_but_admits_the_next_epoch() {
 async fn an_old_key_up_cannot_release_a_later_press() {
     let _guard = super::mobile_session_lifecycle_tests::TEST_LOCK.lock().unwrap();
     let mut fixture = Fixture::new();
+    fixture.session.lc.write().unwrap().set_keyboard_fixture("legacy", true);
     fixture.legacy(1, 1, 2, "VK_CONTROL").unwrap();
     let down = fixture.batch().await.remove(0);
+    assert_eq!(down.control_key(), ControlKey::Meta);
+    fixture.session.lc.write().unwrap().set_keyboard_fixture("legacy", false);
     fixture.legacy(1, 2, 2, "VK_CONTROL").unwrap();
+    let replacement = fixture.batch().await;
+    assert_eq!(replacement.len(), 2);
+    assert_eq!(replacement[0], expected_release(down));
+    assert!(replacement[1].down);
+    assert_eq!(replacement[1].control_key(), ControlKey::Control);
     fixture.release(1, 1, Some(2)).unwrap();
     fixture.empty().await;
     fixture.release(1, 2, Some(2)).unwrap();
-    assert_eq!(fixture.batch().await, [expected_release(down)]);
+    assert_eq!(fixture.batch().await, [expected_release(replacement[1].clone())]);
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -4534,7 +4534,8 @@ run_focused_rust_tests() {
         printf 'INPUT_LIFETIME_PROVIDER_PREPARED=pass sha256=%s root=disposable-guest-only execution=nonroot fixed_path=/usr/lib/rustdesk-fork/libxdo.so.3\n' "$input_provider_sha"
     fi
 
-    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+    if { [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = option-ack ]]; } \
+       || { [ "$MODE" = hbb-common-fs ] && [ "$RUST_TEST_PROFILE" = config-options ]; }; then
         printf '%s\n' 727573746465736b2d76696577657231 >"$ROOT/viewer.machine-id"
         chown 1000:1000 "$ROOT/viewer.machine-id"
         chmod 0400 "$ROOT/viewer.machine-id"

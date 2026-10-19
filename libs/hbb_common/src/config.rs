@@ -3408,12 +3408,17 @@ impl PeerConfig {
     }
 
     fn store_path(path: &Path, config: &PeerConfig) -> crate::ResultType<()> {
+        let has_password = !config.password.is_empty();
+        let has_prs = !config.password_prs.is_empty();
         let mut config = config.clone();
         config.password =
             encrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
         // R-S16 (viewer twin): the DERIVED Argon2id CPace PRS, encrypted at rest like `password`.
         config.password_prs =
             encrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+        if (has_password && config.password.is_empty()) || (has_prs && config.password_prs.is_empty()) {
+            return Err(anyhow!("Failed to encrypt peer credentials"));
+        }
         remove_retired_rdp_credential_options(&mut config.options);
         store_path(path.to_path_buf(), config)
     }

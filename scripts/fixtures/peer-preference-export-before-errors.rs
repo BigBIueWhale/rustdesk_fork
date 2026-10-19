@@ -1,4 +1,4 @@
-use super::*;
+use crate::{flutter::sessions, flutter_ffi::SessionID};
 
 pub fn session_set_custom_image_quality(session_id: SessionID, value: i32) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {

@@ -142,6 +142,11 @@ fn peer_store_reports_failure_without_publishing_a_change_and_refuses_unreadable
         let durable_retry = PeerConfig::load_for_write(id).unwrap() == candidate;
         let committed_mark = NEW_STORED_PEER_CONFIG.lock().unwrap().remove(id);
         let committed = fs::read(&file).unwrap();
+        let mut oversized = candidate.clone();
+        oversized.password_prs = vec![b'x'; ENCRYPT_MAX_LEN + 1];
+        assert!(oversized.store(id).is_err());
+        assert_eq!(fs::read(&file).unwrap(), committed);
+        assert!(!NEW_STORED_PEER_CONFIG.lock().unwrap().contains(id));
         fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
         let unreadable_refused = PeerConfig::load_for_write(id).is_err();
         let unreadable_not_marked = !NEW_STORED_PEER_CONFIG.lock().unwrap().contains(id);

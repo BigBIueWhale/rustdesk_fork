@@ -221,9 +221,8 @@ pub fn check_controlled_surface(s: &SocketSurface, expected_tcp_port: u16) -> Re
 /// links) — used on **both Linux and Android** so the R-A4 assertion is about
 /// this --server process's surface, not every socket that merely shares the
 /// network namespace (see the module header: the box is not guaranteed its own
-/// netns). The v6 tables may be absent (IPv6 disabled) → "no v6 sockets"; the v4
-/// tables always exist on Linux/Android, so a read failure is propagated and the
-/// caller treats it fail-closed.
+/// netns). Missing v6 tables (IPv6 disabled) mean no v6 sockets; every other
+/// table or descriptor-enumeration read failure is propagated to the caller.
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn read_proc_self_net_owned() -> std::io::Result<SocketSurface> {
     let socket_inodes = read_proc_self_socket_inodes()?;
@@ -249,7 +248,11 @@ fn read_proc_self_socket_inodes() -> std::io::Result<HashSet<u64>> {
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn read_optional_ipv6_table(path: &std::path::Path) -> std::io::Result<String> {
-    Ok(std::fs::read_to_string(path).unwrap_or_default())
+    match std::fs::read_to_string(path) {
+        Ok(contents) => Ok(contents),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -258,13 +261,11 @@ fn read_proc_socket_inodes(
 ) -> std::io::Result<HashSet<u64>> {
     let mut inodes = HashSet::new();
     for entry in entries {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(_) => continue,
-        };
+        let entry = entry?;
         let target = match std::fs::read_link(entry.path()) {
             Ok(target) => target,
-            Err(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
         };
         if let Some(inode) = parse_proc_fd_socket_inode(&target.to_string_lossy()) {
             inodes.insert(inode);

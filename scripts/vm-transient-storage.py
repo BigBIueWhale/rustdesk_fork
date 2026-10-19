@@ -342,7 +342,11 @@ def watch(args):
             minimum_memory = min(minimum_memory, available_memory())
             durable = 0
             for entry in Path(args.run).rglob('*'):
-                metadata = entry.lstat()
+                try:
+                    metadata = entry.lstat()
+                except FileNotFoundError:
+                    # Owned sockets and diagnostics can retire between samples.
+                    continue
                 if stat.S_ISREG(metadata.st_mode):
                     durable += metadata.st_blocks * 512
             durable_peak = max(durable_peak, durable)

@@ -218,13 +218,7 @@ pub fn peer_has_password(id: String) -> bool {
 
 #[inline]
 pub fn forget_password(id: String) {
-    let mut c = PeerConfig::load(&id);
-    c.password.clear();
-    // R-S16 (viewer twin): also clear the derived CPace PRS — it is the connect-equivalent
-    // credential under the collapse, so "unremember password" MUST drop it too, not leave it at
-    // rest (else the peer stays connectable after the operator asked to forget it).
-    c.password_prs.clear();
-    hbb_common::allow_err!(c.store(&id));
+    hbb_common::allow_err!(PeerConfig::forget_password(&id));
 }
 
 #[inline]

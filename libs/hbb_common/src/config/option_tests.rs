@@ -113,6 +113,105 @@ fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
 }
 
 #[test]
+fn peer_forget_write_failure_is_reported_and_retryable() {
+    in_private_process("config::option_tests::peer_forget_write_failure_is_reported_and_retryable", |_| {
+        let id = "peer-forget-write";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-forget-prs".to_vec();
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        let original = fs::read(&path).unwrap();
+        NEW_STORED_PEER_CONFIG.lock().unwrap().remove(id);
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        let result = PeerConfig::forget_password(id);
+        let preserved = fs::read(&path).unwrap() == original;
+        let unmarked = !NEW_STORED_PEER_CONFIG.lock().unwrap().contains(id);
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        println!("OPTION_COMMIT_PEER_FORGET=observed kind=write reported={} file_preserved={preserved} no_change_mark={unmarked}", result.is_err());
+        assert!(preserved && unmarked && result.is_err());
+        PeerConfig::forget_password(id).unwrap();
+        let stored = PeerConfig::load_for_write(id).unwrap();
+        assert!(stored.password_prs.is_empty());
+        assert_eq!(stored.options.get("unrelated").map(String::as_str), Some("preserved"));
+    });
+}
+
+#[test]
+fn peer_forget_unreadable_source_refuses_without_replacing_settings() {
+    in_private_process("config::option_tests::peer_forget_unreadable_source_refuses_without_replacing_settings", |_| {
+        let id = "peer-forget-read";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-forget-prs".to_vec();
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        NEW_STORED_PEER_CONFIG.lock().unwrap().remove(id);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let native = fs::read(&path).unwrap_err();
+        let result = PeerConfig::forget_password(id);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let preserved = fs::read(&path).unwrap() == original;
+        let unmarked = !NEW_STORED_PEER_CONFIG.lock().unwrap().contains(id);
+        println!("OPTION_COMMIT_PEER_FORGET=observed kind=read errno={} reported={} file_preserved={preserved} no_change_mark={unmarked}", native.raw_os_error().unwrap(), result.is_err());
+        assert_eq!(native.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(preserved && unmarked && result.is_err());
+        PeerConfig::forget_password(id).unwrap();
+        let stored = PeerConfig::load_for_write(id).unwrap();
+        assert!(stored.password_prs.is_empty());
+        assert_eq!(stored.options.get("unrelated").map(String::as_str), Some("preserved"));
+    });
+}
+
+#[test]
+fn peer_forget_clears_both_credentials_preserves_settings_and_is_idempotent() {
+    in_private_process("config::option_tests::peer_forget_clears_both_credentials_preserves_settings_and_is_idempotent", |_| {
+        let id = "peer-forget-selected";
+        let sibling = "peer-forget-sibling";
+        let mut peer = PeerConfig::default();
+        peer.password = b"fixture-legacy".to_vec();
+        peer.password_prs = b"fixture-forget-prs".to_vec();
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.ui_flutter.insert("selected".into(), "preserved".into());
+        peer.store(id).unwrap();
+        peer.store(sibling).unwrap();
+        let sibling_bytes = fs::read(PeerConfig::path(sibling)).unwrap();
+        let mut expected = PeerConfig::load_for_write(id).unwrap();
+        expected.password.clear();
+        expected.password_prs.clear();
+        PeerConfig::forget_password(id).unwrap();
+        assert_eq!(PeerConfig::load_for_write(id).unwrap(), expected);
+        assert_eq!(fs::read(PeerConfig::path(sibling)).unwrap(), sibling_bytes);
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        NEW_STORED_PEER_CONFIG.lock().unwrap().remove(id);
+        PeerConfig::forget_password(id).unwrap();
+        let unchanged_inode = std::os::unix::fs::MetadataExt::ino(&before)
+            == std::os::unix::fs::MetadataExt::ino(&fs::metadata(&path).unwrap());
+        let unmarked = !NEW_STORED_PEER_CONFIG.lock().unwrap().contains(id);
+        println!("OPTION_COMMIT_PEER_FORGET=observed kind=repeat both_cleared=true settings_preserved=true sibling_preserved=true unchanged_inode={unchanged_inode} no_change_mark={unmarked}");
+        assert_eq!(fs::read(&path).unwrap(), original);
+        assert!(unchanged_inode && unmarked);
+    });
+}
+
+#[test]
+fn peer_forget_missing_record_does_not_create_a_peer() {
+    in_private_process("config::option_tests::peer_forget_missing_record_does_not_create_a_peer", |_| {
+        let id = "peer-forget-missing";
+        let path = PeerConfig::path(id);
+        assert!(!path.exists());
+        PeerConfig::forget_password(id).unwrap();
+        let absent = !path.exists();
+        println!("OPTION_COMMIT_PEER_FORGET=observed kind=missing absent={absent}");
+        assert!(absent);
+    });
+}
+
+#[test]
 fn peer_removal_permission_failure_is_reported_and_retryable() {
     in_private_process("config::option_tests::peer_removal_permission_failure_is_reported_and_retryable", |_| {
         let id = "peer-removal-permission";

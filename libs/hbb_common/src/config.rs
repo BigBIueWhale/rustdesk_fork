@@ -3423,6 +3423,14 @@ impl PeerConfig {
         store_path(path.to_path_buf(), config)
     }
 
+    pub fn forget_password(id: &str) -> crate::ResultType<()> {
+        let mut config = Self::load(id);
+        config.password.clear();
+        config.password_prs.clear();
+        crate::allow_err!(config.store(id));
+        Ok(())
+    }
+
     pub fn remove(id: &str) -> crate::ResultType<()> {
         match fs::remove_file(Self::path(id)) {
             Ok(()) => Ok(()),

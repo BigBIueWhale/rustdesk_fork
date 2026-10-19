@@ -3193,6 +3193,10 @@ run_focused_rust_tests() {
                 config::option_tests::peer_removal_missing_file_is_idempotent
                 config::option_tests::peer_removal_deletes_only_the_selected_file_and_allows_repeat
                 config::option_tests::peer_removal_unlinks_a_symlink_without_removing_its_target
+                config::option_tests::peer_forget_write_failure_is_reported_and_retryable
+                config::option_tests::peer_forget_unreadable_source_refuses_without_replacing_settings
+                config::option_tests::peer_forget_clears_both_credentials_preserves_settings_and_is_idempotent
+                config::option_tests::peer_forget_missing_record_does_not_create_a_peer
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then

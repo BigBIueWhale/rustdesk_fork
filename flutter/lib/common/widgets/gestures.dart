@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/widgets.dart';
 
 enum GestureState {
   none,
@@ -135,6 +134,38 @@ class CustomTouchGestureRecognizer extends ScaleGestureRecognizer {
   }
 }
 
+enum _HoldDragPhase { firstDown, waitingForSecond, secondDown, resolving, dragging }
+
+class _HoldDragPointer {
+  _HoldDragPointer(this.down, this.entry);
+
+  final PointerDownEvent down;
+  final GestureArenaEntry entry;
+  bool tracking = true;
+  bool held = false;
+  bool resolved = false;
+}
+
+class _HoldDragSequence {
+  _HoldDragSequence(this.first);
+
+  final _HoldDragPointer first;
+  _HoldDragPointer? second;
+  _HoldDragPhase phase = _HoldDragPhase.firstDown;
+  Timer? minimumTimer;
+  Timer? deadline;
+  bool minimumElapsed = false;
+
+  List<_HoldDragPointer> get pointers => [first, if (second != null) second!];
+
+  void cancelTimers() {
+    minimumTimer?.cancel();
+    minimumTimer = null;
+    deadline?.cancel();
+    deadline = null;
+  }
+}
+
 class HoldTapMoveGestureRecognizer extends GestureRecognizer {
   HoldTapMoveGestureRecognizer({
     Object? debugOwner,
@@ -150,257 +181,228 @@ class HoldTapMoveGestureRecognizer extends GestureRecognizer {
   GestureDragCancelCallback? onHoldDragCancel;
   GestureDragEndCallback? onHoldDragEnd;
 
-  bool _isStart = false;
-
-  Timer? _firstTapUpTimer;
-  Timer? _secondTapDownTimer;
-  _TapTracker? _firstTap;
-  _TapTracker? _secondTap;
-
-  PointerDownEvent? _lastPointerDownEvent;
-
-  final Map<int, _TapTracker> _trackers = <int, _TapTracker>{};
+  _HoldDragSequence? _sequence;
+  bool _disposed = false;
+  bool _finishing = false;
 
   @override
-  bool isPointerAllowed(PointerDownEvent event) {
-    if (_firstTap == null) {
-      switch (event.buttons) {
-        case kPrimaryButton:
-          if (onHoldDragStart == null &&
-              onHoldDragUpdate == null &&
-              onHoldDragCancel == null &&
-              onHoldDragEnd == null) {
-            return false;
-          }
-          break;
-        default:
-          return false;
-      }
-    }
-    return super.isPointerAllowed(event);
-  }
+  bool isPointerAllowed(PointerDownEvent event) =>
+      !_disposed && !_finishing && event.buttons == kPrimaryButton &&
+      (onHoldDragStart != null || onHoldDragUpdate != null ||
+          onHoldDragDown != null || onHoldDragCancel != null ||
+          onHoldDragEnd != null) &&
+      super.isPointerAllowed(event);
 
   @override
   void addAllowedPointer(PointerDownEvent event) {
-    if (_firstTap != null) {
-      if (!_firstTap!.isWithinGlobalTolerance(event, kDoubleTapSlop)) {
-        // Ignore out-of-bounds second taps.
-        return;
-      } else if (!_firstTap!.hasElapsedMinTime() ||
-          !_firstTap!.hasSameButton(event)) {
-        // Restart when the second tap is too close to the first (touch screens
-        // often detect touches intermittently), or when buttons mismatch.
-        _reset();
-        return _trackTap(event);
-      } else if (onHoldDragDown != null) {
-        invokeCallback<void>(
-            'onHoldDragDown',
-            () => onHoldDragDown!(DragDownDetails(
-                globalPosition: event.position,
-                localPosition: event.localPosition)));
-      }
+    if (_disposed || _finishing) return;
+    final sequence = _sequence;
+    if (sequence == null) {
+      _startFirstTap(event);
+      return;
     }
-    _trackTap(event);
+    if (sequence.phase != _HoldDragPhase.waitingForSecond) {
+      _finish(sequence);
+      return;
+    }
+    if ((event.position - sequence.first.down.position).distance > kDoubleTapSlop) {
+      return;
+    }
+    if (!sequence.minimumElapsed || event.kind != sequence.first.down.kind) {
+      _finish(sequence);
+      if (!_disposed && !_finishing && _sequence == null) _startFirstTap(event);
+      return;
+    }
+
+    sequence.deadline?.cancel();
+    final second = _track(event);
+    sequence.second = second;
+    sequence.phase = _HoldDragPhase.secondDown;
+    _hold(second);
+    sequence.deadline = Timer(kDoubleTapTimeout, () => _activate(sequence));
+    final down = onHoldDragDown;
+    if (down != null) {
+      invokeCallback<void>('onHoldDragDown', () => down(DragDownDetails(
+          globalPosition: event.position, localPosition: event.localPosition)));
+    }
   }
 
-  void _trackTap(PointerDownEvent event) {
-    _stopFirstTapUpTimer();
-    _stopSecondTapDownTimer();
-    final _TapTracker tracker = _TapTracker(
-      event: event,
-      entry: GestureBinding.instance.gestureArena.add(event.pointer, this),
-      doubleTapMinTime: kDoubleTapMinTime,
-      gestureSettings: gestureSettings,
-    );
-    _trackers[event.pointer] = tracker;
-    _lastPointerDownEvent = event;
-    tracker.startTrackingPointer(_handleEvent, event.transform);
+  _HoldDragPointer _track(PointerDownEvent event) {
+    final pointer = _HoldDragPointer(event,
+        GestureBinding.instance.gestureArena.add(event.pointer, this));
+    GestureBinding.instance.pointerRouter.addRoute(
+        event.pointer, _handleEvent, event.transform);
+    return pointer;
+  }
+
+  void _startFirstTap(PointerDownEvent event) {
+    final sequence = _HoldDragSequence(_track(event));
+    _sequence = sequence;
+    sequence.minimumTimer = Timer(kDoubleTapMinTime, () {
+      if (!identical(_sequence, sequence)) return;
+      sequence.minimumTimer = null;
+      sequence.minimumElapsed = true;
+    });
+  }
+
+  void _hold(_HoldDragPointer pointer) {
+    pointer.held = true;
+    GestureBinding.instance.gestureArena.hold(pointer.down.pointer);
+  }
+
+  void _release(_HoldDragPointer pointer) {
+    if (!pointer.held) return;
+    pointer.held = false;
+    GestureBinding.instance.gestureArena.release(pointer.down.pointer);
+  }
+
+  void _stopTracking(_HoldDragPointer pointer) {
+    if (!pointer.tracking) return;
+    pointer.tracking = false;
+    GestureBinding.instance.pointerRouter.removeRoute(
+        pointer.down.pointer, _handleEvent);
+  }
+
+  _HoldDragPointer? _find(_HoldDragSequence sequence, int pointer) {
+    for (final candidate in sequence.pointers) {
+      if (candidate.down.pointer == pointer) return candidate;
+    }
+    return null;
   }
 
   void _handleEvent(PointerEvent event) {
-    final _TapTracker tracker = _trackers[event.pointer]!;
-    if (event is PointerUpEvent) {
-      if (_firstTap == null && _secondTap == null) {
-        _registerFirstTap(tracker);
-      } else if (_secondTap != null) {
-        if (event.pointer == _secondTap!.pointer) {
-          if (onHoldDragEnd != null) {
-            onHoldDragEnd!(DragEndDetails());
-            _secondTap = null;
-            _isStart = false;
-          }
-        }
+    final sequence = _sequence;
+    if (sequence == null) return;
+    final pointer = _find(sequence, event.pointer);
+    if (pointer == null || !pointer.tracking) return;
+    if (event is PointerCancelEvent) {
+      _finish(sequence);
+    } else if (event is PointerUpEvent) {
+      if (sequence.phase == _HoldDragPhase.firstDown) {
+        _hold(pointer);
+        _stopTracking(pointer);
+        sequence.phase = _HoldDragPhase.waitingForSecond;
+        sequence.deadline = Timer(kDoubleTapTimeout, () => _finish(sequence));
       } else {
-        _reject(tracker);
-      }
-    } else if (event is PointerDownEvent) {
-      if (_firstTap != null && _secondTap == null) {
-        _registerSecondTap(tracker);
+        _finish(sequence);
       }
     } else if (event is PointerMoveEvent) {
-      if (!tracker.isWithinGlobalTolerance(event, kDoubleTapTouchSlop)) {
-        if (_firstTap != null && _firstTap!.pointer == event.pointer) {
-          // first tap move
-          _reject(tracker);
-        } else if (_secondTap != null && _secondTap!.pointer == event.pointer) {
-          // debugPrint("_secondTap move");
-          // second tap move
-          if (!_isStart) {
-            _resolve();
-          }
-          if (onHoldDragUpdate != null) {
-            onHoldDragUpdate!(DragUpdateDetails(
-                globalPosition: event.position,
-                localPosition: event.localPosition,
-                delta: event.delta));
-          }
-        }
+      if (event.buttons != pointer.down.buttons) {
+        _finish(sequence);
+        return;
       }
-    } else if (event is PointerCancelEvent) {
-      _reject(tracker);
+      final moved =
+          (event.position - pointer.down.position).distance > kDoubleTapTouchSlop;
+      if (sequence.phase == _HoldDragPhase.firstDown) {
+        if (moved) _finish(sequence);
+        return;
+      }
+      if (sequence.phase == _HoldDragPhase.secondDown && moved) {
+        _activate(sequence);
+      }
+      if (!identical(_sequence, sequence) ||
+          sequence.phase != _HoldDragPhase.dragging) return;
+      final update = onHoldDragUpdate;
+      if (update != null) {
+        invokeCallback<void>('onHoldDragUpdate', () => update(DragUpdateDetails(
+            sourceTimeStamp: event.timeStamp,
+            globalPosition: event.position,
+            localPosition: event.localPosition,
+            delta: event.delta)));
+      }
+    }
+  }
+
+  void _activate(_HoldDragSequence sequence) {
+    if (!identical(_sequence, sequence) ||
+        sequence.phase != _HoldDragPhase.secondDown) return;
+    sequence.cancelTimers();
+    sequence.phase = _HoldDragPhase.resolving;
+    for (final pointer in sequence.pointers) {
+      if (!pointer.resolved) {
+        pointer.resolved = true;
+        pointer.entry.resolve(GestureDisposition.accepted);
+      }
+      if (!identical(_sequence, sequence)) return;
+    }
+    for (final pointer in sequence.pointers) {
+      _release(pointer);
+      if (!identical(_sequence, sequence)) return;
+    }
+    sequence.phase = _HoldDragPhase.dragging;
+    final start = onHoldDragStart;
+    if (start != null) {
+      final down = sequence.second!.down;
+      invokeCallback<void>('onHoldDragStart', () => start(DragStartDetails(
+          sourceTimeStamp: down.timeStamp,
+          kind: down.kind,
+          globalPosition: down.position,
+          localPosition: down.localPosition)));
     }
   }
 
   @override
-  void acceptGesture(int pointer) {}
+  void acceptGesture(int pointer) {
+    final sequence = _sequence;
+    if (sequence != null) _find(sequence, pointer)?.resolved = true;
+  }
 
   @override
   void rejectGesture(int pointer) {
-    _TapTracker? tracker = _trackers[pointer];
-    // If tracker isn't in the list, check if this is the first tap tracker
-    if (tracker == null && _firstTap != null && _firstTap!.pointer == pointer) {
-      tracker = _firstTap;
-    }
-    // If tracker is still null, we rejected ourselves already
-    if (tracker != null) {
-      _reject(tracker);
-    }
+    final sequence = _sequence;
+    if (sequence == null) return;
+    final rejected = _find(sequence, pointer);
+    if (rejected == null) return;
+    rejected.resolved = true;
+    _finish(sequence);
   }
 
-  void _resolve() {
-    _stopSecondTapDownTimer();
-    _firstTap?.entry.resolve(GestureDisposition.accepted);
-    _secondTap?.entry.resolve(GestureDisposition.accepted);
-    _isStart = true;
-    // TODO start details
-    if (onHoldDragStart != null) {
-      onHoldDragStart!(DragStartDetails(
-        kind: _lastPointerDownEvent?.kind,
-      ));
+  void _finish(_HoldDragSequence sequence) {
+    if (!identical(_sequence, sequence)) return;
+    final dragging = sequence.phase == _HoldDragPhase.dragging;
+    final pendingSecond = sequence.second != null;
+    _finishing = true;
+    _sequence = null;
+    sequence.cancelTimers();
+    final pointers = sequence.pointers;
+    for (final pointer in pointers) {
+      _stopTracking(pointer);
     }
-  }
-
-  void _reject(_TapTracker tracker) {
     try {
-      _checkCancel();
-      _isStart = false;
-      _trackers.remove(tracker.pointer);
-      tracker.entry.resolve(GestureDisposition.rejected);
-      _freezeTracker(tracker);
-      _reset();
-    } catch (e) {
-      debugPrint("Failed to _reject:$e");
+      for (final pointer in pointers) {
+        if (!pointer.resolved) {
+          pointer.resolved = true;
+          pointer.entry.resolve(GestureDisposition.rejected);
+        }
+      }
+    } finally {
+      for (final pointer in pointers) {
+        _release(pointer);
+      }
+      _finishing = false;
+    }
+    if (dragging) {
+      final end = onHoldDragEnd;
+      if (end != null) {
+        invokeCallback<void>('onHoldDragEnd', () => end(DragEndDetails()));
+      }
+    } else if (pendingSecond) {
+      final cancel = onHoldDragCancel;
+      if (cancel != null) invokeCallback<void>('onHoldDragCancel', cancel);
     }
   }
 
   @override
   void dispose() {
-    _reset();
+    if (_disposed) return;
+    _disposed = true;
+    final sequence = _sequence;
+    if (sequence != null) _finish(sequence);
     super.dispose();
   }
 
-  void _reset() {
-    _isStart = false;
-    // debugPrint("reset");
-    _stopFirstTapUpTimer();
-    _stopSecondTapDownTimer();
-    if (_firstTap != null) {
-      if (_trackers.isNotEmpty) {
-        _checkCancel();
-      }
-      // Note, order is important below in order for the resolve -> reject logic
-      // to work properly.
-      final _TapTracker tracker = _firstTap!;
-      _firstTap = null;
-      _reject(tracker);
-      GestureBinding.instance.gestureArena.release(tracker.pointer);
-
-      if (_secondTap != null) {
-        final _TapTracker tracker = _secondTap!;
-        _secondTap = null;
-        _reject(tracker);
-        GestureBinding.instance.gestureArena.release(tracker.pointer);
-      }
-    }
-    _firstTap = null;
-    _secondTap = null;
-    _clearTrackers();
-  }
-
-  void _registerFirstTap(_TapTracker tracker) {
-    _startFirstTapUpTimer();
-    GestureBinding.instance.gestureArena.hold(tracker.pointer);
-    // Note, order is important below in order for the clear -> reject logic to
-    // work properly.
-    _freezeTracker(tracker);
-    _trackers.remove(tracker.pointer);
-    _firstTap = tracker;
-  }
-
-  void _registerSecondTap(_TapTracker tracker) {
-    if (_firstTap != null) {
-      _stopFirstTapUpTimer();
-      _freezeTracker(_firstTap!);
-      _firstTap = null;
-    }
-
-    _startSecondTapDownTimer();
-    GestureBinding.instance.gestureArena.hold(tracker.pointer);
-
-    _secondTap = tracker;
-
-    // TODO
-  }
-
-  void _clearTrackers() {
-    _trackers.values.toList().forEach(_reject);
-    assert(_trackers.isEmpty);
-  }
-
-  void _freezeTracker(_TapTracker tracker) {
-    tracker.stopTrackingPointer(_handleEvent);
-  }
-
-  void _startFirstTapUpTimer() {
-    _firstTapUpTimer ??= Timer(kDoubleTapTimeout, _reset);
-  }
-
-  void _startSecondTapDownTimer() {
-    _secondTapDownTimer ??= Timer(kDoubleTapTimeout, _resolve);
-  }
-
-  void _stopFirstTapUpTimer() {
-    if (_firstTapUpTimer != null) {
-      _firstTapUpTimer!.cancel();
-      _firstTapUpTimer = null;
-    }
-  }
-
-  void _stopSecondTapDownTimer() {
-    if (_secondTapDownTimer != null) {
-      _secondTapDownTimer!.cancel();
-      _secondTapDownTimer = null;
-    }
-  }
-
-  void _checkCancel() {
-    if (onHoldDragCancel != null) {
-      invokeCallback<void>('onHoldDragCancel', onHoldDragCancel!);
-    }
-  }
-
   @override
-  String get debugDescription => 'double tap';
+  String get debugDescription => 'hold drag';
 }
 
 class DoubleFinerTapGestureRecognizer extends GestureRecognizer {
@@ -536,71 +538,4 @@ class DoubleFinerTapGestureRecognizer extends GestureRecognizer {
 
   @override
   String get debugDescription => 'two finger tap';
-}
-
-/// TapTracker helps track individual tap sequences as part of a
-/// larger gesture.
-class _TapTracker {
-  _TapTracker({
-    required PointerDownEvent event,
-    required this.entry,
-    required Duration doubleTapMinTime,
-    required this.gestureSettings,
-  })  : pointer = event.pointer,
-        _initialGlobalPosition = event.position,
-        initialButtons = event.buttons,
-        _doubleTapMinTimeCountdown =
-            _CountdownZoned(duration: doubleTapMinTime);
-
-  final DeviceGestureSettings? gestureSettings;
-  final int pointer;
-  final GestureArenaEntry entry;
-  final Offset _initialGlobalPosition;
-  final int initialButtons;
-  final _CountdownZoned _doubleTapMinTimeCountdown;
-
-  bool _isTrackingPointer = false;
-
-  void startTrackingPointer(PointerRoute route, Matrix4? transform) {
-    if (!_isTrackingPointer) {
-      _isTrackingPointer = true;
-      GestureBinding.instance.pointerRouter.addRoute(pointer, route, transform);
-    }
-  }
-
-  void stopTrackingPointer(PointerRoute route) {
-    if (_isTrackingPointer) {
-      _isTrackingPointer = false;
-      GestureBinding.instance.pointerRouter.removeRoute(pointer, route);
-    }
-  }
-
-  bool isWithinGlobalTolerance(PointerEvent event, double tolerance) {
-    final Offset offset = event.position - _initialGlobalPosition;
-    return offset.distance <= tolerance;
-  }
-
-  bool hasElapsedMinTime() {
-    return _doubleTapMinTimeCountdown.timeout;
-  }
-
-  bool hasSameButton(PointerDownEvent event) {
-    return event.buttons == initialButtons;
-  }
-}
-
-/// CountdownZoned tracks whether the specified duration has elapsed since
-/// creation, honoring [Zone].
-class _CountdownZoned {
-  _CountdownZoned({required Duration duration}) {
-    Timer(duration, _onTimeout);
-  }
-
-  bool _timeout = false;
-
-  bool get timeout => _timeout;
-
-  void _onTimeout() {
-    _timeout = true;
-  }
 }

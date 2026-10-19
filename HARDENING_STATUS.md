@@ -3011,6 +3011,44 @@ persistence; and Windows/macOS/Android/iOS/browser execution remain OPEN.
 All fifteen installed credential actions, R-S0, latency/soak, cold artifacts,
 independent reproduction, external review and release acceptance remain OPEN.
 
+**Custom quality/FPS — rendered editor and owned Close corrected; native/page acceptance OPEN.**
+Product `32e23b64` replaces the build-local reactive values and unowned
+debouncers with one keyed stateful editor. Each field owns a bounded latest draft,
+one timer and one admitted typed save. Rebuilds preserve edits and refresh current
+callbacks; success adopts effective finite/in-range readback, while failure/null
+retains visible Retry. Fixed quality also disables More; hidden/replaced fields
+cancel queued dispatch and retire prior-generation completion effects.
+
+The session editor initializes the counterpart on its first edit without replacing
+a newer draft. Close blocks duplicate admission, drains both fields (including a
+hidden admitted FPS write), flushes latest edits and closes only after success.
+Failure retains the editor for retry; removal retires timers, callbacks and late
+Close effects. The dialog now uses its exact close capability instead of dismissAll.
+Its source adapter checks exact session/client ownership around asynchronous calls
+and verifies requested integer values through local readback. Defaults consume the
+effective value from their existing fallible writer. Local session readback proves
+neither durable peer storage nor remote acknowledgement; those native outcomes
+remain OPEN. Rust/config/IPC/FFI/dependencies and the trackpad control are unchanged.
+
+The Linux Flutter baseline executes 67 cases: 59 pass, including all prior 56
+and three quality controls; eight reproduce rebuild, retired work, overlap,
+missing failure/readback, fixed-More, hidden-FPS and replacement errors.
+It adds only injected label/layout arguments to the old renderer for confinement.
+The correction passes all 73 cases in 272 outer seconds. The same eleven
+baseline cases plus six new Close/counterpart/bounds cases render the actual editor
+with controlled futures, disposal, parent/key replacement and narrow mobile layout.
+The construction adapter changes to the typed widget; the baseline case bodies
+are retained. Actual session/default native delivery, full settings/dialog routing,
+remote effects, peer persistence and installed/platform acceptance remain unproved.
+
+Exact source snapshots, injection provenance, actual baseline JSON, corrected
+guest-parser results, pinned inputs, complete endpoint records and joined bounded-RAM
+cleanup are retained in `.harness-state/verifier-vm/image-quality-32e23b64.json`.
+Full settings/native/peer integration, cross-process/restart/global writers,
+all fifteen credential actions, R-S0, R-F5 impairment/soak, cold artifacts,
+independent reproduction, external review, release, document cleanup and parked
+work remain OPEN.
+
 **Trackpad speed — rendered Flutter control corrected; full page/native effects OPEN.**
 Product `51669340` replaces the initial-callback, fire-and-forget debouncer
 with a typed effective-value save owned by the control. One retained timer and
@@ -3038,8 +3076,8 @@ Rust/config/FFI/IPC and the session-dialog caller are unchanged.
 Exact sources, cases, baseline JSON, raw results, pinned inputs, complete endpoint
 records, failed-root inventory and joined bounded-RAM cleanup are retained in
 `.harness-state/verifier-vm/trackpad-speed-51669340.json`.
-Custom image-quality/FPS debounce/draft ownership, full settings interaction,
-cross-process/restart and other platforms remain OPEN. All fifteen credential
+Full settings interaction, cross-process/restart and other platforms remain OPEN.
+All fifteen credential
 actions, R-S0, R-F5 impairment/soak, cold artifacts, independent reproduction,
 external review, release and parked work remain OPEN.
 

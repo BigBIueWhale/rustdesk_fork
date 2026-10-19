@@ -3069,6 +3069,13 @@ run_focused_rust_tests() {
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             required_tests=(
+                fs::tests::directory_entry_link_directory_survives_parent_rename
+                fs::tests::directory_entry_link_file_ignores_replacement_directory
+                fs::tests::directory_entry_link_directory_ignores_replacement_file
+                fs::tests::directory_entry_link_broken_ignores_replacement_directory
+                fs::tests::directory_entry_link_root_alias_preserves_presentation_path
+                fs::tests::directory_entry_link_non_directory_roots_refuse_without_io
+                fs::tests::directory_entry_link_contexts_retire_their_native_handles
                 fs::tests::directory_entry_parent_rename_retains_its_live_file
                 fs::tests::directory_entry_parent_replacement_cannot_supply_a_different_type
                 fs::tests::directory_entry_parent_symlink_cannot_supply_foreign_metadata
@@ -6050,7 +6057,7 @@ PY
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            [ "$tests_passed" -eq 24 ] || fail 'file metadata test total differs'
+            [ "$tests_passed" -eq 31 ] || fail 'file metadata test total differs'
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_refuses_metadata_permission_failure|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^DIRECTORY_ENTRY_' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'

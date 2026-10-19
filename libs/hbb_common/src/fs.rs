@@ -260,21 +260,60 @@ fn read_dir_entries_with_usage(
         }
         return Ok(entries);
     }
-    read_dir_entries(path.read_dir()?, prefix, include_hidden, budget, usage)
+    read_dir_entries(DirectoryEntries::open(path)?, prefix, include_hidden, budget, usage)
+}
+
+struct DirectoryContext {
+    original_path: PathBuf,
+}
+
+impl DirectoryContext {
+    fn open(path: &Path) -> std::io::Result<Self> {
+        Ok(Self { original_path: path.to_owned() })
+    }
+
+    fn read_dir(&self) -> std::io::Result<std::fs::ReadDir> {
+        self.original_path.read_dir()
+    }
+
+    fn entry_path(&self, name: &std::ffi::OsStr) -> PathBuf {
+        self.original_path.join(name)
+    }
+}
+
+struct DirectoryEntries<I> {
+    entries: I,
+    context: DirectoryContext,
+}
+
+impl DirectoryEntries<std::fs::ReadDir> {
+    fn open(path: &Path) -> std::io::Result<Self> {
+        let context = DirectoryContext::open(path)?;
+        let entries = context.read_dir()?;
+        Ok(Self { entries, context })
+    }
+}
+
+#[cfg(test)]
+impl<I> DirectoryEntries<I> {
+    fn map_entries<J>(self, map: impl FnOnce(I) -> J) -> DirectoryEntries<J> {
+        DirectoryEntries { entries: map(self.entries), context: self.context }
+    }
 }
 
 fn read_dir_entries(
-    directory: impl IntoIterator<Item = std::io::Result<std::fs::DirEntry>>,
+    directory: DirectoryEntries<impl IntoIterator<Item = std::io::Result<std::fs::DirEntry>>>,
     prefix: &Path,
     include_hidden: bool,
     budget: FileEnumerationBudget,
     usage: &mut FileEnumerationUsage,
 ) -> ResultType<Vec<FileEntry>> {
+    let DirectoryEntries { entries: directory, context } = directory;
     let mut entries = Vec::new();
     for entry in directory {
         let entry = entry?;
-        let p = entry.path();
         let file_name = entry.file_name();
+        let p = context.entry_path(&file_name);
         let name = file_name
             .to_str()
             .ok_or_else(|| anyhow!("file name is not valid UTF-8"))?;
@@ -324,7 +363,7 @@ fn read_dir_entries(
             } else if meta.is_file() {
                 (FileType::File.into(), meta.len())
             } else {
-                bail!("unsupported file type: {}", p.display());
+                bail!("unsupported file type: {}", context.original_path.join(&file_name).display());
             }
         };
         let modified_time = meta.modified()?.duration_since(UNIX_EPOCH)?.as_secs();
@@ -9811,6 +9850,154 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "linux")]
+    fn assert_directory_entry_link_context(scenario: &str) {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TestTempDir::new("rustdesk_directory_link_context");
+        let source = tmp.join("source");
+        let retained = tmp.join("retained");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir(tmp.join("target-dir")).unwrap();
+        std::fs::write(tmp.join("target-file"), b"kept").unwrap();
+        let (target, expected) = match scenario {
+            "renamed" | "directory" => ("../target-dir", FileType::DirLink),
+            "file" => ("../target-file", FileType::FileLink),
+            "broken" => ("../missing", FileType::FileLink),
+            _ => panic!("unknown link context fixture"),
+        };
+        symlink(target, source.join("link")).unwrap();
+        let entries = DirectoryEntries::open(&source).unwrap()
+            .map_entries(|entries| entries.collect::<Vec<_>>());
+        std::fs::rename(&source, &retained).unwrap();
+        if scenario != "renamed" {
+            std::fs::create_dir(&source).unwrap();
+            if scenario == "directory" {
+                std::fs::write(source.join("link"), b"foreign").unwrap();
+            } else {
+                std::fs::create_dir(source.join("link")).unwrap();
+            }
+        }
+        let mut usage = FileEnumerationUsage::default();
+        let listed = read_dir_entries(entries, Path::new(""), true,
+            FileEnumerationBudget::for_max_entries(8), &mut usage).unwrap();
+        assert_eq!(listed.len(), 1);
+        println!("DIRECTORY_ENTRY_LINK=observed scenario={scenario} type={:?} charged={}",
+            listed[0].entry_type.enum_value(), usage.entries);
+        assert_eq!(listed[0].name, "link");
+        assert_eq!(listed[0].entry_type.enum_value(), Ok(expected));
+        assert_eq!(listed[0].size, 0);
+        assert_eq!(usage.entries, 1);
+        assert_eq!(std::fs::read_link(retained.join("link")).unwrap(), Path::new(target));
+        assert_eq!(std::fs::read(tmp.join("target-file")).unwrap(), b"kept");
+        assert!(tmp.join("target-dir").is_dir());
+        assert!(!tmp.join("missing").exists());
+        if scenario == "directory" {
+            assert_eq!(std::fs::read(source.join("link")).unwrap(), b"foreign");
+        } else if scenario != "renamed" { assert!(source.join("link").is_dir()); }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn directory_entry_link_directory_survives_parent_rename() {
+        assert_directory_entry_link_context("renamed");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn directory_entry_link_file_ignores_replacement_directory() {
+        assert_directory_entry_link_context("file");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn directory_entry_link_directory_ignores_replacement_file() {
+        assert_directory_entry_link_context("directory");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn directory_entry_link_broken_ignores_replacement_directory() {
+        assert_directory_entry_link_context("broken");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn directory_entry_link_root_alias_preserves_presentation_path() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TestTempDir::new("rustdesk_directory_link_alias");
+        let source = tmp.join("source");
+        let alias = tmp.join("alias");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir(tmp.join("target-dir")).unwrap();
+        std::fs::write(tmp.join("target-file"), b"kept").unwrap();
+        std::fs::write(source.join(".hidden"), b"hidden").unwrap();
+        symlink(tmp.join("target-dir"), source.join("directory")).unwrap();
+        symlink(tmp.join("target-file"), source.join("file")).unwrap();
+        symlink(tmp.join("missing"), source.join("broken")).unwrap();
+        symlink("source", &alias).unwrap();
+        let listed = read_dir(&alias, false).unwrap();
+        assert_eq!(listed.path, get_string(&alias));
+        assert_eq!(listed.entries.len(), 3);
+        for (name, kind) in [("directory", FileType::DirLink),
+            ("file", FileType::FileLink), ("broken", FileType::FileLink)] {
+            let entry = listed.entries.iter().find(|entry| entry.name == name).unwrap();
+            assert_eq!(entry.entry_type.enum_value(), Ok(kind));
+            assert_eq!(entry.size, 0);
+        }
+        assert_eq!(std::fs::read(tmp.join("target-file")).unwrap(), b"kept");
+        assert_eq!(std::fs::read(source.join(".hidden")).unwrap(), b"hidden");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn directory_entry_link_non_directory_roots_refuse_without_io() {
+        let tmp = TestTempDir::new("rustdesk_directory_link_root_type");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let file = tmp.join("file");
+        let fifo = tmp.join("fifo");
+        std::fs::write(&file, b"kept").unwrap();
+        let name = cstring_from_os_str(fifo.as_os_str(), "fixture FIFO").unwrap();
+        assert_eq!(unsafe { crate::libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        for path in [&file, &fifo] {
+            let error = DirectoryEntries::open(path).err().expect("only directories are admitted");
+            assert_eq!(error.raw_os_error(), Some(crate::libc::ENOTDIR));
+        }
+        assert_eq!(std::fs::read(file).unwrap(), b"kept");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn directory_entry_link_contexts_retire_their_native_handles() {
+        use std::os::unix::fs::MetadataExt;
+
+        let tmp = TestTempDir::new("rustdesk_directory_link_handles");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        std::fs::write(tmp.join("one"), b"one").unwrap();
+        std::fs::write(tmp.join("two"), b"two").unwrap();
+        let metadata = std::fs::metadata(&tmp.path).unwrap();
+        let handles = || std::fs::read_dir("/proc/self/fd").unwrap().filter(|entry| {
+            match std::fs::metadata(entry.as_ref().unwrap().path()) {
+                Ok(current) => (current.dev(), current.ino()) == (metadata.dev(), metadata.ino()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                Err(error) => panic!("cannot observe directory handle: {error}"),
+            }
+        }).count();
+        assert_eq!(handles(), 0);
+        for limit in [1, 8, 1, 8] {
+            let entries = DirectoryEntries::open(&tmp.path).unwrap()
+                .map_entries(|entries| entries.collect::<Vec<_>>());
+            assert!((1..=2).contains(&handles()));
+            let mut usage = FileEnumerationUsage::default();
+            let result = read_dir_entries(entries, Path::new(""), true,
+                FileEnumerationBudget::for_max_entries(limit), &mut usage);
+            assert_eq!(result.is_ok(), limit == 8);
+            if let Err(error) = result { assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED); }
+            assert_eq!(handles(), 0);
+        }
+    }
+
     #[cfg(all(target_os = "linux", not(target_env = "musl")))]
     fn assert_directory_entry_parent_metadata(scenario: &str) {
         use std::os::unix::fs::symlink;
@@ -9823,9 +10010,11 @@ mod tests {
         std::fs::write(source.join("entry"), b"original").unwrap();
         filetime::set_file_mtime(source.join("entry"),
             filetime::FileTime::from_unix_time(1_600_000_000, 0)).unwrap();
-        let entries = std::fs::read_dir(&source).unwrap()
-            .collect::<std::io::Result<Vec<_>>>().unwrap();
-        assert_eq!(entries.len(), 1);
+        let entries = DirectoryEntries::open(&source).unwrap().map_entries(|entries| {
+            entries.collect::<std::io::Result<Vec<_>>>().unwrap()
+                .into_iter().map(Ok).collect::<Vec<_>>()
+        });
+        assert_eq!(entries.entries.len(), 1);
 
         let expected = match scenario {
             "fresh" => {
@@ -9860,7 +10049,7 @@ mod tests {
             _ => panic!("unknown parent fixture scenario"),
         };
         let mut usage = FileEnumerationUsage::default();
-        let listed = read_dir_entries(entries.into_iter().map(Ok), Path::new(""), true,
+        let listed = read_dir_entries(entries, Path::new(""), true,
             FileEnumerationBudget::for_max_entries(8), &mut usage)
             .expect("read metadata from the enumerated parent");
         println!("DIRECTORY_ENTRY_PARENT=observed scenario={scenario} listed={} charged={} fields={:?}",
@@ -9924,7 +10113,7 @@ mod tests {
 
     fn directory_entry_fixture(
         directory: bool,
-    ) -> (TestTempDir, Vec<std::io::Result<std::fs::DirEntry>>) {
+    ) -> (TestTempDir, DirectoryEntries<Vec<std::io::Result<std::fs::DirEntry>>>) {
         let tmp = TestTempDir::new("rustdesk_directory_entry");
         std::fs::create_dir_all(&tmp.path).expect("create entry parent");
         if directory {
@@ -9933,21 +10122,23 @@ mod tests {
             std::fs::write(tmp.join("a-vanished"), b"old").expect("create disappearing file");
         }
         std::fs::write(tmp.join("b-visible"), b"retained").expect("create visible sibling");
-        let mut entries = std::fs::read_dir(&tmp.path)
-            .expect("enumerate the real parent")
-            .collect::<std::io::Result<Vec<_>>>()
-            .expect("retain its real directory entries");
-        entries.sort_by_key(std::fs::DirEntry::file_name);
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].file_name(), "a-vanished");
-        if directory {
-            std::fs::remove_dir(entries[0].path()).expect("remove the enumerated directory");
-        } else {
-            std::fs::remove_file(entries[0].path()).expect("remove the enumerated file");
-        }
-        assert_eq!(std::fs::symlink_metadata(entries[0].path()).unwrap_err().kind(),
-            std::io::ErrorKind::NotFound);
-        (tmp, entries.into_iter().map(Ok).collect())
+        let entries = DirectoryEntries::open(&tmp.path)
+            .expect("enumerate the real parent").map_entries(|entries| {
+                let mut entries = entries.collect::<std::io::Result<Vec<_>>>()
+                    .expect("retain its real directory entries");
+                entries.sort_by_key(std::fs::DirEntry::file_name);
+                assert_eq!(entries.len(), 2);
+                assert_eq!(entries[0].file_name(), "a-vanished");
+                if directory {
+                    std::fs::remove_dir(entries[0].path()).expect("remove the enumerated directory");
+                } else {
+                    std::fs::remove_file(entries[0].path()).expect("remove the enumerated file");
+                }
+                assert_eq!(std::fs::symlink_metadata(entries[0].path()).unwrap_err().kind(),
+                    std::io::ErrorKind::NotFound);
+                entries.into_iter().map(Ok).collect()
+            });
+        (tmp, entries)
     }
 
     fn assert_directory_entry_disappearance(directory: bool) {

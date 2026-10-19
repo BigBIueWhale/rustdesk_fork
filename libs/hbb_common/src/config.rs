@@ -3424,8 +3424,11 @@ impl PeerConfig {
     }
 
     pub fn remove(id: &str) -> crate::ResultType<()> {
-        fs::remove_file(Self::path(id)).ok();
-        Ok(())
+        match fs::remove_file(Self::path(id)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
     }
 
     fn path(id: &str) -> PathBuf {

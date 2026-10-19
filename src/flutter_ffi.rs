@@ -1717,8 +1717,8 @@ pub fn main_device_name(name: String) {
     *crate::common::DEVICE_NAME.lock().unwrap() = name;
 }
 
-pub fn main_remove_peer(id: String) {
-    PeerConfig::remove(&id);
+pub fn main_remove_peer(id: String) -> Result<()> {
+    PeerConfig::remove(&id)
 }
 
 // R-R2b / R-G1 (§19): main_supported_hwdecodings (the {"h264","h265"} decode-ability query the

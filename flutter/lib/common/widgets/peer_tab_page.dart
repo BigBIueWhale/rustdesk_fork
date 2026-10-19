@@ -345,13 +345,12 @@ class _PeerTabPageState extends State<PeerTabPage>
         onTap: () {
           onSubmit() async {
             final peers = model.selectedPeers;
+            var successful = true;
             // Only the local Recent (0) and Favorites (1) tabs remain (R-G2/R-G4).
             switch (model.currentTab) {
               case 0:
-                for (var p in peers) {
-                  await bind.mainRemovePeer(id: p.id);
-                }
-                bind.mainLoadRecentPeers();
+                successful =
+                    await mainRemovePeers(peers.map((p) => p.id).toList());
                 break;
               case 1:
                 if (!await mainSetFavorites(
@@ -362,8 +361,9 @@ class _PeerTabPageState extends State<PeerTabPage>
               default:
                 break;
             }
-            gFFI.peerTabModel.setMultiSelectionMode(false);
-            showToast(translate('Successful'));
+            if (!mounted) return;
+            model.setMultiSelectionMode(false);
+            if (successful) showToast(translate('Successful'));
           }
 
           deleteConfirmDialog(onSubmit, translate('Delete'));

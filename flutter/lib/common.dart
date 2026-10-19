@@ -1698,6 +1698,38 @@ String bool2option(String option, bool b) {
   return res;
 }
 
+Future<bool> mainRemovePeers(List<String> ids,
+    {Future<void> Function(String id)? removePeer,
+    Future<void> Function()? reloadRecentPeers,
+    VoidCallback? showFailure}) async {
+  final submitted = List<String>.of(ids);
+  final remove = removePeer ?? (id) => bind.mainRemovePeer(id: id);
+  final reload = reloadRecentPeers ?? () => bind.mainLoadRecentPeers();
+  var successful = true;
+  for (final id in submitted) {
+    try {
+      await remove(id);
+    } catch (error) {
+      debugPrint('Failed to remove peer $id: $error');
+      successful = false;
+    }
+  }
+  try {
+    await reload();
+  } catch (error) {
+    debugPrint('Failed to refresh recent peers after deletion: $error');
+    successful = false;
+  }
+  if (!successful) {
+    if (showFailure != null) {
+      showFailure();
+    } else {
+      showToast(translate('Failed'));
+    }
+  }
+  return successful;
+}
+
 Future<bool> mainSetFavorites(List<String> ids, bool favorite,
     {Future<void> Function(List<String> ids, bool favorite)? writeFavorites,
     VoidCallback? showFailure}) async {

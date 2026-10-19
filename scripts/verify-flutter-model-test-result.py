@@ -599,6 +599,13 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_NAVIGATION_SUITES = {
+    "peer_removal_test.dart": {
+        "peer deletion owns its IDs and waits for each deletion and refresh",
+        "peer deletion reports a single failure and permits an identical retry",
+        "peer deletion completes the submitted batch after a partial failure",
+        "peer deletion reports a refresh failure after completed deletion",
+        "peer deletion preserves a synchronous native failure as a failed result",
+    },
     "file_rename_dialog_test.dart": {
         "rename admits one request until its exact result settles",
         "retired rename callbacks cannot admit a file operation",

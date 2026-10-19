@@ -8994,7 +8994,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_FILE_NAVIGATION_TEST_JSON
-            expected_result='suites=5 tests=75'
+            expected_result='suites=6 tests=80'
         elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
             memory=3g
             memory_bytes=3221225472
@@ -9515,7 +9515,7 @@ run_flutter_model_tests() {
                     tests=(test_probes/file_navigation_ordering_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
-                    tests=(test/file_navigation_sort_test.dart test/file_command_session_ownership_test.dart test/file_dialog_event_loop_test.dart test/file_conflict_dialog_test.dart test/file_rename_dialog_test.dart)
+                    tests=(test/file_navigation_sort_test.dart test/file_command_session_ownership_test.dart test/file_dialog_event_loop_test.dart test/file_conflict_dialog_test.dart test/file_rename_dialog_test.dart test/peer_removal_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
                     tests=(test/peer_decode_test.dart)
@@ -9885,7 +9885,7 @@ run_flutter_model_tests() {
             && [ "$(grep -Fc 'FLUTTER_FILE_NAVIGATION_BRIDGE_USE=' "$output")" -eq 1 ] \
             || fail 'file-navigation generated API publication or use differs'
         grep -E '^FLUTTER_FILE_NAVIGATION_(GENERATED|BRIDGE_USE)=' "$output"
-        printf 'FLUTTER_FILE_NAVIGATION_TESTS_VM=pass commit=%s tree=%s suites=5 tests=75 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-navigation-tests cleanup=joined\n' \
+        printf 'FLUTTER_FILE_NAVIGATION_TESTS_VM=pass commit=%s tree=%s suites=6 tests=80 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-navigation-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

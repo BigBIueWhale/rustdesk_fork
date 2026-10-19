@@ -676,8 +676,7 @@ abstract class BasePeerCard extends StatelessWidget {
         onSubmit() async {
           switch (tab) {
             case PeerTabIndex.recent:
-              await bind.mainRemovePeer(id: id);
-              bind.mainLoadRecentPeers();
+              if (!await mainRemovePeers([id])) return;
               break;
             case PeerTabIndex.fav:
               if (!await mainSetFavorites([id], false)) return;

@@ -80,6 +80,23 @@ integration/release checkpoint.
 
 ## Documentation and verification architecture
 
+The service-entry findings in Appendix C #154–#160 now describe enduring
+principal, role, lifecycle and storage-authority failures. Historical implementation
+chains, repair chronology and per-finding severity/acceptance commentary are removed;
+Git history beginning with `b31f9b20` through `9ae24cc6` retains that material.
+The seven required-disposition cells and primary R-S11af–R-S11al blocks are
+byte-identical. All other specification bytes, 411 requirement IDs, 371 numbered
+entries (including lettered entries), 36 anchor IDs and 214 links retain their
+content and order. The changed finding fragments have balanced tags.
+
+This removes 3,519 bytes from the specification. Classification, obligation mapping,
+before/after whole-document counts and joined bounded-RAM cleanup are retained
+in `.harness-state/verifier-vm/service-entry-document-role.json`.
+Product, test and verifier sources are unchanged. Whole-document role cleanup,
+all fifteen credential actions, R-S0, actual R-F5 impairment/soak and all other
+native/installed/release and parked obligations remain OPEN.
+
+
 `requirements.html` owns the normative contract; this ledger owns current state and open obligations.
 Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
 Appendix C retains vulnerability classes and required dispositions. The disclosure

@@ -2771,24 +2771,37 @@ class CanvasModel with ChangeNotifier {
 
   bool get scrollPreferenceSavePending => _scrollPreferenceSavePending;
 
-  Future<({String style, int thickness})> readScrollPreferences(
+  bool scrollPreferencesVisible({required CanvasUpdateOwner? owner}) {
+    if (!_acceptsOwner(owner)) return false;
+    final style = _preferences.viewStyle(owner!.sessionId);
+    return style == kRemoteViewStyleOriginal || style == kRemoteViewStyleCustom;
+  }
+
+  Future<({String viewStyle, String style, int thickness})> readScrollPreferences(
       {required CanvasUpdateOwner? owner}) async {
     if (!_acceptsOwner(owner)) throw StateError('Canvas owner is unavailable');
     final revision = _scrollPreferenceCommitRevision;
-    final style = await _preferences.scrollStyle(owner!.sessionId);
-    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision) {
+    final viewStyle = _preferences.viewStyle(owner!.sessionId);
+    if (![kRemoteViewStyleOriginal, kRemoteViewStyleAdaptive,
+        kRemoteViewStyleCustom].contains(viewStyle)) {
+      throw StateError('View style is unavailable');
+    }
+    final style = await _preferences.scrollStyle(owner.sessionId);
+    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision ||
+        _preferences.viewStyle(owner.sessionId) != viewStyle) {
       throw StateError('Scroll preference read was superseded');
     }
     if (style == null) throw StateError('Scroll style is unavailable');
     ScrollStyle.fromString(style);
     final thickness = await _preferences.edgeThickness(owner.sessionId);
-    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision) {
+    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision ||
+        _preferences.viewStyle(owner.sessionId) != viewStyle) {
       throw StateError('Scroll preference read was superseded');
     }
     if (thickness == null || thickness < 20 || thickness > 150) {
       throw StateError('Invalid scroll preferences');
     }
-    return (style: style, thickness: thickness);
+    return (viewStyle: viewStyle!, style: style, thickness: thickness);
   }
 
   Future<T> _saveScrollPreference<T>(T requested,
@@ -2799,6 +2812,7 @@ class CanvasModel with ChangeNotifier {
     if (_scrollPreferenceSavePending) throw StateError('A scroll preference save is pending');
     _scrollPreferenceSavePending = true;
     try {
+      notifyListeners();
       final effective = await save(owner!.sessionId);
       if (effective != requested) throw StateError('Scroll preference was not applied');
       if (!_disposed && identical(parent.target, owner._ffi) &&

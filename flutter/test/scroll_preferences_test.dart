@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uuid/uuid.dart';
 
 class _Preferences implements CanvasPreferences {
+  String? view = kRemoteViewStyleOriginal;
   String? style = kRemoteScrollStyleAuto;
   int? thickness = 100;
   int styleReads = 0;
@@ -19,7 +20,7 @@ class _Preferences implements CanvasPreferences {
   Future<String?> Function(int)? readStyle;
   Future<int?> Function(int)? readThickness;
   @override
-  String? viewStyle(SessionID id) => kRemoteViewStyleOriginal;
+  String? viewStyle(SessionID id) => view;
   @override
   Future<double> customScale(SessionID id) async => 1.0;
   @override
@@ -125,11 +126,149 @@ Future<void> _debounce(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 301));
   await _flush(tester);
 }
+Future<void> _menu(WidgetTester tester, _Session session) {
+  session.canvasModel.imageOverflow.value = true;
+  return tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360,
+    child: SessionScrollPreferences(key: const ValueKey('scroll-menu'), ffi: session,
+      translateText: (text) => text)))));
+}
+RdoMenuButton<String> _barChoice(WidgetTester tester) =>
+  tester.widget<RdoMenuButton<String>>(find.byWidgetPredicate((widget) =>
+      widget is RdoMenuButton<String> && widget.value == kRemoteScrollStyleBar));
 List<Object> _state(_Session s) => [s.canvasModel.scrollStyle,
   s.canvasModel.edgeScrollEdgeThickness, s.canvasModel.x, s.canvasModel.y,
   s.canvasModel.scale, s.canvasModel.scrollX, s.canvasModel.scrollY];
 
 void main() {
+  testWidgets('scroll menu reloads an initial read after presentation retirement', (tester) async {
+    final s = _Session();
+    final pending = Completer<String?>();
+    s.preferences.readStyle = (call) => call == 1
+        ? pending.future : Future.value(kRemoteScrollStyleEdge);
+    await _menu(tester, s);
+    s.imageModel.retirePresentation();
+    pending.complete(kRemoteScrollStyleAuto);
+    await _flush(tester);
+    expect(s.preferences.styleReads, 2);
+    expect(_slider(tester).value, 100);
+    expect(find.text('Failed'), findsNothing);
+    expect(s.writer.calls, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    s.dispose();
+  });
+
+  testWidgets('scroll menu view style visibility keeps the owned thickness draft', (tester) async {
+    final s = _Session()..preferences.style = kRemoteScrollStyleEdge;
+    await _menu(tester, s);
+    await _flush(tester);
+    _slider(tester).onChanged!(80);
+    s.preferences.view = kRemoteViewStyleAdaptive;
+    await _menu(tester, s);
+    expect(find.byType(Slider), findsNothing);
+    expect(find.byType(Slider, skipOffstage: false), findsOneWidget);
+    s.preferences.view = kRemoteViewStyleCustom;
+    await _menu(tester, s);
+    expect(_slider(tester).value, 80);
+    await _debounce(tester);
+    expect(s.writer.calls, [('thickness', 80)]);
+    expect(s.preferences.styleReads, 1);
+    await tester.pumpWidget(const SizedBox.shrink());
+    s.dispose();
+  });
+
+  testWidgets('scroll menu rebuild preserves pending thickness draft and admission', (tester) async {
+    final s = _Session()..preferences.style = kRemoteScrollStyleEdge;
+    final first = Completer<int>();
+    s.writer.thickness = (v) => s.writer.calls.length == 1 ? first.future : Future.value(v);
+    await _menu(tester, s);
+    await _flush(tester);
+    _slider(tester).onChanged!(80);
+    await _debounce(tester);
+    expect(_barChoice(tester).onChanged, isNull);
+    _slider(tester).onChanged!(90);
+    await _menu(tester, s);
+    await _debounce(tester);
+    expect(_slider(tester).value, 90);
+    expect(s.preferences.styleReads, 1);
+    expect(s.preferences.thicknessReads, 1);
+    first.complete(80);
+    await _flush(tester);
+    expect(s.writer.calls, [('thickness', 80), ('thickness', 90)]);
+    expect(_slider(tester).value, 90);
+    expect(s.canvasModel.edgeScrollEdgeThickness, 90);
+    expect(_barChoice(tester).onChanged, isNotNull);
+    expect(s.preferences.styleReads, 1);
+    expect(s.preferences.thicknessReads, 1);
+    await tester.pumpWidget(const SizedBox.shrink());
+    s.dispose();
+  });
+
+  testWidgets('scroll menu initial read is singular and retires on retarget', (tester) async {
+    final old = _Session();
+    final current = _Session()
+      ..preferences.style = kRemoteScrollStyleEdge
+      ..preferences.thickness = 120;
+    final pending = Completer<String?>();
+    old.preferences.readStyle = (_) => pending.future;
+    await _menu(tester, old);
+    await _menu(tester, old);
+    await _menu(tester, old);
+    expect(old.preferences.styleReads, 1);
+    await _menu(tester, current);
+    expect(current.preferences.styleReads, 0);
+    pending.complete(kRemoteScrollStyleAuto);
+    await _flush(tester);
+    expect(current.preferences.styleReads, 1);
+    expect(_slider(tester).value, 120);
+    expect(old.writer.calls, isEmpty);
+    expect(current.writer.calls, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    old.dispose();
+    current.dispose();
+  });
+
+  testWidgets('scroll menu read failure retries without writing defaults', (tester) async {
+    final s = _Session();
+    s.preferences.readStyle = (call) => call == 1
+        ? Future.error(StateError('read failed')) : Future.value(kRemoteScrollStyleEdge);
+    await _menu(tester, s);
+    await _flush(tester);
+    expect(find.text('Failed'), findsOneWidget);
+    expect(find.byType(Slider), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('scroll-preferences-read-retry')));
+    await _flush(tester);
+    expect(_slider(tester).value, 100);
+    expect(s.preferences.styleReads, 2);
+    expect(s.writer.calls, isEmpty);
+    expect(find.text('Failed'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    s.dispose();
+  });
+
+  testWidgets('scroll menu retired callbacks cannot mutate a replacement session', (tester) async {
+    final old = _Session()..preferences.style = kRemoteScrollStyleEdge;
+    final current = _Session()
+      ..preferences.style = kRemoteScrollStyleEdge
+      ..preferences.thickness = 140;
+    await _menu(tester, old);
+    await _flush(tester);
+    final slider = _slider(tester).onChanged!;
+    final choose = _barChoice(tester).onChanged!;
+    slider(80);
+    await _menu(tester, current);
+    await _flush(tester);
+    slider(90);
+    choose(kRemoteScrollStyleBar);
+    await _debounce(tester);
+    expect(_slider(tester).value, 140);
+    expect(old.writer.calls, isEmpty);
+    expect(current.writer.calls, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    old.dispose();
+    current.dispose();
+  });
+
   testWidgets('edge thickness owns a bounded draft without initial writes', (tester) async {
     final calls = <int>[];
     await _controls(tester, value: 999, save: (v) async { calls.add(v); return v; });
@@ -424,10 +563,11 @@ void main() {
       var notifications = 0;
       c.addListener(() => notifications++);
       final saving = c.applyEdgeScrollEdgeThickness(80, owner: c.captureUpdateOwner());
+      final before = notifications;
       c.dispose();
       pending.complete(80);
       expect(await saving, 80);
-      expect(notifications, 0);
+      expect(notifications, before);
       expect(c.scrollPreferenceSavePending, isFalse);
       s.imageModel.dispose();
       s.cursorModel.dispose();
@@ -492,7 +632,7 @@ void main() {
       final owner = c.captureUpdateOwner();
       final before = _state(s);
       final valid = await c.readScrollPreferences(owner: owner);
-      expect(valid, (style: kRemoteScrollStyleAuto, thickness: 100));
+      expect(valid, (viewStyle: kRemoteViewStyleOriginal, style: kRemoteScrollStyleAuto, thickness: 100));
       for (final value in [null, '', 'bad']) {
         s.preferences.style = value;
         await expectLater(c.readScrollPreferences(owner: owner),

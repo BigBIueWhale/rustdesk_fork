@@ -111,6 +111,12 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SCROLL_PREFERENCE_TESTS = {
+    "scroll menu reloads an initial read after presentation retirement",
+    "scroll menu view style visibility keeps the owned thickness draft",
+    "scroll menu rebuild preserves pending thickness draft and admission",
+    "scroll menu initial read is singular and retires on retarget",
+    "scroll menu read failure retries without writing defaults",
+    "scroll menu retired callbacks cannot mutate a replacement session",
     "edge thickness owns a bounded draft without initial writes",
     "edge thickness rebuild retains its draft and latest writer",
     "edge thickness serializes writes and keeps only latest intent",

@@ -1439,7 +1439,7 @@ class _DisplayMenuState extends State<_DisplayMenu> {
       final menuChildren = <Widget>[
         _screenAdjustor.adjustWindow(context),
         viewStyle(customPercent: _customPercent),
-        scrollStyle(state, colorScheme),
+        scrollStyle(colorScheme),
         imageQuality(),
         codec(),
         if (ffi.connType == ConnType.defaultConn)
@@ -1566,112 +1566,10 @@ class _DisplayMenuState extends State<_DisplayMenu> {
     });
   }
 
-  scrollStyle(_IconSubmenuButtonState state, ColorScheme colorScheme) {
-    final expectedFfi = ffi;
-    final canvas = expectedFfi.canvasModel;
-    final owner = canvas.captureUpdateOwner();
-    bool current() => mounted && state.mounted && identical(ffi, expectedFfi) &&
-        owner != null && owner.isCurrent;
-    return futureBuilder(future: () async {
-      if (!current()) return null;
-      try {
-        final viewStyle = await bind.sessionGetViewStyle(sessionId: owner!.sessionId);
-        if (!current()) return null;
-        if (![kRemoteViewStyleOriginal, kRemoteViewStyleAdaptive,
-            kRemoteViewStyleCustom].contains(viewStyle)) {
-          throw StateError('View style is unavailable');
-        }
-        final preferences = await canvas.readScrollPreferences(owner: owner);
-        if (!current()) return null;
-        return <String, Object>{
-          'visible': viewStyle != kRemoteViewStyleAdaptive,
-          'scrollStyle': preferences.style,
-          'edgeScrollEdgeThickness': preferences.thickness,
-        };
-      } catch (error, stack) {
-        debugPrint('Failed to load scrolling preferences: $error');
-        debugPrintStack(stackTrace: stack);
-        return current() ? <String, Object>{'failed': true} : null;
-      }
-    }(), hasData: (data) {
-      if (!current()) return const SizedBox.shrink();
-      if (data['failed'] == true) {
-        return Row(mainAxisSize: MainAxisSize.min, children: [
-          Text(translate('Failed')),
-          TextButton(onPressed: () { if (current()) state.setState(() {}); },
-              child: Text(translate('Retry'))),
-        ]);
-      }
-      final visible = data['visible'] as bool;
-      if (!visible) return Offstage();
-      final groupValue = data['scrollStyle'] as String;
-      final edgeScrollEdgeThickness = data['edgeScrollEdgeThickness'] as int;
-
-      onChangeScrollStyle(String? value) async {
-        if (!current() || value == null) return;
-        state.setState(() {});
-        await selectSessionScrollStyle(value,
-            applyStyle: (value) => canvas.applyScrollStyle(value, owner: owner),
-            isCurrent: current);
-        if (current()) state.setState(() {});
-      }
-
-      Future<int?> onChangeEdgeScrollEdgeThickness(int value) async {
-        if (!current()) return null;
-        state.setState(() {});
-        try {
-          final effective = await canvas.applyEdgeScrollEdgeThickness(value, owner: owner);
-          return current() ? effective : null;
-        } finally {
-          if (current()) state.setState(() {});
-        }
-      }
-
-      bool canSelectStyle() => canvas.imageOverflow.value && !canvas.scrollPreferenceSavePending;
-      return Obx(() => Column(children: [
-            RdoMenuButton<String>(
-              child: Text(translate('ScrollAuto')),
-              value: kRemoteScrollStyleAuto,
-              groupValue: groupValue,
-              onChanged: canSelectStyle()
-                  ? (value) => onChangeScrollStyle(value)
-                  : null,
-              closeOnActivate: groupValue != kRemoteScrollStyleEdge,
-              ffi: widget.ffi,
-            ),
-            RdoMenuButton<String>(
-              child: Text(translate('Scrollbar')),
-              value: kRemoteScrollStyleBar,
-              groupValue: groupValue,
-              onChanged: canSelectStyle()
-                  ? (value) => onChangeScrollStyle(value)
-                  : null,
-              closeOnActivate: groupValue != kRemoteScrollStyleEdge,
-              ffi: widget.ffi,
-            ),
-            if (!isWeb) ...[
-              RdoMenuButton<String>(
-                child: Text(translate('ScrollEdge')),
-                value: kRemoteScrollStyleEdge,
-                groupValue: groupValue,
-                closeOnActivate: false,
-                onChanged: canSelectStyle()
-                    ? (value) => onChangeScrollStyle(value)
-                    : null,
-                ffi: widget.ffi,
-              ),
-              Offstage(
-                  offstage: groupValue != kRemoteScrollStyleEdge,
-                  child: EdgeThicknessControl(
-                    key: ValueKey((expectedFfi, owner!.sessionId, expectedFfi.clientOwnerId)),
-                    value: edgeScrollEdgeThickness,
-                    saveThickness: canvas.imageOverflow.value ? onChangeEdgeScrollEdgeThickness : null,
-                    colorScheme: colorScheme,
-                  )),
-            ],
-            Divider(),
-          ]));
-    });
+  scrollStyle(ColorScheme colorScheme) {
+    return SessionScrollPreferences(
+        key: ValueKey((ffi, ffi.sessionId, ffi.clientOwnerId)),
+        ffi: ffi, colorScheme: colorScheme);
   }
 
   imageQuality() {
@@ -3407,6 +3305,175 @@ Widget _buildPointerTrackWidget(Widget child, FFI? ffi) {
       child: child,
     ),
   );
+}
+
+class SessionScrollPreferences extends StatefulWidget {
+  const SessionScrollPreferences({super.key, required this.ffi,
+      this.colorScheme, this.translateText});
+
+  final FFI ffi;
+  final ColorScheme? colorScheme;
+  final String Function(String)? translateText;
+
+  @override
+  State<SessionScrollPreferences> createState() => _SessionScrollPreferencesState();
+}
+
+class _SessionScrollPreferencesState extends State<SessionScrollPreferences> {
+  late FFI _ffi;
+  late SessionID _sessionId;
+  late SessionID _clientOwnerId;
+  String? _style;
+  int? _thickness;
+  bool _loading = false;
+  bool _failed = false;
+  int _epoch = 0;
+  int _revision = 0;
+
+  bool _current(int epoch) => mounted && epoch == _epoch &&
+      identical(_ffi, widget.ffi) &&
+      _ffi.isCurrentSessionOwner(_sessionId, _clientOwnerId);
+
+  void _captureSession() {
+    _ffi = widget.ffi;
+    _sessionId = _ffi.sessionId;
+    _clientOwnerId = _ffi.clientOwnerId;
+  }
+
+  void _scheduleLoad() {
+    final epoch = _epoch;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && epoch == _epoch) _load();
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _captureSession();
+    _scheduleLoad();
+  }
+
+  @override
+  void didUpdateWidget(covariant SessionScrollPreferences oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(_ffi, widget.ffi) || _sessionId != widget.ffi.sessionId ||
+        _clientOwnerId != widget.ffi.clientOwnerId) {
+      _epoch++;
+      _revision++;
+      _style = null;
+      _thickness = null;
+      _failed = false;
+      _captureSession();
+      _scheduleLoad();
+    }
+  }
+
+  Future<void> _load() async {
+    if (!mounted || _loading) return;
+    final epoch = _epoch;
+    final revision = _revision;
+    final owner = _ffi.canvasModel.captureUpdateOwner();
+    if (!_current(epoch) || owner == null) {
+      setState(() => _failed = true);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final preferences = await _ffi.canvasModel.readScrollPreferences(owner: owner);
+      if (!_current(epoch) || !owner.isCurrent || revision != _revision) return;
+      setState(() {
+        _style = preferences.style;
+        _thickness = preferences.thickness;
+        _failed = false;
+      });
+    } catch (error, stack) {
+      debugPrint('Failed to load scrolling preferences: $error');
+      debugPrintStack(stackTrace: stack);
+      if (_current(epoch) && owner.isCurrent && revision == _revision) {
+        setState(() => _failed = true);
+      }
+    } finally {
+      _loading = false;
+      if (mounted) {
+        setState(() {});
+        if (epoch != _epoch ||
+            (_current(epoch) && !owner.isCurrent && revision == _revision)) _load();
+      }
+    }
+  }
+
+  Future<void> _selectStyle(String? value, int epoch, CanvasUpdateOwner? owner) async {
+    bool current() => _current(epoch) && owner != null && owner.isCurrent;
+    if (!current() || value == null) return;
+    _revision++;
+    final changed = await selectSessionScrollStyle(value,
+        applyStyle: (value) => _ffi.canvasModel.applyScrollStyle(value, owner: owner),
+        isCurrent: current);
+    if (changed && current()) setState(() => _style = value);
+  }
+
+  Future<int?> _saveThickness(int value, int epoch, CanvasUpdateOwner? owner) async {
+    bool current() => _current(epoch) && owner != null && owner.isCurrent;
+    if (!current()) return null;
+    _revision++;
+    final effective = await _ffi.canvasModel.applyEdgeScrollEdgeThickness(value, owner: owner);
+    if (!current()) return null;
+    setState(() => _thickness = effective);
+    return effective;
+  }
+
+  @override
+  void dispose() {
+    _epoch++;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final epoch = _epoch;
+    final text = widget.translateText ?? translate;
+    final canvas = _ffi.canvasModel;
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      _failed ? Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(text('Failed')),
+        TextButton(key: const ValueKey('scroll-preferences-read-retry'),
+            onPressed: _loading || !_current(epoch) ? null : _load,
+            child: Text(text('Retry'))),
+      ]) : const SizedBox.shrink(),
+      _style == null || _thickness == null ? const SizedBox.shrink() :
+        AnimatedBuilder(animation: canvas, builder: (context, _) => Obx(() {
+          final owner = canvas.captureUpdateOwner();
+          final available = _current(epoch) && owner != null && owner.isCurrent;
+          final overflow = canvas.imageOverflow.value;
+          final canSelect = available && overflow && !canvas.scrollPreferenceSavePending;
+          return Offstage(offstage: !canvas.scrollPreferencesVisible(owner: owner),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final choice in [
+              (kRemoteScrollStyleAuto, 'ScrollAuto'),
+              (kRemoteScrollStyleBar, 'Scrollbar'),
+              if (!isWeb) (kRemoteScrollStyleEdge, 'ScrollEdge'),
+            ]) RdoMenuButton<String>(
+              child: Text(text(choice.$2)),
+              value: choice.$1,
+              groupValue: _style,
+              onChanged: canSelect ? (value) => _selectStyle(value, epoch, owner) : null,
+              closeOnActivate: choice.$1 != kRemoteScrollStyleEdge && _style != kRemoteScrollStyleEdge,
+              ffi: _ffi,
+            ),
+            if (!isWeb) Offstage(offstage: _style != kRemoteScrollStyleEdge,
+              child: EdgeThicknessControl(
+                key: ValueKey((_ffi, _sessionId, _clientOwnerId)),
+                value: _thickness!, colorScheme: widget.colorScheme,
+                translateText: widget.translateText,
+                saveThickness: available && overflow
+                    ? (value) => _saveThickness(value, epoch, owner) : null,
+              )),
+            Divider(),
+          ]));
+        })),
+    ]);
+  }
 }
 
 class EdgeThicknessControl extends StatefulWidget {

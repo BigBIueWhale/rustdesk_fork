@@ -90,7 +90,11 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
 
     use std::os::unix::fs::PermissionsExt;
     LocalConfig::set_remote_id("127.0.0.1:24001").unwrap();
-    let history_file = Config::file_("_local");
+    let config_file = Config::file();
+    let mut history_name = config_file.file_stem().unwrap().to_os_string();
+    history_name.push("_local.toml");
+    let history_file = config_file.with_file_name(history_name);
+    assert!(history_file.starts_with(&root));
     let history_parent = history_file.parent().unwrap();
     let original_history = std::fs::read(&history_file).unwrap();
     let peer = "127.0.0.1:24002";

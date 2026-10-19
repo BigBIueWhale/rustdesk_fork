@@ -80,268 +80,71 @@ integration/release checkpoint.
 
 ## Documentation and verification architecture
 
-Appendix C #154–#160 and #161/#163/#168/#169/#171/#172 describe enduring
-service, lifecycle, admission, helper-provenance and verification-authority failures.
-Implementation chronology and per-finding incident/severity commentary belong in
-Git history. The latest six finding-cell replacements remove 1,950 specification
-bytes. Their required dispositions and primary R-S11am/ao/at/au/aw/ax contracts
-are byte-identical; every specification byte outside those finding cells is
-unchanged. All 411 requirement IDs, 371 numbered entries, 36 anchors and 214 links
-retain their content and order, and changed-row tags balance.
+`requirements.html` owns the normative product, security and build contracts.
+This ledger owns current conformance, evidence limits and open work. Git history and
+`/tmp/privilege_securiry_deep_audit.md` retain superseded analysis and execution history.
+The document classifications below establish their named document/source comparisons;
+they do not establish compiler, scanner, installed, native or release acceptance.
+Historical repair narratives and size/token comparisons are archived in Git, including
+the pre-consolidation source `a40b7ce7`.
 
-Classification, obligation mapping, exact comparisons, whole-document counts and
-joined bounded-RAM cleanup are retained in
-`.harness-state/verifier-vm/service-admission-document-role.json`; the earlier
-seven-finding cleanup remains in `service-entry-document-role.json`.
-Product, test and verifier sources are unchanged. Whole-document role cleanup,
-all fifteen credential actions, R-S0, R-F5 impairment/soak and all other
-native/installed/release and parked obligations remain OPEN.
+**OPEN:** whole-document and test classification; all fifteen credential actions;
+R-S0 immunity with complete functionality; actual R-F5 impairment recovery and
+multi-hour freshness; exact-current builders/artifacts and installed/native authority;
+scanner acceptance; complete inputs and signing; upstream baseline reproduction,
+fork-delta accounting and per-target surface/egress; cold equality, release acceptance,
+independent reproduction and external review. All separately parked work stays parked.
 
+The retained transport limits remain explicit: a writer abort requests cancellation,
+and does not itself prove exact task/socket retirement or blanket pre-key parser safety.
+R-T3/R-T18 own writer reservation, nonce, FIFO, failure and finality semantics;
+R-T6–R-T17 and R-S11gx retain their transport/platform acceptance requirements.
+Android partial wake locks do not establish Doze network reachability. Forced Doze,
+network replacement, stale callbacks, listener/wake-lock retirement and actual
+post-resumption freshness still need device/emulator evidence.
+The dependency-inventory receipts below accept their named manifest/index snapshots
+only; complete dependency/source closure, advisory research, provenance, native
+product and release acceptance remain OPEN.
 
-`requirements.html` owns the normative contract; this ledger owns current state and open obligations.
-Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
-Appendix C retains vulnerability classes and required dispositions. The disclosure
-chronology, upstream-priority commentary, public-CVE absence claim and duplicate
-inherited-handshake/proof-of-concept/upstream-repair boxes are removed. These were
-historical source analysis, not additional product requirements; Git `703a2b61`,
-`b9a484f5` and the pre-cleanup `ad4c20a2` retain their provenance.
-The live-wire key/nonce-reuse class remains distinct from at-rest configuration
-exposure (#14) and direct-IP plaintext (#2). Finding #1's per-direction-key,
-runtime-assertion and known-answer-test disposition is byte-identical.
-The earlier classification, original document role and isolated before/after counts
-are retained in `.harness-state/verifier-vm/appendix-c-role.json`.
+Evidence filenames in the tables are relative to `.harness-state/verifier-vm/`.
+The specification is the current contract; these receipts retain classification,
+obligation mapping, exact comparisons and any counts for their named historical inputs.
 
-Findings #21–#23 also now describe the prohibited password-proof, viewer-secret and
-transport-downgrade behavior rather than inherited handler code, timing windows,
-an initiator-audit narrative or disclosure severity/history. Their three disposition
-cells are byte-identical, and #21 retains fresh per-connection `sid`/ephemeral-scalar
-ownership. The remaining disclosure banner is deleted. Git `703a2b61`, `14a1afbe`
-and `314a47ac` retain that historical analysis. This correction removes 2,532 bytes
-from the `04c7e32e` specification. All 411 requirement IDs, 371 numbered entries and
-36 anchor IDs preserve order; all bytes outside the three finding cells and banner
-are unchanged. Changed-row tags balance. The sole removed link is the historical
-upstream discussion; requirement and local-ledger links remain. Exact classification,
-source comparisons, pinned whole-document counts and joined RAM/VM cleanup are in
-`.harness-state/verifier-vm/login-inventory-role.json`.
-Product, verifier and test sources are unchanged. No parked advisory review resumes,
-and no installed/native/security obligation is closed. Whole-document role cleanup,
-all fifteen credential actions and broader release acceptance remain OPEN.
+| Documentation scope | Current contract or disposition | Retained classification |
+| --- | --- | --- |
+| Appendix C findings #1 and #21–#23 | Enduring failure classes and required dispositions, including separate live-wire nonce reuse, at-rest exposure and plaintext; fresh per-connection sid/scalar ownership | `appendix-c-role.json`; `login-inventory-role.json` |
+| Appendix C #125/#131/#162/#335 | Installer, policy-selector, IPC-drain and FFI authority; R-S11ga owns binding diagnostics and negative controls | `authority-history-0f9c2048.json` |
+| Appendix C #154–#160 and #161/#163/#168/#169/#171/#172 | Service/lifecycle/admission/helper-provenance and verification-authority failures; required dispositions remain in the specification | `service-entry-document-role.json`; `service-admission-document-role.json` |
+| Other Appendix C dispositions | Vulnerability classes and required dispositions | `appendix-disposition-classification-a22e5d80-v2.json` |
+| Writer contract | R-T3/R-T18; R-S11gx and Appendix C #359 reference the same contract | `writer-contract-doc-role-deb907f8.json` |
+| Transport lifecycle and authentication | R-T9/R-T10/R-T11/R-T12/R-T13/R-T15; listener exclusivity agrees with R-T17 | `transport-lifecycle-document-role.json` |
+| Direct-only configuration | R-X3/R-X4, R-A4/R-A6 and Appendix C #6; an inert baked constant grants no channel authority | `direct-only-authority-document-role-3a0306a4.json` |
+| Release metadata and codec provenance | Native-codec source/advisory-ledger synchronization; the versioning guide separates release provenance from the specification hash | `codec-specification-provenance-390120c4.json` |
+| Acquisition authority | Complete pinned-input contract and isolated acquisition authority | `acquisition-document-roles-951a4a8e.json` |
+| Session capabilities | R-S19 | `capability-contract-document-role-d9a3e80c.json` |
+| Viewer configuration | R-S15 | `viewer-config-document-role-6f5a56bf.json` |
+| Controlled policy | R-S16 | `policy-funnel-document-role-f88494a4.json` |
+| Rate limiting | R-S10 | `rate-limiter-document-role-a3abdd97.json` |
+| Clipboard authority | Appendix C #107 | `clipboard-authority-document-role-481712e2.json` |
+| Credential storage | R-S9 | `rs9-credential-contract-5753c573.json` |
+| CPace | R-P5/R-P11 | `cpace-specification-role-8903ad60.json` |
+| Risk register | §13 | `debt-register-document-role-28c2e775.json` |
+| Verification clauses | Source, artifact and target-native evidence have separate scopes | `verification-clause-classification-a5946201.json` |
+| Audit and authentication authority | R-A6; no CM operator-accept authority under R-S2/R-S18; credential-unavailable parking and socket retirement remain required | `audit-contract-document-role-313c3d27.json` |
+| Retired host identity | R-S17 remains reserved/retired under the password-only contract | `host-identity-document-role-1ba44a05.json` |
+| Dependency inventory snapshots | Named source/index reconciliation and the WebM dependency-edge retirement; no complete-closure or advisory acceptance | `dependency-inventory-drift-dac06f59.json`; `dependency-inventory-accepted-9b1c643f.json`; `webm-writer-accepted-b3cc5328.json` |
 
-The installer, policy-selector, Linux IPC-drain and FFI entries (#125, #131,
-#162 and #335) now also state enduring failure conditions instead of retired
-source chains, workaround chronology and an obsolete completed-drain claim.
-The first three required-disposition cells are byte-identical. The FFI disposition
-retains canonical `dart-sys` handle ownership, the exact feature/dependency edge,
-complete diagnostics, severe-output rejection before downstream builds even on
-zero exit, and separately evidenced integration/device/release acceptance. Its
-old mutation checklist, package-count note and per-slice compile/no-APK claims
-are deleted; R-S11ga's binding negative-control and source-review requirements
-remain unchanged. Git `0f9c2048` retains the historical material.
-
-This removes 2,724 bytes from the specification. All 411 requirement IDs,
-371 Appendix numbers, 36 anchor IDs and 214 links preserve their exact order;
-bytes outside those four rows are identical and changed-row tags balance.
-Product, verifier and test sources are unchanged. Classification, source
-comparisons, whole-document counts and joined bounded-RAM cleanup are retained
-in `.harness-state/verifier-vm/authority-history-0f9c2048.json`.
-This corrects document roles; no installed/native/security acceptance is closed.
-Whole-document cleanup, all fifteen credential actions and release acceptance
-remain OPEN.
-
-
-The duplicate transport-security claim map is removed. Its cipher, nonce, framing,
-admission, cancellation, limiter and threat-model obligations remain in the
-specification and the R-V3 audit scope. The deployment and PAKE guides link there.
-Writer abort requests cancellation; synchronous task/socket finality and blanket
-pre-key parser safety are not established by that call or by the deleted guide.
-Native finality, platform/parser acceptance and the independent audit remain OPEN.
-R-T6/R-T7/R-T8/R-T16 retain buffered keying, whole-frame authentication, the sole
-reader/writer split, synchronous codec opening, ciphertext/allocation bounds and
-framing/EOF/cancellation regressions. The contradictory no-split instruction,
-outer-loop decryption description, retired cipher narrative and claims that
-coalescing itself fails authentication are removed. The later writer-ownership
-correction below deletes the gate that required the shared framed-sink shape.
-Specification corrections alone do not supply native or release acceptance.
-
-R-T3/R-T18 now own one normative writer contract. The historical blocked-branch
-story, literal `try_*` publication requirement, duplicate R-S11gx/Appendix C #359
-implementation descriptions and instruction to keep normative rules in the ledger
-are removed. R-S11gx retains platform/send-path coverage and #359 retains the failure
-class; both refer to R-T18. Channel reservation precedes encoding and nonce advance,
-and publication consumes that reservation. Exact retained limits, sole-writer/FIFO
-ordering, failure ownership, abort/finality distinction, prohibited recovery routes,
-Android persistence and executable/native/installed/soak/review obligations remain.
-Commit `deb907f8` changes exactly four HTML nodes; the remaining bytes, 411 requirement
-IDs, 369 numbered rows and 214 links keep their contents and order. Strict parsing
-of changed nodes confirms balanced tags; this is document evidence only.
-Pinned VM counts are 396,681 → 395,902 tokens and 1,793,734 → 1,790,332 bytes for the
-complete specification. Optional counting at `5bb885f4` preserves the original
-ledger-only command and uses the unchanged authenticated tokenizer recipe.
-`.harness-state/verifier-vm/writer-contract-doc-role-deb907f8.json` retains the
-classification, obligation mapping, exact counts and source/cleanup bindings.
-Product source and runtime verdicts are unchanged; whole-document cleanup and all
-native/installed/release obligations remain OPEN.
-
-R-T9/R-T10/R-T11/R-T12/R-T13/R-T15 now state transport lifecycle and
-authentication obligations without inherited-code repair narratives. Removed are
-the old `pkill` story, claims that keepalive/network callbacks are absent, the
-obsolete public-listener constructor diagnosis, accept-loop pseudocode and retired
-authentication-path history. Retained are bounded shutdown with exact accepted-work
-retirement and truthful outcomes; 30/10-second keepalive and supported Unix retry
-settings; IPv4/exclusive OS-aware binds; bounded error/source audit summaries;
-exact Android callback and wake-lock lifetimes; exhaustive secret wiping, one
-bounded/decaying guess limiter and absence of legacy challenge emission.
-Windows listener exclusivity now agrees with the existing R-T17 contract rather
-than suggesting that omitting SO_REUSEADDR alone proves exclusive ownership.
-R-T13 also corrects the assumption that a partial wake lock establishes Doze
-reachability: Android may suspend networking and ignore wake locks. Forced Doze
-entry/exit, network replacement, stale callbacks, listener/wake-lock retirement
-and post-resumption R-F5 freshness require actual device/emulator evidence and
-remain OPEN. This is a specification correction; product/verifier source and
-runtime verdicts are unchanged. All other HTML bytes, 411 requirement IDs,
-369 numbered rows and 214 links preserve content/order; changed-node tags balance
-and references resolve. `.harness-state/verifier-vm/transport-lifecycle-document-role.json`
-retains the old/new nodes, obligation mapping, research, exact document metrics and
-frozen controls. Whole-document cleanup and native/installed/release acceptance
-remain OPEN.
-
-R-X3/R-X4 now state the direct-only configuration and password-only authentication
-contract. The inherited local server-list/no-op rewrite permission and instruction
-to bake and pin a rendezvous trust anchor are removed. All three remote mutation routes,
-CLI/import/URL/FFI/IPC paths, Windows license sources and Apple override exclusions
-remain covered. R-A4, R-A6, acceptance and Appendix C #6 agree that an inert baked
-constant confers no channel authority; constant equality is not a startup identity
-check. Product and verifier source are unchanged. Current native, installed,
-artifact, independent-review and whole-document cleanup obligations remain OPEN.
-`.harness-state/verifier-vm/direct-only-authority-document-role-3a0306a4.json`
-retains the exact replacements, obligation mapping and source comparisons.
-
-Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
-model. The Android controlled-host guide follows the distinct foreground-service, task and capture-grant
-lifetimes; the ADB consent-override recipe and per-launch/attended-only/privacy-superiority claims are
-removed. Setup uses the actual screen-sharing control and separate listener/capture status. Official
-Android sources support projection retirement, restricted settings, Active apps stop and Android 15 QPR1
-lock-stop behavior. `.harness-state/verifier-vm/android-operator-guide-source-c8807899.json` retains
-classification and source comparisons. Product code and the normative specification are unchanged;
-current APK/device/native acceptance and the fresh ledger token count remain OPEN. Whole-document and
-test classification remains OPEN.
-
-The Debian deployment guide puts independent artifact verification before installer execution and uses
-the fixed installed password command with its terminal service-owned acknowledgement. The mandatory
-password-apply restart, guaranteed-install-start claim, whole-host socket/health inference and
-hardware-bound migration guarantee are removed. Unit state, endpoint observations, file logs and a
-fresh authenticated connection have explicit scopes; unknown credential outcomes retain uncertainty.
-Classification is in `.harness-state/verifier-vm/deployment-guide-source-7e735cfd.json`. Product source
-and the normative specification are unchanged; current installed/native and fresh token-count
-acceptance remain OPEN.
-
-The versioning guide retains the version identities and release sequence, with verification commands
-explicitly confined to the authenticated no-NIC VM. Dependency inventory expectations require review;
-codec-ledger synchronization does not replace advisory research, and source gates do not establish
-native or artifact acceptance. Repeated build/publication implementation details are removed from
-that guide; R-B2/R-B10, the build guide, signing recovery and artifact-verification procedure retain
-their respective contracts. Release orchestration, current artifacts and whole-document cleanup
-remain OPEN.
-
-R-B2 states the supported isolated-build, Android-signing, independent artifact-authentication
-and reproducibility contract. Its obsolete requirement to run the deleted `flutter-build.yml`,
-unmeasured hosted-runner failure rate, upstream build-history narrative and general code-signing
-claims are removed. Stable Android key/certificate custody and recovery, manifest/source/version
-authentication, read-only source and private version outputs, target output/state separation and
-independent artifact equality remain required. Release preparation follows `docs/VERSIONING.md`;
-the retired specification-hash synchronization instruction is removed from this ledger.
-Current release/native acceptance and whole-document cleanup remain OPEN.
-
-R-B4 retains per-platform connection/authentication/session-type acceptance, Linux exact-process
-and kernel-socket ownership, typed read-only readiness, fixed deadlines, pidfd signaling, bounded
-credential-command lifetime, complete stage results and identity-bound cleanup. Obsolete upstream
-artifact-upload and hosted-runner commentary is removed. Native release acceptance and the broader
-platform matrix remain OPEN; this specification correction supplies no new runtime evidence.
-
-Retained documentation classifications are indexed below. They establish document/source
-comparisons, not compiler, artifact, scanner, native or release acceptance. Completed repair
-narratives and size comparisons remain in Git history.
-
-R-B6/R-B9/R-B10/R-B12 describe the supported UI, source topology and complete pinned-input
-contract. Sciter build history, a live `hbb_common` submodule and historical dependency counts
-are removed. The toolchain default's comments now agree with the release manifest; its parsed
-configuration is unchanged. First-pin provenance, independent corroboration, compiler/codegen
-identities, captured Windows inputs, SHA-1 residual review and moving-ref refusal remain required.
-The current dependency inventory at `b3cc5328` has 889 Cargo packages, 33 Git records from
-24 unchanged Git sources, 65 direct Flutter dependencies, 198 Pub-lock packages with three
-Git records, and seven indexed build scripts. The WebM consumer migration removes webm,
-quest and its exclusive rpassword2/kernel32-sys/winapi0.2 chain. No surviving package identity,
-version, source or checksum changes; only scrap's resolved dependency edges change.
-Redundant winapi/rpassword version qualifiers are normalized. All 889 records are reachable
-from actual path/workspace records. Only five derived Cargo EXPECTED facts change in the
-checker; its parser/selftests and other inventory fields remain unchanged. The actual complete
-checker passes in 13 VM seconds; source/index, results and joined cleanup are retained in
-`.harness-state/verifier-vm/webm-writer-accepted-b3cc5328.json`.
-`scripts/smoke-verifier-vm-authority.sh --dependency-inventory` uses the actual complete Git index,
-read-only inputs and a nonroot, capability-free, networkless guest; joined RAM/VM cleanup and
-unchanged host endpoints pass. The earlier snapshot reconciliation at `9b1c643f`, including
-TFC/X11/libxdo/address_it, fake_async, xterm and camera-build-script classifications, remains in
-`.harness-state/verifier-vm/dependency-inventory-{drift-dac06f59,accepted-9b1c643f}.json`.
-This accepts the manifest/index snapshot only. Complete dependency/source closure, advisory,
-provenance, native product and release acceptance remain OPEN.
-
-The inherited `libs/scrap/README.md` and `libs/enigo/README.md` are deleted.
-Scrap's standalone crates.io example, byte-array frame contract and platform-minimum
-claims do not describe the fork's timed `TraitCapturer` and pixel-buffer/texture
-API. Enigo's upstream CI badges, unchecked example and system-XDO installation
-instructions do not describe the private-library input backend. Its explicit
-README reference and obsolete CI badge metadata are removed. Upstream repository,
-author and license metadata and Enigo's license file remain. The existing fork
-contribution and isolated-verification guides remain the entry points. This is
-documentation/package-metadata cleanup; no native or security acceptance changes.
-
-The clipboard library guide distinguishes Linux FUSE from macOS pasteboard
-placeholders and filesystem-event paste observation, matching the platform module
-selection. The protocol overview and Linux helper constraints remain. This is a
-documentation correction; native clipboard and platform acceptance remain OPEN.
-
-`docs/CONTRIBUTING.md` is the fork's single contribution guide. The thirteen inherited
-translations and upstream review email/Discord routing are removed. Focused commits,
-review, relevant behavioral tests, DCO sign-off, license and attribution remain; the
-guide links to the local rules, specification, ledger and isolated verification entry
-points. `docs/CODE_OF_CONDUCT.md` retains the conduct standards and attribution,
-links to GitHub's abuse-reporting tools, and removes upstream's reporting mailbox
-and unsupported prompt-investigation promise. Eleven duplicate inherited
-translations are removed. A fork-owned private moderation contact remains OPEN;
-GitHub's platform reporting is distinct. No native/release acceptance follows.
-
-| Documentation scope | Retained classification |
+| Maintained guide or package documentation | Current disposition and remaining limits |
 | --- | --- |
-| Release specification and codec provenance | `.harness-state/verifier-vm/codec-specification-provenance-390120c4.json` |
-| Appendix C dispositions | `.harness-state/verifier-vm/appendix-disposition-classification-a22e5d80-v2.json` |
-| Acquisition authority | `.harness-state/verifier-vm/acquisition-document-roles-951a4a8e.json` |
-| R-S19 session capabilities | `.harness-state/verifier-vm/capability-contract-document-role-d9a3e80c.json` |
-| R-S15 viewer configuration | `.harness-state/verifier-vm/viewer-config-document-role-6f5a56bf.json` |
-| R-S16 controlled policy | `.harness-state/verifier-vm/policy-funnel-document-role-f88494a4.json` |
-| R-S10 rate limiting | `.harness-state/verifier-vm/rate-limiter-document-role-a3abdd97.json` |
-| Appendix C #107 clipboard authority | `.harness-state/verifier-vm/clipboard-authority-document-role-481712e2.json` |
-| R-S9 credentials | `.harness-state/verifier-vm/rs9-credential-contract-5753c573.json` |
-| R-P5/R-P11 CPace | `.harness-state/verifier-vm/cpace-specification-role-8903ad60.json` |
-| §13 risk register | `.harness-state/verifier-vm/debt-register-document-role-28c2e775.json` |
-| Verification clauses | `.harness-state/verifier-vm/verification-clause-classification-a5946201.json` |
-| R-A6 audit evidence and sole authentication authority | `.harness-state/verifier-vm/audit-contract-document-role-313c3d27.json` |
-| R-S17 retired host-key design | `.harness-state/verifier-vm/host-identity-document-role-1ba44a05.json` |
-| R-X3/R-X4 direct-only configuration authority | `.harness-state/verifier-vm/direct-only-authority-document-role-3a0306a4.json` |
+| `docs/ANDROID-SERVER.md` | Distinct foreground-service, task and capture-grant lifetimes; actual screen-sharing control and separate listener/capture status; no ADB consent override or unsupported per-launch/privacy claims. Current APK/device/native acceptance remains OPEN. Classification: `android-operator-guide-source-c8807899.json`. |
+| `docs/DEPLOYMENT.md` | Independent artifact verification precedes installation. The fixed installed password command reports the terminal service-owned outcome and retains uncertainty. Service, endpoint, log and authenticated-connection observations retain their individual scopes; current installed/native acceptance remains OPEN. Classification: `deployment-guide-source-7e735cfd.json`. |
+| `docs/VERSIONING.md` and `docs/ANDROID-SIGNING-RECOVERY.md` | Supported version/release sequence and stable signing custody/recovery. R-B2/R-B4/R-B6/R-B9/R-B10/R-B12 retain the build, platform-acceptance, UI/source-topology and pinned-input contracts. Build, signing and artifact-authentication procedures own their respective details. Verification is confined to the authenticated no-NIC VM; dependency counts and source gates do not establish advisory, native or release acceptance. |
+| Contribution and conduct guides | `docs/CONTRIBUTING.md` is the single contribution entry point; focused changes, relevant behavioral tests, DCO, license and attribution remain. `docs/CODE_OF_CONDUCT.md` keeps standards and GitHub reporting. A fork-owned private moderation contact remains OPEN; platform reporting is distinct. |
+| Scrap and Enigo package documentation | Inapplicable inherited READMEs and stale Enigo README/CI metadata are absent. Fork contribution/isolated-verification guides remain the entry points; upstream repository, author and license metadata remain. No native/security acceptance follows from those deletions. |
+| Clipboard library guide | Linux FUSE and macOS pasteboard placeholder/filesystem-event observation are distinct; protocol and Linux-helper constraints remain. Native clipboard/platform acceptance remains OPEN. |
 
-R-A6 excludes CM operator-accept authority under R-S2/R-S18 and distinguishes source checks,
-artifact inspection and native acceptance. Its direct-startup check preserves credential-unavailable
-parking and socket retirement; Apple requirements carry no transient platform-build status.
-The classification retains the earlier wording and its source comparisons. Product and verifier
-code are unchanged; no native or release obligation is closed by this document correction.
-
-R-S17 retains its reserved, retired ID and states the password-only contract through
-R-S2/R-S9/R-S18, R-P1/R-P5, R-G5 and R-A6. The abandoned host-key construction,
-retirement rationale and implementation claims are removed from the specification.
-Its threat model and all referenced requirements are unchanged.
-
-Whole-document/test classification, exact-current builders/artifacts, installed/native authority,
-scanner acceptance, complete inputs/signing, upstream baseline reproduction, fork-delta accounting,
-per-target surface/egress, cold equality, release acceptance and independent reproduction remain OPEN.
+The latest document-history consolidation is recorded in
+`.harness-state/verifier-vm/ledger-document-history-a40b7ce7.json`.
 
 **R-S11av macOS file-mode compiler: focused component checks accepted; native acceptance OPEN.** The
 289-line string/mutation checker and its duplicate shared/Apple invocations are

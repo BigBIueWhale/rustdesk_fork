@@ -117,6 +117,7 @@ obligation mapping, exact comparisons and any counts for their named historical 
 | Appendix C findings #1 and #21–#23 | Enduring failure classes and required dispositions, including separate live-wire nonce reuse, at-rest exposure and plaintext; fresh per-connection sid/scalar ownership | `appendix-c-role.json`; `login-inventory-role.json` |
 | Appendix C #125/#131/#162/#335 | Installer, policy-selector, IPC-drain and FFI authority; R-S11ga owns binding diagnostics and negative controls | `authority-history-0f9c2048.json` |
 | Appendix C #154–#160 and #161/#163/#168/#169/#171/#172 | Service/lifecycle/admission/helper-provenance and verification-authority failures; required dispositions remain in the specification | `service-entry-document-role.json`; `service-admission-document-role.json` |
+| Appendix C #174–#179 | Enduring process-context, direct-only API and verification failure classes replace repair narration. All six required-disposition cells and the linked normative clauses remain unchanged; native and exact-artifact acceptance remains required. | `appendix-repair-history-57b70551.json` |
 | Other Appendix C dispositions | Vulnerability classes and required dispositions | `appendix-disposition-classification-a22e5d80-v2.json` |
 | Writer contract | R-T3/R-T18; R-S11gx and Appendix C #359 reference the same contract | `writer-contract-doc-role-deb907f8.json` |
 | Transport lifecycle and authentication | R-T9/R-T10/R-T11/R-T12/R-T13/R-T15; listener exclusivity agrees with R-T17 | `transport-lifecycle-document-role.json` |

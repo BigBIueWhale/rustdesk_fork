@@ -149,6 +149,50 @@ class EventToUI_CursorUnavailable implements EventToUI {
 }
 
 class RustdeskImpl {
+  UuidValue? _keyboardSession;
+  UuidValue? _keyboardClient;
+  String _keyboardRound = '';
+  int _keyboardEpoch = 0;
+  int _keyboardRetiredEpoch = 0;
+  final _keyboardHeld = List<MapEntry<String, String>?>.filled(9, null);
+
+  void _releaseWebKeyboard(int? slot) {
+    for (var i = 0; i < _keyboardHeld.length; ++i) {
+      if (slot != null && slot != i) continue;
+      final release = _keyboardHeld[i];
+      if (release != null) {
+        js.context.callMethod('setByName', [release.key, release.value]);
+        _keyboardHeld[i] = null;
+      }
+    }
+  }
+
+  void _sendWebKeyboard(UuidValue session, UuidValue client, String round,
+      int epoch, int? slot, String operation, Map<String, dynamic> event) {
+    if (_keyboardSession != session || _keyboardClient != client ||
+        _keyboardRound != round || epoch <= _keyboardRetiredEpoch ||
+        epoch < _keyboardEpoch) throw StateError('Web keyboard owner was retired');
+    if (epoch != _keyboardEpoch) {
+      _releaseWebKeyboard(null);
+      _keyboardEpoch = epoch;
+    }
+    if (slot != null) {
+      if (slot < 0 || slot >= 9) throw ArgumentError('Invalid modifier slot');
+      if (event['down'] == 'true') {
+        if (_keyboardHeld[slot] != null) return;
+        final release = {...event}..remove('down')..remove('press')
+          ..remove('alt')..remove('ctrl')..remove('shift')..remove('command');
+        js.context.callMethod('setByName', [operation, jsonEncode(event)]);
+        _keyboardHeld[slot] = MapEntry(operation, jsonEncode(release));
+        return;
+      } else if (event['press'] != 'true') {
+        _releaseWebKeyboard(slot);
+        return;
+      }
+    }
+    js.context.callMethod('setByName', [operation, jsonEncode(event)]);
+  }
+
   Future<void> _setByNameImmediately(List<dynamic> arguments) {
     js.context.callMethod('setByName', arguments);
     return Future<void>.value();
@@ -197,7 +241,7 @@ class RustdeskImpl {
       required String password,
       String? connToken,
       dynamic hint}) {
-    return js.context.callMethod('setByName', [
+    final String result = js.context.callMethod('setByName', [
       'session_add_sync',
       jsonEncode({
         'id': id,
@@ -207,6 +251,15 @@ class RustdeskImpl {
         'isTerminal': isTerminal
       })
     ]);
+    if (result.isEmpty) {
+      _keyboardHeld.fillRange(0, 9, null);
+      _keyboardSession = sessionId;
+      _keyboardClient = clientOwnerId;
+      _keyboardRound = const Uuid().v4();
+      _keyboardEpoch = 0;
+      _keyboardRetiredEpoch = 0;
+    }
+    return result;
   }
 
   Future<void> sessionAddMobile(
@@ -279,8 +332,13 @@ class RustdeskImpl {
   Future<void> sessionClose(
       {required UuidValue sessionId,
       required UuidValue clientOwnerId,
-      dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', ['session_close']));
+      dynamic hint}) async {
+    if (_keyboardSession == sessionId && _keyboardClient == clientOwnerId) {
+      _releaseWebKeyboard(null);
+      _keyboardSession = null;
+      _keyboardClient = null;
+    }
+    js.context.callMethod('setByName', ['session_close']);
   }
 
   Future<void> sessionRefresh(
@@ -299,8 +357,12 @@ class RustdeskImpl {
     return false;
   }
 
-  Future<void> sessionReconnect({required UuidValue sessionId, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', ['reconnect']));
+  Future<void> sessionReconnect({required UuidValue sessionId, dynamic hint}) async {
+    if (_keyboardSession == sessionId) {
+      _releaseWebKeyboard(null);
+      _keyboardRound = const Uuid().v4();
+    }
+    js.context.callMethod('setByName', ['reconnect']);
   }
 
   bool sessionSetConnectPassword(
@@ -638,24 +700,32 @@ class RustdeskImpl {
 
   Future<void> sessionHandleFlutterKeyEvent(
       {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      required int inputEpoch,
+      required String inputRound,
+      required int inputSequence,
+      int? modifierSlot,
       required String character,
       required int usbHid,
       required int lockModes,
       required bool downOrUp,
-      dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'flutter_key_event',
-          jsonEncode({
+      dynamic hint}) async {
+    _sendWebKeyboard(sessionId, clientOwnerId, inputRound, inputEpoch,
+        modifierSlot, 'flutter_key_event', {
             'name': character,
             'usb_hid': usbHid,
             'lock_modes': lockModes,
             if (downOrUp) 'down': 'true',
-          })
-        ]));
+          });
   }
 
   Future<void> sessionHandleFlutterRawKeyEvent(
       {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      required int inputEpoch,
+      required String inputRound,
+      required int inputSequence,
+      int? modifierSlot,
       required String name,
       required int platformCode,
       required int positionCode,
@@ -672,6 +742,11 @@ class RustdeskImpl {
 
   Future<void> sessionInputKey(
       {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      required int inputEpoch,
+      required String inputRound,
+      required int inputSequence,
+      int? modifierSlot,
       required String name,
       required bool down,
       required bool press,
@@ -679,10 +754,9 @@ class RustdeskImpl {
       required bool ctrl,
       required bool shift,
       required bool command,
-      dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'input_key',
-          jsonEncode({
+      dynamic hint}) async {
+    _sendWebKeyboard(sessionId, clientOwnerId, inputRound, inputEpoch,
+        modifierSlot, 'input_key', {
             'name': name,
             if (down) 'down': 'true',
             if (press) 'press': 'true',
@@ -690,8 +764,26 @@ class RustdeskImpl {
             if (ctrl) 'ctrl': 'true',
             if (shift) 'shift': 'true',
             if (command) 'command': 'true'
-          })
-        ]));
+          });
+  }
+
+  Future<String> sessionKeyboardInputRound({required UuidValue sessionId,
+      required UuidValue clientOwnerId, dynamic hint}) async {
+    if (_keyboardSession != sessionId || _keyboardClient != clientOwnerId) {
+      throw StateError('Web keyboard owner is unavailable');
+    }
+    return _keyboardRound;
+  }
+
+  Future<void> sessionReleaseFlutterModifiers({required UuidValue sessionId,
+      required UuidValue clientOwnerId, required int inputEpoch,
+      required int inputSequence, int? modifierSlot, dynamic hint}) async {
+    if (_keyboardSession != sessionId || _keyboardClient != clientOwnerId ||
+        inputEpoch < _keyboardEpoch) return;
+    _releaseWebKeyboard(modifierSlot);
+    if (modifierSlot == null && inputEpoch > _keyboardRetiredEpoch) {
+      _keyboardRetiredEpoch = inputEpoch;
+    }
   }
 
   Future<void> sessionInputString(

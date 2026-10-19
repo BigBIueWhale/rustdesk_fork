@@ -2,7 +2,6 @@
 use crate::flutter;
 #[cfg(target_os = "windows")]
 use crate::platform::windows::{get_char_from_vk, get_unicode_from_vk};
-use crate::ui_session_interface::{InvokeUiSession, Session};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::common::GrabState;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -336,22 +335,6 @@ pub mod client {
         let peer = get_peer_platform().to_lowercase();
         for key_event in event_to_key_events(peer, &event, keyboard_mode, lock_modes) {
             send_key_event(&key_event);
-        }
-    }
-
-    pub fn process_event_with_session<T: InvokeUiSession>(
-        keyboard_mode: &str,
-        event: &Event,
-        lock_modes: Option<i32>,
-        session: &Session<T>,
-    ) {
-        let keyboard_mode = get_keyboard_mode_enum(keyboard_mode);
-        if is_long_press(&event) {
-            return;
-        }
-        let peer = session.peer_platform().to_lowercase();
-        for key_event in event_to_key_events(peer, &event, keyboard_mode, lock_modes) {
-            session.send_key_event(&key_event);
         }
     }
 
@@ -948,7 +931,7 @@ pub fn event_to_key_events(
     keyboard_mode: KeyboardMode,
     lock_modes: Option<i32>,
 ) -> Vec<KeyEvent> {
-    match event_to_key_events_result(peer, event, keyboard_mode, lock_modes) {
+    match event_to_key_events_result(peer, event, keyboard_mode, lock_modes, true) {
         Ok(events) => events,
         Err(err) => {
             hbb_common::log::error!("Could not construct keyboard event: {err}");
@@ -962,6 +945,7 @@ fn event_to_key_events_result(
     event: &Event,
     keyboard_mode: KeyboardMode,
     _lock_modes: Option<i32>,
+    track_grab: bool,
 ) -> hbb_common::ResultType<Vec<KeyEvent>> {
     peer.retain(|c| !c.is_whitespace());
 
@@ -977,9 +961,9 @@ fn event_to_key_events_result(
         None
     };
 
-    update_modifiers_state(event);
-
-    match event.event_type {
+    if track_grab {
+        update_modifiers_state(event);
+        match event.event_type {
         EventType::KeyPress(key) => {
             TO_RELEASE.lock().unwrap().insert(key, event.clone());
         }
@@ -987,6 +971,7 @@ fn event_to_key_events_result(
             TO_RELEASE.lock().unwrap().remove(&key);
         }
         _ => {}
+        }
     }
 
     let mut key_event = KeyEvent::new();
@@ -1000,7 +985,7 @@ fn event_to_key_events_result(
             {
                 let state = state.as_ref().ok_or_else(||
                     hbb_common::anyhow::anyhow!("Legacy keyboard state was not admitted"))?;
-                legacy_keyboard_mode(event, key_event, state)
+                legacy_keyboard_mode(event, key_event, state, &peer, track_grab)
             }
             #[cfg(any(target_os = "android", target_os = "ios"))]
             {
@@ -1026,6 +1011,12 @@ fn event_to_key_events_result(
     Ok(key_events)
 }
 
+pub(crate) fn flutter_key_events(
+    peer: String, event: &Event, keyboard_mode: &str, lock_modes: i32,
+) -> hbb_common::ResultType<Vec<KeyEvent>> {
+    event_to_key_events_result(peer, event, get_keyboard_mode_enum(keyboard_mode), Some(lock_modes), false)
+}
+
 pub fn send_key_event(key_event: &KeyEvent) {
     #[cfg(feature = "flutter")]
     if let Some(session) = flutter::get_cur_session() {
@@ -1042,7 +1033,8 @@ pub fn get_peer_platform() -> String {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent, state: &KeyboardState) -> Vec<KeyEvent> {
+fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent, state: &KeyboardState,
+    peer: &str, track_grab: bool) -> Vec<KeyEvent> {
     let mut events = Vec::new();
     // legacy mode(0): Generate characters locally, look for keycode on other side.
     let (mut key, down_or_up) = match event.event_type {
@@ -1053,8 +1045,7 @@ fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent, state: &Keyboard
         }
     };
 
-    let peer = get_peer_platform();
-    let is_win = peer == "Windows";
+    let is_win = peer.eq_ignore_ascii_case("windows");
     if is_win {
         key = convert_numpad_keys(key, state);
     }
@@ -1080,7 +1071,9 @@ fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent, state: &Keyboard
     let ctrl = state.modifier_family_down(ModifierKey::Control);
     let shift = state.modifier_family_down(ModifierKey::Shift);
     let command = state.modifier_family_down(ModifierKey::Meta);
-    let (_, _, _, command) = client::get_modifiers_state(false, false, false, command);
+    let command = if track_grab {
+        client::get_modifiers_state(false, false, false, command).3
+    } else { command };
     let control_key = match key {
         Key::Alt => Some(ControlKey::Alt),
         Key::AltGr => Some(ControlKey::RAlt),
@@ -1124,7 +1117,15 @@ fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent, state: &Keyboard
         Key::UpArrow => Some(ControlKey::UpArrow),
         Key::Delete => {
             if is_win && ctrl && alt {
-                client::ctrl_alt_del();
+                if track_grab {
+                    client::ctrl_alt_del();
+                } else {
+                    let mut event = KeyEvent::new();
+                    event.set_control_key(ControlKey::CtrlAltDel);
+                    event.down = true;
+                    event.mode = KeyboardMode::Legacy.into();
+                    events.push(event);
+                }
                 return events;
             }
             Some(ControlKey::Delete)
@@ -1249,7 +1250,7 @@ fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent, state: &Keyboard
         }
         if chr != '\0' {
             if chr == 'l' && is_win && command {
-                client::lock_screen();
+                if track_grab { client::lock_screen(); } else { events.push(client::event_lock_screen()); }
                 return events;
             }
             key_event.set_chr(chr as _);
@@ -1258,7 +1259,9 @@ fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent, state: &Keyboard
             return events;
         }
     }
-    let (alt, ctrl, shift, command) = client::get_modifiers_state(alt, ctrl, shift, command);
+    let (alt, ctrl, shift, command) = if track_grab {
+        client::get_modifiers_state(alt, ctrl, shift, command)
+    } else { (alt, ctrl, shift, command) };
     client::legacy_modifiers(&mut key_event, alt, ctrl, shift, command);
 
     if down_or_up == true {

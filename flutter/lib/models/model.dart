@@ -445,6 +445,7 @@ class FfiModel with ChangeNotifier {
     final hasKeyboardPerm = _permissions['keyboard'] != false;
     if (hadKeyboardPerm && !hasKeyboardPerm) {
       final inputModel = parent.target?.inputModel;
+      inputModel?.releaseHeldModifiers();
       if (inputModel != null && inputModel.relativeMouseMode.value) {
         inputModel.setRelativeMouseMode(false);
         showToast(translate('rel-mouse-permission-lost-tip'));
@@ -540,6 +541,10 @@ class FfiModel with ChangeNotifier {
     await updatePrivacyMode(data.updatePrivacyMode, expectedSessionId, peerId);
     if (!_isCurrentSession(expectedSessionId)) return;
     setConnectionType(peerId, data.streamType);
+    if (parent.target?.connType == ConnType.defaultConn) {
+      await parent.target?.inputModel.resumeKeyboardInput();
+      if (!_isCurrentSession(expectedSessionId)) return;
+    }
     await handlePeerInfo(data.peerInfo, peerId, true, expectedSessionId);
   }
 
@@ -625,6 +630,10 @@ class FfiModel with ChangeNotifier {
     } else if (name == 'sync_platform_additions') {
       await handlePlatformAdditions(evt, sessionId, peerId);
     } else if (name == 'connection_ready') {
+      if (parent.target?.connType == ConnType.defaultConn) {
+        await parent.target?.inputModel.resumeKeyboardInput();
+        if (!_isCurrentSession(sessionId)) return;
+      }
       // R-G3: the peer's secure/direct wire flags are ignored — the channel is always
       // PAKE-keyed + direct, so only the stream type (badge suffix) is consumed.
       // Native emits this only after the exact connection round completed keying. It is therefore
@@ -1212,6 +1221,7 @@ class FfiModel with ChangeNotifier {
     final closeView = parent.target!.viewCloseCallback(sessionId);
     // Disable relative mouse mode before reconnecting to ensure cursor is released.
     parent.target?.inputModel.setRelativeMouseMode(false);
+    parent.target?.inputModel.suspendKeyboardInput();
     bind.sessionReconnect(sessionId: sessionId);
     clearPermissions();
     dialogManager.dismissAll();
@@ -1766,6 +1776,7 @@ class FfiModel with ChangeNotifier {
       //
     }
     if (_viewOnly != value) {
+      if (value) parent.target?.inputModel.releaseHeldModifiers();
       _viewOnly = value;
       notifyListeners();
     }

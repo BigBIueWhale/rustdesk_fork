@@ -1955,6 +1955,16 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
             }
+            Data::KeyboardInput(command) => {
+                for event in command.into_events() {
+                    let mut message = Message::new();
+                    message.set_key_event(event);
+                    if let Err(err) = peer.send(&message).await {
+                        log::error!("failed to send owned keyboard input: {err}");
+                        return false;
+                    }
+                }
+            }
             Data::DisplaySelection(command) => {
                 let (switch_display, capture_set, refresh) = command.into_parts();
                 if let Some(switch_display) = switch_display {

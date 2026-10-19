@@ -17,6 +17,7 @@ import '../../models/model.dart';
 import '../../models/platform_model.dart';
 import '../../models/state_model.dart';
 import 'input_modifier_utils.dart';
+import 'flutter_keyboard_input.dart';
 import 'relative_mouse_model.dart';
 import 'reverse_mouse_wheel.dart';
 import '../common.dart';
@@ -399,6 +400,7 @@ class InputModel {
   }
 
   final WeakReference<FFI> parent;
+  late final FlutterKeyboardInput _keyboardInput;
   String keyboardMode = '';
   int _keyboardModeReadGeneration = 0;
 
@@ -490,7 +492,9 @@ class InputModel {
   /// Check if the connected server supports relative mouse mode.
   bool get isRelativeMouseModeSupported => _relativeMouse.isSupported;
 
-  InputModel(this.parent) {
+  InputModel(this.parent, {FlutterKeyboardInputBackend? keyboardBackend}) {
+    _keyboardInput = FlutterKeyboardInput(
+        parent, keyboardBackend ?? const NativeFlutterKeyboardInputBackend());
     initSideButtonChannel();
     _relativeMouse = RelativeMouseModel(
       getSessionId: () => sessionId,
@@ -811,9 +815,20 @@ class InputModel {
   }
 
   KeyEventResult handleRawKeyEvent(RawKeyEvent e) {
+    final modifierSlot = flutterModifierSlot(e.logicalKey);
+    if (e is RawKeyUpEvent && modifierSlot != null) {
+      toReleaseRawKeys.updateKeyUp(e.logicalKey, e);
+      _refreshModifierFlags();
+      _keyboardInput.releaseSlot(modifierSlot);
+      return KeyEventResult.handled;
+    }
+    if (!keyboardPerm || isViewOnly || !_keyboardInput.backend.useFlutterInput) {
+      releaseHeldModifiers();
+    }
+    if (!keyboardPerm || !_keyboardInput.ready) return KeyEventResult.handled;
     if (isViewOnly) return KeyEventResult.handled;
     if (isViewCamera) return KeyEventResult.handled;
-    if (!isInputSourceFlutter) {
+    if (!_keyboardInput.backend.useFlutterInput) {
       if (isDesktop) {
         return KeyEventResult.handled;
       } else if (isWeb) {
@@ -904,9 +919,20 @@ class InputModel {
   }
 
   KeyEventResult handleKeyEvent(KeyEvent e) {
+    final modifierSlot = flutterModifierSlot(e.logicalKey);
+    if (e is KeyUpEvent && modifierSlot != null) {
+      handleKeyUpEventModifiers(e);
+      _refreshModifierFlags();
+      _keyboardInput.releaseSlot(modifierSlot);
+      return KeyEventResult.handled;
+    }
+    if (!keyboardPerm || isViewOnly || !_keyboardInput.backend.useFlutterInput) {
+      releaseHeldModifiers();
+    }
+    if (!keyboardPerm || !_keyboardInput.ready) return KeyEventResult.handled;
     if (isViewOnly) return KeyEventResult.handled;
     if (isViewCamera) return KeyEventResult.handled;
-    if (!isInputSourceFlutter) {
+    if (!_keyboardInput.backend.useFlutterInput) {
       if (isDesktop) {
         return KeyEventResult.handled;
       } else if (isWeb) {
@@ -999,7 +1025,7 @@ class InputModel {
           e.physicalKey.usbHidUsage & 0xFFFF,
           // Show repeat event be converted to "release+press" events?
           e is KeyDownEvent || e is KeyRepeatEvent,
-          iosCapsLock);
+          iosCapsLock, modifierSlot: modifierSlot);
     } else {
       legacyKeyboardMode(e);
     }
@@ -1010,14 +1036,11 @@ class InputModel {
   /// Send Key Event
   void newKeyboardMode(
       String character, int usbHid, bool down, bool iosCapsLock,
-      {SessionID? expectedSessionId}) {
+      {SessionID? expectedSessionId, int? modifierSlot}) {
+    if (!keyboardPerm || isViewOnly || isViewCamera) return;
     final lockModes = _buildLockModes(iosCapsLock);
-    bind.sessionHandleFlutterKeyEvent(
-        sessionId: expectedSessionId ?? sessionId,
-        character: character,
-        usbHid: usbHid,
-        lockModes: lockModes,
-        downOrUp: down);
+    _keyboardInput.send(FlutterKeyStroke.key(character, usbHid, lockModes, down),
+        slot: modifierSlot, expectedSessionId: expectedSessionId);
   }
 
   void mapKeyboardModeRaw(RawKeyEvent e, bool iosCapsLock) {
@@ -1052,20 +1075,18 @@ class InputModel {
       down = false;
     }
     inputRawKey(
-        e.character ?? '', platformCode, positionCode, down, iosCapsLock);
+        e.character ?? '', platformCode, positionCode, down, iosCapsLock,
+        modifierSlot: flutterModifierSlot(e.logicalKey));
   }
 
   /// Send raw Key Event
   void inputRawKey(String name, int platformCode, int positionCode, bool down,
-      bool iosCapsLock) {
+      bool iosCapsLock, {int? modifierSlot}) {
+    if (!keyboardPerm || isViewOnly || isViewCamera) return;
     final lockModes = _buildLockModes(iosCapsLock);
-    bind.sessionHandleFlutterRawKeyEvent(
-        sessionId: sessionId,
-        name: name,
-        platformCode: platformCode,
-        positionCode: positionCode,
-        lockModes: lockModes,
-        downOrUp: down);
+    _keyboardInput.send(
+        FlutterKeyStroke.raw(name, platformCode, positionCode, lockModes, down),
+        slot: modifierSlot);
   }
 
   void legacyKeyboardModeRaw(RawKeyEvent e) {
@@ -1086,7 +1107,8 @@ class InputModel {
     final label = physicalKeyMap[e.physicalKey.usbHidUsage] ??
         logicalKeyMap[e.logicalKey.keyId] ??
         e.logicalKey.keyLabel;
-    inputKey(label, down: down, press: press ?? false);
+    inputKey(label, down: down, press: press ?? false,
+        modifierSlot: flutterModifierSlot(e.logicalKey));
   }
 
   void legacyKeyboardMode(KeyEvent e) {
@@ -1104,24 +1126,19 @@ class InputModel {
     final label = physicalKeyMap[e.physicalKey.usbHidUsage] ??
         logicalKeyMap[e.logicalKey.keyId] ??
         e.logicalKey.keyLabel;
-    inputKey(label, down: down, press: press ?? false);
+    inputKey(label, down: down, press: press ?? false,
+        modifierSlot: flutterModifierSlot(e.logicalKey));
   }
 
   /// Send key stroke event.
   /// [down] indicates the key's state(down or up).
   /// [press] indicates a click event(down and up).
-  void inputKey(String name, {bool? down, bool? press}) {
+  void inputKey(String name, {bool? down, bool? press, int? modifierSlot}) {
     if (!keyboardPerm) return;
+    if (isViewOnly) return;
     if (isViewCamera) return;
-    bind.sessionInputKey(
-        sessionId: sessionId,
-        name: name,
-        down: down ?? false,
-        press: press ?? true,
-        alt: alt,
-        ctrl: ctrl,
-        shift: shift,
-        command: command);
+    _keyboardInput.send(FlutterKeyStroke.legacy(name, down ?? false,
+        press ?? true, alt, ctrl, shift, command), slot: modifierSlot);
   }
 
   static Map<String, dynamic> getMouseEventMove() => {
@@ -1231,8 +1248,7 @@ class InputModel {
   }
 
   void enterOrLeave(bool enter) {
-    toReleaseKeys.release(handleKeyEvent);
-    toReleaseRawKeys.release(handleRawKeyEvent);
+    releaseHeldModifiers();
     _pointerMovedAfterEnter = false;
     _pointerInsideImage = enter;
     _lastWheelTsUs = 0;
@@ -1250,12 +1266,7 @@ class InputModel {
     }
     _relativeMouse.onEnterOrLeaveImage(enter);
     _flingTimer?.cancel();
-    if (!isInputSourceFlutter) {
-      bind.sessionEnterOrLeave(sessionId: sessionId, enter: enter);
-    }
-    if (!isWeb && enter) {
-      bind.setCurSessionId(sessionId: sessionId);
-    }
+    _keyboardInput.backend.enterOrLeave(sessionId, enter);
   }
 
   /// Send mouse movement event with distance in [x] and [y].
@@ -1317,48 +1328,52 @@ class InputModel {
     return _relativeMouse.setRelativeMouseMode(enabled);
   }
 
-  /// Exit relative mouse mode and release all modifier keys to the remote.
-  /// This is called when the user presses the exit shortcut (Ctrl+Alt on Win/Linux, Cmd+G on macOS).
-  /// We need to send key-up events for all modifiers because the shortcut itself may have
-  /// blocked some key events, leaving the remote in a state where modifiers are stuck.
+  Future<void> resumeKeyboardInput() => _keyboardInput.resume();
+
+  void releaseHeldModifiers() {
+    _keyboardInput.releaseAll();
+    toReleaseKeys.reset();
+    toReleaseRawKeys.reset();
+    resetModifiers();
+  }
+
+  void suspendKeyboardInput() {
+    _keyboardInput.suspend();
+    toReleaseKeys.reset();
+    toReleaseRawKeys.reset();
+    resetModifiers();
+  }
+
+  void _refreshModifierFlags() {
+    shift = toReleaseKeys.lastLShiftKeyEvent != null ||
+        toReleaseKeys.lastRShiftKeyEvent != null ||
+        toReleaseRawKeys.lastLShiftKeyEvent != null ||
+        toReleaseRawKeys.lastRShiftKeyEvent != null;
+    ctrl = toReleaseKeys.lastLCtrlKeyEvent != null ||
+        toReleaseKeys.lastRCtrlKeyEvent != null ||
+        toReleaseRawKeys.lastLCtrlKeyEvent != null ||
+        toReleaseRawKeys.lastRCtrlKeyEvent != null;
+    alt = toReleaseKeys.lastLAltKeyEvent != null ||
+        toReleaseKeys.lastRAltKeyEvent != null ||
+        toReleaseRawKeys.lastLAltKeyEvent != null ||
+        toReleaseRawKeys.lastRAltKeyEvent != null;
+    command = toReleaseKeys.lastLCommandKeyEvent != null ||
+        toReleaseKeys.lastRCommandKeyEvent != null ||
+        toReleaseKeys.lastSuperKeyEvent != null ||
+        toReleaseRawKeys.lastLCommandKeyEvent != null ||
+        toReleaseRawKeys.lastRCommandKeyEvent != null ||
+        toReleaseRawKeys.lastSuperKeyEvent != null;
+  }
+
+  /// Exit the relative-mouse shortcut using the exact accepted modifier presses.
   void exitRelativeMouseModeWithKeyRelease() {
     if (!_relativeMouse.enabled.value) return;
-
-    // First, send release events for all modifier keys to the remote.
-    // This ensures the remote doesn't have stuck modifier keys after exiting.
-    // Use press: false, down: false to send key-up events without modifiers attached.
-    final modifiersToRelease = [
-      'Control_L',
-      'Control_R',
-      'Alt_L',
-      'Alt_R',
-      'Shift_L',
-      'Shift_R',
-      'Meta_L', // Command/Super left
-      'Meta_R', // Command/Super right
-    ];
-
-    for (final key in modifiersToRelease) {
-      bind.sessionInputKey(
-        sessionId: sessionId,
-        name: key,
-        down: false,
-        press: false,
-        alt: false,
-        ctrl: false,
-        shift: false,
-        command: false,
-      );
-    }
-
-    // Reset local modifier state
-    resetModifiers();
-
-    // Now exit relative mouse mode
+    releaseHeldModifiers();
     _relativeMouse.setRelativeMouseMode(false);
   }
 
   void resetForSession(SessionID expectedSessionId) {
+    suspendKeyboardInput();
     retireKeyboardMode();
     disposeSideButtonTracking(expectedSessionId: expectedSessionId);
     _relativeMouse.resetForSession(expectedSessionId);
@@ -1391,6 +1406,7 @@ class InputModel {
   }
 
   void disposeRelativeMouseMode({SessionID? expectedSessionId}) {
+    suspendKeyboardInput();
     _relativeMouse.dispose(expectedSessionId: expectedSessionId);
     onRelativeMouseModeDisabled = null;
     // Cancel the relative mouse mode observer and clean up global state.

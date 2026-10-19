@@ -44,6 +44,8 @@ mod bridge_generated;
 pub mod flutter;
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 pub mod flutter_ffi;
+#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+mod flutter_keyboard;
 use common::*;
 #[cfg(feature = "cli")]
 pub mod cli;

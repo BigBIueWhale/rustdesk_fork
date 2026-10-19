@@ -2333,9 +2333,17 @@ class _KeyboardMenu extends StatelessWidget {
             ? (v) async {
                 if (v != null) {
                   final sessionId = ffi.sessionId;
-                  if (!await stateGlobal.setInputSource(sessionId, v) ||
-                      !ffi.isCurrentSession(sessionId)) return;
-                  await ffi.inputModel.updateKeyboardMode();
+                  final clientOwnerId = ffi.clientOwnerId;
+                  ffi.inputModel.suspendKeyboardInput();
+                  try {
+                    if (!await stateGlobal.setInputSource(sessionId, v) ||
+                        !ffi.isCurrentSessionOwner(sessionId, clientOwnerId)) return;
+                    await ffi.inputModel.updateKeyboardMode();
+                  } finally {
+                    if (ffi.isCurrentSessionOwner(sessionId, clientOwnerId)) {
+                      await ffi.inputModel.resumeKeyboardInput();
+                    }
+                  }
                 }
               }
             : null,

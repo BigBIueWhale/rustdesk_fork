@@ -383,6 +383,16 @@ MODIFIER_RELEASE_TESTS = {
     "raw key up retires its key after aggregate state is clear",
     "raw key up preserves a different held modifier",
     "ordinary raw keys and reset cannot retain modifier ownership",
+    "owned modifier dispatch focus leave releases the captured owner in one batch",
+    "owned modifier dispatch modern key up bypasses changed input source and keyboard mode",
+    "owned modifier dispatch raw key up bypasses changed input source and clears its slot",
+    "owned modifier dispatch permission revocation retires modifiers before blocking new input",
+    "owned modifier dispatch view only retires modifiers and refuses later new input",
+    "owned modifier dispatch focus cleanup fences a down whose bridge completion is pending",
+    "owned modifier dispatch modifier repeats share a sequence and a later press gets a new one",
+    "owned modifier dispatch connection suspension refuses input until a new round is installed",
+    "owned modifier dispatch retired owner cannot install a late keyboard round",
+    "owned modifier dispatch changing the owner during a round read refuses later dispatch",
 }
 DIRECTORY_ORDERING_TESTS = {
     "new destination survives an older navigation response",

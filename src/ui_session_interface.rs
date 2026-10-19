@@ -89,6 +89,17 @@ pub struct Session<T: InvokeUiSession> {
     pub reconnect_count: Arc<AtomicUsize>,
     pub last_audit_note: Arc<Mutex<String>>,
     pub audit_guid: Arc<Mutex<String>>,
+    #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+    pub(crate) flutter_keyboard: Arc<Mutex<crate::flutter_keyboard::FlutterKeyboardState>>,
+}
+
+pub(crate) struct PreparedKeyboardInput {
+    pub events: Vec<KeyEvent>,
+    pub physical: Option<rdev::Key>,
+}
+
+impl PreparedKeyboardInput {
+    fn empty() -> Self { Self { events: Vec::new(), physical: None } }
 }
 
 #[derive(Clone)]
@@ -145,6 +156,14 @@ pub(crate) struct ConnectionRoundOwner {
 }
 
 impl ConnectionRoundOwner {
+    pub(crate) fn with_connected<R>(&self, admitted: impl FnOnce() -> R) -> Option<R> {
+        let state = self.state.lock().unwrap();
+        if state.retired || state.state != ConnectionState::Connected {
+            return None;
+        }
+        Some(admitted())
+    }
+
     fn begin(&self) -> Option<(ConnectionState, u64)> {
         let mut state = self.state.lock().unwrap();
         if state.retired
@@ -1102,7 +1121,7 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     // flutter only TODO new input
-    pub fn input_key(
+    pub(crate) fn prepare_legacy_key(
         &self,
         name: &str,
         down: bool,
@@ -1111,14 +1130,16 @@ impl<T: InvokeUiSession> Session<T> {
         ctrl: bool,
         shift: bool,
         command: bool,
-    ) {
+    ) -> PreparedKeyboardInput {
         let chars: Vec<char> = name.chars().collect();
         if chars.len() == 1 {
             let key = Key::_Raw(chars[0] as _);
-            self._input_key(key, down, press, alt, ctrl, shift, command);
+            self.legacy_key_event(key, down, press, alt, ctrl, shift, command)
         } else {
             if let Some(key) = KEY_MAP.get(name) {
-                self._input_key(key.clone(), down, press, alt, ctrl, shift, command);
+                self.legacy_key_event(key.clone(), down, press, alt, ctrl, shift, command)
+            } else {
+                PreparedKeyboardInput::empty()
             }
         }
     }
@@ -1132,7 +1153,7 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     #[cfg(any(target_os = "ios"))]
-    pub fn handle_flutter_raw_key_event(
+    pub(crate) fn prepare_flutter_raw_key_event(
         &self,
         _keyboard_mode: &str,
         _name: &str,
@@ -1140,11 +1161,12 @@ impl<T: InvokeUiSession> Session<T> {
         _position_code: i32,
         _lock_modes: i32,
         _down_or_up: bool,
-    ) {
+    ) -> ResultType<PreparedKeyboardInput> {
+        Ok(PreparedKeyboardInput::empty())
     }
 
     #[cfg(not(any(target_os = "ios")))]
-    pub fn handle_flutter_raw_key_event(
+    pub(crate) fn prepare_flutter_raw_key_event(
         &self,
         keyboard_mode: &str,
         name: &str,
@@ -1152,31 +1174,31 @@ impl<T: InvokeUiSession> Session<T> {
         position_code: i32,
         lock_modes: i32,
         down_or_up: bool,
-    ) {
+    ) -> ResultType<PreparedKeyboardInput> {
         if name == "flutter_key" {
-            self._handle_key_flutter_simulation(keyboard_mode, platform_code, down_or_up);
+            Ok(self.flutter_simulated_key(platform_code, down_or_up))
         } else {
-            self._handle_raw_key_non_flutter_simulation(
+            self.prepare_raw_key(
                 keyboard_mode,
                 platform_code,
                 position_code,
                 lock_modes,
                 down_or_up,
-            );
+            )
         }
     }
 
     #[cfg(not(any(target_os = "ios")))]
-    fn _handle_raw_key_non_flutter_simulation(
+    fn prepare_raw_key(
         &self,
         keyboard_mode: &str,
         platform_code: i32,
         position_code: i32,
         lock_modes: i32,
         down_or_up: bool,
-    ) {
+    ) -> ResultType<PreparedKeyboardInput> {
         if position_code < 0 || platform_code < 0 {
-            return;
+            return Ok(PreparedKeyboardInput::empty());
         }
         let platform_code: u32 = platform_code as _;
         let position_code: KeyCode = position_code as _;
@@ -1202,36 +1224,36 @@ impl<T: InvokeUiSession> Session<T> {
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             extra_data: 0,
         };
-        keyboard::client::process_event_with_session(keyboard_mode, &event, Some(lock_modes), self);
+        let events = keyboard::flutter_key_events(self.peer_platform().to_lowercase(), &event, keyboard_mode, lock_modes)?;
+        Ok(PreparedKeyboardInput { events, physical: Some(key) })
     }
 
-    pub fn handle_flutter_key_event(
+    pub(crate) fn prepare_flutter_key_event(
         &self,
         keyboard_mode: &str,
         character: &str,
         usb_hid: i32,
         lock_modes: i32,
         down_or_up: bool,
-    ) {
+    ) -> ResultType<PreparedKeyboardInput> {
         if character == "flutter_key" {
-            self._handle_key_flutter_simulation(keyboard_mode, usb_hid, down_or_up);
+            Ok(self.flutter_simulated_key(usb_hid, down_or_up))
         } else {
-            self._handle_key_non_flutter_simulation(
+            self.prepare_key(
                 keyboard_mode,
                 character,
                 usb_hid,
                 lock_modes,
                 down_or_up,
-            );
+            )
         }
     }
 
-    fn _handle_key_flutter_simulation(
+    fn flutter_simulated_key(
         &self,
-        _keyboard_mode: &str,
         platform_code: i32,
         down_or_up: bool,
-    ) {
+    ) -> PreparedKeyboardInput {
         // https://github.com/flutter/flutter/blob/master/packages/flutter/lib/src/services/keyboard_key.g.dart#L4356
         let ctrl_key = match platform_code {
             0x007f => Some(ControlKey::VolumeMute),
@@ -1240,24 +1262,24 @@ impl<T: InvokeUiSession> Session<T> {
             0x0066 => Some(ControlKey::Power),
             _ => None,
         };
-        let Some(ctrl_key) = ctrl_key else { return };
+        let Some(ctrl_key) = ctrl_key else { return PreparedKeyboardInput::empty() };
         let mut key_event = KeyEvent {
             mode: KeyboardMode::Translate.into(),
             down: down_or_up,
             ..Default::default()
         };
         key_event.set_control_key(ctrl_key);
-        self.send_key_event(&key_event);
+        PreparedKeyboardInput { events: vec![key_event], physical: None }
     }
 
-    fn _handle_key_non_flutter_simulation(
+    fn prepare_key(
         &self,
         keyboard_mode: &str,
         character: &str,
         usb_hid: i32,
         lock_modes: i32,
         down_or_up: bool,
-    ) {
+    ) -> ResultType<PreparedKeyboardInput> {
         let key = rdev::usb_hid_key_from_code(usb_hid as _);
 
         #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -1313,11 +1335,12 @@ impl<T: InvokeUiSession> Session<T> {
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             extra_data: 0,
         };
-        keyboard::client::process_event_with_session(keyboard_mode, &event, Some(lock_modes), self);
+        let events = keyboard::flutter_key_events(self.peer_platform().to_lowercase(), &event, keyboard_mode, lock_modes)?;
+        Ok(PreparedKeyboardInput { events, physical: Some(key) })
     }
 
     // flutter only TODO new input
-    fn _input_key(
+    fn legacy_key_event(
         &self,
         key: Key,
         down: bool,
@@ -1326,7 +1349,7 @@ impl<T: InvokeUiSession> Session<T> {
         ctrl: bool,
         shift: bool,
         command: bool,
-    ) {
+    ) -> PreparedKeyboardInput {
         let v = if press {
             3
         } else if down {
@@ -1355,7 +1378,21 @@ impl<T: InvokeUiSession> Session<T> {
         keyboard::client::legacy_modifiers(&mut key_event, alt, ctrl, shift, command);
         key_event.mode = KeyboardMode::Legacy.into();
 
-        self.send_key_event(&key_event);
+        let physical = match &key_event.union {
+            Some(key_event::Union::ControlKey(key)) => match key.enum_value().ok() {
+                Some(ControlKey::Shift) => Some(rdev::Key::ShiftLeft),
+                Some(ControlKey::RShift) => Some(rdev::Key::ShiftRight),
+                Some(ControlKey::Control) => Some(rdev::Key::ControlLeft),
+                Some(ControlKey::RControl) => Some(rdev::Key::ControlRight),
+                Some(ControlKey::Alt) => Some(rdev::Key::Alt),
+                Some(ControlKey::RAlt) => Some(rdev::Key::AltGr),
+                Some(ControlKey::Meta) => Some(rdev::Key::MetaLeft),
+                Some(ControlKey::RWin) => Some(rdev::Key::MetaRight),
+                _ => None,
+            },
+            _ => None,
+        };
+        PreparedKeyboardInput { events: vec![key_event], physical }
     }
 
     pub fn send_touch_scale(&self, scale: i32, alt: bool, ctrl: bool, shift: bool, command: bool) {

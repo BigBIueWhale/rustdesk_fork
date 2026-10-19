@@ -1455,6 +1455,14 @@ impl Deref for LoginConfigHandler {
 }
 
 impl LoginConfigHandler {
+    #[cfg(test)]
+    pub(crate) fn set_keyboard_fixture(&mut self, mode: &str, swap: bool) {
+        self.config.keyboard_mode = mode.to_owned();
+        self.config.allow_swap_key.v = swap;
+        self.config.info.platform = "Linux".to_owned();
+        self.version = hbb_common::get_version_number("1.4.7");
+    }
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub(crate) fn clipboard_write_owner(&self) -> crate::clipboard::ClipboardWriteOwner {
         crate::clipboard::ClipboardWriteOwner::viewer(&self.clipboard_permission_revision)
@@ -4010,8 +4018,34 @@ pub enum Data {
     CloseVoiceCall,
     ResetDecoder(Option<usize>),
     DisplaySelection(DisplaySelectionCommand),
+    KeyboardInput(KeyboardInputCommand),
     RenameFile((i32, String, String, bool)),
     TakeScreenshot((i32, String)),
+}
+
+#[derive(Clone)]
+pub struct KeyboardInputCommand {
+    events: Box<[KeyEvent]>,
+}
+
+impl KeyboardInputCommand {
+    pub(crate) fn new(events: Vec<KeyEvent>) -> ResultType<Self> {
+        if events.is_empty() || events.len() > 128 {
+            bail!("Invalid keyboard command event count");
+        }
+        Ok(Self { events: events.into_boxed_slice() })
+    }
+
+    pub(crate) fn into_events(self) -> Vec<KeyEvent> {
+        self.events.into_vec()
+    }
+
+    fn payload_bytes(&self) -> Option<usize> {
+        self.events.iter().try_fold(0usize, |bytes, event| {
+            bytes.checked_add(usize::try_from(event.compute_size()).ok()?)
+                ?.checked_add(std::mem::size_of::<KeyEvent>())
+        })
+    }
 }
 
 // One outgoing connection round owns this local command plane. A command is admitted only while
@@ -4118,6 +4152,7 @@ enum ViewerCommandTerminal {
 }
 
 struct ViewerCommandControl {
+    keyboard_round: uuid::Uuid,
     terminal: Mutex<ViewerCommandTerminal>,
     changed: hbb_common::tokio::sync::watch::Sender<ViewerCommandTerminal>,
 }
@@ -4148,6 +4183,7 @@ fn viewer_command_channel_with_limits(
     let (changed, changed_receiver) =
         hbb_common::tokio::sync::watch::channel(ViewerCommandTerminal::Open);
     let control = Arc::new(ViewerCommandControl {
+        keyboard_round: uuid::Uuid::new_v4(),
         terminal: Mutex::new(ViewerCommandTerminal::Open),
         changed,
     });
@@ -4198,6 +4234,7 @@ impl Data {
                 usize::try_from(message.compute_size()).ok()
             }
             Self::DisplaySelection(command) => command.payload_bytes(),
+            Self::KeyboardInput(command) => command.payload_bytes(),
             Self::SendFiles((_, _, path, to, _, _, _))
             | Self::AddJob((_, _, path, to, _, _, _)) => checked_string_bytes(&[path, to]),
             Self::RemoveDirAll((_, path, _, _))
@@ -4213,6 +4250,10 @@ impl Data {
 }
 
 impl ViewerCommandSender {
+    pub(crate) fn keyboard_round(&self) -> uuid::Uuid {
+        self.control.keyboard_round
+    }
+
     fn set_terminal_locked(
         &self,
         terminal: &mut ViewerCommandTerminal,
@@ -4245,6 +4286,25 @@ impl ViewerCommandSender {
         F: FnOnce(),
     {
         self.send_with_commit(Data::DisplaySelection(command), commit)
+    }
+
+    pub(crate) fn same_round(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.control, &other.control)
+    }
+
+    pub(crate) fn is_open(&self) -> bool {
+        *self.control.terminal.lock().unwrap() == ViewerCommandTerminal::Open
+    }
+
+    pub(crate) fn send_keyboard_with_commit<F>(
+        &self,
+        command: KeyboardInputCommand,
+        commit: F,
+    ) -> Result<(), ViewerCommandAdmissionError>
+    where
+        F: FnOnce(),
+    {
+        self.send_with_commit(Data::KeyboardInput(command), commit)
     }
 
     fn send_with_commit<F>(&self, data: Data, commit: F) -> Result<(), ViewerCommandAdmissionError>

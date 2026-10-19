@@ -413,6 +413,7 @@ struct SessionHandler {
     // Keep those identities separate so a delayed close for an old UI route cannot select its
     // replacement merely because both routes were created by the same isolate.
     client_owner_id: Option<SessionID>,
+    keyboard_input: crate::flutter_keyboard::FlutterKeyboardRegistration,
     // displays of current session.
     // We need this variable to check if the display is in use before pushing rgba to flutter.
     displays: Vec<usize>,
@@ -3735,6 +3736,21 @@ pub mod sessions {
             .cloned()
     }
 
+    pub(crate) fn get_keyboard_input_owner(
+        id: &SessionID, client_owner_id: &SessionID,
+    ) -> Option<(FlutterSession, Arc<crate::flutter_keyboard::FlutterKeyboardOwner>)> {
+        let sessions = SESSIONS.read().unwrap();
+        for session in sessions.values() {
+            let handlers = session.ui_handler.session_handlers.read().unwrap();
+            if let Some(handler) = handlers.get(id) {
+                if handler.client_owner_id.as_ref() != Some(client_owner_id) { return None; }
+                handler.keyboard_input.attach(session);
+                return Some((session.clone(), handler.keyboard_input.clone()));
+            }
+        }
+        None
+    }
+
     #[inline]
     pub fn get_session_by_peer_id(peer_id: String, conn_type: ConnType) -> Option<FlutterSession> {
         SESSIONS.read().unwrap().get(&(peer_id, conn_type)).cloned()
@@ -3751,6 +3767,7 @@ pub mod sessions {
         let mut sessions = SESSIONS.write().unwrap();
         let mut remove_peer_key = None;
         let mut displaced_handlers = Vec::new();
+        let mut retired_handler = None;
         for (peer_key, session) in sessions.iter_mut() {
             let mut handlers = session.ui_handler.session_handlers.write().unwrap();
             let Some(handler) = handlers.get(id) else {
@@ -3776,6 +3793,8 @@ pub mod sessions {
                     log::error!("exact viewer handler disappeared during its retirement commit");
                     std::process::abort();
                 };
+                _handler.keyboard_input.mark_retired();
+                retired_handler = Some(_handler);
                 session.ui_handler.retire_rgba_session(id);
             };
             let retirement = if remains_displays.is_empty() {
@@ -3795,12 +3814,13 @@ pub mod sessions {
             }
             break;
         }
-        let session = sessions.remove(&remove_peer_key?)?;
+        let session = remove_peer_key.and_then(|key| sessions.remove(&key));
         drop(sessions);
+        drop(retired_handler);
         for handler in displaced_handlers {
             super::try_send_close_event(&handler.event_stream);
         }
-        Some(session)
+        session
     }
 
     pub(super) fn remaining_displays(
@@ -3867,6 +3887,7 @@ pub mod sessions {
                     log::error!("viewer handler disappeared during its retirement commit");
                     std::process::abort();
                 };
+                handler.keyboard_input.mark_retired();
                 session.ui_handler.retire_rgba_session(session_id);
                 removed_handlers.push(handler);
             }
@@ -4818,6 +4839,10 @@ mod viewer_credential_bridge_tests {
     }
 }
 
+#[cfg(all(test, target_os = "linux"))]
+#[path = "flutter_keyboard_tests.rs"]
+mod keyboard_input_tests;
+
 #[cfg(test)]
 mod mobile_session_lifecycle_tests {
     use super::*;
@@ -4826,7 +4851,7 @@ mod mobile_session_lifecycle_tests {
     use std::sync::{atomic::AtomicBool, Arc};
     use std::time::Duration;
 
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    pub(super) static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn initialized_test_session(peer_id: &str, conn_type: ConnType) -> FlutterSession {
         let session: FlutterSession = Arc::new(Session::default());

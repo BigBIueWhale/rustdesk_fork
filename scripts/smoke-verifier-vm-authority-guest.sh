@@ -241,7 +241,7 @@ case "$#:${8:-}" in
         echo 'The peer decode shard appends --peer-data and runs the production model with a fresh bridge.' >&2
         echo 'The file-navigation shard appends --file-navigation and runs the production controller with a fresh bridge.' >&2
         echo 'The directory-ordering shard appends --directory-ordering and runs the production controller with a fresh bridge.' >&2
-        echo 'The modifier-release shard runs exact production key bookkeeping with a fresh bridge.' >&2
+        echo 'The modifier-release shard runs production input ownership and key bookkeeping with a fresh bridge.' >&2
         echo 'The terminal output/lifetime shard appends --terminal-output and generates its exact bridge.' >&2
         echo 'The focused Rust clipboard shard appends --clipboard to --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused whiteboard state shard appends --whiteboard-presentation to that same source-bound invocation.' >&2
@@ -5628,7 +5628,11 @@ PY
             && [ "$(grep -Ec '^test client::video_handler_tests::.* \.\.\. ok$' "$output")" -eq 8 ] \
             || fail 'viewer video artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = option-ack ]; then
-        [ "${#result_lines[@]}" -eq 2 ] || fail 'option acknowledgement summary count differs'
+        [ "${#result_lines[@]}" -eq 3 ] || fail 'option acknowledgement summary count differs'
+        [ "$(grep -Ec '^test flutter::keyboard_input_tests::[a-z_]+ \.\.\. ok$' "$output")" -eq 12 ] \
+            && [ "$(grep -Ec '^FLUTTER_KEYBOARD_ARTIFACT=observed sha256=[0-9a-f]{64} tests=12 exit_code=0$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'FLUTTER_KEYBOARD_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'Flutter keyboard native outcomes differ'
         [ "$(grep -Ec '^OPTION_ACK_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_ACK_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_ACK_NATIVE=observed failure_reported=true memory_preserved=true file_preserved=true retry_applied=true retry_persisted=true peer=unix' "$output")" -eq 1 ] \
@@ -8820,7 +8824,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_MODIFIER_RELEASE_TEST_JSON
-            expected_result='suites=1 tests=9'
+            expected_result='suites=1 tests=19'
         elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
             memory=3g
             memory_bytes=3221225472
@@ -9697,7 +9701,7 @@ run_flutter_model_tests() {
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = modifier-release ]; then
-        printf 'FLUTTER_MODIFIER_RELEASE_TESTS_VM=pass commit=%s tree=%s suites=1 tests=9 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-modifier-release-tests cleanup=joined\n' \
+        printf 'FLUTTER_MODIFIER_RELEASE_TESTS_VM=pass commit=%s tree=%s suites=1 tests=19 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-modifier-release-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

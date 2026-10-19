@@ -19,6 +19,11 @@ for test in \
         "$test_executable" "$test" \
         --exact --color never --test-threads=1 --show-output || execution_status=$?
 done
+timeout --signal=TERM --kill-after=5s 30s \
+    "$test_executable" flutter::keyboard_input_tests:: \
+    --color never --test-threads=1 --show-output || execution_status=$?
+printf 'FLUTTER_KEYBOARD_ARTIFACT=observed sha256=%s tests=12 exit_code=%s\n' \
+    "$artifact_sha" "$execution_status"
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
 printf 'OPTION_ACK_ARTIFACT_AFTER=observed sha256=%s tests=2 exit_code=%s unchanged=before-after\n' \
     "$artifact_sha" "$execution_status"

@@ -3911,9 +3911,7 @@ String getConnectionText(String streamType) {
   }
 }
 
-// TODO: We should support individual bits combinations in the future.
-// But for now, just keep it simple, because the old code only supports single button.
-// No users have requested multi-button support yet.
+// A peer mouse message carries one button; sampled chords are split before encoding.
 String mouseButtonsToPeer(int buttons) {
   switch (buttons) {
     case kPrimaryMouseButton:

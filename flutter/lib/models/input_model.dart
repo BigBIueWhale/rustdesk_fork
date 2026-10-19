@@ -1144,41 +1144,44 @@ class InputModel {
         'buttons': 0,
       };
 
-  Map<String, dynamic> _getMouseEvent(PointerEvent evt, String type) {
-    final Map<String, dynamic> out = {};
+  List<Map<String, dynamic>> _getMouseButtonEvents(PointerEvent evt, String type) {
+    const buttons = [kPrimaryMouseButton, kSecondaryMouseButton,
+      kMiddleMouseButton, kBackMouseButton, kForwardMouseButton];
+    const supportedMask = kPrimaryMouseButton | kSecondaryMouseButton |
+        kMiddleMouseButton | kBackMouseButton | kForwardMouseButton;
+    final current = type == _kMouseEventUp ? 0 : (evt.buttons & supportedMask);
+    final released = _lastButtons & ~current;
+    final pressed = current & ~_lastButtons;
+    _lastButtons = current;
+    if (released == 0 && pressed == 0) return const [];
 
-    bool hasStaleButtonsOnMouseUp =
-        type == _kMouseEventUp && evt.buttons == _lastButtons;
+    // A peer message names one button. Retire the old chord before new presses.
+    return [
+      for (final button in buttons)
+        if ((released & button) != 0) {'type': _kMouseEventUp, 'buttons': button},
+      for (final button in buttons)
+        if ((pressed & button) != 0) {'type': _kMouseEventDown, 'buttons': button},
+    ];
+  }
 
-    // Check update event type and set buttons to be sent.
-    int buttons = _lastButtons;
+  void _handleMouseEvent(PointerEvent evt, String type,
+      {bool edgeScroll = false}) {
+    final changes = _getMouseButtonEvents(evt, type);
+    final relative = _relativeMouse.enabled.value;
     if (type == _kMouseEventMove) {
-      // flutter may emit move event if one button is pressed and another button
-      // is pressing or releasing.
-      if (evt.buttons != _lastButtons) {
-        // For simplicity
-        // Just consider 3 - 1 ((Left + Right buttons) - Left button)
-        // Do not consider 2 - 1 (Right button - Left button)
-        // or 6 - 5 ((Right + Mid buttons) - (Left + Mid buttons))
-        // and so on
-        buttons = evt.buttons - _lastButtons;
-        if (buttons > 0) {
-          type = _kMouseEventDown;
-        } else {
-          type = _kMouseEventUp;
-          buttons = -buttons;
-        }
-      }
-    } else {
-      if (evt.buttons != 0) {
-        buttons = evt.buttons;
+      if (relative) {
+        _relativeMouse.handleRelativeMouseMove(evt.localPosition);
+      } else {
+        handleMouse(getMouseEventMove(), evt.position, edgeScroll: edgeScroll);
       }
     }
-    _lastButtons = hasStaleButtonsOnMouseUp ? 0 : evt.buttons;
-
-    out['buttons'] = buttons;
-    out['type'] = type;
-    return out;
+    for (final change in changes) {
+      if (relative) {
+        unawaited(_relativeMouse.sendRelativeMouseButton(change));
+      } else {
+        handleMouse(change, evt.position);
+      }
+    }
   }
 
   /// Send a mouse tap event(down and up).
@@ -1480,10 +1483,7 @@ class InputModel {
       isPhysicalMouse.value = true;
     }
     if (isPhysicalMouse.value) {
-      if (!_relativeMouse.handleRelativeMouseMove(e.localPosition)) {
-        handleMouse(_getMouseEvent(e, _kMouseEventMove), e.position,
-            edgeScroll: useEdgeScroll);
-      }
+      _handleMouseEvent(e, _kMouseEventMove, edgeScroll: useEdgeScroll);
     }
   }
 
@@ -1716,14 +1716,7 @@ class InputModel {
       }
     }
     if (isPhysicalMouse.value) {
-      // In relative mouse mode, send button events without position.
-      // Use _relativeMouse.enabled.value consistently with the guard above.
-      if (_relativeMouse.enabled.value) {
-        _relativeMouse
-            .sendRelativeMouseButton(_getMouseEvent(e, _kMouseEventDown));
-      } else {
-        handleMouse(_getMouseEvent(e, _kMouseEventDown), e.position);
-      }
+      _handleMouseEvent(e, _kMouseEventDown);
     }
   }
 
@@ -1738,14 +1731,7 @@ class InputModel {
 
     if (e.kind != ui.PointerDeviceKind.mouse) return;
     if (isPhysicalMouse.value) {
-      // In relative mouse mode, send button events without position.
-      // Use _relativeMouse.enabled.value consistently with the guard above.
-      if (_relativeMouse.enabled.value) {
-        _relativeMouse
-            .sendRelativeMouseButton(_getMouseEvent(e, _kMouseEventUp));
-      } else {
-        handleMouse(_getMouseEvent(e, _kMouseEventUp), e.position);
-      }
+      _handleMouseEvent(e, _kMouseEventUp);
     }
   }
 
@@ -1771,10 +1757,7 @@ class InputModel {
       _queryOtherWindowCoords = false;
     }
     if (isPhysicalMouse.value) {
-      if (!_relativeMouse.handleRelativeMouseMove(e.localPosition)) {
-        handleMouse(_getMouseEvent(e, _kMouseEventMove), e.position,
-            edgeScroll: useEdgeScroll);
-      }
+      _handleMouseEvent(e, _kMouseEventMove, edgeScroll: useEdgeScroll);
     }
   }
 

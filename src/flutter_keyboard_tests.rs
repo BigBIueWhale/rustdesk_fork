@@ -1,6 +1,6 @@
 use super::*;
 use crate::{client::{viewer_command_channel, Data, ViewerCommandReceiver}, flutter_ffi as api};
-use hbb_common::{message_proto::*, tokio};
+use hbb_common::{message_proto::*, protobuf::Message as _, tokio, Stream};
 use std::time::Duration;
 
 struct Fixture {
@@ -43,6 +43,23 @@ impl Fixture {
         }
     }
 
+    async fn wire_batch(&mut self, viewer: &mut Stream, peer: &mut Stream) -> Vec<KeyEvent> {
+        let command = self.receiver.recv().await.unwrap().unwrap();
+        let Data::KeyboardInput(command) = command else { panic!("expected keyboard command") };
+        let expected = command.clone().into_events();
+        command.send_to_peer(viewer).await.unwrap();
+        viewer.flush_writer().await.unwrap();
+        let mut received = Vec::new();
+        for _ in &expected {
+            let bytes = peer.next_timeout(2000).await.unwrap().unwrap();
+            let message = Message::parse_from_bytes(&bytes).unwrap();
+            let Some(message::Union::KeyEvent(event)) = message.union else { panic!("expected wire key event") };
+            received.push(event);
+        }
+        assert_eq!(received, expected);
+        received
+    }
+
     async fn empty(&mut self) {
         assert!(tokio::time::timeout(Duration::from_millis(1), self.receiver.recv()).await.is_err());
     }
@@ -78,19 +95,37 @@ async fn cleanup_keeps_the_accepted_swap_and_mode() {
 async fn modern_and_raw_releases_reuse_the_encoded_press() {
     let _guard = super::mobile_session_lifecycle_tests::TEST_LOCK.lock().unwrap();
     let mut fixture = Fixture::new();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (connected, accepted) = tokio::join!(tokio::net::TcpStream::connect(address), listener.accept());
+    let mut viewer = Stream::from(connected.unwrap(), address);
+    let mut peer = Stream::from(accepted.unwrap().0, address);
+    drop(listener);
+    let (initiator, responder) = tokio::join!(
+        hbb_common::cpace::run_initiator(viewer.as_framed_tcp_mut().unwrap(), "keyboard-wire-fixture"),
+        hbb_common::cpace::run_responder(peer.as_framed_tcp_mut().unwrap(), "keyboard-wire-fixture")
+    );
+    viewer.set_session_keys(initiator.unwrap());
+    peer.set_session_keys(responder.unwrap());
     api::session_handle_flutter_key_event(fixture.id, fixture.client, 1, fixture.round.clone(), 1, Some(0),
         String::new(), 0xe1, 0, true).unwrap();
-    let down = fixture.batch().await.remove(0);
+    let down = fixture.wire_batch(&mut viewer, &mut peer).await.remove(0);
     assert!(down.down);
     assert_eq!(down.mode.enum_value().unwrap(), KeyboardMode::Map);
     fixture.release(1, 1, Some(0)).unwrap();
-    assert_eq!(fixture.batch().await, [expected_release(down)]);
+    assert_eq!(fixture.wire_batch(&mut viewer, &mut peer).await, [expected_release(down)]);
     api::session_handle_flutter_raw_key_event(fixture.id, fixture.client, 1, fixture.round.clone(), 2, Some(1),
         String::new(), 0xffe2, 62, 0, true).unwrap();
-    let down = fixture.batch().await.remove(0);
+    let down = fixture.wire_batch(&mut viewer, &mut peer).await.remove(0);
     fixture.session.lc.write().unwrap().set_keyboard_fixture("legacy", true);
     fixture.release(1, 2, Some(1)).unwrap();
-    assert_eq!(fixture.batch().await, [expected_release(down)]);
+    assert_eq!(fixture.wire_batch(&mut viewer, &mut peer).await, [expected_release(down)]);
+    assert_eq!(peer.recv_counter(), 4);
+    // A refused oversize send closes admission and joins the exact stream writer before return.
+    let oversized = hbb_common::bytes::Bytes::from(vec![0; hbb_common::cpace::MAX_SESSION_PACKET + 1]);
+    assert!(viewer.send_bytes(oversized.clone()).await.is_err());
+    assert!(peer.send_bytes(oversized).await.is_err());
+    println!("FLUTTER_KEYBOARD_WIRE=observed commands=4 events=4 transport=cpace-keyed-tcp writers=joined");
 }
 
 #[tokio::test(flavor = "current_thread")]

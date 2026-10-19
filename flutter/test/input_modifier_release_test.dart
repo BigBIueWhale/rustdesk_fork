@@ -62,7 +62,7 @@ class _Backend implements FlutterKeyboardInputBackend {
 
 class _Session implements FFI {
   _Session(this.backend) {
-    ffiModel = FfiModel(WeakReference<FFI>(this));
+    ffiModel = FfiModel(WeakReference<FFI>(this), compareVersion: (_, __) => 1);
     ffiModel.pi.version = '1.4.7';
     ffiModel.pi.platform = 'Linux';
     inputModel = InputModel(WeakReference<FFI>(this), keyboardBackend: backend);

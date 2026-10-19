@@ -4029,6 +4029,15 @@ pub struct KeyboardInputCommand {
 }
 
 impl KeyboardInputCommand {
+    pub(crate) async fn send_to_peer(self, peer: &mut Stream) -> ResultType<()> {
+        for event in self.events.into_vec() {
+            let mut message = Message::new();
+            message.set_key_event(event);
+            peer.send(&message).await?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn new(events: Vec<KeyEvent>) -> ResultType<Self> {
         if events.is_empty() || events.len() > 128 {
             bail!("Invalid keyboard command event count");

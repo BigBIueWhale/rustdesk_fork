@@ -671,6 +671,61 @@ Future<void> main(List<String> arguments) async {
     print('KEYBOARD_MODE_WIRE_DART_CASE=pass name=missing_session');
     print('KEYBOARD_MODE_WIRE_DART=pass cases=5 native_errors=5 error=RESULT_ERROR '
         'failed_state=preserved retry=durable source_failure=refused unsupported=refused no_peer_started=true');
+    var presetErrors = 0;
+    Future<void> presetRefused(Future<String> Function() write) async {
+      Object? failure;
+      try { await write(); } catch (error) { failure = error; }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'image preset error did not cross the generated native bridge');
+      presetErrors++;
+    }
+    Future<void> preset(String value) async {
+      check(await api.sessionSetImageQualityPreset(sessionId: trackpadSession, value: value) == value &&
+          await api.sessionGetImageQuality(sessionId: trackpadSession) == value &&
+          file.readAsStringSync().contains('image_quality = "$value"'),
+          'image preset acknowledgement preceded durable effective value');
+      durable(240);
+    }
+    check(await api.sessionSetCustomImageQuality(sessionId: trackpadSession, value: 80) == 80 &&
+        await api.sessionGetImageQuality(sessionId: trackpadSession) == 'custom',
+        'typed custom quality path stopped working');
+    for (final value in ['low', 'balanced', 'best']) {
+      await preset(value);
+      check(jsonEncode(await api.sessionGetCustomImageQuality(sessionId: trackpadSession)) == '[80]',
+          'named preset replaced stored custom quality');
+    }
+    print('IMAGE_PRESET_WIRE_DART_CASE=pass name=preset_and_custom_paths');
+    for (final denyRead in [false, true]) {
+      final before = configFiles(config);
+      final confirmed = await api.sessionGetImageQuality(sessionId: trackpadSession);
+      final requested = denyRead ? 'balanced' : 'low';
+      chmod(denyRead ? '0000' : '0500', denyRead ? file.path : file.parent.path);
+      try {
+        await presetRefused(() => api.sessionSetImageQualityPreset(
+            sessionId: trackpadSession, value: requested));
+        check(await api.sessionGetImageQuality(sessionId: trackpadSession) == confirmed,
+            'failed image preset changed its confirmed cache');
+      } finally {
+        chmod(denyRead ? '0600' : '0700', denyRead ? file.path : file.parent.path);
+      }
+      unchanged(before);
+      await preset(requested);
+      print('IMAGE_PRESET_WIRE_DART_CASE=pass name=${denyRead ? "unreadable_source_retry" : "failed_write_retry"}');
+    }
+    final beforeInvalidPreset = configFiles(config);
+    for (final value in ['', 'custom', 'unknown', 'Best']) {
+      await presetRefused(() => api.sessionSetImageQualityPreset(
+          sessionId: trackpadSession, value: value));
+    }
+    unchanged(beforeInvalidPreset);
+    print('IMAGE_PRESET_WIRE_DART_CASE=pass name=invalid_values');
+    await presetRefused(() => api.sessionSetImageQualityPreset(
+        sessionId: Uuid().v4obj(), value: 'best'));
+    unchanged(beforeInvalidPreset);
+    check(presetErrors == 7, 'image preset native error inventory differs');
+    print('IMAGE_PRESET_WIRE_DART_CASE=pass name=missing_session');
+    print('IMAGE_PRESET_WIRE_DART=pass cases=5 native_errors=7 error=RESULT_ERROR '
+        'failed_state=preserved retry=durable source_failure=refused custom_marker=refused no_peer_started=true');
   } finally {
     await api.sessionClose(sessionId: trackpadSession, clientOwnerId: trackpadOwner);
   }

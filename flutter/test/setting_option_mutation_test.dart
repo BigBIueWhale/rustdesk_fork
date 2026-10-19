@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
+import 'package:flutter_hbb/common/widgets/toolbar.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Map<String, Object> _audioDevices(String current,
@@ -92,6 +93,125 @@ Future<void> _slideQuality(WidgetTester tester, int index, double value) async {
 }
 
 void main() {
+  test('image preset choice awaits the effective native acknowledgement', () async {
+    final pending = Completer<String>();
+    final writes = <String>[];
+    var custom = 0;
+    var finished = false;
+    final choosing = selectSessionImageQuality('best',
+        savePreset: (value) { writes.add(value); return pending.future; },
+        editCustom: () async { custom++; }, isCurrent: () => true,
+        showFailure: () => fail('successful preset reported failure'))
+        .then((result) { finished = true; return result; });
+    await Future<void>.delayed(Duration.zero);
+    expect(writes, ['best']);
+    expect(finished, isFalse);
+    expect(custom, 0);
+    pending.complete('best');
+    expect(await choosing, isTrue);
+  });
+
+  test('image Custom choice stages its editor without a preset write', () async {
+    final pending = Completer<void>();
+    var edits = 0;
+    var writes = 0;
+    var finished = false;
+    final choosing = selectSessionImageQuality('custom',
+        savePreset: (value) async { writes++; return value; },
+        editCustom: () { edits++; return pending.future; }, isCurrent: () => true,
+        showFailure: () => fail('successful custom editor reported failure'))
+        .then((result) { finished = true; return result; });
+    await Future<void>.delayed(Duration.zero);
+    expect(edits, 1);
+    expect(writes, 0);
+    expect(finished, isFalse);
+    pending.complete();
+    expect(await choosing, isTrue);
+    expect(writes, 0);
+  });
+
+  test('image preset errors and mismatched replies preserve retry', () async {
+    for (final synchronous in [false, true]) {
+      var calls = 0;
+      var failures = 0;
+      Future<String> write(String value) {
+        calls++;
+        if (calls == 1) {
+          if (synchronous) throw StateError('store failed');
+          return Future.error(StateError('store failed'));
+        }
+        return Future.value(calls == 2 ? 'low' : value);
+      }
+      Future<bool> choose() => selectSessionImageQuality('best',
+          savePreset: write, editCustom: () async => fail('unexpected editor'),
+          isCurrent: () => true, showFailure: () => failures++);
+      expect(await choose(), isFalse);
+      expect(await choose(), isFalse);
+      expect(await choose(), isTrue);
+      expect(calls, 3);
+      expect(failures, 2);
+    }
+  });
+
+  test('image choice retirement blocks admission and late feedback', () async {
+    var current = false;
+    var writes = 0;
+    var edits = 0;
+    var failures = 0;
+    final pending = Completer<String>();
+    Future<bool> choose(String value) => selectSessionImageQuality(value,
+        savePreset: (_) { writes++; return pending.future; },
+        editCustom: () async { edits++; }, isCurrent: () => current,
+        showFailure: () => failures++);
+    expect(await choose('best'), isFalse);
+    expect(await choose('custom'), isFalse);
+    expect(writes, 0);
+    expect(edits, 0);
+    current = true;
+    final admitted = choose('best');
+    current = false;
+    pending.completeError(StateError('late store failed'));
+    expect(await admitted, isFalse);
+    expect(writes, 1);
+    expect(failures, 0);
+    expect(await choose('best'), isFalse);
+    expect(writes, 1);
+  });
+
+  test('image Custom errors and retirement never write a marker', () async {
+    var current = true;
+    var writes = 0;
+    var failures = 0;
+    final pending = Completer<void>();
+    Future<bool> choose(Future<void> Function() edit) => selectSessionImageQuality('custom',
+        savePreset: (value) async { writes++; return value; }, editCustom: edit,
+        isCurrent: () => current, showFailure: () => failures++);
+    expect(await choose(() => throw StateError('editor failed')), isFalse);
+    expect(failures, 1);
+    final retired = choose(() => pending.future);
+    current = false;
+    pending.completeError(StateError('retired editor failed'));
+    expect(await retired, isFalse);
+    expect(failures, 1);
+    expect(writes, 0);
+  });
+
+  test('image preset selection admits only the three named presets', () async {
+    final writes = <String>[];
+    var failures = 0;
+    Future<bool> choose(String? value) => selectSessionImageQuality(value,
+        savePreset: (value) async { writes.add(value); return value; },
+        editCustom: () async => fail('unexpected custom editor'),
+        isCurrent: () => true, showFailure: () => failures++);
+    for (final value in ['low', 'balanced', 'best']) {
+      expect(await choose(value), isTrue);
+    }
+    expect(await choose(null), isFalse);
+    expect(await choose('unknown'), isFalse);
+    expect(writes, ['low', 'balanced', 'best']);
+    expect(failures, 1);
+  });
+
   testWidgets('quality editor Close waits for an admitted hidden FPS save', (tester) async {
     final pending = Completer<double?>();
     var closes = 0;

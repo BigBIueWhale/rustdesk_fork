@@ -85,6 +85,10 @@ pub mod screenshot;
 #[cfg(test)]
 mod video_handler_tests;
 
+#[cfg(all(test, feature = "flutter", target_os = "linux"))]
+#[path = "../scripts/fixtures/image-quality-preset-before-errors.rs"]
+pub(crate) mod image_quality_preset_before;
+
 mod audio_mailbox;
 #[cfg(all(test, target_os = "linux"))]
 mod audio_playback_tests;
@@ -2031,27 +2035,28 @@ impl LoginConfigHandler {
         Ok(msg_out)
     }
 
-    /// Save the given image quality to the config.
-    /// Return a [`Message`] that contains image quality, or `None` if the image quality is not valid.
-    /// # Arguments
-    ///
-    /// * `value` - The image quality.
-    pub fn save_image_quality(&mut self, value: String) -> Option<Message> {
-        let mut res = None;
-        if let Some(q) = self.get_image_quality_enum(&value, false) {
-            let mut misc = Misc::new();
-            misc.set_option(OptionMessage {
-                image_quality: q.into(),
-                ..Default::default()
-            });
-            let mut msg_out = Message::new();
-            msg_out.set_misc(misc);
-            res = Some(msg_out);
+    /// Commit a named preset and build its single quality/automatic-FPS request.
+    pub fn save_image_quality_preset(&mut self, value: &str) -> ResultType<Message> {
+        let Some(quality) = self.get_image_quality_enum(value, false) else {
+            bail!("Invalid image quality preset");
+        };
+        let reset_fps = self.last_auto_fps.unwrap_or(usize::MAX) >= 30;
+        let mut misc = Misc::new();
+        misc.set_option(OptionMessage {
+            image_quality: quality.into(),
+            custom_fps: if reset_fps { 30 } else { 0 },
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_misc(misc);
+        let mut config = PeerConfig::load_for_write(&self.id)?;
+        config.image_quality = value.to_owned();
+        config.store(&self.id)?;
+        self.config.image_quality = config.image_quality;
+        if reset_fps {
+            *self.custom_fps.lock().unwrap() = Some(30);
         }
-        let mut config = self.load_config();
-        config.image_quality = value;
-        self.save_config(config);
-        res
+        Ok(message)
     }
 
     pub fn save_trackpad_speed(&mut self, speed: i32) -> ResultType<i32> {

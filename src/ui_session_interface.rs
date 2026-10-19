@@ -695,22 +695,14 @@ impl<T: InvokeUiSession> Session<T> {
         Ok(custom_image_quality)
     }
 
-    pub fn save_image_quality(&self, value: String) {
-        let msg = self.lc.write().unwrap().save_image_quality(value.clone());
-        if let Some(msg) = msg {
-            self.send(Data::Message(msg));
-        }
-        if value != "custom" {
-            let last_auto_fps = self.lc.read().unwrap().last_auto_fps;
-            if last_auto_fps.unwrap_or(usize::MAX) >= 30 {
-                // non custom quality use 30 fps
-                let result = self.lc.write().unwrap().set_custom_fps(30, false);
-                match result {
-                    Ok(msg) => self.send(Data::Message(msg)),
-                    Err(err) => log::error!("Failed to set automatic FPS: {err}"),
-                }
-            }
-        }
+    pub fn save_image_quality_preset(&self, value: String) -> ResultType<String> {
+        let msg = self
+            .lc
+            .write()
+            .unwrap()
+            .save_image_quality_preset(&value)?;
+        self.send(Data::Message(msg));
+        Ok(value)
     }
 
     pub fn save_trackpad_speed(&self, trackpad_speed: i32) -> ResultType<i32> {

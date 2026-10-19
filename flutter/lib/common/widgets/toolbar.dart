@@ -310,13 +310,62 @@ Future<List<TRadioMenu<String>>> toolbarViewStyle(
   ];
 }
 
+Future<bool> selectSessionImageQuality(String? value, {
+  required Future<String> Function(String) savePreset,
+  required Future<void> Function() editCustom,
+  required bool Function() isCurrent,
+  VoidCallback? showFailure,
+}) async {
+  if (value == null || !isCurrent()) return false;
+  try {
+    if (value == kRemoteImageQualityCustom) {
+      await editCustom();
+      return isCurrent();
+    }
+    if (![kRemoteImageQualityBest, kRemoteImageQualityBalanced,
+        kRemoteImageQualityLow].contains(value)) {
+      throw StateError('Invalid image quality preset');
+    }
+    final effective = await savePreset(value);
+    if (!isCurrent()) return false;
+    if (effective != value) throw StateError('Image quality preset was not applied');
+    return true;
+  } catch (error) {
+    debugPrint('Failed to select image quality: $error');
+    if (isCurrent()) {
+      if (showFailure != null) {
+        showFailure();
+      } else {
+        showToast(translate('Failed'));
+      }
+    }
+    return false;
+  }
+}
+
 Future<List<TRadioMenu<String>>> toolbarImageQuality(
     BuildContext context, String id, FFI ffi) async {
-  final groupValue =
-      await bind.sessionGetImageQuality(sessionId: ffi.sessionId) ?? '';
+  final sessionId = ffi.sessionId;
+  final owner = ffi.clientOwnerId;
+  bool current() => context.mounted && ffi.isCurrentSessionOwner(sessionId, owner);
+  if (!current()) return [];
+  late final String groupValue;
+  try {
+    final loaded = await bind.sessionGetImageQuality(sessionId: sessionId);
+    if (!current()) return [];
+    if (loaded == null) throw StateError('Session is unavailable');
+    groupValue = loaded;
+  } catch (error) {
+    debugPrint('Failed to load image quality: $error');
+    if (current()) showToast(translate('Failed'));
+    return [];
+  }
   onChanged(String? value) async {
-    if (value == null) return;
-    await bind.sessionSetImageQuality(sessionId: ffi.sessionId, value: value);
+    await selectSessionImageQuality(value,
+      savePreset: (value) => bind.sessionSetImageQualityPreset(
+          sessionId: sessionId, value: value),
+      editCustom: () async { await customImageQualityDialog(sessionId, id, ffi); },
+      isCurrent: current);
   }
 
   return [
@@ -339,10 +388,7 @@ Future<List<TRadioMenu<String>>> toolbarImageQuality(
       child: Text(translate('Custom')),
       value: kRemoteImageQualityCustom,
       groupValue: groupValue,
-      onChanged: (value) {
-        onChanged(value);
-        customImageQualityDialog(ffi.sessionId, id, ffi);
-      },
+      onChanged: onChanged,
     ),
   ];
 }

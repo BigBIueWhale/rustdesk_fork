@@ -56,6 +56,7 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
                 .or_else(|| line.find("PEER_PREF_EXPORT_"))
                 .or_else(|| line.find("TRACKPAD_EXPORT_"))
                 .or_else(|| line.find("KEYBOARD_MODE_EXPORT_"))
+                .or_else(|| line.find("IMAGE_PRESET_EXPORT_"))
             {
                 println!("{}", &line[start..]);
             }
@@ -156,6 +157,133 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
     peer_preferences_commit_before_cache_and_command(&root);
     trackpad_preference_commits_before_publication(&root);
     keyboard_mode_commits_before_publication(&root);
+    image_quality_preset_commits_before_publication(&root);
+}
+
+fn image_quality_preset_commits_before_publication(root: &std::path::Path) {
+    use hbb_common::{futures::FutureExt, message_proto::{message, misc, ImageQuality, OptionMessage}};
+    use std::os::unix::fs::PermissionsExt;
+    fn option(receiver: &mut crate::client::ViewerCommandReceiver) -> OptionMessage {
+        use hbb_common::futures::FutureExt;
+        let data = receiver.recv().now_or_never().unwrap().unwrap().unwrap();
+        let crate::client::Data::Message(message) = data else { panic!("unexpected preset command") };
+        let Some(message::Union::Misc(misc)) = message.union else { panic!("missing preset misc") };
+        let Some(misc::Union::Option(option)) = misc.union else { panic!("missing preset option") };
+        option
+    }
+    let peers = Config::file().parent().unwrap().join("peers");
+    assert!(peers.starts_with(root));
+    let old_files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|entry| entry.unwrap().path()).collect();
+    let peer = "127.0.0.1:24008";
+    let historical_peer = "127.0.0.1:24009";
+    let mut config = PeerConfig::default();
+    config.image_quality = "balanced".into();
+    config.custom_image_quality = vec![80];
+    config.info.username = "session-user".into();
+    config.password_prs = b"preset-preserved-prs".to_vec();
+    config.options.insert("custom-fps".into(), "45".into());
+    config.options.insert("unrelated".into(), "preserved".into());
+    config.store(peer).unwrap();
+    let file: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|entry| entry.unwrap().path())
+        .filter(|path| !old_files.contains(path)).collect();
+    assert_eq!(file.len(), 1);
+    let file = &file[0];
+    config.store(historical_peer).unwrap();
+    let old_file: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|entry| entry.unwrap().path())
+        .filter(|path| !old_files.contains(path) && path != file).collect();
+    assert_eq!(old_file.len(), 1);
+    let old_original = std::fs::read(&old_file[0]).unwrap();
+    let owner = crate::flutter_ffi::SessionID::new_v4();
+    let old_owner = crate::flutter_ffi::SessionID::new_v4();
+    let id = crate::flutter_ffi::SessionID::new_v4();
+    let old_id = crate::flutter_ffi::SessionID::new_v4();
+    for (session_id, client_owner, target) in [(id, owner, peer), (old_id, old_owner, historical_peer)] {
+        assert!(crate::flutter_ffi::session_add_sync(session_id, client_owner, target.into(),
+            false, false, false, false, false, "explicit-password".into(), None).0.is_empty());
+    }
+    let session = crate::flutter::sessions::get_session_by_session_id(&id).unwrap();
+    let old_session = crate::flutter::sessions::get_session_by_session_id(&old_id).unwrap();
+    let no_peer_started = session.sender.read().unwrap().is_none() && old_session.sender.read().unwrap().is_none();
+    let (sender, mut receiver) = crate::client::viewer_command_channel();
+    let (old_sender, mut old_receiver) = crate::client::viewer_command_channel();
+    *session.sender.write().unwrap() = Some(sender);
+    *old_session.sender.write().unwrap() = Some(old_sender);
+    *session.lc.read().unwrap().custom_fps.lock().unwrap() = Some(45);
+    *old_session.lc.read().unwrap().custom_fps.lock().unwrap() = Some(45);
+    let mut stored = PeerConfig::load_for_write(peer).unwrap();
+    stored.info.username = "file-user".into();
+    stored.store(peer).unwrap();
+    let original = std::fs::read(file).unwrap();
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o500)).unwrap();
+    crate::client::image_quality_preset_before::session_set_image_quality(old_id, "best".into());
+    let old_cache = old_session.get_image_quality() == "best";
+    let old_fps = *old_session.lc.read().unwrap().custom_fps.lock().unwrap() == Some(30);
+    let first = option(&mut old_receiver);
+    let second = option(&mut old_receiver);
+    let old_commands = first.image_quality.enum_value().unwrap() == ImageQuality::Best
+        && first.custom_fps == 0 && second.custom_fps == 30;
+    let old_preserved = std::fs::read(&old_file[0]).unwrap() == old_original;
+    println!("IMAGE_PRESET_EXPORT_BEFORE=observed normal_return=true cache_without_commit={old_cache} fps_without_commit={old_fps} commands_without_commit={old_commands} file_preserved={old_preserved}");
+    assert!(old_cache && old_fps && old_commands && old_preserved);
+    let refused = crate::flutter_ffi::session_set_image_quality_preset(id, "best".into()).is_err();
+    let cache_preserved = session.get_image_quality() == "balanced";
+    let fps_preserved = *session.lc.read().unwrap().custom_fps.lock().unwrap() == Some(45);
+    let file_preserved = std::fs::read(file).unwrap() == original;
+    let no_failed_command = receiver.recv().now_or_never().is_none();
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(refused && cache_preserved && fps_preserved && file_preserved && no_failed_command);
+    assert_eq!(crate::flutter_ffi::session_set_image_quality_preset(id, "best".into()).unwrap(), "best");
+    let sent = option(&mut receiver);
+    let retry_durable = PeerConfig::load_for_write(peer).unwrap().image_quality == "best"
+        && session.get_image_quality() == "best";
+    let coherent_command = sent.image_quality.enum_value().unwrap() == ImageQuality::Best
+        && sent.custom_fps == 30 && receiver.recv().now_or_never().is_none();
+    for (value, quality, last_auto, fps) in [
+        ("low", ImageQuality::Low, Some(20), 0),
+        ("balanced", ImageQuality::Balanced, Some(30), 30),
+        ("best", ImageQuality::Best, None, 30),
+    ] {
+        session.lc.write().unwrap().last_auto_fps = last_auto;
+        *session.lc.read().unwrap().custom_fps.lock().unwrap() = Some(45);
+        assert_eq!(crate::flutter_ffi::session_set_image_quality_preset(id, value.into()).unwrap(), value);
+        let sent = option(&mut receiver);
+        assert_eq!(sent.image_quality.enum_value().unwrap(), quality);
+        assert_eq!(sent.custom_fps, fps);
+        assert_eq!(*session.lc.read().unwrap().custom_fps.lock().unwrap(), Some(if fps == 0 {45} else {30}));
+        assert!(receiver.recv().now_or_never().is_none());
+    }
+    let original = std::fs::read(file).unwrap();
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let unreadable_refused = crate::flutter_ffi::session_set_image_quality_preset(id, "low".into()).is_err();
+    assert_eq!(session.get_image_quality(), "best");
+    assert_eq!(*session.lc.read().unwrap().custom_fps.lock().unwrap(), Some(30));
+    assert!(receiver.recv().now_or_never().is_none());
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    assert_eq!(crate::flutter_ffi::session_set_image_quality_preset(id, "low".into()).unwrap(), "low");
+    let sent = option(&mut receiver);
+    assert_eq!((sent.image_quality.enum_value().unwrap(), sent.custom_fps), (ImageQuality::Low, 30));
+    let original = std::fs::read(file).unwrap();
+    let invalid_refused = ["", "custom", "unknown", "Best"].into_iter()
+        .all(|value| crate::flutter_ffi::session_set_image_quality_preset(id, value.into()).is_err());
+    let missing_refused = crate::flutter_ffi::session_set_image_quality_preset(crate::flutter_ffi::SessionID::new_v4(), "best".into()).is_err();
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    assert_eq!(session.get_image_quality(), "low");
+    assert!(receiver.recv().now_or_never().is_none());
+    let stored = PeerConfig::load_for_write(peer).unwrap();
+    let unrelated_preserved = stored.info.username == "file-user"
+        && session.lc.read().unwrap().info.username == "session-user"
+        && stored.password_prs == b"preset-preserved-prs" && stored.custom_image_quality == [80]
+        && stored.options.get("unrelated").map(String::as_str) == Some("preserved")
+        && stored.options.get("custom-fps").map(String::as_str) == Some("45");
+    *session.sender.write().unwrap() = None;
+    *old_session.sender.write().unwrap() = None;
+    for (session_id, client_owner) in [(id, owner), (old_id, old_owner)] {
+        let retired = crate::flutter::sessions::remove_session_by_exact_ui_owner(&session_id, &client_owner).unwrap();
+        assert!(retired.sender.read().unwrap().is_none());
+    }
+    println!("IMAGE_PRESET_EXPORT_NATIVE=observed failure_reported={refused} cache_preserved={cache_preserved} fps_preserved={fps_preserved} file_preserved={file_preserved} no_failed_command={no_failed_command} retry_durable={retry_durable} coherent_command={coherent_command} unreadable_refused={unreadable_refused} invalid_refused={invalid_refused} missing_session_refused={missing_refused} unrelated_preserved={unrelated_preserved} no_peer_started={no_peer_started} cleanup=joined");
+    assert!(retry_durable && coherent_command && unreadable_refused && invalid_refused && missing_refused && unrelated_preserved && no_peer_started);
 }
 
 fn keyboard_mode_commits_before_publication(root: &std::path::Path) {

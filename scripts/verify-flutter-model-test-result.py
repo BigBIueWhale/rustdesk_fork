@@ -111,6 +111,12 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SETTING_OPTION_TESTS = {
+    "image preset choice awaits the effective native acknowledgement",
+    "image Custom choice stages its editor without a preset write",
+    "image preset errors and mismatched replies preserve retry",
+    "image choice retirement blocks admission and late feedback",
+    "image Custom errors and retirement never write a marker",
+    "image preset selection admits only the three named presets",
     "quality editor Close waits for an admitted hidden FPS save",
     "quality dialog editing initializes its counterpart without losing a draft",
     "quality editor Close flushes latest edits and waits for both fields",

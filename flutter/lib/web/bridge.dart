@@ -425,11 +425,15 @@ class RustdeskImpl {
     return Future(() => js.context.callMethod('getByName', ['image_quality']));
   }
 
-  Future<void> sessionSetImageQuality(
-      {required UuidValue sessionId, required String value, dynamic hint}) {
-    print('set image quality: $value');
-    return Future(
-        () => js.context.callMethod('setByName', ['image_quality', value]));
+  Future<String> sessionSetImageQualityPreset(
+      {required UuidValue sessionId, required String value, dynamic hint}) async {
+    if (!['low', 'balanced', 'best'].contains(value)) {
+      throw StateError('Invalid image quality preset');
+    }
+    js.context.callMethod('setByName', ['image_quality', value]);
+    final effective = await sessionGetImageQuality(sessionId: sessionId);
+    if (effective != value) throw StateError('Image quality preset was not applied');
+    return value;
   }
 
   Future<String?> sessionGetKeyboardMode(

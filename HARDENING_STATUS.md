@@ -3145,50 +3145,68 @@ All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshnes
 cold artifacts, independent reproduction, external review, release, document-role
 cleanup and all parked work remain OPEN. The broad goal remains active.
 
-**Session view-style persistence — Linux outcome corrected; full canvas/platform acceptance OPEN.**
-Product `1f2a38ef` makes the handler, session facade and generated export fallible.
-Only original/adaptive/custom are admitted. Under the existing handler write guard,
-a fresh peer candidate is loaded and stored before publishing only its view-style
-field. Failed reads/stores preserve cached and durable state; invalid values and
-missing sessions refuse. Unrelated stored values and runtime peer metadata survive.
-The returned string acknowledges a durable local preference, not actual presentation.
+**Session scaling — Linux persistence/editor corrected; native display/platform acceptance OPEN.**
+View-style saving from `1f2a38ef` admits only original/adaptive/custom and stores a
+fresh peer candidate before publishing only view style. Product `b80053aa` replaces
+the session-generic Flutter preference API with named custom-scale and saved-canvas
+read/write operations in `src/client.rs:1654`, `src/ui_session_interface.rs:545`
+and `src/flutter_ffi.rs:431`. A custom percentage is an integer in 5–1000; one durable
+store commits it together with Custom selection, then publishes only those fields.
+Missing sessions and malformed stored values report errors; only an absent percentage
+defaults to 100. Saved canvas is an optional bounded six-field numeric record
+(1,024 bytes, finite coordinates, positive scale, display -1 through i32::MAX);
+empty removes it. Selected writes preserve unrelated UI/options, PRS and runtime
+versus newer-file metadata. No IPC/service/config-policy authority changes.
 
-The shared toolbar retains context and exact canvas/session/client/topology/
-presentation ownership before its getter, reports unavailable state and awaits a
-matching saved value before its existing canvas update. Failed or retired saves do
-not request a canvas update; failed/mismatched current results remain visible and
-retryable. Custom controls check the style-switch acknowledgement before updating.
-Local canvas reset no longer fires an unawaited redundant preference write; its
-geometry calculations are unchanged. The obsolete empty-style call comment is
-deleted. Browser readback is checked in source; browser execution remains unproved.
+`flutter/lib/common/widgets/custom_scale_base.dart:114` owns its normalized draft,
+one debounce timer, one read and save, and current callbacks.
+Rebuild preserves edits; owner changes/removal retire timers,
+deferred reads and feedback. Old initial reads cannot replace newer drafts, and an
+obsolete read cannot block Retry of an edited value. Read and save failures remain
+visible with distinct read/write retry behavior. `flutter/lib/models/model.dart:2584`
+admits only one custom mutation through storage and its owned view update; overlapping controls refuse
+without adding a native write. An active control defers a busy read through one
+removable listener, instead of retaining disposed controls as future waiters.
+Accepted mutation belongs to the exact canvas/session and settles after widget
+removal. Model/session/presentation retirement suppresses its viewport effects.
+A real preference commit or changed style retires stale scale reads; a new image
+admission alone does not discard useful ready initialization. Failed/invalid scale
+reads preserve geometry. The existing view-style toolbar awaits checked save and
+canvas outcomes; local reset has no preference write.
 
-Native `6lHfGfWs1P` passes both Rust cases and all 56 generated Dart/native
-bridge cases in 560 outer seconds, retaining the prior 51 cases. Five new view-style
-cases cover six RESULT_ERROR outcomes and durable round trips/retries.
-The three historical leaves from `98308e31` are body-matched with only explicit
-receivers/local callees/indentation adaptations. They reproduce normal return and
-changed cache after a denied store with unchanged files. The corrected tests observe
-all three valid styles, failure preservation, durable retry, unreadable source,
-invalid values, missing sessions, preserved PRS/unrelated data and runtime-versus-
-newer-file metadata. Prepared idle sessions start no authenticated peer.
+Native `IfCEtH1D3E` passes both Rust cases and all 68 generated Dart/native
+bridge cases in 581 outer seconds, retaining the prior 56 cases. Six custom-scale
+cases observe ten RESULT_ERROR outcomes; six saved-canvas cases observe seventeen.
+Historical generic handler/session/export leaves from `d7a524a7` reproduce normal
+return and cache changes after denied storage; the three bodies are matched before
+execution. The current cases cover the atomic pair, all three view styles, bounds,
+malformed/oversized records, unreadable sources, preserved state and durable retry,
+empty removal, missing sessions and malformed on-disk values across session reopen.
+Prepared sessions start no authenticated peer.
 
-Flutter `8qophyx62B` passes all six suites and 103 cases in 277 outer seconds,
-retaining the prior 97 cases and all three parser controls.
-Six new actual selection/helper cases join save and canvas outcomes, keep the canvas
-untouched after failed/mismatched saves, permit retry, refuse retired admission and
-late effects/feedback, and admit only the three named styles. Fresh generated
-bindings compile the changed toolbar and Custom caller; complete menu/Custom
-interaction and the canvas reset/geometry/OS path are not exercised by these cases.
+Flutter `vVnkqkAi2X` passes all seven suites and 127 cases in 311 outer seconds,
+retaining the prior 103 cases and all three parser controls.
+Twenty-four new cases execute actual rendered base controls and CanvasModel with
+controlled read/write dependencies and clocks. They cover draft/position consistency,
+rebuild, old replies, serialization/latest edits, failure/mismatch/retry, disposal and
+retargeting, captured callbacks, deferred-read removal, replacement admission,
+commit/style ordering, ready initializer usefulness, bounds and model retirement.
+Fresh bindings compile desktop/mobile controls and saved-canvas callers.
+Closing snapshot failure is logged before the existing native-close finally;
+an unavailable saved-canvas hint is logged and uses normal initial-origin behavior.
+Full close/restart and saved-canvas restoration are not executed by these cases.
 
-Exact source/fixture/artifact identities, all outcomes, full endpoint records,
+Source/fixture/artifact identities, exact outcomes, complete endpoint records,
 whole-ledger counting and joined bounded-RAM cleanup are retained in
-`.harness-state/verifier-vm/view-style-1f2a38ef.json`.
-Custom-percent persistence, overlapping canvas preference updates, cross-window/
-process writers, corruption/restart, full menu/gesture/geometry behavior, actual
-pixels and Windows/macOS/Android/iOS/browser/installed acceptance remain OPEN.
-All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshness,
-cold artifacts, independent reproduction, external review, release, document-role
-cleanup and every parked item remain OPEN.
+`.harness-state/verifier-vm/custom-scale-b80053aa.json`. The prior view-style
+receipt remains in `view-style-1f2a38ef.json`.
+Browser source validates values and checked readback through its existing external
+JS adapter; its two-write transactionality and browser execution remain OPEN.
+Main/global peer-window writers, cross-window/process races, corruption/restart,
+full menu/gesture/saved geometry and actual presentation remain OPEN, as do
+Windows/macOS/Android/iOS/installed acceptance. All fifteen credential actions,
+R-S0, R-F5 impairment/multi-hour freshness, cold artifacts, independent reproduction,
+external review, release, document-role cleanup and every parked item remain OPEN.
 
 **Image-quality presets — Linux persistence/request corrected; remote/platform acceptance OPEN.**
 `68a13ec1` replaces the void generic image-quality setter with the result-bearing

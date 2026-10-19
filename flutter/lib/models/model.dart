@@ -2780,6 +2780,7 @@ class CanvasModel with ChangeNotifier {
   Future<({String viewStyle, String style, int thickness})> readScrollPreferences(
       {required CanvasUpdateOwner? owner}) async {
     if (!_acceptsOwner(owner)) throw StateError('Canvas owner is unavailable');
+    if (_scrollPreferenceSavePending) throw StateError('A scroll preference save is pending');
     final revision = _scrollPreferenceCommitRevision;
     final viewStyle = _preferences.viewStyle(owner!.sessionId);
     if (![kRemoteViewStyleOriginal, kRemoteViewStyleAdaptive,

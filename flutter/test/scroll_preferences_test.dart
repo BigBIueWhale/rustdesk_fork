@@ -140,6 +140,39 @@ List<Object> _state(_Session s) => [s.canvasModel.scrollStyle,
   s.canvasModel.scale, s.canvasModel.scrollX, s.canvasModel.scrollY];
 
 void main() {
+  testWidgets('scroll menu owns and cancels its deferred preference read', (tester) async {
+    final s = _Session()..preferences.style = kRemoteScrollStyleEdge;
+    final first = Completer<int>();
+    s.writer.thickness = (_) => first.future;
+    final saving = s.canvasModel.applyEdgeScrollEdgeThickness(150,
+        owner: s.canvasModel.captureUpdateOwner());
+    await _menu(tester, s);
+    await _menu(tester, s);
+    expect(s.preferences.styleReads, 0);
+    expect(s.preferences.thicknessReads, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+    first.complete(150);
+    await _flush(tester);
+    expect(await saving, 150);
+    expect(s.preferences.styleReads, 0);
+    expect(s.preferences.thicknessReads, 0);
+    final second = Completer<int>();
+    s.writer.thickness = (_) => second.future;
+    final next = s.canvasModel.applyEdgeScrollEdgeThickness(80,
+        owner: s.canvasModel.captureUpdateOwner());
+    await _menu(tester, s);
+    expect(s.preferences.styleReads, 0);
+    second.complete(80);
+    await _flush(tester);
+    expect(await next, 80);
+    expect(_slider(tester).value, 80);
+    expect(s.preferences.styleReads, 1);
+    expect(s.preferences.thicknessReads, 1);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    s.dispose();
+  });
+
   testWidgets('scroll menu reloads an initial read after presentation retirement', (tester) async {
     final s = _Session();
     final pending = Completer<String?>();
@@ -481,6 +514,9 @@ void main() {
       expect(c.scrollPreferenceSavePending, isTrue);
       await expectLater(c.applyEdgeScrollEdgeThickness(80, owner: owner), throwsStateError);
       await expectLater(c.applyScrollStyle(kRemoteScrollStyleEdge, owner: owner), throwsStateError);
+      await expectLater(c.readScrollPreferences(owner: owner), throwsStateError);
+      expect(s.preferences.styleReads, 1);
+      expect(s.preferences.thicknessReads, 0);
       expect(s.writer.calls, [('style', kRemoteScrollStyleBar)]);
       read.complete(kRemoteScrollStyleBar);
       expect(await saving, kRemoteScrollStyleBar);

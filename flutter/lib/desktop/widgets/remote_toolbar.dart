@@ -3327,6 +3327,8 @@ class _SessionScrollPreferencesState extends State<SessionScrollPreferences> {
   int? _thickness;
   bool _loading = false;
   bool _failed = false;
+  CanvasModel? _deferredLoadCanvas;
+  VoidCallback? _deferredLoadListener;
   int _epoch = 0;
   int _revision = 0;
 
@@ -3361,12 +3363,35 @@ class _SessionScrollPreferencesState extends State<SessionScrollPreferences> {
         _clientOwnerId != widget.ffi.clientOwnerId) {
       _epoch++;
       _revision++;
+      _cancelDeferredLoad();
       _style = null;
       _thickness = null;
       _failed = false;
       _captureSession();
       _scheduleLoad();
     }
+  }
+
+  void _cancelDeferredLoad() {
+    final listener = _deferredLoadListener;
+    if (listener != null) _deferredLoadCanvas?.removeListener(listener);
+    _deferredLoadCanvas = null;
+    _deferredLoadListener = null;
+  }
+
+  void _deferLoad(CanvasModel canvas, int epoch) {
+    _cancelDeferredLoad();
+    void ready() {
+      if (!_current(epoch)) {
+        _cancelDeferredLoad();
+      } else if (!canvas.scrollPreferenceSavePending) {
+        _cancelDeferredLoad();
+        _load();
+      }
+    }
+    _deferredLoadCanvas = canvas;
+    _deferredLoadListener = ready;
+    canvas.addListener(ready);
   }
 
   Future<void> _load() async {
@@ -3378,6 +3403,11 @@ class _SessionScrollPreferencesState extends State<SessionScrollPreferences> {
       setState(() => _failed = true);
       return;
     }
+    if (_ffi.canvasModel.scrollPreferenceSavePending) {
+      _deferLoad(_ffi.canvasModel, epoch);
+      return;
+    }
+    _cancelDeferredLoad();
     setState(() => _loading = true);
     try {
       final preferences = await _ffi.canvasModel.readScrollPreferences(owner: owner);
@@ -3426,6 +3456,7 @@ class _SessionScrollPreferencesState extends State<SessionScrollPreferences> {
   @override
   void dispose() {
     _epoch++;
+    _cancelDeferredLoad();
     super.dispose();
   }
 

@@ -111,6 +111,7 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SCROLL_PREFERENCE_TESTS = {
+    "scroll menu owns and cancels its deferred preference read",
     "scroll menu reloads an initial read after presentation retirement",
     "scroll menu view style visibility keeps the owned thickness draft",
     "scroll menu rebuild preserves pending thickness draft and admission",

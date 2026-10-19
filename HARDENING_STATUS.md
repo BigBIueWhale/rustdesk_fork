@@ -3026,9 +3026,10 @@ Failure retains the editor for retry; removal retires timers, callbacks and late
 Close effects. The dialog now uses its exact close capability instead of dismissAll.
 Its source adapter checks exact session/client ownership around asynchronous calls
 and verifies requested integer values through local readback. Defaults consume the
-effective value from their existing fallible writer. Local session readback proves
-neither durable peer storage nor remote acknowledgement; those native outcomes
-remain OPEN. Rust/config/IPC/FFI/dependencies and the trackpad control are unchanged.
+effective value from their existing fallible writer. At that commit, local session
+readback established neither durable peer storage nor remote acknowledgement;
+the component slice left Rust/config/IPC/FFI/dependencies and trackpad unchanged.
+The native persistence correction below now supplies the selected Linux evidence.
 
 The Linux Flutter baseline executes 67 cases: 59 pass, including all prior 56
 and three quality controls; eight reproduce rebuild, retired work, overlap,
@@ -3038,8 +3039,8 @@ The correction passes all 73 cases in 272 outer seconds. The same eleven
 baseline cases plus six new Close/counterpart/bounds cases render the actual editor
 with controlled futures, disposal, parent/key replacement and narrow mobile layout.
 The construction adapter changes to the typed widget; the baseline case bodies
-are retained. Actual session/default native delivery, full settings/dialog routing,
-remote effects, peer persistence and installed/platform acceptance remain unproved.
+are retained. That component run did not establish actual native delivery, full
+settings/dialog routing, remote effects, persistence or installed/platform behavior.
 
 Exact source snapshots, injection provenance, actual baseline JSON, corrected
 guest-parser results, pinned inputs, complete endpoint records and joined bounded-RAM
@@ -3048,6 +3049,39 @@ Full settings/native/peer integration, cross-process/restart/global writers,
 all fifteen credential actions, R-S0, R-F5 impairment/soak, cold artifacts,
 independent reproduction, external review, release, document cleanup and parked
 work remain OPEN.
+
+**Custom quality/FPS persistence — Linux native corrected; remote/platform acceptance OPEN.**
+Product `688af635` makes `PeerConfig::store` return the checked atomic-write
+outcome and publish its changed-peer notification only after success. It also
+refuses a nonempty credential becoming empty during encryption, before file I/O.
+Selected quality/FPS writers reject unreadable sources and invalid ranges
+(quality 10–4095; FPS 5–120), persist a fresh candidate under the existing session
+config write guard, then update only their cached fields and volatile FPS.
+This preserves live session metadata and unrelated stored values. No command is
+submitted for a failed save. Typed native exports return the committed integer
+or an error, including a missing session; the dialog consumes that acknowledgement
+with its existing exact-owner checks. Prepared idle sessions retain preference staging.
+
+Linux isolation passes 22 config cases, two parent Rust tests and 36 actual
+generated-bridge Dart cases, including six new peer cases and ten expected native
+errors. Denied writes and unreadable sources preserve cached/file state; identical
+healthy retries commit. The Rust probe observes the existing command channel,
+including no failed-save command and preserved volatile FPS/runtime metadata.
+Positive encrypted round trips use a fixed container-only machine-ID fixture;
+the encryption-loss refusal preserves the file and change notification. The fresh
+generated API also passes the unchanged 73 rendered-editor cases in 280 outer seconds.
+The first two config runs failed and are retained separately, never counted as passes.
+Source identities, artifacts, logs, endpoint records and joined bounded-RAM cleanup
+are retained in `.harness-state/verifier-vm/peer-quality-688af635.json`.
+
+The acknowledgement establishes a durable local preference. Command delivery,
+remote acknowledgement/effects, complete settings/dialog routing, browser and other
+platform execution, restart, cross-session/process writers and corruption/quarantine
+semantics remain OPEN. Other generic peer-setting/UI outcomes remain OPEN; their
+existing handlers now log the fallible store result but retain prior cache semantics.
+All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshness,
+cold artifacts, independent reproduction, external review, release, document-role
+cleanup and all parked work remain OPEN. The broad goal remains active.
 
 **Trackpad speed — rendered Flutter control corrected; full page/native effects OPEN.**
 Product `51669340` replaces the initial-callback, fire-and-forget debouncer

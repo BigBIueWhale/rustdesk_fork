@@ -2432,9 +2432,16 @@ with Windows transport in `src/platform/windows.rs`, macOS authorization in
 The retained Windows-only
 `ipc::ipc_auth::tests::windows_service_owned_share_rdp_client_role_is_exact_interactive_ui`
 checks the finite role predicate. The R-S11hg wire regression checks closed deserialization.
-The password/credential source validators inspect declarations and ordering. None of these supplies
-installed process/token authorization, real polkit, Authorization Services, named-pipe impersonation
-or protected-action evidence.
+The 1,848-line macOS credential wording checker and its 84 in-memory string replacements are
+deleted, together with both invocations and the Apple gate's claim to prove peer/launchd authority.
+They never executed a credential exchange, kernel peer check, code-signature proof or launchd query.
+The closed service-protocol regression, five launchctl parser tests, three bounded-child process
+tests and their compiled gate commands remain unchanged, as do the shared prohibitions on generic
+credential variants, whole-config transfer and persistent credential mirroring. The Linux password
+source validator remains supplementary. No behavioral test or Apple compilation ran for this
+deletion. The retained models, source checks and historical results do not supply installed
+process/token authorization, real polkit, Authorization Services, named-pipe impersonation or
+protected-action evidence; all fifteen actions still require their native observations above.
 
 **Shared acceptance still required.** Each action needs current target-OS compilation and focused
 tests, the exact installed artifact and authorized/refused principals; its authorized effect,

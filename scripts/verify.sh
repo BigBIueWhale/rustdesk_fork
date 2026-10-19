@@ -2615,11 +2615,6 @@ if ! python3 scripts/verify-linux-service-password-ipc.py --repo . >"$VERIFY_TMP
   cat "$VERIFY_TMP/rd_verify_linux_service_password_ipc"
   r_s11b2="$r_s11b2 linux-raw-password-source-check-failed"
 fi
-if ! /usr/bin/python3 -I -S scripts/verify-macos-service-credential-ipc.py \
-    --repo . --self-test >"$VERIFY_TMP/rd_verify_macos_service_credential_ipc" 2>&1; then
-  cat "$VERIFY_TMP/rd_verify_macos_service_credential_ipc"
-  r_s11b2="$r_s11b2 macos-raw-credential-semantic-verifier-failed"
-fi
 if ! python3 - <<'PY'
 from pathlib import Path
 

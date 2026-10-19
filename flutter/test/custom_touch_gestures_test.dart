@@ -235,7 +235,7 @@ void main() {
     expect(f.violations, isEmpty);
   }));
 
-  testWidgets('custom touch rejected extra pointer preserves the active pan',
+  testWidgets('custom touch rejected extra pointer leaves a balanced usable pan',
       (tester) => _run(tester, (f) async {
     final a = await f.down(tester, 1);
     await a.moveBy(const Offset(40, 15));
@@ -243,11 +243,13 @@ void main() {
     final b = await f.down(tester, 2, const Offset(160, 100));
     await a.moveBy(const Offset(20, 10));
     expect(f.winner.accepted, 1);
-    expect(f.oneStarts, hasLength(1));
+    expect(f.oneStarts, hasLength(2));
+    expect(f.events.where((e) => e == 'one:end'), hasLength(1));
     expect(f.active, 'one');
     expect(f.violations, isEmpty);
     await f.up(b);
     await f.up(a);
+    expect(f.events.where((e) => e == 'one:end'), hasLength(2));
   }));
 
   testWidgets('custom touch three finger start retains transformed coordinates',

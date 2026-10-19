@@ -289,7 +289,7 @@ CUSTOM_TOUCH_TESTS = {
     "custom touch fourth pointer pauses recognized updates",
     "custom touch disposal cannot publish a deferred start",
     "custom touch cancellation permits an immediate fresh pan",
-    "custom touch rejected extra pointer preserves the active pan",
+    "custom touch rejected extra pointer leaves a balanced usable pan",
     "custom touch three finger start retains transformed coordinates",
 }
 

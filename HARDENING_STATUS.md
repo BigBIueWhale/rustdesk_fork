@@ -2926,11 +2926,47 @@ Accepted source freezes match before/after. Exact sources, artifacts, commands,
 cases, superseded preparatory-run retirement, endpoint observations and joined
 bounded-RAM cleanup are in `.harness-state/verifier-vm/voice-input-d514e666.json`.
 
-Physical capture/device switching, rendered audio controls/error presentation,
-live authorized/refused CM/service receivers, mobile/Windows/macOS/browser,
-concurrent call ownership and installed/platform acceptance remain OPEN.
+Physical capture/device switching, live authorized/refused CM/service receivers,
+mobile/Windows/macOS/browser, concurrent call ownership and installed/platform
+acceptance remain OPEN. Rendered AudioInput evidence is recorded below.
 All fifteen credential actions, R-S0, latency/soak, cold artifacts,
 independent reproduction, external review and release acceptance remain OPEN.
+
+**Audio device controls — Linux rendered loading/retry corrected; capture/platform acceptance OPEN.**
+Product `ad9240d7`, corrected by `b6904b63`, gives AudioInput state ownership of its device read. Parent
+rebuilds retain a pending read; later parent updates still refresh completed data.
+Read failure displays Failed and Retry, including synchronous failure and a narrow
+layout. A replacement read shows loading rather than a retained old value/error.
+Role/backend replacement and disposal retire old retry and save callbacks before
+dispatch. Already-admitted writes settle; their still-current owner refreshes
+authoritative readback after completion. Empty default and no-device results remain
+valid. The default loader/writer use the existing native APIs.
+
+The CM audio popup catches read errors, permits a later retry, and rechecks its
+mounted panel, exact client object and active-call state after loading and before
+selection. This panel change is source-reviewed and compiled with the Flutter
+test application; the popup itself is not exercised by the rendered cases.
+No Rust/IPC, receiver authority, audio worker, dependency, queue or runtime changes.
+
+At `a1f02eae`, the actual Flutter run passes all previous 34 cases and the new
+empty/default control, while the other seven AudioInput regressions fail.
+The identical four suites and 42 cases pass at `b6904b63` with fresh generated
+bindings in 269 outer seconds. Eight added rendered cases cover asynchronous/synchronous failed load,
+visible retry, rebuild retention, duplicate/stale retry refusal, late data/error,
+role replacement/disposal, admitted-write completion and confirmed readback that
+differs from the requested device. Load/write callbacks are controlled; these tests
+do not initialize physical audio or exercise native storage/CM authorization.
+The first correction exposed three failures caused by two Future-returning setState callbacks;
+`b6904b63` uses synchronous block callbacks without changing the tests.
+Source freezes match before/after each run. Exact case outcomes, source identities,
+pinned inputs, endpoint observations, joined bounded-RAM cleanup and failed-root
+inventory/retirement are in `.harness-state/verifier-vm/audio-controls-b6904b63.json`.
+
+Physical device switching/capture, full settings/CM interactions, concurrent write
+ordering and call generations, native audio cancellation, installed/service and
+Windows/macOS/Android/iOS/browser behavior remain OPEN. All fifteen credential
+actions, R-S0, R-F5 impairment/multi-hour soak, cold artifacts, independent
+reproduction, external review, release acceptance and parked work remain OPEN.
 
 **Flutter UI preferences — persistence and error path corrected; interaction/platform acceptance OPEN.**
 Product `6af3228a` makes `LocalConfig::set_flutter_option` fallible.

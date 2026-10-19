@@ -382,7 +382,8 @@ class InputModel {
             _sideButtonDownModels[mb] = model;
             // Fire-and-forget to avoid blocking the platform channel handler.
             unawaited(
-                model._sendMouseUnchecked(type, mb).catchError((Object e) {
+                model.sendSideMouseButton(type, mb,
+                    expectedSessionId: model.sessionId).catchError((Object e) {
               debugPrint(
                   '[InputModel] failed to send side button $type for $mb: $e');
             }));
@@ -395,7 +396,8 @@ class InputModel {
           final model = _sideButtonDownModels.remove(mb);
           if (model != null) {
             unawaited(
-                model._sendMouseUnchecked(type, mb).catchError((Object e) {
+                model.sendSideMouseButton(type, mb,
+                    expectedSessionId: model.sessionId).catchError((Object e) {
               debugPrint(
                   '[InputModel] failed to send side button $type for $mb: $e');
             }));
@@ -419,7 +421,8 @@ class InputModel {
       _sideButtonDownModels.remove(mb);
       // Best-effort release; session may already be tearing down.
       unawaited(
-          _sendMouseUnchecked('up', mb, expectedSessionId: expectedSessionId)
+          sendSideMouseButton('up', mb,
+              expectedSessionId: expectedSessionId ?? sessionId)
               .catchError((Object e) {
         debugPrint('[InputModel] failed to release side button $mb: $e');
       }));
@@ -1266,6 +1269,10 @@ class InputModel {
         sessionId: expectedSessionId ?? sessionId,
         msg: json.encode(modify({'type': type, 'buttons': button.value})));
   }
+
+  Future<void> sendSideMouseButton(String type, MouseButtons button,
+      {required SessionID expectedSessionId}) =>
+      _sendMouseUnchecked(type, button, expectedSessionId: expectedSessionId);
 
   /// Send mouse press event.
   Future<void> sendMouse(String type, MouseButtons button) async {

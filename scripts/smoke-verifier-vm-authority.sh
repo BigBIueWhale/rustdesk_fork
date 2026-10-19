@@ -7292,7 +7292,7 @@ else
             'focused Flutter window-dispatch receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = modifier-release ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_MODIFIER_RELEASE_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=3 tests=66 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-modifier-release-tests cleanup=joined" \
+            "FLUTTER_MODIFIER_RELEASE_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=3 tests=81 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-modifier-release-tests cleanup=joined" \
             'focused Flutter modifier release receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
         require_exact_fixed_receipt \

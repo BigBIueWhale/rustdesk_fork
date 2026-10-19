@@ -1574,8 +1574,9 @@ class InputModel {
     return delta;
   }
 
-  Future<void> sendTrackpadScale(int scale) => bind.sessionSendPointer(
-      sessionId: sessionId,
+  Future<void> sendTrackpadScale(int scale,
+      {SessionID? expectedSessionId}) => bind.sessionSendPointer(
+      sessionId: expectedSessionId ?? sessionId,
       msg: json.encode(
           PointerEventToRust(kPointerEventKindTouch, 'scale', scale).toJson()));
 
@@ -1905,7 +1906,8 @@ class InputModel {
     return Offset(x, y);
   }
 
-  void handlePointerEvent(String kind, String type, Offset offset) {
+  void handlePointerEvent(String kind, String type, Offset offset,
+      {SessionID? expectedSessionId}) {
     double x = offset.dx;
     double y = offset.dy;
     if (_checkPeerControlProtected(x, y)) {
@@ -1941,7 +1943,7 @@ class InputModel {
     final evt = PointerEventToRust(kind, type, evtValue).toJson();
     if (isViewCamera) return;
     bind.sessionSendPointer(
-        sessionId: sessionId, msg: json.encode(modify(evt)));
+        sessionId: expectedSessionId ?? sessionId, msg: json.encode(modify(evt)));
   }
 
   bool _checkPeerControlProtected(double x, double y) {

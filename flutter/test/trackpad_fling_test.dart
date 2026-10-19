@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_hbb/common.dart' show SessionID;
+import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/flutter_keyboard_input.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/model.dart' show FFI, FfiModel;
@@ -59,6 +60,8 @@ class _Input extends InputModel {
   final _Owner owner;
   final scrolls = <({SessionID session, int x, int y})>[];
   final scales = <int>[];
+  final scaleTargets = <SessionID>[];
+  final pointers = <({SessionID session, String type})>[];
   Future<void> Function()? onScroll;
   @override
   String get id => '';
@@ -75,8 +78,10 @@ class _Input extends InputModel {
 
   // Observe only final native output; gesture processing and timers are real.
   @override
-  Future<void> sendTrackpadScale(int scale) {
+  Future<void> sendTrackpadScale(int scale,
+      {SessionID? expectedSessionId}) {
     scales.add(scale);
+    scaleTargets.add(expectedSessionId ?? sessionId);
     return Future.value();
   }
 
@@ -91,6 +96,35 @@ class _Input extends InputModel {
   Map<String, dynamic>? handleMouse(Map<String, dynamic> event, Offset position,
           {bool onExit = false, bool moveCanvas = true, bool edgeScroll = false}) =>
       event;
+
+  // Android routing is observed before coordinate/control and native dispatch.
+  @override
+  void handlePointerEvent(String kind, String type, Offset offset,
+      {SessionID? expectedSessionId}) {
+    expect(kind, 'touch');
+    pointers.add((session: expectedSessionId ?? sessionId, type: type));
+  }
+
+  void begin({int pointer = 0, int device = 0, int view = 0}) =>
+      onPointerPanZoomStart(PointerPanZoomStartEvent(
+          pointer: pointer, device: device, viewId: view));
+
+  void update(double y,
+          {double scale = 1, int pointer = 0, int device = 0, int view = 0}) =>
+      onPointerPanZoomUpdate(PointerPanZoomUpdateEvent(
+          pan: Offset(0, y), panDelta: Offset(0, y), scale: scale,
+          pointer: pointer, device: device, viewId: view));
+
+  void end({int pointer = 0, int device = 0, int view = 0}) =>
+      onPointerPanZoomEnd(PointerPanZoomEndEvent(
+          pointer: pointer, device: device, viewId: view));
+
+  void clearOutput() {
+    scrolls.clear();
+    scales.clear();
+    scaleTargets.clear();
+    pointers.clear();
+  }
 
   void startCoast([double y = 100]) {
     onPointerPanZoomStart(const PointerPanZoomStartEvent());
@@ -121,6 +155,197 @@ void _run(void Function(FakeAsync, _Owner, _Input) body) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('trackpad gesture orphan update and end emit nothing', () {
+    _run((clock, owner, input) {
+      input.update(100);
+      input.end();
+      clock.elapse(const Duration(milliseconds: 60));
+      expect(input.scrolls, isEmpty);
+      expect(input.scales, isEmpty);
+      expect(clock.nonPeriodicTimerCount, 0);
+    });
+  });
+
+  for (final identity in ['session', 'client']) {
+    test('trackpad gesture changed $identity cannot inherit pan or fling', () {
+      _run((clock, owner, input) {
+        input.begin();
+        input.update(100);
+        input.clearOutput();
+        if (identity == 'session') {
+          owner.sessionId = const Uuid().v4obj();
+        } else {
+          owner.clientOwnerId = const Uuid().v4obj();
+        }
+        input.update(100, scale: 1.5);
+        input.end();
+        clock.elapse(const Duration(milliseconds: 60));
+        expect(input.scrolls, isEmpty);
+        expect(input.scales, isEmpty);
+        expect(clock.nonPeriodicTimerCount, 0);
+        input.startCoast();
+        clock.elapse(const Duration(milliseconds: 30));
+        expect(input.scrolls, hasLength(2));
+        expect(input.scrolls.every((e) => e.session == owner.sessionId), isTrue);
+      });
+    });
+  }
+
+  for (final field in ['pointer', 'device', 'view']) {
+    test('trackpad gesture wrong $field preserves the active sequence', () {
+      _run((clock, owner, input) {
+        input.begin(pointer: 10, device: 7, view: 2);
+        input.update(100, pointer: 10, device: 7, view: 2);
+        input.clearOutput();
+        final pointer = field == 'pointer' ? 11 : 10;
+        final device = field == 'device' ? 8 : 7;
+        final view = field == 'view' ? 3 : 2;
+        input.update(400, scale: 1.5,
+            pointer: pointer, device: device, view: view);
+        input.end(pointer: pointer, device: device, view: view);
+        expect(input.scrolls, isEmpty);
+        expect(input.scales, isEmpty);
+        expect(clock.nonPeriodicTimerCount, 0);
+        input.end(pointer: 10, device: 7, view: 2);
+        clock.elapse(const Duration(milliseconds: 30));
+        expect(input.scales, [0]);
+        expect(input.scrolls.map((e) => e.y), [5]);
+      });
+    });
+  }
+
+  test('trackpad gesture late end preserves a replacement pointer', () {
+    _run((clock, owner, input) {
+      input.begin(pointer: 1);
+      input.update(100, pointer: 1);
+      input.begin(pointer: 2);
+      input.update(200, pointer: 2);
+      input.clearOutput();
+      input.end(pointer: 1);
+      expect(input.scales, isEmpty);
+      expect(clock.nonPeriodicTimerCount, 0);
+      input.end(pointer: 2);
+      clock.elapse(const Duration(milliseconds: 30));
+      expect(input.scales, [0]);
+      expect(input.scrolls.map((e) => e.y), [11]);
+    });
+  });
+
+  test('trackpad gesture duplicate end preserves its running coast', () {
+    _run((clock, owner, input) {
+      input.startCoast();
+      input.clearOutput();
+      input.end();
+      expect(input.scales, isEmpty);
+      expect(clock.nonPeriodicTimerCount, 1);
+      clock.elapse(const Duration(milliseconds: 30));
+      expect(input.scrolls.map((e) => e.y), [5]);
+    });
+  });
+
+  test('trackpad gesture matching pan and scale retain their target', () {
+    _run((clock, owner, input) {
+      input.begin(pointer: 7, device: 4, view: 3);
+      input.update(100, pointer: 7, device: 4, view: 3);
+      input.update(0, scale: 1.5, pointer: 7, device: 4, view: 3);
+      input.end(pointer: 7, device: 4, view: 3);
+      clock.elapse(const Duration(milliseconds: 30));
+      expect(input.scales, [500, 0]);
+      expect(input.scaleTargets, [owner.sessionId, owner.sessionId]);
+      expect(input.scrolls.map((e) => e.y), [6, 5]);
+      expect(input.scrolls.every((e) => e.session == owner.sessionId), isTrue);
+    });
+  });
+
+  test('trackpad gesture same owner retains fractional scrolling', () {
+    _run((clock, owner, input) {
+      for (var index = 0; index < 3; index++) {
+        input.begin();
+        input.update(8);
+        input.end();
+      }
+      expect(input.scrolls.map((e) => e.y), [1]);
+    });
+  });
+
+  test('trackpad gesture fractional remainder belongs to its exact owner', () {
+    for (final identity in ['session', 'client']) {
+      _run((clock, owner, input) {
+        for (var index = 0; index < 2; index++) {
+          input.begin();
+          input.update(8);
+          input.end();
+        }
+        input.clearOutput();
+        if (identity == 'session') {
+          owner.sessionId = const Uuid().v4obj();
+        } else {
+          owner.clientOwnerId = const Uuid().v4obj();
+        }
+        input.begin();
+        input.update(8);
+        expect(input.scrolls, isEmpty);
+      });
+    }
+  });
+
+  test('trackpad gesture reset refuses late update and end', () {
+    _run((clock, owner, input) {
+      input.begin();
+      input.update(100);
+      input.resetForSession(owner.sessionId);
+      input.clearOutput();
+      input.update(100);
+      input.end();
+      clock.elapse(const Duration(milliseconds: 60));
+      expect(input.scrolls, isEmpty);
+      expect(input.scales, isEmpty);
+      expect(clock.nonPeriodicTimerCount, 0);
+    });
+  });
+
+  test('trackpad gesture Android matching sequence retains all phases', () {
+    _run((clock, owner, input) {
+      owner.ffiModel.pi.platform = kPeerPlatformAndroid;
+      input.begin();
+      input.update(100);
+      input.end();
+      expect(input.pointers.map((e) => e.type),
+          [kMouseEventTypePanStart, kMouseEventTypePanUpdate, kMouseEventTypePanEnd]);
+      expect(input.pointers.every((e) => e.session == owner.sessionId), isTrue);
+      expect(input.scales, isEmpty);
+      expect(input.scrolls, isEmpty);
+      expect(clock.nonPeriodicTimerCount, 0);
+    });
+  });
+
+  test('trackpad gesture Android orphan callbacks emit no phases', () {
+    _run((clock, owner, input) {
+      owner.ffiModel.pi.platform = kPeerPlatformAndroid;
+      input.update(100);
+      input.end();
+      expect(input.pointers, isEmpty);
+    });
+  });
+
+  test('trackpad gesture Android replacement cannot inherit old phases', () {
+    _run((clock, owner, input) {
+      owner.ffiModel.pi.platform = kPeerPlatformAndroid;
+      input.begin();
+      input.clearOutput();
+      owner.sessionId = const Uuid().v4obj();
+      input.update(100);
+      input.end();
+      expect(input.pointers, isEmpty);
+      input.begin();
+      input.update(100);
+      input.end();
+      expect(input.pointers.map((e) => e.type),
+          [kMouseEventTypePanStart, kMouseEventTypePanUpdate, kMouseEventTypePanEnd]);
+      expect(input.pointers.every((e) => e.session == owner.sessionId), isTrue);
+    });
+  });
 
   test('trackpad fling retains Linux scaling decay and finite completion', () {
     _run((clock, owner, input) {

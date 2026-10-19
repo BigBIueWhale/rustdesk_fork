@@ -453,7 +453,22 @@ PHYSICAL_MOUSE_TESTS = {
     "physical mouse widget mouse up survives a touch pointer",
 }
 
-TRACKPAD_FLING_TESTS = {
+TRACKPAD_INPUT_TESTS = {
+    "trackpad gesture orphan update and end emit nothing",
+    "trackpad gesture changed session cannot inherit pan or fling",
+    "trackpad gesture changed client cannot inherit pan or fling",
+    "trackpad gesture wrong pointer preserves the active sequence",
+    "trackpad gesture wrong device preserves the active sequence",
+    "trackpad gesture wrong view preserves the active sequence",
+    "trackpad gesture late end preserves a replacement pointer",
+    "trackpad gesture duplicate end preserves its running coast",
+    "trackpad gesture matching pan and scale retain their target",
+    "trackpad gesture same owner retains fractional scrolling",
+    "trackpad gesture fractional remainder belongs to its exact owner",
+    "trackpad gesture reset refuses late update and end",
+    "trackpad gesture Android matching sequence retains all phases",
+    "trackpad gesture Android orphan callbacks emit no phases",
+    "trackpad gesture Android replacement cannot inherit old phases",
     "trackpad fling retains Linux scaling decay and finite completion",
     "trackpad fling new pan cancels the pending timer immediately",
     "trackpad fling pointer down cancels the pending timer immediately",
@@ -763,7 +778,7 @@ def parse_result(path, profile="models"):
         expected_by_suite = {
             "input_modifier_release_test.dart": MODIFIER_RELEASE_TESTS,
             "input_mouse_buttons_test.dart": PHYSICAL_MOUSE_TESTS,
-            "trackpad_fling_test.dart": TRACKPAD_FLING_TESTS,
+            "trackpad_fling_test.dart": TRACKPAD_INPUT_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

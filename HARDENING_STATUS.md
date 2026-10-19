@@ -3011,6 +3011,63 @@ persistence; and Windows/macOS/Android/iOS/browser execution remain OPEN.
 All fifteen installed credential actions, R-S0, latency/soak, cold artifacts,
 independent reproduction, external review and release acceptance remain OPEN.
 
+**Display-default preferences — Linux transaction/bridge corrected; full controls/platform acceptance OPEN.**
+Product `a6a8c0b1` replaces writable UserDefaultConfig snapshots with one
+single-key operation. The existing process-local cache lock owns fresh loading,
+candidate mutation, storage and publication. Unreadable source state refuses the
+write; failed replacement/removal or override/default purges preserve the file and
+confirmed cache. Unchanged values need no write. The acknowledgement contains the
+effective value from the existing enum/numeric/default resolver, including normalized
+values and its established fallback semantics. Successful writes update the cache
+immediately; bounded external refresh retains confirmed values on a failed read.
+The UI getter and new-connection defaults now use that same cache.
+
+The facade and supported Result export return the effective value or real error.
+All authored Flutter write callers use a failure-aware helper. Desktop/mobile
+continuations check page lifetime; the mobile radio dialog owns one pending save,
+retains a failed selection for retry and closes only from a successful effective
+value while its dialog is current. Custom quality/FPS callbacks use their owning
+page's save path. Follow-up `415a70cd` encodes mobile default file-copy disable
+as explicit `N`, matching desktop; empty restores the enabled default, as exercised
+by the native comparison. The web adapter returns its immediate readback; browser execution
+is unproved. No credential/service authority, worker, queue, runtime or dependency
+changes.
+
+All 21 Linux config cases pass in 146 outer seconds, retaining the previous seventeen. The exact
+513-byte historical setter from `039fd5c8` runs beside the correction and reproduces
+lost unrelated keys from two stale snapshots, plus a normally returned failed store
+with a changed private snapshot and unchanged file. Corrected cases observe eight
+concurrent distinct-key writers, failed selected/empty writes and identical durable
+retry, unchanged no-write success, both policy purges, canonical readback, immediate
+cache publication and actual unreadable-file refusal. A deliberately expired cache
+retains its confirmed value after real read denial. These are native process-local
+storage cases, not cross-process locking or installed-service acceptance.
+
+Fresh bindings and the complete Linux Flutter library pass both native integration
+cases and 30 actual Dart/native cases in 569 outer seconds, retaining all prior 25. Five default cases
+cover initial/effective readback, failed replacement/removal, healthy and idempotent
+retry, concurrent distinct keys, normalized return and unreadable-source refusal.
+Three real failures arrive as FfiException/RESULT_ERROR. The four Flutter suites
+pass all 45 cases in 268 outer seconds, retaining the prior 42 and adding three
+controlled helper cases
+for awaited native outcome, synchronous/asynchronous failure/retry and a successful
+empty value. Full settings pages and the modified radio dialog are source-reviewed
+and compiled, not rendered by those helper cases. Exact sources, fixture provenance,
+artifacts, observations, pinned inputs, endpoint records and joined bounded-RAM
+cleanup are retained in `.harness-state/verifier-vm/display-defaults-a6a8c0b1.json`.
+
+The first native integration executes both Rust and all 30 Dart cases successfully,
+then an internal guest artifact check rejects the new count because it still expects
+25. `415a70cd` corrects that check without changing the backend or Dart probe;
+the fresh integration supplies the accepted result. The failed run retains complete
+endpoint records with one unattributed baseline removal and no additions.
+
+Full numeric-control draft/overlap/debouncer lifecycle, desktop/mobile settings
+interaction, cross-process writers, first-load/corruption behavior, restart and
+Windows/macOS/Android/iOS/browser/installed acceptance remain OPEN. All fifteen
+credential actions, R-S0, R-F5 impairment/multi-hour soak, cold artifacts, independent
+reproduction, external review, release and parked work remain OPEN.
+
 **Last-peer history — Linux persistence/session preparation corrected; interaction/platform acceptance OPEN.**
 Product `159cb6bf` makes LocalConfig's last-peer setter fallible. Its existing
 write lock owns private-candidate storage and memory publication. Failed replacement

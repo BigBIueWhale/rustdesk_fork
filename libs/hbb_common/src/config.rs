@@ -3423,8 +3423,9 @@ impl PeerConfig {
         store_path(path.to_path_buf(), config)
     }
 
-    pub fn remove(id: &str) {
+    pub fn remove(id: &str) -> crate::ResultType<()> {
         fs::remove_file(Self::path(id)).ok();
+        Ok(())
     }
 
     fn path(id: &str) -> PathBuf {

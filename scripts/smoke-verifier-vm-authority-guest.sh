@@ -3188,6 +3188,11 @@ run_focused_rust_tests() {
                 config::option_tests::default_purge_is_retryable_and_returns_effective_normalized_values
                 config::option_tests::default_unreadable_source_refuses_mutation_without_losing_existing_values
                 config::option_tests::peer_store_reports_failure_without_publishing_a_change_and_refuses_unreadable_source
+                config::option_tests::peer_removal_permission_failure_is_reported_and_retryable
+                config::option_tests::peer_removal_directory_failure_preserves_its_contents
+                config::option_tests::peer_removal_missing_file_is_idempotent
+                config::option_tests::peer_removal_deletes_only_the_selected_file_and_allows_repeat
+                config::option_tests::peer_removal_unlinks_a_symlink_without_removing_its_target
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
@@ -5458,7 +5463,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             >"$output" 2>&1 || container_status=$?
     fi
     if [ "$container_status" -ne 0 ]; then
-        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+        if [ "$RUST_TEST_PROFILE" = file-metadata ] || [ "$RUST_TEST_PROFILE" = config-options ]; then
             awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { runtime=1 }
                 runtime { if (++lines <= 2000) print; else exit 1 }' "$output" >&2 \
                 || fail 'file metadata failure diagnostics exceed their bound'

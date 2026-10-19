@@ -113,6 +113,94 @@ fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
 }
 
 #[test]
+fn peer_removal_permission_failure_is_reported_and_retryable() {
+    in_private_process("config::option_tests::peer_removal_permission_failure_is_reported_and_retryable", |_| {
+        let id = "peer-removal-permission";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-removal-prs".to_vec();
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        let original = fs::read(&path).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        let native = fs::remove_file(&path).unwrap_err();
+        let result = PeerConfig::remove(id);
+        let preserved = fs::read(&path).unwrap() == original;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        println!("OPTION_COMMIT_PEER_REMOVE=observed kind=permission errno={} reported={} file_preserved={preserved}",
+            native.raw_os_error().unwrap(), result.is_err());
+        assert_eq!(native.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(preserved);
+        assert!(result.is_err());
+        PeerConfig::remove(id).unwrap();
+        assert!(!path.exists());
+    });
+}
+
+#[test]
+fn peer_removal_directory_failure_preserves_its_contents() {
+    in_private_process("config::option_tests::peer_removal_directory_failure_preserves_its_contents", |_| {
+        let id = "peer-removal-directory";
+        PeerConfig::default().store(id).unwrap();
+        let path = PeerConfig::path(id);
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        let sentinel = path.join("sentinel");
+        fs::write(&sentinel, b"unchanged").unwrap();
+        let native = fs::remove_file(&path).unwrap_err();
+        let result = PeerConfig::remove(id);
+        println!("OPTION_COMMIT_PEER_REMOVE=observed kind=directory errno={} reported={}",
+            native.raw_os_error().unwrap(), result.is_err());
+        assert!(path.is_dir());
+        assert_eq!(fs::read(&sentinel).unwrap(), b"unchanged");
+        assert!(result.is_err());
+    });
+}
+
+#[test]
+fn peer_removal_missing_file_is_idempotent() {
+    in_private_process("config::option_tests::peer_removal_missing_file_is_idempotent", |_| {
+        let id = "peer-removal-missing";
+        let path = PeerConfig::path(id);
+        assert!(!path.exists());
+        PeerConfig::remove(id).unwrap();
+        assert!(!path.exists());
+    });
+}
+
+#[test]
+fn peer_removal_deletes_only_the_selected_file_and_allows_repeat() {
+    in_private_process("config::option_tests::peer_removal_deletes_only_the_selected_file_and_allows_repeat", |_| {
+        let id = "peer-removal-selected";
+        let other = "peer-removal-sibling";
+        PeerConfig::default().store(id).unwrap();
+        PeerConfig::default().store(other).unwrap();
+        let sibling = PeerConfig::path(other);
+        let original = fs::read(&sibling).unwrap();
+        PeerConfig::remove(id).unwrap();
+        PeerConfig::remove(id).unwrap();
+        assert!(!PeerConfig::path(id).exists());
+        assert_eq!(fs::read(&sibling).unwrap(), original);
+    });
+}
+
+#[test]
+fn peer_removal_unlinks_a_symlink_without_removing_its_target() {
+    in_private_process("config::option_tests::peer_removal_unlinks_a_symlink_without_removing_its_target", |_| {
+        let id = "peer-removal-link";
+        PeerConfig::default().store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let target = path.with_file_name("unrelated-target");
+        fs::write(&target, b"unchanged target").unwrap();
+        fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+        PeerConfig::remove(id).unwrap();
+        assert!(fs::symlink_metadata(&path).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"unchanged target");
+    });
+}
+
+#[test]
 fn peer_store_reports_failure_without_publishing_a_change_and_refuses_unreadable_source() {
     in_private_process("config::option_tests::peer_store_reports_failure_without_publishing_a_change_and_refuses_unreadable_source", |_| {
         let id = "peer-commit-fixture";

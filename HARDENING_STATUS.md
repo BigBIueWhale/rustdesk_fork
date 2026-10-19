@@ -125,6 +125,7 @@ obligation mapping, exact comparisons and any counts for their named historical 
 
 | Documentation scope | Current contract or disposition | Retained classification |
 | --- | --- | --- |
+| Build-input and verifier authority | Appendix C #249–#268 (selected) express enduring source/publication, daemon and final-package evidence boundaries. Eight historical findings and eleven FIX/HARDEN/EXCISE labels are corrected; every disposition mechanism, pin, acceptance obligation and primary clause is unchanged. Installed/native, scanner, cold-build and release acceptance remain OPEN. | `build-verifier-document-role-843789e8.json` |
 | Credential API boundaries | Appendix C #234–#241 express timeless whole-config, salt, PRS, ordinary-main credential and single-option authority rules. Seven historical findings are rewritten; eight HARDEN/EXCISE status badges become Required disposition. All remaining disposition text, primary clauses, IDs, anchors and links are unchanged. All fifteen installed/native credential actions remain OPEN. | `credential-api-document-role-9c781f16.json` |
 | Appendix C findings #1 and #21–#23 | Enduring failure classes and required dispositions, including separate live-wire nonce reuse, at-rest exposure and plaintext; fresh per-connection sid/scalar ownership | `appendix-c-role.json`; `login-inventory-role.json` |
 | Appendix C #125/#131/#162/#335 | Installer, policy-selector, IPC-drain and FFI authority; R-S11ga owns binding diagnostics and negative controls | `authority-history-0f9c2048.json` |

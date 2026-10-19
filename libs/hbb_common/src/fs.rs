@@ -265,19 +265,48 @@ fn read_dir_entries_with_usage(
 
 struct DirectoryContext {
     original_path: PathBuf,
+    #[cfg(target_os = "linux")]
+    parent: std::fs::File,
 }
 
 impl DirectoryContext {
     fn open(path: &Path) -> std::io::Result<Self> {
-        Ok(Self { original_path: path.to_owned() })
+        #[cfg(target_os = "linux")]
+        let parent = {
+            use std::os::unix::fs::OpenOptionsExt;
+
+            std::fs::OpenOptions::new().read(true)
+                .custom_flags(crate::libc::O_DIRECTORY | crate::libc::O_CLOEXEC
+                    | crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
+                .open(path)?
+        };
+        Ok(Self {
+            original_path: path.to_owned(),
+            #[cfg(target_os = "linux")]
+            parent,
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn descriptor_path(&self) -> PathBuf {
+        use std::os::unix::io::AsRawFd;
+
+        // The owned parent keeps this descriptor prefix valid through every entry lookup.
+        PathBuf::from(format!("/proc/self/fd/{}", self.parent.as_raw_fd()))
     }
 
     fn read_dir(&self) -> std::io::Result<std::fs::ReadDir> {
-        self.original_path.read_dir()
+        #[cfg(target_os = "linux")]
+        { self.descriptor_path().read_dir() }
+        #[cfg(not(target_os = "linux"))]
+        { self.original_path.read_dir() }
     }
 
     fn entry_path(&self, name: &std::ffi::OsStr) -> PathBuf {
-        self.original_path.join(name)
+        #[cfg(target_os = "linux")]
+        { self.descriptor_path().join(name) }
+        #[cfg(not(target_os = "linux"))]
+        { self.original_path.join(name) }
     }
 }
 

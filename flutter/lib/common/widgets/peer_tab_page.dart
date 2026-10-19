@@ -343,8 +343,9 @@ class _PeerTabPageState extends State<PeerTabPage>
         context: context,
         toolTip: translate('Delete'),
         onTap: () {
+          final selection = model.captureSelection();
           onSubmit(bool Function() isCurrent) async {
-            final selection = model.captureSelection();
+            if (!selection.isCurrent) return;
             var successful = true;
             // Only the local Recent (0) and Favorites (1) tabs remain (R-G2/R-G4).
             switch (selection.tab) {
@@ -358,11 +359,11 @@ class _PeerTabPageState extends State<PeerTabPage>
                 bind.mainLoadFavPeers();
                 break;
               default:
-                break;
+                return;
             }
             if (!mounted) return;
             selection.retire();
-            if (successful) showToast(translate('Successful'));
+            if (successful && isCurrent()) showToast(translate('Successful'));
           }
 
           deleteConfirmDialog(onSubmit, translate('Delete'));

@@ -673,8 +673,9 @@ abstract class BasePeerCard extends StatelessWidget {
         ],
       ),
       proc: () {
+        final selectedTab = tab;
         onSubmit(bool Function() isCurrent) async {
-          switch (tab) {
+          switch (selectedTab) {
             case PeerTabIndex.recent:
               if (!await mainRemovePeers([id])) return;
               break;
@@ -683,7 +684,7 @@ abstract class BasePeerCard extends StatelessWidget {
               bind.mainLoadFavPeers();
               break;
           }
-          showToast(translate('Successful'));
+          if (isCurrent()) showToast(translate('Successful'));
         }
 
         deleteConfirmDialog(onSubmit,

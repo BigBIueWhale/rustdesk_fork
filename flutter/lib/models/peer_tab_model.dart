@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:math';
 
@@ -34,9 +35,12 @@ class PeerSelection {
 
   bool get isCurrent => !_model._disposed &&
       identical(_generation, _model._selectionGeneration) &&
-      tab == _model.currentTab;
+      tab == _model.currentTab &&
+      _model.multiSelectionMode &&
+      ids.isNotEmpty;
 
   bool retire() {
+    if (!isCurrent) return false;
     _model.setMultiSelectionMode(false);
     return true;
   }
@@ -72,7 +76,7 @@ class PeerTabModel with ChangeNotifier {
   List<int> get visibleEnabledOrderedIndexs =>
       orders.where((e) => isVisibleEnabled[e]).toList();
   List<Peer> _selectedPeers = List.empty(growable: true);
-  List<Peer> get selectedPeers => _selectedPeers;
+  List<Peer> get selectedPeers => UnmodifiableListView(_selectedPeers);
   Object _selectionGeneration = Object();
   bool _disposed = false;
   bool _multiSelectionMode = false;

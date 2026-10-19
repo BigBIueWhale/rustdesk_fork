@@ -441,11 +441,18 @@ Future<void> deleteConfirmDialog(
     Future<void> Function(bool Function() isCurrent) onSubmit, String title,
     {OverlayDialogManager? dialogManager,
     String Function(String)? translateText}) async {
+  var submitting = false;
   await (dialogManager ?? gFFI.dialogManager).show<void>(
     (setState, close, context) {
       submit() async {
-        await onSubmit(() => close.isCurrent);
-        close();
+        if (!close.isCurrent || submitting) return;
+        submitting = true;
+        try {
+          await onSubmit(() => close.isCurrent);
+          close();
+        } finally {
+          submitting = false;
+        }
       }
 
       return CustomAlertDialog(

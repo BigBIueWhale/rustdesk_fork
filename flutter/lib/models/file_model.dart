@@ -477,7 +477,9 @@ class FileModel {
   bool fileConfirmCheckboxRemember = false;
 
   Future<bool?> showFileConfirmDialog(
-      String title, String content, bool showCheckbox, bool isIdentical) async {
+      String title, String content, bool showCheckbox, bool isIdentical,
+      {TranslateText? translateText}) async {
+    final t = translateText ?? translate;
     fileConfirmCheckboxRemember = false;
     return await parent.target?.dialogManager.show<bool?>(
         (setState, DialogClose close, context) {
@@ -498,7 +500,7 @@ class FileModel {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(translate("This file exists, skip or overwrite this file?"),
+              Text(t("This file exists, skip or overwrite this file?"),
                   style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 5),
               Text(content),
@@ -508,7 +510,7 @@ class FileModel {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const SizedBox(height: 12),
-                    Text(translate("identical_file_tip"),
+                    Text(t("identical_file_tip"),
                         style: const TextStyle(fontWeight: FontWeight.w500))
                   ],
                 ),
@@ -519,7 +521,7 @@ class FileModel {
                       dense: true,
                       controlAffinity: ListTileControlAffinity.leading,
                       title: Text(
-                        translate("Do this for all conflicts"),
+                        t("Do this for all conflicts"),
                       ),
                       value: fileConfirmCheckboxRemember,
                       onChanged: (v) {
@@ -532,18 +534,21 @@ class FileModel {
         actions: [
           dialogButton(
             "Cancel",
+            translateText: t,
             icon: Icon(Icons.close_rounded),
             onPressed: cancel,
             isOutline: true,
           ),
           dialogButton(
             "Skip",
+            translateText: t,
             icon: Icon(Icons.navigate_next_rounded),
             onPressed: () => close(null),
             isOutline: true,
           ),
           dialogButton(
             "OK",
+            translateText: t,
             icon: Icon(Icons.done_rounded),
             onPressed: submit,
           ),

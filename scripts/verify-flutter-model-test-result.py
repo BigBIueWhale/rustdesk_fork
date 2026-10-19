@@ -601,6 +601,22 @@ FILE_COMMAND_TESTS = {
 FILE_NAVIGATION_SUITES = {
     "file_navigation_sort_test.dart": FILE_NAVIGATION_TESTS,
     "file_command_session_ownership_test.dart": FILE_COMMAND_TESTS,
+    "file_dialog_event_loop_test.dart": {
+        "bounded event loop consumes admitted work in FIFO order",
+        "capacity counts running and pending events",
+        "close retires pending work and rejects admission while closed",
+        "retired callback cannot consume replacement-generation work",
+        "callback failure is terminal and clears successors",
+        "file confirmation parser owns one exact bounded typed payload",
+        "file confirmation parser rejects malformed scalar authority",
+        "file confirmation parser rejects unowned path storage",
+    },
+    "file_conflict_dialog_test.dart": {
+        "overwrite dialog does not claim content identity",
+        "overwrite dialog preserves cancel skip overwrite and escape",
+        "overwrite dialog remembers a choice only for its opening",
+        "overwrite dialog omits unavailable remember control",
+    },
 }
 PEER_DATA_TESTS = {
     "peer decode redacts malformed JSON exception content",

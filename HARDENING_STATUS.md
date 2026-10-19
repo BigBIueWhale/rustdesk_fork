@@ -3083,37 +3083,49 @@ All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshnes
 cold artifacts, independent reproduction, external review, release, document-role
 cleanup and all parked work remain OPEN. The broad goal remains active.
 
-**Trackpad speed — rendered Flutter control corrected; full page/native effects OPEN.**
-Product `51669340` replaces the initial-callback, fire-and-forget debouncer
-with a typed effective-value save owned by the control. One retained timer and
-one admitted save coalesce newer edits to the latest value. A parent rebuild
-preserves a draft and uses the current callback. Successful completion publishes
-the confirmed effective value without overwriting newer edits; failed/null
-outcomes retain the draft with visible failure and Retry. Disable/mode replacement
-retires queued dispatch without admitting a second write; widget replacement or
-removal retires callbacks, cancels its timer and disposes its controller.
-The constructor now forwards its key. Fixed defaults disable the control.
-The existing session dialog still stages bounded local values for its Close action.
+**Trackpad speed — Linux save/dialog corrected; physical/platform acceptance OPEN.**
+The shared control from `51669340` retains its keyed controller, bounded draft,
+one timer/save, current callbacks, effective-value publication and failure/retry
+behavior. Product `7c9b634c` completes the selected native save path: it validates
+10–1000, refuses unreadable peer state, persists a fresh candidate, then updates
+only the cached speed. The native export returns the committed integer or an
+error, including a missing session. Other generic peer-setting outcomes remain OPEN.
 
-The Linux Flutter baseline executes 54 cases: the previous 45 and the local
-staging control pass; eight new cases reproduce stale callback/draft publication,
-post-removal work, overlapping writes, missing failure/retry, ignored effective
-readback and replacement/refresh errors. The correction passes all 56 cases in
-320 outer seconds, including two further disable/pending and retired-error
-cases. The same eight failure cases pass; the staging case additionally checks
-invalid/empty text. Only the mount adapter changes to the typed callback API and
-explicit enabled/translation arguments. The component is actually rendered with
-controlled save futures and Flutter text input; the full settings page, native
-trackpad effects, per-session transport and installed/platform behavior are unproved.
-Rust/config/FFI/IPC and the session-dialog caller are unchanged.
+The session dialog stages raw text and slider edits until Close, owns one pending
+save, blocks duplicate Close/Escape while saving and retains failed drafts for
+Retry. Empty input remains editable; numeric UI drafts retain the existing bounds.
+Success uses its exact DialogClose instead of dismissAll; retired completion
+cannot close another dialog. The fixed numeric column also fits a narrow layout.
+The source adapter retains exact session/client ownership. One write admission
+belongs to the InputModel across replacement dialogs; overlapping attempts receive
+failure and may retry. Validated synchronous publication follows acknowledgement.
+Refresh generation and commit revision retire older reads, including an earlier
+read arriving after a save, and retired-session responses cannot publish.
 
-Exact sources, cases, baseline JSON, raw results, pinned inputs, complete endpoint
-records, failed-root inventory and joined bounded-RAM cleanup are retained in
-`.harness-state/verifier-vm/trackpad-speed-51669340.json`.
-Full settings interaction, cross-process/restart and other platforms remain OPEN.
-All fifteen credential
-actions, R-S0, R-F5 impairment/soak, cold artifacts, independent reproduction,
-external review, release and parked work remain OPEN.
+Linux isolation passes two parent Rust tests, 41 actual generated-bridge Dart cases
+(including five trackpad cases and five expected native errors), and 83 rendered
+Flutter/dialog/InputModel cases. The latter retain the previous 73 and add ten
+dialog/model cases, including controlled out-of-order replies on the actual model,
+replacement-dialog admission/retry, latest refreshes, failure and current-owner
+retirement. Native probes check both valid bounds, failed writes and unreadable
+sources, identical durable retry, missing sessions, unchanged files/cache, and
+preserved runtime metadata/unrelated stored values. No peer is started.
+The unchanged shared config library retains its existing 22-case storage evidence;
+its library subtree, Cargo.toml/lock and config fixtures are byte-identical.
+
+The earlier shared-control baseline and correction remain in
+`.harness-state/verifier-vm/trackpad-speed-51669340.json`. Exact current sources,
+native artifacts, guest-parser outcomes, the initial 81-case UI pass, the failed
+native fixture and its joined retirement, complete endpoint records and bounded-RAM
+cleanup are retained in `.harness-state/verifier-vm/trackpad-dialog-7c9b634c.json`.
+That native fixture assumed independent same-peer sessions; the corrected comparison
+uses distinct peers and client owners. The failed run is never acceptance evidence.
+
+Physical trackpad/gesture effects, full toolbar/session routing, cross-model/process
+writers, corruption/restart and installed/platform acceptance remain OPEN.
+All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshness,
+cold artifacts, independent reproduction, external review, release, document-role
+cleanup and all parked work remain OPEN. The broad goal remains active.
 
 **Display-default preferences — Linux transaction/bridge corrected; full controls/platform acceptance OPEN.**
 Product `a6a8c0b1` replaces writable UserDefaultConfig snapshots with one

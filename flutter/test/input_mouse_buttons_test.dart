@@ -1,7 +1,10 @@
+import 'dart:math';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter_hbb/common.dart' show mouseButtonsToPeer;
+import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/input_model.dart';
-import 'package:flutter_hbb/models/model.dart' show FFI;
+import 'package:flutter_hbb/models/model.dart' show FFI, FfiModel, CanvasModel, CursorModel;
 import 'package:flutter_test/flutter_test.dart';
 
 class _Owner implements FFI {
@@ -51,6 +54,56 @@ class _Input extends InputModel {
     // No native mode was enabled; close only these fixture-owned observables.
     relativeMouseMode.close();
     isPhysicalMouse.close();
+  }
+}
+
+class _DisplayModel extends FfiModel {
+  _DisplayModel(super.parent) : super(compareVersion: (_, __) => 1);
+  @override
+  Rect get rect => const Rect.fromLTWH(0, 0, 100, 100);
+}
+
+class _CoordinateOwner extends _Owner {
+  _CoordinateOwner(String platform) {
+    final parent = WeakReference<FFI>(this);
+    ffiModel = _DisplayModel(parent)..pi.platform = platform;
+    canvasModel = CanvasModel(parent);
+    cursorModel = CursorModel(parent);
+  }
+  @override
+  late final FfiModel ffiModel;
+  @override
+  late final CanvasModel canvasModel;
+  @override
+  late final CursorModel cursorModel;
+}
+
+class _CoordinateInput extends _Input {
+  _CoordinateInput(_CoordinateOwner super.owner);
+  final messages = <Map<String, dynamic>>[];
+
+  @override
+  Map<String, dynamic>? handleMouse(Map<String, dynamic> event, Offset position,
+      {bool onExit = false, bool moveCanvas = true, bool edgeScroll = false}) {
+    // Observe after the production control, canvas, bounds and button conversion.
+    // The final native send is the only replaced part of this path.
+    final message = processEventToPeer(Map.of(event), position,
+        onExit: onExit, moveCanvas: false, edgeScroll: false);
+    if (message != null) messages.add(Map.of(message));
+    return message;
+  }
+
+  List<(String, String)> get peerButtons => messages
+      .where((e) => e['type'] != kMouseEventTypeDefault)
+      .map((e) => (e['type'] as String, e['buttons'] as String)).toList();
+
+  @override
+  void close() {
+    super.close();
+    final coordinates = owner as _CoordinateOwner;
+    coordinates.canvasModel.dispose();
+    coordinates.cursorModel.dispose();
+    coordinates.ffiModel.dispose();
   }
 }
 
@@ -183,5 +236,72 @@ void main() {
         kind: PointerDeviceKind.touch, buttons: 2));
     input.up();
     expect(input.buttons, [('mousedown', 'left'), ('mouseup', 'left')]);
+  });
+
+  const peers = [kPeerPlatformLinux, kPeerPlatformWindows, kPeerPlatformMacOS];
+  const outside = [Offset(-40, 80), Offset(180, 80),
+    Offset(80, -40), Offset(80, 180)];
+  const namedButtons = [(1, 'left'), (2, 'right'), (4, 'wheel'),
+    (8, 'back'), (16, 'forward')];
+  for (final (button, name) in namedButtons) {
+    test('physical mouse outside release preserves $name', () {
+      for (final platform in peers) {
+        for (final position in outside) {
+          final model = _CoordinateInput(_CoordinateOwner(platform));
+          try {
+            model.onPointDownImage(PointerDownEvent(
+                kind: PointerDeviceKind.mouse, buttons: button,
+                position: const Offset(80, 80)));
+            model.onPointUpImage(PointerUpEvent(
+                kind: PointerDeviceKind.mouse, position: position));
+            model.onPointUpImage(PointerUpEvent(
+                kind: PointerDeviceKind.mouse, position: position));
+            expect(model.peerButtons, [('down', name), ('up', name)],
+                reason: '$platform release at $position');
+          } finally { model.close(); }
+        }
+      }
+    });
+  }
+
+  test('physical mouse outside chord release retires every button once', () {
+    final model = _CoordinateInput(_CoordinateOwner(kPeerPlatformLinux));
+    try {
+      model.onPointDownImage(const PointerDownEvent(
+          kind: PointerDeviceKind.mouse, buttons: 31, position: Offset(80, 80)));
+      model.onPointUpImage(const PointerUpEvent(
+          kind: PointerDeviceKind.mouse, position: Offset(180, 180)));
+      model.up();
+      expect(model.peerButtons, [
+        for (final (_, name) in namedButtons) ('down', name),
+        for (final (_, name) in namedButtons) ('up', name),
+      ]);
+    } finally { model.close(); }
+  });
+
+  test('physical mouse outside presses and movement remain rejected', () {
+    for (final platform in peers) {
+      for (final position in outside) {
+        for (final type in [kMouseEventTypeDown, kMouseEventTypeDefault]) {
+          expect(InputModel.getPointInRemoteRect(true, platform,
+              kPointerEventKindMouse, type, position.dx, position.dy,
+              const Rect.fromLTWH(0, 0, 100, 100)), isNull);
+        }
+      }
+    }
+  });
+
+  test('physical mouse bounds retain snapping tolerance and mobile clamping', () {
+    const rect = Rect.fromLTWH(0, 0, 100, 100);
+    Point<double>? point(bool desktop, String peer, double x, double y) =>
+        InputModel.getPointInRemoteRect(desktop, peer, kPointerEventKindMouse,
+            kMouseEventTypeDefault, x, y, rect);
+    expect(point(true, kPeerPlatformWindows, 100, 100), const Point(100.0, 100.0));
+    expect(point(true, kPeerPlatformLinux, 104, 104), const Point(99.0, 99.0));
+    expect(point(true, kPeerPlatformLinux, 105, 105), isNull);
+    expect(point(true, kPeerPlatformLinux, -5, 50), const Point(0.0, 50.0));
+    expect(point(true, kPeerPlatformLinux, -6, 50), isNull);
+    expect(point(false, kPeerPlatformLinux, -40, 50), const Point(0.0, 50.0));
+    expect(point(false, kPeerPlatformLinux, -40, -40), isNull);
   });
 }

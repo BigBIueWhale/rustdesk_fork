@@ -434,6 +434,14 @@ PHYSICAL_MOUSE_TESTS = {
     "physical mouse secondary release preserves a held primary",
     "physical mouse independent models retain separate button history",
     "physical mouse nonmouse movement cannot replace mouse button history",
+    "physical mouse outside release preserves left",
+    "physical mouse outside release preserves right",
+    "physical mouse outside release preserves wheel",
+    "physical mouse outside release preserves back",
+    "physical mouse outside release preserves forward",
+    "physical mouse outside chord release retires every button once",
+    "physical mouse outside presses and movement remain rejected",
+    "physical mouse bounds retain snapping tolerance and mobile clamping",
 }
 
 MODIFIER_RELEASE_TESTS = {

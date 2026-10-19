@@ -311,6 +311,18 @@ impl DirectoryContext {
     }
 
     #[cfg(target_os = "linux")]
+    fn open_child_directory(&self, name: &str) -> ResultType<Self> {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        validate_single_file_name(name)?;
+        let parent = std::fs::OpenOptions::new().read(true)
+            .custom_flags(crate::libc::O_DIRECTORY | crate::libc::O_NOFOLLOW
+                | crate::libc::O_CLOEXEC | crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
+            .open(self.entry_path(std::ffi::OsStr::new(name)))?;
+        Ok(Self { original_path: self.original_path.join(name), parent })
+    }
+
+    #[cfg(target_os = "linux")]
     fn list(self, prefix: &Path, include_hidden: bool, budget: FileEnumerationBudget,
         usage: &mut FileEnumerationUsage, depth: usize) -> ResultType<DirectoryListing> {
         usage.enter_dir(depth, budget)?;
@@ -514,7 +526,6 @@ fn recursive_files_from_listing(
     budget: FileEnumerationBudget, usage: &mut FileEnumerationUsage, depth: usize,
 ) -> ResultType<Vec<FileEntry>> {
     let DirectoryListing { entries, context } = listing;
-    let path = &context.original_path;
     let mut files = Vec::new();
     for mut entry in entries {
         match entry.entry_type.enum_value() {
@@ -525,8 +536,16 @@ fn recursive_files_from_listing(
             Ok(FileType::Dir) => {
                 let child_depth = depth.checked_add(1)
                     .ok_or_else(|| anyhow!("file enumeration depth counter overflow"))?;
-                files.extend(read_dir_recursive_with_budget(
-                    &path.join(&entry.name), &prefix.join(&entry.name),
+                let child = match context.open_child_directory(&entry.name) {
+                    Ok(child) => child,
+                    Err(error) if error.downcast_ref::<std::io::Error>()
+                        .map_or(false, |error| error.kind() == std::io::ErrorKind::NotFound) => continue,
+                    Err(error) => return Err(error),
+                };
+                let child_prefix = prefix.join(&entry.name);
+                let listing = child.list(&child_prefix, include_hidden, budget, usage, child_depth)?;
+                files.extend(recursive_files_from_listing(
+                    listing, &child_prefix,
                     include_hidden, budget, usage, child_depth)?);
             }
             _ => {}
@@ -639,8 +658,16 @@ fn empty_dirs_from_listing(
             if entry.entry_type.enum_value() == Ok(FileType::Dir) {
                 let child_depth = depth.checked_add(1)
                     .ok_or_else(|| anyhow!("file enumeration depth counter overflow"))?;
-                dirs.extend(read_empty_dirs_recursive_with_budget(
-                    &path.join(&entry.name), &prefix.join(&entry.name),
+                let child = match context.open_child_directory(&entry.name) {
+                    Ok(child) => child,
+                    Err(error) if error.downcast_ref::<std::io::Error>()
+                        .map_or(false, |error| error.kind() == std::io::ErrorKind::NotFound) => continue,
+                    Err(error) => return Err(error),
+                };
+                let child_prefix = prefix.join(&entry.name);
+                let listing = child.list(&child_prefix, include_hidden, budget, usage, child_depth)?;
+                dirs.extend(empty_dirs_from_listing(
+                    listing, &child_prefix,
                     include_hidden, budget, usage, child_depth)?);
             }
         }

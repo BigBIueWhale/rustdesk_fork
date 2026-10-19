@@ -4049,6 +4049,18 @@ run_focused_rust_tests() {
             required_tests=(
                 ipc::test::ordinary_option_ack_waits_for_persistence
                 ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver
+                flutter::keyboard_input_tests::cleanup_keeps_the_accepted_swap_and_mode
+                flutter::keyboard_input_tests::modern_and_raw_releases_reuse_the_encoded_press
+                flutter::keyboard_input_tests::a_key_up_fences_a_worker_delayed_down
+                flutter::keyboard_input_tests::focus_retirement_fences_queued_input_but_admits_the_next_epoch
+                flutter::keyboard_input_tests::an_old_key_up_cannot_release_a_later_press
+                flutter::keyboard_input_tests::aliases_and_repeats_own_one_physical_release
+                flutter::keyboard_input_tests::owner_handoff_batches_old_release_before_new_input
+                flutter::keyboard_input_tests::exact_handler_retirement_releases_after_capture_admission
+                flutter::keyboard_input_tests::a_retained_retired_owner_cannot_submit_input
+                flutter::keyboard_input_tests::missing_wrong_invalid_and_non_remote_owners_are_refused
+                flutter::keyboard_input_tests::replaced_connection_rejects_stale_jobs_and_keeps_cleanup_on_the_old_round
+                flutter::keyboard_input_tests::bounded_command_refusal_is_terminal_without_a_cleanup_retry
             )
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
             container_name=rustdesk-video-qos-tests
@@ -6189,7 +6201,6 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
-            [ "$tests_passed" -eq 14 ] || fail 'option and keyboard test total differs'
             grep -E '^test flutter::keyboard_input_tests::[a-z_]+ [.][.][.] ok$|^FLUTTER_KEYBOARD_(ARTIFACT|WIRE)=' "$output"
             grep -E '^MODIFIER_INPUT_WIRE_DART(_CASE)?=' "$output"
             grep -E '^test (ipc::test::ordinary_option_ack_waits_for_persistence|ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver) [.][.][.] ok$|^OPTION_(ACK_(BUILD=pass |ARTIFACT(_AFTER)?=|NATIVE=)|EXPORT_(NATIVE|BEFORE)=|WIRE_)' "$output"

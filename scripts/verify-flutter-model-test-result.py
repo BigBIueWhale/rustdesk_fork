@@ -505,6 +505,7 @@ SIDE_BUTTON_TESTS = {
 MODIFIER_RELEASE_TESTS = {
     "right Alt retains its own release identity",
     "modern modifier release preserves the other held side",
+    "modern modifier cache retains key-up identity through cleanup",
     "modern reset removes pending modifier releases",
     "raw tracking uses the changed key without aggregate state",
     "raw chord retains every changed modifier",

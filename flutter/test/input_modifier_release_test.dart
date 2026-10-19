@@ -206,6 +206,24 @@ void main() {
     }
   });
 
+  test('modern modifier cache retains key-up identity through cleanup', () {
+    final downs = [
+      for (final key in modifierKeys) keyEvent(key, down: true),
+    ];
+    for (final event in downs) {
+      model.handleKeyDownEventModifiers(event);
+    }
+    final cached = pendingKeys(model.toReleaseKeys);
+    expect(cached, everyElement(isA<KeyUpEvent>()));
+    expect(cached.map((event) => event.logicalKey),
+        unorderedEquals(modifierKeys));
+    expect(cached.map((event) => event.physicalKey),
+        unorderedEquals(downs.map((event) => event.physicalKey)));
+    model.releaseHeldModifiers();
+    expect(pendingKeys(model.toReleaseKeys), isEmpty);
+    expect(model.modify(<String, dynamic>{}), isEmpty);
+  });
+
   test('modern reset removes pending modifier releases', () {
     for (final key in modifierKeys) {
       model.handleKeyDownEventModifiers(keyEvent(key, down: true));

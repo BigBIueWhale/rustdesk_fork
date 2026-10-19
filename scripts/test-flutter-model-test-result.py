@@ -103,7 +103,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (1, 10))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (2, 59))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 26))
-        self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (4, 92))
+        self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (4, 93))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (9, 83))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"

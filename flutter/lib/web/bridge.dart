@@ -401,7 +401,7 @@ class RustdeskImpl {
     throw UnimplementedError("sessionGetTrackpadSpeed");
   }
 
-  Future<void> sessionSetTrackpadSpeed(
+  Future<int> sessionSetTrackpadSpeed(
       {required UuidValue sessionId, required int value, dynamic hint}) {
     throw UnimplementedError("sessionSetTrackpadSpeed");
   }

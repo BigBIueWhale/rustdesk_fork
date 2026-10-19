@@ -384,6 +384,7 @@ List<(String, String)> otherDefaultSettings() {
 
 class TrackpadSpeedWidget extends StatefulWidget {
   final SimpleWrapper<int> value;
+  final ValueChanged<int?>? onChanged;
   final Future<int?> Function(int)? saveSpeed;
   final bool enabled;
   final String Function(String)? translateText;
@@ -391,6 +392,7 @@ class TrackpadSpeedWidget extends StatefulWidget {
   const TrackpadSpeedWidget({
     super.key,
     required this.value,
+    this.onChanged,
     this.saveSpeed,
     this.enabled = true,
     this.translateText,
@@ -465,6 +467,7 @@ class _TrackpadSpeedWidgetState extends State<TrackpadSpeedWidget> {
           (_saving || _value != _confirmed);
       if (widget.saveSpeed == null) _confirmed = _value;
     });
+    widget.onChanged?.call(_value);
     if (_dirty) {
       _debounce = Timer(const Duration(seconds: 1), () {
         _debounce = null;
@@ -481,6 +484,7 @@ class _TrackpadSpeedWidgetState extends State<TrackpadSpeedWidget> {
       _updateValue(value);
     } else {
       _controller.text = _value.toString();
+      widget.onChanged?.call(_value);
     }
   }
 
@@ -551,8 +555,8 @@ class _TrackpadSpeedWidgetState extends State<TrackpadSpeedWidget> {
               onChanged: widget.enabled ? (v) => _updateValue(v.round()) : null,
             ),
           ),
-          Expanded(
-              flex: 1,
+          SizedBox(
+              width: 88,
               child: Row(
                 children: [
                   SizedBox(
@@ -563,6 +567,7 @@ class _TrackpadSpeedWidgetState extends State<TrackpadSpeedWidget> {
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
                       onSubmitted: _submit,
+                      onChanged: (value) => widget.onChanged?.call(int.tryParse(value)),
                       inputFormatters: [
                         TextInputFormatter.withFunction((oldValue, newValue) {
                           return RegExp(r'^[0-9]{0,4}$').hasMatch(newValue.text)

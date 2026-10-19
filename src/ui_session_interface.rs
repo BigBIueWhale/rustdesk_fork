@@ -713,8 +713,8 @@ impl<T: InvokeUiSession> Session<T> {
         }
     }
 
-    pub fn save_trackpad_speed(&self, trackpad_speed: i32) {
-        self.lc.write().unwrap().save_trackpad_speed(trackpad_speed);
+    pub fn save_trackpad_speed(&self, trackpad_speed: i32) -> ResultType<i32> {
+        self.lc.write().unwrap().save_trackpad_speed(trackpad_speed)
     }
 
     pub fn set_custom_fps(&self, custom_fps: i32) -> ResultType<i32> {

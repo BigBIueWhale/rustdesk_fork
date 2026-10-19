@@ -564,4 +564,72 @@ Future<void> main(List<String> arguments) async {
       'peer session cleanup or native error inventory differs');
   print('PEER_PREF_WIRE_DART=pass cases=6 native_errors=10 error=RESULT_ERROR '
       'failed_state=preserved retry=durable source_failure=refused bounds=refused no_peer_started=true');
+
+  final trackpadSession = Uuid().v4obj();
+  final trackpadOwner = Uuid().v4obj();
+  final previousPeers = config.listSync(recursive: true).whereType<File>()
+      .where((file) => file.parent.path.endsWith('/peers')).map((file) => file.path).toSet();
+  check(api.sessionAddSync(sessionId: trackpadSession, clientOwnerId: trackpadOwner,
+      id: '127.0.0.1:24004', isFileTransfer: false, isViewCamera: false,
+      isPortForward: false, isRdp: false, isTerminal: false,
+      password: 'explicit-password', connToken: null) == '', 'trackpad session preparation failed');
+  var trackpadErrors = 0;
+  Future<void> trackpadRefused(Future<int> Function() write) async {
+    Object? failure;
+    try { await write(); } catch (error) { failure = error; }
+    check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+        'trackpad error did not cross the generated native bridge');
+    trackpadErrors++;
+  }
+  try {
+    for (final value in [10, 1000, 120]) {
+      check(await api.sessionSetTrackpadSpeed(sessionId: trackpadSession, value: value) == value &&
+          await api.sessionGetTrackpadSpeed(sessionId: trackpadSession) == value,
+          'trackpad acknowledgement differs from effective value');
+    }
+    final files = config.listSync(recursive: true).whereType<File>()
+        .where((file) => file.parent.path.endsWith('/peers') && !previousPeers.contains(file.path)).toList();
+    check(files.length == 1, 'exact trackpad peer file is missing');
+    final file = files.single;
+    void durable(int value) {
+      check(RegExp('^trackpad-speed = $value\$', multiLine: true).hasMatch(file.readAsStringSync()),
+          'trackpad acknowledgement preceded durable value');
+    }
+    durable(120);
+    print('TRACKPAD_WIRE_DART_CASE=pass name=effective_bounds_roundtrip');
+    for (final denyRead in [false, true]) {
+      final original = configFiles(config);
+      final requested = denyRead ? 240 : 235;
+      chmod(denyRead ? '0000' : '0500', denyRead ? file.path : file.parent.path);
+      try {
+        await trackpadRefused(() => api.sessionSetTrackpadSpeed(sessionId: trackpadSession, value: requested));
+        check(await api.sessionGetTrackpadSpeed(sessionId: trackpadSession) == (denyRead ? 235 : 120),
+            'failed trackpad save changed its effective cache');
+      } finally {
+        chmod(denyRead ? '0600' : '0700', denyRead ? file.path : file.parent.path);
+      }
+      unchanged(original);
+      check(await api.sessionSetTrackpadSpeed(sessionId: trackpadSession, value: requested) == requested,
+          'identical trackpad retry failed');
+      durable(requested);
+      print('TRACKPAD_WIRE_DART_CASE=pass name=${denyRead ? "unreadable_source_retry" : "failed_write_retry"}');
+    }
+    final original = configFiles(config);
+    for (final value in [9, 1001]) {
+      await trackpadRefused(() => api.sessionSetTrackpadSpeed(sessionId: trackpadSession, value: value));
+    }
+    unchanged(original);
+    check(await api.sessionGetTrackpadSpeed(sessionId: trackpadSession) == 240,
+        'invalid trackpad value changed its effective cache');
+    print('TRACKPAD_WIRE_DART_CASE=pass name=invalid_bounds');
+    await trackpadRefused(() => api.sessionSetTrackpadSpeed(sessionId: Uuid().v4obj(), value: 240));
+    unchanged(original);
+    print('TRACKPAD_WIRE_DART_CASE=pass name=missing_session');
+  } finally {
+    await api.sessionClose(sessionId: trackpadSession, clientOwnerId: trackpadOwner);
+  }
+  check(await api.sessionGetTrackpadSpeed(sessionId: trackpadSession) == null && trackpadErrors == 5,
+      'trackpad cleanup or native error inventory differs');
+  print('TRACKPAD_WIRE_DART=pass cases=5 native_errors=5 error=RESULT_ERROR '
+      'failed_state=preserved retry=durable source_failure=refused bounds=refused no_peer_started=true');
 }

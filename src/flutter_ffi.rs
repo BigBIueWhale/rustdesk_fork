@@ -632,10 +632,10 @@ pub fn session_get_trackpad_speed(session_id: SessionID) -> Option<i32> {
     }
 }
 
-pub fn session_set_trackpad_speed(session_id: SessionID, value: i32) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.save_trackpad_speed(value);
-    }
+pub fn session_set_trackpad_speed(session_id: SessionID, value: i32) -> Result<i32> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.save_trackpad_speed(value)
 }
 
 pub fn session_lock_screen(session_id: SessionID) {

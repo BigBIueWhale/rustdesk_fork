@@ -9,6 +9,7 @@ import 'package:flutter_hbb/common/widgets/auto_disconnect_timeout_dialog.dart';
 import 'package:flutter_hbb/common/widgets/connect_password_dialog.dart';
 import 'package:flutter_hbb/common/widgets/password_text_field.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
+import 'package:flutter_hbb/common/widgets/trackpad_speed_dialog.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
@@ -420,26 +421,24 @@ customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
   }
 }
 
-trackpadSpeedDialog(SessionID sessionId, FFI ffi) async {
-  int initSpeed = ffi.inputModel.trackpadSpeed;
-  final curSpeed = SimpleWrapper(initSpeed);
-  final btnClose = dialogButton('Close', onPressed: () async {
-    if (curSpeed.value <= kMaxTrackpadSpeed &&
-        curSpeed.value >= kMinTrackpadSpeed &&
-        curSpeed.value != initSpeed) {
-      await bind.sessionSetTrackpadSpeed(
-          sessionId: sessionId, value: curSpeed.value);
-      await ffi.inputModel.updateTrackpadSpeed();
-    }
-    ffi.dialogManager.dismissAll();
-  });
-  msgBoxCommon(
-      ffi.dialogManager,
-      'Trackpad speed',
-      TrackpadSpeedWidget(
-        value: curSpeed,
-      ),
-      [btnClose]);
+Future<void> trackpadSpeedDialog(SessionID sessionId, FFI ffi) async {
+  final owner = ffi.clientOwnerId;
+  bool current() => ffi.isCurrentSessionOwner(sessionId, owner);
+  if (!current()) return;
+  final initialSpeed = ffi.inputModel.trackpadSpeed;
+  await ffi.dialogManager.show<void>((_, close, __) => TrackpadSpeedDialog(
+    initialSpeed: initialSpeed,
+    saveSpeed: (value) async {
+      if (!current()) return null;
+      final effective = await bind.sessionSetTrackpadSpeed(
+          sessionId: sessionId, value: value);
+      if (!current()) return null;
+      ffi.inputModel.applyTrackpadSpeed(effective);
+      return effective;
+    },
+    close: close,
+    translateText: translate,
+  ));
 }
 
 void deleteConfirmDialog(Function onSubmit, String title) async {

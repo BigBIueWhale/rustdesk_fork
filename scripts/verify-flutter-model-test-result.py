@@ -182,6 +182,16 @@ AUTO_DISCONNECT_TESTS = {
     "save and read errors leave an editable dialog",
     "timeout field preserves its numeric limits and empty default",
 }
+TRACKPAD_DIALOG_TESTS = {
+    "trackpad dialog stages raw text until committed Close",
+    "trackpad dialog retains failed saves for identical retry",
+    "trackpad dialog admits one save and blocks pending Escape",
+    "trackpad dialog retirement cannot close a replacement",
+    "trackpad dialog Escape and unchanged Close perform no save",
+    "trackpad dialog bounds raw Close and rejects empty input",
+    "trackpad dialog rebuild retains draft and uses current writer",
+    "trackpad dialog fits narrow layout and stages slider input",
+}
 MODIFIER_RELEASE_TESTS = {
     "right Alt retains its own release identity",
     "modern modifier release preserves the other held side",
@@ -447,6 +457,7 @@ def parse_result(path, profile="models"):
             "auto_disconnect_timeout_field_test.dart": AUTO_DISCONNECT_FIELD_TESTS,
             "setting_option_mutation_test.dart": SETTING_OPTION_TESTS,
             "keyboard_layout_type_chooser_test.dart": KEYBOARD_LAYOUT_TESTS,
+            "trackpad_speed_dialog_test.dart": TRACKPAD_DIALOG_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

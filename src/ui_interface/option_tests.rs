@@ -12,6 +12,9 @@ mod before_voice;
 #[path = "../../scripts/fixtures/peer-preference-export-before-errors.rs"]
 mod before_peer;
 
+#[path = "../../scripts/fixtures/trackpad-store-before-errors.rs"]
+mod before_trackpad;
+
 // FRB treats a unit-returning export as a successful completion. This adapter
 // lets the same behavioral probe execute the pre-fix and fallible exports.
 trait ExportOutcome {
@@ -48,6 +51,7 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
                 .or_else(|| line.find("VOICE_INPUT_EXPORT_"))
                 .or_else(|| line.find("LAST_PEER_EXPORT_"))
                 .or_else(|| line.find("PEER_PREF_EXPORT_"))
+                .or_else(|| line.find("TRACKPAD_EXPORT_"))
             {
                 println!("{}", &line[start..]);
             }
@@ -146,6 +150,82 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
     println!("LAST_PEER_EXPORT_NATIVE=observed history_preserved={history_preserved} session_admitted={session_admitted} no_peer_started={no_peer_started} duplicate_refused={duplicate_refused} duplicate_history_preserved={duplicate_history_preserved} retry_persisted={retry_persisted}");
     assert!(history_preserved && session_admitted && no_peer_started && duplicate_refused && duplicate_history_preserved && retry_persisted);
     peer_preferences_commit_before_cache_and_command(&root);
+    trackpad_preference_commits_before_publication(&root);
+}
+
+fn trackpad_preference_commits_before_publication(root: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let peer = "127.0.0.1:24004";
+    let peers = Config::file().parent().unwrap().join("peers");
+    assert!(peers.starts_with(root));
+    let old_files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|e| e.unwrap().path()).collect();
+    let mut config = PeerConfig::default();
+    config.trackpad_speed = 120;
+    config.password_prs = b"preserved-trackpad-prs".to_vec();
+    config.info.username = "session-user".into();
+    config.options.insert("unrelated".into(), "preserved".into());
+    config.store(peer).unwrap();
+    let files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|e| e.unwrap().path())
+        .filter(|p| !old_files.contains(p)).collect();
+    assert_eq!(files.len(), 1);
+    let file = &files[0];
+    let owner = crate::flutter_ffi::SessionID::new_v4();
+    let old_id = crate::flutter_ffi::SessionID::new_v4();
+    let id = crate::flutter_ffi::SessionID::new_v4();
+    for session_id in [old_id, id] {
+        assert!(crate::flutter_ffi::session_add_sync(
+            session_id, owner, peer.into(), false, false, false, false, false,
+            "explicit-password".into(), None,
+        ).0.is_empty());
+    }
+    let session = crate::flutter::sessions::get_session_by_session_id(&id).unwrap();
+    for value in [10, 1000, 120] {
+        assert_eq!(crate::flutter_ffi::session_set_trackpad_speed(id, value).unwrap(), value);
+        assert_eq!(PeerConfig::load_for_write(peer).unwrap().trackpad_speed, value);
+        assert_eq!(session.get_trackpad_speed(), value);
+    }
+    let mut config = PeerConfig::load_for_write(peer).unwrap();
+    config.info.username = "file-user".into();
+    config.store(peer).unwrap();
+    let original = std::fs::read(file).unwrap();
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o500)).unwrap();
+    before_trackpad::session_set_trackpad_speed(old_id, 235);
+    let old_published = crate::flutter_ffi::session_get_trackpad_speed(old_id) == Some(235);
+    let old_file_preserved = std::fs::read(file).unwrap() == original;
+    println!("TRACKPAD_EXPORT_BEFORE=observed normal_return=true cache_without_commit={old_published} file_preserved={old_file_preserved}");
+    assert!(old_published && old_file_preserved);
+    let failed = crate::flutter_ffi::session_set_trackpad_speed(id, 235).is_err();
+    let cache_preserved = session.get_trackpad_speed() == 120;
+    let file_preserved = std::fs::read(file).unwrap() == original;
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(crate::flutter_ffi::session_set_trackpad_speed(id, 235).unwrap(), 235);
+    let stored = PeerConfig::load_for_write(peer).unwrap();
+    let retry_durable = stored.trackpad_speed == 235 && session.get_trackpad_speed() == 235;
+    let unrelated_preserved = stored.info.username == "file-user"
+        && session.lc.read().unwrap().info.username == "session-user"
+        && stored.password_prs == b"preserved-trackpad-prs"
+        && stored.options.get("unrelated").map(String::as_str) == Some("preserved");
+    let original = std::fs::read(file).unwrap();
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let unreadable_refused = crate::flutter_ffi::session_set_trackpad_speed(id, 240).is_err();
+    assert_eq!(session.get_trackpad_speed(), 235);
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    assert_eq!(crate::flutter_ffi::session_set_trackpad_speed(id, 240).unwrap(), 240);
+    assert_eq!(PeerConfig::load_for_write(peer).unwrap().trackpad_speed, 240);
+    let original = std::fs::read(file).unwrap();
+    let bounds_refused = [9, 1001].into_iter().all(|value| crate::flutter_ffi::session_set_trackpad_speed(id, value).is_err());
+    let missing_refused = crate::flutter_ffi::session_set_trackpad_speed(crate::flutter_ffi::SessionID::new_v4(), 240).is_err();
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    assert_eq!(session.get_trackpad_speed(), 240);
+    for session_id in [old_id, id] {
+        let retired = crate::flutter::sessions::remove_session_by_exact_ui_owner(&session_id, &owner).unwrap();
+        assert!(retired.sender.read().unwrap().is_none());
+        drop(retired);
+    }
+    drop(session);
+    println!("TRACKPAD_EXPORT_NATIVE=observed failure_reported={failed} cache_preserved={cache_preserved} file_preserved={file_preserved} retry_durable={retry_durable} unrelated_preserved={unrelated_preserved} unreadable_refused={unreadable_refused} bounds_refused={bounds_refused} missing_session_refused={missing_refused} no_peer_started=true cleanup=joined");
+    assert!(failed && cache_preserved && file_preserved && retry_durable && unrelated_preserved && unreadable_refused && bounds_refused && missing_refused);
 }
 
 fn peer_preferences_commit_before_cache_and_command(root: &std::path::Path) {

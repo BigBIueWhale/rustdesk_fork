@@ -2046,10 +2046,15 @@ impl LoginConfigHandler {
         res
     }
 
-    pub fn save_trackpad_speed(&mut self, speed: i32) {
-        let mut config = self.load_config();
+    pub fn save_trackpad_speed(&mut self, speed: i32) -> ResultType<i32> {
+        if !(10..=1000).contains(&speed) {
+            bail!("Trackpad speed must be in 10..=1000");
+        }
+        let mut config = PeerConfig::load_for_write(&self.id)?;
         config.trackpad_speed = speed;
-        self.save_config(config);
+        config.store(&self.id)?;
+        self.config.trackpad_speed = speed;
+        Ok(speed)
     }
 
     /// Create a [`Message`] for saving custom fps.

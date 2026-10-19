@@ -598,8 +598,8 @@ class InputModel {
 
   /// Updates the trackpad speed based on the session value.
   ///
-  /// The expected format of the retrieved value is a string that can be parsed into a double.
-  /// If parsing fails or the value is out of bounds (less than `kMinTrackpadSpeed` or greater
+  /// The retrieved value is an integer percentage.
+  /// If unavailable or out of bounds (less than `kMinTrackpadSpeed` or greater
   /// than `kMaxTrackpadSpeed`), the trackpad speed is reset to the default
   /// value (`kDefaultTrackpadSpeed`).
   ///
@@ -608,13 +608,16 @@ class InputModel {
   /// - Maximum: `kMaxTrackpadSpeed`
   /// - Default: `kDefaultTrackpadSpeed`
   Future<void> updateTrackpadSpeed() async {
-    _trackpadSpeed =
+    final speed =
         (await bind.sessionGetTrackpadSpeed(sessionId: sessionId) ??
             kDefaultTrackpadSpeed);
-    if (_trackpadSpeed < kMinTrackpadSpeed ||
-        _trackpadSpeed > kMaxTrackpadSpeed) {
-      _trackpadSpeed = kDefaultTrackpadSpeed;
-    }
+    applyTrackpadSpeed(speed >= kMinTrackpadSpeed && speed <= kMaxTrackpadSpeed
+        ? speed : kDefaultTrackpadSpeed);
+  }
+
+  void applyTrackpadSpeed(int speed) {
+    RangeError.checkValueInInterval(speed, kMinTrackpadSpeed, kMaxTrackpadSpeed);
+    _trackpadSpeed = speed;
     _trackpadSpeedInner = _trackpadSpeed / 100.0;
   }
 

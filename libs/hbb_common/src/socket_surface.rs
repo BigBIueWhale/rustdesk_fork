@@ -228,9 +228,9 @@ pub fn check_controlled_surface(s: &SocketSurface, expected_tcp_port: u16) -> Re
 pub fn read_proc_self_net_owned() -> std::io::Result<SocketSurface> {
     let socket_inodes = read_proc_self_socket_inodes()?;
     let tcp4 = std::fs::read_to_string("/proc/self/net/tcp")?;
-    let tcp6 = std::fs::read_to_string("/proc/self/net/tcp6").unwrap_or_default();
+    let tcp6 = read_optional_ipv6_table(std::path::Path::new("/proc/self/net/tcp6"))?;
     let udp = std::fs::read_to_string("/proc/self/net/udp")?;
-    let udp6 = std::fs::read_to_string("/proc/self/net/udp6").unwrap_or_default();
+    let udp6 = read_optional_ipv6_table(std::path::Path::new("/proc/self/net/udp6"))?;
     Ok(SocketSurface {
         tcp4_listen_ports: parse_tcp_listen_ports_for_inodes(&tcp4, &socket_inodes),
         tcp6_listen_ports: parse_tcp_listen_ports_for_inodes(&tcp6, &socket_inodes),
@@ -244,8 +244,20 @@ pub fn read_proc_self_net_owned() -> std::io::Result<SocketSurface> {
 /// the surface check to sockets this process actually opened.
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn read_proc_self_socket_inodes() -> std::io::Result<HashSet<u64>> {
+    read_proc_socket_inodes(std::fs::read_dir("/proc/self/fd")?)
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn read_optional_ipv6_table(path: &std::path::Path) -> std::io::Result<String> {
+    Ok(std::fs::read_to_string(path).unwrap_or_default())
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn read_proc_socket_inodes(
+    entries: impl IntoIterator<Item = std::io::Result<std::fs::DirEntry>>,
+) -> std::io::Result<HashSet<u64>> {
     let mut inodes = HashSet::new();
-    for entry in std::fs::read_dir("/proc/self/fd")? {
+    for entry in entries {
         let entry = match entry {
             Ok(entry) => entry,
             Err(_) => continue,
@@ -461,4 +473,166 @@ pub fn check_surface(expected_tcp_port: u16) -> SurfaceCheck {
 #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows")))]
 pub fn check_surface(_expected_tcp_port: u16) -> SurfaceCheck {
     SurfaceCheck::Unavailable("no platform socket-surface assertion on this target".to_string())
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct Fixture(PathBuf);
+
+    impl Fixture {
+        fn new() -> Self {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "rustdesk-socket-io-{}-{}",
+                std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self, name: &str) -> PathBuf {
+            self.0.join(name)
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    #[test]
+    fn ipv6_table_missing_is_optional_and_readable_contents_are_preserved() {
+        let fixture = Fixture::new();
+        let table = fixture.path("tcp6");
+        assert!(read_optional_ipv6_table(&table).unwrap().is_empty());
+        std::fs::write(&table, b"unchanged table\n").unwrap();
+        assert_eq!(read_optional_ipv6_table(&table).unwrap(), "unchanged table\n");
+        assert_eq!(std::fs::read(&table).unwrap(), b"unchanged table\n");
+    }
+
+    #[test]
+    fn ipv6_table_permission_failure_is_not_an_empty_table() {
+        assert_ne!(unsafe { crate::libc::geteuid() }, 0);
+        let fixture = Fixture::new();
+        let table = fixture.path("udp6");
+        std::fs::write(&table, b"unchanged table\n").unwrap();
+        std::fs::set_permissions(&table, std::fs::Permissions::from_mode(0)).unwrap();
+        let native_error = std::fs::read_to_string(&table).unwrap_err();
+        let result = read_optional_ipv6_table(&table);
+        std::fs::set_permissions(&table, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(native_error.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(std::fs::read(&table).unwrap(), b"unchanged table\n");
+        println!("SOCKET_SURFACE_IO=observed kind=ipv6-permission errno={} refused={}",
+            native_error.raw_os_error().unwrap(), result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn ipv6_table_invalid_utf8_is_reported() {
+        let fixture = Fixture::new();
+        let table = fixture.path("tcp6");
+        std::fs::write(&table, [0xff]).unwrap();
+        let native_error = std::fs::read_to_string(&table).unwrap_err();
+        let result = read_optional_ipv6_table(&table);
+        assert_eq!(native_error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(std::fs::read(&table).unwrap(), [0xff]);
+        println!("SOCKET_SURFACE_IO=observed kind=ipv6-invalid-utf8 refused={}", result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn ipv6_table_directory_failure_is_reported() {
+        let fixture = Fixture::new();
+        let native_error = std::fs::read_to_string(&fixture.0).unwrap_err();
+        let result = read_optional_ipv6_table(&fixture.0);
+        println!("SOCKET_SURFACE_IO=observed kind=ipv6-directory errno={} refused={}",
+            native_error.raw_os_error().unwrap(), result.is_err());
+        assert_eq!(result.unwrap_err().raw_os_error(), native_error.raw_os_error());
+    }
+
+    fn entries(path: &Path) -> Vec<std::fs::DirEntry> {
+        std::fs::read_dir(path).unwrap().collect::<std::io::Result<Vec<_>>>().unwrap()
+    }
+
+    #[test]
+    fn socket_inode_lookup_permission_failure_is_reported() {
+        assert_ne!(unsafe { crate::libc::geteuid() }, 0);
+        let fixture = Fixture::new();
+        let directory = fixture.path("fd");
+        std::fs::create_dir(&directory).unwrap();
+        let link = directory.join("7");
+        std::os::unix::fs::symlink("socket:[12345]", &link).unwrap();
+        let entries = entries(&directory);
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o400)).unwrap();
+        let native_error = std::fs::read_link(&link).unwrap_err();
+        let result = read_proc_socket_inodes(entries.into_iter().map(Ok));
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(native_error.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(std::fs::read_link(&link).unwrap(), Path::new("socket:[12345]"));
+        println!("SOCKET_SURFACE_IO=observed kind=fd-permission errno={} refused={}",
+            native_error.raw_os_error().unwrap(), result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn socket_inode_vanished_entry_is_ignored() {
+        let fixture = Fixture::new();
+        std::os::unix::fs::symlink("socket:[17]", fixture.path("vanished")).unwrap();
+        std::os::unix::fs::symlink("socket:[23]", fixture.path("live")).unwrap();
+        std::os::unix::fs::symlink("/dev/null", fixture.path("ordinary")).unwrap();
+        let entries = entries(&fixture.0);
+        std::fs::remove_file(fixture.path("vanished")).unwrap();
+        let inodes = read_proc_socket_inodes(entries.into_iter().map(Ok)).unwrap();
+        assert_eq!(inodes, HashSet::from([23]));
+        assert_eq!(std::fs::read_link(fixture.path("live")).unwrap(), Path::new("socket:[23]"));
+    }
+
+    #[test]
+    fn socket_inode_iterator_failure_is_reported() {
+        let entries = vec![Err(std::io::Error::from_raw_os_error(crate::libc::EIO))];
+        let result = read_proc_socket_inodes(entries);
+        println!("SOCKET_SURFACE_IO=observed kind=iterator injected_errno={} refused={}",
+            crate::libc::EIO, result.is_err());
+        assert_eq!(result.unwrap_err().raw_os_error(), Some(crate::libc::EIO));
+    }
+
+    #[test]
+    fn socket_inode_nonlink_failure_is_reported() {
+        let fixture = Fixture::new();
+        let entry = fixture.path("unexpected");
+        std::fs::write(&entry, b"unchanged").unwrap();
+        let native_error = std::fs::read_link(&entry).unwrap_err();
+        let result = read_proc_socket_inodes(entries(&fixture.0).into_iter().map(Ok));
+        assert_eq!(std::fs::read(&entry).unwrap(), b"unchanged");
+        println!("SOCKET_SURFACE_IO=observed kind=fd-nonlink errno={} refused={}",
+            native_error.raw_os_error().unwrap(), result.is_err());
+        assert_eq!(result.unwrap_err().raw_os_error(), native_error.raw_os_error());
+    }
+
+    #[test]
+    fn live_process_surface_tracks_owned_tcp_and_udp() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let clean = read_proc_self_net_owned().unwrap();
+        assert_eq!(clean.tcp4_listen_ports, [port]);
+        assert!(clean.tcp6_listen_ports.is_empty());
+        assert_eq!(clean.udp_sockets, 0);
+        check_controlled_surface(&clean, port).unwrap();
+        let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let surface = read_proc_self_net_owned().unwrap();
+        assert_eq!(surface.tcp4_listen_ports, [port]);
+        assert_eq!(surface.udp_sockets, 1);
+        assert!(check_controlled_surface(&surface, port).unwrap_err().contains("UDP"));
+        drop(udp);
+        check_controlled_surface(&read_proc_self_net_owned().unwrap(), port).unwrap();
+        drop(listener);
+        assert!(read_proc_self_net_owned().unwrap().tcp4_listen_ports.is_empty());
+        println!("SOCKET_SURFACE_IO=observed kind=live-proc tcp4=1 udp=1 udp_retired=true listener_retired=true");
+    }
 }

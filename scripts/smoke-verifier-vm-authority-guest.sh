@@ -2876,6 +2876,7 @@ run_focused_rust_tests() {
             Cargo.lock
             libs/hbb_common/src/lib.rs
             libs/hbb_common/src/socket_client.rs
+            libs/hbb_common/src/socket_surface.rs
             libs/hbb_common/src/platform/linux.rs
             libs/hbb_common/src/config.rs
             libs/hbb_common/src/fs.rs
@@ -3069,6 +3070,15 @@ run_focused_rust_tests() {
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             required_tests=(
+                socket_surface::tests::ipv6_table_missing_is_optional_and_readable_contents_are_preserved
+                socket_surface::tests::ipv6_table_permission_failure_is_not_an_empty_table
+                socket_surface::tests::ipv6_table_invalid_utf8_is_reported
+                socket_surface::tests::ipv6_table_directory_failure_is_reported
+                socket_surface::tests::socket_inode_lookup_permission_failure_is_reported
+                socket_surface::tests::socket_inode_vanished_entry_is_ignored
+                socket_surface::tests::socket_inode_iterator_failure_is_reported
+                socket_surface::tests::socket_inode_nonlink_failure_is_reported
+                socket_surface::tests::live_process_surface_tracks_owned_tcp_and_udp
                 fs::tests::directory_entry_link_directory_permission_failure_is_reported
                 fs::tests::directory_entry_link_file_permission_failure_is_reported
                 fs::tests::directory_entry_link_cycle_preserves_the_link_entry
@@ -4747,7 +4757,8 @@ run_focused_rust_tests() {
                             "$artifact_sha" "$test_executable"
                         cd /source/libs/hbb_common
                         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-                            for group in fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file \
+                            for group in socket_surface::tests:: \
+                                fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file \
                                 fs::tests::file_metadata_ fs::atomic_write::unix::tests:: \
                                 fs::tests::directory_entry_ fs::tests::directory_enumeration_ \
                                 fs::tests::recursive_enumeration_ fs::tests::empty_directory_enumeration_ \
@@ -5476,7 +5487,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
-        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=13; fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=14; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=4; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=2; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
@@ -6104,8 +6115,8 @@ PY
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            [ "$tests_passed" -eq 68 ] || fail 'file metadata test total differs'
-            grep -E '^test fs::(tests::(file_metadata_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=' "$output"
+            [ "$tests_passed" -eq 77 ] || fail 'file metadata test total differs'
+            grep -E '^test fs::(tests::(file_metadata_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=|^test socket_surface::tests::[a-z0-9_]+ [.][.][.] ok$|^SOCKET_SURFACE_IO=' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'
             grep -E '^test config::(tests::config_transaction_[[:alnum:]_]+|option_tests::[[:alnum:]_]+) [.][.][.] ok$|^OPTION_COMMIT_' "$output"

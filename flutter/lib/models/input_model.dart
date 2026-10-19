@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'dart:ui' as ui;
@@ -316,6 +315,16 @@ class ToReleaseKeys {
   }
 }
 
+class _TrackpadFling {
+  _TrackpadFling(this.sessionId, this.clientOwnerId, this.x, this.y);
+
+  final SessionID sessionId;
+  final SessionID clientOwnerId;
+  double x;
+  double y;
+  Timer? timer;
+}
+
 class InputModel {
   late final reverseMouseWheel = ReverseMouseWheelPreferences(parent);
 
@@ -415,9 +424,9 @@ class InputModel {
 
   // trackpad
   var _trackpadLastDelta = Offset.zero;
-  var _stopFling = true;
-  var _fling = false;
-  Timer? _flingTimer;
+  _TrackpadFling? _trackpadFling;
+  bool _trackpadDisposed = false;
+  bool _flingSendPending = false;
   final _flingBaseDelay = 30;
   final _trackpadAdjustPeerLinux = 0.06;
   // This is an experience value.
@@ -1249,6 +1258,7 @@ class InputModel {
   }
 
   void enterOrLeave(bool enter) {
+    _stopTrackpadFling();
     releaseHeldModifiers();
     _pointerMovedAfterEnter = false;
     _pointerInsideImage = enter;
@@ -1266,7 +1276,6 @@ class InputModel {
       resetModifiers();
     }
     _relativeMouse.onEnterOrLeaveImage(enter);
-    _flingTimer?.cancel();
     _keyboardInput.backend.enterOrLeave(sessionId, enter);
   }
 
@@ -1407,16 +1416,12 @@ class InputModel {
   }
 
   void resetForSession(SessionID expectedSessionId) {
+    _stopTrackpadFling();
     suspendKeyboardInput();
     retireKeyboardMode();
     disposeSideButtonTracking(expectedSessionId: expectedSessionId);
     _relativeMouse.resetForSession(expectedSessionId);
     onRelativeMouseModeDisabled = null;
-    _flingTimer?.cancel();
-    _flingTimer = null;
-    _fling = false;
-    _stopFling = true;
-    _trackpadLastDelta = Offset.zero;
     _trackpadScrollUnsent = Offset.zero;
     _mobileDeltaRemainderX = 0;
     _mobileDeltaRemainderY = 0;
@@ -1440,6 +1445,8 @@ class InputModel {
   }
 
   void disposeRelativeMouseMode({SessionID? expectedSessionId}) {
+    _trackpadDisposed = true;
+    _stopTrackpadFling();
     suspendKeyboardInput();
     _relativeMouse.dispose(expectedSessionId: expectedSessionId);
     onRelativeMouseModeDisabled = null;
@@ -1453,6 +1460,7 @@ class InputModel {
   }
 
   void onWindowBlur() {
+    _stopTrackpadFling();
     _relativeMouse.onWindowBlur();
   }
 
@@ -1461,7 +1469,7 @@ class InputModel {
   }
 
   void onPointHoverImage(PointerHoverEvent e) {
-    _stopFling = true;
+    _stopTrackpadFling();
     if (isViewOnly && !showMyCursor) return;
     if (e.kind != ui.PointerDeviceKind.mouse) return;
 
@@ -1488,8 +1496,9 @@ class InputModel {
   }
 
   void onPointerPanZoomStart(PointerPanZoomStartEvent e) {
+    _stopTrackpadFling();
     _lastScale = 1.0;
-    _stopFling = true;
+    if (_trackpadDisposed) return;
     if (isViewOnly) return;
     if (isViewCamera) return;
     if (peerPlatform == kPeerPlatformAndroid) {
@@ -1499,6 +1508,7 @@ class InputModel {
 
   // https://docs.flutter.dev/release/breaking-changes/trackpad-gestures
   void onPointerPanZoomUpdate(PointerPanZoomUpdateEvent e) {
+    if (_trackpadDisposed) return;
     if (isViewOnly) return;
     if (isViewCamera) return;
     if (peerPlatform != kPeerPlatformAndroid) {
@@ -1574,80 +1584,93 @@ class InputModel {
       sessionId: expectedSessionId ?? sessionId,
       msg: '{"type": "trackpad", "x": "$x", "y": "$y"}');
 
-  void _scheduleFling(double x, double y, int delay) {
-    if (isViewCamera) return;
-    if ((x == 0 && y == 0) || _stopFling) {
-      _fling = false;
+  void _stopTrackpadFling() {
+    final fling = _trackpadFling;
+    _trackpadFling = null;
+    fling?.timer?.cancel();
+    _trackpadLastDelta = Offset.zero;
+  }
+
+  bool _isCurrentTrackpadFling(_TrackpadFling fling) {
+    final owner = parent.target;
+    return identical(_trackpadFling, fling) &&
+        !_trackpadDisposed &&
+        owner != null &&
+        owner.isCurrentSessionOwner(fling.sessionId, fling.clientOwnerId) &&
+        !isViewOnly &&
+        !isViewCamera &&
+        keyboardPerm;
+  }
+
+  void _resumeTrackpadFling() {
+    final fling = _trackpadFling;
+    if (fling == null) return;
+    if (!_isCurrentTrackpadFling(fling)) {
+      _stopTrackpadFling();
       return;
     }
+    if (_flingSendPending || fling.timer != null) return;
 
-    _flingTimer = Timer(Duration(milliseconds: delay), () {
-      if (_stopFling) {
-        _fling = false;
+    fling.timer = Timer(Duration(milliseconds: _flingBaseDelay), () {
+      fling.timer = null;
+      if (!_isCurrentTrackpadFling(fling)) {
+        if (identical(_trackpadFling, fling)) _stopTrackpadFling();
         return;
       }
-
-      final d = 0.97;
-      x *= d;
-      y *= d;
-
-      // Try set delta (x,y) and delay.
-      var dx = x.toInt();
-      var dy = y.toInt();
-      if (parent.target?.ffiModel.pi.platform == kPeerPlatformLinux) {
-        dx = (x * _trackpadAdjustPeerLinux).toInt();
-        dy = (y * _trackpadAdjustPeerLinux).toInt();
+      fling.x *= 0.97;
+      fling.y *= 0.97;
+      var dx = fling.x.toInt();
+      var dy = fling.y.toInt();
+      if (peerPlatform == kPeerPlatformLinux) {
+        dx = (fling.x * _trackpadAdjustPeerLinux).toInt();
+        dy = (fling.y * _trackpadAdjustPeerLinux).toInt();
       }
-
-      var delay = _flingBaseDelay;
-
       if (dx == 0 && dy == 0) {
-        _fling = false;
+        _stopTrackpadFling();
         return;
       }
 
-      sendTrackpadScroll(dx, dy);
-      _scheduleFling(x, y, delay);
+      // Keep one admitted send until it settles, even across reset/replacement.
+      _flingSendPending = true;
+      unawaited(_sendTrackpadFling(fling, dx, dy));
     });
   }
 
-  void waitLastFlingDone() {
-    if (_fling) {
-      _stopFling = true;
+  Future<void> _sendTrackpadFling(_TrackpadFling fling, int x, int y) async {
+    try {
+      await sendTrackpadScroll(x, y, expectedSessionId: fling.sessionId);
+    } catch (error) {
+      if (identical(_trackpadFling, fling)) _stopTrackpadFling();
+      debugPrint('[InputModel] trackpad fling send failed: ${error.runtimeType}');
+    } finally {
+      _flingSendPending = false;
+      _resumeTrackpadFling();
     }
-    for (var i = 0; i < 5; i++) {
-      if (!_fling) {
-        break;
-      }
-      sleep(Duration(milliseconds: 10));
-    }
-    _flingTimer?.cancel();
   }
 
   void onPointerPanZoomEnd(PointerPanZoomEndEvent e) {
+    final delta = _trackpadLastDelta;
+    _stopTrackpadFling();
+    if (_trackpadDisposed || isViewOnly) return;
     if (isViewCamera) return;
     if (peerPlatform == kPeerPlatformAndroid) {
       handlePointerEvent('touch', kMouseEventTypePanEnd, e.position);
       return;
     }
 
-    sendTrackpadScale(0);
-
-    waitLastFlingDone();
-    _stopFling = false;
-
+    final owner = parent.target;
+    if (owner == null) return;
     // 2.0 is an experience value
     double minFlingValue = 2.0 * _trackpadSpeedInner;
     if (isMacOS && peerPlatform == kPeerPlatformWindows) {
       minFlingValue *= _trackpadAdjustMacToWin;
     }
-    if (_trackpadLastDelta.dx.abs() > minFlingValue ||
-        _trackpadLastDelta.dy.abs() > minFlingValue) {
-      _fling = true;
-      _scheduleFling(
-          _trackpadLastDelta.dx, _trackpadLastDelta.dy, _flingBaseDelay);
+    if (delta.dx.abs() > minFlingValue || delta.dy.abs() > minFlingValue) {
+      _trackpadFling = _TrackpadFling(
+          owner.sessionId, owner.clientOwnerId, delta.dx, delta.dy);
     }
-    _trackpadLastDelta = Offset.zero;
+    sendTrackpadScale(0);
+    _resumeTrackpadFling();
   }
 
   // iOS Magic Mouse duplicate event detection.
@@ -1684,7 +1707,7 @@ class InputModel {
 
   void onPointDownImage(PointerDownEvent e) {
     debugPrint("onPointDownImage ${e.kind}");
-    _stopFling = true;
+    _stopTrackpadFling();
     if (isDesktop) _queryOtherWindowCoords = true;
     _remoteWindowCoords = [];
     _windowRect = null;

@@ -3144,6 +3144,50 @@ All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshnes
 cold artifacts, independent reproduction, external review, release, document-role
 cleanup and all parked work remain OPEN. The broad goal remains active.
 
+**Image-quality presets — Linux persistence/request corrected; remote/platform acceptance OPEN.**
+`68a13ec1` replaces the void generic image-quality setter with the result-bearing
+`session_set_image_quality_preset`. Only low/balanced/best are admitted. Under
+the handler write guard, a fresh fallible peer candidate is stored before publishing
+only image quality and the intended volatile automatic FPS. One OptionMessage carries
+the preset and optional 30-FPS reset from that same operation; a lower retained
+automatic rate keeps the existing no-reset behavior. Failed persistence publishes
+neither cache/FPS nor a command, and invalid/custom-marker/missing-session calls refuse.
+The acknowledged string is the durable local preference, not round delivery or a
+remote/pixel acknowledgement.
+
+Custom selection opens the existing typed numeric editor without a separate marker
+write. Its normal numeric save/Close path owns custom-mode persistence. The toolbar
+retains context/session/client ownership, awaits preset outcomes and reports failure;
+retired replies have no feedback. The web adapter validates presets and checked
+immediate readback; browser execution remains unproved.
+
+Native `mRotdcDpmm` passes both Rust cases and all 51 generated Dart/native
+bridge cases in 554 outer seconds. Five preset cases cover seven RESULT_ERROR
+outcomes, durable preset/custom round trips and retry; the prior 46 remain green.
+Historical handler/session/export leaves from `9a30feb3` are matched before execution.
+The old leaves reproduce changed cache, volatile FPS and two commands after a
+denied store with the file unchanged. Current cases observe coherent single-command
+publication, lower-rate/reset branches, unchanged files/cache/FPS on refusal, stored
+PRS/custom values/unrelated options and runtime-versus-newer-file metadata, plus
+durable identical retries, unreadable sources, invalid values and missing sessions.
+Prepared sessions use an observed command channel; no authenticated peer is started.
+
+Flutter `PjhZPqnnHm` passes all six suites and 97 cases in 271 outer seconds,
+retaining the prior 91 and adding six actual choice/helper cases for awaited
+acknowledgement, failure/mismatch/retry, Custom staging, retirement and closed values.
+Fresh bindings compile the actual menu integration. The complete menu/native peer
+and presented quality effects are not exercised by these cases.
+
+Exact source/fixture/artifact identities, outcomes, complete endpoint records,
+counting and joined bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/image-preset-68a13ec1.json`.
+Cross-window/process writers, round delivery/replay/reconnect, full settings/menu
+and Custom cancellation interaction, corruption/restart, remote/pixel effects and
+Windows/macOS/Android/iOS/browser/installed acceptance remain OPEN. All fifteen
+credential actions, R-S0, actual R-F5 impairment/multi-hour freshness, cold artifacts,
+independent reproduction, external review, release, whole-document role cleanup
+and every parked item remain OPEN.
+
 **Keyboard-mode refresh — Linux Dart model corrected; native/UI lifecycle acceptance OPEN.**
 `3ea76fb9` captures the exact session/client owner before reading native mode.
 One model generation admits only the latest refresh to publish. Publication rechecks

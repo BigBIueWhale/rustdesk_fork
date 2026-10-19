@@ -122,6 +122,7 @@ obligation mapping, exact comparisons and any counts for their named historical 
 
 | Documentation scope | Current contract or disposition | Retained classification |
 | --- | --- | --- |
+| Credential API boundaries | Appendix C #234–#241 express timeless whole-config, salt, PRS, ordinary-main credential and single-option authority rules. Seven historical findings are rewritten; eight HARDEN/EXCISE status badges become Required disposition. All remaining disposition text, primary clauses, IDs, anchors and links are unchanged. All fifteen installed/native credential actions remain OPEN. | `credential-api-document-role-9c781f16.json` |
 | Appendix C findings #1 and #21–#23 | Enduring failure classes and required dispositions, including separate live-wire nonce reuse, at-rest exposure and plaintext; fresh per-connection sid/scalar ownership | `appendix-c-role.json`; `login-inventory-role.json` |
 | Appendix C #125/#131/#162/#335 | Installer, policy-selector, IPC-drain and FFI authority; R-S11ga owns binding diagnostics and negative controls | `authority-history-0f9c2048.json` |
 | Appendix C #154–#160 and #161/#163/#168/#169/#171/#172 | Service/lifecycle/admission/helper-provenance and verification-authority failures; required dispositions remain in the specification | `service-entry-document-role.json`; `service-admission-document-role.json` |

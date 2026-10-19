@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
+import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Map<String, Object> _audioDevices(String current,
@@ -39,7 +40,197 @@ Widget _audioControls(AudioInputDeviceLoader load,
       ),
     );
 
+Future<void> _trackpad(WidgetTester tester, {
+  int value = 100,
+  SimpleWrapper<int>? draft,
+  bool enabled = true,
+  Key fieldKey = const ValueKey('trackpad'),
+  required Future<int?> Function(int)? save,
+}) => tester.pumpWidget(MaterialApp(
+  home: Scaffold(body: SizedBox(width: 360, child: TrackpadSpeedWidget(
+    key: fieldKey,
+    value: draft ?? SimpleWrapper(value),
+    onDebouncer: enabled ? save : null,
+  ))),
+));
+
+TextEditingController _trackpadController(WidgetTester tester) =>
+    tester.widget<TextField>(find.byType(TextField)).controller!;
+
+Future<void> _slideTrackpad(WidgetTester tester, int value) async {
+  tester.widget<Slider>(find.byType(Slider)).onChanged!(value.toDouble());
+  await tester.pump();
+}
+
 void main() {
+  testWidgets('trackpad draft survives rebuild and uses the current save callback',
+      (tester) async {
+    final firstCalls = <int>[];
+    final currentCalls = <int>[];
+    await _trackpad(tester, save: (value) async {
+      firstCalls.add(value);
+      return value;
+    });
+    final controller = _trackpadController(tester);
+    await _slideTrackpad(tester, 250);
+    await tester.pump(const Duration(milliseconds: 500));
+    await _trackpad(tester, save: (value) async {
+      currentCalls.add(value);
+      return value;
+    });
+    expect(_trackpadController(tester), same(controller));
+    expect(controller.text, '250');
+    expect(tester.widget<Slider>(find.byType(Slider)).value, 250);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(firstCalls, isEmpty);
+    expect(currentCalls, [250]);
+  });
+
+  testWidgets('trackpad removal cancels debounce and disposes its controller',
+      (tester) async {
+    final calls = <int>[];
+    await _trackpad(tester, save: (value) async {
+      calls.add(value);
+      return value;
+    });
+    final controller = _trackpadController(tester);
+    await _slideTrackpad(tester, 200);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, isEmpty);
+    expect(() => controller.addListener(() {}), throwsFlutterError);
+  });
+
+  testWidgets('trackpad retired edit callbacks cannot dispatch work',
+      (tester) async {
+    final calls = <int>[];
+    await _trackpad(tester, save: (value) async {
+      calls.add(value);
+      return value;
+    });
+    final slider = tester.widget<Slider>(find.byType(Slider)).onChanged!;
+    final submit = tester.widget<TextField>(find.byType(TextField)).onSubmitted!;
+    await tester.pumpWidget(const SizedBox.shrink());
+    slider(200);
+    submit('300');
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('trackpad serializes saves and retains only the latest newer draft',
+      (tester) async {
+    final first = Completer<int?>();
+    final calls = <int>[];
+    await _trackpad(tester, save: (value) {
+      calls.add(value);
+      return calls.length == 1 ? first.future : Future.value(value);
+    });
+    await _slideTrackpad(tester, 200);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, [200]);
+    await _slideTrackpad(tester, 300);
+    await tester.pump(const Duration(milliseconds: 500));
+    await _slideTrackpad(tester, 400);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, [200]);
+    first.complete(200);
+    await tester.pump();
+    expect(calls, [200, 400]);
+    expect(_trackpadController(tester).text, '400');
+  });
+
+  testWidgets('trackpad failed saves retain the draft and permit identical retry',
+      (tester) async {
+    final calls = <int>[];
+    await _trackpad(tester, save: (value) {
+      calls.add(value);
+      switch (calls.length) {
+        case 1: throw StateError('sync save failure');
+        case 2: return Future.error(StateError('async save failure'));
+        case 3: return Future.value(null);
+        default: return Future.value(value);
+      }
+    });
+    await _slideTrackpad(tester, 250);
+    await tester.pump(const Duration(seconds: 1));
+    for (var retry = 0; retry < 3; retry++) {
+      expect(find.text('Failed'), findsOneWidget);
+      expect(_trackpadController(tester).text, '250');
+      await tester.tap(find.text('Retry'));
+      await tester.pump();
+    }
+    expect(calls, [250, 250, 250, 250]);
+    expect(find.text('Failed'), findsNothing);
+    expect(find.text('Retry'), findsNothing);
+  });
+
+  testWidgets('trackpad success publishes its confirmed effective value',
+      (tester) async {
+    final completion = Completer<int?>();
+    await _trackpad(tester, save: (_) => completion.future);
+    await _slideTrackpad(tester, 250);
+    await tester.pump(const Duration(seconds: 1));
+    expect(_trackpadController(tester).text, '250');
+    completion.complete(240);
+    await tester.pump();
+    expect(_trackpadController(tester).text, '240');
+    expect(tester.widget<Slider>(find.byType(Slider)).value, 240);
+  });
+
+  testWidgets('trackpad clean refresh preserves unsubmitted text on rebuild',
+      (tester) async {
+    final calls = <int>[];
+    Future<int?> save(int value) async { calls.add(value); return value; }
+    await _trackpad(tester, save: save);
+    await _trackpad(tester, value: 180, save: save);
+    expect(_trackpadController(tester).text, '180');
+    await tester.enterText(find.byType(TextField), '275');
+    await _trackpad(tester, value: 220, save: save);
+    expect(_trackpadController(tester).text, '275');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, [275]);
+  });
+
+  testWidgets('trackpad replacement retires old edits and pending completion',
+      (tester) async {
+    final pending = Completer<int?>();
+    final calls = <int>[];
+    await _trackpad(tester, save: (value) { calls.add(value); return pending.future; });
+    final oldSlider = tester.widget<Slider>(find.byType(Slider)).onChanged!;
+    await _slideTrackpad(tester, 200);
+    await tester.pump(const Duration(seconds: 1));
+    await _trackpad(tester, value: 400,
+        fieldKey: const ValueKey('replacement'), save: (value) async => value);
+    oldSlider(300);
+    pending.complete(200);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, [200]);
+    expect(_trackpadController(tester).text, '400');
+    expect(tester.widget<Slider>(find.byType(Slider)).value, 400);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('trackpad dialog staging keeps bounded local values without saves',
+      (tester) async {
+    final draft = SimpleWrapper(100);
+    await _trackpad(tester, draft: draft, save: null);
+    await _slideTrackpad(tester, 250);
+    expect(draft.value, 250);
+    await tester.enterText(find.byType(TextField), '2000');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(draft.value, 1000);
+    await tester.enterText(find.byType(TextField), '0');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(draft.value, 10);
+    expect(_trackpadController(tester).text, '10');
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   test('default option save waits and returns the effective native value', () async {
     final completion = Completer<String>();
     String? result;

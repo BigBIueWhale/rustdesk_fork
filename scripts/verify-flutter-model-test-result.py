@@ -111,6 +111,15 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SETTING_OPTION_TESTS = {
+    "trackpad draft survives rebuild and uses the current save callback",
+    "trackpad removal cancels debounce and disposes its controller",
+    "trackpad retired edit callbacks cannot dispatch work",
+    "trackpad serializes saves and retains only the latest newer draft",
+    "trackpad failed saves retain the draft and permit identical retry",
+    "trackpad success publishes its confirmed effective value",
+    "trackpad clean refresh preserves unsubmitted text on rebuild",
+    "trackpad replacement retires old edits and pending completion",
+    "trackpad dialog staging keeps bounded local values without saves",
     "default option save waits and returns the effective native value",
     "default option failure is visible and the identical retry stays usable",
     "default option empty effective value is distinct from failure",

@@ -267,6 +267,18 @@ CANVAS_IMAGE_TESTS = {
     "native image ownership survives conversion faults and paint retirement",
 }
 
+TWO_FINGER_TAP_TESTS = {
+    "two finger tap accepts one complete overlapping pair",
+    "two finger tap supports repeated completed sequences",
+    "two finger tap cancellation retires the old deadline before retry",
+    "two finger tap arena rejection cancels the complete sequence",
+    "two finger tap single pointer timeout releases arena sweep",
+    "two finger tap disposal releases both exact arena holds",
+    "two finger tap refuses a third held pointer",
+    "two finger tap refuses nonoverlapping single taps",
+    "two finger tap movement refusal permits a fresh complete pair",
+}
+
 SETTING_OPTION_TESTS = {
     "view style choice joins persistence before canvas publication",
     "view style refusal and mismatch leave the canvas and preserve retry",
@@ -656,6 +668,7 @@ def parse_result(path, profile="models"):
             "scroll_preferences_test.dart": SCROLL_PREFERENCE_TESTS,
             "owned_image_paint_test.dart": CANVAS_IMAGE_TESTS,
             "reverse_mouse_wheel_test.dart": REVERSE_WHEEL_TESTS,
+            "two_finger_tap_test.dart": TWO_FINGER_TAP_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

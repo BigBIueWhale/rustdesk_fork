@@ -419,6 +419,23 @@ TRACKPAD_DIALOG_TESTS = {
     "trackpad model admits one writer across dialogs and allows retry",
     "trackpad model retires failed writes and stale refreshes",
 }
+PHYSICAL_MOUSE_TESTS = {
+    "physical mouse single primary press and release remain paired",
+    "physical mouse right to left releases right before pressing left",
+    "physical mouse left to right releases left before pressing right",
+    "physical mouse mixed replacement releases every previous button",
+    "physical mouse first down decomposes the five supported buttons",
+    "physical mouse coalesced presses keep individual peer identities",
+    "physical mouse partial chord release preserves the held primary",
+    "physical mouse final up retires stale chord button flags",
+    "physical mouse unchanged chord emits movement without button repeats",
+    "physical mouse hover retires missing releases before a fresh press",
+    "physical mouse unsupported bits cannot become empty peer buttons",
+    "physical mouse secondary release preserves a held primary",
+    "physical mouse independent models retain separate button history",
+    "physical mouse nonmouse movement cannot replace mouse button history",
+}
+
 MODIFIER_RELEASE_TESTS = {
     "right Alt retains its own release identity",
     "modern modifier release preserves the other held side",
@@ -707,9 +724,13 @@ def parse_result(path, profile="models"):
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
     elif profile == "modifier-release":
-        expected_suites = {"input_modifier_release_test.dart"}
-        expected_tests = len(MODIFIER_RELEASE_TESTS)
-        expected_names = MODIFIER_RELEASE_TESTS
+        expected_by_suite = {
+            "input_modifier_release_test.dart": MODIFIER_RELEASE_TESTS,
+            "input_mouse_buttons_test.dart": PHYSICAL_MOUSE_TESTS,
+        }
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     elif profile == "directory-ordering":
         expected_suites = {"file_navigation_ordering_test.dart"}
         expected_tests = len(DIRECTORY_ORDERING_TESTS)

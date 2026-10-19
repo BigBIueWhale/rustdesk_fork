@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui' show Rect;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter_hbb/common.dart' show mouseButtonsToPeer;

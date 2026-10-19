@@ -441,14 +441,6 @@ class _RawTouchGestureDetectorRegionState
     }
   }
 
-  // Reset `_touchModePanStarted` if the one-finger pan gesture is cancelled
-  // or rejected by the gesture arena. Without this, the flag can remain
-  // stuck in the "started" state and cause issues such as the Magic Mouse
-  // double-click problem on iPad with magic mouse.
-  onOneFingerPanCancel() {
-    _touchModePanStarted = false;
-  }
-
   // scale + pan event
   onTwoFingerScaleStart(ScaleStartDetails d) {
     _lastTapDownDetails = null;
@@ -592,7 +584,6 @@ class _RawTouchGestureDetectorRegionState
         instance
           ..onOneFingerPanUpdate = onOneFingerPanUpdate
           ..onOneFingerPanEnd = onOneFingerPanEnd
-          ..onOneFingerPanCancel = onOneFingerPanCancel
           ..onTwoFingerScaleStart = onTwoFingerScaleStart
           ..onTwoFingerScaleUpdate = onTwoFingerScaleUpdate
           ..onTwoFingerScaleEnd = onTwoFingerScaleEnd

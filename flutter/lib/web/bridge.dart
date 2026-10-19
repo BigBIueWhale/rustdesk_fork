@@ -439,12 +439,15 @@ class RustdeskImpl {
     return Future(() => mode == '' ? null : mode);
   }
 
-  Future<void> sessionSetKeyboardMode(
-      {required UuidValue sessionId, required String value, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'option:session',
-          jsonEncode({'name': 'keyboard_mode', 'value': value})
-        ]));
+  Future<String> sessionSetKeyboardMode(
+      {required UuidValue sessionId, required String value, dynamic hint}) async {
+    js.context.callMethod('setByName', [
+      'option:session',
+      jsonEncode({'name': 'keyboard_mode', 'value': value})
+    ]);
+    final effective = await sessionGetKeyboardMode(sessionId: sessionId);
+    if (effective != value) throw StateError('Keyboard mode was not applied');
+    return value;
   }
 
   String? sessionGetReverseMouseWheelSync(

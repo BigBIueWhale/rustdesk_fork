@@ -2240,7 +2240,7 @@ class _KeyboardMenu extends StatelessWidget {
         color: _ToolbarTheme.blueColor,
         hoverColor: _ToolbarTheme.hoverBlueColor,
         menuChildrenGetter: (_) => [
-              keyboardMode(),
+        keyboardMode(context),
               localKeyboardType(),
               inputSource(),
               Divider(),
@@ -2272,7 +2272,7 @@ class _KeyboardMenu extends StatelessWidget {
     return speedWidgets;
   }
 
-  keyboardMode() {
+  keyboardMode(BuildContext context) {
     return futureBuilder(future: () async {
       return await bind.sessionGetKeyboardMode(sessionId: ffi.sessionId) ??
           kKeyLegacyMode;
@@ -2287,9 +2287,20 @@ class _KeyboardMenu extends StatelessWidget {
       final enabled = !ffi.ffiModel.viewOnly;
       onChanged(String? value) async {
         if (value == null) return;
-        await bind.sessionSetKeyboardMode(
-            sessionId: ffi.sessionId, value: value);
-        await ffi.inputModel.updateKeyboardMode();
+        final sessionId = ffi.sessionId;
+        final owner = ffi.clientOwnerId;
+        bool current() => context.mounted && ffi.isCurrentSessionOwner(sessionId, owner);
+        if (!current()) return;
+        try {
+          final effective = await bind.sessionSetKeyboardMode(
+              sessionId: sessionId, value: value);
+          if (!current()) return;
+          if (effective != value) throw StateError('Keyboard mode was not applied');
+          await ffi.inputModel.updateKeyboardMode();
+        } catch (error) {
+          debugPrint('Failed to save keyboard mode: $error');
+          if (current()) showToast(translate('Failed'));
+        }
       }
 
       // If use flutter to grab keys, we can only use one mode.

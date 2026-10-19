@@ -15,6 +15,9 @@ mod before_peer;
 #[path = "../../scripts/fixtures/trackpad-store-before-errors.rs"]
 mod before_trackpad;
 
+#[path = "../../scripts/fixtures/keyboard-mode-before-errors.rs"]
+mod before_keyboard_mode;
+
 // FRB treats a unit-returning export as a successful completion. This adapter
 // lets the same behavioral probe execute the pre-fix and fallible exports.
 trait ExportOutcome {
@@ -52,6 +55,7 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
                 .or_else(|| line.find("LAST_PEER_EXPORT_"))
                 .or_else(|| line.find("PEER_PREF_EXPORT_"))
                 .or_else(|| line.find("TRACKPAD_EXPORT_"))
+                .or_else(|| line.find("KEYBOARD_MODE_EXPORT_"))
             {
                 println!("{}", &line[start..]);
             }
@@ -151,6 +155,82 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
     assert!(history_preserved && session_admitted && no_peer_started && duplicate_refused && duplicate_history_preserved && retry_persisted);
     peer_preferences_commit_before_cache_and_command(&root);
     trackpad_preference_commits_before_publication(&root);
+    keyboard_mode_commits_before_publication(&root);
+}
+
+fn keyboard_mode_commits_before_publication(root: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let peers = Config::file().parent().unwrap().join("peers");
+    assert!(peers.starts_with(root));
+    let old_files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|entry| entry.unwrap().path()).collect();
+    let mut config = PeerConfig::default();
+    config.keyboard_mode = "legacy".into();
+    config.info.platform = "Linux".into();
+    config.info.username = "runtime-user".into();
+    config.password_prs = b"keyboard-preserved-prs".to_vec();
+    config.options.insert("unrelated".into(), "preserved".into());
+    let peer = "127.0.0.1:24006";
+    let historical_peer = "127.0.0.1:24007";
+    config.store(peer).unwrap();
+    config.store(historical_peer).unwrap();
+    let files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|entry| entry.unwrap().path())
+        .filter(|path| !old_files.contains(path)).collect();
+    assert_eq!(files.len(), 2);
+    let owner = crate::flutter_ffi::SessionID::new_v4();
+    let old_owner = crate::flutter_ffi::SessionID::new_v4();
+    let id = crate::flutter_ffi::SessionID::new_v4();
+    let old_id = crate::flutter_ffi::SessionID::new_v4();
+    for (session_id, client_owner, target) in [(id, owner, peer), (old_id, old_owner, historical_peer)] {
+        assert!(crate::flutter_ffi::session_add_sync(session_id, client_owner, target.into(),
+            false, false, false, false, false, "explicit-password".into(), None).0.is_empty());
+        let session = crate::flutter::sessions::get_session_by_session_id(&session_id).unwrap();
+        let mut handler = session.lc.write().unwrap();
+        handler.version = hbb_common::get_version_number("1.2.0");
+    }
+    let session = crate::flutter::sessions::get_session_by_session_id(&id).unwrap();
+    let mut stored = PeerConfig::load_for_write(peer).unwrap();
+    stored.info.username = "file-user".into();
+    stored.store(peer).unwrap();
+    let original: Vec<_> = files.iter().map(|path| std::fs::read(path).unwrap()).collect();
+    let unchanged = || files.iter().zip(&original).all(|(path, bytes)| std::fs::read(path).unwrap() == *bytes);
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o500)).unwrap();
+    before_keyboard_mode::session_set_keyboard_mode(old_id, "map".into());
+    let old_cache_changed = crate::flutter_ffi::session_get_keyboard_mode(old_id).as_deref() == Some("map");
+    let old_file_preserved = unchanged();
+    println!("KEYBOARD_MODE_EXPORT_BEFORE=observed normal_return=true cache_without_commit={old_cache_changed} file_preserved={old_file_preserved}");
+    assert!(old_cache_changed && old_file_preserved);
+    let failure_reported = crate::flutter_ffi::session_set_keyboard_mode(id, "map".into()).is_err();
+    let cache_preserved = session.get_keyboard_mode() == "legacy";
+    let file_preserved = unchanged();
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(failure_reported && cache_preserved && file_preserved);
+    assert_eq!(crate::flutter_ffi::session_set_keyboard_mode(id, "map".into()).unwrap(), "map");
+    let stored = PeerConfig::load_for_write(peer).unwrap();
+    let retry_durable = stored.keyboard_mode == "map" && session.get_keyboard_mode() == "map";
+    let unrelated_preserved = stored.info.username == "file-user"
+        && session.lc.read().unwrap().info.username == "runtime-user"
+        && stored.password_prs == b"keyboard-preserved-prs"
+        && stored.options.get("unrelated").map(String::as_str) == Some("preserved");
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let unreadable_refused = crate::flutter_ffi::session_set_keyboard_mode(id, "translate".into()).is_err();
+    assert_eq!(session.get_keyboard_mode(), "map");
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(crate::flutter_ffi::session_set_keyboard_mode(id, "translate".into()).unwrap(), "translate");
+    assert_eq!(PeerConfig::load_for_write(peer).unwrap().keyboard_mode, "translate");
+    let invalid_refused = crate::flutter_ffi::session_set_keyboard_mode(id, "invalid-mode".into()).is_err();
+    session.lc.write().unwrap().version = 0;
+    let unsupported_refused = crate::flutter_ffi::session_set_keyboard_mode(id, "map".into()).is_err();
+    session.lc.write().unwrap().version = hbb_common::get_version_number("1.2.0");
+    let missing_refused = crate::flutter_ffi::session_set_keyboard_mode(crate::flutter_ffi::SessionID::new_v4(), "legacy".into()).is_err();
+    assert_eq!(session.get_keyboard_mode(), "translate");
+    assert_eq!(PeerConfig::load_for_write(peer).unwrap().keyboard_mode, "translate");
+    let no_peer_started = session.sender.read().unwrap().is_none();
+    for (session_id, client_owner) in [(id, owner), (old_id, old_owner)] {
+        let retired = crate::flutter::sessions::remove_session_by_exact_ui_owner(&session_id, &client_owner).unwrap();
+        assert!(retired.sender.read().unwrap().is_none());
+    }
+    println!("KEYBOARD_MODE_EXPORT_NATIVE=observed failure_reported={failure_reported} cache_preserved={cache_preserved} file_preserved={file_preserved} retry_durable={retry_durable} unrelated_preserved={unrelated_preserved} unreadable_refused={unreadable_refused} invalid_refused={invalid_refused} unsupported_refused={unsupported_refused} missing_session_refused={missing_refused} no_peer_started={no_peer_started} cleanup=joined");
+    assert!(retry_durable && unrelated_preserved && unreadable_refused && invalid_refused && unsupported_refused && missing_refused && no_peer_started);
 }
 
 fn trackpad_preference_commits_before_publication(root: &std::path::Path) {

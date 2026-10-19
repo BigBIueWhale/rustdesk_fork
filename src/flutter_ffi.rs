@@ -531,17 +531,14 @@ pub fn session_get_keyboard_mode(session_id: SessionID) -> Option<String> {
     }
 }
 
-pub fn session_set_keyboard_mode(session_id: SessionID, value: String) {
-    let mut _mode_updated = false;
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.save_keyboard_mode(value.clone());
-        _mode_updated = true;
-        try_sync_peer_option(&session, &session_id, "keyboard_mode", None);
-    }
+pub fn session_set_keyboard_mode(session_id: SessionID, value: String) -> Result<String> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    let value = session.save_keyboard_mode(value)?;
+    try_sync_peer_option(&session, &session_id, "keyboard_mode", None);
     #[cfg(windows)]
-    if _mode_updated {
-        crate::keyboard::update_grab_get_key_name(&value);
-    }
+    crate::keyboard::update_grab_get_key_name(&value);
+    Ok(value)
 }
 
 pub fn session_get_reverse_mouse_wheel_sync(session_id: SessionID) -> SyncReturn<Option<String>> {

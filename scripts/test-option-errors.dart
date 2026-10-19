@@ -625,6 +625,52 @@ Future<void> main(List<String> arguments) async {
     await trackpadRefused(() => api.sessionSetTrackpadSpeed(sessionId: Uuid().v4obj(), value: 240));
     unchanged(original);
     print('TRACKPAD_WIRE_DART_CASE=pass name=missing_session');
+    var keyboardModeErrors = 0;
+    Future<void> keyboardModeRefused(Future<String> Function() write) async {
+      Object? failure;
+      try { await write(); } catch (error) { failure = error; }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'keyboard mode error did not cross the generated native bridge');
+      keyboardModeErrors++;
+    }
+    Future<void> legacy() async {
+      check(await api.sessionSetKeyboardMode(sessionId: trackpadSession, value: 'legacy') == 'legacy' &&
+          await api.sessionGetKeyboardMode(sessionId: trackpadSession) == 'legacy' &&
+          file.readAsStringSync().contains('keyboard_mode = "legacy"'),
+          'keyboard mode acknowledgement preceded durable value');
+    }
+    await legacy();
+    print('KEYBOARD_MODE_WIRE_DART_CASE=pass name=committed_roundtrip');
+    for (final denyRead in [false, true]) {
+      final before = configFiles(config);
+      chmod(denyRead ? '0000' : '0500', denyRead ? file.path : file.parent.path);
+      try {
+        await keyboardModeRefused(() => api.sessionSetKeyboardMode(
+            sessionId: trackpadSession, value: 'legacy'));
+        check(await api.sessionGetKeyboardMode(sessionId: trackpadSession) == 'legacy',
+            'failed keyboard mode write changed effective readback');
+      } finally {
+        chmod(denyRead ? '0600' : '0700', denyRead ? file.path : file.parent.path);
+      }
+      unchanged(before);
+      await legacy();
+      durable(240);
+      print('KEYBOARD_MODE_WIRE_DART_CASE=pass name=${denyRead ? "unreadable_source_retry" : "failed_write_retry"}');
+    }
+    final beforeInvalidMode = configFiles(config);
+    for (final value in ['invalid-mode', 'map']) {
+      await keyboardModeRefused(() => api.sessionSetKeyboardMode(
+          sessionId: trackpadSession, value: value));
+    }
+    unchanged(beforeInvalidMode);
+    print('KEYBOARD_MODE_WIRE_DART_CASE=pass name=invalid_or_unsupported');
+    await keyboardModeRefused(() => api.sessionSetKeyboardMode(
+        sessionId: Uuid().v4obj(), value: 'legacy'));
+    unchanged(beforeInvalidMode);
+    check(keyboardModeErrors == 5, 'keyboard mode native error inventory differs');
+    print('KEYBOARD_MODE_WIRE_DART_CASE=pass name=missing_session');
+    print('KEYBOARD_MODE_WIRE_DART=pass cases=5 native_errors=5 error=RESULT_ERROR '
+        'failed_state=preserved retry=durable source_failure=refused unsupported=refused no_peer_started=true');
   } finally {
     await api.sessionClose(sessionId: trackpadSession, clientOwnerId: trackpadOwner);
   }

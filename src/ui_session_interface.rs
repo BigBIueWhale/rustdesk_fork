@@ -484,8 +484,8 @@ impl<T: InvokeUiSession> Session<T> {
         }
     }
 
-    pub fn save_keyboard_mode(&self, value: String) {
-        self.lc.write().unwrap().save_keyboard_mode(value);
+    pub fn save_keyboard_mode(&self, value: String) -> ResultType<String> {
+        self.lc.write().unwrap().save_keyboard_mode(value)
     }
 
     pub fn get_reverse_mouse_wheel(&self) -> String {

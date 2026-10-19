@@ -1572,11 +1572,19 @@ impl LoginConfigHandler {
     ///
     /// # Arguments
     ///
-    /// * `value` - The view style to be saved.
-    pub fn save_keyboard_mode(&mut self, value: String) {
-        let mut config = self.load_config();
-        config.keyboard_mode = value;
-        self.save_config(config);
+    /// * `value` - The supported keyboard mode to be saved.
+    pub fn save_keyboard_mode(&mut self, value: String) -> ResultType<String> {
+        let Ok(mode) = value.parse::<KeyboardMode>() else {
+            bail!("Invalid keyboard mode");
+        };
+        if !crate::common::is_keyboard_mode_supported(&mode, self.version, &self.config.info.platform) {
+            bail!("Keyboard mode is unsupported by the peer");
+        }
+        let mut config = PeerConfig::load_for_write(&self.id)?;
+        config.keyboard_mode = value.clone();
+        config.store(&self.id)?;
+        self.config.keyboard_mode = value.clone();
+        Ok(value)
     }
 
     /// Save reverse mouse wheel ("", "Y") to the current config.

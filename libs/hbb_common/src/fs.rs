@@ -4653,14 +4653,13 @@ pub fn inspect_write_destination(
         };
         let metadata = destination.metadata()?;
         let modified_time = metadata.modified()?;
-        let remote_mt = Duration::from_secs(digest.last_modified);
-        let local_mt = modified_time.duration_since(UNIX_EPOCH)?;
+        let local_mt = modified_time.duration_since(UNIX_EPOCH)?.as_secs();
         // The receiving user decides whether an existing destination may be replaced.
-        let is_identical = remote_mt == local_mt && digest.file_size == metadata.len();
+        let is_identical = digest.last_modified == local_mt && digest.file_size == metadata.len();
         Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
             id: digest.id,
             file_num: digest.file_num,
-            last_modified: local_mt.as_secs(),
+            last_modified: local_mt,
             file_size: metadata.len(),
             is_identical,
             ..Default::default()

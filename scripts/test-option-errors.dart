@@ -774,6 +774,149 @@ Future<void> main(List<String> arguments) async {
     print('VIEW_STYLE_WIRE_DART_CASE=pass name=missing_session');
     print('VIEW_STYLE_WIRE_DART=pass cases=5 native_errors=6 error=RESULT_ERROR '
         'failed_state=preserved retry=durable source_failure=refused invalid=refused no_peer_started=true');
+    Future<void> reopenEditedPreference(String key, String value) async {
+      await api.sessionClose(sessionId: trackpadSession, clientOwnerId: trackpadOwner);
+      final text = file.readAsStringSync();
+      final entry = RegExp('^$key = .*\$', multiLine: true);
+      check(entry.allMatches(text).length == 1, 'stored preference fixture is ambiguous');
+      file.writeAsStringSync(text.replaceFirst(entry, '$key = ${jsonEncode(value)}'));
+      check(api.sessionAddSync(sessionId: trackpadSession, clientOwnerId: trackpadOwner,
+          id: '127.0.0.1:24004', isFileTransfer: false, isViewCamera: false,
+          isPortForward: false, isRdp: false, isTerminal: false,
+          password: 'explicit-password', connToken: null) == '', 'preference session reopen failed');
+    }
+    var scaleErrors = 0;
+    Future<void> scaleRefused(Future<int> Function() operation) async {
+      Object? failure;
+      try { await operation(); } catch (error) { failure = error; }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'custom scale error did not cross the generated native bridge');
+      scaleErrors++;
+    }
+    Future<void> customScale(int percent) async {
+      check(await api.sessionSetCustomScalePercent(sessionId: trackpadSession, percent: percent) == percent &&
+          await api.sessionGetCustomScalePercent(sessionId: trackpadSession) == percent &&
+          await api.sessionGetViewStyle(sessionId: trackpadSession) == 'custom',
+          'custom scale result differs from its effective pair');
+      final stored = file.readAsStringSync();
+      check(stored.contains('custom_scale_percent = "$percent"') && stored.contains('view_style = "custom"'),
+          'custom scale result preceded durable percentage and view style');
+      durable(240);
+    }
+    check(await api.sessionGetCustomScalePercent(sessionId: trackpadSession) == 100,
+        'absent custom scale lost its default');
+    for (final percent in [5, 1000, 250]) { await customScale(percent); }
+    print('CUSTOM_SCALE_WIRE_DART_CASE=pass name=committed_roundtrip');
+    for (final denyRead in [false, true]) {
+      final style = denyRead ? 'adaptive' : 'original';
+      await api.sessionSetViewStyle(sessionId: trackpadSession, value: style);
+      final before = configFiles(config);
+      final confirmed = await api.sessionGetCustomScalePercent(sessionId: trackpadSession);
+      final requested = denyRead ? 225 : 125;
+      chmod(denyRead ? '0000' : '0500', denyRead ? file.path : file.parent.path);
+      try {
+        await scaleRefused(() => api.sessionSetCustomScalePercent(
+            sessionId: trackpadSession, percent: requested));
+        check(await api.sessionGetCustomScalePercent(sessionId: trackpadSession) == confirmed &&
+            await api.sessionGetViewStyle(sessionId: trackpadSession) == style,
+            'refused custom scale changed the cached pair');
+      } finally {
+        chmod(denyRead ? '0600' : '0700', denyRead ? file.path : file.parent.path);
+      }
+      unchanged(before);
+      await customScale(requested);
+      print('CUSTOM_SCALE_WIRE_DART_CASE=pass name=${denyRead ? "unreadable_source_retry" : "failed_write_retry"}');
+    }
+    final beforeInvalidScale = configFiles(config);
+    for (final percent in [-1, 0, 4, 1001, 2147483647]) {
+      await scaleRefused(() => api.sessionSetCustomScalePercent(
+          sessionId: trackpadSession, percent: percent));
+    }
+    unchanged(beforeInvalidScale);
+    print('CUSTOM_SCALE_WIRE_DART_CASE=pass name=invalid_percent');
+    final missingScale = Uuid().v4obj();
+    await scaleRefused(() => api.sessionSetCustomScalePercent(sessionId: missingScale, percent: 100));
+    await scaleRefused(() => api.sessionGetCustomScalePercent(sessionId: missingScale));
+    unchanged(beforeInvalidScale);
+    print('CUSTOM_SCALE_WIRE_DART_CASE=pass name=missing_session');
+    await reopenEditedPreference('custom_scale_percent', 'bad');
+    await scaleRefused(() => api.sessionGetCustomScalePercent(sessionId: trackpadSession));
+    await customScale(300);
+    print('CUSTOM_SCALE_WIRE_DART_CASE=pass name=invalid_stored_value');
+    check(scaleErrors == 10, 'custom scale native error inventory differs');
+    print('CUSTOM_SCALE_WIRE_DART=pass cases=6 native_errors=10 error=RESULT_ERROR '
+        'pair=durable failed_state=preserved retry=durable invalid_read=refused no_peer_started=true');
+
+    final canvasFields = <String, dynamic>{'xCursor': 10.0, 'yCursor': 20.0,
+      'xCanvas': -30.0, 'yCanvas': -40.0, 'scale': 1.25, 'currentDisplay': 0};
+    final firstCanvas = jsonEncode(canvasFields);
+    final nextCanvas = jsonEncode({...canvasFields, 'scale': 2.0, 'currentDisplay': -1});
+    var canvasErrors = 0;
+    Future<void> canvasRefused(Future<String> Function() operation) async {
+      Object? failure;
+      try { await operation(); } catch (error) { failure = error; }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'saved canvas error did not cross the generated native bridge');
+      canvasErrors++;
+    }
+    Future<void> savedCanvas(String value) async {
+      check(await api.sessionSetSavedCanvas(sessionId: trackpadSession, value: value) == value &&
+          await api.sessionGetSavedCanvas(sessionId: trackpadSession) == value,
+          'saved canvas result differs from its effective value');
+      final stored = file.readAsStringSync();
+      check(value.isEmpty ? !RegExp(r'^canvas = ', multiLine: true).hasMatch(stored)
+          : stored.contains(value) || stored.contains(jsonEncode(value)),
+          'saved canvas acknowledgement preceded durable value');
+      check(await api.sessionGetCustomScalePercent(sessionId: trackpadSession) == 300 &&
+          await api.sessionGetViewStyle(sessionId: trackpadSession) == 'custom',
+          'saved canvas replaced custom scale state');
+      durable(240);
+    }
+    check(await api.sessionGetSavedCanvas(sessionId: trackpadSession) == '',
+        'absent saved canvas was not empty');
+    for (final value in [firstCanvas, nextCanvas, '', firstCanvas]) { await savedCanvas(value); }
+    print('SAVED_CANVAS_WIRE_DART_CASE=pass name=committed_roundtrip');
+    for (final denyRead in [false, true]) {
+      final before = configFiles(config);
+      final confirmed = await api.sessionGetSavedCanvas(sessionId: trackpadSession);
+      final requested = denyRead ? firstCanvas : nextCanvas;
+      chmod(denyRead ? '0000' : '0500', denyRead ? file.path : file.parent.path);
+      try {
+        await canvasRefused(() => api.sessionSetSavedCanvas(sessionId: trackpadSession, value: requested));
+        check(await api.sessionGetSavedCanvas(sessionId: trackpadSession) == confirmed,
+            'refused saved canvas changed its cached value');
+      } finally {
+        chmod(denyRead ? '0600' : '0700', denyRead ? file.path : file.parent.path);
+      }
+      unchanged(before);
+      await savedCanvas(requested);
+      print('SAVED_CANVAS_WIRE_DART_CASE=pass name=${denyRead ? "unreadable_source_retry" : "failed_write_retry"}');
+    }
+    final invalidCanvases = ['{', '[]', '{}', List<String>.filled(1025, ' ').join(),
+      jsonEncode({...canvasFields, 'extra': 1}), jsonEncode({...canvasFields, 'xCursor': 'bad'}),
+      jsonEncode({...canvasFields, 'scale': 0}), jsonEncode({...canvasFields, 'scale': -1}),
+      jsonEncode({...canvasFields, 'currentDisplay': -2}),
+      jsonEncode({...canvasFields, 'currentDisplay': 2147483648}),
+      jsonEncode({...canvasFields, 'currentDisplay': 0.5}),
+      firstCanvas.replaceFirst('1.25', '1e999')];
+    final beforeInvalidCanvas = configFiles(config);
+    for (final value in invalidCanvases) {
+      await canvasRefused(() => api.sessionSetSavedCanvas(sessionId: trackpadSession, value: value));
+    }
+    unchanged(beforeInvalidCanvas);
+    print('SAVED_CANVAS_WIRE_DART_CASE=pass name=invalid_values');
+    final missingCanvas = Uuid().v4obj();
+    await canvasRefused(() => api.sessionSetSavedCanvas(sessionId: missingCanvas, value: firstCanvas));
+    await canvasRefused(() => api.sessionGetSavedCanvas(sessionId: missingCanvas));
+    unchanged(beforeInvalidCanvas);
+    print('SAVED_CANVAS_WIRE_DART_CASE=pass name=missing_session');
+    await reopenEditedPreference('canvas', '{}');
+    await canvasRefused(() => api.sessionGetSavedCanvas(sessionId: trackpadSession));
+    await savedCanvas(firstCanvas);
+    print('SAVED_CANVAS_WIRE_DART_CASE=pass name=invalid_stored_value');
+    check(canvasErrors == 17, 'saved canvas native error inventory differs');
+    print('SAVED_CANVAS_WIRE_DART=pass cases=6 native_errors=17 error=RESULT_ERROR '
+        'failed_state=preserved retry=durable invalid_read=refused empty=removed no_peer_started=true');
   } finally {
     await api.sessionClose(sessionId: trackpadSession, clientOwnerId: trackpadOwner);
   }

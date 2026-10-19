@@ -2305,6 +2305,18 @@ abstract class CanvasPreferences {
   Future<int?> edgeThickness(SessionID sessionId);
 }
 
+abstract class CanvasCustomScaleWriter {
+  Future<int> save(SessionID sessionId, int percent);
+}
+
+class _SessionCanvasCustomScaleWriter implements CanvasCustomScaleWriter {
+  const _SessionCanvasCustomScaleWriter();
+
+  @override
+  Future<int> save(SessionID sessionId, int percent) =>
+      bind.sessionSetCustomScalePercent(sessionId: sessionId, percent: percent);
+}
+
 class _SessionCanvasPreferences implements CanvasPreferences {
   const _SessionCanvasPreferences();
 
@@ -2421,13 +2433,18 @@ class CanvasModel with ChangeNotifier {
   WeakReference<FFI> parent;
 
   final CanvasPreferences _preferences;
+  final CanvasCustomScaleWriter _customScaleWriter;
+  bool _customScaleSavePending = false;
+  int _customScaleCommitRevision = 0;
   Object _lifetime = Object();
   bool _disposed = false;
   Timer? _scrollStyleTimer;
   Completer<bool>? _scrollStyleCompletion;
 
-  CanvasModel(this.parent, {CanvasPreferences? preferences})
-      : _preferences = preferences ?? const _SessionCanvasPreferences();
+  CanvasModel(this.parent, {CanvasPreferences? preferences,
+      CanvasCustomScaleWriter? customScaleWriter})
+      : _preferences = preferences ?? const _SessionCanvasPreferences(),
+        _customScaleWriter = customScaleWriter ?? const _SessionCanvasCustomScaleWriter();
 
   double get x => _x;
   double get y => _y;
@@ -2543,11 +2560,59 @@ class CanvasModel with ChangeNotifier {
   bool _acceptsOwner(CanvasUpdateOwner? owner) =>
       owner != null && identical(owner._canvas, this) && owner.isCurrent;
 
+  bool get customScaleSavePending => _customScaleSavePending;
+
+  Future<int> readCustomScalePercent({required CanvasUpdateOwner? owner}) async {
+    if (!_acceptsOwner(owner)) throw StateError('Canvas owner is unavailable');
+    if (_customScaleSavePending) throw StateError('A custom scale save is pending');
+    final revision = _customScaleCommitRevision;
+    final scale = await _preferences.customScale(owner!.sessionId);
+    if (!_acceptsOwner(owner) || revision != _customScaleCommitRevision) {
+      throw StateError('Custom scale read was superseded');
+    }
+    if (!scale.isFinite || scale < kScaleCustomMinPercent / 100.0 ||
+        scale > kScaleCustomMaxPercent / 100.0) {
+      throw StateError('Invalid custom scale');
+    }
+    final percent = (scale * 100.0).round();
+    if ((scale - percent / 100.0).abs() > 1e-9) {
+      throw StateError('Custom scale is not a whole percentage');
+    }
+    return percent;
+  }
+
+  Future<int> applyCustomScalePercent(int percent,
+      {required CanvasUpdateOwner? owner}) async {
+    if (!_acceptsOwner(owner)) throw StateError('Canvas owner is unavailable');
+    if (percent < kScaleCustomMinPercent || percent > kScaleCustomMaxPercent) {
+      throw ArgumentError('Invalid custom scale');
+    }
+    if (_customScaleSavePending) throw StateError('A custom scale save is pending');
+    _customScaleSavePending = true;
+    try {
+      final effective = await _customScaleWriter.save(owner!.sessionId, percent);
+      if (effective != percent) throw StateError('Custom scale was not applied');
+      if (!_disposed && identical(parent.target, owner._ffi) &&
+          owner._ffi.isCurrentSessionOwner(owner.sessionId, owner._clientOwnerId)) {
+        _customScaleCommitRevision++;
+      }
+      if (!_acceptsOwner(owner)) return effective;
+      if (!await updateViewStyle(owner: owner) && _acceptsOwner(owner)) {
+        throw StateError('Custom scale canvas update failed');
+      }
+      return effective;
+    } finally {
+      _customScaleSavePending = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
   Future<bool> updateViewStyle(
       {required CanvasUpdateOwner? owner,
       bool refreshMousePos = true,
       bool notify = true}) async {
     if (!_acceptsOwner(owner)) return false;
+    final scaleRevision = _customScaleCommitRevision;
     final style = _preferences.viewStyle(owner!.sessionId);
     if (!_acceptsOwner(owner)) return false;
     if (style == null) {
@@ -2579,14 +2644,20 @@ class CanvasModel with ChangeNotifier {
     if (style == kRemoteViewStyleCustom) {
       try {
         nextScale = await _preferences.customScale(owner.sessionId);
+        if (!nextScale.isFinite ||
+            nextScale < kScaleCustomMinPercent / 100.0 ||
+            nextScale > kScaleCustomMaxPercent / 100.0) {
+          throw StateError('Invalid custom scale');
+        }
       } catch (e, stack) {
         debugPrint('Error in getSessionCustomScale: $e');
         debugPrintStack(stackTrace: stack);
-        nextScale = 1.0;
+        return false;
       }
     }
 
-    if (!_acceptsOwner(owner)) return false;
+    if (!_acceptsOwner(owner) || scaleRevision != _customScaleCommitRevision ||
+        _preferences.viewStyle(owner.sessionId) != style) return false;
 
     if (_lastViewStyle.style != viewStyle.style) {
       _resetScroll();
@@ -5643,14 +5714,19 @@ class FFI {
     try {
       await fileModel.close(closingSessionId);
       if (imageModel.image != null && !isWebDesktop) {
-        await setCanvasConfig(
-            closingSessionId,
-            cursorModel.x,
-            cursorModel.y,
-            canvasModel.x,
-            canvasModel.y,
-            canvasModel.scale,
-            ffiModel.pi.currentDisplay);
+        try {
+          await setCanvasConfig(
+              closingSessionId,
+              cursorModel.x,
+              cursorModel.y,
+              canvasModel.x,
+              canvasModel.y,
+              canvasModel.scale,
+              ffiModel.pi.currentDisplay);
+        } catch (error, stack) {
+          debugPrint('Failed to save closing canvas state: $error');
+          debugPrintStack(stackTrace: stack);
+        }
       }
     } finally {
       // Persist state while the exact old native handler still exists, then close that captured
@@ -5919,8 +5995,6 @@ class PeerInfo with ChangeNotifier {
   }
 }
 
-const canvasKey = 'canvas';
-
 Future<void> setCanvasConfig(
     SessionID sessionId,
     double xCursor,
@@ -5936,19 +6010,22 @@ Future<void> setCanvasConfig(
   p['yCanvas'] = yCanvas;
   p['scale'] = scale;
   p['currentDisplay'] = currentDisplay;
-  await bind.sessionSetFlutterOption(
-      sessionId: sessionId, k: canvasKey, v: jsonEncode(p));
+  final value = jsonEncode(p);
+  final effective = await bind.sessionSetSavedCanvas(
+      sessionId: sessionId, value: value);
+  if (effective != value) throw StateError('Canvas state was not saved');
 }
 
 Future<Map<String, dynamic>?> getCanvasConfig(SessionID sessionId) async {
   if (!isWebDesktop) return null;
-  var p =
-      await bind.sessionGetFlutterOption(sessionId: sessionId, k: canvasKey);
-  if (p == null || p.isEmpty) return null;
   try {
+    final p = await bind.sessionGetSavedCanvas(sessionId: sessionId);
+    if (p.isEmpty) return null;
     Map<String, dynamic> m = json.decode(p);
     return m;
-  } catch (e) {
+  } catch (error, stack) {
+    debugPrint('Saved canvas hint is unavailable: $error');
+    debugPrintStack(stackTrace: stack);
     return null;
   }
 }

@@ -23,7 +23,6 @@ import '../../models/platform_model.dart';
 import '../../common/shared_state.dart';
 import './popup_menu.dart';
 import './kb_layout_type_chooser.dart';
-import 'package:flutter_hbb/utils/scale.dart';
 import 'package:flutter_hbb/common/widgets/custom_scale_base.dart';
 
 enum _ToolbarEdge { top, right, bottom, left }
@@ -1393,6 +1392,7 @@ class _DisplayMenu extends StatefulWidget {
 
 class _DisplayMenuState extends State<_DisplayMenu> {
   final RxInt _customPercent = 100.obs;
+  int _customPercentRevision = 0;
   late final ScreenAdjustor _screenAdjustor = ScreenAdjustor(
     id: widget.id,
     ffi: widget.ffi,
@@ -1409,14 +1409,25 @@ class _DisplayMenuState extends State<_DisplayMenu> {
   @override
   void initState() {
     super.initState();
-    // Initialize custom percent from stored option once
+    final expectedFfi = ffi;
+    final session = ffi.sessionId;
+    final client = ffi.clientOwnerId;
+    final revision = _customPercentRevision;
+    final owner = ffi.canvasModel.captureUpdateOwner();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !identical(ffi, expectedFfi) || owner == null || !owner.isCurrent ||
+          !ffi.isCurrentSessionOwner(session, client)) return;
       try {
-        final v = await getSessionCustomScalePercent(widget.ffi.sessionId);
+        final v = await ffi.canvasModel.readCustomScalePercent(owner: owner);
+        if (!mounted || !identical(ffi, expectedFfi) || !owner.isCurrent ||
+            !ffi.isCurrentSessionOwner(session, client) ||
+            revision != _customPercentRevision) return;
         if (_customPercent.value != v) {
           _customPercent.value = v;
         }
-      } catch (_) {}
+      } catch (error) {
+        debugPrint('Failed to read custom scale label: $error');
+      }
     });
   }
 
@@ -1527,14 +1538,20 @@ class _DisplayMenuState extends State<_DisplayMenu> {
             // Only show a divider when custom is NOT selected
             if (!isCustomSelected) Divider(),
             _customControlsIfCustomSelected(
-                onChanged: (v) => customPercent.value = v),
+                onChanged: (v) {
+                  _customPercentRevision++;
+                  customPercent.value = v;
+                }),
           ]);
         });
   }
 
   Widget _customControlsIfCustomSelected({ValueChanged<int>? onChanged}) {
+    final owner = ffi.canvasModel.captureUpdateOwner();
     return futureBuilder(future: () async {
-      final current = await bind.sessionGetViewStyle(sessionId: ffi.sessionId);
+      if (!mounted || owner == null || !owner.isCurrent) return false;
+      final current = await bind.sessionGetViewStyle(sessionId: owner.sessionId);
+      if (!mounted || !owner.isCurrent) return false;
       return current == kRemoteViewStyleCustom;
     }(), hasData: (data) {
       final isCustom = data as bool;
@@ -1782,7 +1799,7 @@ class _CustomScaleMenuControlsState
               padding: EdgeInsets.all(1),
               constraints: smallBtnConstraints,
               icon: const Icon(Icons.remove),
-              onPressed: () => nudgeScale(-1),
+              onPressed: nudgeScale(-1),
             ),
           ),
           Expanded(child: sliderControl),
@@ -1793,11 +1810,12 @@ class _CustomScaleMenuControlsState
               padding: EdgeInsets.all(1),
               constraints: smallBtnConstraints,
               icon: const Icon(Icons.add),
-              onPressed: () => nudgeScale(1),
+              onPressed: nudgeScale(1),
             ),
           ),
         ]),
       ),
+      buildScaleStatus(),
       Divider(),
     ]);
   }

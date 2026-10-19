@@ -1651,34 +1651,83 @@ impl LoginConfigHandler {
         self.save_config(config);
     }
 
-    /// Set a ui config of flutter for handler's [`PeerConfig`].
-    ///
-    /// # Arguments
-    ///
-    /// * `k` - key of option
-    /// * `v` - value of option
-    pub fn save_ui_flutter(&mut self, k: String, v: String) {
-        let mut config = self.load_config();
-        if v.is_empty() {
-            config.ui_flutter.remove(&k);
-        } else {
-            config.ui_flutter.insert(k, v);
+    pub fn custom_scale_percent(&self) -> ResultType<i32> {
+        let Some(value) = self.config.ui_flutter.get("custom_scale_percent") else {
+            return Ok(100);
+        };
+        let percent = value.parse::<i32>()?;
+        if !(5..=1000).contains(&percent) {
+            bail!("Custom scale must be in 5..=1000 percent");
         }
-        self.save_config(config);
+        Ok(percent)
     }
 
-    /// Get a ui config of flutter for handler's [`PeerConfig`].
-    /// Return String if the option is found, otherwise return "".
-    ///
-    /// # Arguments
-    ///
-    /// * `k` - key of option
-    pub fn get_ui_flutter(&self, k: &str) -> String {
-        if let Some(v) = self.config.ui_flutter.get(k) {
-            v.clone()
-        } else {
-            "".to_owned()
+    /// Commit the percentage and its Custom view selection together.
+    pub fn save_custom_scale_percent(&mut self, percent: i32) -> ResultType<()> {
+        if !(5..=1000).contains(&percent) {
+            bail!("Custom scale must be in 5..=1000 percent");
         }
+        let mut config = PeerConfig::load_for_write(&self.id)?;
+        config.ui_flutter.insert("custom_scale_percent".to_owned(), percent.to_string());
+        config.view_style = "custom".to_owned();
+        config.store(&self.id)?;
+        self.config.ui_flutter.insert("custom_scale_percent".to_owned(), percent.to_string());
+        self.config.view_style = config.view_style;
+        Ok(())
+    }
+
+    fn validate_saved_canvas(value: &str) -> ResultType<()> {
+        if value.is_empty() {
+            return Ok(());
+        }
+        if value.len() > 1024 {
+            bail!("Saved canvas exceeds its size limit");
+        }
+        let parsed: serde_json::Value = serde_json::from_str(value)?;
+        let Some(fields) = parsed.as_object() else {
+            bail!("Saved canvas must be an object");
+        };
+        if fields.len() != 6 {
+            bail!("Saved canvas has invalid fields");
+        }
+        for key in ["xCursor", "yCursor", "xCanvas", "yCanvas", "scale"] {
+            let Some(number) = fields.get(key).and_then(|v| v.as_f64()) else {
+                bail!("Saved canvas has an invalid coordinate or scale");
+            };
+            if !number.is_finite() || (key == "scale" && number <= 0.0) {
+                bail!("Saved canvas has an invalid coordinate or scale");
+            }
+        }
+        let Some(display) = fields.get("currentDisplay").and_then(|v| v.as_i64()) else {
+            bail!("Saved canvas has an invalid display");
+        };
+        if !(-1..=i32::MAX as i64).contains(&display) {
+            bail!("Saved canvas has an invalid display");
+        }
+        Ok(())
+    }
+
+    pub fn saved_canvas(&self) -> ResultType<String> {
+        let value = self.config.ui_flutter.get("canvas").map(String::as_str).unwrap_or_default();
+        Self::validate_saved_canvas(value)?;
+        Ok(value.to_owned())
+    }
+
+    pub fn save_saved_canvas(&mut self, value: &str) -> ResultType<()> {
+        Self::validate_saved_canvas(value)?;
+        let mut config = PeerConfig::load_for_write(&self.id)?;
+        if value.is_empty() {
+            config.ui_flutter.remove("canvas");
+        } else {
+            config.ui_flutter.insert("canvas".to_owned(), value.to_owned());
+        }
+        config.store(&self.id)?;
+        if value.is_empty() {
+            self.config.ui_flutter.remove("canvas");
+        } else {
+            self.config.ui_flutter.insert("canvas".to_owned(), value.to_owned());
+        }
+        Ok(())
     }
 
     /// Toggle an option in the handler.

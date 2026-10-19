@@ -110,6 +110,33 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback publishes only confirmed native readback",
     "keyboard layout callback preserves its model after native failure",
 }
+CUSTOM_SCALE_TESTS = {
+    "custom scale removal cancels its deferred read subscription",
+    "custom scale initializes percentage and normalized position together",
+    "custom scale initial read cannot replace a newer saved draft",
+    "custom scale rebuild preserves its draft and uses current callbacks",
+    "custom scale serializes saves and retains only the latest draft",
+    "custom scale failed save preserves canvas and retries the same draft",
+    "custom scale mismatched result remains visible and retryable",
+    "custom scale failed loading retries a read without saving defaults",
+    "custom scale removal cancels queued and captured edit callbacks",
+    "custom scale removed widget retires feedback while admitted canvas work settles",
+    "custom scale retargeting invalidates old reads and captured handlers",
+    "custom scale retired save error cannot replace a new session draft",
+    "custom scale slider preserves limits and its hundred percent detent",
+    "replacement custom scale controls wait for admission and retain retry",
+    "canvas custom scale admission is shared through publication",
+    "canvas scale owner retirement preserves state while accepted work settles",
+    "canvas clear retains accepted scale admission until completion",
+    "canvas scale read failure preserves geometry and permits retry",
+    "canvas scale getter refuses invalid values and unavailable owners",
+    "canvas scale commit retires an older pending preference update",
+    "canvas style change retires an older custom scale read",
+    "canvas ready initializers remain useful without a preference commit",
+    "canvas scale mutation failure releases admission for retry",
+    "canvas scale getter reports a superseded pre-commit read",
+}
+
 SETTING_OPTION_TESTS = {
     "view style choice joins persistence before canvas publication",
     "view style refusal and mismatch leave the canvas and preserve retry",
@@ -483,6 +510,7 @@ def parse_result(path, profile="models"):
             "keyboard_layout_type_chooser_test.dart": KEYBOARD_LAYOUT_TESTS,
             "trackpad_speed_dialog_test.dart": TRACKPAD_DIALOG_TESTS,
             "input_keyboard_mode_test.dart": KEYBOARD_MODE_REFRESH_TESTS,
+            "custom_scale_controls_test.dart": CUSTOM_SCALE_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

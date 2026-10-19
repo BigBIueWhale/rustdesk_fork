@@ -51,7 +51,7 @@ class _MobileCustomScaleControlsState extends CustomScaleControls<MobileCustomSc
                 constraints: smallBtnConstraints,
                 icon: const Icon(Icons.remove),
                 tooltip: translate('Decrease'),
-                onPressed: () => nudgeScale(-1),
+                onPressed: nudgeScale(-1),
               ),
               Expanded(child: sliderControl),
               IconButton(
@@ -60,10 +60,11 @@ class _MobileCustomScaleControlsState extends CustomScaleControls<MobileCustomSc
                 constraints: smallBtnConstraints,
                 icon: const Icon(Icons.add),
                 tooltip: translate('Increase'),
-                onPressed: () => nudgeScale(1),
+                onPressed: nudgeScale(1),
               ),
             ],
           ),
+          buildScaleStatus(),
         ],
       ),
     );

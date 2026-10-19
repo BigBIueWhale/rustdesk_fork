@@ -428,18 +428,28 @@ pub fn session_toggle_privacy_mode(session_id: SessionID, impl_key: String, on: 
     }
 }
 
-pub fn session_get_flutter_option(session_id: SessionID, k: String) -> Option<String> {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        Some(session.get_flutter_option(k))
-    } else {
-        None
-    }
+pub fn session_get_custom_scale_percent(session_id: SessionID) -> Result<i32> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.custom_scale_percent()
 }
 
-pub fn session_set_flutter_option(session_id: SessionID, k: String, v: String) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.save_flutter_option(k, v);
-    }
+pub fn session_set_custom_scale_percent(session_id: SessionID, percent: i32) -> Result<i32> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.save_custom_scale_percent(percent)
+}
+
+pub fn session_get_saved_canvas(session_id: SessionID) -> Result<String> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.saved_canvas()
+}
+
+pub fn session_set_saved_canvas(session_id: SessionID, value: String) -> Result<String> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.save_saved_canvas(value)
 }
 
 pub fn get_next_texture_key() -> SyncReturn<i32> {

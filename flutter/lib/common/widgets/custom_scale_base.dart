@@ -2,10 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:debounce_throttle/debounce_throttle.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/model.dart';
-import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/utils/scale.dart';
 import 'package:flutter_hbb/common.dart';
 
@@ -19,12 +17,30 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
   ValueChanged<int>? get onScaleChanged;
 
   late int _scaleValue;
-  late final Debouncer<int> _debouncerScale;
+  Timer? _scaleTimer;
+  CanvasModel? _deferredReadCanvas;
+  VoidCallback? _deferredReadListener;
+  bool _saving = false;
+  bool _loading = false;
+  bool _dirty = false;
+  bool _failed = false;
+  int _generation = 0;
+  int _revision = 0;
+  late FFI _ownerFfi;
+  late SessionID _sessionId;
+  late SessionID _clientOwnerId;
   // Normalized slider position in [0, 1]. We map it nonlinearly to percent.
   double _scalePos = 0.0;
 
   int get scaleValue => _scaleValue;
   double get scalePos => _scalePos;
+  bool get _operationPending => _saving || (_loading && !_dirty);
+
+  @protected
+  String get scaleFailureText => translate('Failed');
+
+  @protected
+  String get scaleRetryText => translate('Retry');
 
   int mapPosToPercent(double p) => _mapPosToPercent(p);
 
@@ -76,91 +92,219 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
   void initState() {
     super.initState();
     _scaleValue = 100;
-    _debouncerScale = Debouncer<int>(
-      kDebounceCustomScaleDuration,
-      onChanged: (v) async {
-        await _applyScale(v);
-      },
-      initialValue: _scaleValue,
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        final v = await getSessionCustomScalePercent(ffi.sessionId);
-        if (mounted) {
-          setState(() {
-            _scaleValue = v;
-            _scalePos = _mapPercentToPos(v);
-          });
-        }
-      } catch (e, st) {
-        debugPrint('[CustomScale] Failed to get initial value: $e');
-        debugPrintStack(stackTrace: st);
-      }
+    _scalePos = _mapPercentToPos(_scaleValue);
+    _captureSession();
+    final generation = _generation;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_current(generation)) _loadScale();
     });
   }
 
-  Future<void> _applyScale(int v) async {
-    final canvas = ffi.canvasModel;
-    final owner = canvas.captureUpdateOwner();
-    if (!mounted || owner == null) return;
-    v = clampCustomScalePercent(v);
-    setState(() {
-      _scaleValue = v;
-    });
-    try {
-      await bind.sessionSetFlutterOption(
-          sessionId: owner.sessionId,
-          k: kCustomScalePercentKey,
-          v: v.toString());
-      if (!mounted || !owner.isCurrent) return;
-      final curStyle = await bind.sessionGetViewStyle(sessionId: owner.sessionId);
-      if (!mounted || !owner.isCurrent) return;
-      if (curStyle != kRemoteViewStyleCustom) {
-        final effective = await bind.sessionSetViewStyle(
-            sessionId: owner.sessionId, value: kRemoteViewStyleCustom);
-        if (!mounted || !owner.isCurrent) return;
-        if (effective != kRemoteViewStyleCustom) {
-          throw StateError('Custom view style was not applied');
-        }
-      }
-      if (!await canvas.updateViewStyle(owner: owner) || !mounted) return;
-      if (isMobile) {
-        HapticFeedback.selectionClick();
-      }
-      onScaleChanged?.call(v);
-    } catch (e, st) {
-      debugPrint('[CustomScale] Apply failed: $e');
-      debugPrintStack(stackTrace: st);
-      if (mounted && owner.isCurrent) showToast(translate('Failed'));
+  void _captureSession() {
+    _ownerFfi = ffi;
+    _sessionId = ffi.sessionId;
+    _clientOwnerId = ffi.clientOwnerId;
+  }
+
+  bool _current(int generation) => mounted && generation == _generation &&
+      identical(_ownerFfi, ffi) &&
+      ffi.isCurrentSessionOwner(_sessionId, _clientOwnerId);
+
+  @override
+  void didUpdateWidget(covariant T oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(_ownerFfi, ffi) || _sessionId != ffi.sessionId ||
+        _clientOwnerId != ffi.clientOwnerId) {
+      _generation++;
+      _revision++;
+      _cancelDeferredRead();
+      _scaleTimer?.cancel();
+      _scaleTimer = null;
+      _dirty = false;
+      _failed = false;
+      _scaleValue = 100;
+      _scalePos = _mapPercentToPos(_scaleValue);
+      _captureSession();
+      final generation = _generation;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_current(generation)) _loadScale();
+      });
     }
   }
 
-  void nudgeScale(int delta) {
-    final next = _clampScale(_scaleValue + delta);
+  Future<void> _loadScale() async {
+    if (_loading || !_current(_generation)) return;
+    final generation = _generation;
+    final revision = _revision;
+    final canvas = ffi.canvasModel;
+    final owner = canvas.captureUpdateOwner();
+    if (owner == null) {
+      setState(() => _failed = true);
+      return;
+    }
+    if (canvas.customScaleSavePending) {
+      _deferRead(canvas, generation);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final value = await canvas.readCustomScalePercent(owner: owner);
+      if (!_current(generation) || !owner.isCurrent ||
+          revision != _revision || _dirty) return;
+      if (value < minPercent || value > maxPercent) {
+        throw StateError('Invalid custom scale');
+      }
+      setState(() {
+        _scaleValue = value;
+        _scalePos = _mapPercentToPos(value);
+        _failed = false;
+      });
+      onScaleChanged?.call(value);
+    } catch (error, stack) {
+      debugPrint('[CustomScale] Read failed: $error');
+      debugPrintStack(stackTrace: stack);
+      if (_current(generation) && owner.isCurrent &&
+          revision == _revision && !_dirty) setState(() => _failed = true);
+    } finally {
+      _loading = false;
+      if (mounted) {
+        setState(() {});
+        if (generation != _generation && !_dirty) _loadScale();
+      }
+    }
+  }
+
+  void _cancelDeferredRead() {
+    final listener = _deferredReadListener;
+    if (listener != null) _deferredReadCanvas?.removeListener(listener);
+    _deferredReadCanvas = null;
+    _deferredReadListener = null;
+  }
+
+  void _deferRead(CanvasModel canvas, int generation) {
+    _cancelDeferredRead();
+    void ready() {
+      if (!_current(generation)) {
+        _cancelDeferredRead();
+      } else if (!canvas.customScaleSavePending) {
+        _cancelDeferredRead();
+        if (!_dirty) _loadScale();
+      }
+    }
+    _deferredReadCanvas = canvas;
+    _deferredReadListener = ready;
+    canvas.addListener(ready);
+  }
+
+  Future<void> _saveScale() async {
+    if (_saving || !_dirty || !_current(_generation)) return;
+    final canvas = ffi.canvasModel;
+    final owner = canvas.captureUpdateOwner();
+    if (owner == null) {
+      setState(() => _failed = true);
+      return;
+    }
+    final generation = _generation;
+    final revision = _revision;
+    final submitted = _scaleValue;
+    _saving = true;
+    setState(() {});
+    try {
+      final effective = await canvas.applyCustomScalePercent(submitted, owner: owner);
+      if (!_current(generation) || !owner.isCurrent) return;
+      if (effective != submitted || effective < minPercent || effective > maxPercent) {
+        throw StateError('Custom scale was not applied');
+      }
+      if (revision == _revision) {
+        setState(() {
+          _scaleValue = effective;
+          _scalePos = _mapPercentToPos(effective);
+          _dirty = false;
+          _failed = false;
+        });
+        if (isMobile) HapticFeedback.selectionClick();
+        onScaleChanged?.call(effective);
+      }
+    } catch (error, stack) {
+      debugPrint('[CustomScale] Save failed: $error');
+      debugPrintStack(stackTrace: stack);
+      if (_current(generation) && owner.isCurrent && revision == _revision) {
+        setState(() => _failed = true);
+      }
+    } finally {
+      _saving = false;
+      if (mounted) {
+        setState(() {});
+        if (_dirty && _scaleTimer == null &&
+            (generation != _generation || revision != _revision)) _saveScale();
+      }
+    }
+  }
+
+  void _editScale(int next, double position) {
+    if (!_current(_generation)) return;
+    if (next == _scaleValue && position == _scalePos && !_failed) return;
+    _cancelDeferredRead();
+    _revision++;
     setState(() {
       _scaleValue = next;
-      _scalePos = _mapPercentToPos(next);
+      _scalePos = position;
+      _dirty = true;
+      _failed = false;
+    });
+    _scaleTimer?.cancel();
+    _scaleTimer = Timer(kDebounceCustomScaleDuration, () {
+      _scaleTimer = null;
+      _saveScale();
     });
     onScaleChanged?.call(next);
-    _debouncerScale.value = next;
   }
+
+  VoidCallback nudgeScale(int delta) {
+    final generation = _generation;
+    return () {
+      if (!_current(generation)) return;
+      final next = _clampScale(_scaleValue + delta);
+      _editScale(next, _mapPercentToPos(next));
+    };
+  }
+
+  ValueChanged<double> get onSliderChanged {
+    final generation = _generation;
+    return (value) {
+      if (!_current(generation) || !value.isFinite) return;
+      final position = _snapNormalizedPos(value);
+      _editScale(_mapPosToPercent(position), position);
+    };
+  }
+
+  VoidCallback get retryScale {
+    final generation = _generation;
+    return () {
+      if (!_current(generation) || _operationPending) return;
+      if (_dirty) {
+        _scaleTimer?.cancel();
+        _scaleTimer = null;
+        _saveScale();
+      } else {
+        _loadScale();
+      }
+    };
+  }
+
+  Widget buildScaleStatus() => !_failed ? const SizedBox.shrink() : Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [Text(scaleFailureText), TextButton(
+      key: const ValueKey('custom-scale-retry'),
+      onPressed: _operationPending ? null : retryScale,
+      child: Text(scaleRetryText))]);
 
   @override
   void dispose() {
-    _debouncerScale.cancel();
+    _generation++;
+    _cancelDeferredRead();
+    _scaleTimer?.cancel();
+    _scaleTimer = null;
     super.dispose();
-  }
-
-  void onSliderChanged(double v) {
-    final snapped = _snapNormalizedPos(v);
-    final next = _mapPosToPercent(snapped);
-    if (next != _scaleValue || snapped != _scalePos) {
-      setState(() {
-        _scalePos = snapped;
-        _scaleValue = next;
-      });
-      onScaleChanged?.call(next);
-      _debouncerScale.value = next;
-    }
   }
 }

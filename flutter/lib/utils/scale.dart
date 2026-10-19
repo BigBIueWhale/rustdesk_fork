@@ -11,24 +11,12 @@ int clampCustomScalePercent(int percent) {
   return percent.clamp(kScaleCustomMinPercent, kScaleCustomMaxPercent);
 }
 
-/// Parse a string percent and clamp. Defaults to 100 when invalid.
-int parseCustomScalePercent(String? s, {int defaultPercent = 100}) {
-  final parsed = int.tryParse(s ?? '') ?? defaultPercent;
-  return clampCustomScalePercent(parsed);
-}
-
-/// Convert a percent value to scale factor after clamping.
-double percentToScale(int percent) => clampCustomScalePercent(percent) / 100.0;
-
-/// Fetch, parse and clamp the custom scale percent for a session.
-Future<int> getSessionCustomScalePercent(UuidValue sessionId) async {
-  final opt = await bind.sessionGetFlutterOption(
-      sessionId: sessionId, k: kCustomScalePercentKey);
-  return parseCustomScalePercent(opt);
-}
+/// Read the effective percentage; invalid state and missing sessions report errors.
+Future<int> getSessionCustomScalePercent(UuidValue sessionId) =>
+    bind.sessionGetCustomScalePercent(sessionId: sessionId);
 
 /// Fetch and compute the custom scale factor for a session.
 Future<double> getSessionCustomScale(UuidValue sessionId) async {
   final p = await getSessionCustomScalePercent(sessionId);
-  return percentToScale(p);
+  return p / 100.0;
 }

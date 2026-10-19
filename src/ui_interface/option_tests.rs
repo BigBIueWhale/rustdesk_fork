@@ -21,6 +21,9 @@ mod before_keyboard_mode;
 #[path = "../../scripts/fixtures/view-style-before-errors.rs"]
 mod before_view_style;
 
+#[path = "../../scripts/fixtures/session-flutter-preference-before-errors.rs"]
+mod before_session_flutter;
+
 // FRB treats a unit-returning export as a successful completion. This adapter
 // lets the same behavioral probe execute the pre-fix and fallible exports.
 trait ExportOutcome {
@@ -61,6 +64,7 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
                 .or_else(|| line.find("KEYBOARD_MODE_EXPORT_"))
                 .or_else(|| line.find("IMAGE_PRESET_EXPORT_"))
                 .or_else(|| line.find("VIEW_STYLE_EXPORT_"))
+                .or_else(|| line.find("SESSION_FLUTTER_EXPORT_"))
             {
                 println!("{}", &line[start..]);
             }
@@ -163,6 +167,125 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
     keyboard_mode_commits_before_publication(&root);
     image_quality_preset_commits_before_publication(&root);
     view_style_commits_before_publication(&root);
+    session_flutter_preferences_commit_before_publication(&root);
+}
+
+fn session_flutter_preferences_commit_before_publication(root: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let peers = Config::file().parent().unwrap().join("peers");
+    assert!(peers.starts_with(root));
+    let peer = "127.0.0.1:24012";
+    let old_peer = "127.0.0.1:24013";
+    let original_canvas = r#"{"xCursor":1.0,"yCursor":2.0,"xCanvas":3.0,"yCanvas":4.0,"scale":1.25,"currentDisplay":0}"#;
+    let next_canvas = r#"{"xCursor":8.0,"yCursor":9.0,"xCanvas":-3.0,"yCanvas":-4.0,"scale":1.5,"currentDisplay":-1}"#;
+    let old_files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|entry| entry.unwrap().path()).collect();
+    let mut config = PeerConfig::default();
+    config.view_style = "original".into();
+    config.ui_flutter.insert("custom_scale_percent".into(), "150".into());
+    config.ui_flutter.insert("canvas".into(), original_canvas.into());
+    config.ui_flutter.insert("unrelated-window".into(), "preserved".into());
+    config.options.insert("unrelated".into(), "preserved".into());
+    config.info.username = "runtime-user".into();
+    config.password_prs = b"session-flutter-preserved-prs".to_vec();
+    config.store(peer).unwrap();
+    let files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|entry| entry.unwrap().path())
+        .filter(|path| !old_files.contains(path)).collect();
+    assert_eq!(files.len(), 1);
+    let file = &files[0];
+    config.store(old_peer).unwrap();
+    let id = crate::flutter_ffi::SessionID::new_v4();
+    let owner = crate::flutter_ffi::SessionID::new_v4();
+    let old_id = crate::flutter_ffi::SessionID::new_v4();
+    let old_owner = crate::flutter_ffi::SessionID::new_v4();
+    for (session_id, client_owner, target) in [(id, owner, peer), (old_id, old_owner, old_peer)] {
+        assert!(crate::flutter_ffi::session_add_sync(session_id, client_owner, target.into(),
+            false, false, false, false, false, "explicit-password".into(), None).0.is_empty());
+    }
+    let session = crate::flutter::sessions::get_session_by_session_id(&id).unwrap();
+    let mut stored = PeerConfig::load_for_write(peer).unwrap();
+    stored.info.username = "file-user".into();
+    stored.store(peer).unwrap();
+    let all_files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|entry| entry.unwrap().path()).collect();
+    let originals: Vec<_> = all_files.iter().map(|path| std::fs::read(path).unwrap()).collect();
+    let unchanged = || all_files.iter().zip(&originals).all(|(path, bytes)| std::fs::read(path).unwrap() == *bytes);
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o500)).unwrap();
+    before_session_flutter::session_set_flutter_option(old_id, "custom_scale_percent".into(), "300".into());
+    let old_scale = crate::flutter_ffi::session_get_custom_scale_percent(old_id).unwrap() == 300;
+    before_session_flutter::session_set_flutter_option(old_id, "canvas".into(), next_canvas.into());
+    let old_canvas = crate::flutter_ffi::session_get_saved_canvas(old_id).unwrap() == next_canvas;
+    let old_preserved = unchanged();
+    println!("SESSION_FLUTTER_EXPORT_BEFORE=observed normal_return=true scale_cache_without_commit={old_scale} canvas_cache_without_commit={old_canvas} files_preserved={old_preserved}");
+    assert!(old_scale && old_canvas && old_preserved);
+    let refused = crate::flutter_ffi::session_set_custom_scale_percent(id, 300).is_err()
+        && crate::flutter_ffi::session_set_saved_canvas(id, next_canvas.into()).is_err();
+    let cache_preserved = session.custom_scale_percent().unwrap() == 150
+        && session.get_view_style() == "original" && session.saved_canvas().unwrap() == original_canvas;
+    let file_preserved = unchanged();
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(refused && cache_preserved && file_preserved);
+    for percent in [5, 1000, 300] {
+        assert_eq!(crate::flutter_ffi::session_set_custom_scale_percent(id, percent).unwrap(), percent);
+        let stored = PeerConfig::load_for_write(peer).unwrap();
+        assert_eq!(stored.ui_flutter.get("custom_scale_percent"), Some(&percent.to_string()));
+        assert_eq!(stored.view_style, "custom");
+        assert_eq!(session.custom_scale_percent().unwrap(), percent);
+        assert_eq!(session.get_view_style(), "custom");
+    }
+    assert_eq!(crate::flutter_ffi::session_set_saved_canvas(id, next_canvas.into()).unwrap(), next_canvas);
+    assert_eq!(PeerConfig::load_for_write(peer).unwrap().ui_flutter.get("canvas").map(String::as_str), Some(next_canvas));
+    let retry_durable = session.saved_canvas().unwrap() == next_canvas;
+    let original = std::fs::read(file).unwrap();
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let unreadable_refused = crate::flutter_ffi::session_set_custom_scale_percent(id, 400).is_err()
+        && crate::flutter_ffi::session_set_saved_canvas(id, original_canvas.into()).is_err();
+    assert_eq!((session.custom_scale_percent().unwrap(), session.saved_canvas().unwrap()), (300, next_canvas.to_owned()));
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    assert_eq!(crate::flutter_ffi::session_set_custom_scale_percent(id, 400).unwrap(), 400);
+    assert_eq!(crate::flutter_ffi::session_set_saved_canvas(id, original_canvas.into()).unwrap(), original_canvas);
+    let original = std::fs::read(file).unwrap();
+    let invalid_scale = [-1, 0, 4, 1001, i32::MAX].into_iter()
+        .all(|value| crate::flutter_ffi::session_set_custom_scale_percent(id, value).is_err());
+    let mut invalid_canvas = vec!["{".to_owned(), "[]".to_owned(), "{}".to_owned(), " ".repeat(1025)];
+    let valid: serde_json::Value = serde_json::from_str(original_canvas).unwrap();
+    for (key, value) in [("extra", serde_json::json!(1)), ("xCursor", serde_json::json!("bad")),
+        ("scale", serde_json::json!(0)), ("scale", serde_json::json!(-1)),
+        ("currentDisplay", serde_json::json!(-2)), ("currentDisplay", serde_json::json!(2147483648_i64)),
+        ("currentDisplay", serde_json::json!(0.5))] {
+        let mut candidate = valid.clone();
+        candidate[key] = value;
+        invalid_canvas.push(candidate.to_string());
+    }
+    let invalid_canvas = invalid_canvas.into_iter().all(|value| crate::flutter_ffi::session_set_saved_canvas(id, value).is_err());
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    session.lc.write().unwrap().get_config().ui_flutter.remove("custom_scale_percent");
+    let default_percent = session.custom_scale_percent().unwrap() == 100;
+    session.lc.write().unwrap().get_config().ui_flutter.insert("custom_scale_percent".into(), "bad".into());
+    session.lc.write().unwrap().get_config().ui_flutter.insert("canvas".into(), "{}".into());
+    let invalid_read_refused = session.custom_scale_percent().is_err() && session.saved_canvas().is_err();
+    assert_eq!(crate::flutter_ffi::session_set_custom_scale_percent(id, 400).unwrap(), 400);
+    assert_eq!(crate::flutter_ffi::session_set_saved_canvas(id, String::new()).unwrap(), "");
+    let empty_canvas = session.saved_canvas().unwrap().is_empty()
+        && !PeerConfig::load_for_write(peer).unwrap().ui_flutter.contains_key("canvas");
+    let missing = crate::flutter_ffi::SessionID::new_v4();
+    let missing_refused = crate::flutter_ffi::session_get_custom_scale_percent(missing).is_err()
+        && crate::flutter_ffi::session_set_custom_scale_percent(missing, 100).is_err()
+        && crate::flutter_ffi::session_get_saved_canvas(missing).is_err()
+        && crate::flutter_ffi::session_set_saved_canvas(missing, String::new()).is_err();
+    let stored = PeerConfig::load_for_write(peer).unwrap();
+    let unrelated_preserved = stored.info.username == "file-user"
+        && session.lc.read().unwrap().info.username == "runtime-user"
+        && stored.password_prs == b"session-flutter-preserved-prs"
+        && stored.ui_flutter.get("unrelated-window").map(String::as_str) == Some("preserved")
+        && stored.options.get("unrelated").map(String::as_str) == Some("preserved");
+    let no_peer_started = session.sender.read().unwrap().is_none();
+    for (session_id, client_owner) in [(id, owner), (old_id, old_owner)] {
+        let retired = crate::flutter::sessions::remove_session_by_exact_ui_owner(&session_id, &client_owner).unwrap();
+        assert!(retired.sender.read().unwrap().is_none());
+    }
+    println!("SESSION_FLUTTER_EXPORT_NATIVE=observed failure_reported={refused} cache_preserved={cache_preserved} files_preserved={file_preserved} retry_durable={retry_durable} unreadable_refused={unreadable_refused} invalid_scale_refused={invalid_scale} invalid_canvas_refused={invalid_canvas} invalid_read_refused={invalid_read_refused} default_percent={default_percent} empty_canvas={empty_canvas} missing_session_refused={missing_refused} unrelated_preserved={unrelated_preserved} no_peer_started={no_peer_started} cleanup=joined");
+    assert!(retry_durable && unreadable_refused && invalid_scale && invalid_canvas && invalid_read_refused
+        && default_percent && empty_canvas && missing_refused && unrelated_preserved && no_peer_started);
 }
 
 fn view_style_commits_before_publication(root: &std::path::Path) {

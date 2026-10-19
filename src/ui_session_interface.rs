@@ -542,12 +542,22 @@ impl<T: InvokeUiSession> Session<T> {
             .save_edge_scroll_edge_thickness(value);
     }
 
-    pub fn save_flutter_option(&self, k: String, v: String) {
-        self.lc.write().unwrap().save_ui_flutter(k, v);
+    pub fn custom_scale_percent(&self) -> ResultType<i32> {
+        self.lc.read().unwrap().custom_scale_percent()
     }
 
-    pub fn get_flutter_option(&self, k: String) -> String {
-        self.lc.read().unwrap().get_ui_flutter(&k)
+    pub fn save_custom_scale_percent(&self, percent: i32) -> ResultType<i32> {
+        self.lc.write().unwrap().save_custom_scale_percent(percent)?;
+        Ok(percent)
+    }
+
+    pub fn saved_canvas(&self) -> ResultType<String> {
+        self.lc.read().unwrap().saved_canvas()
+    }
+
+    pub fn save_saved_canvas(&self, value: String) -> ResultType<String> {
+        self.lc.write().unwrap().save_saved_canvas(&value)?;
+        Ok(value)
     }
 
     pub fn toggle_option(&self, name: String) {

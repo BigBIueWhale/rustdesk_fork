@@ -331,21 +331,75 @@ class RustdeskImpl {
         ]));
   }
 
-  Future<String?> sessionGetFlutterOption(
-      {required UuidValue sessionId, required String k, dynamic hint}) {
-    return Future(
-        () => js.context.callMethod('getByName', ['option:flutter:peer', k]));
+  Future<int> sessionGetCustomScalePercent(
+      {required UuidValue sessionId, dynamic hint}) async {
+    final String? value = js.context.callMethod(
+        'getByName', ['option:flutter:peer', kCustomScalePercentKey]);
+    if (value == null || value.isEmpty) return 100;
+    final percent = int.tryParse(value);
+    if (percent == null || percent < kScaleCustomMinPercent ||
+        percent > kScaleCustomMaxPercent) {
+      throw StateError('Invalid custom scale');
+    }
+    return percent;
   }
 
-  Future<void> sessionSetFlutterOption(
-      {required UuidValue sessionId,
-      required String k,
-      required String v,
-      dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'option:flutter:peer',
-          jsonEncode({'name': k, 'value': v})
-        ]));
+  Future<int> sessionSetCustomScalePercent(
+      {required UuidValue sessionId, required int percent, dynamic hint}) async {
+    if (percent < kScaleCustomMinPercent || percent > kScaleCustomMaxPercent) {
+      throw StateError('Invalid custom scale');
+    }
+    js.context.callMethod('setByName', [
+      'option:flutter:peer',
+      jsonEncode({'name': kCustomScalePercentKey, 'value': percent.toString()})
+    ]);
+    js.context.callMethod('setByName', [
+      'option:session',
+      jsonEncode({'name': 'view_style', 'value': kRemoteViewStyleCustom})
+    ]);
+    if (await sessionGetCustomScalePercent(sessionId: sessionId) != percent ||
+        await sessionGetViewStyle(sessionId: sessionId) != kRemoteViewStyleCustom) {
+      throw StateError('Custom scale was not applied');
+    }
+    return percent;
+  }
+
+  void _validateSavedCanvas(String value) {
+    if (value.isEmpty) return;
+    if (value.length > 1024) throw StateError('Saved canvas exceeds its size limit');
+    final fields = jsonDecode(value);
+    if (fields is! Map<String, dynamic> || fields.length != 6) {
+      throw StateError('Invalid saved canvas');
+    }
+    for (final key in ['xCursor', 'yCursor', 'xCanvas', 'yCanvas', 'scale']) {
+      final number = fields[key];
+      if (number is! num || !number.isFinite || (key == 'scale' && number <= 0)) {
+        throw StateError('Invalid saved canvas');
+      }
+    }
+    final display = fields['currentDisplay'];
+    if (display is! int || display < -1 || display > 2147483647) {
+      throw StateError('Invalid saved canvas display');
+    }
+  }
+
+  Future<String> sessionGetSavedCanvas(
+      {required UuidValue sessionId, dynamic hint}) async {
+    final String value = js.context.callMethod(
+        'getByName', ['option:flutter:peer', 'canvas']) ?? '';
+    _validateSavedCanvas(value);
+    return value;
+  }
+
+  Future<String> sessionSetSavedCanvas(
+      {required UuidValue sessionId, required String value, dynamic hint}) async {
+    _validateSavedCanvas(value);
+    js.context.callMethod('setByName', [
+      'option:flutter:peer', jsonEncode({'name': 'canvas', 'value': value})
+    ]);
+    final effective = await sessionGetSavedCanvas(sessionId: sessionId);
+    if (effective != value) throw StateError('Canvas state was not saved');
+    return value;
   }
 
   int getNextTextureKey({dynamic hint}) {

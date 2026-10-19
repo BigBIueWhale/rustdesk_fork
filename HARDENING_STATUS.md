@@ -2804,8 +2804,8 @@ joined bounded-RAM cleanup and failed-root inventory/retirement are retained in
 
 Real desktop/mobile action flows, restart/cross-process writers, Windows/macOS/
 Android/iOS/browser execution and broader security/release acceptance remain OPEN.
-Other `LocalConfig` setters still publish before best-effort storage; their
-failure/retry workflows remain OPEN. All fifteen credential actions remain OPEN.
+Local-preference source corrections and remaining interaction/platform obligations
+are recorded below. All fifteen credential actions remain OPEN.
 
 **Keyboard layout selection — Linux persistence/bridge/component corrected; peer/platform acceptance OPEN.**
 Products `234d57e0` and `5724a5cd` keep the existing process-local
@@ -2843,8 +2843,9 @@ cleanup are retained in `.harness-state/verifier-vm/keyboard-layout-234d57e0.jso
 
 Physical keyboard-to-Mac peer effects, full desktop/mobile interactions,
 restart/cross-process preference writers and Windows/macOS/Android/iOS/browser
-execution remain OPEN. Other `LocalConfig` setters' failure/retry behavior,
-all fifteen installed credential actions, R-S0, latency/soak, cold artifacts,
+execution remain OPEN. Local/Flutter preference and last-peer persistence are
+recorded below; their full interaction/platform acceptance remains OPEN.
+All fifteen installed credential actions, R-S0, latency/soak, cold artifacts,
 independent reproduction, external review and release acceptance remain OPEN.
 
 
@@ -2897,8 +2898,9 @@ complete endpoints and joined bounded-RAM cleanup are retained in
 `.harness-state/verifier-vm/local-options-ddb77e68.json`.
 
 Restart/cross-process preferences, concurrent platform effects, full interactive
-settings/input acceptance, Windows/macOS/Android/iOS/browser execution and the
-remaining LocalConfig UI/geometry/last-peer setters remain OPEN. All fifteen
+settings/input acceptance, Windows/macOS/Android/iOS/browser execution and
+per-peer persistence remain OPEN. LocalConfig UI/last-peer source corrections and
+unused geometry retirement are recorded below. All fifteen
 installed credential actions, R-S0, latency/soak, cold artifacts, independent
 reproduction, external review and release acceptance remain OPEN.
 
@@ -3004,10 +3006,53 @@ cases, raw logs, endpoint observations and joined bounded-RAM cleanup are retain
 in `.harness-state/verifier-vm/ui-preferences-6af3228a.json`.
 
 Full desktop/mobile tab, sorting, toolbar, overlay and geometry interactions;
-restart and cross-process writers; other LocalConfig setters and per-peer
+restart and cross-process writers; per-peer
 persistence; and Windows/macOS/Android/iOS/browser execution remain OPEN.
 All fifteen installed credential actions, R-S0, latency/soak, cold artifacts,
 independent reproduction, external review and release acceptance remain OPEN.
+
+**Last-peer history — Linux persistence/session preparation corrected; interaction/platform acceptance OPEN.**
+Product `159cb6bf` makes LocalConfig's last-peer setter fallible. Its existing
+write lock owns private-candidate storage and memory publication. Failed replacement
+or clearing preserves the prior history and file, so an identical healthy retry
+still saves. Unchanged history needs no write. The session factory remembers history
+only after exact registry admission, logs a storage failure and preserves the
+admitted session. A rejected duplicate cannot advance history.
+
+The unused LocalConfig geometry field/getter/setter and its infallible private
+store are deleted. No live call site uses them; the active Flutter and per-peer
+geometry paths are unchanged. Legacy files with that old field still load, preserve
+live preferences and omit the unused value on the next save. Historical setter
+fixtures retain the old store body in a test-only trait. No credential/service
+authority, worker, runtime, queue or dependency changes.
+
+The Linux config profile passes all seventeen cases in 139 outer seconds,
+retaining the previous fifteen.
+The exact 247-byte historical setter from `01839736` runs beside the correction
+and reproduces memory publication after real permission denial plus skipped
+identical retry. Corrected selected/empty writes preserve memory/file on failure,
+persist their retries and retain unrelated preferences. An unchanged value succeeds
+without writing. The second new case loads an actual old-format TOML file and
+observes retained active preferences plus retired geometry after storage.
+
+At `8f529134`, the unchanged product, complete Linux Flutter library and fresh
+generated bindings pass both native cases and the unchanged 25 Dart/native bridge
+cases in 536 outer seconds. The expanded native case calls
+the actual synchronous session-add export while history storage is denied:
+the exact owner/session and explicit password survive, history/file remain unchanged,
+duplicate admission is refused without advancing history, and a healthy retry
+persists the same peer. No network peer is started. The first parent attempt
+refused a private-helper call in the test before execution; `8f529134` derives the
+same private path through the existing public API. Production visibility is unchanged.
+Exact source freezes, artifacts, case observations, pinned inputs,
+unchanged endpoints and joined bounded-RAM cleanup
+are retained in `.harness-state/verifier-vm/last-peer-159cb6bf.json`.
+
+Full desktop/mobile remembered-peer interaction, restart/cross-process preference
+writers, Windows/macOS/Android/iOS/browser and installed/platform acceptance remain
+OPEN. All fifteen credential actions, R-S0, R-F5 impairment/multi-hour soak, cold
+artifacts, independent reproduction, external review, release and parked work
+remain OPEN.
 
 **Ordinary option persistence — Linux library/handler corrected; broader acceptance OPEN.**
 Product `f895b8a0` makes `Config::set_option` fallible. Under the existing cache write

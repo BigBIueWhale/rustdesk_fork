@@ -487,6 +487,21 @@ TRACKPAD_INPUT_TESTS = {
     "trackpad fling dispatch failure retires its own timer",
 }
 
+SIDE_BUTTON_TESTS = {
+    "side button duplicate down preserves one accepted press",
+    "side button duplicate down cannot transfer a press to another model",
+    "side button up retains the session selected by down",
+    "side button stale disposal preserves a newer press and active model",
+    "side button separate buttons retain independent models",
+    "side button view only refuses presses with either cursor setting",
+    "side button unknown names cannot release a held button",
+    "side button malformed messages preserve the held press",
+    "side button retired owner cannot admit a new press",
+    "side button release survives permission and camera changes",
+    "side button disposal releases each accepted press once",
+    "side button pending and failed sends do not block the channel",
+}
+
 MODIFIER_RELEASE_TESTS = {
     "right Alt retains its own release identity",
     "modern modifier release preserves the other held side",
@@ -779,6 +794,7 @@ def parse_result(path, profile="models"):
             "input_modifier_release_test.dart": MODIFIER_RELEASE_TESTS,
             "input_mouse_buttons_test.dart": PHYSICAL_MOUSE_TESTS,
             "trackpad_fling_test.dart": TRACKPAD_INPUT_TESTS,
+            "input_side_buttons_test.dart": SIDE_BUTTON_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

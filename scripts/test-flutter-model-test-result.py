@@ -45,6 +45,15 @@ class ResultTests(unittest.TestCase):
         elif profile == "credential-dialog":
             suites = sorted(result.CREDENTIAL_DIALOG_TESTS)
             names = sorted(set().union(*result.CREDENTIAL_DIALOG_TESTS.values()))
+        elif profile == "modifier-release":
+            inventory = {
+                "input_modifier_release_test.dart": result.MODIFIER_RELEASE_TESTS,
+                "input_mouse_buttons_test.dart": result.PHYSICAL_MOUSE_TESTS,
+                "trackpad_fling_test.dart": result.TRACKPAD_INPUT_TESTS,
+                "input_side_buttons_test.dart": result.SIDE_BUTTON_TESTS,
+            }
+            suites = sorted(inventory)
+            names = sorted(set().union(*inventory.values()))
         else:
             suites = ["address_validator_test.dart"]
             names = sorted(result.DIRECT_ADDRESS_TESTS)
@@ -56,9 +65,10 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
-            if profile in ("credential-dialog", "terminal-output", "file-navigation"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release"):
                 inventory = (result.CREDENTIAL_DIALOG_TESTS if profile == "credential-dialog"
                              else result.TERMINAL_OUTPUT_TESTS if profile == "terminal-output"
+                             else inventory if profile == "modifier-release"
                              else result.FILE_NAVIGATION_SUITES)
                 suite_id = next(i for i, suite in enumerate(suites)
                                 if name in inventory[suite])
@@ -93,6 +103,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (1, 10))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (2, 59))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 26))
+        self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (4, 93))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (9, 83))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"
@@ -127,7 +138,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation"):
+        for profile in ("frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "modifier-release"):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
@@ -151,7 +162,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_and_incomplete_are_rejected(self):
-        for profile in ("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation"):
+        for profile in ("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "modifier-release"):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

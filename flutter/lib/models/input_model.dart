@@ -1986,7 +1986,6 @@ class InputModel {
       isMove,
       type,
       onExit: onExit,
-      buttons: evt['buttons'],
       moveCanvas: moveCanvas,
       edgeScroll: edgeScroll,
     );
@@ -2039,7 +2038,6 @@ class InputModel {
     bool isMove,
     String evtType, {
     bool onExit = false,
-    int buttons = kPrimaryMouseButton,
     bool moveCanvas = true,
     bool edgeScroll = false,
   }) {
@@ -2091,7 +2089,6 @@ class InputModel {
       rect,
       evtType,
       onExit: onExit,
-      buttons: buttons,
     );
   }
 
@@ -2131,7 +2128,6 @@ class InputModel {
     Rect? rect,
     String evtType, {
     bool onExit = false,
-    int buttons = kPrimaryMouseButton,
   }) {
     if (rect == null) {
       return null;
@@ -2179,8 +2175,7 @@ class InputModel {
     }
 
     return InputModel.getPointInRemoteRect(
-        true, peerPlatform, kind, evtType, x, y, rect,
-        buttons: buttons);
+        true, peerPlatform, kind, evtType, x, y, rect);
   }
 
   static Point<double>? getPointInRemoteRect(
@@ -2190,8 +2185,7 @@ class InputModel {
       String evtType,
       double evtX,
       double evtY,
-      Rect rect,
-      {int buttons = kPrimaryMouseButton}) {
+      Rect rect) {
     double minX = rect.left;
     // https://github.com/rustdesk/rustdesk/issues/6678
     // For Windows, [0,maxX], [0,maxY] should be set to enable window snapping.
@@ -2203,14 +2197,10 @@ class InputModel {
     evtX = InputModel.tryGetNearestRange(evtX, minX, maxX, 5);
     evtY = InputModel.tryGetNearestRange(evtY, minY, maxY, 5);
     if (isLocalDesktop) {
-      if (kind == kPointerEventKindMouse) {
-        if (evtX < minX || evtY < minY || evtX > maxX || evtY > maxY) {
-          // If left mouse up, no early return.
-          if (!(buttons == kPrimaryMouseButton &&
-              evtType == kMouseEventTypeUp)) {
-            return null;
-          }
-        }
+      // A release retires a held button even after the pointer leaves the image.
+      if (kind == kPointerEventKindMouse && evtType != kMouseEventTypeUp &&
+          (evtX < minX || evtY < minY || evtX > maxX || evtY > maxY)) {
+        return null;
       }
     } else {
       bool evtXInRange = evtX >= minX && evtX <= maxX;

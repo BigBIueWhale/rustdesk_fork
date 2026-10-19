@@ -3972,8 +3972,7 @@ class CursorModel with ChangeNotifier {
         kMouseEventTypeDefault,
         _x + dx,
         _y + dy,
-        rect,
-        buttons: kPrimaryButton);
+        rect);
     if (newPos == null) {
       return;
     }

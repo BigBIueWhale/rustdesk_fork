@@ -652,6 +652,7 @@ readonly RELEASE_PUBLISHER_SOURCE="$SCRIPT_DIR/publish-github-release.sh"
 readonly RELEASE_FINALIZER_SOURCE="$SCRIPT_DIR/finalize-release-set.py"
 readonly RELEASE_WORKSPACE_RUNTIME_TEST="$SCRIPT_DIR/verify-release-workspace-runtime.sh"
 readonly RUN_ADMISSION_TEST="$SCRIPT_DIR/test-verifier-vm-run-admission.sh"
+readonly STORAGE_WATCH_TEST="$SCRIPT_DIR/test-vm-storage-watch.py"
 readonly ANDROID_PEER_ARTIFACT_SOURCE="$SCRIPT_DIR/android-peer-artifact.py"
 readonly ANDROID_PEER_ARTIFACT_TEST="$SCRIPT_DIR/test-android-peer-artifact.py"
 readonly ANDROID_RUNTIME_PROGRESS_TEST="$SCRIPT_DIR/test-android-runtime-progress.py"
@@ -2383,7 +2384,7 @@ if [ "$MODE" = dependency-inventory ]; then
     )
 fi
 if [ "$MODE" = ledger-token-count ]; then
-    ledger_count_sources=("$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE")
+    ledger_count_sources=("$LEDGER_TOKEN_COUNT_SOURCE" "$HARDENING_SOURCE" "$PIN_SOURCE" "$VM_STORAGE_SOURCE" "$STORAGE_WATCH_TEST")
     requirements_input_sha=
     requirements_input_bytes=0
     if [ "$COUNT_REQUIREMENTS" -eq 1 ]; then
@@ -4161,6 +4162,7 @@ elif [ "$MODE" = ledger-token-count ]; then
     lifecycle_payload_grafts=(
         "ledger-tokenizer-inputs.tar.gz=$LEDGER_TOKENIZER_ARCHIVE"
         "repo/scripts/count-ledger-tokens.py=$LEDGER_TOKEN_COUNT_SOURCE"
+        "repo/scripts/test-vm-storage-watch.py=$STORAGE_WATCH_TEST"
     )
 elif [ "$MODE" = host-network-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
@@ -5130,6 +5132,8 @@ elif [ "$MODE" = ledger-token-count ]; then
         'VM storage root refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_WAIT_REFUSAL=pass principal=4000 sigchld=ignored qemu=not-started' \
         'VM storage child-wait refusal'
+    require_exact_fixed_receipt 'VM_TRANSIENT_WATCH=pass cases=4 disappeared=2 refusals=2 filesystem=native schedule=controlled memory=fixed qemu=not-started children=joined' \
+        'VM storage monitor filesystem lifetime and refusal cases'
     ledger_vm_receipt="LEDGER_TOKEN_COUNT_VM=pass uid=4000 gid=4000 caps=none nnp=yes input_sha256=$ledger_input_sha recipe_sha256=$ledger_recipe_sha source=readonly network=none docker=retired scratch=retired cleanup=joined"
     require_exact_fixed_receipt "$ledger_vm_receipt" 'actual ledger token count execution and finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'ledger token-count guest completion'

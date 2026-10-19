@@ -880,6 +880,8 @@ PY
 run_ledger_token_count() {
     local work work_id source_before status=0 operation root_status
     local storage_helper=$VERIFY_REPO/scripts/vm-transient-storage.py
+    local watch_test=$VERIFY_REPO/scripts/test-vm-storage-watch.py
+    local watch_sources_before watch_status=0 watch_output=$ROOT/storage-watch.out
     local helper=$VERIFY_REPO/scripts/count-ledger-tokens.py
     local input=$VERIFY_REPO/HARDENING_STATUS.md
     local archive=/mnt/rustdesk-verifier-inputs/ledger-tokenizer-inputs.tar.gz
@@ -964,7 +966,20 @@ os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
         && grep -Fxq 'ValueError: QEMU supervisor requires waitable children' "$ROOT/storage-no-wait.err" \
         || fail 'VM storage supervisor did not refuse inherited child auto-reaping'
     printf 'VM_TRANSIENT_WAIT_REFUSAL=pass principal=4000 sigchld=ignored qemu=not-started\n'
-    source_before="$(sha256sum "$helper" "${count_inputs[@]}" "$archive" "$VERIFY_REPO/scripts/pins.env")"
+    watch_sources_before="$(sha256sum "$storage_helper" "$watch_test")"
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        /usr/bin/timeout --signal=TERM --kill-after=2s 15s \
+        /usr/bin/prlimit --as=268435456 --cpu=5 --nofile=64 \
+        /usr/bin/python3 -B -I -S "$watch_test" "$storage_helper" \
+        >"$watch_output" 2>&1 || watch_status=$?
+    [ "$(stat -c '%s' "$watch_output")" -le 65536 ] \
+        || fail 'VM storage watch diagnostics exceed their bound'
+    cat "$watch_output"
+    [ "$watch_status" -eq 0 ] || fail 'VM storage watch behavioral cases failed'
+    [ "$(sha256sum "$storage_helper" "$watch_test")" = "$watch_sources_before" ] \
+        || fail 'VM storage watch sources changed'
+    source_before="$(sha256sum "$helper" "$storage_helper" "$watch_test" "${count_inputs[@]}" "$archive" "$VERIFY_REPO/scripts/pins.env")"
     [ "$(sha256sum "$helper" | awk '{print $1}')" = "$LEDGER_RECIPE_SHA256" ] \
         && [ "$(sha256sum "$input" | awk '{print $1}')" = "$LEDGER_INPUT_SHA256" ] \
         || fail 'ledger token-count admitted source differs'
@@ -994,7 +1009,7 @@ os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
             && [ "$(grep -c '^LEDGER_TOKEN_COUNT={' "${count_outputs[$document_index]}")" -eq 1 ] \
             || fail 'actual document token count is absent or unexpected'
     done
-    [ "$(sha256sum "$helper" "${count_inputs[@]}" "$archive" "$VERIFY_REPO/scripts/pins.env")" = "$source_before" ] \
+    [ "$(sha256sum "$helper" "$storage_helper" "$watch_test" "${count_inputs[@]}" "$archive" "$VERIFY_REPO/scripts/pins.env")" = "$source_before" ] \
         || fail 'ledger token-count source or inputs changed'
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \

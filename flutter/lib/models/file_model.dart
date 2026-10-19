@@ -1356,17 +1356,28 @@ class FileController {
     final renameRemotely = !this.isLocal;
     final textEditingController = TextEditingController(text: ownedItem.name);
     String? errorText;
+    var submitting = false;
+    VoidCallback? textChanged;
     try {
       await manager.show((setState, close, context) {
-        textEditingController.addListener(() {
-          if (errorText != null && _isCurrentSession(selectedSessionId)) {
+        bool current() =>
+            close.isCurrent && _isCurrentSession(selectedSessionId);
+        final previousListener = textChanged;
+        if (previousListener != null) {
+          textEditingController.removeListener(previousListener);
+        }
+        void clearError() {
+          if (errorText != null && current()) {
             setState(() {
               errorText = null;
             });
           }
-        });
+        }
+
+        textChanged = clearError;
+        textEditingController.addListener(clearError);
         submit() async {
-          if (!_isCurrentSession(selectedSessionId)) return;
+          if (submitting || !current()) return;
           final newName = textEditingController.text;
           if (newName.isEmpty || newName == ownedItem.name) {
             close();
@@ -1388,9 +1399,10 @@ class FileController {
             });
             return;
           }
-          final actionId = jobController.allocateJobId(selectedSessionId);
-          if (actionId == null) return;
+          submitting = true;
           try {
+            final actionId = jobController.allocateJobId(selectedSessionId);
+            if (actionId == null) return;
             await jobController.dispatchAndWaitForResult(
                 expectedSessionId: selectedSessionId,
                 actionId: actionId,
@@ -1398,13 +1410,18 @@ class FileController {
                 dispatch: () => _requests.renameFile(selectedSessionId,
                     actionId, ownedItem.path, newName, renameRemotely));
           } catch (error) {
-            if (!_isCurrentSession(selectedSessionId)) return;
+            if (!current()) {
+              debugPrint("Rename failed after dialog retirement: $error");
+              return;
+            }
             setState(() {
               errorText = error.toString();
             });
             return;
+          } finally {
+            submitting = false;
           }
-          if (!_isCurrentSession(selectedSessionId)) return;
+          if (!current()) return;
           close();
         }
 

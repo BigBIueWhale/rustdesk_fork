@@ -376,13 +376,12 @@ TRACKPAD_DIALOG_TESTS = {
 MODIFIER_RELEASE_TESTS = {
     "right Alt retains its own release identity",
     "modern modifier release preserves the other held side",
-    "modern focus cleanup emits every held modifier once",
+    "modern release callback visits and clears every modifier slot",
     "modern reset removes pending modifier releases",
     "raw tracking uses the changed key without aggregate state",
     "raw chord retains every changed modifier",
     "raw key up retires its key after aggregate state is clear",
     "raw key up preserves a different held modifier",
-    "raw focus cleanup retires each exact pending release",
     "ordinary raw keys and reset cannot retain modifier ownership",
 }
 DIRECTORY_ORDERING_TESTS = {

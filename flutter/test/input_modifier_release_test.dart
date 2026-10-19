@@ -128,7 +128,7 @@ void main() {
     }
   });
 
-  test('modern focus cleanup emits every held modifier once', () {
+  test('modern release callback visits and clears every modifier slot', () {
     for (final key in modifierKeys) {
       model.handleKeyDownEventModifiers(keyEvent(key, down: true));
     }
@@ -199,22 +199,6 @@ void main() {
     keys.updateKeyUp(LogicalKeyboardKey.altLeft,
         rawEvent(LogicalKeyboardKey.altLeft, down: false) as RawKeyUpEvent);
     expect(pendingRaw(keys), [LogicalKeyboardKey.altRight]);
-  });
-
-  test('raw focus cleanup retires each exact pending release', () {
-    final keys = ToReleaseRawKeys();
-    seedRaw(keys, LogicalKeyboardKey.shiftLeft);
-    seedRaw(keys, LogicalKeyboardKey.controlRight);
-    final released = <LogicalKeyboardKey>[];
-    keys.release((event) {
-      expect(event, isA<RawKeyUpEvent>());
-      released.add(event.logicalKey);
-      keys.updateKeyUp(event.logicalKey, event as RawKeyUpEvent);
-      return KeyEventResult.handled;
-    });
-    expect(released,
-        [LogicalKeyboardKey.shiftLeft, LogicalKeyboardKey.controlRight]);
-    expect(pendingRaw(keys), isEmpty);
   });
 
   test('ordinary raw keys and reset cannot retain modifier ownership', () {

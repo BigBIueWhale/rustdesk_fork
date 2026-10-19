@@ -3069,6 +3069,35 @@ run_focused_rust_tests() {
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             required_tests=(
+                fs::tests::recursive_owner_files_retain_the_listed_parent
+                fs::tests::recursive_owner_empty_dirs_retain_the_listed_parent
+                fs::tests::recursive_owner_files_refuse_a_replaced_child_symlink
+                fs::tests::recursive_owner_empty_dirs_refuse_a_replaced_child_symlink
+                fs::tests::recursive_owner_refuses_a_child_replaced_by_a_file
+                fs::tests::recursive_owner_vanished_child_preserves_the_remaining_files
+                fs::tests::recursive_owner_public_paths_preserve_aliases_links_and_file_roots
+                fs::tests::recursive_owner_handles_retire_after_success_and_budget_refusal
+                fs::tests::recursive_owner_real_directory_admission_uses_its_current_child
+                fs::tests::directory_enumeration_refuses_special_files
+                fs::tests::recursive_enumeration_refuses_special_files_before_job_admission
+                fs::tests::recursive_enumeration_refuses_unreadable_children_before_job_admission
+                fs::tests::directory_enumeration_refuses_unrepresentable_file_names
+                fs::tests::directory_enumeration_budgets_excluded_hidden_entries
+                fs::tests::directory_enumeration_budgets_returned_root_paths
+                fs::tests::empty_directory_enumeration_budgets_repeated_absolute_paths
+                fs::tests::directory_enumeration_budgets_escaped_file_names
+                fs::tests::directory_enumeration_budgets_escaped_directory_paths
+                fs::tests::recursive_enumeration_budgets_complete_relative_paths
+                fs::tests::default_local_directory_listing_bounds_native_entries
+                fs::tests::default_local_recursive_listing_bounds_native_entries
+                fs::tests::default_local_empty_directory_listing_bounds_native_entries
+                fs::tests::default_local_recursive_listing_bounds_native_depth
+                fs::tests::default_local_empty_directory_listing_bounds_native_depth
+                fs::tests::default_send_job_bounds_native_entry_enumeration
+                fs::tests::default_send_job_bounds_native_directory_depth
+                fs::tests::enumeration_string_budget_matches_json_and_preserves_state
+                fs::tests::file_enumeration_refuses_unrepresentable_modification_times
+                fs::tests::budgeted_read_dir_rejects_too_many_entries_before_returning_vector
                 fs::tests::directory_entry_link_directory_survives_parent_rename
                 fs::tests::directory_entry_link_file_ignores_replacement_directory
                 fs::tests::directory_entry_link_directory_ignores_replacement_file
@@ -4712,8 +4741,13 @@ run_focused_rust_tests() {
                         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
                             for group in fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file \
                                 fs::tests::file_metadata_ fs::atomic_write::unix::tests:: \
-                                fs::tests::directory_enumeration_refuses_metadata_permission_failure \
-                                fs::tests::directory_entry_; do
+                                fs::tests::directory_entry_ fs::tests::directory_enumeration_ \
+                                fs::tests::recursive_enumeration_ fs::tests::empty_directory_enumeration_ \
+                                fs::tests::default_local_ fs::tests::default_send_job_ \
+                                fs::tests::enumeration_string_budget_matches_json_and_preserves_state \
+                                fs::tests::file_enumeration_refuses_unrepresentable_modification_times \
+                                fs::tests::budgeted_read_dir_rejects_too_many_entries_before_returning_vector \
+                                fs::tests::recursive_owner_; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
@@ -5377,6 +5411,11 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             >"$output" 2>&1 || container_status=$?
     fi
     if [ "$container_status" -ne 0 ]; then
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+            awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { runtime=1 }
+                runtime { if (++lines <= 2000) print; else exit 1 }' "$output" >&2 \
+                || fail 'file metadata failure diagnostics exceed their bound'
+        fi
         if [ "$MODE" = hbb-common-fs ]; then
             awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'Shared-library failure artifact metadata could not be read\n' >&2
@@ -5429,7 +5468,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
-        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=5; fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=13; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=4; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=2; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
@@ -6057,8 +6096,8 @@ PY
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            [ "$tests_passed" -eq 31 ] || fail 'file metadata test total differs'
-            grep -E '^test fs::(tests::(file_metadata_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_refuses_metadata_permission_failure|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^DIRECTORY_ENTRY_' "$output"
+            [ "$tests_passed" -eq 60 ] || fail 'file metadata test total differs'
+            grep -E '^test fs::(tests::(file_metadata_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'
             grep -E '^test config::(tests::config_transaction_[[:alnum:]_]+|option_tests::[[:alnum:]_]+) [.][.][.] ok$|^OPTION_COMMIT_' "$output"

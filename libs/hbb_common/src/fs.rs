@@ -260,7 +260,8 @@ fn read_dir_entries_with_usage(
         }
         return Ok(entries);
     }
-    read_dir_entries(DirectoryEntries::open(path)?, prefix, include_hidden, budget, usage)
+    read_directory_listing(DirectoryEntries::open(path)?, prefix, include_hidden, budget, usage)
+        .map(|listing| listing.entries)
 }
 
 struct DirectoryContext {
@@ -308,6 +309,22 @@ impl DirectoryContext {
         #[cfg(not(target_os = "linux"))]
         { self.original_path.join(name) }
     }
+
+    #[cfg(target_os = "linux")]
+    fn list(self, prefix: &Path, include_hidden: bool, budget: FileEnumerationBudget,
+        usage: &mut FileEnumerationUsage, depth: usize) -> ResultType<DirectoryListing> {
+        usage.enter_dir(depth, budget)?;
+        self.original_path.to_str()
+            .ok_or_else(|| anyhow!("directory path is not valid UTF-8"))?;
+        let entries = self.read_dir()?;
+        read_directory_listing(DirectoryEntries { entries, context: self },
+            prefix, include_hidden, budget, usage)
+    }
+}
+
+struct DirectoryListing {
+    entries: Vec<FileEntry>,
+    context: DirectoryContext,
 }
 
 struct DirectoryEntries<I> {
@@ -330,13 +347,13 @@ impl<I> DirectoryEntries<I> {
     }
 }
 
-fn read_dir_entries(
+fn read_directory_listing(
     directory: DirectoryEntries<impl IntoIterator<Item = std::io::Result<std::fs::DirEntry>>>,
     prefix: &Path,
     include_hidden: bool,
     budget: FileEnumerationBudget,
     usage: &mut FileEnumerationUsage,
-) -> ResultType<Vec<FileEntry>> {
+) -> ResultType<DirectoryListing> {
     let DirectoryEntries { entries: directory, context } = directory;
     let mut entries = Vec::new();
     for entry in directory {
@@ -405,7 +422,7 @@ fn read_dir_entries(
             ..Default::default()
         });
     }
-    Ok(entries)
+    Ok(DirectoryListing { entries, context })
 }
 
 #[inline]
@@ -442,6 +459,14 @@ fn read_dir_recursive_with_budget(
     let mut files = Vec::new();
     let meta = std::fs::metadata(path)?;
     if meta.is_dir() {
+        #[cfg(target_os = "linux")]
+        {
+            let listing = DirectoryContext::open(path)?.list(
+                prefix, include_hidden, budget, usage, depth)?;
+            return recursive_files_from_listing(listing, prefix, include_hidden, budget, usage, depth);
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
         let entries =
             read_dir_entries_with_usage(path, prefix, include_hidden, budget, usage, depth)?;
         for mut entry in entries {
@@ -467,6 +492,7 @@ fn read_dir_recursive_with_budget(
             }
         }
         Ok(files)
+        }
     } else if meta.is_file() {
         usage.push_entry(&get_file_name(path), budget)?;
         let modified_time = meta.modified()?.duration_since(UNIX_EPOCH)?.as_secs();
@@ -480,6 +506,33 @@ fn read_dir_recursive_with_budget(
     } else {
         bail!("unsupported file type");
     }
+}
+
+#[cfg(target_os = "linux")]
+fn recursive_files_from_listing(
+    listing: DirectoryListing, prefix: &Path, include_hidden: bool,
+    budget: FileEnumerationBudget, usage: &mut FileEnumerationUsage, depth: usize,
+) -> ResultType<Vec<FileEntry>> {
+    let DirectoryListing { entries, context } = listing;
+    let path = &context.original_path;
+    let mut files = Vec::new();
+    for mut entry in entries {
+        match entry.entry_type.enum_value() {
+            Ok(FileType::File) => {
+                entry.name = get_string(&prefix.join(&entry.name));
+                files.push(entry);
+            }
+            Ok(FileType::Dir) => {
+                let child_depth = depth.checked_add(1)
+                    .ok_or_else(|| anyhow!("file enumeration depth counter overflow"))?;
+                files.extend(read_dir_recursive_with_budget(
+                    &path.join(&entry.name), &prefix.join(&entry.name),
+                    include_hidden, budget, usage, child_depth)?);
+            }
+            _ => {}
+        }
+    }
+    Ok(files)
 }
 
 pub fn get_recursive_files(path: &str, include_hidden: bool) -> ResultType<Vec<FileEntry>> {
@@ -514,9 +567,17 @@ fn read_empty_dirs_recursive_with_budget(
     usage: &mut FileEnumerationUsage,
     depth: usize,
 ) -> ResultType<Vec<FileDirectory>> {
-    let mut dirs = Vec::new();
     let meta = std::fs::metadata(path)?;
     if meta.is_dir() {
+        #[cfg(target_os = "linux")]
+        {
+            let listing = DirectoryContext::open(path)?.list(
+                prefix, include_hidden, budget, usage, depth)?;
+            return empty_dirs_from_listing(listing, prefix, include_hidden, budget, usage, depth);
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+        let mut dirs = Vec::new();
         let entries =
             read_dir_entries_with_usage(path, prefix, include_hidden, budget, usage, depth)?;
         if entries.is_empty() {
@@ -550,11 +611,41 @@ fn read_empty_dirs_recursive_with_budget(
             }
         }
         Ok(dirs)
+        }
     } else if meta.is_file() {
-        Ok(dirs)
+        Ok(Vec::new())
     } else {
         bail!("unsupported file type");
     }
+}
+
+#[cfg(target_os = "linux")]
+fn empty_dirs_from_listing(
+    listing: DirectoryListing, prefix: &Path, include_hidden: bool,
+    budget: FileEnumerationBudget, usage: &mut FileEnumerationUsage, depth: usize,
+) -> ResultType<Vec<FileDirectory>> {
+    let DirectoryListing { entries, context } = listing;
+    let path = &context.original_path;
+    let mut dirs = Vec::new();
+    if entries.is_empty() {
+        let directory_path = path.to_str()
+            .ok_or_else(|| anyhow!("directory path is not valid UTF-8"))?;
+        usage.add_serialized_string(directory_path, budget)?;
+        dirs.push(FileDirectory {
+            path: directory_path.to_owned(), entries, ..Default::default()
+        });
+    } else {
+        for entry in entries {
+            if entry.entry_type.enum_value() == Ok(FileType::Dir) {
+                let child_depth = depth.checked_add(1)
+                    .ok_or_else(|| anyhow!("file enumeration depth counter overflow"))?;
+                dirs.extend(read_empty_dirs_recursive_with_budget(
+                    &path.join(&entry.name), &prefix.join(&entry.name),
+                    include_hidden, budget, usage, child_depth)?);
+            }
+        }
+    }
+    Ok(dirs)
 }
 
 pub fn get_empty_dirs_recursive(
@@ -9908,8 +9999,9 @@ mod tests {
             }
         }
         let mut usage = FileEnumerationUsage::default();
-        let listed = read_dir_entries(entries, Path::new(""), true,
-            FileEnumerationBudget::for_max_entries(8), &mut usage).unwrap();
+        let listed = read_directory_listing(entries, Path::new(""), true,
+            FileEnumerationBudget::for_max_entries(8), &mut usage)
+            .map(|listing| listing.entries).unwrap();
         assert_eq!(listed.len(), 1);
         println!("DIRECTORY_ENTRY_LINK=observed scenario={scenario} type={:?} charged={}",
             listed[0].entry_type.enum_value(), usage.entries);
@@ -10019,8 +10111,9 @@ mod tests {
                 .map_entries(|entries| entries.collect::<Vec<_>>());
             assert!((1..=2).contains(&handles()));
             let mut usage = FileEnumerationUsage::default();
-            let result = read_dir_entries(entries, Path::new(""), true,
-                FileEnumerationBudget::for_max_entries(limit), &mut usage);
+            let result = read_directory_listing(entries, Path::new(""), true,
+                FileEnumerationBudget::for_max_entries(limit), &mut usage)
+                .map(|listing| listing.entries);
             assert_eq!(result.is_ok(), limit == 8);
             if let Err(error) = result { assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED); }
             assert_eq!(handles(), 0);
@@ -10078,8 +10171,8 @@ mod tests {
             _ => panic!("unknown parent fixture scenario"),
         };
         let mut usage = FileEnumerationUsage::default();
-        let listed = read_dir_entries(entries, Path::new(""), true,
-            FileEnumerationBudget::for_max_entries(8), &mut usage)
+        let listed = read_directory_listing(entries, Path::new(""), true,
+            FileEnumerationBudget::for_max_entries(8), &mut usage).map(|listing| listing.entries)
             .expect("read metadata from the enumerated parent");
         println!("DIRECTORY_ENTRY_PARENT=observed scenario={scenario} listed={} charged={} fields={:?}",
             listed.len(), usage.entries,
@@ -10140,6 +10233,221 @@ mod tests {
         assert_directory_entry_parent_metadata("fresh");
     }
 
+    #[cfg(target_os = "linux")]
+    fn recursive_owner_fixture() -> (TestTempDir, PathBuf, FileEnumerationUsage, DirectoryListing) {
+        let tmp = TestTempDir::new("rustdesk_recursive_owner");
+        let source = tmp.join("source");
+        std::fs::create_dir_all(source.join("branch/original-empty")).unwrap();
+        std::fs::write(source.join("branch/original.bin"), b"original").unwrap();
+        std::fs::create_dir_all(tmp.join("foreign/foreign-empty")).unwrap();
+        std::fs::write(tmp.join("foreign/foreign.bin"), b"foreign").unwrap();
+        let mut usage = FileEnumerationUsage::default();
+        let listing = DirectoryContext::open(&source).unwrap().list(Path::new(""), true,
+            FileEnumerationBudget::for_max_entries(32), &mut usage, 0).unwrap();
+        assert_eq!(listing.entries.len(), 1);
+        assert_eq!(usage.entries, 1);
+        (tmp, source, usage, listing)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn assert_recursive_owner_parent(empty: bool) {
+        let (tmp, source, mut usage, listing) = recursive_owner_fixture();
+        std::fs::rename(&source, tmp.join("retained")).unwrap();
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::rename(tmp.join("foreign"), source.join("branch")).unwrap();
+        let budget = FileEnumerationBudget::for_max_entries(32);
+        let names = if empty {
+            empty_dirs_from_listing(listing, Path::new(""), true, budget, &mut usage, 0)
+                .unwrap().into_iter().map(|entry| entry.path).collect::<Vec<_>>()
+        } else {
+            recursive_files_from_listing(listing, Path::new(""), true, budget, &mut usage, 0)
+                .unwrap().into_iter().map(|entry| entry.name).collect::<Vec<_>>()
+        };
+        println!("RECURSIVE_OWNER=observed scenario=parent-replacement empty={empty} names={names:?}");
+        let expected = if empty { get_string(&source.join("branch/original-empty")) }
+            else { "branch/original.bin".to_owned() };
+        assert_eq!(names, vec![expected]);
+        assert_eq!(std::fs::read(tmp.join("retained/branch/original.bin")).unwrap(), b"original");
+        assert_eq!(std::fs::read(source.join("branch/foreign.bin")).unwrap(), b"foreign");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn recursive_owner_files_retain_the_listed_parent() {
+        assert_recursive_owner_parent(false);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn recursive_owner_empty_dirs_retain_the_listed_parent() {
+        assert_recursive_owner_parent(true);
+    }
+
+    #[cfg(target_os = "linux")]
+    fn assert_recursive_owner_replacement(empty: bool, symlink: bool) {
+        let (tmp, source, mut usage, listing) = recursive_owner_fixture();
+        std::fs::rename(source.join("branch"), tmp.join("retained-branch")).unwrap();
+        if symlink {
+            std::os::unix::fs::symlink(tmp.join("foreign"), source.join("branch")).unwrap();
+        } else {
+            std::fs::write(source.join("branch"), b"replacement-file").unwrap();
+        }
+        let budget = FileEnumerationBudget::for_max_entries(32);
+        let result = if empty {
+            empty_dirs_from_listing(listing, Path::new(""), true, budget, &mut usage, 0)
+                .map(|entries| entries.len())
+        } else {
+            recursive_files_from_listing(listing, Path::new(""), true, budget, &mut usage, 0)
+                .map(|entries| entries.len())
+        };
+        println!("RECURSIVE_OWNER=observed scenario=child-replacement empty={empty} symlink={symlink} result={result:?}");
+        let error = result.expect_err("an advertised directory cannot become a link or file");
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+        assert_eq!(usage.entries, 1);
+        assert_eq!(std::fs::read(tmp.join("retained-branch/original.bin")).unwrap(), b"original");
+        assert_eq!(std::fs::read(tmp.join("foreign/foreign.bin")).unwrap(), b"foreign");
+        if !symlink {
+            assert_eq!(std::fs::read(source.join("branch")).unwrap(), b"replacement-file");
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn recursive_owner_files_refuse_a_replaced_child_symlink() {
+        assert_recursive_owner_replacement(false, true);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn recursive_owner_empty_dirs_refuse_a_replaced_child_symlink() {
+        assert_recursive_owner_replacement(true, true);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn recursive_owner_refuses_a_child_replaced_by_a_file() {
+        assert_recursive_owner_replacement(false, false);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn recursive_owner_vanished_child_preserves_the_remaining_files() {
+        let tmp = TestTempDir::new("rustdesk_recursive_owner_vanished");
+        std::fs::create_dir_all(tmp.join("branch")).unwrap();
+        std::fs::write(tmp.join("stable.bin"), b"stable").unwrap();
+        let budget = FileEnumerationBudget::for_max_entries(8);
+        let mut usage = FileEnumerationUsage::default();
+        let listing = DirectoryContext::open(&tmp.path).unwrap()
+            .list(Path::new(""), true, budget, &mut usage, 0).unwrap();
+        std::fs::remove_dir(tmp.join("branch")).unwrap();
+        let result = recursive_files_from_listing(listing, Path::new(""), true,
+            budget, &mut usage, 0);
+        println!("RECURSIVE_OWNER=observed scenario=vanished result={result:?} charged={}", usage.entries);
+        let files = result.expect("a vanished child must not suppress remaining files");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].name, "stable.bin");
+        assert_eq!(usage.entries, 2);
+        assert_eq!(std::fs::read(tmp.join("stable.bin")).unwrap(), b"stable");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn recursive_owner_public_paths_preserve_aliases_links_and_file_roots() {
+        let tmp = TestTempDir::new("rustdesk_recursive_owner_public");
+        let root = tmp.join("source");
+        std::fs::create_dir_all(root.join("branch/empty")).unwrap();
+        std::fs::write(root.join("branch/file"), b"kept").unwrap();
+        std::fs::write(root.join(".hidden"), b"hidden").unwrap();
+        std::fs::create_dir(tmp.join("outside-dir")).unwrap();
+        std::fs::write(tmp.join("outside-file"), b"outside").unwrap();
+        for (target, name) in [(tmp.join("outside-dir"), "dir-link"),
+            (tmp.join("outside-file"), "file-link"), (tmp.join("missing"), "broken-link")] {
+            std::os::unix::fs::symlink(target, root.join(name)).unwrap();
+        }
+        let alias = tmp.join("alias");
+        std::os::unix::fs::symlink(&root, &alias).unwrap();
+        for selected in [&root, &alias] {
+            for hidden in [false, true] {
+                let mut names = get_recursive_files(selected.to_str().unwrap(), hidden).unwrap()
+                    .into_iter().map(|entry| entry.name).collect::<Vec<_>>();
+                names.sort();
+                assert_eq!(names, if hidden { vec![".hidden", "branch/file"] }
+                    else { vec!["branch/file"] });
+                let empty = get_empty_dirs_recursive(selected.to_str().unwrap(), hidden).unwrap();
+                assert_eq!(empty.len(), 1);
+                assert_eq!(empty[0].path, get_string(&selected.join("branch/empty")));
+            }
+        }
+        let file = root.join("branch/file");
+        let file_alias = tmp.join("file-alias");
+        std::os::unix::fs::symlink(&file, &file_alias).unwrap();
+        for selected in [&file, &file_alias] {
+            let files = get_recursive_files(selected.to_str().unwrap(), true).unwrap();
+            assert_eq!(files.len(), 1);
+            assert_eq!(files[0].name, "");
+            assert_eq!(files[0].size, 4);
+            assert!(get_empty_dirs_recursive(selected.to_str().unwrap(), true).unwrap().is_empty());
+        }
+        assert_eq!(std::fs::read(tmp.join("outside-file")).unwrap(), b"outside");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn recursive_owner_handles_retire_after_success_and_budget_refusal() {
+        use std::os::unix::fs::MetadataExt;
+
+        let tmp = TestTempDir::new("rustdesk_recursive_owner_handles");
+        std::fs::create_dir_all(tmp.join("branch")).unwrap();
+        std::fs::write(tmp.join("branch/file"), b"kept").unwrap();
+        let identities = [&tmp.path, &tmp.join("branch")].map(|path| {
+            let m = std::fs::metadata(path).unwrap();
+            (m.dev(), m.ino())
+        });
+        let handles = || std::fs::read_dir("/proc/self/fd").unwrap().filter(|entry| {
+            match std::fs::metadata(entry.as_ref().unwrap().path()) {
+                Ok(m) => identities.contains(&(m.dev(), m.ino())),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+                Err(e) => panic!("cannot observe directory handle: {e}"),
+            }
+        }).count();
+        assert_eq!(handles(), 0);
+        for empty in [false, true] {
+            for limit in [1, 8, 1, 8] {
+                let mut budget = FileEnumerationBudget::for_max_entries(8);
+                budget.max_dirs = limit;
+                let mut usage = FileEnumerationUsage::default();
+                let listing = DirectoryContext::open(&tmp.path).unwrap()
+                    .list(Path::new(""), true, budget, &mut usage, 0).unwrap();
+                assert_eq!(handles(), 1);
+                let result = if empty {
+                    empty_dirs_from_listing(listing, Path::new(""), true, budget, &mut usage, 0)
+                        .map(|v| v.len())
+                } else {
+                    recursive_files_from_listing(listing, Path::new(""), true, budget, &mut usage, 0)
+                        .map(|v| v.len())
+                };
+                assert_eq!(result.is_ok(), limit == 8);
+                if let Err(error) = result { assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED); }
+                assert_eq!(handles(), 0);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn recursive_owner_real_directory_admission_uses_its_current_child() {
+        let (tmp, source, mut usage, listing) = recursive_owner_fixture();
+        std::fs::rename(source.join("branch"), tmp.join("retained-branch")).unwrap();
+        std::fs::create_dir(source.join("branch")).unwrap();
+        std::fs::write(source.join("branch/current.bin"), b"current").unwrap();
+        let files = recursive_files_from_listing(listing, Path::new(""), true,
+            FileEnumerationBudget::for_max_entries(32), &mut usage, 0).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].name, "branch/current.bin");
+        assert_eq!(files[0].size, 7);
+        assert_eq!(std::fs::read(tmp.join("retained-branch/original.bin")).unwrap(), b"original");
+    }
+
     fn directory_entry_fixture(
         directory: bool,
     ) -> (TestTempDir, DirectoryEntries<Vec<std::io::Result<std::fs::DirEntry>>>) {
@@ -10173,8 +10481,8 @@ mod tests {
     fn assert_directory_entry_disappearance(directory: bool) {
         let (tmp, entries) = directory_entry_fixture(directory);
         let mut usage = FileEnumerationUsage::default();
-        let result = read_dir_entries(entries, Path::new(""), true,
-            FileEnumerationBudget::for_max_entries(8), &mut usage);
+        let result = read_directory_listing(entries, Path::new(""), true,
+            FileEnumerationBudget::for_max_entries(8), &mut usage).map(|listing| listing.entries);
         println!("DIRECTORY_ENTRY_DISAPPEARED=observed kind={} result={} charged={}",
             if directory { "directory" } else { "file" },
             if result.is_ok() { "ok" } else { "error" }, usage.entries);
@@ -10203,8 +10511,8 @@ mod tests {
     fn directory_entry_vanished_names_still_consume_the_scan_budget() {
         let (tmp, entries) = directory_entry_fixture(false);
         let mut usage = FileEnumerationUsage::default();
-        let error = read_dir_entries(entries, Path::new(""), true,
-            FileEnumerationBudget::for_max_entries(1), &mut usage)
+        let error = read_directory_listing(entries, Path::new(""), true,
+            FileEnumerationBudget::for_max_entries(1), &mut usage).map(|listing| listing.entries)
             .expect_err("a removed entry must not increase the scan allowance");
         assert_err_contains(error, FILE_ENUMERATION_BUDGET_EXCEEDED);
         assert_eq!(usage.entries, 1);

@@ -4699,6 +4699,109 @@ mod tests {
     use crate::compress::try_decompress;
     use crate::protobuf::Message as _;
 
+    #[cfg(target_os = "linux")]
+    async fn file_metadata_digest_fixture(
+        source_seconds: i64,
+        source_nanos: u32,
+        destination_seconds: i64,
+        destination_nanos: u32,
+        destination_bytes: &[u8],
+    ) -> bool {
+        let tmp = TestTempDir::new("rustdesk_file_metadata_digest_precision");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let source = tmp.join("source.bin");
+        let destination = tmp.join("destination.bin");
+        std::fs::write(&source, b"same").unwrap();
+        std::fs::write(&destination, destination_bytes).unwrap();
+        let source_time = filetime::FileTime::from_unix_time(source_seconds, source_nanos);
+        let destination_time =
+            filetime::FileTime::from_unix_time(destination_seconds, destination_nanos);
+        filetime::set_file_mtime(&source, source_time).unwrap();
+        filetime::set_file_mtime(&destination, destination_time).unwrap();
+        for (path, expected) in [(&source, source_time), (&destination, destination_time)] {
+            assert_eq!(filetime::FileTime::from_last_modification_time(
+                &std::fs::metadata(path).unwrap()), expected);
+        }
+
+        let mut job = TransferJob::new_read(
+            94, JobType::Generic, String::new(), source.clone(), 0, false, false, true,
+        ).unwrap();
+        assert!(!job.open_data_stream().await.unwrap());
+        let (last_modified, file_size) = job.get_current_digest().await.unwrap();
+        assert_eq!(last_modified, source_seconds as u64);
+        assert_eq!(file_size, 4);
+        let wire = FileTransferDigest {
+            id: 94, file_num: 0, last_modified, file_size, ..Default::default()
+        }.write_to_bytes().unwrap();
+        let digest = FileTransferDigest::parse_from_bytes(&wire).unwrap();
+        let result = inspect_write_destination(false, destination.to_str().unwrap(), &digest)
+            .expect("inspect the real existing destination");
+        let DigestCheckResult::NeedConfirm(inspected) = result else {
+            panic!("an existing destination must still require an explicit overwrite decision");
+        };
+        assert_eq!((inspected.id, inspected.file_num), (94, 0));
+        assert_eq!(inspected.last_modified, destination_seconds as u64);
+        assert_eq!(inspected.file_size, destination_bytes.len() as u64);
+        assert_eq!(inspected.transferred_size, 0);
+        assert_eq!(std::fs::read(&source).unwrap(), b"same");
+        assert_eq!(std::fs::read(&destination).unwrap(), destination_bytes);
+        for (path, expected) in [(&source, source_time), (&destination, destination_time)] {
+            assert_eq!(filetime::FileTime::from_last_modification_time(
+                &std::fs::metadata(path).unwrap()), expected);
+        }
+        for suffix in [".download", ".digest", ".download.lock"] {
+            assert!(!recv_sidecar_path(&destination, suffix).exists());
+        }
+        println!("FILE_METADATA_DIGEST=observed source_seconds={source_seconds} source_nanos={source_nanos} destination_seconds={destination_seconds} destination_nanos={destination_nanos} destination_size={} identical={} confirmation=required unchanged=true", destination_bytes.len(), inspected.is_identical);
+        inspected.is_identical
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn file_metadata_digest_matching_subseconds_keep_overwrite_hint() {
+        let mut outcomes = Vec::new();
+        for nanos in [0, 1, 500_123_456, 999_999_999] {
+            outcomes.push(file_metadata_digest_fixture(
+                1_600_000_000, nanos, 1_600_000_000, nanos, b"same").await);
+        }
+        assert!(outcomes.into_iter().all(|identical| identical));
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn file_metadata_digest_different_subseconds_use_wire_precision() {
+        let mut outcomes = Vec::new();
+        for (source, destination) in [(0, 1), (1, 0), (1, 999_999_999), (999_999_999, 1)] {
+            outcomes.push(file_metadata_digest_fixture(
+                1_600_000_000, source, 1_600_000_000, destination, b"same").await);
+        }
+        assert!(outcomes.into_iter().all(|identical| identical));
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn file_metadata_digest_epoch_fraction_keeps_zero_seconds() {
+        let mut outcomes = Vec::new();
+        for (source, destination) in [(0, 0), (0, 123_456_789), (123_456_789, 0),
+            (999_999_999, 999_999_999)] {
+            outcomes.push(file_metadata_digest_fixture(
+                0, source, 0, destination, b"same").await);
+        }
+        assert!(outcomes.into_iter().all(|identical| identical));
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct() {
+        let mut outcomes = Vec::new();
+        for (seconds, bytes) in [(1_599_999_999, &b"same"[..]), (1_600_000_001, &b"same"[..]),
+            (1_600_000_000, &b"sm"[..]), (1_600_000_000, &b"larger"[..])] {
+            outcomes.push(file_metadata_digest_fixture(
+                1_600_000_000, 500_123_456, seconds, 500_123_456, bytes).await);
+        }
+        assert!(outcomes.into_iter().all(|identical| !identical));
+    }
+
     fn file_metadata_resume_fixture(
         tmp: &TestTempDir,
         stored_size: u64,

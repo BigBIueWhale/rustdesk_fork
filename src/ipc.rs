@@ -2830,6 +2830,7 @@ impl MainStatusOptionKey {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct MainStatusOption {
     key: MainStatusOptionKey,
     value: String,
@@ -3344,7 +3345,7 @@ impl WindowsCredentialStopApplyModel {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "t", content = "c")]
+#[serde(tag = "t", content = "c", deny_unknown_fields)]
 pub enum MainIpcRequest {
     StatusSnapshot,
     ReadinessSnapshot,

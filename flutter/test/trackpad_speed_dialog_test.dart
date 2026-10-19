@@ -5,7 +5,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_hbb/common/widgets/trackpad_speed_dialog.dart';
+import 'package:flutter_hbb/models/input_model.dart';
+import 'package:flutter_hbb/models/model.dart' show FFI;
 import 'package:flutter_test/flutter_test.dart';
+
+class _UnusedOwner implements FFI {
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    throw StateError('Controlled trackpad work must not access the session');
+  }
+}
 
 Future<OverlayDialogManager> _manager(WidgetTester tester) async {
   final state = BlockableOverlayState();
@@ -202,5 +211,99 @@ void main() {
     await tester.pump();
     await result;
     expect(calls, [245]);
+  });
+
+  testWidgets('trackpad model admits one writer across dialogs and allows retry', (tester) async {
+    final owner = _UnusedOwner();
+    final model = InputModel(WeakReference(owner));
+    addTearDown(model.relativeMouseMode.close);
+    // The callback at 0b205551 applies each returned value without model admission.
+    final oldReply = Completer<int>();
+    final newReply = Completer<int>();
+    Future<void> before(Future<int> reply) async {
+      model.applyTrackpadSpeed(await reply);
+    }
+    final oldOperation = before(oldReply.future);
+    final newOperation = before(newReply.future);
+    newReply.complete(240);
+    await newOperation;
+    expect(model.trackpadSpeed, 240);
+    oldReply.complete(235);
+    await oldOperation;
+    expect(model.trackpadSpeed, 235);
+    model.applyTrackpadSpeed(100);
+
+    final manager = await _manager(tester);
+    final pending = Completer<int>();
+    final calls = <int>[];
+    Future<int?> save(int value) => model.saveTrackpadSpeed(value,
+        writeSpeed: (value) {
+          calls.add(value);
+          return calls.length == 1 ? pending.future : Future.value(value);
+        }, isCurrent: () => true);
+    final first = _open(manager, save);
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), '235');
+    await tester.tap(find.text('Close'));
+    manager.dismissByTag('trackpad');
+    final second = _open(manager, save);
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), '240');
+    await tester.tap(find.text('Close'));
+    await tester.pump();
+    expect(calls, [235]);
+    expect(find.text('Failed'), findsOneWidget);
+    pending.complete(235);
+    await tester.pump();
+    await first;
+    expect(model.trackpadSpeed, 235);
+    expect(manager.existing('trackpad'), isTrue);
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    await second;
+    expect(calls, [235, 240]);
+    expect(model.trackpadSpeed, 240);
+  });
+
+  testWidgets('trackpad model retires failed writes and stale refreshes', (tester) async {
+    final owner = _UnusedOwner();
+    final model = InputModel(WeakReference(owner));
+    addTearDown(model.relativeMouseMode.close);
+    var current = true;
+    bool isCurrent() => current;
+    final old = Completer<int?>();
+    final recent = Completer<int?>();
+    final first = model.refreshTrackpadSpeed(readSpeed: () => old.future, isCurrent: isCurrent);
+    final second = model.refreshTrackpadSpeed(readSpeed: () => recent.future, isCurrent: isCurrent);
+    recent.complete(200);
+    await second;
+    old.complete(120);
+    await first;
+    expect(model.trackpadSpeed, 200);
+    final stale = Completer<int?>();
+    final reading = model.refreshTrackpadSpeed(readSpeed: () => stale.future, isCurrent: isCurrent);
+    expect(await model.saveTrackpadSpeed(235, writeSpeed: (v) async => v, isCurrent: isCurrent), 235);
+    stale.complete(100);
+    await reading;
+    expect(model.trackpadSpeed, 235);
+    final retired = Completer<int>();
+    final saving = model.saveTrackpadSpeed(240, writeSpeed: (_) => retired.future, isCurrent: isCurrent);
+    current = false;
+    retired.complete(240);
+    expect(await saving, isNull);
+    expect(model.trackpadSpeed, 235);
+    var unwantedRead = false;
+    await model.refreshTrackpadSpeed(readSpeed: () async { unwantedRead = true; return 100; }, isCurrent: isCurrent);
+    expect(unwantedRead, isFalse);
+    current = true;
+    await expectLater(model.saveTrackpadSpeed(240,
+        writeSpeed: (_) => Future.error(StateError('denied')), isCurrent: isCurrent), throwsStateError);
+    expect(await model.saveTrackpadSpeed(240, writeSpeed: (_) async => 250, isCurrent: isCurrent), isNull);
+    expect(model.trackpadSpeed, 235);
+    expect(await model.saveTrackpadSpeed(240, writeSpeed: (v) async => v, isCurrent: isCurrent), 240);
+    await expectLater(model.saveTrackpadSpeed(9, writeSpeed: (v) async => v, isCurrent: isCurrent), throwsRangeError);
+    expect(model.trackpadSpeed, 240);
+    await model.refreshTrackpadSpeed(readSpeed: () async => 1001, isCurrent: isCurrent);
+    expect(model.trackpadSpeed, 100);
   });
 }

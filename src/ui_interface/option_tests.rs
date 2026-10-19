@@ -169,12 +169,20 @@ fn trackpad_preference_commits_before_publication(root: &std::path::Path) {
         .filter(|p| !old_files.contains(p)).collect();
     assert_eq!(files.len(), 1);
     let file = &files[0];
+    let old_peer = "127.0.0.1:24005";
+    config.store(old_peer).unwrap();
+    let old_peer_files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|e| e.unwrap().path())
+        .filter(|p| !old_files.contains(p) && p != file).collect();
+    assert_eq!(old_peer_files.len(), 1);
+    let old_peer_file = &old_peer_files[0];
+    let old_original = std::fs::read(old_peer_file).unwrap();
     let owner = crate::flutter_ffi::SessionID::new_v4();
+    let old_owner = crate::flutter_ffi::SessionID::new_v4();
     let old_id = crate::flutter_ffi::SessionID::new_v4();
     let id = crate::flutter_ffi::SessionID::new_v4();
-    for session_id in [old_id, id] {
+    for (session_id, client_owner, target) in [(old_id, old_owner, old_peer), (id, owner, peer)] {
         assert!(crate::flutter_ffi::session_add_sync(
-            session_id, owner, peer.into(), false, false, false, false, false,
+            session_id, client_owner, target.into(), false, false, false, false, false,
             "explicit-password".into(), None,
         ).0.is_empty());
     }
@@ -191,7 +199,7 @@ fn trackpad_preference_commits_before_publication(root: &std::path::Path) {
     std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o500)).unwrap();
     before_trackpad::session_set_trackpad_speed(old_id, 235);
     let old_published = crate::flutter_ffi::session_get_trackpad_speed(old_id) == Some(235);
-    let old_file_preserved = std::fs::read(file).unwrap() == original;
+    let old_file_preserved = std::fs::read(old_peer_file).unwrap() == old_original;
     println!("TRACKPAD_EXPORT_BEFORE=observed normal_return=true cache_without_commit={old_published} file_preserved={old_file_preserved}");
     assert!(old_published && old_file_preserved);
     let failed = crate::flutter_ffi::session_set_trackpad_speed(id, 235).is_err();
@@ -218,8 +226,8 @@ fn trackpad_preference_commits_before_publication(root: &std::path::Path) {
     let missing_refused = crate::flutter_ffi::session_set_trackpad_speed(crate::flutter_ffi::SessionID::new_v4(), 240).is_err();
     assert_eq!(std::fs::read(file).unwrap(), original);
     assert_eq!(session.get_trackpad_speed(), 240);
-    for session_id in [old_id, id] {
-        let retired = crate::flutter::sessions::remove_session_by_exact_ui_owner(&session_id, &owner).unwrap();
+    for (session_id, client_owner) in [(old_id, old_owner), (id, owner)] {
+        let retired = crate::flutter::sessions::remove_session_by_exact_ui_owner(&session_id, &client_owner).unwrap();
         assert!(retired.sender.read().unwrap().is_none());
         drop(retired);
     }

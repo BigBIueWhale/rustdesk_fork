@@ -424,6 +424,9 @@ class InputModel {
   static const double _trackpadAxisLockRatio = 1.6;
   int _trackpadSpeed = kDefaultTrackpadSpeed;
   double _trackpadSpeedInner = kDefaultTrackpadSpeed / 100.0;
+  bool _savingTrackpadSpeed = false;
+  int _trackpadSpeedRevision = 0;
+  int _trackpadReadGeneration = 0;
   var _trackpadScrollUnsent = Offset.zero;
 
   // Mobile relative mouse delta accumulators (for slow/fine movements).
@@ -608,17 +611,52 @@ class InputModel {
   /// - Maximum: `kMaxTrackpadSpeed`
   /// - Default: `kDefaultTrackpadSpeed`
   Future<void> updateTrackpadSpeed() async {
+    final owner = parent.target;
+    if (owner == null) return;
+    final expectedSession = owner.sessionId;
+    final expectedClient = owner.clientOwnerId;
+    await refreshTrackpadSpeed(
+        readSpeed: () => bind.sessionGetTrackpadSpeed(sessionId: expectedSession),
+        isCurrent: () => owner.isCurrentSessionOwner(expectedSession, expectedClient));
+  }
+
+  Future<void> refreshTrackpadSpeed({
+    required Future<int?> Function() readSpeed,
+    required bool Function() isCurrent,
+  }) async {
+    if (!isCurrent()) return;
+    final generation = ++_trackpadReadGeneration;
+    final revision = _trackpadSpeedRevision;
     final speed =
-        (await bind.sessionGetTrackpadSpeed(sessionId: sessionId) ??
-            kDefaultTrackpadSpeed);
+        (await readSpeed() ?? kDefaultTrackpadSpeed);
+    if (!isCurrent() || generation != _trackpadReadGeneration ||
+        revision != _trackpadSpeedRevision) return;
     applyTrackpadSpeed(speed >= kMinTrackpadSpeed && speed <= kMaxTrackpadSpeed
         ? speed : kDefaultTrackpadSpeed);
   }
 
   void applyTrackpadSpeed(int speed) {
     RangeError.checkValueInInterval(speed, kMinTrackpadSpeed, kMaxTrackpadSpeed);
+    _trackpadSpeedRevision++;
     _trackpadSpeed = speed;
     _trackpadSpeedInner = _trackpadSpeed / 100.0;
+  }
+
+  Future<int?> saveTrackpadSpeed(int speed, {
+    required Future<int> Function(int) writeSpeed,
+    required bool Function() isCurrent,
+  }) async {
+    if (_savingTrackpadSpeed || !isCurrent()) return null;
+    RangeError.checkValueInInterval(speed, kMinTrackpadSpeed, kMaxTrackpadSpeed);
+    _savingTrackpadSpeed = true;
+    try {
+      final effective = await writeSpeed(speed);
+      if (!isCurrent() || effective != speed) return null;
+      applyTrackpadSpeed(effective);
+      return effective;
+    } finally {
+      _savingTrackpadSpeed = false;
+    }
   }
 
   void handleKeyDownEventModifiers(KeyEvent e) {

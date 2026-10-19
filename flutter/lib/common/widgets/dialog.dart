@@ -428,14 +428,10 @@ Future<void> trackpadSpeedDialog(SessionID sessionId, FFI ffi) async {
   final initialSpeed = ffi.inputModel.trackpadSpeed;
   await ffi.dialogManager.show<void>((_, close, __) => TrackpadSpeedDialog(
     initialSpeed: initialSpeed,
-    saveSpeed: (value) async {
-      if (!current()) return null;
-      final effective = await bind.sessionSetTrackpadSpeed(
-          sessionId: sessionId, value: value);
-      if (!current()) return null;
-      ffi.inputModel.applyTrackpadSpeed(effective);
-      return effective;
-    },
+    saveSpeed: (value) => ffi.inputModel.saveTrackpadSpeed(value,
+        writeSpeed: (value) => bind.sessionSetTrackpadSpeed(
+            sessionId: sessionId, value: value),
+        isCurrent: current),
     close: close,
     translateText: translate,
   ));

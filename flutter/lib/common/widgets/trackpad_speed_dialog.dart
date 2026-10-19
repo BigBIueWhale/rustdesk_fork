@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/consts.dart';
-import 'package:flutter_hbb/models/state_model.dart';
 
 class TrackpadSpeedDialog extends StatefulWidget {
   const TrackpadSpeedDialog({

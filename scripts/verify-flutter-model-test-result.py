@@ -191,6 +191,8 @@ TRACKPAD_DIALOG_TESTS = {
     "trackpad dialog bounds raw Close and rejects empty input",
     "trackpad dialog rebuild retains draft and uses current writer",
     "trackpad dialog fits narrow layout and stages slider input",
+    "trackpad model admits one writer across dialogs and allows retry",
+    "trackpad model retires failed writes and stale refreshes",
 }
 MODIFIER_RELEASE_TESTS = {
     "right Alt retains its own release identity",

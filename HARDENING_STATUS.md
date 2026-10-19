@@ -2948,6 +2948,54 @@ All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshnes
 cold artifacts, independent reproduction, external review, release, document-role
 cleanup and all parked work remain OPEN. The broad goal remains active.
 
+**Session scrolling — Linux persistence/editor corrected; remote scrolling/platform acceptance OPEN.**
+Product `317560c3` makes both scroll-style and edge-thickness getters/setters result-bearing.
+Native storage admits only scrollauto/scrollbar/scrolledge and thickness 20–150 pixels.
+Under the existing handler write guard, a fresh fallible peer load/store precedes
+publication of only the selected cached field. Failed persistence preserves cache/files;
+missing sessions and invalid cached values report errors. PRS, unrelated preferences
+and distinct runtime/newer-file metadata remain preserved.
+
+The state-owned scrolling menu keeps one initial read through rebuilds, retires
+old-owner results/callbacks, retries failed reads without writing defaults, and
+reloads a retired initial presentation with fresh ownership. Busy initial reads use
+one removable listener; removal cancels that subscription. Visibility follows the
+applied canvas style without synchronous native lookups during widget builds.
+Its controls remain mounted through updates and view-style visibility changes.
+The thickness editor
+owns its draft, one debounce timer and save, and a bounded latest edit;
+failed/null/mismatched results stay retryable. Both session and default callers
+await checked integer results; fixed defaults remain disabled.
+CanvasModel owns one scrolling mutation through storage and its captured view update,
+keeps accepted work across clear/removal, suppresses retired viewport effects and
+releases admission in finally. A committed preference retires older initialization
+reads; ordinary ready initializers without a commit remain useful.
+
+Native `Gw7azsiFG1` on `8387b286` passes both Rust cases and all 79 generated
+Dart/native bridge cases in 590 outer seconds, retaining the previous 68 cases.
+Six scroll-style cases and five thickness cases each observe nine RESULT_ERROR
+outcomes. They cover denied writes, unreadable sources, durable retry, invalid
+arguments/reads, missing sessions and selected-field preservation. The later Dart
+menu refinements preserve all native code, fixtures and bridge inputs; their native
+evidence remains explicitly bound to `8387b286`.
+Flutter `5wUKMD0h6U` on `317560c3` passes eight suites and 156 cases in 307 outer
+seconds, including 29 new scrolling cases. Rendered production controls and real
+CanvasModel behavior cover draft retention, bounded serialization, retry, invalid
+read/write outcomes, busy-read cancellation and exact-owner retirement.
+The historical six handler/session/export bodies are matched to 2f5c6ca6 before
+execution. Prepared sessions start no authenticated peer. These results establish
+local persistence and controlled rendered-widget/model behavior. Remaining
+synchronous preference reads in other canvas initialization paths, cross-control
+serialization, whole menu/gesture/remote-scrolling effects, malformed-file
+repair/restart, cross-window/process writers and Windows/macOS/Android/iOS/browser/
+installed acceptance remain OPEN.
+Source/artifact/fixture identities, exact case inventories, complete endpoint records,
+whole-ledger counting and joined bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/scroll-preferences-317560c3.json`.
+All fifteen credential actions, joint R-S0, actual R-F5 impairment/multi-hour freshness,
+cold artifacts, independent reproduction, external review, release, whole-document
+role cleanup and every parked item remain OPEN.
+
 **Session scaling — Linux persistence/editor corrected; native display/platform acceptance OPEN.**
 View-style saving from `1f2a38ef` admits only original/adaptive/custom and stores a
 fresh peer candidate before publishing only view style. Product `b80053aa` replaces

@@ -1,9 +1,234 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/common/widgets/dialog.dart';
+import 'package:flutter_hbb/common/widgets/overlay.dart';
+import 'package:flutter_hbb/models/model.dart';
+import 'package:flutter_hbb/models/peer_model.dart';
+import 'package:flutter_hbb/models/peer_tab_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+class _DeleteCall {
+  final result = Completer<void>();
+  bool? currentAtCompletion;
+}
+
+class _DeleteHarness {
+  final manager = OverlayDialogManager(translateText: (text) => text);
+  final calls = <_DeleteCall>[];
+  final openings = <Future<void>>[];
+  final submissions = <Future<Object?>>[];
+
+  Future<void> mount(WidgetTester tester) async {
+    final overlay = BlockableOverlayState();
+    manager.setOverlayState(overlay);
+    await tester.pumpWidget(MaterialApp(
+      home: BlockableOverlay(state: overlay, underlying: const SizedBox.expand()),
+    ));
+    await open(tester, 'Delete original');
+  }
+
+  Future<void> open(WidgetTester tester, String title) async {
+    openings.add(deleteConfirmDialog((isCurrent) async {
+      final call = _DeleteCall();
+      calls.add(call);
+      await call.result.future;
+      call.currentAtCompletion = isCurrent();
+    }, title, dialogManager: manager, translateText: (text) => text));
+    await tester.pumpAndSettle();
+  }
+
+  Future<Object?> submit(Function() callback) {
+    final observed = Future<void>.sync(() => callback()).then<Object?>(
+        (_) => null, onError: (Object error, StackTrace _) => error);
+    submissions.add(observed);
+    return observed;
+  }
+
+  Future<void> drain(WidgetTester tester) async {
+    manager.dismissAll();
+    for (final call in calls) {
+      if (!call.result.isCompleted) call.result.complete();
+    }
+    await Future.wait(submissions);
+    await Future.wait(openings);
+    await tester.pumpWidget(const SizedBox.shrink());
+  }
+}
+
+class _UnusedOwner implements FFI {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('peer selection must not call its native owner');
+}
+
+PeerTabModel _selectedModel(FFI owner) {
+  final model = PeerTabModel(WeakReference<FFI>(owner),
+      readLocalOption: (_) => '');
+  model.setMultiSelectionMode(true);
+  model.select(Peer.fromJson({'id': 'first'}));
+  return model;
+}
+
 void main() {
+  testWidgets('peer delete confirmation admits one pending submission',
+      (tester) async {
+    final harness = _DeleteHarness();
+    await harness.mount(tester);
+    try {
+      final submit = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      final first = harness.submit(submit);
+      final duplicate = harness.submit(submit);
+      await tester.pump();
+      expect(harness.calls, hasLength(1));
+      harness.calls.single.result.complete();
+      expect(await first, isNull);
+      expect(await duplicate, isNull);
+      await tester.pumpAndSettle();
+      expect(find.byType(CustomAlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await harness.drain(tester);
+    }
+  });
+
+  testWidgets('retired peer delete callback cannot submit into a replacement',
+      (tester) async {
+    final harness = _DeleteHarness();
+    await harness.mount(tester);
+    try {
+      final submit = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      await harness.open(tester, 'Delete replacement');
+      final stale = harness.submit(submit);
+      await tester.pump();
+      expect(harness.calls, isEmpty);
+      expect(await stale, isNull);
+      expect(find.text('Delete replacement'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await harness.drain(tester);
+    }
+  });
+
+  testWidgets('admitted peer deletion drains without closing a replacement',
+      (tester) async {
+    final harness = _DeleteHarness();
+    await harness.mount(tester);
+    try {
+      final submit = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      final pending = harness.submit(submit);
+      await tester.pump();
+      expect(harness.calls, hasLength(1));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      await harness.open(tester, 'Delete replacement');
+      harness.calls.single.result.complete();
+      expect(await pending, isNull);
+      await tester.pumpAndSettle();
+      expect(harness.calls.single.currentAtCompletion, isFalse);
+      expect(find.text('Delete replacement'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await harness.drain(tester);
+    }
+  });
+
+  testWidgets('peer delete submission failure stays visible and retries',
+      (tester) async {
+    final harness = _DeleteHarness();
+    await harness.mount(tester);
+    try {
+      final submit = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      final first = harness.submit(submit);
+      await tester.pump();
+      harness.calls.single.result.completeError(StateError('delete refused'));
+      expect(await first, isA<StateError>());
+      await tester.pumpAndSettle();
+      expect(find.text('Delete original'), findsOneWidget);
+      final retry = harness.submit(submit);
+      await tester.pump();
+      expect(harness.calls, hasLength(2));
+      harness.calls.last.result.complete();
+      expect(await retry, isNull);
+      await tester.pumpAndSettle();
+      expect(find.byType(CustomAlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await harness.drain(tester);
+    }
+  });
+
+  test('peer deletion captures immutable IDs without exposing mutable selection',
+      () {
+    final owner = _UnusedOwner();
+    final model = _selectedModel(owner);
+    try {
+      final selection = model.captureSelection();
+      model.select(Peer.fromJson({'id': 'second'}));
+      expect(selection.ids, ['first']);
+      expect(() => selection.ids.add('foreign'), throwsUnsupportedError);
+      expect(() => model.selectedPeers.clear(), throwsUnsupportedError);
+      expect(model.selectedPeers.map((peer) => peer.id), ['first', 'second']);
+      expect(selection.isCurrent, isFalse);
+    } finally {
+      model.dispose();
+    }
+  });
+
+  test('peer deletion cannot clear a replaced selection or tab round trip', () {
+    final owner = _UnusedOwner();
+    final model = _selectedModel(owner);
+    try {
+      final original = model.captureSelection();
+      model.setMultiSelectionMode(false);
+      model.setMultiSelectionMode(true);
+      model.select(Peer.fromJson({'id': 'first'}));
+      expect(original.retire(), isFalse);
+      expect(model.selectedPeers.single.id, 'first');
+      final next = model.captureSelection();
+      model.setCurrentTab(1);
+      model.setCurrentTab(0);
+      expect(next.retire(), isFalse);
+      expect(model.selectedPeers.single.id, 'first');
+      expect(model.multiSelectionMode, isTrue);
+    } finally {
+      model.dispose();
+    }
+  });
+
+  test('peer deletion retires its unchanged selection exactly once', () {
+    final owner = _UnusedOwner();
+    final model = _selectedModel(owner);
+    try {
+      final selection = model.captureSelection();
+      expect(selection.ids, ['first']);
+      expect(selection.tab, 0);
+      expect(selection.isCurrent, isTrue);
+      expect(selection.retire(), isTrue);
+      expect(model.selectedPeers, isEmpty);
+      expect(model.multiSelectionMode, isFalse);
+      expect(selection.retire(), isFalse);
+    } finally {
+      model.dispose();
+    }
+  });
+
+  test('peer deletion cannot notify a disposed selection owner', () {
+    final owner = _UnusedOwner();
+    final model = _selectedModel(owner);
+    final selection = model.captureSelection();
+    model.dispose();
+    expect(selection.isCurrent, isFalse);
+    expect(selection.retire(), isFalse);
+  });
+
   test('peer deletion owns its IDs and waits for each deletion and refresh',
       () async {
     final first = Completer<void>();

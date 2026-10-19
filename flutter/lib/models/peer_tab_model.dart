@@ -22,6 +22,26 @@ enum PeerTabIndex {
   fav,
 }
 
+class PeerSelection {
+  PeerSelection._(this._model, this._generation)
+      : tab = _model.currentTab,
+        ids = List.unmodifiable(_model._selectedPeers.map((peer) => peer.id));
+
+  final PeerTabModel _model;
+  final Object _generation;
+  final int tab;
+  final List<String> ids;
+
+  bool get isCurrent => !_model._disposed &&
+      identical(_generation, _model._selectionGeneration) &&
+      tab == _model.currentTab;
+
+  bool retire() {
+    _model.setMultiSelectionMode(false);
+    return true;
+  }
+}
+
 class PeerTabModel with ChangeNotifier {
   WeakReference<FFI> parent;
   int get currentTab => _currentTab;
@@ -53,6 +73,8 @@ class PeerTabModel with ChangeNotifier {
       orders.where((e) => isVisibleEnabled[e]).toList();
   List<Peer> _selectedPeers = List.empty(growable: true);
   List<Peer> get selectedPeers => _selectedPeers;
+  Object _selectionGeneration = Object();
+  bool _disposed = false;
   bool _multiSelectionMode = false;
   bool get multiSelectionMode => _multiSelectionMode;
   List<Peer> _currentTabCachedPeers = List.empty(growable: true);
@@ -62,10 +84,12 @@ class PeerTabModel with ChangeNotifier {
   String _lastId = '';
   String get lastId => _lastId;
 
-  PeerTabModel(this.parent) {
+  PeerTabModel(this.parent, {String Function(String key)? readLocalOption}) {
+    final readOption = readLocalOption ??
+        (String key) => bind.getLocalFlutterOption(k: key);
     // visible
     try {
-      final option = bind.getLocalFlutterOption(k: kOptionPeerTabVisible);
+      final option = readOption(kOptionPeerTabVisible);
       if (option.isNotEmpty) {
         List<dynamic> decodeList = jsonDecode(option);
         if (decodeList.length == _isVisible.length) {
@@ -81,7 +105,7 @@ class PeerTabModel with ChangeNotifier {
     }
     // order
     try {
-      final option = bind.getLocalFlutterOption(k: kOptionPeerTabOrder);
+      final option = readOption(kOptionPeerTabOrder);
       if (option.isNotEmpty) {
         List<dynamic> decodeList = jsonDecode(option);
         if (decodeList.length == maxTabCount) {
@@ -105,7 +129,7 @@ class PeerTabModel with ChangeNotifier {
     }
     // init currentTab
     _currentTab =
-        int.tryParse(bind.getLocalFlutterOption(k: kOptionPeerTabIndex)) ?? 0;
+        int.tryParse(readOption(kOptionPeerTabIndex)) ?? 0;
     if (_currentTab < 0 || _currentTab >= maxTabCount) {
       _currentTab = 0;
     }
@@ -114,6 +138,7 @@ class PeerTabModel with ChangeNotifier {
 
   setCurrentTab(int index) {
     if (_currentTab != index) {
+      _selectionGeneration = Object();
       _currentTab = index;
       notifyListeners();
     }
@@ -134,6 +159,7 @@ class PeerTabModel with ChangeNotifier {
   }
 
   setMultiSelectionMode(bool mode) {
+    _selectionGeneration = Object();
     _multiSelectionMode = mode;
     if (!mode) {
       _selectedPeers.clear();
@@ -150,6 +176,7 @@ class PeerTabModel with ChangeNotifier {
       if (isDesktop || isWebDesktop) return;
       _multiSelectionMode = true;
     }
+    _selectionGeneration = Object();
     final cached = _currentTabCachedPeers.map((e) => e.id).toList();
     int thisIndex = cached.indexOf(peer.id);
     int lastIndex = cached.indexOf(_lastId);
@@ -194,6 +221,7 @@ class PeerTabModel with ChangeNotifier {
   }
 
   selectAll() {
+    _selectionGeneration = Object();
     _selectedPeers = _currentTabCachedPeers.toList();
     notifyListeners();
   }
@@ -218,6 +246,7 @@ class PeerTabModel with ChangeNotifier {
         if (index == _currentTab && !visible) {
           _trySetCurrentTabToFirstVisibleEnabled();
         } else if (visible && visibleEnabledOrderedIndexs.length == 1) {
+          _selectionGeneration = Object();
           _currentTab = index;
         }
         notifyListeners();
@@ -229,6 +258,7 @@ class PeerTabModel with ChangeNotifier {
   _trySetCurrentTabToFirstVisibleEnabled() {
     if (!visibleEnabledOrderedIndexs.contains(_currentTab)) {
       if (visibleEnabledOrderedIndexs.isNotEmpty) {
+        _selectionGeneration = Object();
         _currentTab = visibleEnabledOrderedIndexs.first;
       }
     }
@@ -258,5 +288,15 @@ class PeerTabModel with ChangeNotifier {
       saveLocalFlutterOption(kOptionPeerTabOrder, jsonEncode(orders));
       notifyListeners();
     }
+  }
+
+  PeerSelection captureSelection() =>
+      PeerSelection._(this, _selectionGeneration);
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _selectionGeneration = Object();
+    super.dispose();
   }
 }

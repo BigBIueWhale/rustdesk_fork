@@ -437,11 +437,14 @@ Future<void> trackpadSpeedDialog(SessionID sessionId, FFI ffi) async {
   ));
 }
 
-void deleteConfirmDialog(Function onSubmit, String title) async {
-  gFFI.dialogManager.show(
+Future<void> deleteConfirmDialog(
+    Future<void> Function(bool Function() isCurrent) onSubmit, String title,
+    {OverlayDialogManager? dialogManager,
+    String Function(String)? translateText}) async {
+  await (dialogManager ?? gFFI.dialogManager).show<void>(
     (setState, close, context) {
       submit() async {
-        await onSubmit();
+        await onSubmit(() => close.isCurrent);
         close();
       }
 
@@ -467,11 +470,13 @@ void deleteConfirmDialog(Function onSubmit, String title) async {
             icon: Icon(Icons.close_rounded),
             onPressed: close,
             isOutline: true,
+            translateText: translateText,
           ),
           dialogButton(
             "OK",
             icon: Icon(Icons.done_rounded),
             onPressed: submit,
+            translateText: translateText,
           ),
         ],
         onSubmit: submit,

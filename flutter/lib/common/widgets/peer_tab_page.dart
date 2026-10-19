@@ -343,18 +343,17 @@ class _PeerTabPageState extends State<PeerTabPage>
         context: context,
         toolTip: translate('Delete'),
         onTap: () {
-          onSubmit() async {
-            final peers = model.selectedPeers;
+          onSubmit(bool Function() isCurrent) async {
+            final selection = model.captureSelection();
             var successful = true;
             // Only the local Recent (0) and Favorites (1) tabs remain (R-G2/R-G4).
-            switch (model.currentTab) {
+            switch (selection.tab) {
               case 0:
                 successful =
-                    await mainRemovePeers(peers.map((p) => p.id).toList());
+                    await mainRemovePeers(selection.ids);
                 break;
               case 1:
-                if (!await mainSetFavorites(
-                    peers.map((p) => p.id).toList(), false)) return;
+                if (!await mainSetFavorites(selection.ids, false)) return;
                 if (!mounted) return;
                 bind.mainLoadFavPeers();
                 break;
@@ -362,7 +361,7 @@ class _PeerTabPageState extends State<PeerTabPage>
                 break;
             }
             if (!mounted) return;
-            model.setMultiSelectionMode(false);
+            selection.retire();
             if (successful) showToast(translate('Successful'));
           }
 

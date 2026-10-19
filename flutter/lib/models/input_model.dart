@@ -1506,11 +1506,7 @@ class InputModel {
       _lastScale = e.scale;
 
       if (scale != 0) {
-        bind.sessionSendPointer(
-            sessionId: sessionId,
-            msg: json.encode(
-                PointerEventToRust(kPointerEventKindTouch, 'scale', scale)
-                    .toJson()));
+        sendTrackpadScale(scale);
         return;
       }
     }
@@ -1545,9 +1541,7 @@ class InputModel {
             Offset(x.toDouble(), y.toDouble()));
       } else {
         if (isViewCamera) return;
-        bind.sessionSendMouse(
-            sessionId: sessionId,
-            msg: '{"type": "trackpad", "x": "$x", "y": "$y"}');
+        sendTrackpadScroll(x, y);
       }
     }
   }
@@ -1569,6 +1563,16 @@ class InputModel {
     }
     return delta;
   }
+
+  Future<void> sendTrackpadScale(int scale) => bind.sessionSendPointer(
+      sessionId: sessionId,
+      msg: json.encode(
+          PointerEventToRust(kPointerEventKindTouch, 'scale', scale).toJson()));
+
+  Future<void> sendTrackpadScroll(int x, int y,
+      {SessionID? expectedSessionId}) => bind.sessionSendMouse(
+      sessionId: expectedSessionId ?? sessionId,
+      msg: '{"type": "trackpad", "x": "$x", "y": "$y"}');
 
   void _scheduleFling(double x, double y, int delay) {
     if (isViewCamera) return;
@@ -1602,9 +1606,7 @@ class InputModel {
         return;
       }
 
-      bind.sessionSendMouse(
-          sessionId: sessionId,
-          msg: '{"type": "trackpad", "x": "$dx", "y": "$dy"}');
+      sendTrackpadScroll(dx, dy);
       _scheduleFling(x, y, delay);
     });
   }
@@ -1629,10 +1631,7 @@ class InputModel {
       return;
     }
 
-    bind.sessionSendPointer(
-        sessionId: sessionId,
-        msg: json.encode(
-            PointerEventToRust(kPointerEventKindTouch, 'scale', 0).toJson()));
+    sendTrackpadScale(0);
 
     waitLastFlingDone();
     _stopFling = false;

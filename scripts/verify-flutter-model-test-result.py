@@ -453,6 +453,25 @@ PHYSICAL_MOUSE_TESTS = {
     "physical mouse widget mouse up survives a touch pointer",
 }
 
+TRACKPAD_FLING_TESTS = {
+    "trackpad fling retains Linux scaling decay and finite completion",
+    "trackpad fling new pan cancels the pending timer immediately",
+    "trackpad fling pointer down cancels the pending timer immediately",
+    "trackpad fling hover cancels the pending timer immediately",
+    "trackpad fling window blur cancels the pending timer immediately",
+    "trackpad fling disposal retires pending coast work",
+    "trackpad fling disposed model refuses later pan callbacks",
+    "trackpad fling reset retires old work and permits a fresh coast",
+    "trackpad fling changed session retires the captured coast",
+    "trackpad fling changed client retires the captured coast",
+    "trackpad fling models retain independent timer ownership",
+    "trackpad fling waits for its admitted send before another timer",
+    "trackpad fling late send completion cannot restart disposed work",
+    "trackpad fling reentrant stop cannot create another timer",
+    "trackpad fling reentrant replacement retains one timer",
+    "trackpad fling dispatch failure retires its own timer",
+}
+
 MODIFIER_RELEASE_TESTS = {
     "right Alt retains its own release identity",
     "modern modifier release preserves the other held side",
@@ -744,6 +763,7 @@ def parse_result(path, profile="models"):
         expected_by_suite = {
             "input_modifier_release_test.dart": MODIFIER_RELEASE_TESTS,
             "input_mouse_buttons_test.dart": PHYSICAL_MOUSE_TESTS,
+            "trackpad_fling_test.dart": TRACKPAD_FLING_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

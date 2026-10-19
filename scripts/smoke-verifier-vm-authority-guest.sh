@@ -8862,7 +8862,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_MODIFIER_RELEASE_TEST_JSON
-            expected_result='suites=2 tests=50'
+            expected_result='suites=3 tests=66'
         elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
             memory=3g
             memory_bytes=3221225472
@@ -9389,7 +9389,7 @@ run_flutter_model_tests() {
                     test_budget=120s
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = modifier-release ]; then
-                    tests=(test/input_modifier_release_test.dart test/input_mouse_buttons_test.dart)
+                    tests=(test/input_modifier_release_test.dart test/input_mouse_buttons_test.dart test/trackpad_fling_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
                     tests=(test/auto_disconnect_timeout_dialog_test.dart test/auto_disconnect_timeout_field_test.dart test/setting_option_mutation_test.dart test/keyboard_layout_type_chooser_test.dart test/trackpad_speed_dialog_test.dart test/input_keyboard_mode_test.dart test/custom_scale_controls_test.dart test/scroll_preferences_test.dart test/owned_image_paint_test.dart test/reverse_mouse_wheel_test.dart test/two_finger_tap_test.dart test/custom_touch_gestures_test.dart test/hold_tap_move_test.dart)
@@ -9524,6 +9524,7 @@ run_flutter_model_tests() {
                             --exclude=generated_bridge.freezed.dart /source/flutter/lib lib
                         cmp /source/flutter/test/input_modifier_release_test.dart test/input_modifier_release_test.dart
                         cmp /source/flutter/test/input_mouse_buttons_test.dart test/input_mouse_buttons_test.dart
+                        cmp /source/flutter/test/trackpad_fling_test.dart test/trackpad_fling_test.dart
                     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
                         diff -r --exclude=generated_bridge.dart \
                             --exclude=generated_bridge.freezed.dart /source/flutter/lib lib
@@ -9743,7 +9744,7 @@ run_flutter_model_tests() {
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = modifier-release ]; then
-        printf 'FLUTTER_MODIFIER_RELEASE_TESTS_VM=pass commit=%s tree=%s suites=2 tests=50 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-modifier-release-tests cleanup=joined\n' \
+        printf 'FLUTTER_MODIFIER_RELEASE_TESTS_VM=pass commit=%s tree=%s suites=3 tests=66 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-modifier-release-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

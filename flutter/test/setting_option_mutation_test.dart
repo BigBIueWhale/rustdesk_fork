@@ -72,15 +72,14 @@ Future<void> _qualityEditor(WidgetTester tester, {
   bool showFps = true,
   bool mobile = false,
   Key editorKey = const ValueKey('quality'),
+  VoidCallback? onClose,
 }) => tester.pumpWidget(MaterialApp(
-  home: Scaffold(body: SizedBox(width: 360, child: KeyedSubtree(
+  home: Scaffold(body: SizedBox(width: 360, child: CustomImageQualityWidget(
     key: editorKey,
-    child: customImageQualityWidget(
-      initQuality: quality, initFps: fps,
-      setQuality: saveQuality, setFps: saveFps,
-      showFps: showFps, showMoreQuality: true,
-      translateText: (text) => text, mobileLayout: mobile,
-    ),
+    initQuality: quality, initFps: fps,
+    saveQuality: saveQuality, saveFps: saveFps,
+    showFps: showFps, showMoreQuality: true,
+    translateText: (text) => text, mobileLayout: mobile, onClose: onClose,
   ))),
 ));
 
@@ -93,6 +92,127 @@ Future<void> _slideQuality(WidgetTester tester, int index, double value) async {
 }
 
 void main() {
+  testWidgets('quality editor Close waits for an admitted hidden FPS save', (tester) async {
+    final pending = Completer<double?>();
+    var closes = 0;
+    Future<double?> saveFps(double value) => pending.future;
+    await _qualityEditor(tester,
+      saveQuality: (v) async => v, saveFps: saveFps, onClose: () { closes++; });
+    await _slideQuality(tester, 1, 40);
+    await tester.pump(const Duration(seconds: 1));
+    await _qualityEditor(tester, showFps: false,
+      saveQuality: (v) async => v, saveFps: saveFps, onClose: () { closes++; });
+    await tester.tap(find.text('Close'));
+    await tester.pump();
+    expect(closes, 0);
+    pending.complete(40);
+    await tester.pump();
+    expect(closes, 1);
+  });
+
+  testWidgets('quality dialog editing initializes its counterpart without losing a draft', (tester) async {
+    for (final editFps in [false, true]) {
+      final quality = <double>[];
+      final fps = <double>[];
+      await _qualityEditor(tester,
+        editorKey: ValueKey(editFps),
+        saveQuality: (v) async { quality.add(v); return v; },
+        saveFps: (v) async { fps.add(v); return v; }, onClose: () {});
+      await _slideQuality(tester, 0, 80);
+      if (editFps) await _slideQuality(tester, 1, 40);
+      await tester.pump(const Duration(seconds: 1));
+      expect(quality, [80]);
+      expect(fps, [editFps ? 40 : 30]);
+      await _slideQuality(tester, 0, 90);
+      await tester.pump(const Duration(seconds: 1));
+      expect(quality, [80, 90]);
+      expect(fps, [editFps ? 40 : 30]);
+    }
+  });
+
+  testWidgets('quality editor Close flushes latest edits and waits for both fields', (tester) async {
+    final pending = Completer<double?>();
+    final quality = <double>[];
+    final fps = <double>[];
+    var closes = 0;
+    await _qualityEditor(tester,
+      saveQuality: (v) { quality.add(v); return quality.length == 1 ? pending.future : Future.value(v); },
+      saveFps: (v) async { fps.add(v); return v; },
+      onClose: () { closes++; });
+    await _slideQuality(tester, 0, 80);
+    await tester.pump(const Duration(seconds: 1));
+    await _slideQuality(tester, 0, 90);
+    final close = tester.widget<TextButton>(find.widgetWithText(TextButton, 'Close')).onPressed!;
+    close(); close();
+    await tester.pump();
+    expect(quality, [80]);
+    expect(fps, [30]);
+    expect(closes, 0);
+    expect(_qualitySlider(tester, 0).onChanged, isNull);
+    pending.complete(80);
+    await tester.pump();
+    expect(quality, [80, 90]);
+    expect(closes, 1);
+  });
+
+  testWidgets('quality editor Close failure stays open for explicit retry', (tester) async {
+    var writes = 0;
+    var closes = 0;
+    await _qualityEditor(tester,
+      saveQuality: (v) async => ++writes == 1 ? null : v,
+      saveFps: (v) async => v, onClose: () { closes++; });
+    await tester.tap(find.text('Close'));
+    await tester.pump();
+    expect(closes, 0);
+    expect(find.text('Failed'), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(find.text('Failed'), findsNothing);
+    await tester.tap(find.text('Close'));
+    await tester.pump();
+    expect(writes, 2);
+    expect(closes, 1);
+  });
+
+  testWidgets('quality editor retired Close cannot close a replacement', (tester) async {
+    final quality = Completer<double?>();
+    final fps = Completer<double?>();
+    var closes = 0;
+    await _qualityEditor(tester,
+      saveQuality: (_) => quality.future, saveFps: (_) => fps.future,
+      onClose: () { closes++; });
+    await tester.tap(find.text('Close'));
+    await tester.pump();
+    await _qualityEditor(tester, quality: 60, fps: 40,
+      editorKey: const ValueKey('replacement'), saveQuality: (v) async => v);
+    quality.completeError(StateError('retired quality close'));
+    fps.completeError(StateError('retired FPS close'));
+    await tester.pump();
+    expect(closes, 0);
+    expect(_qualitySlider(tester, 0).value, 60);
+    expect(tester.takeException(), isNull);
+    expect(find.text('Failed'), findsNothing);
+  });
+
+  testWidgets('quality editor refuses nonfinite and out of range effective values', (tester) async {
+    var qualityWrites = 0;
+    var fpsWrites = 0;
+    await _qualityEditor(tester,
+      saveQuality: (v) async => ++qualityWrites == 1 ? double.nan : v,
+      saveFps: (v) async => ++fpsWrites == 1 ? 1000.0 : v);
+    await _slideQuality(tester, 0, 80);
+    await _slideQuality(tester, 1, 40);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Failed'), findsNWidgets(2));
+    await tester.tap(find.text('Retry').first);
+    await tester.pump();
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(find.text('Failed'), findsNothing);
+    expect(qualityWrites, 2);
+    expect(fpsWrites, 2);
+  });
+
   testWidgets('quality editor retains drafts and current writers across rebuild', (tester) async {
     final oldCalls = <double>[];
     final newCalls = <double>[];

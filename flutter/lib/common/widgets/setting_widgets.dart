@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:debounce_throttle/debounce_throttle.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
@@ -8,180 +7,338 @@ import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get.dart';
 
-customImageQualityWidget(
-    {required double initQuality,
-    required double initFps,
-    required Function(double)? setQuality,
-    required Function(double)? setFps,
-    required bool showFps,
-    required bool showMoreQuality,
-    String Function(String)? translateText,
-    bool? mobileLayout}) {
-  final text = translateText ?? translate;
-  final mobile = mobileLayout ?? isMobile;
-  if (initQuality < kMinQuality ||
-      initQuality > (showMoreQuality ? kMaxMoreQuality : kMaxQuality)) {
-    initQuality = kDefaultQuality;
-  }
-  if (initFps < kMinFps || initFps > kMaxFps) {
-    initFps = kDefaultFps;
-  }
-  final qualityValue = initQuality.obs;
-  final fpsValue = initFps.obs;
+class CustomImageQualityWidget extends StatefulWidget {
+  const CustomImageQualityWidget({
+    super.key,
+    required this.initQuality,
+    required this.initFps,
+    required this.saveQuality,
+    required this.saveFps,
+    required this.showFps,
+    required this.showMoreQuality,
+    this.translateText,
+    this.mobileLayout,
+    this.onClose,
+  });
 
-  final RxBool moreQualityChecked = RxBool(qualityValue.value > kMaxQuality);
-  final debouncerQuality = Debouncer<double>(
-    Duration(milliseconds: 1000),
-    onChanged: setQuality,
-    initialValue: qualityValue.value,
-  );
-  final debouncerFps = Debouncer<double>(
-    Duration(milliseconds: 1000),
-    onChanged: setFps,
-    initialValue: fpsValue.value,
-  );
+  final double initQuality;
+  final double initFps;
+  final Future<double?> Function(double)? saveQuality;
+  final Future<double?> Function(double)? saveFps;
+  final bool showFps;
+  final bool showMoreQuality;
+  final String Function(String)? translateText;
+  final bool? mobileLayout;
+  final VoidCallback? onClose;
 
-  onMoreChanged(bool? value) {
-    if (value == null) return;
-    moreQualityChecked.value = value;
-    if (!value && qualityValue.value > 100) {
-      qualityValue.value = 100;
-    }
-    debouncerQuality.value = qualityValue.value;
-  }
-
-  return Column(
-    children: [
-      Obx(() => Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: Slider(
-                  value: qualityValue.value,
-                  min: kMinQuality,
-                  max: moreQualityChecked.value ? kMaxMoreQuality : kMaxQuality,
-                  divisions: moreQualityChecked.value
-                      ? ((kMaxMoreQuality - kMinQuality) / 10).round()
-                      : ((kMaxQuality - kMinQuality) / 5).round(),
-                  onChanged: setQuality == null
-                      ? null
-                      : (double value) async {
-                          qualityValue.value = value;
-                          debouncerQuality.value = value;
-                        },
-                ),
-              ),
-              Expanded(
-                  flex: 1,
-                  child: Text(
-                    '${qualityValue.value.round()}%',
-                    style: const TextStyle(fontSize: 15),
-                  )),
-              Expanded(
-                  flex: mobile ? 2 : 1,
-                  child: Text(
-                    text('Bitrate'),
-                    style: const TextStyle(fontSize: 15),
-                  )),
-              // mobile doesn't have enough space
-              if (showMoreQuality && !mobile)
-                Expanded(
-                    flex: 1,
-                    child: Row(
-                      children: [
-                        Checkbox(
-                          value: moreQualityChecked.value,
-                          onChanged: onMoreChanged,
-                        ),
-                        Expanded(
-                          child: Text(text('More')),
-                        )
-                      ],
-                    ))
-            ],
-          )),
-      if (showMoreQuality && mobile)
-        Obx(() => Row(
-              children: [
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Checkbox(
-                      value: moreQualityChecked.value,
-                      onChanged: onMoreChanged,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(text('More')),
-                )
-              ],
-            )),
-      if (showFps)
-        Obx(() => Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Slider(
-                    value: fpsValue.value,
-                    min: kMinFps,
-                    max: kMaxFps,
-                    divisions: ((kMaxFps - kMinFps) / 5).round(),
-                    onChanged: setFps == null
-                        ? null
-                        : (double value) async {
-                            fpsValue.value = value;
-                            debouncerFps.value = value;
-                          },
-                  ),
-                ),
-                Expanded(
-                    flex: 1,
-                    child: Text(
-                      '${fpsValue.value.round()}',
-                      style: const TextStyle(fontSize: 15),
-                    )),
-                Expanded(
-                    flex: 2,
-                    child: Text(
-                      text('FPS'),
-                      style: const TextStyle(fontSize: 15),
-                    ))
-              ],
-            )),
-    ],
-  );
+  @override
+  State<CustomImageQualityWidget> createState() => _CustomImageQualityWidgetState();
 }
 
-customImageQualitySetting(
+class _QualityField {
+  _QualityField(this.minimum, this.maximum, this.fallback, double input,
+      this.writer, this.enabled, this.changed) {
+    value = confirmed = _input = _normalize(input);
+  }
+
+  final double minimum;
+  double maximum;
+  final double fallback;
+  Future<double?> Function(double)? writer;
+  bool enabled;
+  final VoidCallback changed;
+  late double value;
+  late double confirmed;
+  late double _input;
+  Timer? _timer;
+  Future<bool>? _pending;
+  bool _alive = true;
+  bool _dirty = false;
+  bool _ready = false;
+  bool _committed = false;
+  bool _flushing = false;
+  bool failed = false;
+  int _epoch = 0;
+
+  bool get active => _alive && enabled && writer != null;
+  bool get saving => _pending != null;
+  double _normalize(double input) =>
+      input.isFinite && input >= minimum && input <= maximum ? input : fallback;
+
+  void configure(double input, Future<double?> Function(double)? write,
+      bool canEdit, double maxValue) {
+    final replaced = enabled != canEdit || (writer == null) != (write == null) ||
+        maximum != maxValue;
+    writer = write;
+    enabled = canEdit;
+    maximum = maxValue;
+    final next = _normalize(input);
+    if (replaced) {
+      _epoch++;
+      _timer?.cancel();
+      _timer = null;
+      _dirty = _ready = failed = _committed = false;
+      value = confirmed = _input = next;
+    } else if (next != _input) {
+      _input = confirmed = next;
+      if (!_dirty && !saving) value = next;
+    }
+  }
+
+  void edit(double next) {
+    if (!active || !next.isFinite) return;
+    _timer?.cancel();
+    _timer = null;
+    value = next.clamp(minimum, maximum).toDouble();
+    failed = _ready = false;
+    _dirty = saving || value != confirmed;
+    changed();
+    if (_dirty) _schedule();
+  }
+
+  void initialize() {
+    if (!active || _committed || saving || _dirty) return;
+    _dirty = true;
+    changed();
+    _schedule();
+  }
+
+  void _schedule() {
+    _timer?.cancel();
+    _timer = Timer(const Duration(seconds: 1), () {
+      _timer = null;
+      _ready = true;
+      unawaited(save());
+    });
+  }
+
+  void retry() {
+    if (!active || saving || !failed) return;
+    _timer?.cancel();
+    _timer = null;
+    _dirty = _ready = true;
+    unawaited(save());
+  }
+
+  Future<bool> save() {
+    final write = writer;
+    if (!active || write == null || saving || !_ready || !_dirty) {
+      return Future.value(false);
+    }
+    final done = Completer<bool>();
+    final requested = value;
+    final epoch = _epoch;
+    _pending = done.future;
+    _ready = failed = false;
+    changed();
+    unawaited(_complete(write, requested, epoch, done));
+    return done.future;
+  }
+
+  Future<void> _complete(Future<double?> Function(double) write,
+      double requested, int epoch, Completer<bool> done) async {
+    double? effective;
+    try {
+      effective = await write(requested);
+    } catch (error) {
+      debugPrint('Failed to save image quality setting: $error');
+    }
+    _pending = null;
+    var success = false;
+    if (_alive && epoch == _epoch) {
+      if (effective != null && effective.isFinite &&
+          effective >= minimum && effective <= maximum) {
+        confirmed = effective;
+        _committed = true;
+        if (value == requested) value = effective;
+        _dirty = value != confirmed;
+        success = true;
+      } else {
+        failed = value == requested;
+        _dirty = failed || value != confirmed;
+      }
+    }
+    if (_alive) changed();
+    done.complete(success);
+    if (_alive && !_flushing && _ready && _dirty) unawaited(save());
+  }
+
+  Future<bool> flush() async {
+    _timer?.cancel();
+    _timer = null;
+    _ready = false;
+    _flushing = true;
+    try {
+      while (_pending != null) {
+        await _pending;
+        if (!_alive) return false;
+        if (active && failed) return false;
+      }
+      if (!_alive) return false;
+      if (!active) return true;
+      if (_dirty || !_committed) {
+        _dirty = _ready = true;
+        return await save();
+      }
+      return !failed;
+    } finally {
+      _flushing = false;
+    }
+  }
+
+  void dispose() {
+    _alive = false;
+    _timer?.cancel();
+    _timer = null;
+  }
+}
+
+class _CustomImageQualityWidgetState extends State<CustomImageQualityWidget> {
+  late final _QualityField _quality;
+  late final _QualityField _fps;
+  bool _moreSelected = false;
+  bool _closing = false;
+  bool _closeFailed = false;
+  double get _qualityMaximum =>
+      widget.showMoreQuality ? kMaxMoreQuality : kMaxQuality;
+  bool get _more => widget.showMoreQuality &&
+      (_moreSelected || _quality.value > kMaxQuality);
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _quality = _QualityField(kMinQuality, _qualityMaximum, kDefaultQuality,
+        widget.initQuality, widget.saveQuality, true, _refresh);
+    _fps = _QualityField(kMinFps, kMaxFps, kDefaultFps, widget.initFps,
+        widget.saveFps, widget.showFps, _refresh);
+    _moreSelected = _quality.value > kMaxQuality;
+  }
+
+  @override
+  void didUpdateWidget(covariant CustomImageQualityWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _quality.configure(widget.initQuality, widget.saveQuality, true, _qualityMaximum);
+    _fps.configure(widget.initFps, widget.saveFps, widget.showFps, kMaxFps);
+    if (!widget.showMoreQuality) _moreSelected = false;
+  }
+
+  @override
+  void dispose() {
+    _quality.dispose();
+    _fps.dispose();
+    super.dispose();
+  }
+
+  void _edit(_QualityField field, double value) {
+    if (!mounted || _closing || !field.active) return;
+    field.edit(value);
+    if (widget.onClose != null) {
+      _quality.initialize();
+      _fps.initialize();
+    }
+  }
+
+  void _changeMore(bool? value) {
+    if (!mounted || _closing || !_quality.active || value == null) return;
+    setState(() { _moreSelected = value; });
+    if (!value && _quality.value > kMaxQuality) _edit(_quality, kMaxQuality);
+  }
+
+  Future<void> _close() async {
+    final close = widget.onClose;
+    if (!mounted || _closing || close == null) return;
+    setState(() { _closing = true; _closeFailed = false; });
+    try {
+      final results = await Future.wait([_quality.flush(), _fps.flush()]);
+      if (mounted && results.every((value) => value)) close();
+    } catch (error) {
+      debugPrint('Failed to close image quality editor: $error');
+      if (mounted) setState(() { _closeFailed = true; });
+    } finally {
+      if (mounted) setState(() { _closing = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = widget.translateText ?? translate;
+    final mobile = widget.mobileLayout ?? isMobile;
+    final moreControl = Row(children: [
+      Checkbox(value: _more,
+        onChanged: _quality.active && !_closing ? _changeMore : null),
+      Expanded(child: Text(text('More'))),
+    ]);
+    Widget status(_QualityField field) => Column(mainAxisSize: MainAxisSize.min,
+      children: [
+        if (field.saving) const LinearProgressIndicator(),
+        if (field.failed) ...[
+          Text(text('Failed')),
+          TextButton(onPressed: field.active && !_closing && !field.saving
+            ? () { if (mounted && !_closing) field.retry(); } : null,
+            child: Text(text('Retry'))),
+        ],
+      ]);
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Row(children: [
+        Expanded(flex: 3, child: Slider(
+          value: _quality.value, min: kMinQuality,
+          max: _more ? kMaxMoreQuality : kMaxQuality,
+          divisions: _more ? ((kMaxMoreQuality - kMinQuality) / 10).round()
+              : ((kMaxQuality - kMinQuality) / 5).round(),
+          onChanged: _quality.active && !_closing
+              ? (v) => _edit(_quality, v) : null)),
+        Expanded(child: Text(_quality.value.round().toString() + '%',
+          style: const TextStyle(fontSize: 15))),
+        Expanded(flex: mobile ? 2 : 1, child: Text(text('Bitrate'),
+          style: const TextStyle(fontSize: 15))),
+        if (widget.showMoreQuality && !mobile) Expanded(child: moreControl),
+      ]),
+      if (widget.showMoreQuality && mobile)
+        Row(children: [const Spacer(), Expanded(child: moreControl)]),
+      status(_quality),
+      if (widget.showFps) ...[
+        Row(children: [
+          Expanded(flex: 3, child: Slider(
+            value: _fps.value, min: kMinFps, max: kMaxFps,
+            divisions: ((kMaxFps - kMinFps) / 5).round(),
+            onChanged: _fps.active && !_closing
+                ? (v) => _edit(_fps, v) : null)),
+          Expanded(child: Text(_fps.value.round().toString(),
+            style: const TextStyle(fontSize: 15))),
+          Expanded(flex: 2, child: Text(text('FPS'),
+            style: const TextStyle(fontSize: 15))),
+        ]),
+        status(_fps),
+      ],
+      if (_closeFailed) Text(text('Failed')),
+      if (widget.onClose != null)
+        Align(alignment: Alignment.centerRight, child: TextButton(
+          onPressed: _closing ? null : _close, child: Text(text('Close')))),
+    ]);
+  }
+}
+
+Widget customImageQualitySetting(
     {required Future<String?> Function(String key, String value) saveOption}) {
-  final qualityKey = 'custom_image_quality';
-  final fpsKey = 'custom-fps';
-
-  final initQuality =
-      (double.tryParse(bind.mainGetUserDefaultOption(key: qualityKey)) ??
-          kDefaultQuality);
-  final isQuanlityFixed = isOptionFixed(qualityKey);
-  final initFps =
-      (double.tryParse(bind.mainGetUserDefaultOption(key: fpsKey)) ??
-          kDefaultFps);
-  final isFpsFixed = isOptionFixed(fpsKey);
-
-  return customImageQualityWidget(
-      initQuality: initQuality,
-      initFps: initFps,
-      setQuality: isQuanlityFixed
-          ? null
-          : (v) {
-              return saveOption(qualityKey, v.toString());
-            },
-      setFps: isFpsFixed
-          ? null
-          : (v) {
-              return saveOption(fpsKey, v.toString());
-            },
-      showFps: true,
-      showMoreQuality: true);
+  const qualityKey = 'custom_image_quality';
+  const fpsKey = 'custom-fps';
+  Future<double?> save(String key, double value) async {
+    final effective = await saveOption(key, value.toString());
+    return effective == null ? null : double.tryParse(effective);
+  }
+  return CustomImageQualityWidget(
+    initQuality: double.tryParse(bind.mainGetUserDefaultOption(key: qualityKey)) ??
+        kDefaultQuality,
+    initFps: double.tryParse(bind.mainGetUserDefaultOption(key: fpsKey)) ?? kDefaultFps,
+    saveQuality: isOptionFixed(qualityKey) ? null : (v) => save(qualityKey, v),
+    saveFps: isOptionFixed(fpsKey) ? null : (v) => save(fpsKey, v),
+    showFps: true,
+    showMoreQuality: true,
+  );
 }
 
 // R-G4 / R-X4 (§19): ServerConfigImportExportWidgets (the clipboard import/export of a full

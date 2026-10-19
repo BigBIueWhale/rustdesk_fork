@@ -360,71 +360,67 @@ void showRestartRemoteDevice(PeerInfo pi, String id, SessionID sessionId,
 
 
 customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
-  double initQuality = kDefaultQuality;
-  double initFps = kDefaultFps;
-  bool qualitySet = false;
-  bool fpsSet = false;
-
-  // Direct-only capability presentation depends only on the peer version. There is no
-  // server-selection or relay/direct state to consult.
-  bool hideFps = versionCmp(ffi.ffiModel.pi.version, '1.2.0') < 0;
-  bool hideMoreQuality = versionCmp(ffi.ffiModel.pi.version, '1.2.2') < 0;
-
-  setCustomValues({double? quality, double? fps}) async {
-    debugPrint("setCustomValues quality:$quality, fps:$fps");
-    if (quality != null) {
-      qualitySet = true;
-      await bind.sessionSetCustomImageQuality(
-          sessionId: sessionId, value: quality.toInt());
-    }
-    if (fps != null) {
-      fpsSet = true;
-      await bind.sessionSetCustomFps(sessionId: sessionId, fps: fps.toInt());
-    }
-    if (!qualitySet) {
-      qualitySet = true;
-      await bind.sessionSetCustomImageQuality(
-          sessionId: sessionId, value: initQuality.toInt());
-    }
-    if (!hideFps && !fpsSet) {
-      fpsSet = true;
-      await bind.sessionSetCustomFps(
-          sessionId: sessionId, fps: initFps.toInt());
-    }
+  final owner = ffi.clientOwnerId;
+  bool current() => ffi.isCurrentSessionOwner(sessionId, owner);
+  if (!current()) return;
+  final showFps = versionCmp(ffi.ffiModel.pi.version, '1.2.0') >= 0;
+  final showMore = versionCmp(ffi.ffiModel.pi.version, '1.2.2') >= 0;
+  late final List<int> initialQuality;
+  late final String initialFps;
+  try {
+    final quality = await bind.sessionGetCustomImageQuality(sessionId: sessionId);
+    if (!current()) return;
+    final fps = await bind.sessionGetOption(sessionId: sessionId, arg: 'custom-fps');
+    if (!current()) return;
+    if (quality == null || fps == null) throw StateError('Session is unavailable');
+    initialQuality = quality;
+    initialFps = fps;
+  } catch (error) {
+    debugPrint('Failed to load image quality settings: $error');
+    if (current()) showToast(translate('Failed'));
+    return;
   }
 
-  final btnClose = dialogButton('Close', onPressed: () async {
-    await setCustomValues();
-    ffi.dialogManager.dismissAll();
-  });
-
-  // quality
-  final quality = await bind.sessionGetCustomImageQuality(sessionId: sessionId);
-  initQuality = quality != null && quality.isNotEmpty
-      ? quality[0].toDouble()
-      : kDefaultQuality;
-  if (initQuality < kMinQuality ||
-      initQuality > (!hideMoreQuality ? kMaxMoreQuality : kMaxQuality)) {
-    initQuality = kDefaultQuality;
-  }
-  // fps
-  final fpsOption =
-      await bind.sessionGetOption(sessionId: sessionId, arg: 'custom-fps');
-  initFps = fpsOption == null
-      ? kDefaultFps
-      : double.tryParse(fpsOption) ?? kDefaultFps;
-  if (initFps < kMinFps || initFps > kMaxFps) {
-    initFps = kDefaultFps;
+  Future<double?> saveQuality(double value) async {
+    if (!current()) return null;
+    await bind.sessionSetCustomImageQuality(sessionId: sessionId, value: value.toInt());
+    if (!current()) return null;
+    final effective = await bind.sessionGetCustomImageQuality(sessionId: sessionId);
+    if (!current() || effective == null || effective.isEmpty ||
+        effective.first != value.toInt()) return null;
+    return effective.first.toDouble();
   }
 
-  final content = customImageQualityWidget(
-      initQuality: initQuality,
-      initFps: initFps,
-      setQuality: (v) => setCustomValues(quality: v),
-      setFps: (v) => setCustomValues(fps: v),
-      showFps: !hideFps,
-      showMoreQuality: !hideMoreQuality);
-  msgBoxCommon(ffi.dialogManager, 'Custom Image Quality', content, [btnClose]);
+  Future<double?> saveFps(double value) async {
+    if (!current()) return null;
+    await bind.sessionSetCustomFps(sessionId: sessionId, fps: value.toInt());
+    if (!current()) return null;
+    final effective = await bind.sessionGetOption(sessionId: sessionId, arg: 'custom-fps');
+    if (!current() || int.tryParse(effective ?? '') != value.toInt()) return null;
+    return double.tryParse(effective ?? '');
+  }
+
+  try {
+    await ffi.dialogManager.show((setState, close, context) => CustomAlertDialog(
+      title: Text(translate('Custom Image Quality'),
+          style: const TextStyle(fontSize: 21)),
+      content: CustomImageQualityWidget(
+        key: ValueKey((sessionId, owner)),
+        initQuality: initialQuality.isEmpty
+            ? kDefaultQuality : initialQuality.first.toDouble(),
+        initFps: double.tryParse(initialFps) ?? kDefaultFps,
+        saveQuality: saveQuality,
+        saveFps: saveFps,
+        showFps: showFps,
+        showMoreQuality: showMore,
+        onClose: () => close(),
+      ),
+      onCancel: () => close(),
+    ));
+  } catch (error) {
+    debugPrint('Failed to show image quality editor: $error');
+    if (current()) showToast(translate('Failed'));
+  }
 }
 
 trackpadSpeedDialog(SessionID sessionId, FFI ffi) async {

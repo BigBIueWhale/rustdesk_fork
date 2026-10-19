@@ -111,6 +111,12 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SETTING_OPTION_TESTS = {
+    "quality editor Close waits for an admitted hidden FPS save",
+    "quality dialog editing initializes its counterpart without losing a draft",
+    "quality editor Close flushes latest edits and waits for both fields",
+    "quality editor Close failure stays open for explicit retry",
+    "quality editor retired Close cannot close a replacement",
+    "quality editor refuses nonfinite and out of range effective values",
     "quality editor retains drafts and current writers across rebuild",
     "quality editor removal retires timers and captured edits",
     "quality editor serializes a field and preserves independent FPS",

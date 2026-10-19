@@ -3424,11 +3424,13 @@ impl PeerConfig {
     }
 
     pub fn forget_password(id: &str) -> crate::ResultType<()> {
-        let mut config = Self::load(id);
+        let mut config = Self::load_for_write(id)?;
+        if config.password.is_empty() && config.password_prs.is_empty() {
+            return Ok(());
+        }
         config.password.clear();
         config.password_prs.clear();
-        crate::allow_err!(config.store(id));
-        Ok(())
+        config.store(id)
     }
 
     pub fn remove(id: &str) -> crate::ResultType<()> {

@@ -600,6 +600,9 @@ FILE_COMMAND_TESTS = {
 }
 FILE_NAVIGATION_SUITES = {
     "peer_removal_test.dart": {
+        "peer credential removal waits for the exact submitted operation",
+        "peer credential removal reports failure and retries the same peer",
+        "peer credential removal preserves a synchronous bridge failure",
         "peer deletion owns its IDs and waits for each deletion and refresh",
         "peer deletion reports a single failure and permits an identical retry",
         "peer deletion completes the submitted batch after a partial failure",

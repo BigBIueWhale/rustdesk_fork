@@ -7309,7 +7309,7 @@ else
             && [ "$(/usr/bin/grep -Fc 'FLUTTER_FILE_NAVIGATION_BRIDGE_USE=' "$SERIAL_LOG")" -eq 1 ] \
             || fail 'file-navigation exact generated API binding differs'
         require_exact_fixed_receipt \
-            "FLUTTER_FILE_NAVIGATION_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=6 tests=88 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-navigation-tests cleanup=joined" \
+            "FLUTTER_FILE_NAVIGATION_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=6 tests=91 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-navigation-tests cleanup=joined" \
             'focused Flutter file navigation receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
         require_exact_fixed_receipt \

@@ -72,6 +72,46 @@ PeerTabModel _selectedModel(FFI owner) {
 }
 
 void main() {
+  test('peer credential removal waits for the exact submitted operation', () async {
+    final dispatch = Completer<void>();
+    final ids = <String>[];
+    bool? result;
+    final pending = mainForgetPassword('selected', forgetPassword: (id) {
+      ids.add(id);
+      return dispatch.future;
+    }, showFailure: () => fail('successful credential removal reported failure'))
+        .then((value) => result = value);
+    expect(ids, ['selected']);
+    expect(result, isNull);
+    dispatch.complete();
+    await pending;
+    expect(result, isTrue);
+  });
+
+  test('peer credential removal reports failure and retries the same peer',
+      () async {
+    var calls = 0;
+    var failures = 0;
+    Future<void> forget(String id) async {
+      expect(id, 'selected');
+      if (++calls == 1) throw StateError('credential removal refused');
+    }
+    expect(await mainForgetPassword('selected', forgetPassword: forget,
+        showFailure: () => failures++), isFalse);
+    expect(await mainForgetPassword('selected', forgetPassword: forget,
+        showFailure: () => failures++), isTrue);
+    expect(calls, 2);
+    expect(failures, 1);
+  });
+
+  test('peer credential removal preserves a synchronous bridge failure', () async {
+    var failures = 0;
+    expect(await mainForgetPassword('selected', forgetPassword: (_) {
+      throw StateError('credential removal refused');
+    }, showFailure: () => failures++), isFalse);
+    expect(failures, 1);
+  });
+
   testWidgets('peer delete confirmation admits one pending submission',
       (tester) async {
     final harness = _DeleteHarness();

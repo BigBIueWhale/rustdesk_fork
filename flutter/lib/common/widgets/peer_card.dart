@@ -705,7 +705,7 @@ abstract class BasePeerCard extends StatelessWidget {
       proc: () async {
         // R-G4: clear the locally-saved per-address CPace credential (PRS). The address-book
         // shared-password path is excised, so only the local forget remains.
-        await bind.mainForgetPassword(id: id);
+        if (!await mainForgetPassword(id)) return;
         showToast(translate('Successful'));
       },
       padding: menuPadding,

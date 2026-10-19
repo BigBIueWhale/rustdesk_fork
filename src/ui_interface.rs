@@ -217,8 +217,8 @@ pub fn peer_has_password(id: String) -> bool {
 }
 
 #[inline]
-pub fn forget_password(id: String) {
-    hbb_common::allow_err!(PeerConfig::forget_password(&id));
+pub fn forget_password(id: String) -> hbb_common::ResultType<()> {
+    PeerConfig::forget_password(&id)
 }
 
 #[inline]

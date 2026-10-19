@@ -1359,7 +1359,7 @@ pub fn main_get_new_stored_peers() -> String {
     serde_json::to_string(&peers).unwrap_or_default()
 }
 
-pub fn main_forget_password(id: String) {
+pub fn main_forget_password(id: String) -> Result<()> {
     forget_password(id)
 }
 

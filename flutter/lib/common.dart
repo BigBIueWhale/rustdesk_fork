@@ -1730,6 +1730,24 @@ Future<bool> mainRemovePeers(List<String> ids,
   return successful;
 }
 
+Future<bool> mainForgetPassword(String id,
+    {Future<void> Function(String id)? forgetPassword,
+    VoidCallback? showFailure}) async {
+  final forget = forgetPassword ?? (id) => bind.mainForgetPassword(id: id);
+  try {
+    await forget(id);
+    return true;
+  } catch (error) {
+    debugPrint('Failed to forget peer password: $error');
+    if (showFailure != null) {
+      showFailure();
+    } else {
+      showToast(translate('Failed'));
+    }
+    return false;
+  }
+}
+
 Future<bool> mainSetFavorites(List<String> ids, bool favorite,
     {Future<void> Function(List<String> ids, bool favorite)? writeFavorites,
     VoidCallback? showFailure}) async {

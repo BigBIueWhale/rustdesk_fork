@@ -3069,6 +3069,10 @@ run_focused_rust_tests() {
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             required_tests=(
+                fs::tests::directory_entry_link_directory_permission_failure_is_reported
+                fs::tests::directory_entry_link_file_permission_failure_is_reported
+                fs::tests::directory_entry_link_cycle_preserves_the_link_entry
+                fs::tests::directory_entry_link_nondirectory_target_preserves_the_link_entry
                 fs::tests::file_metadata_digest_matching_subseconds_keep_overwrite_hint
                 fs::tests::file_metadata_digest_different_subseconds_use_wire_precision
                 fs::tests::file_metadata_digest_epoch_fraction_keeps_zero_seconds
@@ -6100,7 +6104,7 @@ PY
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            [ "$tests_passed" -eq 64 ] || fail 'file metadata test total differs'
+            [ "$tests_passed" -eq 68 ] || fail 'file metadata test total differs'
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'

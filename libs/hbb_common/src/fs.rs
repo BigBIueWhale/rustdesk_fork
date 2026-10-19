@@ -10670,6 +10670,102 @@ mod tests {
         assert!(std::fs::symlink_metadata(tmp.join("link")).unwrap().is_symlink());
     }
 
+    #[cfg(unix)]
+    fn directory_entry_link_target_permission_fixture(directory: bool) {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        assert_ne!(unsafe { crate::libc::geteuid() }, 0, "requires a nonroot receiver");
+        let tmp = TestTempDir::new("rustdesk_link_target_permission");
+        let listed = tmp.join("listed");
+        let blocked = tmp.join("blocked");
+        let target = blocked.join("target");
+        std::fs::create_dir_all(&listed).unwrap();
+        std::fs::create_dir(&blocked).unwrap();
+        if directory {
+            std::fs::create_dir(&target).unwrap();
+        } else {
+            std::fs::write(&target, b"unchanged target").unwrap();
+        }
+        let link = listed.join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        std::fs::write(listed.join("visible"), b"unchanged sibling").unwrap();
+        let before = std::fs::symlink_metadata(&link).unwrap();
+        let permissions = std::fs::metadata(&blocked).unwrap().permissions();
+        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0)).unwrap();
+        let native_error = std::fs::metadata(&link).unwrap_err();
+        let result = read_dir(&listed, true);
+        std::fs::set_permissions(&blocked, permissions).unwrap();
+        let after = std::fs::symlink_metadata(&link).unwrap();
+        let unchanged = (before.dev(), before.ino()) == (after.dev(), after.ino())
+            && std::fs::read_link(&link).unwrap() == target
+            && std::fs::read(listed.join("visible")).unwrap() == b"unchanged sibling";
+        assert!(unchanged);
+        if directory {
+            assert!(target.is_dir());
+        } else {
+            assert_eq!(std::fs::read(&target).unwrap(), b"unchanged target");
+        }
+        assert_eq!(native_error.kind(), std::io::ErrorKind::PermissionDenied);
+        println!("DIRECTORY_ENTRY_TARGET=observed kind={} native_errno={} refused={} unchanged={unchanged}",
+            if directory { "directory" } else { "file" },
+            native_error.raw_os_error().unwrap(), result.is_err());
+        let error = result.expect_err("target permission failure cannot become a file-link classification");
+        assert_eq!(error.downcast_ref::<std::io::Error>().map(std::io::Error::kind),
+            Some(std::io::ErrorKind::PermissionDenied));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn directory_entry_link_directory_permission_failure_is_reported() {
+        directory_entry_link_target_permission_fixture(true);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn directory_entry_link_file_permission_failure_is_reported() {
+        directory_entry_link_target_permission_fixture(false);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn directory_entry_link_cycle_preserves_the_link_entry() {
+        let tmp = TestTempDir::new("rustdesk_link_target_cycle");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let link = tmp.join("loop");
+        std::os::unix::fs::symlink("loop", &link).unwrap();
+        let error = std::fs::metadata(&link).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(crate::libc::ELOOP));
+        let directory = read_dir(&tmp.path, true).unwrap();
+        assert_eq!(directory.entries.len(), 1);
+        assert_eq!(directory.entries[0].name, "loop");
+        assert_eq!(directory.entries[0].entry_type.enum_value(), Ok(FileType::FileLink));
+        assert_eq!(directory.entries[0].size, 0);
+        assert_eq!(std::fs::read_link(&link).unwrap(), Path::new("loop"));
+        println!("DIRECTORY_ENTRY_TARGET=observed kind=cycle native_errno={} retained=true", crate::libc::ELOOP);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn directory_entry_link_nondirectory_target_preserves_the_link_entry() {
+        let tmp = TestTempDir::new("rustdesk_link_target_nondirectory");
+        let listed = tmp.join("listed");
+        std::fs::create_dir_all(&listed).unwrap();
+        let plain = tmp.join("plain");
+        std::fs::write(&plain, b"unchanged").unwrap();
+        let target = plain.join("child");
+        let link = listed.join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let error = std::fs::metadata(&link).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(crate::libc::ENOTDIR));
+        let directory = read_dir(&listed, true).unwrap();
+        assert_eq!(directory.entries.len(), 1);
+        assert_eq!(directory.entries[0].entry_type.enum_value(), Ok(FileType::FileLink));
+        assert_eq!(directory.entries[0].size, 0);
+        assert_eq!(std::fs::read_link(&link).unwrap(), target);
+        assert_eq!(std::fs::read(&plain).unwrap(), b"unchanged");
+        println!("DIRECTORY_ENTRY_TARGET=observed kind=nondirectory native_errno={} retained=true", crate::libc::ENOTDIR);
+    }
+
     #[test]
     #[cfg(unix)]
     fn directory_enumeration_refuses_metadata_permission_failure() {

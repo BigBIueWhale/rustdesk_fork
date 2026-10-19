@@ -80,20 +80,21 @@ integration/release checkpoint.
 
 ## Documentation and verification architecture
 
-The service-entry findings in Appendix C #154–#160 now describe enduring
-principal, role, lifecycle and storage-authority failures. Historical implementation
-chains, repair chronology and per-finding severity/acceptance commentary are removed;
-Git history beginning with `b31f9b20` through `9ae24cc6` retains that material.
-The seven required-disposition cells and primary R-S11af–R-S11al blocks are
-byte-identical. All other specification bytes, 411 requirement IDs, 371 numbered
-entries (including lettered entries), 36 anchor IDs and 214 links retain their
-content and order. The changed finding fragments have balanced tags.
+Appendix C #154–#160 and #161/#163/#168/#169/#171/#172 describe enduring
+service, lifecycle, admission, helper-provenance and verification-authority failures.
+Implementation chronology and per-finding incident/severity commentary belong in
+Git history. The latest six finding-cell replacements remove 1,950 specification
+bytes. Their required dispositions and primary R-S11am/ao/at/au/aw/ax contracts
+are byte-identical; every specification byte outside those finding cells is
+unchanged. All 411 requirement IDs, 371 numbered entries, 36 anchors and 214 links
+retain their content and order, and changed-row tags balance.
 
-This removes 3,519 bytes from the specification. Classification, obligation mapping,
-before/after whole-document counts and joined bounded-RAM cleanup are retained
-in `.harness-state/verifier-vm/service-entry-document-role.json`.
+Classification, obligation mapping, exact comparisons, whole-document counts and
+joined bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/service-admission-document-role.json`; the earlier
+seven-finding cleanup remains in `service-entry-document-role.json`.
 Product, test and verifier sources are unchanged. Whole-document role cleanup,
-all fifteen credential actions, R-S0, actual R-F5 impairment/soak and all other
+all fifteen credential actions, R-S0, R-F5 impairment/soak and all other
 native/installed/release and parked obligations remain OPEN.
 
 

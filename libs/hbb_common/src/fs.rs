@@ -9805,6 +9805,117 @@ mod tests {
         );
     }
 
+    #[cfg(all(target_os = "linux", not(target_env = "musl")))]
+    fn assert_directory_entry_parent_metadata(scenario: &str) {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TestTempDir::new("rustdesk_directory_entry_parent");
+        let source = tmp.join("source");
+        let retained = tmp.join("retained");
+        let foreign = tmp.join("foreign");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("entry"), b"original").unwrap();
+        filetime::set_file_mtime(source.join("entry"),
+            filetime::FileTime::from_unix_time(1_600_000_000, 0)).unwrap();
+        let entries = std::fs::read_dir(&source).unwrap()
+            .collect::<std::io::Result<Vec<_>>>().unwrap();
+        assert_eq!(entries.len(), 1);
+
+        let expected = match scenario {
+            "fresh" => {
+                std::fs::write(source.join("entry"), b"updated").unwrap();
+                filetime::set_file_mtime(source.join("entry"),
+                    filetime::FileTime::from_unix_time(1_600_000_001, 0)).unwrap();
+                Some((7, 1_600_000_001))
+            }
+            "renamed" => {
+                std::fs::rename(&source, &retained).unwrap();
+                Some((8, 1_600_000_000))
+            }
+            "directory" => {
+                std::fs::rename(&source, &retained).unwrap();
+                std::fs::create_dir_all(source.join("entry")).unwrap();
+                Some((8, 1_600_000_000))
+            }
+            "symlink" => {
+                std::fs::rename(&source, &retained).unwrap();
+                std::fs::create_dir(&foreign).unwrap();
+                std::fs::write(foreign.join("entry"), b"foreign replacement").unwrap();
+                symlink(&foreign, &source).unwrap();
+                Some((8, 1_600_000_000))
+            }
+            "vanished" => {
+                std::fs::rename(&source, &retained).unwrap();
+                std::fs::remove_file(retained.join("entry")).unwrap();
+                std::fs::create_dir(&source).unwrap();
+                std::fs::write(source.join("entry"), b"foreign replacement").unwrap();
+                None
+            }
+            _ => panic!("unknown parent fixture scenario"),
+        };
+        let mut usage = FileEnumerationUsage::default();
+        let listed = read_dir_entries(entries.into_iter().map(Ok), Path::new(""), true,
+            FileEnumerationBudget::for_max_entries(8), &mut usage)
+            .expect("read metadata from the enumerated parent");
+        println!("DIRECTORY_ENTRY_PARENT=observed scenario={scenario} listed={} charged={} fields={:?}",
+            listed.len(), usage.entries,
+            listed.iter().map(|e| (e.entry_type.enum_value(), e.size, e.modified_time))
+                .collect::<Vec<_>>());
+        assert_eq!(usage.entries, 1);
+        match expected {
+            Some((size, modified_time)) => {
+                assert_eq!(listed.len(), 1);
+                assert_eq!(listed[0].name, "entry");
+                assert_eq!(listed[0].entry_type.enum_value(), Ok(FileType::File));
+                assert_eq!(listed[0].size, size);
+                assert_eq!(listed[0].modified_time, modified_time);
+                assert!(!listed[0].is_hidden);
+            }
+            None => assert!(listed.is_empty(), "another parent cannot revive a vanished entry"),
+        }
+        if scenario == "fresh" {
+            assert_eq!(std::fs::read(source.join("entry")).unwrap(), b"updated");
+        } else if scenario != "vanished" {
+            assert_eq!(std::fs::read(retained.join("entry")).unwrap(), b"original");
+        } else {
+            assert!(!retained.join("entry").exists());
+        }
+        if scenario == "symlink" || scenario == "vanished" {
+            assert_eq!(std::fs::read(source.join("entry")).unwrap(), b"foreign replacement");
+        }
+        if scenario == "directory" { assert!(source.join("entry").is_dir()); }
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", not(target_env = "musl")))]
+    fn directory_entry_parent_rename_retains_its_live_file() {
+        assert_directory_entry_parent_metadata("renamed");
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", not(target_env = "musl")))]
+    fn directory_entry_parent_replacement_cannot_supply_a_different_type() {
+        assert_directory_entry_parent_metadata("directory");
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", not(target_env = "musl")))]
+    fn directory_entry_parent_symlink_cannot_supply_foreign_metadata() {
+        assert_directory_entry_parent_metadata("symlink");
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", not(target_env = "musl")))]
+    fn directory_entry_parent_replacement_cannot_revive_a_vanished_file() {
+        assert_directory_entry_parent_metadata("vanished");
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", not(target_env = "musl")))]
+    fn directory_entry_parent_metadata_reads_fresh_child_changes() {
+        assert_directory_entry_parent_metadata("fresh");
+    }
+
     fn directory_entry_fixture(
         directory: bool,
     ) -> (TestTempDir, Vec<std::io::Result<std::fs::DirEntry>>) {

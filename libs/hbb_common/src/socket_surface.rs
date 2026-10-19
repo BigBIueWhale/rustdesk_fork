@@ -479,9 +479,116 @@ pub fn check_surface(_expected_tcp_port: u16) -> SurfaceCheck {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn unbound_socket(domain: i32, kind: i32, protocol: i32) -> OwnedFd {
+        let fd = unsafe { crate::libc::socket(domain, kind | crate::libc::SOCK_CLOEXEC, protocol) };
+        assert!(fd >= 0, "{}", std::io::Error::last_os_error());
+        unsafe { OwnedFd::from_raw_fd(fd) }
+    }
+
+    fn assert_udp_refused(port: u16) {
+        let result = check_surface(port);
+        println!("SOCKET_DESCRIPTOR=observed kind=udp result={result:?}");
+        assert!(matches!(result, SurfaceCheck::Violation(ref why) if why.contains("found 1 UDP")), "{result:?}");
+    }
+
+    #[test]
+    fn unbound_ipv4_udp_is_refused() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let udp = std::net::UdpSocket::from(unbound_socket(crate::libc::AF_INET,
+            crate::libc::SOCK_DGRAM, crate::libc::IPPROTO_UDP));
+        assert_eq!(udp.local_addr().unwrap().port(), 0);
+        assert_udp_refused(listener.local_addr().unwrap().port());
+    }
+
+    #[test]
+    fn unbound_ipv6_udp_is_refused() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let udp = std::net::UdpSocket::from(unbound_socket(crate::libc::AF_INET6,
+            crate::libc::SOCK_DGRAM, crate::libc::IPPROTO_UDP));
+        assert_eq!(udp.local_addr().unwrap().port(), 0);
+        assert_udp_refused(listener.local_addr().unwrap().port());
+    }
+
+    #[test]
+    fn bound_udp_aliases_count_once_until_last_owner_closes() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let alias = udp.try_clone().unwrap();
+        assert_udp_refused(port);
+        drop(udp);
+        assert_udp_refused(port);
+        drop(alias);
+        assert_eq!(check_surface(port), SurfaceCheck::Ok);
+    }
+
+    #[test]
+    fn listener_aliases_and_local_descriptors_preserve_surface_and_fd_count() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let alias = listener.try_clone().unwrap();
+        let file = std::fs::File::open("/dev/null").unwrap();
+        let local = std::os::unix::net::UnixStream::pair().unwrap();
+        let count = || std::fs::read_dir("/proc/self/fd").unwrap()
+            .collect::<std::io::Result<Vec<_>>>().unwrap().len();
+        let before = count();
+        for _ in 0..16 {
+            assert_eq!(check_surface(alias.local_addr().unwrap().port()), SurfaceCheck::Ok);
+        }
+        assert_eq!(count(), before);
+        drop((file, local, alias));
+    }
+
+    #[test]
+    fn additional_ipv4_listener_is_refused() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let extra = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        assert!(matches!(check_surface(port), SurfaceCheck::Violation(ref why) if why.contains("found 2")));
+        drop(extra);
+        assert_eq!(check_surface(port), SurfaceCheck::Ok);
+    }
+
+    #[test]
+    fn ipv6_listener_is_refused() {
+        // This executes only in the zero-NIC VM's network-none container.
+        let listener = std::net::TcpListener::bind("[::]:0").unwrap();
+        let result = check_surface(listener.local_addr().unwrap().port());
+        assert!(matches!(result, SurfaceCheck::Violation(ref why) if why.contains("IPv6")), "{result:?}");
+    }
+
+    #[test]
+    fn foreign_process_udp_is_not_part_of_this_process_surface() {
+        use std::io::{BufRead, Read};
+        use std::process::{Child, Command, Stdio};
+        struct Peer(Child);
+        impl Drop for Peer {
+            fn drop(&mut self) {
+                if let Err(error) = self.0.kill() { eprintln!("peer kill: {error}"); }
+                self.0.wait().unwrap();
+            }
+        }
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut peer = Peer(Command::new("python3").args(["-I", "-S", "-c",
+            "import socket,sys; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.bind(('127.0.0.1',0)); print('ready',flush=True); sys.stdin.read(1)"])
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap());
+        let mut ready = String::new();
+        std::io::BufReader::new(peer.0.stdout.take().unwrap()).take(32).read_line(&mut ready).unwrap();
+        assert_eq!(ready, "ready\n");
+        assert_eq!(check_surface(listener.local_addr().unwrap().port()), SurfaceCheck::Ok);
+    }
+
+    #[test]
+    fn unbound_tcp_is_not_a_listener() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let tcp = unbound_socket(crate::libc::AF_INET, crate::libc::SOCK_STREAM, crate::libc::IPPROTO_TCP);
+        assert!(tcp.as_raw_fd() >= 0);
+        assert_eq!(check_surface(listener.local_addr().unwrap().port()), SurfaceCheck::Ok);
+    }
 
     struct Fixture(PathBuf);
 

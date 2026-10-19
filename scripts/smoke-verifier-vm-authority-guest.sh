@@ -3070,6 +3070,14 @@ run_focused_rust_tests() {
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             required_tests=(
+                socket_surface::tests::unbound_ipv4_udp_is_refused
+                socket_surface::tests::unbound_ipv6_udp_is_refused
+                socket_surface::tests::bound_udp_aliases_count_once_until_last_owner_closes
+                socket_surface::tests::listener_aliases_and_local_descriptors_preserve_surface_and_fd_count
+                socket_surface::tests::additional_ipv4_listener_is_refused
+                socket_surface::tests::ipv6_listener_is_refused
+                socket_surface::tests::foreign_process_udp_is_not_part_of_this_process_surface
+                socket_surface::tests::unbound_tcp_is_not_a_listener
                 socket_surface::tests::ipv6_table_missing_is_optional_and_readable_contents_are_preserved
                 socket_surface::tests::ipv6_table_permission_failure_is_not_an_empty_table
                 socket_surface::tests::ipv6_table_invalid_utf8_is_reported

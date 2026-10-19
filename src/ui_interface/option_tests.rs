@@ -24,6 +24,9 @@ mod before_view_style;
 #[path = "../../scripts/fixtures/session-flutter-preference-before-errors.rs"]
 mod before_session_flutter;
 
+#[path = "../../scripts/fixtures/session-scroll-preference-before-errors.rs"]
+mod before_scroll;
+
 // FRB treats a unit-returning export as a successful completion. This adapter
 // lets the same behavioral probe execute the pre-fix and fallible exports.
 trait ExportOutcome {
@@ -65,6 +68,7 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
                 .or_else(|| line.find("IMAGE_PRESET_EXPORT_"))
                 .or_else(|| line.find("VIEW_STYLE_EXPORT_"))
                 .or_else(|| line.find("SESSION_FLUTTER_EXPORT_"))
+                .or_else(|| line.find("SCROLL_PREF_EXPORT_"))
             {
                 println!("{}", &line[start..]);
             }
@@ -168,6 +172,110 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
     image_quality_preset_commits_before_publication(&root);
     view_style_commits_before_publication(&root);
     session_flutter_preferences_commit_before_publication(&root);
+    scroll_preferences_commit_before_publication(&root);
+}
+
+fn scroll_preferences_commit_before_publication(root: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let peers = Config::file().parent().unwrap().join("peers");
+    assert!(peers.starts_with(root));
+    let peer = "127.0.0.1:24014";
+    let old_peer = "127.0.0.1:24015";
+    let old_files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|e| e.unwrap().path()).collect();
+    let mut config = PeerConfig::default();
+    config.scroll_style = "scrollauto".into();
+    config.edge_scroll_edge_thickness = 100;
+    config.info.username = "runtime-user".into();
+    config.password_prs = b"scroll-preference-preserved-prs".to_vec();
+    config.ui_flutter.insert("unrelated-window".into(), "preserved".into());
+    config.options.insert("unrelated".into(), "preserved".into());
+    config.store(peer).unwrap();
+    let files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|e| e.unwrap().path())
+        .filter(|p| !old_files.contains(p)).collect();
+    assert_eq!(files.len(), 1);
+    let file = &files[0];
+    config.store(old_peer).unwrap();
+    let id = crate::flutter_ffi::SessionID::new_v4();
+    let owner = crate::flutter_ffi::SessionID::new_v4();
+    let old_id = crate::flutter_ffi::SessionID::new_v4();
+    let old_owner = crate::flutter_ffi::SessionID::new_v4();
+    for (session_id, client_owner, target) in [(id, owner, peer), (old_id, old_owner, old_peer)] {
+        assert!(crate::flutter_ffi::session_add_sync(session_id, client_owner, target.into(),
+            false, false, false, false, false, "explicit-password".into(), None).0.is_empty());
+    }
+    let session = crate::flutter::sessions::get_session_by_session_id(&id).unwrap();
+    let mut stored = PeerConfig::load_for_write(peer).unwrap();
+    stored.info.username = "file-user".into();
+    stored.store(peer).unwrap();
+    let all_files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|e| e.unwrap().path()).collect();
+    let originals: Vec<_> = all_files.iter().map(|p| std::fs::read(p).unwrap()).collect();
+    let unchanged = || all_files.iter().zip(&originals).all(|(p, b)| std::fs::read(p).unwrap() == *b);
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o500)).unwrap();
+    before_scroll::session_set_scroll_style(old_id, "scrollbar".into());
+    let old_style = crate::flutter_ffi::session_get_scroll_style(old_id).unwrap() == "scrollbar";
+    before_scroll::session_set_edge_scroll_edge_thickness(old_id, 70);
+    let old_thickness = crate::flutter_ffi::session_get_edge_scroll_edge_thickness(old_id).unwrap() == 70;
+    let old_preserved = unchanged();
+    println!("SCROLL_PREF_EXPORT_BEFORE=observed normal_return=true style_cache_without_commit={old_style} thickness_cache_without_commit={old_thickness} files_preserved={old_preserved}");
+    assert!(old_style && old_thickness && old_preserved);
+    let refused = crate::flutter_ffi::session_set_scroll_style(id, "scrollbar".into()).is_err()
+        && crate::flutter_ffi::session_set_edge_scroll_edge_thickness(id, 70).is_err();
+    let cache_preserved = session.get_scroll_style().unwrap() == "scrollauto"
+        && session.get_edge_scroll_edge_thickness().unwrap() == 100;
+    let files_preserved = unchanged();
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(refused && cache_preserved && files_preserved);
+    for value in ["scrollauto", "scrollbar", "scrolledge"] {
+        assert_eq!(crate::flutter_ffi::session_set_scroll_style(id, value.into()).unwrap(), value);
+        assert_eq!(session.get_scroll_style().unwrap(), value);
+        assert_eq!(PeerConfig::load_for_write(peer).unwrap().scroll_style, value);
+    }
+    for value in [20, 150, 70] {
+        assert_eq!(crate::flutter_ffi::session_set_edge_scroll_edge_thickness(id, value).unwrap(), value);
+        assert_eq!(session.get_edge_scroll_edge_thickness().unwrap(), value);
+        assert_eq!(PeerConfig::load_for_write(peer).unwrap().edge_scroll_edge_thickness, value);
+    }
+    let retry_durable = PeerConfig::load_for_write(peer).unwrap().scroll_style == "scrolledge"
+        && PeerConfig::load_for_write(peer).unwrap().edge_scroll_edge_thickness == 70;
+    let original = std::fs::read(file).unwrap();
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let unreadable_refused = crate::flutter_ffi::session_set_scroll_style(id, "scrollauto".into()).is_err()
+        && crate::flutter_ffi::session_set_edge_scroll_edge_thickness(id, 90).is_err();
+    assert_eq!(session.get_scroll_style().unwrap(), "scrolledge");
+    assert_eq!(session.get_edge_scroll_edge_thickness().unwrap(), 70);
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    assert_eq!(crate::flutter_ffi::session_set_scroll_style(id, "scrollauto".into()).unwrap(), "scrollauto");
+    assert_eq!(crate::flutter_ffi::session_set_edge_scroll_edge_thickness(id, 90).unwrap(), 90);
+    let original = std::fs::read(file).unwrap();
+    let invalid_style = ["", "bad", "original", "scrollAuto"].into_iter()
+        .all(|v| crate::flutter_ffi::session_set_scroll_style(id, v.into()).is_err());
+    let invalid_thickness = [-1, 0, 19, 151, i32::MAX].into_iter()
+        .all(|v| crate::flutter_ffi::session_set_edge_scroll_edge_thickness(id, v).is_err());
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    session.lc.write().unwrap().get_config().scroll_style = "bad".into();
+    session.lc.write().unwrap().get_config().edge_scroll_edge_thickness = 999;
+    let invalid_read = crate::flutter_ffi::session_get_scroll_style(id).is_err()
+        && crate::flutter_ffi::session_get_edge_scroll_edge_thickness(id).is_err();
+    assert_eq!(crate::flutter_ffi::session_set_scroll_style(id, "scrollbar".into()).unwrap(), "scrollbar");
+    assert_eq!(crate::flutter_ffi::session_set_edge_scroll_edge_thickness(id, 80).unwrap(), 80);
+    let missing = crate::flutter_ffi::SessionID::new_v4();
+    let missing_refused = crate::flutter_ffi::session_get_scroll_style(missing).is_err()
+        && crate::flutter_ffi::session_set_scroll_style(missing, "scrollauto".into()).is_err()
+        && crate::flutter_ffi::session_get_edge_scroll_edge_thickness(missing).is_err()
+        && crate::flutter_ffi::session_set_edge_scroll_edge_thickness(missing, 100).is_err();
+    let stored = PeerConfig::load_for_write(peer).unwrap();
+    let unrelated = stored.info.username == "file-user" && session.lc.read().unwrap().info.username == "runtime-user"
+        && stored.password_prs == b"scroll-preference-preserved-prs"
+        && stored.ui_flutter.get("unrelated-window").map(String::as_str) == Some("preserved")
+        && stored.options.get("unrelated").map(String::as_str) == Some("preserved");
+    let no_peer = session.sender.read().unwrap().is_none();
+    for (session_id, client_owner) in [(id, owner), (old_id, old_owner)] {
+        let removed = crate::flutter::sessions::remove_session_by_exact_ui_owner(&session_id, &client_owner).unwrap();
+        assert!(removed.sender.read().unwrap().is_none());
+    }
+    println!("SCROLL_PREF_EXPORT_NATIVE=observed failure_reported={refused} cache_preserved={cache_preserved} files_preserved={files_preserved} retry_durable={retry_durable} unreadable_refused={unreadable_refused} invalid_style_refused={invalid_style} invalid_thickness_refused={invalid_thickness} invalid_read_refused={invalid_read} missing_session_refused={missing_refused} unrelated_preserved={unrelated} no_peer_started={no_peer} cleanup=joined");
+    assert!(retry_durable && unreadable_refused && invalid_style && invalid_thickness && invalid_read && missing_refused && unrelated && no_peer);
 }
 
 fn session_flutter_preferences_commit_before_publication(root: &std::path::Path) {

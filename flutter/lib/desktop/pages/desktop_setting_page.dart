@@ -913,9 +913,10 @@ class _DisplayState extends State<_Display> {
 
     final groupValue = bind.mainGetUserDefaultOption(key: kOptionScrollStyle);
 
-    onEdgeScrollEdgeThicknessChanged(double value) async {
-      await _saveDefaultOption(
-          kOptionEdgeScrollEdgeThickness, value.round().toString());
+    Future<int?> onEdgeScrollEdgeThicknessChanged(int value) async {
+      final effective = await _saveDefaultOption(
+          kOptionEdgeScrollEdgeThickness, value.toString());
+      return effective == null ? null : int.tryParse(effective);
     }
 
     return _Card(title: 'Default Scroll Style', children: [
@@ -938,10 +939,10 @@ class _DisplayState extends State<_Display> {
         Offstage(
             offstage: groupValue != kRemoteScrollStyleEdge,
             child: EdgeThicknessControl(
-              value: double.tryParse(bind.mainGetUserDefaultOption(
+              value: int.tryParse(bind.mainGetUserDefaultOption(
                       key: kOptionEdgeScrollEdgeThickness)) ??
-                  100.0,
-              onChanged: isOptionFixed(kOptionEdgeScrollEdgeThickness)
+                  100,
+              saveThickness: isOptionFixed(kOptionEdgeScrollEdgeThickness)
                   ? null
                   : onEdgeScrollEdgeThicknessChanged,
             )),

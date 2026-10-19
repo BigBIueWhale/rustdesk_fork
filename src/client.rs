@@ -1629,26 +1629,41 @@ impl LoginConfigHandler {
         self.save_config(config);
     }
 
-    /// Save scroll style to the current config.
-    ///
-    /// # Arguments
-    ///
-    /// * `value` - The scroll style to be saved.
-    pub fn save_scroll_style(&mut self, value: String) {
-        let mut config = self.load_config();
-        config.scroll_style = value;
-        self.save_config(config);
+    pub fn scroll_style(&self) -> ResultType<String> {
+        if !matches!(self.config.scroll_style.as_str(), "scrollauto" | "scrollbar" | "scrolledge") {
+            bail!("Invalid scroll style");
+        }
+        Ok(self.config.scroll_style.clone())
     }
 
-    /// Save edge scroll edge thickness to the current config.
-    ///
-    /// # Arguments
-    ///
-    /// * `value` - The edge thickness to be saved.
-    pub fn save_edge_scroll_edge_thickness(&mut self, value: i32) {
-        let mut config = self.load_config();
+    pub fn save_scroll_style(&mut self, value: &str) -> ResultType<()> {
+        if !matches!(value, "scrollauto" | "scrollbar" | "scrolledge") {
+            bail!("Invalid scroll style");
+        }
+        let mut config = PeerConfig::load_for_write(&self.id)?;
+        config.scroll_style = value.to_owned();
+        config.store(&self.id)?;
+        self.config.scroll_style = config.scroll_style;
+        Ok(())
+    }
+
+    pub fn edge_scroll_edge_thickness(&self) -> ResultType<i32> {
+        let value = self.config.edge_scroll_edge_thickness;
+        if !(20..=150).contains(&value) {
+            bail!("Edge scroll thickness must be in 20..=150 pixels");
+        }
+        Ok(value)
+    }
+
+    pub fn save_edge_scroll_edge_thickness(&mut self, value: i32) -> ResultType<()> {
+        if !(20..=150).contains(&value) {
+            bail!("Edge scroll thickness must be in 20..=150 pixels");
+        }
+        let mut config = PeerConfig::load_for_write(&self.id)?;
         config.edge_scroll_edge_thickness = value;
-        self.save_config(config);
+        config.store(&self.id)?;
+        self.config.edge_scroll_edge_thickness = value;
+        Ok(())
     }
 
     pub fn custom_scale_percent(&self) -> ResultType<i32> {

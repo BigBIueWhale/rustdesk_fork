@@ -2309,6 +2309,23 @@ abstract class CanvasCustomScaleWriter {
   Future<int> save(SessionID sessionId, int percent);
 }
 
+abstract class CanvasScrollPreferenceWriter {
+  Future<String> saveStyle(SessionID sessionId, String value);
+  Future<int> saveThickness(SessionID sessionId, int value);
+}
+
+class _SessionCanvasScrollPreferenceWriter implements CanvasScrollPreferenceWriter {
+  const _SessionCanvasScrollPreferenceWriter();
+
+  @override
+  Future<String> saveStyle(SessionID sessionId, String value) =>
+      bind.sessionSetScrollStyle(sessionId: sessionId, value: value);
+
+  @override
+  Future<int> saveThickness(SessionID sessionId, int value) =>
+      bind.sessionSetEdgeScrollEdgeThickness(sessionId: sessionId, value: value);
+}
+
 class _SessionCanvasCustomScaleWriter implements CanvasCustomScaleWriter {
   const _SessionCanvasCustomScaleWriter();
 
@@ -2434,17 +2451,22 @@ class CanvasModel with ChangeNotifier {
 
   final CanvasPreferences _preferences;
   final CanvasCustomScaleWriter _customScaleWriter;
+  final CanvasScrollPreferenceWriter _scrollPreferenceWriter;
   bool _customScaleSavePending = false;
   int _customScaleCommitRevision = 0;
+  bool _scrollPreferenceSavePending = false;
+  int _scrollPreferenceCommitRevision = 0;
   Object _lifetime = Object();
   bool _disposed = false;
   Timer? _scrollStyleTimer;
   Completer<bool>? _scrollStyleCompletion;
 
   CanvasModel(this.parent, {CanvasPreferences? preferences,
-      CanvasCustomScaleWriter? customScaleWriter})
+      CanvasCustomScaleWriter? customScaleWriter,
+      CanvasScrollPreferenceWriter? scrollPreferenceWriter})
       : _preferences = preferences ?? const _SessionCanvasPreferences(),
-        _customScaleWriter = customScaleWriter ?? const _SessionCanvasCustomScaleWriter();
+        _customScaleWriter = customScaleWriter ?? const _SessionCanvasCustomScaleWriter(),
+        _scrollPreferenceWriter = scrollPreferenceWriter ?? const _SessionCanvasScrollPreferenceWriter();
 
   double get x => _x;
   double get y => _y;
@@ -2747,13 +2769,79 @@ class CanvasModel with ChangeNotifier {
     completion?.complete(false);
   }
 
+  bool get scrollPreferenceSavePending => _scrollPreferenceSavePending;
+
+  Future<({String style, int thickness})> readScrollPreferences(
+      {required CanvasUpdateOwner? owner}) async {
+    if (!_acceptsOwner(owner)) throw StateError('Canvas owner is unavailable');
+    final revision = _scrollPreferenceCommitRevision;
+    final style = await _preferences.scrollStyle(owner!.sessionId);
+    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision) {
+      throw StateError('Scroll preference read was superseded');
+    }
+    if (style == null) throw StateError('Scroll style is unavailable');
+    ScrollStyle.fromString(style);
+    final thickness = await _preferences.edgeThickness(owner.sessionId);
+    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision) {
+      throw StateError('Scroll preference read was superseded');
+    }
+    if (thickness == null || thickness < 20 || thickness > 150) {
+      throw StateError('Invalid scroll preferences');
+    }
+    return (style: style, thickness: thickness);
+  }
+
+  Future<T> _saveScrollPreference<T>(T requested,
+      {required CanvasUpdateOwner? owner,
+      required Future<T> Function(SessionID) save,
+      required Future<bool> Function() update}) async {
+    if (!_acceptsOwner(owner)) throw StateError('Canvas owner is unavailable');
+    if (_scrollPreferenceSavePending) throw StateError('A scroll preference save is pending');
+    _scrollPreferenceSavePending = true;
+    try {
+      final effective = await save(owner!.sessionId);
+      if (effective != requested) throw StateError('Scroll preference was not applied');
+      if (!_disposed && identical(parent.target, owner._ffi) &&
+          owner._ffi.isCurrentSessionOwner(owner.sessionId, owner._clientOwnerId)) {
+        _scrollPreferenceCommitRevision++;
+      }
+      if (!_acceptsOwner(owner)) return effective;
+      if (!await update() && _acceptsOwner(owner)) {
+        throw StateError('Scroll preference canvas update failed');
+      }
+      return effective;
+    } finally {
+      _scrollPreferenceSavePending = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  Future<String> applyScrollStyle(String value,
+      {required CanvasUpdateOwner? owner}) async {
+    ScrollStyle.fromString(value);
+    return _saveScrollPreference(value, owner: owner,
+        save: (id) => _scrollPreferenceWriter.saveStyle(id, value),
+        update: () => updateScrollStyle(owner: owner));
+  }
+
+  Future<int> applyEdgeScrollEdgeThickness(int value,
+      {required CanvasUpdateOwner? owner}) async {
+    if (value < 20 || value > 150) throw ArgumentError('Invalid edge scroll thickness');
+    return _saveScrollPreference(value, owner: owner,
+        save: (id) => _scrollPreferenceWriter.saveThickness(id, value),
+        update: () async => _updateEdgeScrollEdgeThickness(value, owner: owner));
+  }
+
   Future<bool> updateScrollStyle({required CanvasUpdateOwner? owner}) async {
     if (!_acceptsOwner(owner)) return false;
+    final revision = _scrollPreferenceCommitRevision;
     final style = await _preferences.scrollStyle(owner!.sessionId);
-    if (!_acceptsOwner(owner)) return false;
+    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision || style == null) {
+      return false;
+    }
 
-    _scrollStyle =
-        style != null ? ScrollStyle.fromString(style) : ScrollStyle.scrollauto;
+    final selected = ScrollStyle.fromString(style);
+    _scrollStyle = selected;
     cancelEdgeScroll();
 
     if (_scrollStyle != ScrollStyle.scrollauto) {
@@ -2767,20 +2855,24 @@ class CanvasModel with ChangeNotifier {
   Future<bool> initializeEdgeScrollEdgeThickness(
       {required CanvasUpdateOwner? owner}) async {
     if (!_acceptsOwner(owner)) return false;
+    final revision = _scrollPreferenceCommitRevision;
     final savedValue = await _preferences.edgeThickness(owner!.sessionId);
-    if (!_acceptsOwner(owner)) return false;
-
-    if (savedValue != null) {
-      cancelEdgeScroll();
-      _edgeScrollEdgeThickness = savedValue;
+    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision ||
+        savedValue == null || savedValue < 20 || savedValue > 150) {
+      return false;
     }
+    cancelEdgeScroll();
+    _edgeScrollEdgeThickness = savedValue;
     return true;
   }
 
-  void updateEdgeScrollEdgeThickness(int newThickness) {
+  bool _updateEdgeScrollEdgeThickness(int newThickness,
+      {required CanvasUpdateOwner? owner}) {
+    if (!_acceptsOwner(owner) || newThickness < 20 || newThickness > 150) return false;
     cancelEdgeScroll();
     _edgeScrollEdgeThickness = newThickness;
     notifyListeners();
+    return _acceptsOwner(owner);
   }
 
   void update(double x, double y, double scale) {

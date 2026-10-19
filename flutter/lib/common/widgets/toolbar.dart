@@ -310,6 +310,34 @@ Future<bool> selectSessionViewStyle(String? value, {
   }
 }
 
+Future<bool> selectSessionScrollStyle(String? value, {
+  required Future<String> Function(String) applyStyle,
+  required bool Function() isCurrent,
+  VoidCallback? showFailure,
+}) async {
+  if (value == null || !isCurrent()) return false;
+  try {
+    if (![kRemoteScrollStyleAuto, kRemoteScrollStyleBar,
+        kRemoteScrollStyleEdge].contains(value)) {
+      throw StateError('Invalid scroll style');
+    }
+    final effective = await applyStyle(value);
+    if (!isCurrent()) return false;
+    if (effective != value) throw StateError('Scroll style was not applied');
+    return true;
+  } catch (error) {
+    debugPrint('Failed to select scroll style: $error');
+    if (isCurrent()) {
+      if (showFailure != null) {
+        showFailure();
+      } else {
+        showToast(translate('Failed'));
+      }
+    }
+    return false;
+  }
+}
+
 Future<List<TRadioMenu<String>>> toolbarViewStyle(
     BuildContext context, String id, FFI ffi) async {
   final canvas = ffi.canvasModel;

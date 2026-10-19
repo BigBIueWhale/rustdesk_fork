@@ -6375,7 +6375,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
         || fail 'option acknowledgement artifact receipt differs'
     mapfile -t option_wire_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=68 unchanged=before-after execution_seconds=[0-9]+$'
+            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=79 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#option_wire_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'OPTION_WIRE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -6545,6 +6545,30 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
     done
     [ "$(/usr/bin/grep -Fc 'SAVED_CANVAS_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 6 ] \
         || fail 'saved canvas native bridge named case inventory differs'
+    require_exact_fixed_receipt \
+        'SCROLL_PREF_EXPORT_BEFORE=observed normal_return=true style_cache_without_commit=true thickness_cache_without_commit=true files_preserved=true' \
+        'historical scrolling cache publication after failed storage'
+    require_exact_fixed_receipt \
+        'SCROLL_PREF_EXPORT_NATIVE=observed failure_reported=true cache_preserved=true files_preserved=true retry_durable=true unreadable_refused=true invalid_style_refused=true invalid_thickness_refused=true invalid_read_refused=true missing_session_refused=true unrelated_preserved=true no_peer_started=true cleanup=joined' \
+        'scrolling selected-field persistence and refusal outcomes'
+    require_exact_fixed_receipt \
+        'SCROLL_STYLE_WIRE_DART=pass cases=6 native_errors=9 error=RESULT_ERROR failed_state=preserved retry=durable invalid_read=refused no_peer_started=true' \
+        'scroll style generated native bridge outcomes'
+    for case_name in committed_roundtrip failed_write_retry unreadable_source_retry invalid_values missing_session invalid_stored_value; do
+        require_exact_fixed_receipt "SCROLL_STYLE_WIRE_DART_CASE=pass name=$case_name" \
+            "scroll style native bridge case $case_name"
+    done
+    [ "$(/usr/bin/grep -Fc 'SCROLL_STYLE_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 6 ] \
+        || fail 'scroll style native bridge case inventory differs'
+    require_exact_fixed_receipt \
+        'EDGE_THICKNESS_WIRE_DART=pass cases=5 native_errors=9 error=RESULT_ERROR failed_state=preserved retry=durable bounds=refused no_peer_started=true' \
+        'edge thickness generated native bridge outcomes'
+    for case_name in committed_roundtrip failed_write_retry unreadable_source_retry invalid_values missing_session; do
+        require_exact_fixed_receipt "EDGE_THICKNESS_WIRE_DART_CASE=pass name=$case_name" \
+            "edge thickness native bridge case $case_name"
+    done
+    [ "$(/usr/bin/grep -Fc 'EDGE_THICKNESS_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 5 ] \
+        || fail 'edge thickness native bridge case inventory differs'
     require_exact_fixed_receipt \
         'VOICE_INPUT_WIRE_DART=pass cases=5 native_errors=3 error=RESULT_ERROR viewer=selected-and-default cm_failure=reported read_failure=reported retry=reported state=preserved config=unchanged' \
         'voice-call input native bridge outcomes'
@@ -7236,7 +7260,7 @@ else
             'focused Flutter modifier release receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=7 tests=127 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined" \
+            "FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=8 tests=149 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined" \
             'focused Flutter auto-disconnect timeout receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
         require_exact_fixed_receipt \

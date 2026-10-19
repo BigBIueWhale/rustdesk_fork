@@ -491,32 +491,28 @@ pub fn session_set_view_style(session_id: SessionID, value: String) -> Result<St
     session.save_view_style(value)
 }
 
-pub fn session_get_scroll_style(session_id: SessionID) -> Option<String> {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        Some(session.get_scroll_style())
-    } else {
-        None
-    }
+pub fn session_get_scroll_style(session_id: SessionID) -> Result<String> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.get_scroll_style()
 }
 
-pub fn session_set_scroll_style(session_id: SessionID, value: String) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.save_scroll_style(value);
-    }
+pub fn session_set_scroll_style(session_id: SessionID, value: String) -> Result<String> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.save_scroll_style(value)
 }
 
-pub fn session_get_edge_scroll_edge_thickness(session_id: SessionID) -> Option<i32> {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        Some(session.get_edge_scroll_edge_thickness())
-    } else {
-        None
-    }
+pub fn session_get_edge_scroll_edge_thickness(session_id: SessionID) -> Result<i32> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.get_edge_scroll_edge_thickness()
 }
 
-pub fn session_set_edge_scroll_edge_thickness(session_id: SessionID, value: i32) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.save_edge_scroll_edge_thickness(value);
-    }
+pub fn session_set_edge_scroll_edge_thickness(session_id: SessionID, value: i32) -> Result<i32> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.save_edge_scroll_edge_thickness(value)
 }
 
 pub fn session_get_image_quality(session_id: SessionID) -> Option<String> {

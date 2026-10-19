@@ -414,12 +414,12 @@ impl<T: InvokeUiSession> Session<T> {
         self.lc.read().unwrap().view_style.clone()
     }
 
-    pub fn get_scroll_style(&self) -> String {
-        self.lc.read().unwrap().scroll_style.clone()
+    pub fn get_scroll_style(&self) -> ResultType<String> {
+        self.lc.read().unwrap().scroll_style()
     }
 
-    pub fn get_edge_scroll_edge_thickness(&self) -> i32 {
-        self.lc.read().unwrap().edge_scroll_edge_thickness
+    pub fn get_edge_scroll_edge_thickness(&self) -> ResultType<i32> {
+        self.lc.read().unwrap().edge_scroll_edge_thickness()
     }
 
     pub fn get_image_quality(&self) -> String {
@@ -531,15 +531,17 @@ impl<T: InvokeUiSession> Session<T> {
         Ok(value)
     }
 
-    pub fn save_scroll_style(&self, value: String) {
-        self.lc.write().unwrap().save_scroll_style(value);
+    pub fn save_scroll_style(&self, value: String) -> ResultType<String> {
+        self.lc.write().unwrap().save_scroll_style(&value)?;
+        Ok(value)
     }
 
-    pub fn save_edge_scroll_edge_thickness(&self, value: i32) {
+    pub fn save_edge_scroll_edge_thickness(&self, value: i32) -> ResultType<i32> {
         self.lc
             .write()
             .unwrap()
-            .save_edge_scroll_edge_thickness(value);
+            .save_edge_scroll_edge_thickness(value)?;
+        Ok(value)
     }
 
     pub fn custom_scale_percent(&self) -> ResultType<i32> {

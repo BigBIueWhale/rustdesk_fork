@@ -60,5 +60,5 @@ HOME="$WORK/home" XDG_CONFIG_HOME="$WORK/config" \
     timeout --signal=TERM --kill-after=5s 30s /option-dart/client "$library"
 [ "$(sha256sum "$library" | cut -d ' ' -f 1)" = "$artifact_sha" ]
 [ "$(sha256sum /option-dart/client | cut -d ' ' -f 1)" = "$dart_sha" ]
-printf 'OPTION_WIRE_ARTIFACT=pass sha256=%s library=%s dart_sha256=%s cases=68 unchanged=before-after execution_seconds=%s\n' \
+printf 'OPTION_WIRE_ARTIFACT=pass sha256=%s library=%s dart_sha256=%s cases=79 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$library" "$dart_sha" "$((SECONDS - execution_started))"

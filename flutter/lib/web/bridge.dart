@@ -466,18 +466,29 @@ class RustdeskImpl {
     throw UnimplementedError("sessionSetTrackpadSpeed");
   }
 
-  Future<String?> sessionGetScrollStyle(
-      {required UuidValue sessionId, dynamic hint}) {
-    return Future(() =>
-        js.context.callMethod('getByName', ['option:session', 'scroll_style']));
+  Future<String> sessionGetScrollStyle(
+      {required UuidValue sessionId, dynamic hint}) async {
+    final String? stored = js.context.callMethod('getByName', ['option:session', 'scroll_style']);
+    final value = stored == null || stored.isEmpty ? kRemoteScrollStyleAuto : stored;
+    if (![kRemoteScrollStyleAuto, kRemoteScrollStyleBar, kRemoteScrollStyleEdge].contains(value)) {
+      throw StateError('Invalid scroll style');
+    }
+    return value;
   }
 
-  Future<void> sessionSetScrollStyle(
-      {required UuidValue sessionId, required String value, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
+  Future<String> sessionSetScrollStyle(
+      {required UuidValue sessionId, required String value, dynamic hint}) async {
+    if (![kRemoteScrollStyleAuto, kRemoteScrollStyleBar, kRemoteScrollStyleEdge].contains(value)) {
+      throw StateError('Invalid scroll style');
+    }
+    js.context.callMethod('setByName', [
           'option:session',
           jsonEncode({'name': 'scroll_style', 'value': value})
-        ]));
+        ]);
+    if (await sessionGetScrollStyle(sessionId: sessionId) != value) {
+      throw StateError('Scroll style was not applied');
+    }
+    return value;
   }
 
   Future<String?> sessionGetImageQuality(
@@ -1707,17 +1718,25 @@ class RustdeskImpl {
         ]));
   }
 
-  Future<int?> sessionGetEdgeScrollEdgeThickness(
-      {required UuidValue sessionId, dynamic hint}) {
-    final thickness = js.context.callMethod(
+  Future<int> sessionGetEdgeScrollEdgeThickness(
+      {required UuidValue sessionId, dynamic hint}) async {
+    final String? stored = js.context.callMethod(
         'getByName', ['option:session', 'edge-scroll-edge-thickness']);
-    return Future(() => int.tryParse(thickness) ?? 100);
+    if (stored == null || stored.isEmpty) return 100;
+    final value = int.tryParse(stored);
+    if (value == null || value < 20 || value > 150) throw StateError('Invalid edge scroll thickness');
+    return value;
   }
 
-  Future<void> sessionSetEdgeScrollEdgeThickness(
-      {required UuidValue sessionId, required int value, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName',
-        ['option:session', 'edge-scroll-edge-thickness', value.toString()]));
+  Future<int> sessionSetEdgeScrollEdgeThickness(
+      {required UuidValue sessionId, required int value, dynamic hint}) async {
+    if (value < 20 || value > 150) throw StateError('Invalid edge scroll thickness');
+    js.context.callMethod('setByName',
+        ['option:session', 'edge-scroll-edge-thickness', value.toString()]);
+    if (await sessionGetEdgeScrollEdgeThickness(sessionId: sessionId) != value) {
+      throw StateError('Edge scroll thickness was not applied');
+    }
+    return value;
   }
 
   String sessionGetConnSessionId({required UuidValue sessionId, dynamic hint}) {

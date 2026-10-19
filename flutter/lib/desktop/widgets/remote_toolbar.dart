@@ -1567,54 +1567,73 @@ class _DisplayMenuState extends State<_DisplayMenu> {
   }
 
   scrollStyle(_IconSubmenuButtonState state, ColorScheme colorScheme) {
+    final expectedFfi = ffi;
+    final canvas = expectedFfi.canvasModel;
+    final owner = canvas.captureUpdateOwner();
+    bool current() => mounted && state.mounted && identical(ffi, expectedFfi) &&
+        owner != null && owner.isCurrent;
     return futureBuilder(future: () async {
-      final viewStyle =
-          await bind.sessionGetViewStyle(sessionId: ffi.sessionId) ?? '';
-      final visible = viewStyle == kRemoteViewStyleOriginal ||
-          viewStyle == kRemoteViewStyleCustom;
-      final scrollStyle =
-          await bind.sessionGetScrollStyle(sessionId: ffi.sessionId) ?? '';
-      final edgeScrollEdgeThickness = await bind
-          .sessionGetEdgeScrollEdgeThickness(sessionId: ffi.sessionId);
-      return {
-        'visible': visible,
-        'scrollStyle': scrollStyle,
-        'edgeScrollEdgeThickness': edgeScrollEdgeThickness,
-      };
+      if (!current()) return null;
+      try {
+        final viewStyle = await bind.sessionGetViewStyle(sessionId: owner!.sessionId);
+        if (!current()) return null;
+        if (![kRemoteViewStyleOriginal, kRemoteViewStyleAdaptive,
+            kRemoteViewStyleCustom].contains(viewStyle)) {
+          throw StateError('View style is unavailable');
+        }
+        final preferences = await canvas.readScrollPreferences(owner: owner);
+        if (!current()) return null;
+        return <String, Object>{
+          'visible': viewStyle != kRemoteViewStyleAdaptive,
+          'scrollStyle': preferences.style,
+          'edgeScrollEdgeThickness': preferences.thickness,
+        };
+      } catch (error, stack) {
+        debugPrint('Failed to load scrolling preferences: $error');
+        debugPrintStack(stackTrace: stack);
+        return current() ? <String, Object>{'failed': true} : null;
+      }
     }(), hasData: (data) {
+      if (!current()) return const SizedBox.shrink();
+      if (data['failed'] == true) {
+        return Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(translate('Failed')),
+          TextButton(onPressed: () { if (current()) state.setState(() {}); },
+              child: Text(translate('Retry'))),
+        ]);
+      }
       final visible = data['visible'] as bool;
       if (!visible) return Offstage();
       final groupValue = data['scrollStyle'] as String;
       final edgeScrollEdgeThickness = data['edgeScrollEdgeThickness'] as int;
 
       onChangeScrollStyle(String? value) async {
-        if (value == null) return;
-        final canvas = widget.ffi.canvasModel;
-        final owner = canvas.captureUpdateOwner();
-        if (owner == null) return;
-        await bind.sessionSetScrollStyle(
-            sessionId: owner.sessionId, value: value);
-        if (!await canvas.updateScrollStyle(owner: owner) || !state.mounted) {
-          return;
+        if (!current() || value == null) return;
+        state.setState(() {});
+        await selectSessionScrollStyle(value,
+            applyStyle: (value) => canvas.applyScrollStyle(value, owner: owner),
+            isCurrent: current);
+        if (current()) state.setState(() {});
+      }
+
+      Future<int?> onChangeEdgeScrollEdgeThickness(int value) async {
+        if (!current()) return null;
+        state.setState(() {});
+        try {
+          final effective = await canvas.applyEdgeScrollEdgeThickness(value, owner: owner);
+          return current() ? effective : null;
+        } finally {
+          if (current()) state.setState(() {});
         }
-        state.setState(() {});
       }
 
-      onChangeEdgeScrollEdgeThickness(double? value) async {
-        if (value == null) return;
-        final newThickness = value.round();
-        await bind.sessionSetEdgeScrollEdgeThickness(
-            sessionId: ffi.sessionId, value: newThickness);
-        widget.ffi.canvasModel.updateEdgeScrollEdgeThickness(newThickness);
-        state.setState(() {});
-      }
-
+      bool canSelectStyle() => canvas.imageOverflow.value && !canvas.scrollPreferenceSavePending;
       return Obx(() => Column(children: [
             RdoMenuButton<String>(
               child: Text(translate('ScrollAuto')),
               value: kRemoteScrollStyleAuto,
               groupValue: groupValue,
-              onChanged: widget.ffi.canvasModel.imageOverflow.value
+              onChanged: canSelectStyle()
                   ? (value) => onChangeScrollStyle(value)
                   : null,
               closeOnActivate: groupValue != kRemoteScrollStyleEdge,
@@ -1624,7 +1643,7 @@ class _DisplayMenuState extends State<_DisplayMenu> {
               child: Text(translate('Scrollbar')),
               value: kRemoteScrollStyleBar,
               groupValue: groupValue,
-              onChanged: widget.ffi.canvasModel.imageOverflow.value
+              onChanged: canSelectStyle()
                   ? (value) => onChangeScrollStyle(value)
                   : null,
               closeOnActivate: groupValue != kRemoteScrollStyleEdge,
@@ -1636,7 +1655,7 @@ class _DisplayMenuState extends State<_DisplayMenu> {
                 value: kRemoteScrollStyleEdge,
                 groupValue: groupValue,
                 closeOnActivate: false,
-                onChanged: widget.ffi.canvasModel.imageOverflow.value
+                onChanged: canSelectStyle()
                     ? (value) => onChangeScrollStyle(value)
                     : null,
                 ffi: widget.ffi,
@@ -1644,8 +1663,9 @@ class _DisplayMenuState extends State<_DisplayMenu> {
               Offstage(
                   offstage: groupValue != kRemoteScrollStyleEdge,
                   child: EdgeThicknessControl(
-                    value: edgeScrollEdgeThickness.toDouble(),
-                    onChanged: onChangeEdgeScrollEdgeThickness,
+                    key: ValueKey((expectedFfi, owner!.sessionId, expectedFfi.clientOwnerId)),
+                    value: edgeScrollEdgeThickness,
+                    saveThickness: canvas.imageOverflow.value ? onChangeEdgeScrollEdgeThickness : null,
                     colorScheme: colorScheme,
                   )),
             ],
@@ -3389,24 +3409,133 @@ Widget _buildPointerTrackWidget(Widget child, FFI? ffi) {
   );
 }
 
-class EdgeThicknessControl extends StatelessWidget {
-  final double value;
-  final ValueChanged<double>? onChanged;
+class EdgeThicknessControl extends StatefulWidget {
+  final int value;
+  final Future<int?> Function(int)? saveThickness;
   final ColorScheme? colorScheme;
+  final String Function(String)? translateText;
 
   const EdgeThicknessControl({
     Key? key,
     required this.value,
-    this.onChanged,
+    this.saveThickness,
     this.colorScheme,
+    this.translateText,
   }) : super(key: key);
 
   static const double kMin = 20;
   static const double kMax = 150;
 
   @override
+  State<EdgeThicknessControl> createState() => _EdgeThicknessControlState();
+}
+
+class _EdgeThicknessControlState extends State<EdgeThicknessControl> {
+  late int _value;
+  late int _confirmed;
+  late int _input;
+  Timer? _timer;
+  bool _saving = false;
+  bool _dirty = false;
+  bool _failed = false;
+  int _epoch = 0;
+  int _revision = 0;
+
+  int _normalize(int value) => value >= 20 && value <= 150 ? value : 100;
+  bool _current(int epoch) => mounted && epoch == _epoch && widget.saveThickness != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = _confirmed = _input = _normalize(widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant EdgeThicknessControl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = _normalize(widget.value);
+    if ((oldWidget.saveThickness == null) != (widget.saveThickness == null)) {
+      _epoch++;
+      _revision++;
+      _timer?.cancel();
+      _timer = null;
+      _dirty = _failed = false;
+      _value = _confirmed = _input = next;
+    } else if (next != _input) {
+      _input = _confirmed = next;
+      if (!_dirty && !_saving) _value = next;
+    }
+  }
+
+  ValueChanged<double> get _onChanged {
+    final epoch = _epoch;
+    return (value) {
+      if (!_current(epoch) || !value.isFinite) return;
+      final next = value.round().clamp(20, 150);
+      if (next == _value && !_failed) return;
+      _revision++;
+      setState(() {
+        _value = next;
+        _dirty = _saving || next != _confirmed;
+        _failed = false;
+      });
+      _timer?.cancel();
+      _timer = null;
+      if (_dirty) {
+        _timer = Timer(const Duration(milliseconds: 300), () {
+          _timer = null;
+          _save();
+        });
+      }
+    };
+  }
+
+  Future<void> _save() async {
+    final write = widget.saveThickness;
+    if (!_current(_epoch) || write == null || !_dirty || _saving) return;
+    final epoch = _epoch;
+    final revision = _revision;
+    final submitted = _value;
+    setState(() => _saving = true);
+    try {
+      final effective = await write(submitted);
+      if (!_current(epoch)) return;
+      if (effective != submitted || effective == null || effective < 20 || effective > 150) {
+        throw StateError('Edge scroll thickness was not applied');
+      }
+      _confirmed = effective;
+      if (revision == _revision) {
+        setState(() {
+          _value = effective;
+          _dirty = _failed = false;
+        });
+      }
+    } catch (error, stack) {
+      debugPrint('Failed to save edge scroll thickness: $error');
+      debugPrintStack(stackTrace: stack);
+      if (_current(epoch) && revision == _revision) setState(() => _failed = true);
+    } finally {
+      _saving = false;
+      if (mounted) {
+        setState(() {});
+        if (_dirty && _timer == null && (epoch != _epoch || revision != _revision)) _save();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _epoch++;
+    _timer?.cancel();
+    _timer = null;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final colorScheme = this.colorScheme ?? Theme.of(context).colorScheme;
+    final colorScheme = widget.colorScheme ?? Theme.of(context).colorScheme;
+    final text = widget.translateText ?? translate;
+    final epoch = _epoch;
 
     final slider = SliderTheme(
       data: SliderTheme.of(context).copyWith(
@@ -3424,20 +3553,32 @@ class EdgeThicknessControl extends StatelessWidget {
         ),
       ),
       child: Semantics(
-        value: value.toInt().toString(),
+        value: _value.toString(),
         child: Slider(
-          value: value,
+          value: _value.toDouble(),
           min: EdgeThicknessControl.kMin,
           max: EdgeThicknessControl.kMax,
           divisions:
               (EdgeThicknessControl.kMax - EdgeThicknessControl.kMin).round(),
           semanticFormatterCallback: (double newValue) =>
               "${newValue.round()}px",
-          onChanged: onChanged,
+          onChanged: widget.saveThickness == null ? null : _onChanged,
         ),
       ),
     );
 
-    return slider;
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      slider,
+      if (_failed) Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(text('Failed')),
+        TextButton(key: const ValueKey('edge-thickness-retry'),
+            onPressed: _saving ? null : () {
+              if (!_current(epoch)) return;
+              _timer?.cancel();
+              _timer = null;
+              _save();
+            }, child: Text(text('Retry'))),
+      ]),
+    ]);
   }
 }

@@ -110,6 +110,31 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback publishes only confirmed native readback",
     "keyboard layout callback preserves its model after native failure",
 }
+SCROLL_PREFERENCE_TESTS = {
+    "edge thickness owns a bounded draft without initial writes",
+    "edge thickness rebuild retains its draft and latest writer",
+    "edge thickness serializes writes and keeps only latest intent",
+    "edge thickness refusal mismatch and null results retain retry",
+    "edge thickness removal cancels queued and captured edits",
+    "edge thickness removed admitted work retires feedback",
+    "edge thickness disable and reenable retire old callbacks",
+    "edge thickness replacement owner cannot receive old completion",
+    "edge thickness external values do not replace pending edits",
+    "scroll style selection joins the checked canvas operation",
+    "scroll style refusal mismatch and invalid choices remain explicit",
+    "scroll style retirement blocks admission and late feedback",
+    "canvas scrolling saves share admission through publication",
+    "canvas scrolling failed saves preserve state and permit retry",
+    "canvas retired scroll owner suppresses viewport effects",
+    "canvas clear keeps admitted scrolling work owned until completion",
+    "canvas disposal joins accepted scroll save without notification",
+    "canvas scroll commit retires older style initialization",
+    "canvas thickness commit retires older thickness initialization",
+    "canvas ready scroll initializers remain useful without commits",
+    "canvas scroll reads reject invalid values and retired snapshots",
+    "canvas scroll snapshot is retired by a committed thickness change",
+}
+
 CUSTOM_SCALE_TESTS = {
     "custom scale removal cancels its deferred read subscription",
     "custom scale initializes percentage and normalized position together",
@@ -511,6 +536,7 @@ def parse_result(path, profile="models"):
             "trackpad_speed_dialog_test.dart": TRACKPAD_DIALOG_TESTS,
             "input_keyboard_mode_test.dart": KEYBOARD_MODE_REFRESH_TESTS,
             "custom_scale_controls_test.dart": CUSTOM_SCALE_TESTS,
+            "scroll_preferences_test.dart": SCROLL_PREFERENCE_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

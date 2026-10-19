@@ -917,6 +917,110 @@ Future<void> main(List<String> arguments) async {
     check(canvasErrors == 17, 'saved canvas native error inventory differs');
     print('SAVED_CANVAS_WIRE_DART=pass cases=6 native_errors=17 error=RESULT_ERROR '
         'failed_state=preserved retry=durable invalid_read=refused empty=removed no_peer_started=true');
+
+    var scrollErrors = 0;
+    Future<void> scrollRefused(Future<String> Function() operation) async {
+      Object? failure;
+      try { await operation(); } catch (error) { failure = error; }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'scroll style error did not cross the generated native bridge');
+      scrollErrors++;
+    }
+    Future<void> scrollStyle(String value) async {
+      check(await api.sessionSetScrollStyle(sessionId: trackpadSession, value: value) == value &&
+          await api.sessionGetScrollStyle(sessionId: trackpadSession) == value,
+          'scroll style differs from its effective result');
+      check(file.readAsStringSync().contains('scroll_style = "$value"'),
+          'scroll style result preceded persistence');
+      durable(240);
+    }
+    for (final value in ['scrollauto', 'scrollbar', 'scrolledge']) { await scrollStyle(value); }
+    print('SCROLL_STYLE_WIRE_DART_CASE=pass name=committed_roundtrip');
+    for (final denyRead in [false, true]) {
+      final before = configFiles(config);
+      final confirmed = await api.sessionGetScrollStyle(sessionId: trackpadSession);
+      final requested = denyRead ? 'scrollauto' : 'scrollbar';
+      chmod(denyRead ? '0000' : '0500', denyRead ? file.path : file.parent.path);
+      try {
+        await scrollRefused(() => api.sessionSetScrollStyle(sessionId: trackpadSession, value: requested));
+        check(await api.sessionGetScrollStyle(sessionId: trackpadSession) == confirmed,
+            'refused scroll style changed its cached value');
+      } finally {
+        chmod(denyRead ? '0600' : '0700', denyRead ? file.path : file.parent.path);
+      }
+      unchanged(before);
+      await scrollStyle(requested);
+      print('SCROLL_STYLE_WIRE_DART_CASE=pass name=${denyRead ? "unreadable_source_retry" : "failed_write_retry"}');
+    }
+    final beforeInvalidScroll = configFiles(config);
+    for (final value in ['', 'bad', 'original', 'scrollAuto']) {
+      await scrollRefused(() => api.sessionSetScrollStyle(sessionId: trackpadSession, value: value));
+    }
+    unchanged(beforeInvalidScroll);
+    print('SCROLL_STYLE_WIRE_DART_CASE=pass name=invalid_values');
+    final missingScroll = Uuid().v4obj();
+    await scrollRefused(() => api.sessionGetScrollStyle(sessionId: missingScroll));
+    await scrollRefused(() => api.sessionSetScrollStyle(sessionId: missingScroll, value: 'scrollauto'));
+    unchanged(beforeInvalidScroll);
+    print('SCROLL_STYLE_WIRE_DART_CASE=pass name=missing_session');
+    await reopenEditedPreference('scroll_style', 'bad');
+    await scrollRefused(() => api.sessionGetScrollStyle(sessionId: trackpadSession));
+    await scrollStyle('scrolledge');
+    print('SCROLL_STYLE_WIRE_DART_CASE=pass name=invalid_stored_value');
+    check(scrollErrors == 9, 'scroll style native error inventory differs');
+    print('SCROLL_STYLE_WIRE_DART=pass cases=6 native_errors=9 error=RESULT_ERROR '
+        'failed_state=preserved retry=durable invalid_read=refused no_peer_started=true');
+
+    var thicknessErrors = 0;
+    Future<void> thicknessRefused(Future<int> Function() operation) async {
+      Object? failure;
+      try { await operation(); } catch (error) { failure = error; }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'edge scroll thickness error did not cross the generated native bridge');
+      thicknessErrors++;
+    }
+    Future<void> edgeThickness(int value) async {
+      check(await api.sessionSetEdgeScrollEdgeThickness(sessionId: trackpadSession, value: value) == value &&
+          await api.sessionGetEdgeScrollEdgeThickness(sessionId: trackpadSession) == value,
+          'edge scroll thickness differs from its effective result');
+      check(file.readAsStringSync().contains('edge_scroll_edge_thickness = $value'),
+          'edge scroll thickness result preceded persistence');
+      check(await api.sessionGetScrollStyle(sessionId: trackpadSession) == 'scrolledge',
+          'edge scroll thickness replaced scroll style');
+      durable(240);
+    }
+    for (final value in [20, 150, 70]) { await edgeThickness(value); }
+    print('EDGE_THICKNESS_WIRE_DART_CASE=pass name=committed_roundtrip');
+    for (final denyRead in [false, true]) {
+      final before = configFiles(config);
+      final confirmed = await api.sessionGetEdgeScrollEdgeThickness(sessionId: trackpadSession);
+      final requested = denyRead ? 100 : 80;
+      chmod(denyRead ? '0000' : '0500', denyRead ? file.path : file.parent.path);
+      try {
+        await thicknessRefused(() => api.sessionSetEdgeScrollEdgeThickness(sessionId: trackpadSession, value: requested));
+        check(await api.sessionGetEdgeScrollEdgeThickness(sessionId: trackpadSession) == confirmed,
+            'refused edge scroll thickness changed its cached value');
+      } finally {
+        chmod(denyRead ? '0600' : '0700', denyRead ? file.path : file.parent.path);
+      }
+      unchanged(before);
+      await edgeThickness(requested);
+      print('EDGE_THICKNESS_WIRE_DART_CASE=pass name=${denyRead ? "unreadable_source_retry" : "failed_write_retry"}');
+    }
+    final beforeInvalidThickness = configFiles(config);
+    for (final value in [-1, 0, 19, 151, 2147483647]) {
+      await thicknessRefused(() => api.sessionSetEdgeScrollEdgeThickness(sessionId: trackpadSession, value: value));
+    }
+    unchanged(beforeInvalidThickness);
+    print('EDGE_THICKNESS_WIRE_DART_CASE=pass name=invalid_values');
+    final missingThickness = Uuid().v4obj();
+    await thicknessRefused(() => api.sessionGetEdgeScrollEdgeThickness(sessionId: missingThickness));
+    await thicknessRefused(() => api.sessionSetEdgeScrollEdgeThickness(sessionId: missingThickness, value: 100));
+    unchanged(beforeInvalidThickness);
+    print('EDGE_THICKNESS_WIRE_DART_CASE=pass name=missing_session');
+    check(thicknessErrors == 9, 'edge scroll thickness native error inventory differs');
+    print('EDGE_THICKNESS_WIRE_DART=pass cases=5 native_errors=9 error=RESULT_ERROR '
+        'failed_state=preserved retry=durable bounds=refused no_peer_started=true');
   } finally {
     await api.sessionClose(sessionId: trackpadSession, clientOwnerId: trackpadOwner);
   }

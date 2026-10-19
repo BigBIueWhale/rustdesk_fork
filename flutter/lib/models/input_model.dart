@@ -1720,7 +1720,11 @@ class InputModel {
     }
   }
 
-  void onPointUpImage(PointerUpEvent e) {
+  void onPointUpImage(PointerUpEvent e) => _endPhysicalMouseImage(e);
+
+  void onPointCancelImage(PointerCancelEvent e) => _endPhysicalMouseImage(e);
+
+  void _endPhysicalMouseImage(PointerEvent e) {
     if (isDesktop) _queryOtherWindowCoords = false;
     if (isViewOnly && !showMyCursor) return;
     if (isViewCamera) return;
@@ -1730,9 +1734,8 @@ class InputModel {
     }
 
     if (e.kind != ui.PointerDeviceKind.mouse) return;
-    if (isPhysicalMouse.value) {
-      _handleMouseEvent(e, _kMouseEventUp);
-    }
+    // Retire the tracked chord even when a touch contact selected touch input.
+    _handleMouseEvent(e, _kMouseEventUp);
   }
 
   void onPointMoveImage(PointerMoveEvent e) {

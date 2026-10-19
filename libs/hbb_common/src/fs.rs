@@ -359,6 +359,34 @@ impl<I> DirectoryEntries<I> {
     }
 }
 
+fn read_link_target_type(path: &Path) -> std::io::Result<FileType> {
+    match std::fs::metadata(path) {
+        Ok(metadata) => Ok(if metadata.is_dir() {
+            FileType::DirLink
+        } else {
+            FileType::FileLink
+        }),
+        Err(error) => {
+            let unresolved = error.kind() == std::io::ErrorKind::NotFound;
+            #[cfg(unix)]
+            let unresolved = unresolved
+                || matches!(
+                    error.raw_os_error(),
+                    Some(crate::libc::ENOTDIR) | Some(crate::libc::ELOOP)
+                );
+            #[cfg(windows)]
+            let unresolved = unresolved
+                || error.raw_os_error()
+                    == Some(winapi::shared::winerror::ERROR_CANT_RESOLVE_FILENAME as i32);
+            if unresolved {
+                Ok(FileType::FileLink)
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
 fn read_directory_listing(
     directory: DirectoryEntries<impl IntoIterator<Item = std::io::Result<std::fs::DirEntry>>>,
     prefix: &Path,
@@ -411,11 +439,7 @@ fn read_directory_listing(
         let (entry_type, size) = {
             let is_link = is_symlink_or_reparse_point(&meta);
             if is_link {
-                if p.is_dir() {
-                    (FileType::DirLink.into(), 0)
-                } else {
-                    (FileType::FileLink.into(), 0)
-                }
+                (read_link_target_type(&p)?.into(), 0)
             } else if meta.is_dir() {
                 (FileType::Dir.into(), 0)
             } else if meta.is_file() {

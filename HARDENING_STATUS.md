@@ -3011,6 +3011,38 @@ persistence; and Windows/macOS/Android/iOS/browser execution remain OPEN.
 All fifteen installed credential actions, R-S0, latency/soak, cold artifacts,
 independent reproduction, external review and release acceptance remain OPEN.
 
+**Trackpad speed — rendered Flutter control corrected; full page/native effects OPEN.**
+Product `51669340` replaces the initial-callback, fire-and-forget debouncer
+with a typed effective-value save owned by the control. One retained timer and
+one admitted save coalesce newer edits to the latest value. A parent rebuild
+preserves a draft and uses the current callback. Successful completion publishes
+the confirmed effective value without overwriting newer edits; failed/null
+outcomes retain the draft with visible failure and Retry. Disable/mode replacement
+retires queued dispatch without admitting a second write; widget replacement or
+removal retires callbacks, cancels its timer and disposes its controller.
+The constructor now forwards its key. Fixed defaults disable the control.
+The existing session dialog still stages bounded local values for its Close action.
+
+The Linux Flutter baseline executes 54 cases: the previous 45 and the local
+staging control pass; eight new cases reproduce stale callback/draft publication,
+post-removal work, overlapping writes, missing failure/retry, ignored effective
+readback and replacement/refresh errors. The correction passes all 56 cases in
+320 outer seconds, including two further disable/pending and retired-error
+cases. The same eight failure cases pass; the staging case additionally checks
+invalid/empty text. Only the mount adapter changes to the typed callback API and
+explicit enabled/translation arguments. The component is actually rendered with
+controlled save futures and Flutter text input; the full settings page, native
+trackpad effects, per-session transport and installed/platform behavior are unproved.
+Rust/config/FFI/IPC and the session-dialog caller are unchanged.
+
+Exact sources, cases, baseline JSON, raw results, pinned inputs, complete endpoint
+records, failed-root inventory and joined bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/trackpad-speed-51669340.json`.
+Custom image-quality/FPS debounce/draft ownership, full settings interaction,
+cross-process/restart and other platforms remain OPEN. All fifteen credential
+actions, R-S0, R-F5 impairment/soak, cold artifacts, independent reproduction,
+external review, release and parked work remain OPEN.
+
 **Display-default preferences — Linux transaction/bridge corrected; full controls/platform acceptance OPEN.**
 Product `a6a8c0b1` replaces writable UserDefaultConfig snapshots with one
 single-key operation. The existing process-local cache lock owns fresh loading,

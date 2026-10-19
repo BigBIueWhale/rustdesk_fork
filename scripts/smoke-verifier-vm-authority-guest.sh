@@ -3163,13 +3163,13 @@ run_focused_rust_tests() {
             source_fingerprints+=(
                 libs/hbb_common/src/config/option_tests.rs
                 scripts/fixtures/default-options-before-transaction.rs
-                scripts/fixtures/peer-store-before-errors.rs
             )
             required_tests=(
                 config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal
                 config::tests::config_transaction_traverses_search_only_existing_ancestor
                 config::tests::config_transaction_creates_missing_parent_components_privately
                 config::tests::config_transaction_rejects_symlink_parent_and_replaces_final_link_itself
+                config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options
                 config::option_tests::failed_write_preserves_memory_and_allows_the_same_retry
                 config::option_tests::failed_pinned_entry_purge_remains_retryable
                 config::option_tests::results_distinguish_failed_saves_from_durable_and_idempotent_success
@@ -3187,7 +3187,7 @@ run_focused_rust_tests() {
                 config::option_tests::default_write_failure_preserves_cache_file_and_identical_retry
                 config::option_tests::default_purge_is_retryable_and_returns_effective_normalized_values
                 config::option_tests::default_unreadable_source_refuses_mutation_without_losing_existing_values
-                config::option_tests::peer_store_reports_failure_without_publishing_a_change_and_refuses_unreadable_source
+                config::option_tests::peer_store_reports_failure_preserves_the_file_and_refuses_unreadable_source
                 config::option_tests::peer_removal_permission_failure_is_reported_and_retryable
                 config::option_tests::peer_removal_directory_failure_preserves_its_contents
                 config::option_tests::peer_removal_missing_file_is_idempotent

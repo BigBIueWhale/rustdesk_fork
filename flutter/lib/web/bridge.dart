@@ -1235,10 +1235,6 @@ class RustdeskImpl {
     return Future.value();
   }
 
-  Future<String> mainGetNewStoredPeers({dynamic hint}) {
-    throw UnimplementedError("mainGetNewStoredPeers");
-  }
-
   Future<void> mainForgetPassword({required String id, dynamic hint}) {
     return mainSetPeerOption(id: id, key: 'password', value: '');
   }

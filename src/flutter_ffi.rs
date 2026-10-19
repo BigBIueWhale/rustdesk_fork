@@ -1350,15 +1350,6 @@ pub fn main_set_peer_alias(id: String, alias: String) {
     set_peer_option(id, "alias".to_owned(), alias)
 }
 
-pub fn main_get_new_stored_peers() -> String {
-    let peers: Vec<String> = config::NEW_STORED_PEER_CONFIG
-        .lock()
-        .unwrap()
-        .drain()
-        .collect();
-    serde_json::to_string(&peers).unwrap_or_default()
-}
-
 pub fn main_forget_password(id: String) -> Result<()> {
     forget_password(id)
 }

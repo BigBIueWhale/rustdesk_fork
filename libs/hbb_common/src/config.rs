@@ -866,7 +866,6 @@ lazy_static::lazy_static! {
     pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());
     static ref KEY_PAIR: Mutex<Option<KeyPair>> = Default::default();
     static ref USER_DEFAULT_CONFIG: RwLock<(UserDefaultConfig, Instant)> = RwLock::new((UserDefaultConfig::load(), Instant::now()));
-    pub static ref NEW_STORED_PEER_CONFIG: Mutex<HashSet<String>> = Default::default();
     pub static ref DEFAULT_SETTINGS: RwLock<HashMap<String, String>> = Default::default();
     pub static ref OVERWRITE_SETTINGS: RwLock<HashMap<String, String>> = Default::default();
     pub static ref DEFAULT_DISPLAY_SETTINGS: RwLock<HashMap<String, String>> = Default::default();
@@ -3366,13 +3365,10 @@ impl PeerConfig {
     }
 
     fn load_with_status(id: &str) -> ConfigLoad<PeerConfig> {
-        Self::load_path_with_status(Self::path(id), Some(id))
+        Self::load_path_with_status(Self::path(id))
     }
 
-    fn load_path_with_status(
-        path: PathBuf,
-        stored_peer_id: Option<&str>,
-    ) -> ConfigLoad<PeerConfig> {
+    fn load_path_with_status(path: PathBuf) -> ConfigLoad<PeerConfig> {
         let _lock = CONFIG.read().unwrap();
         let loaded: ConfigLoad<PeerConfig> = load_path_with_status(path.clone());
         let mut config = loaded.value;
@@ -3388,13 +3384,8 @@ impl PeerConfig {
         store = store || store2;
         store = remove_retired_rdp_credential_options(&mut config.options) || store;
         if store {
-            match Self::store_path(&path, &config) {
-                Ok(()) => {
-                    if let Some(id) = stored_peer_id {
-                        NEW_STORED_PEER_CONFIG.lock().unwrap().insert(id.to_owned());
-                    }
-                }
-                Err(err) => log::error!("Failed to migrate peer settings: {err}"),
+            if let Err(err) = Self::store_path(&path, &config) {
+                log::error!("Failed to migrate peer settings: {err}");
             }
         }
         ConfigLoad::new(config, status)
@@ -3402,9 +3393,7 @@ impl PeerConfig {
 
     pub fn store(&self, id: &str) -> crate::ResultType<()> {
         let _lock = CONFIG.read().unwrap();
-        Self::store_path(&Self::path(id), self)?;
-        NEW_STORED_PEER_CONFIG.lock().unwrap().insert(id.to_owned());
-        Ok(())
+        Self::store_path(&Self::path(id), self)
     }
 
     fn store_path(path: &Path, config: &PeerConfig) -> crate::ResultType<()> {
@@ -3596,7 +3585,7 @@ impl PeerConfig {
         let peers: Vec<_> = all[from..to]
             .iter()
             .filter_map(|(id, t, p)| {
-                let loaded = PeerConfig::load_path_with_status(p.clone(), Some(id));
+                let loaded = PeerConfig::load_path_with_status(p.clone());
                 let status = loaded.status;
                 let c = loaded.value;
                 if c.info.platform.is_empty() {
@@ -5768,7 +5757,7 @@ unrelated = "preserved"
             .insert("rdp_port".to_owned(), "3390".to_owned());
         store_path(file.clone(), legacy).unwrap();
 
-        let loaded = PeerConfig::load_path_with_status(file.clone(), None);
+        let loaded = PeerConfig::load_path_with_status(file.clone());
         assert_eq!(loaded.status, ConfigLoadStatus::Loaded);
         assert!(!loaded.value.options.contains_key("rdp_username"));
         assert!(!loaded.value.options.contains_key("rdp_password"));

@@ -288,7 +288,11 @@ fn read_dir_entries(
             budget,
         )?;
         let mut is_hidden = false;
-        let meta = std::fs::symlink_metadata(&p)?;
+        let meta = match std::fs::symlink_metadata(&p) {
+            Ok(meta) => meta,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
         // docs.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants
         #[cfg(windows)]
         if meta.file_attributes() & 0x2 != 0 {

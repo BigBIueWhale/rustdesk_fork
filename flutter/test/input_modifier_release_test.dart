@@ -72,6 +72,7 @@ KeyEvent keyEvent(LogicalKeyboardKey key, {required bool down}) {
 List<LogicalKeyboardKey> pendingRaw(ToReleaseRawKeys keys) {
   final events = <LogicalKeyboardKey>[];
   keys.release((event) {
+    expect(event, isA<RawKeyUpEvent>());
     events.add(event.logicalKey);
     return KeyEventResult.handled;
   });

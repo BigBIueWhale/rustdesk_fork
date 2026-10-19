@@ -2240,7 +2240,7 @@ class _KeyboardMenu extends StatelessWidget {
         color: _ToolbarTheme.blueColor,
         hoverColor: _ToolbarTheme.hoverBlueColor,
         menuChildrenGetter: (_) => [
-        keyboardMode(context),
+              keyboardMode(context),
               localKeyboardType(),
               inputSource(),
               Divider(),

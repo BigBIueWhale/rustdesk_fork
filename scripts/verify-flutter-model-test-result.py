@@ -280,6 +280,19 @@ TWO_FINGER_TAP_TESTS = {
     "two finger tap movement refusal permits a fresh complete pair",
 }
 
+CUSTOM_TOUCH_TESTS = {
+    "custom touch one finger starts before updates and ends once",
+    "custom touch rapid successive pans each own a start",
+    "custom touch replacement scale pointers start a fresh phase",
+    "custom touch scale to pan survives continuous movement",
+    "custom touch three to two survives continuous movement",
+    "custom touch fourth pointer pauses recognized updates",
+    "custom touch disposal cannot publish a deferred start",
+    "custom touch cancellation permits an immediate fresh pan",
+    "custom touch rejected extra pointer preserves the active pan",
+    "custom touch three finger start retains transformed coordinates",
+}
+
 SETTING_OPTION_TESTS = {
     "view style choice joins persistence before canvas publication",
     "view style refusal and mismatch leave the canvas and preserve retry",
@@ -670,6 +683,7 @@ def parse_result(path, profile="models"):
             "owned_image_paint_test.dart": CANVAS_IMAGE_TESTS,
             "reverse_mouse_wheel_test.dart": REVERSE_WHEEL_TESTS,
             "two_finger_tap_test.dart": TWO_FINGER_TAP_TESTS,
+            "custom_touch_gestures_test.dart": CUSTOM_TOUCH_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

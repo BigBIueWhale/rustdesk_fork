@@ -93,6 +93,124 @@ Future<void> _slideQuality(WidgetTester tester, int index, double value) async {
 }
 
 void main() {
+  test('view style choice joins persistence before canvas publication', () async {
+    final pending = Completer<String>();
+    final canvas = Completer<bool>();
+    final writes = <String>[];
+    var updates = 0;
+    var finished = false;
+    final choosing = selectSessionViewStyle('adaptive',
+        saveStyle: (value) { writes.add(value); return pending.future; },
+        updateCanvas: () { updates++; return canvas.future; }, isCurrent: () => true,
+        showFailure: () => fail('successful view style reported failure'))
+        .then((result) { finished = true; return result; });
+    await Future<void>.delayed(Duration.zero);
+    expect(writes, ['adaptive']);
+    expect(updates, 0);
+    expect(finished, isFalse);
+    pending.complete('adaptive');
+    await Future<void>.delayed(Duration.zero);
+    expect(updates, 1);
+    expect(finished, isFalse);
+    canvas.complete(true);
+    expect(await choosing, isTrue);
+  });
+
+  test('view style refusal and mismatch leave the canvas and preserve retry', () async {
+    for (final synchronous in [false, true]) {
+      var calls = 0;
+      var updates = 0;
+      var failures = 0;
+      Future<String> write(String value) {
+        calls++;
+        if (calls == 1) {
+          if (synchronous) throw StateError('store failed');
+          return Future.error(StateError('store failed'));
+        }
+        return Future.value(calls == 2 ? 'original' : value);
+      }
+      Future<bool> choose() => selectSessionViewStyle('custom',
+          saveStyle: write, updateCanvas: () async { updates++; return true; },
+          isCurrent: () => true, showFailure: () => failures++);
+      expect(await choose(), isFalse);
+      expect(await choose(), isFalse);
+      expect(updates, 0);
+      expect(await choose(), isTrue);
+      expect(updates, 1);
+      expect(failures, 2);
+    }
+  });
+
+  test('view style canvas refusal and failure remain visible and retryable', () async {
+    var updates = 0;
+    var failures = 0;
+    Future<bool> choose() => selectSessionViewStyle('original',
+        saveStyle: (value) async => value,
+        updateCanvas: () async {
+          updates++;
+          if (updates == 1) return false;
+          if (updates == 2) throw StateError('canvas failed');
+          return true;
+        }, isCurrent: () => true, showFailure: () => failures++);
+    expect(await choose(), isFalse);
+    expect(await choose(), isFalse);
+    expect(await choose(), isTrue);
+    expect(updates, 3);
+    expect(failures, 2);
+  });
+
+  test('view style owner retirement blocks writes and late canvas effects', () async {
+    var current = false;
+    var writes = 0;
+    var updates = 0;
+    var failures = 0;
+    final pending = Completer<String>();
+    Future<bool> choose() => selectSessionViewStyle('adaptive',
+        saveStyle: (_) { writes++; return pending.future; },
+        updateCanvas: () async { updates++; return true; },
+        isCurrent: () => current, showFailure: () => failures++);
+    expect(await choose(), isFalse);
+    expect(writes, 0);
+    current = true;
+    final admitted = choose();
+    current = false;
+    pending.complete('adaptive');
+    expect(await admitted, isFalse);
+    expect(writes, 1);
+    expect(updates, 0);
+    expect(failures, 0);
+  });
+
+  test('view style retired canvas completion cannot publish failure feedback', () async {
+    var current = true;
+    var failures = 0;
+    final pending = Completer<bool>();
+    final choosing = selectSessionViewStyle('custom',
+        saveStyle: (value) async => value, updateCanvas: () => pending.future,
+        isCurrent: () => current, showFailure: () => failures++);
+    await Future<void>.delayed(Duration.zero);
+    current = false;
+    pending.completeError(StateError('retired canvas failed'));
+    expect(await choosing, isFalse);
+    expect(failures, 0);
+  });
+
+  test('view style selection admits only the three named styles', () async {
+    final writes = <String>[];
+    var failures = 0;
+    Future<bool> choose(String? value) => selectSessionViewStyle(value,
+        saveStyle: (value) async { writes.add(value); return value; },
+        updateCanvas: () async => true, isCurrent: () => true,
+        showFailure: () => failures++);
+    for (final value in ['original', 'adaptive', 'custom']) {
+      expect(await choose(value), isTrue);
+    }
+    expect(await choose(null), isFalse);
+    expect(await choose('unknown'), isFalse);
+    expect(writes, ['original', 'adaptive', 'custom']);
+    expect(failures, 1);
+  });
+
   test('image preset choice awaits the effective native acknowledgement', () async {
     final pending = Completer<String>();
     final writes = <String>[];

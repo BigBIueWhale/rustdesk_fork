@@ -278,17 +278,61 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
   return v;
 }
 
+Future<bool> selectSessionViewStyle(String? value, {
+  required Future<String> Function(String) saveStyle,
+  required Future<bool> Function() updateCanvas,
+  required bool Function() isCurrent,
+  VoidCallback? showFailure,
+}) async {
+  if (value == null || !isCurrent()) return false;
+  try {
+    if (![kRemoteViewStyleOriginal, kRemoteViewStyleAdaptive,
+        kRemoteViewStyleCustom].contains(value)) {
+      throw StateError('Invalid view style');
+    }
+    final effective = await saveStyle(value);
+    if (!isCurrent()) return false;
+    if (effective != value) throw StateError('View style was not applied');
+    final updated = await updateCanvas();
+    if (!isCurrent()) return false;
+    if (!updated) throw StateError('View style canvas update failed');
+    return true;
+  } catch (error) {
+    debugPrint('Failed to select view style: $error');
+    if (isCurrent()) {
+      if (showFailure != null) {
+        showFailure();
+      } else {
+        showToast(translate('Failed'));
+      }
+    }
+    return false;
+  }
+}
+
 Future<List<TRadioMenu<String>>> toolbarViewStyle(
     BuildContext context, String id, FFI ffi) async {
-  final groupValue =
-      await bind.sessionGetViewStyle(sessionId: ffi.sessionId) ?? '';
-  void onChanged(String? value) async {
-    if (value == null) return;
-    final canvas = ffi.canvasModel;
-    final owner = canvas.captureUpdateOwner();
-    if (owner == null) return;
-    await bind.sessionSetViewStyle(sessionId: owner.sessionId, value: value);
-    await canvas.updateViewStyle(owner: owner);
+  final canvas = ffi.canvasModel;
+  final owner = canvas.captureUpdateOwner();
+  bool current() => context.mounted && owner != null && owner.isCurrent;
+  if (!current()) return [];
+  late final String groupValue;
+  try {
+    final loaded = await bind.sessionGetViewStyle(sessionId: owner!.sessionId);
+    if (!current()) return [];
+    if (loaded == null) throw StateError('Session is unavailable');
+    groupValue = loaded;
+  } catch (error) {
+    debugPrint('Failed to load view style: $error');
+    if (current()) showToast(translate('Failed'));
+    return [];
+  }
+  onChanged(String? value) async {
+    await selectSessionViewStyle(value,
+      saveStyle: (value) => bind.sessionSetViewStyle(
+          sessionId: owner!.sessionId, value: value),
+      updateCanvas: () => canvas.updateViewStyle(owner: owner),
+      isCurrent: current);
   }
 
   return [

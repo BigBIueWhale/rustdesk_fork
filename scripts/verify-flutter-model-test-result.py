@@ -111,6 +111,12 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SETTING_OPTION_TESTS = {
+    "view style choice joins persistence before canvas publication",
+    "view style refusal and mismatch leave the canvas and preserve retry",
+    "view style canvas refusal and failure remain visible and retryable",
+    "view style owner retirement blocks writes and late canvas effects",
+    "view style retired canvas completion cannot publish failure feedback",
+    "view style selection admits only the three named styles",
     "image preset choice awaits the effective native acknowledgement",
     "image Custom choice stages its editor without a preset write",
     "image preset errors and mismatched replies preserve retry",

@@ -509,8 +509,6 @@ class _RawTouchGestureDetectorRegionState
     } else {
       // mobile
       _scale = 1;
-      // No idea why we need to set the view style to "" here.
-      // bind.sessionSetViewStyle(sessionId: sessionId, value: "");
     }
     if (!isSpecialHoldDragActive) {
       await inputModel.sendMouse('up', MouseButtons.left);

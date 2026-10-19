@@ -116,8 +116,12 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
       final curStyle = await bind.sessionGetViewStyle(sessionId: owner.sessionId);
       if (!mounted || !owner.isCurrent) return;
       if (curStyle != kRemoteViewStyleCustom) {
-        await bind.sessionSetViewStyle(
+        final effective = await bind.sessionSetViewStyle(
             sessionId: owner.sessionId, value: kRemoteViewStyleCustom);
+        if (!mounted || !owner.isCurrent) return;
+        if (effective != kRemoteViewStyleCustom) {
+          throw StateError('Custom view style was not applied');
+        }
       }
       if (!await canvas.updateViewStyle(owner: owner) || !mounted) return;
       if (isMobile) {
@@ -127,6 +131,7 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
     } catch (e, st) {
       debugPrint('[CustomScale] Apply failed: $e');
       debugPrintStack(stackTrace: st);
+      if (mounted && owner.isCurrent) showToast(translate('Failed'));
     }
   }
 

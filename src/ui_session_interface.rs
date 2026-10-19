@@ -526,8 +526,9 @@ impl<T: InvokeUiSession> Session<T> {
             .save_use_all_my_displays_for_the_remote_session(value);
     }
 
-    pub fn save_view_style(&self, value: String) {
-        self.lc.write().unwrap().save_view_style(value);
+    pub fn save_view_style(&self, value: String) -> ResultType<String> {
+        self.lc.write().unwrap().save_view_style(&value)?;
+        Ok(value)
     }
 
     pub fn save_scroll_style(&self, value: String) {

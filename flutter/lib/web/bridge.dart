@@ -388,12 +388,18 @@ class RustdeskImpl {
         .callMethod('getByName', ['option:session', 'view_style']);
   }
 
-  Future<void> sessionSetViewStyle(
-      {required UuidValue sessionId, required String value, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'option:session',
-          jsonEncode({'name': 'view_style', 'value': value})
-        ]));
+  Future<String> sessionSetViewStyle(
+      {required UuidValue sessionId, required String value, dynamic hint}) async {
+    if (!['original', 'adaptive', 'custom'].contains(value)) {
+      throw StateError('Invalid view style');
+    }
+    js.context.callMethod('setByName', [
+      'option:session',
+      jsonEncode({'name': 'view_style', 'value': value})
+    ]);
+    final effective = await sessionGetViewStyle(sessionId: sessionId);
+    if (effective != value) throw StateError('View style was not applied');
+    return value;
   }
 
   Future<int?> sessionGetTrackpadSpeed(

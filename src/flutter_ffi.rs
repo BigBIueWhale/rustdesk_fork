@@ -475,10 +475,10 @@ pub fn session_get_view_style_sync(session_id: SessionID) -> SyncReturn<Option<S
     SyncReturn(session_get_view_style(session_id))
 }
 
-pub fn session_set_view_style(session_id: SessionID, value: String) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.save_view_style(value);
-    }
+pub fn session_set_view_style(session_id: SessionID, value: String) -> Result<String> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.save_view_style(value)
 }
 
 pub fn session_get_scroll_style(session_id: SessionID) -> Option<String> {

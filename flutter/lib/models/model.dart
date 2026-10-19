@@ -3070,7 +3070,6 @@ class CanvasModel with ChangeNotifier {
       _scale = 1.0 / _devicePixelRatio;
     }
     _resetCanvasOffset(getDisplayWidth(), getDisplayHeight());
-    bind.sessionSetViewStyle(sessionId: sessionId, value: _lastViewStyle.style);
     notifyListeners();
   }
 

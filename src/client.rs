@@ -1566,10 +1566,15 @@ impl LoginConfigHandler {
     /// # Arguments
     ///
     /// * `value` - The view style to be saved.
-    pub fn save_view_style(&mut self, value: String) {
-        let mut config = self.load_config();
-        config.view_style = value;
-        self.save_config(config);
+    pub fn save_view_style(&mut self, value: &str) -> ResultType<()> {
+        if !matches!(value, "original" | "adaptive" | "custom") {
+            bail!("Invalid view style");
+        }
+        let mut config = PeerConfig::load_for_write(&self.id)?;
+        config.view_style = value.to_owned();
+        config.store(&self.id)?;
+        self.config.view_style = config.view_style;
+        Ok(())
     }
 
     /// Save keyboard mode to the current config.

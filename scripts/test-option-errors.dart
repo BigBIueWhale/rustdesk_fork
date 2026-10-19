@@ -726,6 +726,54 @@ Future<void> main(List<String> arguments) async {
     print('IMAGE_PRESET_WIRE_DART_CASE=pass name=missing_session');
     print('IMAGE_PRESET_WIRE_DART=pass cases=5 native_errors=7 error=RESULT_ERROR '
         'failed_state=preserved retry=durable source_failure=refused custom_marker=refused no_peer_started=true');
+    var styleErrors = 0;
+    Future<void> styleRefused(Future<String> Function() write) async {
+      Object? failure;
+      try { await write(); } catch (error) { failure = error; }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+          'view style error did not cross the generated native bridge');
+      styleErrors++;
+    }
+    Future<void> viewStyle(String value) async {
+      check(await api.sessionSetViewStyle(sessionId: trackpadSession, value: value) == value &&
+          await api.sessionGetViewStyle(sessionId: trackpadSession) == value &&
+          file.readAsStringSync().contains('view_style = "$value"'),
+          'view style acknowledgement preceded durable effective value');
+      durable(240);
+    }
+    for (final value in ['original', 'adaptive', 'custom']) { await viewStyle(value); }
+    print('VIEW_STYLE_WIRE_DART_CASE=pass name=committed_roundtrip');
+    for (final denyRead in [false, true]) {
+      final before = configFiles(config);
+      final confirmed = await api.sessionGetViewStyle(sessionId: trackpadSession);
+      final requested = denyRead ? 'adaptive' : 'original';
+      chmod(denyRead ? '0000' : '0500', denyRead ? file.path : file.parent.path);
+      try {
+        await styleRefused(() => api.sessionSetViewStyle(
+            sessionId: trackpadSession, value: requested));
+        check(await api.sessionGetViewStyle(sessionId: trackpadSession) == confirmed,
+            'failed view style changed its confirmed cache');
+      } finally {
+        chmod(denyRead ? '0600' : '0700', denyRead ? file.path : file.parent.path);
+      }
+      unchanged(before);
+      await viewStyle(requested);
+      print('VIEW_STYLE_WIRE_DART_CASE=pass name=${denyRead ? "unreadable_source_retry" : "failed_write_retry"}');
+    }
+    final beforeInvalidStyle = configFiles(config);
+    for (final value in ['', 'unknown', 'Original']) {
+      await styleRefused(() => api.sessionSetViewStyle(
+          sessionId: trackpadSession, value: value));
+    }
+    unchanged(beforeInvalidStyle);
+    print('VIEW_STYLE_WIRE_DART_CASE=pass name=invalid_values');
+    await styleRefused(() => api.sessionSetViewStyle(
+        sessionId: Uuid().v4obj(), value: 'original'));
+    unchanged(beforeInvalidStyle);
+    check(styleErrors == 6, 'view style native error inventory differs');
+    print('VIEW_STYLE_WIRE_DART_CASE=pass name=missing_session');
+    print('VIEW_STYLE_WIRE_DART=pass cases=5 native_errors=6 error=RESULT_ERROR '
+        'failed_state=preserved retry=durable source_failure=refused invalid=refused no_peer_started=true');
   } finally {
     await api.sessionClose(sessionId: trackpadSession, clientOwnerId: trackpadOwner);
   }

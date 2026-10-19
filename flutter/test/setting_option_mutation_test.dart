@@ -1035,7 +1035,7 @@ void main() {
       await tester.pumpWidget(dispose
           ? const SizedBox.shrink()
           : _audioControls(load, write: write, isCm: true));
-      await tester.pumpAndSettle();
+      await tester.pump();
       final late = retired('Mic A');
       completion.complete();
       await Future.wait([admitted, late]);
@@ -1074,6 +1074,136 @@ void main() {
     expect(reads, 2);
     expect(loading, 1);
     expect(find.text('device:Mic C'), findsOneWidget);
+  });
+
+  testWidgets('audio pending write refuses duplicate and rebuilt selections',
+      (tester) async {
+    final completion = Completer<void>();
+    final writes = <String>[];
+    var current = 'Mic A';
+    var reads = 0;
+    AudioINputSetDevice? select;
+    Future<Map<String, Object>> load(bool cm, bool voice) async {
+      reads++;
+      return _audioDevices(current);
+    }
+    Future<void> write(String device, bool cm, bool voice) async {
+      writes.add(device);
+      await completion.future;
+      current = device;
+    }
+    await tester.pumpWidget(_audioControls(load, write: write,
+        capture: (value) => select = value));
+    await tester.pumpAndSettle();
+    final first = select!('Mic B');
+    final duplicate = select!('Mic C');
+    await tester.pumpWidget(_audioControls(load, write: write, width: 380,
+        capture: (value) => select = value));
+    await tester.pump();
+    final rebuilt = select!('Mic C');
+    final pendingWrites = writes.toList();
+    final pendingReads = reads;
+    final busy = find.byType(LinearProgressIndicator).evaluate().length;
+    completion.complete();
+    await Future.wait([first, duplicate, rebuilt]);
+    await tester.pumpAndSettle();
+    expect(pendingWrites, ['Mic B']);
+    expect(pendingReads, 1);
+    expect(busy, 1);
+    expect(writes, ['Mic B']);
+    expect(reads, 2);
+    expect(find.text('device:Mic B'), findsOneWidget);
+    await tester.tap(find.text('Choose Mic B'));
+    await tester.pumpAndSettle();
+    expect(writes, ['Mic B', 'Mic B']);
+  });
+
+  testWidgets('audio replacement retains admission until the old write settles',
+      (tester) async {
+    final completion = Completer<void>();
+    final writes = <String>[];
+    var oldReads = 0;
+    var newReads = 0;
+    var current = 'Mic C';
+    AudioINputSetDevice? select;
+    Future<Map<String, Object>> oldLoad(bool cm, bool voice) async {
+      oldReads++;
+      return _audioDevices('Mic A');
+    }
+    Future<Map<String, Object>> newLoad(bool cm, bool voice) async {
+      newReads++;
+      return _audioDevices(current);
+    }
+    Future<void> oldWrite(String device, bool cm, bool voice) async {
+      writes.add('old:$device');
+      await completion.future;
+    }
+    Future<void> newWrite(String device, bool cm, bool voice) async {
+      writes.add('new:$device');
+      current = device;
+    }
+    await tester.pumpWidget(_audioControls(oldLoad, write: oldWrite,
+        capture: (value) => select = value));
+    await tester.pumpAndSettle();
+    final retired = select!;
+    final admitted = retired('Mic B');
+    await tester.pumpWidget(_audioControls(newLoad, write: newWrite, isCm: true,
+        capture: (value) => select = value));
+    await tester.pump();
+    final replacement = select!('Mic B');
+    final stale = retired('Mic C');
+    final pendingWrites = writes.toList();
+    completion.complete();
+    await Future.wait([admitted, replacement, stale]);
+    await tester.pumpAndSettle();
+    expect(pendingWrites, ['old:Mic B']);
+    expect(oldReads, 1);
+    expect(newReads, 1);
+    expect(find.text('device:Mic C'), findsOneWidget);
+    await select!('Mic B');
+    await tester.pumpAndSettle();
+    expect(writes, ['old:Mic B', 'new:Mic B']);
+    expect(newReads, 2);
+    expect(find.text('device:Mic B'), findsOneWidget);
+  });
+
+  testWidgets('audio failed write releases admission for an identical retry',
+      (tester) async {
+    for (final synchronous in [false, true]) {
+      final completion = Completer<void>();
+      var writes = 0;
+      var reads = 0;
+      var current = 'Mic A';
+      AudioINputSetDevice? select;
+      Future<Map<String, Object>> load(bool cm, bool voice) async {
+        reads++;
+        return _audioDevices(current);
+      }
+      Future<void> write(String device, bool cm, bool voice) {
+        if (++writes == 1) {
+          if (synchronous) throw StateError('device write failed');
+          return completion.future;
+        }
+        current = device;
+        return Future.value();
+      }
+      await tester.pumpWidget(_audioControls(load, write: write,
+          capture: (value) => select = value));
+      await tester.pumpAndSettle();
+      final failure = expectLater(select!('Mic B'), throwsStateError);
+      if (!synchronous) completion.completeError(StateError('device write failed'));
+      await failure;
+      await tester.pumpAndSettle();
+      expect(reads, 2);
+      expect(find.text('device:Mic A'), findsOneWidget);
+      await select!('Mic B');
+      await tester.pumpAndSettle();
+      expect(writes, 2);
+      expect(reads, 3);
+      expect(find.text('device:Mic B'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
   });
 
   test('Flutter UI preference save waits and returns effective readback', () async {

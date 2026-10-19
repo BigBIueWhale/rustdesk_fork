@@ -288,7 +288,13 @@ fn read_dir_entries(
             budget,
         )?;
         let mut is_hidden = false;
-        let meta = match std::fs::symlink_metadata(&p) {
+        // Linux/Android DirEntry retains its parent for this no-follow lookup.
+        #[cfg(unix)]
+        let metadata = entry.metadata();
+        // Windows DirEntry metadata is cached; retain its fresh pathname lookup.
+        #[cfg(not(unix))]
+        let metadata = std::fs::symlink_metadata(&p);
+        let meta = match metadata {
             Ok(meta) => meta,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => return Err(error.into()),

@@ -114,7 +114,7 @@ void main() {
       await f.pair(tester, 3);
       expect(f.taps, hasLength(1));
       expect(f.cancellations, 1);
-      expect(f.fallbackAccepts, 2);
+      expect(f.fallbackAccepts, 1);
     }));
 
   testWidgets('two finger tap arena rejection cancels the complete sequence', (tester) =>

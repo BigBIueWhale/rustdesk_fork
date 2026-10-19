@@ -205,7 +205,7 @@ class _PendingCanvasPreferences implements CanvasPreferences {
   }
 
   @override
-  String? viewStyle(SessionID sessionId) => kRemoteViewStyleCustom;
+  Future<String?> viewStyle(SessionID sessionId) async => kRemoteViewStyleCustom;
 
   @override
   Future<double> customScale(SessionID sessionId) async {

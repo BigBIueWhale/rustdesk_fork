@@ -21,7 +21,7 @@ class _Preferences implements CanvasPreferences {
   Future<String?> Function(int)? readStyle;
   Future<int?> Function(int)? readThickness;
   @override
-  String? viewStyle(SessionID id) { viewReads++; return view; }
+  Future<String?> viewStyle(SessionID id) { viewReads++; return Future.value(view); }
   @override
   Future<double> customScale(SessionID id) async => 1.0;
   @override

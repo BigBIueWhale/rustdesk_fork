@@ -436,12 +436,6 @@ class RustdeskImpl {
         js.context.callMethod('getByName', ['option:session', 'view_style']));
   }
 
-  String? sessionGetViewStyleSync(
-      {required UuidValue sessionId, dynamic hint}) {
-    return js.context
-        .callMethod('getByName', ['option:session', 'view_style']);
-  }
-
   Future<String> sessionSetViewStyle(
       {required UuidValue sessionId, required String value, dynamic hint}) async {
     if (!['original', 'adaptive', 'custom'].contains(value)) {

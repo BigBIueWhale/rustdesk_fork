@@ -13,8 +13,11 @@ import 'package:uuid/uuid.dart';
 class _Preferences implements CanvasPreferences {
   int percent = 100;
   String style = kRemoteViewStyleCustom;
+  String scroll = kRemoteScrollStyleAuto;
   int reads = 0;
+  int styleReads = 0;
   Future<double> Function(int)? read;
+  Future<String?> Function(int)? readStyle;
 
   @override
   Future<double> customScale(SessionID id) {
@@ -23,9 +26,12 @@ class _Preferences implements CanvasPreferences {
   }
 
   @override
-  String? viewStyle(SessionID id) => style;
+  Future<String?> viewStyle(SessionID id) {
+    styleReads++;
+    return readStyle?.call(styleReads) ?? Future.value(style);
+  }
   @override
-  Future<String?> scrollStyle(SessionID id) async => kRemoteScrollStyleAuto;
+  Future<String?> scrollStyle(SessionID id) async => scroll;
   @override
   Future<int?> edgeThickness(SessionID id) async => 100;
 }
@@ -559,6 +565,7 @@ void main() {
       final canvas = session.canvasModel;
       final owner = canvas.captureUpdateOwner();
       final older = canvas.updateViewStyle(owner: owner);
+      await Future<void>.delayed(Duration.zero);
       expect(session.preferences.reads, 1);
       expect(await canvas.applyCustomScalePercent(225, owner: owner), 225);
       final before = _canvasState(session);
@@ -604,6 +611,161 @@ void main() {
       expect(await earlier, isTrue);
       expect(session.inputModel.refreshes, 2);
       expect(session.writer.calls, isEmpty);
+      session.dispose();
+    });
+  });
+
+  testWidgets('canvas asynchronous view read leaves event handling available', (tester) async {
+    await tester.runAsync(() async {
+      final session = _Session();
+      final held = Completer<String?>();
+      session.preferences.readStyle = (_) => held.future;
+      final canvas = session.canvasModel;
+      canvas.update(31, 37, 1.75);
+      final before = _canvasState(session);
+      var finished = false;
+      final pending = canvas.updateViewStyle(owner: canvas.captureUpdateOwner())
+          .then((value) { finished = true; return value; });
+      var eventRan = false;
+      await Future<void>(() { eventRan = true; });
+      expect(eventRan, isTrue);
+      expect(finished, isFalse);
+      expect(_canvasState(session), before);
+      held.complete(kRemoteViewStyleOriginal);
+      expect(await pending, isTrue);
+      expect(canvas.viewStyle.style, kRemoteViewStyleOriginal);
+      session.dispose();
+    });
+  });
+
+  testWidgets('canvas view read errors and invalid styles preserve geometry and retry', (tester) async {
+    await tester.runAsync(() async {
+      final session = _Session();
+      final canvas = session.canvasModel;
+      final owner = canvas.captureUpdateOwner();
+      canvas.update(31, 37, 1.75);
+      final before = _canvasState(session);
+      for (final value in [null, '', 'bad']) {
+        session.preferences.readStyle = (_) async => value;
+        expect(await canvas.updateViewStyle(owner: owner), isFalse);
+        expect(_canvasState(session), before);
+      }
+      session.preferences.readStyle = (_) => throw StateError('sync read failure');
+      expect(await canvas.updateViewStyle(owner: owner), isFalse);
+      session.preferences.readStyle = (_) => Future.error(StateError('async read failure'));
+      expect(await canvas.updateViewStyle(owner: owner), isFalse);
+      expect(_canvasState(session), before);
+      expect(session.preferences.reads, 0);
+      session.preferences.readStyle = (_) async => kRemoteViewStyleAdaptive;
+      expect(await canvas.updateViewStyle(owner: owner), isTrue);
+      expect(canvas.viewStyle.style, kRemoteViewStyleAdaptive);
+      session.dispose();
+    });
+  });
+
+  testWidgets('canvas retired first view read cannot start its scale query', (tester) async {
+    await tester.runAsync(() async {
+      final session = _Session();
+      final held = Completer<String?>();
+      session.preferences.readStyle = (_) => held.future;
+      final canvas = session.canvasModel;
+      final pending = canvas.updateViewStyle(owner: canvas.captureUpdateOwner());
+      session.imageModel.retirePresentation();
+      final before = _canvasState(session);
+      held.complete(kRemoteViewStyleCustom);
+      expect(await pending, isFalse);
+      expect(_canvasState(session), before);
+      expect(session.preferences.reads, 0);
+      session.dispose();
+    });
+  });
+
+  testWidgets('canvas delayed original read cannot replace applied adaptive style', (tester) async {
+    await tester.runAsync(() async {
+      final session = _Session();
+      final held = Completer<String?>();
+      session.preferences.readStyle = (call) => call == 1
+          ? held.future : Future.value(kRemoteViewStyleAdaptive);
+      final canvas = session.canvasModel;
+      final owner = canvas.captureUpdateOwner();
+      final pending = canvas.updateViewStyle(owner: owner);
+      expect(await canvas.updateViewStyle(owner: owner), isTrue);
+      final before = _canvasState(session);
+      held.complete(kRemoteViewStyleOriginal);
+      expect(await pending, isFalse);
+      expect(_canvasState(session), before);
+      expect(canvas.viewStyle.style, kRemoteViewStyleAdaptive);
+      session.dispose();
+    });
+  });
+
+  testWidgets('canvas retirement during final style read prevents publication', (tester) async {
+    await tester.runAsync(() async {
+      final session = _Session();
+      final held = Completer<String?>();
+      final started = Completer<void>();
+      session.preferences.readStyle = (call) {
+        if (call == 1) return Future.value(kRemoteViewStyleCustom);
+        started.complete();
+        return held.future;
+      };
+      final canvas = session.canvasModel;
+      final pending = canvas.updateViewStyle(owner: canvas.captureUpdateOwner());
+      await started.future;
+      canvas.clear();
+      final before = _canvasState(session);
+      held.complete(kRemoteViewStyleCustom);
+      expect(await pending, isFalse);
+      expect(_canvasState(session), before);
+      expect(session.inputModel.refreshes, 0);
+      session.dispose();
+    });
+  });
+
+  testWidgets('canvas pending scale uses current geometry after its reads', (tester) async {
+    tester.view.physicalSize = const Size(800, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.runAsync(() async {
+      final session = _Session();
+      final held = Completer<double>();
+      final started = Completer<void>();
+      session.preferences.read = (_) { started.complete(); return held.future; };
+      final canvas = session.canvasModel;
+      final pending = canvas.updateViewStyle(owner: canvas.captureUpdateOwner());
+      await started.future;
+      tester.view.physicalSize = const Size(1200, 800);
+      final expected = canvas.getSize();
+      held.complete(2.25);
+      expect(await pending, isTrue);
+      expect(canvas.size, expected);
+      expect(canvas.viewStyle.width, expected.width);
+      expect(canvas.viewStyle.height, expected.height);
+      session.dispose();
+    });
+  });
+
+  testWidgets('canvas scrolling read failure and retired style cannot reset geometry', (tester) async {
+    await tester.runAsync(() async {
+      final session = _Session();
+      session.preferences.scroll = kRemoteScrollStyleEdge;
+      final canvas = session.canvasModel;
+      final owner = canvas.captureUpdateOwner();
+      await canvas.updateScrollStyle(owner: owner);
+      canvas.setScrollPercent(0.6, 0.7);
+      session.preferences.readStyle = (_) => Future.error(StateError('style unavailable'));
+      expect(await canvas.tryUpdateScrollStyle(Duration.zero, null, owner: owner), isFalse);
+      expect([canvas.scrollX, canvas.scrollY], [0.6, 0.7]);
+      final held = Completer<String?>();
+      session.preferences.readStyle = (call) => call == 2
+          ? held.future : Future.value(kRemoteViewStyleAdaptive);
+      final pending = canvas.tryUpdateScrollStyle(const Duration(seconds: 30), null, owner: owner);
+      expect(await canvas.updateViewStyle(owner: owner), isTrue);
+      canvas.setScrollPercent(0.4, 0.5);
+      held.complete(kRemoteViewStyleOriginal);
+      expect(await pending, isFalse);
+      expect([canvas.scrollX, canvas.scrollY], [0.4, 0.5]);
       session.dispose();
     });
   });

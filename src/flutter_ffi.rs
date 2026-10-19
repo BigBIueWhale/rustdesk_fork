@@ -481,10 +481,6 @@ pub fn session_get_view_style(session_id: SessionID) -> Option<String> {
     }
 }
 
-pub fn session_get_view_style_sync(session_id: SessionID) -> SyncReturn<Option<String>> {
-    SyncReturn(session_get_view_style(session_id))
-}
-
 pub fn session_set_view_style(session_id: SessionID, value: String) -> Result<String> {
     let session = sessions::get_session_by_session_id(&session_id)
         .ok_or_else(|| anyhow!("Session is unavailable"))?;

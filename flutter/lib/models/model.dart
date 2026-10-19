@@ -2299,7 +2299,7 @@ class _EdgeScrollFallbackState {
 
 /// Read-only session preferences used by the canvas state machine.
 abstract class CanvasPreferences {
-  String? viewStyle(SessionID sessionId);
+  Future<String?> viewStyle(SessionID sessionId);
   Future<double> customScale(SessionID sessionId);
   Future<String?> scrollStyle(SessionID sessionId);
   Future<int?> edgeThickness(SessionID sessionId);
@@ -2338,8 +2338,8 @@ class _SessionCanvasPreferences implements CanvasPreferences {
   const _SessionCanvasPreferences();
 
   @override
-  String? viewStyle(SessionID sessionId) =>
-      bind.sessionGetViewStyleSync(sessionId: sessionId);
+  Future<String?> viewStyle(SessionID sessionId) =>
+      bind.sessionGetViewStyle(sessionId: sessionId);
 
   @override
   Future<double> customScale(SessionID sessionId) =>
@@ -2454,6 +2454,7 @@ class CanvasModel with ChangeNotifier {
   final CanvasScrollPreferenceWriter _scrollPreferenceWriter;
   bool _customScaleSavePending = false;
   int _customScaleCommitRevision = 0;
+  int _viewStyleRevision = 0;
   bool _scrollPreferenceSavePending = false;
   int _scrollPreferenceCommitRevision = 0;
   Object _lifetime = Object();
@@ -2629,43 +2630,43 @@ class CanvasModel with ChangeNotifier {
     }
   }
 
+  Future<String?> _readViewStyle(CanvasUpdateOwner? owner) async {
+    if (!_acceptsOwner(owner)) return null;
+    try {
+      final style = await _preferences.viewStyle(owner!.sessionId);
+      if (!_acceptsOwner(owner)) return null;
+      if (![kRemoteViewStyleOriginal, kRemoteViewStyleAdaptive,
+          kRemoteViewStyleCustom].contains(style)) {
+        throw StateError('Invalid view style');
+      }
+      return style;
+    } catch (error, stack) {
+      debugPrint('Failed to read canvas view style: $error');
+      debugPrintStack(stackTrace: stack);
+      return null;
+    }
+  }
+
   Future<bool> updateViewStyle(
       {required CanvasUpdateOwner? owner,
       bool refreshMousePos = true,
       bool notify = true}) async {
     if (!_acceptsOwner(owner)) return false;
     final scaleRevision = _customScaleCommitRevision;
-    final style = _preferences.viewStyle(owner!.sessionId);
-    if (!_acceptsOwner(owner)) return false;
-    if (style == null) {
+    final styleRevision = _viewStyleRevision;
+    final style = await _readViewStyle(owner);
+    if (!_acceptsOwner(owner) || style == null ||
+        scaleRevision != _customScaleCommitRevision ||
+        (styleRevision != _viewStyleRevision && style != _lastViewStyle.style)) {
       return false;
     }
 
-    final nextSize = getSize();
-    final displayWidth = getDisplayWidth();
-    final displayHeight = getDisplayHeight();
-    final viewStyle = ViewStyle(
-      style: style,
-      width: nextSize.width,
-      height: nextSize.height,
-      displayWidth: displayWidth,
-      displayHeight: displayHeight,
-    );
-    // If only the Custom scale percent changed, proceed to update even if
-    // the basic ViewStyle fields are equal.
-    // In Custom scale mode, the scale percent can change independently of the other
-    // ViewStyle fields and is not captured by the equality check. Therefore, we must
-    // allow updates to proceed when style == kRemoteViewStyleCustom, even if the
-    // rest of the ViewStyle fields are unchanged.
-    if (_lastViewStyle == viewStyle && style != kRemoteViewStyleCustom) {
-      return true;
-    }
-    var nextScale = viewStyle.scale;
+    var nextScale = 1.0;
 
     // Apply custom scale percent when in Custom mode
     if (style == kRemoteViewStyleCustom) {
       try {
-        nextScale = await _preferences.customScale(owner.sessionId);
+        nextScale = await _preferences.customScale(owner!.sessionId);
         if (!nextScale.isFinite ||
             nextScale < kScaleCustomMinPercent / 100.0 ||
             nextScale > kScaleCustomMaxPercent / 100.0) {
@@ -2678,10 +2679,28 @@ class CanvasModel with ChangeNotifier {
       }
     }
 
+    if (style == kRemoteViewStyleCustom &&
+        await _readViewStyle(owner) != style) return false;
     if (!_acceptsOwner(owner) || scaleRevision != _customScaleCommitRevision ||
-        _preferences.viewStyle(owner.sessionId) != style) return false;
+        (styleRevision != _viewStyleRevision && style != _lastViewStyle.style)) return false;
+
+    final nextSize = getSize();
+    final displayWidth = getDisplayWidth();
+    final displayHeight = getDisplayHeight();
+    final viewStyle = ViewStyle(
+      style: style,
+      width: nextSize.width,
+      height: nextSize.height,
+      displayWidth: displayWidth,
+      displayHeight: displayHeight,
+    );
+    if (style != kRemoteViewStyleCustom) {
+      if (_lastViewStyle == viewStyle) return true;
+      nextScale = viewStyle.scale;
+    }
 
     if (_lastViewStyle.style != viewStyle.style) {
+      _viewStyleRevision++;
       _resetScroll();
     }
     _size = nextSize;
@@ -2724,8 +2743,10 @@ class CanvasModel with ChangeNotifier {
       {required CanvasUpdateOwner? owner}) async {
     if (!_acceptsOwner(owner)) return false;
     if (_scrollStyle == ScrollStyle.scrollauto) return true;
-    style ??= _preferences.viewStyle(owner!.sessionId);
-    if (!_acceptsOwner(owner)) return false;
+    final styleRevision = _viewStyleRevision;
+    style ??= await _readViewStyle(owner);
+    if (!_acceptsOwner(owner) || style == null ||
+        (styleRevision != _viewStyleRevision && style != _lastViewStyle.style)) return false;
     if (style != kRemoteViewStyleOriginal && style != kRemoteViewStyleCustom) {
       return true;
     }

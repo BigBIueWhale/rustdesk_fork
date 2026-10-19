@@ -4761,7 +4761,7 @@ mod viewer_credential_bridge_tests {
                 let peer = format!("127.0.0.1:{}", 24000 + index * 2 + input_index);
                 let mut config = PeerConfig::default();
                 config.password_prs = b"stored-peer-prs".to_vec();
-                config.store(&peer);
+                config.store(&peer).unwrap();
                 assert_eq!(PeerConfig::load(&peer).password_prs, config.password_prs);
 
                 let session_id = SessionID::new_v4();

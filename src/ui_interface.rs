@@ -224,7 +224,7 @@ pub fn forget_password(id: String) {
     // credential under the collapse, so "unremember password" MUST drop it too, not leave it at
     // rest (else the peer stays connectable after the operator asked to forget it).
     c.password_prs.clear();
-    c.store(&id);
+    hbb_common::allow_err!(c.store(&id));
 }
 
 #[inline]
@@ -249,7 +249,7 @@ pub fn set_peer_flutter_option(id: String, name: String, value: String) {
     } else {
         c.ui_flutter.insert(name, value);
     }
-    c.store(&id);
+    hbb_common::allow_err!(c.store(&id));
 }
 
 #[inline]
@@ -260,7 +260,7 @@ pub fn set_peer_option(id: String, name: String, value: String) {
     } else {
         c.options.insert(name, value);
     }
-    c.store(&id);
+    hbb_common::allow_err!(c.store(&id));
 }
 
 #[inline]

@@ -685,13 +685,14 @@ impl<T: InvokeUiSession> Session<T> {
         self.lc.read().unwrap().record_state
     }
 
-    pub fn save_custom_image_quality(&self, custom_image_quality: i32) {
+    pub fn save_custom_image_quality(&self, custom_image_quality: i32) -> ResultType<i32> {
         let msg = self
             .lc
             .write()
             .unwrap()
-            .save_custom_image_quality(custom_image_quality);
+            .save_custom_image_quality(custom_image_quality)?;
         self.send(Data::Message(msg));
+        Ok(custom_image_quality)
     }
 
     pub fn save_image_quality(&self, value: String) {
@@ -703,8 +704,11 @@ impl<T: InvokeUiSession> Session<T> {
             let last_auto_fps = self.lc.read().unwrap().last_auto_fps;
             if last_auto_fps.unwrap_or(usize::MAX) >= 30 {
                 // non custom quality use 30 fps
-                let msg = self.lc.write().unwrap().set_custom_fps(30, false);
-                self.send(Data::Message(msg));
+                let result = self.lc.write().unwrap().set_custom_fps(30, false);
+                match result {
+                    Ok(msg) => self.send(Data::Message(msg)),
+                    Err(err) => log::error!("Failed to set automatic FPS: {err}"),
+                }
             }
         }
     }
@@ -713,9 +717,10 @@ impl<T: InvokeUiSession> Session<T> {
         self.lc.write().unwrap().save_trackpad_speed(trackpad_speed);
     }
 
-    pub fn set_custom_fps(&self, custom_fps: i32) {
-        let msg = self.lc.write().unwrap().set_custom_fps(custom_fps, true);
+    pub fn set_custom_fps(&self, custom_fps: i32) -> ResultType<i32> {
+        let msg = self.lc.write().unwrap().set_custom_fps(custom_fps, true)?;
         self.send(Data::Message(msg));
+        Ok(custom_fps)
     }
 
     pub fn get_remember(&self) -> bool {

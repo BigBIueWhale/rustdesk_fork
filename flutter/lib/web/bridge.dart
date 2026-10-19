@@ -507,18 +507,27 @@ class RustdeskImpl {
     return false;
   }
 
-  Future<void> sessionSetCustomImageQuality(
-      {required UuidValue sessionId, required int value, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
+  Future<int> sessionSetCustomImageQuality(
+      {required UuidValue sessionId, required int value, dynamic hint}) async {
+    await Future(() => js.context.callMethod('setByName', [
           'custom_image_quality',
           value,
         ]));
+    final effective = await sessionGetCustomImageQuality(sessionId: sessionId);
+    if (effective == null || effective.isEmpty || effective.first != value) {
+      throw StateError('Custom image quality was not applied');
+    }
+    return effective.first;
   }
 
-  Future<void> sessionSetCustomFps(
-      {required UuidValue sessionId, required int fps, dynamic hint}) {
-    return Future(
+  Future<int> sessionSetCustomFps(
+      {required UuidValue sessionId, required int fps, dynamic hint}) async {
+    await Future(
         () => js.context.callMethod('setByName', ['custom-fps', fps]));
+    final effective = int.tryParse(
+        await sessionGetOption(sessionId: sessionId, arg: 'custom-fps') ?? '');
+    if (effective != fps) throw StateError('Custom FPS was not applied');
+    return fps;
   }
 
   Future<void> sessionLockScreen({required UuidValue sessionId, dynamic hint}) {

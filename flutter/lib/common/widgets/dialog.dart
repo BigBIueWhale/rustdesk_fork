@@ -383,21 +383,18 @@ customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
 
   Future<double?> saveQuality(double value) async {
     if (!current()) return null;
-    await bind.sessionSetCustomImageQuality(sessionId: sessionId, value: value.toInt());
+    final effective = await bind.sessionSetCustomImageQuality(
+        sessionId: sessionId, value: value.toInt());
     if (!current()) return null;
-    final effective = await bind.sessionGetCustomImageQuality(sessionId: sessionId);
-    if (!current() || effective == null || effective.isEmpty ||
-        effective.first != value.toInt()) return null;
-    return effective.first.toDouble();
+    return effective.toDouble();
   }
 
   Future<double?> saveFps(double value) async {
     if (!current()) return null;
-    await bind.sessionSetCustomFps(sessionId: sessionId, fps: value.toInt());
+    final effective = await bind.sessionSetCustomFps(
+        sessionId: sessionId, fps: value.toInt());
     if (!current()) return null;
-    final effective = await bind.sessionGetOption(sessionId: sessionId, arg: 'custom-fps');
-    if (!current() || int.tryParse(effective ?? '') != value.toInt()) return null;
-    return double.tryParse(effective ?? '');
+    return effective.toDouble();
   }
 
   try {

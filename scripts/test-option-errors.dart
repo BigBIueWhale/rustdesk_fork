@@ -452,4 +452,116 @@ Future<void> main(List<String> arguments) async {
   check(defaultErrors == 3, 'default native error count differs');
   print('DEFAULT_PREF_WIRE_DART=pass cases=5 native_errors=3 error=RESULT_ERROR '
       'failed_state=preserved retry=durable source_failure=refused concurrent_keys=preserved effective=normalized idempotent=without-write');
+
+  final peerSession = Uuid().v4obj();
+  final peerOwner = Uuid().v4obj();
+  check(api.sessionAddSync(
+      sessionId: peerSession, clientOwnerId: peerOwner, id: '127.0.0.1:24003',
+      isFileTransfer: false, isViewCamera: false, isPortForward: false,
+      isRdp: false, isTerminal: false, password: 'explicit-password', connToken: null) == '',
+      'idle peer session preparation failed');
+  var peerErrors = 0;
+  Future<void> peerRefused(Future<int> Function() write) async {
+    Object? failure;
+    try {
+      await write();
+    } catch (error) {
+      failure = error;
+    }
+    check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR',
+        'peer preference failure did not cross the generated native bridge');
+    peerErrors++;
+  }
+  void chmod(String mode, String path) {
+    check(Process.runSync('/bin/chmod', [mode, path]).exitCode == 0,
+        'private peer permission change failed');
+  }
+  void unchanged(Map<String, String> before) {
+    final after = configFiles(config);
+    check(after.length == before.length &&
+        before.entries.every((entry) => after[entry.key] == entry.value),
+        'failed peer preference changed durable configuration');
+  }
+  try {
+    check(await api.sessionSetCustomImageQuality(sessionId: peerSession, value: 80) == 80 &&
+        await api.sessionSetCustomFps(sessionId: peerSession, fps: 45) == 45 &&
+        jsonEncode(await api.sessionGetCustomImageQuality(sessionId: peerSession)) == '[80]' &&
+        await api.sessionGetOption(sessionId: peerSession, arg: 'custom-fps') == '45',
+        'peer preference acknowledgement differs from effective readback');
+    final peers = config.listSync(recursive: true).whereType<File>()
+        .where((file) => file.parent.path.endsWith('/peers')).toList();
+    check(peers.length == 1, 'exact private peer configuration is missing');
+    final peerFile = peers.single;
+    void durable(int quality, int fps) {
+      final text = peerFile.readAsStringSync();
+      check(RegExp('^custom_image_quality = \\[\\s*$quality,?\\s*\\]', multiLine: true).hasMatch(text) &&
+          RegExp('^custom-fps = "$fps"\$', multiLine: true).hasMatch(text) &&
+          text.contains('image_quality = "custom"'),
+          'peer preference acknowledgement preceded durable values');
+    }
+    durable(80, 45);
+    print('PEER_PREF_WIRE_DART_CASE=pass name=durable_effective_roundtrip');
+    for (final quality in [true, false]) {
+      final before = configFiles(config);
+      chmod('0500', peerFile.parent.path);
+      try {
+        await peerRefused(() => quality
+            ? api.sessionSetCustomImageQuality(sessionId: peerSession, value: 90)
+            : api.sessionSetCustomFps(sessionId: peerSession, fps: 50));
+        check(jsonEncode(await api.sessionGetCustomImageQuality(sessionId: peerSession)) ==
+                (quality ? '[80]' : '[90]') &&
+            await api.sessionGetOption(sessionId: peerSession, arg: 'custom-fps') == '45',
+            'failed peer preference changed effective cache');
+        unchanged(before);
+      } finally {
+        chmod('0700', peerFile.parent.path);
+      }
+      final effective = quality
+          ? await api.sessionSetCustomImageQuality(sessionId: peerSession, value: 90)
+          : await api.sessionSetCustomFps(sessionId: peerSession, fps: 50);
+      check(effective == (quality ? 90 : 50), 'identical peer retry failed');
+      durable(90, quality ? 45 : 50);
+      print('PEER_PREF_WIRE_DART_CASE=pass name=${quality ? "failed_quality_retry" : "failed_fps_retry"}');
+    }
+    final beforeRead = configFiles(config);
+    chmod('0000', peerFile.path);
+    try {
+      await peerRefused(() => api.sessionSetCustomImageQuality(sessionId: peerSession, value: 95));
+      await peerRefused(() => api.sessionSetCustomFps(sessionId: peerSession, fps: 55));
+    } finally {
+      chmod('0600', peerFile.path);
+    }
+    unchanged(beforeRead);
+    check(jsonEncode(await api.sessionGetCustomImageQuality(sessionId: peerSession)) == '[90]' &&
+        await api.sessionGetOption(sessionId: peerSession, arg: 'custom-fps') == '50',
+        'unreadable peer source changed effective cache');
+    check(await api.sessionSetCustomImageQuality(sessionId: peerSession, value: 95) == 95 &&
+        await api.sessionSetCustomFps(sessionId: peerSession, fps: 55) == 55,
+        'identical peer retry after read failure failed');
+    durable(95, 55);
+    print('PEER_PREF_WIRE_DART_CASE=pass name=unreadable_source');
+    final beforeInvalid = configFiles(config);
+    for (final value in [9, 4096]) {
+      await peerRefused(() => api.sessionSetCustomImageQuality(sessionId: peerSession, value: value));
+    }
+    for (final fps in [4, 121]) {
+      await peerRefused(() => api.sessionSetCustomFps(sessionId: peerSession, fps: fps));
+    }
+    unchanged(beforeInvalid);
+    print('PEER_PREF_WIRE_DART_CASE=pass name=invalid_values');
+    final missing = Uuid().v4obj();
+    await peerRefused(() => api.sessionSetCustomImageQuality(sessionId: missing, value: 95));
+    await peerRefused(() => api.sessionSetCustomFps(sessionId: missing, fps: 55));
+    unchanged(beforeInvalid);
+    check(jsonEncode(await api.sessionGetCustomImageQuality(sessionId: peerSession)) == '[95]' &&
+        await api.sessionGetOption(sessionId: peerSession, arg: 'custom-fps') == '55',
+        'invalid or missing-session request changed effective cache');
+    print('PEER_PREF_WIRE_DART_CASE=pass name=missing_session');
+  } finally {
+    await api.sessionClose(sessionId: peerSession, clientOwnerId: peerOwner);
+  }
+  check(await api.sessionGetCustomImageQuality(sessionId: peerSession) == null && peerErrors == 10,
+      'peer session cleanup or native error inventory differs');
+  print('PEER_PREF_WIRE_DART=pass cases=6 native_errors=10 error=RESULT_ERROR '
+      'failed_state=preserved retry=durable source_failure=refused bounds=refused no_peer_started=true');
 }

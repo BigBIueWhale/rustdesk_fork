@@ -3356,6 +3356,15 @@ impl PeerConfig {
         Self::load_with_status(id).into_value()
     }
 
+    pub fn load_for_write(id: &str) -> crate::ResultType<PeerConfig> {
+        let loaded = Self::load_with_status(id);
+        if matches!(loaded.status, ConfigLoadStatus::Loaded | ConfigLoadStatus::NotFound) {
+            Ok(loaded.value)
+        } else {
+            Err(anyhow!("Failed to read peer settings"))
+        }
+    }
+
     fn load_with_status(id: &str) -> ConfigLoad<PeerConfig> {
         Self::load_path_with_status(Self::path(id), Some(id))
     }
@@ -3379,25 +3388,26 @@ impl PeerConfig {
         store = store || store2;
         store = remove_retired_rdp_credential_options(&mut config.options) || store;
         if store {
-            Self::store_path_(&path, &config);
-            if let Some(id) = stored_peer_id {
-                NEW_STORED_PEER_CONFIG.lock().unwrap().insert(id.to_owned());
+            match Self::store_path(&path, &config) {
+                Ok(()) => {
+                    if let Some(id) = stored_peer_id {
+                        NEW_STORED_PEER_CONFIG.lock().unwrap().insert(id.to_owned());
+                    }
+                }
+                Err(err) => log::error!("Failed to migrate peer settings: {err}"),
             }
         }
         ConfigLoad::new(config, status)
     }
 
-    pub fn store(&self, id: &str) {
+    pub fn store(&self, id: &str) -> crate::ResultType<()> {
         let _lock = CONFIG.read().unwrap();
-        self.store_(id);
-    }
-
-    fn store_(&self, id: &str) {
-        Self::store_path_(&Self::path(id), self);
+        Self::store_path(&Self::path(id), self)?;
         NEW_STORED_PEER_CONFIG.lock().unwrap().insert(id.to_owned());
+        Ok(())
     }
 
-    fn store_path_(path: &Path, config: &PeerConfig) {
+    fn store_path(path: &Path, config: &PeerConfig) -> crate::ResultType<()> {
         let mut config = config.clone();
         config.password =
             encrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
@@ -3405,9 +3415,7 @@ impl PeerConfig {
         config.password_prs =
             encrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
         remove_retired_rdp_credential_options(&mut config.options);
-        if let Err(err) = store_path(path.to_path_buf(), config) {
-            log::error!("Failed to store config: {}", err);
-        }
+        store_path(path.to_path_buf(), config)
     }
 
     pub fn remove(id: &str) {
@@ -5713,7 +5721,7 @@ unrelated = "preserved"
             .options
             .insert("rdp_port".to_owned(), "3390".to_owned());
 
-        PeerConfig::store_path_(&file, &config);
+        PeerConfig::store_path(&file, &config).unwrap();
 
         let stored: PeerConfig = load_path(file);
         assert!(!stored.options.contains_key("rdp_username"));
@@ -6073,7 +6081,7 @@ unrelated = "preserved"
     fn test_store_load() {
         let peerconfig_id = "123456789";
         let cfg: PeerConfig = Default::default();
-        cfg.store(&peerconfig_id);
+        cfg.store(&peerconfig_id).unwrap();
         assert_eq!(PeerConfig::load(&peerconfig_id), cfg);
 
         #[cfg(not(windows))]

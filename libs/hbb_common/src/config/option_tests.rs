@@ -4,6 +4,9 @@ use std::os::unix::fs::PermissionsExt;
 #[path = "../../../../scripts/fixtures/default-options-before-transaction.rs"]
 mod before_defaults;
 
+#[path = "../../../../scripts/fixtures/peer-store-before-errors.rs"]
+mod before_peer;
+
 mod before {
     use super::*;
 
@@ -107,6 +110,43 @@ fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
         }
     }
     assert!(output.status.success(), "option worker failed: {}", String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
+fn peer_store_reports_failure_without_publishing_a_change_and_refuses_unreadable_source() {
+    in_private_process("config::option_tests::peer_store_reports_failure_without_publishing_a_change_and_refuses_unreadable_source", |_| {
+        let id = "peer-commit-fixture";
+        let mut candidate = PeerConfig::default();
+        candidate.password_prs = b"fixture-peer-prs".to_vec();
+        candidate.options.insert("unrelated".into(), "preserved".into());
+        candidate.store(id).unwrap();
+        let file = PeerConfig::path(id);
+        let parent = file.parent().unwrap();
+        let original = fs::read(&file).unwrap();
+        candidate.options.insert("selected".into(), "replacement".into());
+        NEW_STORED_PEER_CONFIG.lock().unwrap().remove(id);
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        before_peer::store_before(&candidate, id);
+        let old_marked = NEW_STORED_PEER_CONFIG.lock().unwrap().remove(id);
+        let old_file_preserved = fs::read(&file).unwrap() == original;
+        println!("OPTION_COMMIT_PEER_BEFORE=observed normal_return=true false_change_mark={old_marked} file_preserved={old_file_preserved}");
+        assert!(old_marked && old_file_preserved);
+        let failed = candidate.store(id).is_err();
+        let no_change_mark = !NEW_STORED_PEER_CONFIG.lock().unwrap().contains(id);
+        let file_preserved = fs::read(&file).unwrap() == original;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        candidate.store(id).unwrap();
+        let durable_retry = PeerConfig::load_for_write(id).unwrap() == candidate;
+        let committed_mark = NEW_STORED_PEER_CONFIG.lock().unwrap().remove(id);
+        let committed = fs::read(&file).unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
+        let unreadable_refused = PeerConfig::load_for_write(id).is_err();
+        let unreadable_not_marked = !NEW_STORED_PEER_CONFIG.lock().unwrap().contains(id);
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+        let read_failure_preserved = fs::read(&file).unwrap() == committed;
+        println!("OPTION_COMMIT_PEER_NATIVE=observed failure_reported={failed} no_false_change_mark={no_change_mark} file_preserved={file_preserved} retry_durable={durable_retry} committed_mark={committed_mark} unreadable_refused={unreadable_refused} unreadable_not_marked={unreadable_not_marked} read_failure_preserved={read_failure_preserved}");
+        assert!(failed && no_change_mark && file_preserved && durable_retry && committed_mark && unreadable_refused && unreadable_not_marked && read_failure_preserved);
+    });
 }
 
 #[test]

@@ -12,7 +12,7 @@ use crate::{
     ui_interface::{self, *},
 };
 use flutter_rust_bridge::{StreamSink, SyncReturn};
-use hbb_common::anyhow::Result;
+use hbb_common::anyhow::{anyhow, Result};
 use hbb_common::{
     bail,
     config::{self, LocalConfig, PeerConfig},
@@ -612,16 +612,16 @@ pub fn session_is_keyboard_mode_supported(session_id: SessionID, mode: String) -
     }
 }
 
-pub fn session_set_custom_image_quality(session_id: SessionID, value: i32) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.save_custom_image_quality(value);
-    }
+pub fn session_set_custom_image_quality(session_id: SessionID, value: i32) -> Result<i32> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.save_custom_image_quality(value)
 }
 
-pub fn session_set_custom_fps(session_id: SessionID, fps: i32) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.set_custom_fps(fps);
-    }
+pub fn session_set_custom_fps(session_id: SessionID, fps: i32) -> Result<i32> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| anyhow!("Session is unavailable"))?;
+    session.set_custom_fps(fps)
 }
 
 pub fn session_get_trackpad_speed(session_id: SessionID) -> Option<i32> {

@@ -8,6 +8,10 @@ mod before;
 #[path = "../../scripts/fixtures/voice-input-before-errors.rs"]
 mod before_voice;
 
+#[allow(unused_must_use)]
+#[path = "../../scripts/fixtures/peer-preference-export-before-errors.rs"]
+mod before_peer;
+
 // FRB treats a unit-returning export as a successful completion. This adapter
 // lets the same behavioral probe execute the pre-fix and fallible exports.
 trait ExportOutcome {
@@ -43,6 +47,7 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
             if let Some(start) = line.find("OPTION_EXPORT_")
                 .or_else(|| line.find("VOICE_INPUT_EXPORT_"))
                 .or_else(|| line.find("LAST_PEER_EXPORT_"))
+                .or_else(|| line.find("PEER_PREF_EXPORT_"))
             {
                 println!("{}", &line[start..]);
             }
@@ -140,4 +145,106 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
     drop(retired);
     println!("LAST_PEER_EXPORT_NATIVE=observed history_preserved={history_preserved} session_admitted={session_admitted} no_peer_started={no_peer_started} duplicate_refused={duplicate_refused} duplicate_history_preserved={duplicate_history_preserved} retry_persisted={retry_persisted}");
     assert!(history_preserved && session_admitted && no_peer_started && duplicate_refused && duplicate_history_preserved && retry_persisted);
+    peer_preferences_commit_before_cache_and_command(&root);
+}
+
+fn peer_preferences_commit_before_cache_and_command(root: &std::path::Path) {
+    use hbb_common::{config::PeerConfig, futures::FutureExt, message_proto::{message, misc}};
+    use std::os::unix::fs::PermissionsExt;
+    let peer = "127.0.0.1:24003";
+    let owner = crate::flutter_ffi::SessionID::new_v4();
+    let id = crate::flutter_ffi::SessionID::new_v4();
+    let mut config = PeerConfig::default();
+    config.password_prs = b"preserved-prs".to_vec();
+    config.info.username = "session-user".into();
+    config.options.insert("unrelated".into(), "preserved".into());
+    config.store(peer).unwrap();
+    let added = crate::flutter_ffi::session_add_sync(
+        id, owner, peer.into(), false, false, false, false, false,
+        "explicit-password".into(), None,
+    );
+    assert!(added.0.is_empty());
+    assert!(crate::flutter::sessions::session_has_client_owner(&id, &owner));
+    let session = crate::flutter::sessions::get_session_by_session_id(&id).unwrap();
+    assert!(session.sender.read().unwrap().is_none());
+    let (sender, mut receiver) = crate::client::viewer_command_channel();
+    *session.sender.write().unwrap() = Some(sender);
+    let mut command = |quality, fps| {
+        let data = receiver.recv().now_or_never().unwrap().unwrap().unwrap();
+        let crate::client::Data::Message(message) = data else { panic!("unexpected command") };
+        let Some(message::Union::Misc(misc)) = message.union else { panic!("missing misc") };
+        let Some(misc::Union::Option(option)) = misc.union else { panic!("missing option") };
+        assert_eq!((option.custom_image_quality, option.custom_fps), (quality << 8, fps));
+    };
+    assert_eq!(crate::flutter_ffi::session_set_custom_image_quality(id, 80).unwrap(), 80);
+    assert_eq!(crate::flutter_ffi::session_set_custom_fps(id, 45).unwrap(), 45);
+    command(80, 0);
+    command(0, 45);
+    drop(command);
+    // The file can contain newer metadata than this live session. A preference
+    // commit must preserve both, rather than publish the entire disk snapshot.
+    let mut config = PeerConfig::load_for_write(peer).unwrap();
+    config.info.username = "file-user".into();
+    config.store(peer).unwrap();
+    let peers = Config::file().parent().unwrap().join("peers");
+    assert!(peers.starts_with(root));
+    let files: Vec<_> = std::fs::read_dir(&peers).unwrap().map(|entry| entry.unwrap().path()).collect();
+    assert_eq!(files.len(), 1);
+    let file = &files[0];
+    let original = std::fs::read(file).unwrap();
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o500)).unwrap();
+    before_peer::session_set_custom_image_quality(id, 90);
+    before_peer::session_set_custom_fps(id, 50);
+    println!("PEER_PREF_EXPORT_BEFORE=observed normal_quality_return=true normal_fps_return=true");
+    let failure_reported = crate::flutter_ffi::session_set_custom_image_quality(id, 90).is_err()
+        && crate::flutter_ffi::session_set_custom_fps(id, 50).is_err();
+    let cache_preserved = session.get_custom_image_quality() == [80]
+        && session.get_option("custom-fps".into()) == "45";
+    let volatile_fps_preserved = *session.lc.read().unwrap().custom_fps.lock().unwrap() == Some(45);
+    let file_preserved = std::fs::read(file).unwrap() == original;
+    let no_failed_command = receiver.recv().now_or_never().is_none();
+    std::fs::set_permissions(&peers, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(crate::flutter_ffi::session_set_custom_image_quality(id, 90).unwrap(), 90);
+    assert_eq!(crate::flutter_ffi::session_set_custom_fps(id, 50).unwrap(), 50);
+    for (quality, fps) in [(90 << 8, 0), (0, 50)] {
+        let crate::client::Data::Message(message) = receiver.recv().now_or_never().unwrap().unwrap().unwrap()
+            else { panic!("unexpected retry command") };
+        let Some(message::Union::Misc(misc)) = message.union else { panic!("missing misc") };
+        let Some(misc::Union::Option(option)) = misc.union else { panic!("missing option") };
+        assert_eq!((option.custom_image_quality, option.custom_fps), (quality, fps));
+    }
+    let stored = PeerConfig::load_for_write(peer).unwrap();
+    let retry_durable = stored.image_quality == "custom" && stored.custom_image_quality == [90]
+        && stored.options.get("custom-fps").map(String::as_str) == Some("50")
+        && session.get_custom_image_quality() == [90]
+        && session.get_option("custom-fps".into()) == "50";
+    let runtime_metadata_preserved = session.lc.read().unwrap().info.username == "session-user"
+        && stored.info.username == "file-user" && stored.password_prs == b"preserved-prs"
+        && stored.options.get("unrelated").map(String::as_str) == Some("preserved");
+    let original = std::fs::read(file).unwrap();
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let unreadable_refused = crate::flutter_ffi::session_set_custom_image_quality(id, 95).is_err()
+        && crate::flutter_ffi::session_set_custom_fps(id, 55).is_err();
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    assert_eq!(session.get_custom_image_quality(), [90]);
+    assert_eq!(*session.lc.read().unwrap().custom_fps.lock().unwrap(), Some(50));
+    assert!(receiver.recv().now_or_never().is_none());
+    let bounds_refused = [9, 4096].into_iter().all(|value| crate::flutter_ffi::session_set_custom_image_quality(id, value).is_err())
+        && [4, 121].into_iter().all(|fps| crate::flutter_ffi::session_set_custom_fps(id, fps).is_err());
+    let missing = crate::flutter_ffi::SessionID::new_v4();
+    let missing_session_refused = crate::flutter_ffi::session_set_custom_image_quality(missing, 95).is_err()
+        && crate::flutter_ffi::session_set_custom_fps(missing, 55).is_err();
+    assert_eq!(std::fs::read(file).unwrap(), original);
+    assert!(receiver.recv().now_or_never().is_none());
+    session.sender.write().unwrap().take();
+    drop(receiver);
+    let retired = crate::flutter::sessions::remove_session_by_exact_ui_owner(&id, &owner).unwrap();
+    assert!(std::sync::Arc::ptr_eq(&retired, &session));
+    drop(retired);
+    drop(session);
+    println!("PEER_PREF_EXPORT_NATIVE=observed failure_reported={failure_reported} cache_preserved={cache_preserved} volatile_fps_preserved={volatile_fps_preserved} file_preserved={file_preserved} no_failed_command={no_failed_command} retry_durable={retry_durable} runtime_metadata_preserved={runtime_metadata_preserved} unreadable_refused={unreadable_refused} bounds_refused={bounds_refused} missing_session_refused={missing_session_refused} cleanup=joined");
+    assert!(failure_reported && cache_preserved && volatile_fps_preserved && file_preserved
+        && no_failed_command && retry_durable && runtime_metadata_preserved && unreadable_refused
+        && bounds_refused && missing_session_refused);
 }

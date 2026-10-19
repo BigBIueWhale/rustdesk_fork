@@ -6375,7 +6375,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
         || fail 'option acknowledgement artifact receipt differs'
     mapfile -t option_wire_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=30 unchanged=before-after execution_seconds=[0-9]+$'
+            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=36 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#option_wire_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'OPTION_WIRE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -6446,6 +6446,21 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
     done
     [ "$(/usr/bin/grep -Fc 'DEFAULT_PREF_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 5 ] \
         || fail 'default preference native bridge named case inventory differs'
+    require_exact_fixed_receipt \
+        'PEER_PREF_EXPORT_BEFORE=observed normal_quality_return=true normal_fps_return=true' \
+        'historical peer preference exports hide persistence failure'
+    require_exact_fixed_receipt \
+        'PEER_PREF_EXPORT_NATIVE=observed failure_reported=true cache_preserved=true volatile_fps_preserved=true file_preserved=true no_failed_command=true retry_durable=true runtime_metadata_preserved=true unreadable_refused=true bounds_refused=true missing_session_refused=true cleanup=joined' \
+        'peer preferences commit before cache and command publication'
+    require_exact_fixed_receipt \
+        'PEER_PREF_WIRE_DART=pass cases=6 native_errors=10 error=RESULT_ERROR failed_state=preserved retry=durable source_failure=refused bounds=refused no_peer_started=true' \
+        'peer preference generated native bridge outcomes'
+    for case_name in durable_effective_roundtrip failed_quality_retry failed_fps_retry unreadable_source invalid_values missing_session; do
+        require_exact_fixed_receipt "PEER_PREF_WIRE_DART_CASE=pass name=$case_name" \
+            "peer preference native bridge case $case_name"
+    done
+    [ "$(/usr/bin/grep -Fc 'PEER_PREF_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 6 ] \
+        || fail 'peer preference native bridge named case inventory differs'
     require_exact_fixed_receipt \
         'VOICE_INPUT_WIRE_DART=pass cases=5 native_errors=3 error=RESULT_ERROR viewer=selected-and-default cm_failure=reported read_failure=reported retry=reported state=preserved config=unchanged' \
         'voice-call input native bridge outcomes'

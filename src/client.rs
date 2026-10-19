@@ -1536,7 +1536,7 @@ impl LoginConfigHandler {
         if self.config.disable_clipboard.v != config.disable_clipboard.v {
             self.clipboard_permission_revision.advance();
         }
-        config.store(&self.id);
+        allow_err!(config.store(&self.id));
         self.config = config;
     }
 
@@ -1801,7 +1801,7 @@ impl LoginConfigHandler {
             } else {
                 self.config.options.insert(name, "Y".to_owned());
             }
-            self.config.store(&self.id);
+            allow_err!(self.config.store(&self.id));
             return None;
         }
 
@@ -2002,9 +2002,11 @@ impl LoginConfigHandler {
     ///
     /// # Arguments
     ///
-    /// * `bitrate` - The given bitrate.
-    /// * `quantizer` - The given quantizer.
-    pub fn save_custom_image_quality(&mut self, image_quality: i32) -> Message {
+    /// * `image_quality` - The custom quality, in the protocol range 10..=4095.
+    pub fn save_custom_image_quality(&mut self, image_quality: i32) -> ResultType<Message> {
+        if !(10..=4095).contains(&image_quality) {
+            bail!("Custom image quality must be in 10..=4095");
+        }
         let mut misc = Misc::new();
         misc.set_option(OptionMessage {
             custom_image_quality: image_quality << 8,
@@ -2012,11 +2014,13 @@ impl LoginConfigHandler {
         });
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
-        let mut config = self.load_config();
+        let mut config = PeerConfig::load_for_write(&self.id)?;
         config.image_quality = "custom".to_owned();
         config.custom_image_quality = vec![image_quality as _];
-        self.save_config(config);
-        msg_out
+        config.store(&self.id)?;
+        self.config.image_quality = config.image_quality;
+        self.config.custom_image_quality = config.custom_image_quality;
+        Ok(msg_out)
     }
 
     /// Save the given image quality to the config.
@@ -2054,7 +2058,10 @@ impl LoginConfigHandler {
     ///
     /// * `fps` - The given fps.
     /// * `save_config` - Save the config.
-    pub fn set_custom_fps(&mut self, fps: i32, save_config: bool) -> Message {
+    pub fn set_custom_fps(&mut self, fps: i32, save_config: bool) -> ResultType<Message> {
+        if !(5..=120).contains(&fps) {
+            bail!("Custom FPS must be in 5..=120");
+        }
         let mut misc = Misc::new();
         misc.set_option(OptionMessage {
             custom_fps: fps,
@@ -2063,14 +2070,15 @@ impl LoginConfigHandler {
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
         if save_config {
-            let mut config = self.load_config();
+            let mut config = PeerConfig::load_for_write(&self.id)?;
             config
                 .options
                 .insert("custom-fps".to_owned(), fps.to_string());
-            self.save_config(config);
+            config.store(&self.id)?;
+            self.config.options.insert("custom-fps".to_owned(), fps.to_string());
         }
         *self.custom_fps.lock().unwrap() = Some(fps as _);
-        msg_out
+        Ok(msg_out)
     }
 
     pub fn get_option(&self, k: &str) -> String {
@@ -4528,7 +4536,7 @@ mod tests {
         let id = "r-s11hj-viewer-reconnect";
         let mut config = PeerConfig::default();
         config.password_prs = b"stored-prs".to_vec();
-        config.store(id);
+        config.store(id).unwrap();
 
         let mut h = LoginConfigHandler::default();
         assert_eq!(PeerConfig::load(id).password_prs, config.password_prs);
@@ -4545,7 +4553,7 @@ mod tests {
         let id = "r-s11hj-viewer-forget";
         let mut config = PeerConfig::default();
         config.password_prs = b"stored-prs".to_vec();
-        config.store(id);
+        config.store(id).unwrap();
 
         let mut h = handler(id);
         h.remember = false;
@@ -4579,7 +4587,7 @@ mod tests {
         let mut config = PeerConfig::default();
         config.password = b"retired-legacy-hash".to_vec();
         config.password_prs = b"stored-prs".to_vec();
-        config.store(id);
+        config.store(id).unwrap();
 
         let mut h = handler(id);
         let stored = PeerConfig::load(id);
@@ -5120,7 +5128,7 @@ mod tests {
         config
             .options
             .insert("custom-fps".to_owned(), "90".to_owned());
-        config.store(id);
+        config.store(id).unwrap();
 
         let mut h = handler(id);
         h.config = config;
@@ -5222,7 +5230,7 @@ mod tests {
         let id = "r-s15-keyboard-mode-existing";
         let mut pre = PeerConfig::default();
         pre.keyboard_mode = KeyboardMode::Translate.to_string();
-        pre.store(id);
+        pre.store(id).unwrap();
         let mut h = handler(id);
         let mut pi = PeerInfo::new();
         pi.version = "1.1.0".to_owned();

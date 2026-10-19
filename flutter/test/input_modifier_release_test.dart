@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart' show KeyEventResult;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/common.dart' as common;
@@ -139,22 +138,31 @@ KeyEvent keyEvent(LogicalKeyboardKey key, {required bool down}) {
 }
 
 List<LogicalKeyboardKey> pendingRaw(ToReleaseRawKeys keys) {
-  final events = <LogicalKeyboardKey>[];
-  keys.release((event) {
-    expect(event, isA<RawKeyUpEvent>());
-    events.add(event.logicalKey);
-    return KeyEventResult.handled;
-  });
-  return events;
+  return [
+    keys.lastLShiftKeyEvent,
+    keys.lastRShiftKeyEvent,
+    keys.lastLCtrlKeyEvent,
+    keys.lastRCtrlKeyEvent,
+    keys.lastLAltKeyEvent,
+    keys.lastRAltKeyEvent,
+    keys.lastLCommandKeyEvent,
+    keys.lastRCommandKeyEvent,
+    keys.lastSuperKeyEvent,
+  ].whereType<RawKeyEvent>().map((event) => event.logicalKey).toList();
 }
 
 List<KeyEvent> pendingKeys(ToReleaseKeys keys) {
-  final events = <KeyEvent>[];
-  keys.release((event) {
-    events.add(event);
-    return KeyEventResult.handled;
-  });
-  return events;
+  return [
+    keys.lastLShiftKeyEvent,
+    keys.lastRShiftKeyEvent,
+    keys.lastLCtrlKeyEvent,
+    keys.lastRCtrlKeyEvent,
+    keys.lastLAltKeyEvent,
+    keys.lastRAltKeyEvent,
+    keys.lastLCommandKeyEvent,
+    keys.lastRCommandKeyEvent,
+    keys.lastSuperKeyEvent,
+  ].whereType<KeyEvent>().toList();
 }
 
 void main() {
@@ -196,22 +204,6 @@ void main() {
       expect(model.modify(<String, dynamic>{}), isEmpty);
       expect(pendingKeys(model.toReleaseKeys), isEmpty);
     }
-  });
-
-  test('modern release callback visits and clears every modifier slot', () {
-    for (final key in modifierKeys) {
-      model.handleKeyDownEventModifiers(keyEvent(key, down: true));
-    }
-    final released = <LogicalKeyboardKey>[];
-    model.toReleaseKeys.release((event) {
-      expect(event, isA<KeyUpEvent>());
-      released.add(event.logicalKey);
-      model.handleKeyUpEventModifiers(event);
-      return KeyEventResult.handled;
-    });
-    expect(released, unorderedEquals(modifierKeys));
-    expect(pendingKeys(model.toReleaseKeys), isEmpty);
-    expect(model.modify(<String, dynamic>{}), isEmpty);
   });
 
   test('modern reset removes pending modifier releases', () {

@@ -4030,7 +4030,8 @@ run_focused_rust_tests() {
                 Cargo.lock Cargo.toml src/lib.rs src/ipc.rs src/ui_interface.rs
                 src/flutter_ffi.rs src/ui_interface/option_tests.rs
                 src/client.rs src/ui_session_interface.rs
-                src/flutter.rs
+                src/flutter.rs src/flutter_keyboard.rs src/flutter_keyboard_tests.rs
+                src/client/io_loop.rs src/keyboard.rs
                 scripts/fixtures/option-export-before-errors.rs
                 scripts/fixtures/voice-input-before-errors.rs
                 scripts/fixtures/peer-preference-export-before-errors.rs
@@ -5633,6 +5634,13 @@ PY
             && [ "$(grep -Ec '^FLUTTER_KEYBOARD_ARTIFACT=observed sha256=[0-9a-f]{64} tests=12 exit_code=0$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FLUTTER_KEYBOARD_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'Flutter keyboard native outcomes differ'
+        [ "$(grep -Fxc 'MODIFIER_INPUT_WIRE_DART=pass cases=5 native_errors=12 error=RESULT_ERROR owner=exact unconnected=refused cleanup=accepted no_peer_started=true' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'MODIFIER_INPUT_WIRE_DART_CASE=' "$output")" -eq 5 ] \
+            || fail 'Flutter keyboard bridge outcomes differ'
+        for case_name in round_owner modern_owner raw_owner legacy_owner cleanup_owner; do
+            [ "$(grep -Fxc "MODIFIER_INPUT_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
+                || fail "Flutter keyboard bridge case differs: $case_name"
+        done
         [ "$(grep -Ec '^OPTION_ACK_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_ACK_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_ACK_NATIVE=observed failure_reported=true memory_preserved=true file_preserved=true retry_applied=true retry_persisted=true peer=unix' "$output")" -eq 1 ] \
@@ -5641,7 +5649,7 @@ PY
             && [ "$(grep -Fxc 'VOICE_INPUT_EXPORT_BEFORE=observed failure_reported=false failed_read_default=true viewer_preserved=true' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'VOICE_INPUT_EXPORT_NATIVE=observed failure_reported=true read_failure_reported=true viewer_selected=true viewer_preserved=true config_preserved=true' "$output")" -eq 1 ] \
             || { tail -c 262144 "$output" >&2; fail 'option acknowledgement artifact or native outcomes differ'; }
-        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=85 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=90 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_WIRE_DART=pass cases=4 native_errors=11 error=RESULT_ERROR cache=preserved config=preserved reads=sync-and-async' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_DART_CASE=' "$output")" -eq 4 ] \
@@ -6181,7 +6189,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
-            [ "$tests_passed" -eq 2 ] || fail 'option acknowledgement total differs'
+            [ "$tests_passed" -eq 14 ] || fail 'option and keyboard test total differs'
+            grep -E '^test flutter::keyboard_input_tests::[a-z_]+ [.][.][.] ok$|^FLUTTER_KEYBOARD_(ARTIFACT|WIRE)=' "$output"
+            grep -E '^MODIFIER_INPUT_WIRE_DART(_CASE)?=' "$output"
             grep -E '^test (ipc::test::ordinary_option_ack_waits_for_persistence|ui_interface::option_tests::native_option_export_preserves_refusal_and_missing_receiver) [.][.][.] ok$|^OPTION_(ACK_(BUILD=pass |ARTIFACT(_AFTER)?=|NATIVE=)|EXPORT_(NATIVE|BEFORE)=|WIRE_)' "$output"
             grep -E '^FAVORITES_WIRE_DART(_CASE)?=' "$output"
             grep -E '^KEYBOARD_WIRE_DART(_CASE)?=' "$output"
@@ -6198,7 +6208,7 @@ PY
             grep -E '^SESSION_FLUTTER_EXPORT_(BEFORE|NATIVE)=|^CUSTOM_SCALE_WIRE_DART(_CASE)?=|^SAVED_CANVAS_WIRE_DART(_CASE)?=' "$output"
             grep -E '^SCROLL_PREF_EXPORT_(BEFORE|NATIVE)=|^SCROLL_STYLE_WIRE_DART(_CASE)?=|^EDGE_THICKNESS_WIRE_DART(_CASE)?=' "$output"
             grep -E '^REVERSE_WHEEL_EXPORT_(BEFORE|NATIVE)=|^REVERSE_WHEEL_WIRE_DART(_CASE)?=' "$output"
-            printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=14 target=linux-x86_64 scope=complete-parent-library-option-and-keyboard-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then

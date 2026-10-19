@@ -1087,6 +1087,71 @@ Future<void> main(List<String> arguments) async {
     check(reverseErrors == 7, 'reverse mouse wheel native error inventory differs');
     print('REVERSE_WHEEL_WIRE_DART=pass cases=6 native_errors=7 error=RESULT_ERROR '
         'failed_state=preserved retry=durable source_failure=refused owner=exact invalid_read=refused default_override=durable no_peer_started=true');
+
+    final beforeModifiers = configFiles(config);
+    var modifierErrors = 0;
+    Future<void> modifierRefused(Future<void> Function() operation,
+        {String cause = 'Keyboard UI owner is unavailable'}) async {
+      Object? failure;
+      try { await operation(); } catch (error) { failure = error; }
+      check(failure is FfiException && (failure as FfiException).code == 'RESULT_ERROR' &&
+          (failure as FfiException).message.contains(cause),
+          'keyboard ownership failure did not cross the generated bridge: $failure');
+      modifierErrors++;
+    }
+    final missingModifierSession = Uuid().v4obj();
+    final wrongModifierOwner = Uuid().v4obj();
+    final modifierRound = Uuid().v4();
+    final wrongModifierTargets = [
+      (missingModifierSession, trackpadOwner),
+      (trackpadSession, wrongModifierOwner),
+    ];
+    for (final target in wrongModifierTargets) {
+      await modifierRefused(() async {
+        await api.sessionKeyboardInputRound(sessionId: target.$1, clientOwnerId: target.$2);
+      });
+    }
+    await modifierRefused(() async {
+      await api.sessionKeyboardInputRound(sessionId: trackpadSession, clientOwnerId: trackpadOwner);
+    }, cause: 'connection is not ready');
+    print('MODIFIER_INPUT_WIRE_DART_CASE=pass name=round_owner');
+    for (final target in wrongModifierTargets) {
+      await modifierRefused(() => api.sessionHandleFlutterKeyEvent(
+          sessionId: target.$1, clientOwnerId: target.$2, inputEpoch: 1,
+          inputRound: modifierRound, inputSequence: 1, modifierSlot: 0,
+          character: '', usbHid: 0xe1, lockModes: 0, downOrUp: true));
+    }
+    print('MODIFIER_INPUT_WIRE_DART_CASE=pass name=modern_owner');
+    for (final target in wrongModifierTargets) {
+      await modifierRefused(() => api.sessionHandleFlutterRawKeyEvent(
+          sessionId: target.$1, clientOwnerId: target.$2, inputEpoch: 1,
+          inputRound: modifierRound, inputSequence: 1, modifierSlot: 0,
+          name: '', platformCode: 0xffe1, positionCode: 50, lockModes: 0, downOrUp: true));
+    }
+    print('MODIFIER_INPUT_WIRE_DART_CASE=pass name=raw_owner');
+    Future<void> modifierLegacy(UuidValue session, UuidValue owner) => api.sessionInputKey(
+        sessionId: session, clientOwnerId: owner, inputEpoch: 1,
+        inputRound: modifierRound, inputSequence: 1, modifierSlot: 0,
+        name: 'VK_SHIFT', down: true, press: false,
+        alt: false, ctrl: false, shift: false, command: false);
+    for (final target in wrongModifierTargets) {
+      await modifierRefused(() => modifierLegacy(target.$1, target.$2));
+    }
+    await modifierRefused(() => modifierLegacy(trackpadSession, trackpadOwner),
+        cause: 'connection is not ready');
+    print('MODIFIER_INPUT_WIRE_DART_CASE=pass name=legacy_owner');
+    for (final target in wrongModifierTargets) {
+      await modifierRefused(() => api.sessionReleaseFlutterModifiers(
+          sessionId: target.$1, clientOwnerId: target.$2, inputEpoch: 1,
+          inputSequence: 0, modifierSlot: null));
+    }
+    await api.sessionReleaseFlutterModifiers(sessionId: trackpadSession,
+        clientOwnerId: trackpadOwner, inputEpoch: 1, inputSequence: 0, modifierSlot: null);
+    unchanged(beforeModifiers);
+    print('MODIFIER_INPUT_WIRE_DART_CASE=pass name=cleanup_owner');
+    check(modifierErrors == 12, 'keyboard ownership error inventory differs');
+    print('MODIFIER_INPUT_WIRE_DART=pass cases=5 native_errors=12 error=RESULT_ERROR '
+        'owner=exact unconnected=refused cleanup=accepted no_peer_started=true');
   } finally {
     await api.sessionClose(sessionId: trackpadSession, clientOwnerId: trackpadOwner);
   }

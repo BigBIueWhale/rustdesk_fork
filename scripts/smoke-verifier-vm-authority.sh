@@ -6375,7 +6375,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
         || fail 'option acknowledgement artifact receipt differs'
     mapfile -t option_wire_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=85 unchanged=before-after execution_seconds=[0-9]+$'
+            'OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=90 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'FLUTTER_KEYBOARD_ARTIFACT=observed sha256=[0-9a-f]{64} tests=12 exit_code=0$')" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'FLUTTER_KEYBOARD_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -6597,7 +6597,16 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
     [ "$(/usr/bin/grep -Fc 'VOICE_INPUT_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 5 ] \
         || fail 'voice-call input native bridge named case inventory differs'
     require_exact_fixed_receipt \
-        "OPTION_ACK_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=2 target=linux-x86_64 scope=complete-parent-library-option-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'MODIFIER_INPUT_WIRE_DART=pass cases=5 native_errors=12 error=RESULT_ERROR owner=exact unconnected=refused cleanup=accepted no_peer_started=true' \
+        'Flutter keyboard generated bridge outcomes'
+    for case_name in round_owner modern_owner raw_owner legacy_owner cleanup_owner; do
+        require_exact_fixed_receipt "MODIFIER_INPUT_WIRE_DART_CASE=pass name=$case_name" \
+            "Flutter keyboard native bridge case $case_name"
+    done
+    [ "$(/usr/bin/grep -Fc 'MODIFIER_INPUT_WIRE_DART_CASE=' "$SERIAL_LOG")" -eq 5 ] \
+        || fail 'Flutter keyboard native bridge case inventory differs'
+    require_exact_fixed_receipt \
+        "OPTION_ACK_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=14 target=linux-x86_64 scope=complete-parent-library-option-and-keyboard-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'option acknowledgement compilation and native result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'option acknowledgement cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
@@ -7865,7 +7874,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'VIEWER_VIDEO_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=complete-parent-library-native-decoder-outcomes network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
-        printf 'OPTION_ACK_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=2 scope=complete-parent-library-option-outcomes network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'OPTION_ACK_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=14 scope=complete-parent-library-option-and-keyboard-outcomes network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
         printf 'VIDEO_QOS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=17 scope=complete-parent-library-and-probe-recovery network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

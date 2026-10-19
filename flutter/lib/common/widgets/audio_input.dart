@@ -151,7 +151,9 @@ class _AudioInputState extends State<AudioInput> {
                   if (!mounted ||
                       !identical(owner, _owner) ||
                       !identical(read, _devices)) return;
-                  setState(() => _devices = _readDevices());
+                  setState(() {
+                    _devices = _readDevices();
+                  });
                 },
                 child: Text(widget.retryText ?? translate('Retry')),
               ),
@@ -170,7 +172,9 @@ class _AudioInputState extends State<AudioInput> {
             await write(device, isCm, isVoiceCall);
           } finally {
             if (mounted && identical(owner, _owner)) {
-              setState(() => _devices = _readDevices());
+              setState(() {
+                _devices = _readDevices();
+              });
             }
           }
         });

@@ -119,7 +119,8 @@ class ArtifactSelectionTests(unittest.TestCase):
         self.assertEqual(select_artifact(encode(artifact, FINISHED), "surface_it"),
                          artifact["executable"])
         for field in ("manifest_path", "target", "profile", "executable"):
-            candidate = dict(artifact, **{field: ARTIFACT[field]})
+            value = {"test": False} if field == "profile" else ARTIFACT[field]
+            candidate = dict(artifact, **{field: value})
             with self.subTest(field=field), self.assertRaises(ValueError):
                 select_artifact(encode(candidate, FINISHED), "surface_it")
         for output in (encode(FINISHED), encode(artifact, artifact, FINISHED),

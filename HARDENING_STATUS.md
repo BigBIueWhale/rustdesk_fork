@@ -3145,6 +3145,51 @@ All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshnes
 cold artifacts, independent reproduction, external review, release, document-role
 cleanup and all parked work remain OPEN. The broad goal remains active.
 
+**Session view-style persistence — Linux outcome corrected; full canvas/platform acceptance OPEN.**
+Product `1f2a38ef` makes the handler, session facade and generated export fallible.
+Only original/adaptive/custom are admitted. Under the existing handler write guard,
+a fresh peer candidate is loaded and stored before publishing only its view-style
+field. Failed reads/stores preserve cached and durable state; invalid values and
+missing sessions refuse. Unrelated stored values and runtime peer metadata survive.
+The returned string acknowledges a durable local preference, not actual presentation.
+
+The shared toolbar retains context and exact canvas/session/client/topology/
+presentation ownership before its getter, reports unavailable state and awaits a
+matching saved value before its existing canvas update. Failed or retired saves do
+not request a canvas update; failed/mismatched current results remain visible and
+retryable. Custom controls check the style-switch acknowledgement before updating.
+Local canvas reset no longer fires an unawaited redundant preference write; its
+geometry calculations are unchanged. The obsolete empty-style call comment is
+deleted. Browser readback is checked in source; browser execution remains unproved.
+
+Native `6lHfGfWs1P` passes both Rust cases and all 56 generated Dart/native
+bridge cases in 560 outer seconds, retaining the prior 51 cases. Five new view-style
+cases cover six RESULT_ERROR outcomes and durable round trips/retries.
+The three historical leaves from `98308e31` are body-matched with only explicit
+receivers/local callees/indentation adaptations. They reproduce normal return and
+changed cache after a denied store with unchanged files. The corrected tests observe
+all three valid styles, failure preservation, durable retry, unreadable source,
+invalid values, missing sessions, preserved PRS/unrelated data and runtime-versus-
+newer-file metadata. Prepared idle sessions start no authenticated peer.
+
+Flutter `8qophyx62B` passes all six suites and 103 cases in 277 outer seconds,
+retaining the prior 97 cases and all three parser controls.
+Six new actual selection/helper cases join save and canvas outcomes, keep the canvas
+untouched after failed/mismatched saves, permit retry, refuse retired admission and
+late effects/feedback, and admit only the three named styles. Fresh generated
+bindings compile the changed toolbar and Custom caller; complete menu/Custom
+interaction and the canvas reset/geometry/OS path are not exercised by these cases.
+
+Exact source/fixture/artifact identities, all outcomes, full endpoint records,
+whole-ledger counting and joined bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/view-style-1f2a38ef.json`.
+Custom-percent persistence, overlapping canvas preference updates, cross-window/
+process writers, corruption/restart, full menu/gesture/geometry behavior, actual
+pixels and Windows/macOS/Android/iOS/browser/installed acceptance remain OPEN.
+All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshness,
+cold artifacts, independent reproduction, external review, release, document-role
+cleanup and every parked item remain OPEN.
+
 **Image-quality presets — Linux persistence/request corrected; remote/platform acceptance OPEN.**
 `68a13ec1` replaces the void generic image-quality setter with the result-bearing
 `session_set_image_quality_preset`. Only low/balanced/best are admitted. Under

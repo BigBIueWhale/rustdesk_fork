@@ -206,6 +206,12 @@ fn default_purge_is_retryable_and_returns_effective_normalized_values() {
             && UserDefaultConfig::read(keys::OPTION_CUSTOM_FPS) == "30";
         println!("OPTION_COMMIT_DEFAULT_EFFECTIVE=observed normalized={normalized} existing_fallback_reported={fallback}");
         assert!(normalized && fallback);
+        let disabled = UserDefaultConfig::set_option(keys::OPTION_ENABLE_FILE_COPY_PASTE.into(), "N".into()).unwrap() == "N"
+            && UserDefaultConfig::get_option(keys::OPTION_ENABLE_FILE_COPY_PASTE) == "N";
+        let restored = UserDefaultConfig::set_option(keys::OPTION_ENABLE_FILE_COPY_PASTE.into(), String::new()).unwrap() == "Y"
+            && UserDefaultConfig::get_option(keys::OPTION_ENABLE_FILE_COPY_PASTE) == "Y";
+        println!("OPTION_COMMIT_DEFAULT_BOOL=observed explicit_disabled={disabled} empty_restores_enabled_default={restored}");
+        assert!(disabled && restored);
     });
 }
 

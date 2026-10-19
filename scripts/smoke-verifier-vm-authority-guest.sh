@@ -5625,7 +5625,7 @@ PY
             && [ "$(grep -Fxc 'VOICE_INPUT_EXPORT_BEFORE=observed failure_reported=false failed_read_default=true viewer_preserved=true' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'VOICE_INPUT_EXPORT_NATIVE=observed failure_reported=true read_failure_reported=true viewer_selected=true viewer_preserved=true config_preserved=true' "$output")" -eq 1 ] \
             || { tail -c 262144 "$output" >&2; fail 'option acknowledgement artifact or native outcomes differ'; }
-        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=25 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^OPTION_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} cases=30 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_WIRE_DART=pass cases=4 native_errors=11 error=RESULT_ERROR cache=preserved config=preserved reads=sync-and-async' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_WIRE_DART_CASE=' "$output")" -eq 4 ] \

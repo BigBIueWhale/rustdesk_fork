@@ -645,7 +645,11 @@ class __DisplayPageState extends State<_DisplayPage> {
       onToggle: isOptFixed
           ? null
           : (b) async {
-              await _saveDefaultOption(key, b ? 'Y' : defaultOptionNo);
+              await _saveDefaultOption(
+                  key,
+                  b
+                      ? 'Y'
+                      : (key == kOptionEnableFileCopyPaste ? 'N' : defaultOptionNo));
             },
     );
   }

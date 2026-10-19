@@ -315,6 +315,24 @@ class ToReleaseKeys {
   }
 }
 
+class _TrackpadGesture {
+  _TrackpadGesture(this.sessionId, this.clientOwnerId, PointerPanZoomStartEvent e)
+      : pointer = e.pointer,
+        device = e.device,
+        viewId = e.viewId;
+
+  final SessionID sessionId;
+  final SessionID clientOwnerId;
+  final int pointer;
+  final int device;
+  final int viewId;
+  double scale = 1.0;
+  Offset lastDelta = Offset.zero;
+
+  bool matches(PointerEvent e) =>
+      pointer == e.pointer && device == e.device && viewId == e.viewId;
+}
+
 class _TrackpadFling {
   _TrackpadFling(this.sessionId, this.clientOwnerId, this.x, this.y);
 
@@ -423,7 +441,7 @@ class InputModel {
   final ToReleaseKeys toReleaseKeys = ToReleaseKeys();
 
   // trackpad
-  var _trackpadLastDelta = Offset.zero;
+  _TrackpadGesture? _trackpadGesture;
   _TrackpadFling? _trackpadFling;
   bool _trackpadDisposed = false;
   bool _flingSendPending = false;
@@ -443,12 +461,11 @@ class InputModel {
   int _trackpadSpeedRevision = 0;
   int _trackpadReadGeneration = 0;
   var _trackpadScrollUnsent = Offset.zero;
+  ({SessionID sessionId, SessionID clientOwnerId})? _trackpadScrollOwner;
 
   // Mobile relative mouse delta accumulators (for slow/fine movements).
   double _mobileDeltaRemainderX = 0.0;
   double _mobileDeltaRemainderY = 0.0;
-
-  var _lastScale = 1.0;
 
   bool _pointerMovedAfterEnter = false;
   bool _pointerInsideImage = false;
@@ -1416,6 +1433,7 @@ class InputModel {
   }
 
   void resetForSession(SessionID expectedSessionId) {
+    _trackpadGesture = null;
     _stopTrackpadFling();
     suspendKeyboardInput();
     retireKeyboardMode();
@@ -1423,9 +1441,9 @@ class InputModel {
     _relativeMouse.resetForSession(expectedSessionId);
     onRelativeMouseModeDisabled = null;
     _trackpadScrollUnsent = Offset.zero;
+    _trackpadScrollOwner = null;
     _mobileDeltaRemainderX = 0;
     _mobileDeltaRemainderY = 0;
-    _lastScale = 1.0;
     _pointerMovedAfterEnter = false;
     _pointerInsideImage = false;
     _lastButtons = 0;
@@ -1446,6 +1464,9 @@ class InputModel {
 
   void disposeRelativeMouseMode({SessionID? expectedSessionId}) {
     _trackpadDisposed = true;
+    _trackpadGesture = null;
+    _trackpadScrollOwner = null;
+    _trackpadScrollUnsent = Offset.zero;
     _stopTrackpadFling();
     suspendKeyboardInput();
     _relativeMouse.dispose(expectedSessionId: expectedSessionId);
@@ -1497,26 +1518,55 @@ class InputModel {
 
   void onPointerPanZoomStart(PointerPanZoomStartEvent e) {
     _stopTrackpadFling();
-    _lastScale = 1.0;
+    _trackpadGesture = null;
     if (_trackpadDisposed) return;
+    final owner = parent.target;
+    if (owner == null ||
+        !owner.isCurrentSessionOwner(owner.sessionId, owner.clientOwnerId)) {
+      return;
+    }
     if (isViewOnly) return;
     if (isViewCamera) return;
-    if (peerPlatform == kPeerPlatformAndroid) {
-      handlePointerEvent('touch', kMouseEventTypePanStart, e.position);
+    final scrollOwner =
+        (sessionId: owner.sessionId, clientOwnerId: owner.clientOwnerId);
+    if (_trackpadScrollOwner != scrollOwner) {
+      _trackpadScrollUnsent = Offset.zero;
+      _trackpadScrollOwner = scrollOwner;
     }
+    final gesture = _TrackpadGesture(owner.sessionId, owner.clientOwnerId, e);
+    _trackpadGesture = gesture;
+    if (peerPlatform == kPeerPlatformAndroid) {
+      handlePointerEvent('touch', kMouseEventTypePanStart, e.position,
+          expectedSessionId: gesture.sessionId);
+    }
+  }
+
+  _TrackpadGesture? _currentTrackpadGesture(PointerEvent e) {
+    final gesture = _trackpadGesture;
+    if (gesture == null) return null;
+    final owner = parent.target;
+    if (_trackpadDisposed ||
+        owner == null ||
+        !owner.isCurrentSessionOwner(gesture.sessionId, gesture.clientOwnerId)) {
+      _trackpadGesture = null;
+      _stopTrackpadFling();
+      return null;
+    }
+    return gesture.matches(e) ? gesture : null;
   }
 
   // https://docs.flutter.dev/release/breaking-changes/trackpad-gestures
   void onPointerPanZoomUpdate(PointerPanZoomUpdateEvent e) {
-    if (_trackpadDisposed) return;
+    final gesture = _currentTrackpadGesture(e);
+    if (gesture == null) return;
     if (isViewOnly) return;
     if (isViewCamera) return;
     if (peerPlatform != kPeerPlatformAndroid) {
-      final scale = ((e.scale - _lastScale) * 1000).toInt();
-      _lastScale = e.scale;
+      final scale = ((e.scale - gesture.scale) * 1000).toInt();
+      gesture.scale = e.scale;
 
       if (scale != 0) {
-        sendTrackpadScale(scale);
+        sendTrackpadScale(scale, expectedSessionId: gesture.sessionId);
         return;
       }
     }
@@ -1526,7 +1576,7 @@ class InputModel {
       delta *= _trackpadAdjustMacToWin;
     }
     delta = _filterTrackpadDeltaAxis(delta);
-    _trackpadLastDelta = delta;
+    gesture.lastDelta = delta;
 
     var x = delta.dx.toInt();
     var y = delta.dy.toInt();
@@ -1548,10 +1598,11 @@ class InputModel {
     if (x != 0 || y != 0) {
       if (peerPlatform == kPeerPlatformAndroid) {
         handlePointerEvent('touch', kMouseEventTypePanUpdate,
-            Offset(x.toDouble(), y.toDouble()));
+            Offset(x.toDouble(), y.toDouble()),
+            expectedSessionId: gesture.sessionId);
       } else {
         if (isViewCamera) return;
-        sendTrackpadScroll(x, y);
+        sendTrackpadScroll(x, y, expectedSessionId: gesture.sessionId);
       }
     }
   }
@@ -1589,7 +1640,8 @@ class InputModel {
     final fling = _trackpadFling;
     _trackpadFling = null;
     fling?.timer?.cancel();
-    _trackpadLastDelta = Offset.zero;
+    // Preserve the active pan identity for its matching terminal event.
+    _trackpadGesture?.lastDelta = Offset.zero;
   }
 
   bool _isCurrentTrackpadFling(_TrackpadFling fling) {
@@ -1650,17 +1702,19 @@ class InputModel {
   }
 
   void onPointerPanZoomEnd(PointerPanZoomEndEvent e) {
-    final delta = _trackpadLastDelta;
+    final gesture = _currentTrackpadGesture(e);
+    if (gesture == null) return;
+    final delta = gesture.lastDelta;
+    _trackpadGesture = null;
     _stopTrackpadFling();
     if (_trackpadDisposed || isViewOnly) return;
     if (isViewCamera) return;
     if (peerPlatform == kPeerPlatformAndroid) {
-      handlePointerEvent('touch', kMouseEventTypePanEnd, e.position);
+      handlePointerEvent('touch', kMouseEventTypePanEnd, e.position,
+          expectedSessionId: gesture.sessionId);
       return;
     }
 
-    final owner = parent.target;
-    if (owner == null) return;
     // 2.0 is an experience value
     double minFlingValue = 2.0 * _trackpadSpeedInner;
     if (isMacOS && peerPlatform == kPeerPlatformWindows) {
@@ -1668,9 +1722,9 @@ class InputModel {
     }
     if (delta.dx.abs() > minFlingValue || delta.dy.abs() > minFlingValue) {
       _trackpadFling = _TrackpadFling(
-          owner.sessionId, owner.clientOwnerId, delta.dx, delta.dy);
+          gesture.sessionId, gesture.clientOwnerId, delta.dx, delta.dy);
     }
-    sendTrackpadScale(0);
+    sendTrackpadScale(0, expectedSessionId: gesture.sessionId);
     _resumeTrackpadFling();
   }
 

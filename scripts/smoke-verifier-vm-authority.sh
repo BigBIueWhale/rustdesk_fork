@@ -852,7 +852,7 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
         readonly VM_MEMORY=12288
     fi
 elif [ "$MODE" = flutter-model-tests ]; then
-    if [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
         # Integration: sealed inputs, fresh bridge generation, then widget execution.
         readonly VM_TIMEOUT_SECONDS=600
         readonly OVERLAY_SIZE=12G

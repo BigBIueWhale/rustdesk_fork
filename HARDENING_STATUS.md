@@ -3144,6 +3144,39 @@ All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshnes
 cold artifacts, independent reproduction, external review, release, document-role
 cleanup and all parked work remain OPEN. The broad goal remains active.
 
+**Session keyboard mode — Linux native persistence corrected; full input/platform acceptance OPEN.**
+`6fc32220` makes the handler, session facade and generated export return the committed
+mode or a real error. The existing handler write guard owns closed-mode/peer-support
+validation, fresh fallible peer loading, durable storage and publication of only the
+keyboard-mode field. Failed reads or stores preserve confirmed memory and disk;
+invalid/unsupported values and missing sessions refuse. Window synchronization and
+the Windows grab update occur only after success. The toolbar catches failures and
+checks its context and exact session/client owner around the native await.
+The web adapter returns checked immediate readback; browser execution is unproved.
+
+The exact historical handler/export leaves from `83b3609d` reproduce normal return
+and changed live mode after a denied store. Current native run `774Cyzf807` passes
+both Rust cases and all 46 generated-API Dart cases in 545 outer seconds. Five new
+Dart cases deliver five actual RESULT_ERROR outcomes and cover durable readback,
+denied-write/read retries, invalid or unsupported modes and missing sessions.
+The Rust probe additionally observes changing effective modes and preserves the
+runtime versus newer stored metadata, unrelated options and stored PRS.
+Prepared sessions have no peer worker. This is a leaf comparison, not an old
+whole-app execution or physical keyboard-input result.
+
+Fresh generated bindings and the five Linux Flutter suites pass all 83 cases in
+274 outer seconds, compiling the changed toolbar caller. Those existing tests
+render settings/dialog components; they do not drive the complete toolbar mode menu.
+Exact source/fixture/artifact identities, complete endpoint records and joined
+bounded-RAM cleanup are retained in
+`.harness-state/verifier-vm/keyboard-mode-6fc32220.json`.
+
+Physical/native keyboard effects, full toolbar interaction, readback generations,
+cross-window/process writers and Windows/macOS/Android/iOS/browser/installed
+acceptance remain OPEN. All fifteen credential actions, R-S0, actual R-F5
+impairment/multi-hour freshness, cold artifacts, independent reproduction, external
+review, release, whole-document role cleanup and all parked work remain OPEN.
+
 **Display-default preferences — Linux transaction/bridge corrected; full controls/platform acceptance OPEN.**
 Product `a6a8c0b1` replaces writable UserDefaultConfig snapshots with one
 single-key operation. The existing process-local cache lock owns fresh loading,

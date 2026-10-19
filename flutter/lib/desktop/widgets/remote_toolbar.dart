@@ -2296,7 +2296,9 @@ class _KeyboardMenu extends StatelessWidget {
               sessionId: sessionId, value: value);
           if (!current()) return;
           if (effective != value) throw StateError('Keyboard mode was not applied');
-          await ffi.inputModel.updateKeyboardMode();
+          if (!await ffi.inputModel.updateKeyboardMode() && current()) {
+            throw StateError('Keyboard mode could not be refreshed');
+          }
         } catch (error) {
           debugPrint('Failed to save keyboard mode: $error');
           if (current()) showToast(translate('Failed'));

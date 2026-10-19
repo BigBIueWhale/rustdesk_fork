@@ -182,6 +182,16 @@ AUTO_DISCONNECT_TESTS = {
     "save and read errors leave an editable dialog",
     "timeout field preserves its numeric limits and empty default",
 }
+KEYBOARD_MODE_REFRESH_TESTS = {
+    "keyboard refresh keeps the newest completed request",
+    "keyboard refresh retires changed owners and refuses late admission",
+    "keyboard Flutter source choice retires an older native read",
+    "keyboard refresh rejects an input source changed during its read",
+    "keyboard refresh observes failed reads without publishing stale state",
+    "keyboard refresh preserves compatibility choices and null fallback",
+    "keyboard retirement rejects an old reply and permits a fresh read",
+    "keyboard refresh adapter rejects a retired exact owner before native access",
+}
 TRACKPAD_DIALOG_TESTS = {
     "trackpad dialog stages raw text until committed Close",
     "trackpad dialog retains failed saves for identical retry",
@@ -460,6 +470,7 @@ def parse_result(path, profile="models"):
             "setting_option_mutation_test.dart": SETTING_OPTION_TESTS,
             "keyboard_layout_type_chooser_test.dart": KEYBOARD_LAYOUT_TESTS,
             "trackpad_speed_dialog_test.dart": TRACKPAD_DIALOG_TESTS,
+            "input_keyboard_mode_test.dart": KEYBOARD_MODE_REFRESH_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

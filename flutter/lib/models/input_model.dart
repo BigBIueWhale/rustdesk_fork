@@ -397,6 +397,7 @@ class InputModel {
 
   final WeakReference<FFI> parent;
   String keyboardMode = '';
+  int _keyboardModeReadGeneration = 0;
 
   // keyboard
   var shift = false;
@@ -580,23 +581,50 @@ class InputModel {
 
   // This function must be called after the peer info is received.
   // Because `sessionGetKeyboardMode` relies on the peer version.
-  updateKeyboardMode() async {
-    // * Currently mobile does not enable map mode
-    if (isDesktop || isWebDesktop) {
-      if (isInputSourceFlutter && isDesktop) {
-        for (final mode in [kKeyMapMode, kKeyLegacyMode]) {
-          if (bind.sessionIsKeyboardModeSupported(
-              sessionId: sessionId, mode: mode)) {
-            keyboardMode = mode;
-            return;
-          }
-        }
-        keyboardMode = kKeyLegacyMode;
-        return;
-      }
-      keyboardMode = await bind.sessionGetKeyboardMode(sessionId: sessionId) ??
-          kKeyLegacyMode;
+  Future<bool> updateKeyboardMode() async {
+    if (!isDesktop && !isWebDesktop) return false;
+    final owner = parent.target;
+    if (owner == null) return false;
+    final expectedSession = owner.sessionId;
+    final expectedClient = owner.clientOwnerId;
+    return refreshKeyboardMode(
+      readMode: () => bind.sessionGetKeyboardMode(sessionId: expectedSession),
+      supportsMode: (mode) => bind.sessionIsKeyboardModeSupported(
+          sessionId: expectedSession, mode: mode),
+      useFlutterInput: () => isDesktop && isInputSourceFlutter,
+      isCurrent: () => owner.isCurrentSessionOwner(expectedSession, expectedClient),
+    );
+  }
+
+  Future<bool> refreshKeyboardMode({
+    required Future<String?> Function() readMode,
+    required bool Function(String) supportsMode,
+    required bool Function() useFlutterInput,
+    required bool Function() isCurrent,
+  }) async {
+    if (!isCurrent()) return false;
+    final generation = ++_keyboardModeReadGeneration;
+    try {
+      final flutterInput = useFlutterInput();
+      final mode = flutterInput
+          ? [kKeyMapMode, kKeyLegacyMode].firstWhere(supportsMode,
+              orElse: () => kKeyLegacyMode)
+          : await readMode() ?? kKeyLegacyMode;
+      if (!isCurrent() || generation != _keyboardModeReadGeneration ||
+          flutterInput != useFlutterInput()) return false;
+      if (![kKeyLegacyMode, kKeyMapMode, kKeyTranslateMode, 'auto']
+          .contains(mode)) throw StateError('Invalid keyboard mode readback');
+      keyboardMode = mode;
+      return true;
+    } catch (error) {
+      debugPrint('Failed to refresh keyboard mode: $error');
+      return false;
     }
+  }
+
+  void retireKeyboardMode() {
+    _keyboardModeReadGeneration++;
+    keyboardMode = '';
   }
 
   /// Updates the trackpad speed based on the session value.
@@ -1328,6 +1356,7 @@ class InputModel {
   }
 
   void resetForSession(SessionID expectedSessionId) {
+    retireKeyboardMode();
     disposeSideButtonTracking(expectedSessionId: expectedSessionId);
     _relativeMouse.resetForSession(expectedSessionId);
     onRelativeMouseModeDisabled = null;

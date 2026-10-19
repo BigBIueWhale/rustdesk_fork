@@ -215,8 +215,8 @@ void main() {
     }
     final cached = pendingKeys(model.toReleaseKeys);
     expect(cached, everyElement(isA<KeyUpEvent>()));
-    expect(cached.map((event) => event.logicalKey),
-        unorderedEquals(modifierKeys));
+    expect(
+        cached.map((event) => event.logicalKey), unorderedEquals(modifierKeys));
     expect(cached.map((event) => event.physicalKey),
         unorderedEquals(downs.map((event) => event.physicalKey)));
     model.releaseHeldModifiers();

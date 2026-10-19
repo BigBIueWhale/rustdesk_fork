@@ -6370,6 +6370,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
             'OPTION_ACK_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 unchanged=before-after execution_seconds=[0-9]+$'
     )
+    require_exact_fixed_receipt \
+        'OPTION_ACK_FRAMED=observed cases=10 rejected=10 preserved=10 peer=unix transaction=production' \
+        'framed main IPC refusals and preserved settings'
     [ "${#option_ack_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'OPTION_ACK_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'option acknowledgement artifact receipt differs'

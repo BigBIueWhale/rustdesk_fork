@@ -5656,6 +5656,8 @@ PY
         [ "$(grep -Ec '^OPTION_ACK_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'OPTION_ACK_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_ACK_NATIVE=observed failure_reported=true memory_preserved=true file_preserved=true retry_applied=true retry_persisted=true peer=unix' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'OPTION_ACK_FRAMED=observed cases=10 rejected=10 preserved=10 peer=unix transaction=production' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'OPTION_ACK_FRAME_CASE=' "$output")" -eq 10 ] \
             && [ "$(grep -Fxc 'OPTION_EXPORT_NATIVE=observed refused=true missing_receiver=true cache_preserved=true memory_preserved=true file_preserved=true' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'OPTION_EXPORT_BEFORE=observed refused=false missing_receiver=false state_preserved=true' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'VOICE_INPUT_EXPORT_BEFORE=observed failure_reported=false failed_read_default=true viewer_preserved=true' "$output")" -eq 1 ] \

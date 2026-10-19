@@ -11688,7 +11688,7 @@ mod test {
             std::fs::remove_dir_all(&root).unwrap();
             assert!(output.stdout.len() + output.stderr.len() <= 16384);
             for line in String::from_utf8(output.stdout).unwrap().lines() {
-                if let Some(start) = line.find("OPTION_ACK_NATIVE=") {
+                if let Some(start) = line.find("OPTION_ACK_") {
                     println!("{}", &line[start..]);
                 }
             }
@@ -11705,29 +11705,110 @@ mod test {
         let parent = file.parent().unwrap();
         let socket_path = root.join("request.sock").to_str().unwrap().to_owned();
         let mut incoming = Endpoint::new(socket_path.clone()).incoming().unwrap();
-        let (accepted, client) = tokio::join!(incoming.next(), Endpoint::connect(socket_path));
-        let stream = Connection::new_main(accepted.unwrap().unwrap());
-        let client = client.unwrap();
-        let request = || MainIpcRequest::SetOption(
-            MainStatusOption::from_pair("enable-abr", "Y".into()).unwrap()
-        );
+
+        fn frame(payload: Vec<u8>) -> Bytes {
+            let mut frame = bytes::BytesMut::new();
+            hbb_common::tokio_util::codec::Encoder::encode(
+                &mut BytesCodec::new(), Bytes::from(payload), &mut frame,
+            ).unwrap();
+            frame.freeze()
+        }
+
+        async fn transact(
+            incoming: &mut Incoming,
+            socket_path: &str,
+            frame: Bytes,
+        ) -> Option<MainIpcResponse> {
+            use hbb_common::tokio::io::AsyncWriteExt;
+            timeout(5_000, async {
+                let (accepted, client) = tokio::join!(
+                    incoming.next(), Endpoint::connect(socket_path.to_owned()),
+                );
+                let stream = Connection::new_main(accepted.unwrap().unwrap());
+                assert_eq!(stream.peer_uid(), Some(unsafe { libc::geteuid() }));
+                let permit = try_acquire_main_ipc_transaction_slot(&stream).unwrap();
+                let mut client = ConnectionTmpl::new_main(client.unwrap());
+                let (_, response) = tokio::join!(
+                    handle_main_ipc_transaction(stream, permit),
+                    async {
+                        client.inner.get_mut().write_all(&frame).await.unwrap();
+                        client.inner.next().await.transpose().unwrap()
+                    },
+                );
+                response.map(|bytes| serde_json::from_slice(&bytes).unwrap())
+            }).await.unwrap()
+        }
+
+        let request = |value: &str| frame(serde_json::to_vec(&MainIpcRequest::SetOption(
+            MainStatusOption::from_pair("enable-abr", value.into()).unwrap()
+        )).unwrap());
         std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o500)).unwrap();
-        let refused = handle_main_ipc_request(request(), &stream).await;
-        let failure_reported = matches!(refused, MainIpcResponse::OptionSet {
+        let refused = transact(&mut incoming, &socket_path, request("Y")).await;
+        let failure_reported = matches!(refused, Some(MainIpcResponse::OptionSet {
             result: IpcMutationResult::InternalFailure, effective: None,
-        });
+        }));
         let memory_preserved = Config::get_option("enable-abr") == "N";
         let file_preserved = std::fs::read(&file).unwrap() == original;
         std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let applied = handle_main_ipc_request(request(), &stream).await;
-        let retry_applied = matches!(applied, MainIpcResponse::OptionSet {
+
+        let mut oversized_header = frame(vec![b' '; MAIN_IPC_MAX_FRAME_BYTES + 1]);
+        oversized_header.truncate(3);
+        let mut rejected = 0;
+        let mut preserved = 0;
+        for (name, frame) in [
+            ("extra_envelope", frame(br#"{"t":"SetOption","c":{"key":"EnableAbr","value":"Y"},"future":true}"#.to_vec())),
+            ("extra_option", frame(br#"{"t":"SetOption","c":{"key":"EnableAbr","value":"Y","future":true}}"#.to_vec())),
+            ("unknown_key", frame(br#"{"t":"SetOption","c":{"key":"PermanentPassword","value":"unused"}}"#.to_vec())),
+            ("retired_config", frame(br#"{"t":"SyncConfig","c":[{},{}]}"#.to_vec())),
+            ("retired_password", frame(br#"{"t":"SetPermanentPassword","c":"unused"}"#.to_vec())),
+            ("duplicate_value", frame(br#"{"t":"SetOption","c":{"key":"EnableAbr","value":"N","value":"Y"}}"#.to_vec())),
+            ("trailing_json", frame(br#"{"t":"SetOption","c":{"key":"EnableAbr","value":"Y"}}{}"#.to_vec())),
+            ("invalid_utf8", frame(vec![0xff])),
+            ("oversized_header", oversized_header),
+        ] {
+            let before = Config::get_options();
+            let before_file = std::fs::read(&file).unwrap();
+            let response = transact(&mut incoming, &socket_path, frame).await;
+            let closed = response.is_none();
+            let unchanged = Config::get_options() == before
+                && std::fs::read(&file).unwrap() == before_file;
+            rejected += usize::from(closed);
+            preserved += usize::from(unchanged);
+            println!("OPTION_ACK_FRAME_CASE=observed name={name} rejected={closed} preserved={unchanged}");
+            let reset = transact(&mut incoming, &socket_path, request("N")).await;
+            assert!(matches!(reset, Some(MainIpcResponse::OptionSet {
+                result: IpcMutationResult::Applied, effective: Some(value),
+            }) if value.key == MainStatusOptionKey::EnableAbr && value.value == "N"));
+        }
+        let before = Config::get_options();
+        let before_file = std::fs::read(&file).unwrap();
+        let oversized_value = frame(serde_json::to_vec(&MainIpcRequest::SetOption(
+            MainStatusOption {
+                key: MainStatusOptionKey::EnableAbr,
+                value: "x".repeat(MAIN_IPC_MAX_OPTION_VALUE_BYTES + 1),
+            },
+        )).unwrap());
+        let response = transact(&mut incoming, &socket_path, oversized_value).await;
+        let value_rejected = matches!(response, Some(MainIpcResponse::OptionSet {
+            result: IpcMutationResult::Rejected, effective: None,
+        }));
+        let value_preserved = Config::get_options() == before
+            && std::fs::read(&file).unwrap() == before_file;
+        rejected += usize::from(value_rejected);
+        preserved += usize::from(value_preserved);
+        println!("OPTION_ACK_FRAME_CASE=observed name=oversized_value rejected={value_rejected} preserved={value_preserved}");
+
+        let applied = transact(&mut incoming, &socket_path, request("Y")).await;
+        let retry_applied = matches!(applied, Some(MainIpcResponse::OptionSet {
             result: IpcMutationResult::Applied, effective: Some(value),
-        } if value.key == MainStatusOptionKey::EnableAbr && value.value == "Y");
+        }) if value.key == MainStatusOptionKey::EnableAbr && value.value == "Y");
         let stored: config::Config2 = config::load_path(file);
         let retry_persisted = stored.options.get("enable-abr").map(String::as_str) == Some("Y");
-        drop((stream, client, incoming));
+        drop(incoming);
         println!("OPTION_ACK_NATIVE=observed failure_reported={failure_reported} memory_preserved={memory_preserved} file_preserved={file_preserved} retry_applied={retry_applied} retry_persisted={retry_persisted} peer=unix");
+        println!("OPTION_ACK_FRAMED=observed cases=10 rejected={rejected} preserved={preserved} peer=unix transaction=production");
         assert!(failure_reported && memory_preserved && file_preserved && retry_applied && retry_persisted);
+        assert_eq!((rejected, preserved), (10, 10));
     }
 
     #[tokio::test(flavor = "current_thread")]

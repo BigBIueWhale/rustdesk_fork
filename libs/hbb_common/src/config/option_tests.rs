@@ -120,6 +120,9 @@ fn peer_store_reports_failure_without_publishing_a_change_and_refuses_unreadable
         candidate.password_prs = b"fixture-peer-prs".to_vec();
         candidate.options.insert("unrelated".into(), "preserved".into());
         candidate.store(id).unwrap();
+        // Mutations start from a loaded config, including its normalised defaults.
+        candidate = PeerConfig::load_for_write(id).unwrap();
+        assert_eq!(candidate.password_prs, b"fixture-peer-prs");
         let file = PeerConfig::path(id);
         let parent = file.parent().unwrap();
         let original = fs::read(&file).unwrap();

@@ -317,26 +317,32 @@ void main() {
 
     test('modern key up bypasses changed input source and keyboard mode', () {
       input.handleKeyEvent(keyEvent(LogicalKeyboardKey.altRight, down: true));
-      final admitted = backend.sends.single;
+      input
+          .handleRawKeyEvent(rawEvent(LogicalKeyboardKey.altRight, down: true));
+      final admitted = backend.sends.first;
       backend.useFlutterInput = false;
       input.keyboardMode = kKeyLegacyMode;
       input.handleKeyEvent(keyEvent(LogicalKeyboardKey.altRight, down: false));
-      expect(backend.sends.length, 1);
+      expect(backend.sends.length, 2);
       expect(backend.releases.single.$2, admitted.$2);
       expect(backend.releases.single.$3, 5);
       expect(input.alt, isFalse);
+      expect(pendingRaw(input.toReleaseRawKeys), isEmpty);
     });
 
     test('raw key up bypasses changed input source and clears its slot', () {
       input.handleRawKeyEvent(
           rawEvent(LogicalKeyboardKey.shiftRight, down: true));
-      final admitted = backend.sends.single;
+      input.handleKeyEvent(keyEvent(LogicalKeyboardKey.shiftRight, down: true));
+      final admitted = backend.sends.first;
       backend.useFlutterInput = false;
       input.handleRawKeyEvent(
           rawEvent(LogicalKeyboardKey.shiftRight, down: false));
       expect(backend.releases.single.$2, admitted.$2);
       expect(backend.releases.single.$3, 1);
       expect(pendingRaw(input.toReleaseRawKeys), isEmpty);
+      expect(pendingKeys(input.toReleaseKeys), isEmpty);
+      expect(input.shift, isFalse);
     });
 
     test('permission revocation retires modifiers before blocking new input',
@@ -394,7 +400,7 @@ void main() {
 
     test('connection suspension refuses input until a new round is installed',
         () async {
-      input.inputKey('Control_L', down: true, press: false, modifierSlot: 2);
+      input.inputKey('VK_CONTROL', down: true, press: false, modifierSlot: 2);
       final old = backend.sends.single.$1;
       input.suspendKeyboardInput();
       input.inputKey('a');

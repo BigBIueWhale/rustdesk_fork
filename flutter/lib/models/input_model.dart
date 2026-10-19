@@ -817,8 +817,7 @@ class InputModel {
   KeyEventResult handleRawKeyEvent(RawKeyEvent e) {
     final modifierSlot = flutterModifierSlot(e.logicalKey);
     if (e is RawKeyUpEvent && modifierSlot != null) {
-      toReleaseRawKeys.updateKeyUp(e.logicalKey, e);
-      _refreshModifierFlags();
+      _clearTrackedModifier(modifierSlot);
       _keyboardInput.releaseSlot(modifierSlot);
       return KeyEventResult.handled;
     }
@@ -921,8 +920,7 @@ class InputModel {
   KeyEventResult handleKeyEvent(KeyEvent e) {
     final modifierSlot = flutterModifierSlot(e.logicalKey);
     if (e is KeyUpEvent && modifierSlot != null) {
-      handleKeyUpEventModifiers(e);
-      _refreshModifierFlags();
+      _clearTrackedModifier(modifierSlot);
       _keyboardInput.releaseSlot(modifierSlot);
       return KeyEventResult.handled;
     }
@@ -1363,6 +1361,39 @@ class InputModel {
         toReleaseRawKeys.lastLCommandKeyEvent != null ||
         toReleaseRawKeys.lastRCommandKeyEvent != null ||
         toReleaseRawKeys.lastSuperKeyEvent != null;
+  }
+
+  void _clearTrackedModifier(int slot) {
+    switch (slot) {
+      case 0:
+        toReleaseKeys.lastLShiftKeyEvent = null;
+        toReleaseRawKeys.lastLShiftKeyEvent = null;
+      case 1:
+        toReleaseKeys.lastRShiftKeyEvent = null;
+        toReleaseRawKeys.lastRShiftKeyEvent = null;
+      case 2:
+        toReleaseKeys.lastLCtrlKeyEvent = null;
+        toReleaseRawKeys.lastLCtrlKeyEvent = null;
+      case 3:
+        toReleaseKeys.lastRCtrlKeyEvent = null;
+        toReleaseRawKeys.lastRCtrlKeyEvent = null;
+      case 4:
+        toReleaseKeys.lastLAltKeyEvent = null;
+        toReleaseRawKeys.lastLAltKeyEvent = null;
+      case 5:
+        toReleaseKeys.lastRAltKeyEvent = null;
+        toReleaseRawKeys.lastRAltKeyEvent = null;
+      case 6:
+        toReleaseKeys.lastLCommandKeyEvent = null;
+        toReleaseRawKeys.lastLCommandKeyEvent = null;
+      case 7:
+        toReleaseKeys.lastRCommandKeyEvent = null;
+        toReleaseRawKeys.lastRCommandKeyEvent = null;
+      case 8:
+        toReleaseKeys.lastSuperKeyEvent = null;
+        toReleaseRawKeys.lastSuperKeyEvent = null;
+    }
+    _refreshModifierFlags();
   }
 
   /// Exit the relative-mouse shortcut using the exact accepted modifier presses.

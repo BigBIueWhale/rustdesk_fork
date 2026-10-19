@@ -2773,36 +2773,29 @@ class CanvasModel with ChangeNotifier {
 
   bool scrollPreferencesVisible({required CanvasUpdateOwner? owner}) {
     if (!_acceptsOwner(owner)) return false;
-    final style = _preferences.viewStyle(owner!.sessionId);
+    final style = _lastViewStyle.style;
     return style == kRemoteViewStyleOriginal || style == kRemoteViewStyleCustom;
   }
 
-  Future<({String viewStyle, String style, int thickness})> readScrollPreferences(
+  Future<({String style, int thickness})> readScrollPreferences(
       {required CanvasUpdateOwner? owner}) async {
     if (!_acceptsOwner(owner)) throw StateError('Canvas owner is unavailable');
     if (_scrollPreferenceSavePending) throw StateError('A scroll preference save is pending');
     final revision = _scrollPreferenceCommitRevision;
-    final viewStyle = _preferences.viewStyle(owner!.sessionId);
-    if (![kRemoteViewStyleOriginal, kRemoteViewStyleAdaptive,
-        kRemoteViewStyleCustom].contains(viewStyle)) {
-      throw StateError('View style is unavailable');
-    }
-    final style = await _preferences.scrollStyle(owner.sessionId);
-    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision ||
-        _preferences.viewStyle(owner.sessionId) != viewStyle) {
+    final style = await _preferences.scrollStyle(owner!.sessionId);
+    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision) {
       throw StateError('Scroll preference read was superseded');
     }
     if (style == null) throw StateError('Scroll style is unavailable');
     ScrollStyle.fromString(style);
     final thickness = await _preferences.edgeThickness(owner.sessionId);
-    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision ||
-        _preferences.viewStyle(owner.sessionId) != viewStyle) {
+    if (!_acceptsOwner(owner) || revision != _scrollPreferenceCommitRevision) {
       throw StateError('Scroll preference read was superseded');
     }
     if (thickness == null || thickness < 20 || thickness > 150) {
       throw StateError('Invalid scroll preferences');
     }
-    return (viewStyle: viewStyle!, style: style, thickness: thickness);
+    return (style: style, thickness: thickness);
   }
 
   Future<T> _saveScrollPreference<T>(T requested,

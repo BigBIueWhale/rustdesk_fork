@@ -17,10 +17,11 @@ class _Preferences implements CanvasPreferences {
   int? thickness = 100;
   int styleReads = 0;
   int thicknessReads = 0;
+  int viewReads = 0;
   Future<String?> Function(int)? readStyle;
   Future<int?> Function(int)? readThickness;
   @override
-  String? viewStyle(SessionID id) => view;
+  String? viewStyle(SessionID id) { viewReads++; return view; }
   @override
   Future<double> customScale(SessionID id) async => 1.0;
   @override
@@ -126,9 +127,12 @@ Future<void> _debounce(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 301));
   await _flush(tester);
 }
-Future<void> _menu(WidgetTester tester, _Session session) {
+Future<void> _menu(WidgetTester tester, _Session session) async {
+  if (session.canvasModel.viewStyle.style != session.preferences.view) {
+    await session.canvasModel.updateViewStyle(owner: session.canvasModel.captureUpdateOwner());
+  }
   session.canvasModel.imageOverflow.value = true;
-  return tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360,
+  await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360,
     child: SessionScrollPreferences(key: const ValueKey('scroll-menu'), ffi: session,
       translateText: (text) => text)))));
 }
@@ -144,6 +148,7 @@ void main() {
     final s = _Session()..preferences.style = kRemoteScrollStyleEdge;
     final first = Completer<int>();
     s.writer.thickness = (_) => first.future;
+    await s.canvasModel.updateViewStyle(owner: s.canvasModel.captureUpdateOwner());
     final saving = s.canvasModel.applyEdgeScrollEdgeThickness(150,
         owner: s.canvasModel.captureUpdateOwner());
     await _menu(tester, s);
@@ -215,6 +220,7 @@ void main() {
     s.writer.thickness = (v) => s.writer.calls.length == 1 ? first.future : Future.value(v);
     await _menu(tester, s);
     await _flush(tester);
+    final viewReads = s.preferences.viewReads;
     _slider(tester).onChanged!(80);
     await _debounce(tester);
     expect(_barChoice(tester).onChanged, isNull);
@@ -224,6 +230,7 @@ void main() {
     expect(_slider(tester).value, 90);
     expect(s.preferences.styleReads, 1);
     expect(s.preferences.thicknessReads, 1);
+    expect(s.preferences.viewReads, viewReads);
     first.complete(80);
     await _flush(tester);
     expect(s.writer.calls, [('thickness', 80), ('thickness', 90)]);
@@ -668,7 +675,7 @@ void main() {
       final owner = c.captureUpdateOwner();
       final before = _state(s);
       final valid = await c.readScrollPreferences(owner: owner);
-      expect(valid, (viewStyle: kRemoteViewStyleOriginal, style: kRemoteScrollStyleAuto, thickness: 100));
+      expect(valid, (style: kRemoteScrollStyleAuto, thickness: 100));
       for (final value in [null, '', 'bad']) {
         s.preferences.style = value;
         await expectLater(c.readScrollPreferences(owner: owner),

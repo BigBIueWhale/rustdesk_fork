@@ -770,6 +770,56 @@ void main() {
     });
   });
 
+  testWidgets('canvas changed scroll mode retires a pending view style read', (tester) async {
+    await tester.runAsync(() async {
+      final session = _Session();
+      session.preferences.scroll = kRemoteScrollStyleEdge;
+      final canvas = session.canvasModel;
+      final owner = canvas.captureUpdateOwner();
+      await canvas.updateScrollStyle(owner: owner);
+      final held = Completer<String?>();
+      session.preferences.readStyle = (_) => held.future;
+      final pending = canvas.tryUpdateScrollStyle(
+          const Duration(seconds: 30), null, owner: owner);
+      session.preferences.scroll = kRemoteScrollStyleAuto;
+      await canvas.updateScrollStyle(owner: owner);
+      session.preferences.scroll = kRemoteScrollStyleEdge;
+      await canvas.updateScrollStyle(owner: owner);
+      canvas.setScrollPercent(0.6, 0.7);
+      held.complete(kRemoteViewStyleOriginal);
+      expect(await pending, isFalse);
+      expect([canvas.scrollX, canvas.scrollY], [0.6, 0.7]);
+      session.dispose();
+    });
+  });
+
+  testWidgets('canvas scroll mode change cancels and joins its queued timer', (tester) async {
+    final session = _Session();
+    final canvas = session.canvasModel;
+    Future<bool>? pending;
+    try {
+      session.preferences.scroll = kRemoteScrollStyleEdge;
+      final owner = canvas.captureUpdateOwner();
+      await tester.runAsync(() => canvas.updateScrollStyle(owner: owner));
+      bool? result;
+      pending = canvas.tryUpdateScrollStyle(
+          const Duration(seconds: 30), kRemoteViewStyleOriginal, owner: owner)
+          .then((value) { result = value; return value; });
+      canvas.setScrollPercent(0.6, 0.7);
+      session.preferences.scroll = kRemoteScrollStyleAuto;
+      await tester.runAsync(() => canvas.updateScrollStyle(owner: owner));
+      await tester.pump();
+      expect(result, isFalse);
+      expect([canvas.scrollX, canvas.scrollY], [0.6, 0.7]);
+      await tester.pump(const Duration(seconds: 30));
+      expect([canvas.scrollX, canvas.scrollY], [0.6, 0.7]);
+      expect(tester.takeException(), isNull);
+    } finally {
+      session.dispose();
+      if (pending != null) await pending;
+    }
+  });
+
   testWidgets('canvas scale mutation failure releases admission for retry', (tester) async {
     await tester.runAsync(() async {
       final session = _Session();

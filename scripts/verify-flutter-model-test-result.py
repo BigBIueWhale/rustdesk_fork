@@ -143,6 +143,8 @@ SCROLL_PREFERENCE_TESTS = {
 }
 
 CUSTOM_SCALE_TESTS = {
+    "canvas changed scroll mode retires a pending view style read",
+    "canvas scroll mode change cancels and joins its queued timer",
     "canvas asynchronous view read leaves event handling available",
     "canvas view read errors and invalid styles preserve geometry and retry",
     "canvas retired first view read cannot start its scale query",

@@ -2455,6 +2455,7 @@ class CanvasModel with ChangeNotifier {
   bool _customScaleSavePending = false;
   int _customScaleCommitRevision = 0;
   int _viewStyleRevision = 0;
+  int _scrollStyleRevision = 0;
   bool _scrollPreferenceSavePending = false;
   int _scrollPreferenceCommitRevision = 0;
   Object _lifetime = Object();
@@ -2744,8 +2745,10 @@ class CanvasModel with ChangeNotifier {
     if (!_acceptsOwner(owner)) return false;
     if (_scrollStyle == ScrollStyle.scrollauto) return true;
     final styleRevision = _viewStyleRevision;
+    final scrollRevision = _scrollStyleRevision;
+    bool acceptsScroll() => _acceptsOwner(owner) && scrollRevision == _scrollStyleRevision;
     style ??= await _readViewStyle(owner);
-    if (!_acceptsOwner(owner) || style == null ||
+    if (!acceptsScroll() || style == null ||
         (styleRevision != _viewStyleRevision && style != _lastViewStyle.style)) return false;
     if (style != kRemoteViewStyleOriginal && style != kRemoteViewStyleCustom) {
       return true;
@@ -2757,9 +2760,9 @@ class CanvasModel with ChangeNotifier {
       // Frame initialization joins its own next-turn layout, without a newer
       // frame admission cancelling an earlier useful initializer.
       await Future<void>.delayed(Duration.zero);
-      if (!_acceptsOwner(owner)) return false;
+      if (!acceptsScroll()) return false;
       updateScrollPercent();
-      return _acceptsOwner(owner);
+      return acceptsScroll();
     }
 
     _cancelDeferredScrollStyle();
@@ -2769,12 +2772,12 @@ class CanvasModel with ChangeNotifier {
       _scrollStyleTimer = null;
       _scrollStyleCompletion = null;
       try {
-        if (!_acceptsOwner(owner)) {
+        if (!acceptsScroll()) {
           completion.complete(false);
           return;
         }
         updateScrollPercent();
-        completion.complete(_acceptsOwner(owner));
+        completion.complete(acceptsScroll());
       } catch (error, stack) {
         completion.completeError(error, stack);
       }
@@ -2870,6 +2873,10 @@ class CanvasModel with ChangeNotifier {
     }
 
     final selected = ScrollStyle.fromString(style);
+    if (_scrollStyle != selected) {
+      _scrollStyleRevision++;
+      _cancelDeferredScrollStyle();
+    }
     _scrollStyle = selected;
     cancelEdgeScroll();
 

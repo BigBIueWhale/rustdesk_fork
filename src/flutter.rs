@@ -2233,7 +2233,6 @@ impl InvokeUiSession for FlutterHandler {
         file_num: i32,
         to: String,
         is_upload: bool,
-        is_identical: bool,
     ) {
         self.push_event(
             "override_file_confirm",
@@ -2242,7 +2241,6 @@ impl InvokeUiSession for FlutterHandler {
                 ("file_num", &file_num.to_string()),
                 ("read_path", &to),
                 ("is_upload", &is_upload.to_string()),
-                ("is_identical", &is_identical.to_string()),
             ],
             &[],
         );

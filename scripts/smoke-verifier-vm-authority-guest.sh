@@ -8940,7 +8940,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_FILE_NAVIGATION_TEST_JSON
-            expected_result='suites=2 tests=59'
+            expected_result='suites=4 tests=71'
         elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
             memory=3g
             memory_bytes=3221225472
@@ -9612,7 +9612,9 @@ run_flutter_model_tests() {
                     elif [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
                         diff -r --exclude=generated_bridge.dart \
                             --exclude=generated_bridge.freezed.dart /source/flutter/lib lib
-                        cmp /source/flutter/test/file_navigation_sort_test.dart test/file_navigation_sort_test.dart
+                        for relative in "${tests[@]}"; do
+                            cmp "/source/flutter/$relative" "$relative"
+                        done
                     elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
                         diff -r --exclude=generated_bridge.dart \
                             --exclude=generated_bridge.freezed.dart /source/flutter/lib lib

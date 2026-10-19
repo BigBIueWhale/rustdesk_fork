@@ -219,33 +219,28 @@ class FileOverrideConfirmation {
     required this.fileNum,
     required this.readPath,
     required this.isUpload,
-    required this.isIdentical,
   });
 
   final int jobId;
   final int fileNum;
   final String readPath;
   final bool isUpload;
-  final bool isIdentical;
 
   static FileOverrideConfirmation? tryParse(Map<String, dynamic> event) {
     final rawJobId = event['id'];
     final rawFileNum = event['file_num'];
     final readPath = event['read_path'];
     final rawIsUpload = event['is_upload'];
-    final rawIsIdentical = event['is_identical'];
     if (event['name'] != 'override_file_confirm' ||
         rawJobId is! String ||
         rawFileNum is! String ||
         readPath is! String ||
-        rawIsUpload is! String ||
-        rawIsIdentical is! String) {
+        rawIsUpload is! String) {
       return null;
     }
     final jobId = int.tryParse(rawJobId);
     final fileNum = int.tryParse(rawFileNum);
     final isUpload = _tryParseBool(rawIsUpload);
-    final isIdentical = _tryParseBool(rawIsIdentical);
     if (jobId == null ||
         jobId <= 0 ||
         jobId > _maxNativeInt ||
@@ -257,8 +252,7 @@ class FileOverrideConfirmation {
         readPath.isEmpty ||
         readPath.length > maxReadPathCodeUnits ||
         readPath.contains('\u0000') ||
-        isUpload == null ||
-        isIdentical == null) {
+        isUpload == null) {
       return null;
     }
     return FileOverrideConfirmation(
@@ -266,7 +260,6 @@ class FileOverrideConfirmation {
       fileNum: fileNum,
       readPath: readPath,
       isUpload: isUpload,
-      isIdentical: isIdentical,
     );
   }
 
@@ -433,7 +426,7 @@ class FileModel {
     final resp = overrideConfirm ??
         (!skip
             ? await showFileConfirmDialog(translate("Overwrite"),
-                confirmation.readPath, true, confirmation.isIdentical)
+                confirmation.readPath, true)
             : null);
     if (!_isCurrentSession(expectedSessionId)) return;
     if (false == resp) {
@@ -477,7 +470,7 @@ class FileModel {
   bool fileConfirmCheckboxRemember = false;
 
   Future<bool?> showFileConfirmDialog(
-      String title, String content, bool showCheckbox, bool isIdentical,
+      String title, String content, bool showCheckbox,
       {TranslateText? translateText}) async {
     final t = translateText ?? translate;
     fileConfirmCheckboxRemember = false;
@@ -504,17 +497,6 @@ class FileModel {
                   style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 5),
               Text(content),
-              Offstage(
-                offstage: !isIdentical,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(height: 12),
-                    Text(t("identical_file_tip"),
-                        style: const TextStyle(fontWeight: FontWeight.w500))
-                  ],
-                ),
-              ),
               showCheckbox
                   ? CheckboxListTile(
                       contentPadding: const EdgeInsets.all(0),

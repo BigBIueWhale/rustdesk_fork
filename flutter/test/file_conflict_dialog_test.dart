@@ -41,7 +41,7 @@ Future<_Harness> _harness(WidgetTester tester) async {
 
 Future<bool?> _open(_Harness harness, {bool remember = true}) =>
     harness.model.showFileConfirmDialog('Overwrite', '/remote/existing.bin',
-        remember, true, translateText: (text) => text);
+        remember, translateText: (text) => text);
 
 void main() {
   testWidgets('overwrite dialog does not claim content identity', (tester) async {

@@ -35,7 +35,6 @@ Map<String, dynamic> _confirmationEvent({
   Object? fileNum = '0',
   Object? readPath = '/tmp/file',
   Object? isUpload = 'true',
-  Object? isIdentical = 'false',
 }) =>
     {
       'name': 'override_file_confirm',
@@ -43,7 +42,6 @@ Map<String, dynamic> _confirmationEvent({
       'file_num': fileNum,
       'read_path': readPath,
       'is_upload': isUpload,
-      'is_identical': isIdentical,
     };
 
 void main() {
@@ -181,7 +179,6 @@ void main() {
     expect(parsed.fileNum, 0);
     expect(parsed.readPath, '/tmp/file');
     expect(parsed.isUpload, isTrue);
-    expect(parsed.isIdentical, isFalse);
   });
 
   test('file confirmation parser rejects malformed scalar authority', () {
@@ -199,10 +196,6 @@ void main() {
         isNull);
     expect(
         FileOverrideConfirmation.tryParse(_confirmationEvent(isUpload: true)),
-        isNull);
-    expect(
-        FileOverrideConfirmation.tryParse(
-            _confirmationEvent(isIdentical: 'TRUE')),
         isNull);
   });
 

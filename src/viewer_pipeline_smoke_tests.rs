@@ -329,7 +329,6 @@ impl InvokeUiSession for ViewerPipelineUi {
         _file_num: i32,
         _to: String,
         _is_upload: bool,
-        _is_identical: bool,
     ) {
     }
 

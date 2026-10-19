@@ -3258,7 +3258,6 @@ impl<T: InvokeUiSession> Remote<T> {
                                                 digest.file_num,
                                                 read_path,
                                                 true,
-                                                digest.is_identical,
                                             );
                                         }
                                     }
@@ -3357,7 +3356,6 @@ impl<T: InvokeUiSession> Remote<T> {
                                                 digest.file_num,
                                                 write_path,
                                                 false,
-                                                digest.is_identical,
                                             );
                                         }
                                     }

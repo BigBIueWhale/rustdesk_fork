@@ -442,6 +442,15 @@ PHYSICAL_MOUSE_TESTS = {
     "physical mouse outside chord release retires every button once",
     "physical mouse outside presses and movement remain rejected",
     "physical mouse bounds retain snapping tolerance and mobile clamping",
+    "physical mouse widget cancellation releases the primary button",
+    "physical mouse widget outside cancellation releases a chord",
+    "physical mouse widget cancellation permits a fresh matching press",
+    "physical mouse widget repeated cancellation releases once",
+    "physical mouse widget touch cancellation preserves a mouse press",
+    "physical mouse widget cancellation without a press emits nothing",
+    "physical mouse widget ordinary up retains caller callbacks",
+    "physical mouse widget mouse cancellation survives a touch pointer",
+    "physical mouse widget mouse up survives a touch pointer",
 }
 
 MODIFIER_RELEASE_TESTS = {

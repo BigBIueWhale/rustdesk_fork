@@ -1,8 +1,10 @@
 import 'dart:math';
-import 'dart:ui' show Rect;
+import 'dart:ui' show Color, Rect;
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_hbb/common.dart' show mouseButtonsToPeer;
+import 'package:flutter_hbb/common/widgets/remote_input.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/model.dart' show FFI, FfiModel, CanvasModel, CursorModel;
@@ -106,6 +108,79 @@ class _CoordinateInput extends _Input {
     coordinates.cursorModel.dispose();
     coordinates.ffiModel.dispose();
   }
+}
+
+class _MouseRegionFixture {
+  _MouseRegionFixture(this.tester, {this.buttons = kPrimaryMouseButton});
+  final WidgetTester tester;
+  final int buttons;
+  final model = _CoordinateInput(_CoordinateOwner(kPeerPlatformLinux));
+  final callerEvents = <String>[];
+  TestPointer? _pointer;
+  TestPointer? _touch;
+  int _nextPointer = 1;
+
+  Future<void> mount() async {
+    await tester.pumpWidget(Directionality(textDirection: TextDirection.ltr,
+      child: Align(alignment: Alignment.topLeft,
+        child: SizedBox(width: 120, height: 120,
+          child: RawPointerMouseRegion(inputModel: model,
+            onPointerDown: (_) => callerEvents.add('down'),
+            onPointerUp: (_) => callerEvents.add('up'),
+            child: const ColoredBox(color: Color(0xff000000)),
+          ),
+        ),
+      ),
+    ));
+    await tester.sendEventToBinding(const PointerAddedEvent(
+        kind: PointerDeviceKind.mouse, device: 1, position: Offset(80, 80)));
+  }
+
+  Listener get listener => tester.widget<Listener>(find.descendant(
+      of: find.byType(RawPointerMouseRegion), matching: find.byType(Listener)));
+
+  Future<void> down() async {
+    final pointer = TestPointer(_nextPointer++, PointerDeviceKind.mouse, 1, buttons);
+    _pointer = pointer;
+    await tester.sendEventToBinding(pointer.down(const Offset(80, 80)));
+  }
+
+  Future<PointerCancelEvent> cancel({Offset? position}) async {
+    final pointer = _pointer!;
+    final normal = pointer.cancel();
+    final event = position == null ? normal : PointerCancelEvent(
+        kind: pointer.kind, device: pointer.device, pointer: pointer.pointer,
+        position: position);
+    await tester.sendEventToBinding(event);
+    return event;
+  }
+
+  Future<void> up() => tester.sendEventToBinding(_pointer!.up());
+
+  Future<void> touchDown() async {
+    final touch = TestPointer(100, PointerDeviceKind.touch);
+    _touch = touch;
+    await tester.sendEventToBinding(touch.down(const Offset(80, 80)));
+  }
+
+  Future<void> close() async {
+    if (_touch?.isDown == true) await tester.sendEventToBinding(_touch!.up());
+    if (_pointer?.isDown == true) await cancel();
+    await tester.sendEventToBinding(const PointerRemovedEvent(
+        kind: PointerDeviceKind.mouse, device: 1));
+    await tester.pumpWidget(const SizedBox.shrink());
+    model.close();
+  }
+}
+
+Future<void> _withMouseRegion(WidgetTester tester,
+    Future<void> Function(_MouseRegionFixture) body,
+    {int buttons = kPrimaryMouseButton}) async {
+  final fixture = _MouseRegionFixture(tester, buttons: buttons);
+  try {
+    await fixture.mount();
+    await body(fixture);
+  } finally { await fixture.close(); }
 }
 
 void main() {
@@ -304,5 +379,102 @@ void main() {
     expect(point(true, kPeerPlatformLinux, -6, 50), isNull);
     expect(point(false, kPeerPlatformLinux, -40, 50), const Point(0.0, 50.0));
     expect(point(false, kPeerPlatformLinux, -40, -40), isNull);
+  });
+
+  testWidgets('physical mouse widget cancellation releases the primary button',
+      (tester) async {
+    await _withMouseRegion(tester, (f) async {
+      await f.down();
+      await f.cancel();
+      expect(f.model.peerButtons, [('down', 'left'), ('up', 'left')]);
+      expect(f.callerEvents, ['down']);
+    });
+  });
+
+  testWidgets('physical mouse widget outside cancellation releases a chord',
+      (tester) async {
+    await _withMouseRegion(tester, (f) async {
+      await f.down();
+      await f.cancel(position: const Offset(180, 180));
+      expect(f.model.peerButtons, [
+        for (final (_, name) in namedButtons) ('down', name),
+        for (final (_, name) in namedButtons) ('up', name),
+      ]);
+    }, buttons: 31);
+  });
+
+  testWidgets('physical mouse widget cancellation permits a fresh matching press',
+      (tester) async {
+    await _withMouseRegion(tester, (f) async {
+      await f.down();
+      await f.cancel();
+      await f.down();
+      await f.cancel();
+      expect(f.model.peerButtons, [
+        ('down', 'left'), ('up', 'left'), ('down', 'left'), ('up', 'left')]);
+    });
+  });
+
+  testWidgets('physical mouse widget repeated cancellation releases once',
+      (tester) async {
+    await _withMouseRegion(tester, (f) async {
+      await f.down();
+      final event = await f.cancel();
+      f.listener.onPointerCancel?.call(event);
+      expect(f.model.peerButtons, [('down', 'left'), ('up', 'left')]);
+    });
+  });
+
+  testWidgets('physical mouse widget touch cancellation preserves a mouse press',
+      (tester) async {
+    await _withMouseRegion(tester, (f) async {
+      await f.down();
+      f.listener.onPointerCancel?.call(const PointerCancelEvent(
+          kind: PointerDeviceKind.touch, position: Offset(80, 80)));
+      expect(f.model.peerButtons, [('down', 'left')]);
+      await f.up();
+      expect(f.model.peerButtons, [('down', 'left'), ('up', 'left')]);
+    });
+  });
+
+  testWidgets('physical mouse widget cancellation without a press emits nothing',
+      (tester) async {
+    await _withMouseRegion(tester, (f) async {
+      f.listener.onPointerCancel?.call(const PointerCancelEvent(
+          kind: PointerDeviceKind.mouse, position: Offset(80, 80)));
+      expect(f.model.peerButtons, isEmpty);
+    });
+  });
+
+  testWidgets('physical mouse widget ordinary up retains caller callbacks',
+      (tester) async {
+    await _withMouseRegion(tester, (f) async {
+      await f.down();
+      await f.up();
+      expect(f.model.peerButtons, [('down', 'left'), ('up', 'left')]);
+      expect(f.callerEvents, ['down', 'up']);
+    });
+  });
+
+  testWidgets('physical mouse widget mouse cancellation survives a touch pointer',
+      (tester) async {
+    await _withMouseRegion(tester, (f) async {
+      await f.down();
+      await f.touchDown();
+      expect(f.model.isPhysicalMouse.value, false);
+      await f.cancel();
+      expect(f.model.peerButtons, [('down', 'left'), ('up', 'left')]);
+    });
+  });
+
+  testWidgets('physical mouse widget mouse up survives a touch pointer',
+      (tester) async {
+    await _withMouseRegion(tester, (f) async {
+      await f.down();
+      await f.touchDown();
+      expect(f.model.isPhysicalMouse.value, false);
+      await f.up();
+      expect(f.model.peerButtons, [('down', 'left'), ('up', 'left')]);
+    });
   });
 }

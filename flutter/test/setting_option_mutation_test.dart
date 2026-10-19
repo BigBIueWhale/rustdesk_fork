@@ -50,7 +50,9 @@ Future<void> _trackpad(WidgetTester tester, {
   home: Scaffold(body: SizedBox(width: 360, child: TrackpadSpeedWidget(
     key: fieldKey,
     value: draft ?? SimpleWrapper(value),
-    onDebouncer: enabled ? save : null,
+    enabled: enabled,
+    translateText: (text) => text,
+    saveSpeed: enabled ? save : null,
   ))),
 ));
 
@@ -212,6 +214,53 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('trackpad disabling retires queued work without bypassing a pending save',
+      (tester) async {
+    final pending = Completer<int?>();
+    final calls = <int>[];
+    Future<int?> save(int value) {
+      calls.add(value);
+      return calls.length == 1 ? pending.future : Future.value(value);
+    }
+    await _trackpad(tester, save: save);
+    final oldSlider = tester.widget<Slider>(find.byType(Slider)).onChanged!;
+    final oldSubmit = tester.widget<TextField>(find.byType(TextField)).onSubmitted!;
+    await _slideTrackpad(tester, 200);
+    await tester.pump(const Duration(seconds: 1));
+    await _slideTrackpad(tester, 300);
+    await _trackpad(tester, enabled: false, save: save);
+    oldSlider(500);
+    oldSubmit('600');
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, [200]);
+    expect(tester.widget<Slider>(find.byType(Slider)).onChanged, isNull);
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
+    expect(_trackpadController(tester).text, '100');
+    await _trackpad(tester, save: save);
+    await _slideTrackpad(tester, 400);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, [200]);
+    pending.complete(200);
+    await tester.pump();
+    expect(calls, [200, 400]);
+    expect(_trackpadController(tester).text, '400');
+  });
+
+  testWidgets('trackpad retired save errors cannot affect a replacement',
+      (tester) async {
+    final pending = Completer<int?>();
+    await _trackpad(tester, save: (_) => pending.future);
+    await _slideTrackpad(tester, 200);
+    await tester.pump(const Duration(seconds: 1));
+    await _trackpad(tester, value: 400,
+        fieldKey: const ValueKey('replacement'), save: (value) async => value);
+    pending.completeError(StateError('retired save failure'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(_trackpadController(tester).text, '400');
+    expect(find.text('Failed'), findsNothing);
+  });
+
   testWidgets('trackpad dialog staging keeps bounded local values without saves',
       (tester) async {
     final draft = SimpleWrapper(100);
@@ -226,6 +275,12 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
     expect(draft.value, 10);
+    expect(_trackpadController(tester).text, '10');
+    await tester.enterText(find.byType(TextField), '10x');
+    expect(_trackpadController(tester).text, '10');
+    await tester.enterText(find.byType(TextField), '');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
     expect(_trackpadController(tester).text, '10');
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));

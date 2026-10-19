@@ -111,6 +111,8 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SETTING_OPTION_TESTS = {
+    "trackpad disabling retires queued work without bypassing a pending save",
+    "trackpad retired save errors cannot affect a replacement",
     "trackpad draft survives rebuild and uses the current save callback",
     "trackpad removal cancels debounce and disposes its controller",
     "trackpad retired edit callbacks cannot dispatch work",

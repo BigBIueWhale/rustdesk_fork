@@ -989,16 +989,16 @@ class _DisplayState extends State<_Display> {
         (int.tryParse(bind.mainGetUserDefaultOption(key: kKeyTrackpadSpeed)) ??
             kDefaultTrackpadSpeed);
     final curSpeed = SimpleWrapper(initSpeed);
-    onDebouncer(int v) async {
-      await _saveDefaultOption(kKeyTrackpadSpeed, v.toString());
-      // It's better to notify all sessions that the default speed is changed.
-      // But it may also be ok to take effect in the next connection.
+    saveSpeed(int v) async {
+      final effective = await _saveDefaultOption(kKeyTrackpadSpeed, v.toString());
+      return effective == null ? null : int.tryParse(effective);
     }
 
     return _Card(title: 'Default trackpad speed', children: [
       TrackpadSpeedWidget(
         value: curSpeed,
-        onDebouncer: onDebouncer,
+        enabled: !isOptionFixed(kKeyTrackpadSpeed),
+        saveSpeed: saveSpeed,
       ),
     ]);
   }

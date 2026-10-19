@@ -2948,6 +2948,38 @@ All fifteen credential actions, R-S0, actual R-F5 impairment/multi-hour freshnes
 cold artifacts, independent reproduction, external review, release, document-role
 cleanup and all parked work remain OPEN. The broad goal remains active.
 
+**Canvas view-style reads — Linux component corrected; native display/platform acceptance OPEN.**
+Product `5e295e0b` removes the synchronous view-style FFI and browser export.
+CanvasPreferences uses the existing asynchronous getter, which runs on the native
+bridge worker pool. View/scroll initialization validates the closed style set and
+rechecks the exact canvas/session/topology/presentation owner after waiting.
+Failed, missing or invalid reads preserve geometry and allow a fresh attempt.
+An older style cannot replace a different style already applied by the canvas;
+ready initialization for the same current style remains useful. Current geometry
+is sampled after preference reads, so a pending custom-scale lookup does not
+restore an earlier window size. Existing committed-scale revision checks remain.
+Changed scroll-mode generations retire pending style reads even if the enum later
+returns to its earlier value. A mode change cancels and joins its queued scroll
+timer immediately; obsolete callbacks cannot reset successor scroll positions.
+
+Flutter `RIV1SsrU8H` on `5e295e0b` passes nine suites and 229 cases in 286 outer
+seconds, including nine new view/scroll-read cases and 64 existing image-ownership
+cases. The earlier 227-case pass at `520e6809` remains separately bound to its source.
+Native `noz6BU5pCi` on `520e6809` passes both Rust tests and all 79 generated
+Dart/native bridge cases in 568 outer seconds after removing the export. The later
+Dart-only scroll-mode correction preserves the native code, fixtures and bridge
+inputs; its native evidence remains explicitly bound to `520e6809`.
+The controlled dependency cases establish asynchronous model behavior, ordering
+and geometry preservation. They do not measure a blocked native getter's UI latency
+or actual capture-to-presentation age. Source/artifact identities, case inventories,
+complete endpoint records, whole-ledger count and joined bounded-RAM cleanup are
+retained in `.harness-state/verifier-vm/canvas-view-read-5e295e0b.json`.
+Other synchronous preference APIs, aggregate request capacity/cross-control writers,
+full display/gesture behavior, browser execution and installed/platform acceptance
+remain OPEN. All fifteen credential actions, joint R-S0, actual R-F5 impairment/
+multi-hour freshness, cold artifacts, independent reproduction, external review,
+release, document-role cleanup and all parked items remain OPEN.
+
 **Session scrolling — Linux persistence/editor corrected; remote scrolling/platform acceptance OPEN.**
 Product `317560c3` makes both scroll-style and edge-thickness getters/setters result-bearing.
 Native storage admits only scrollauto/scrollbar/scrolledge and thickness 20–150 pixels.
@@ -2984,8 +3016,7 @@ CanvasModel behavior cover draft retention, bounded serialization, retry, invali
 read/write outcomes, busy-read cancellation and exact-owner retirement.
 The historical six handler/session/export bodies are matched to 2f5c6ca6 before
 execution. Prepared sessions start no authenticated peer. These results establish
-local persistence and controlled rendered-widget/model behavior. Remaining
-synchronous preference reads in other canvas initialization paths, cross-control
+local persistence and controlled rendered-widget/model behavior. Cross-control
 serialization, whole menu/gesture/remote-scrolling effects, malformed-file
 repair/restart, cross-window/process writers and Windows/macOS/Android/iOS/browser/
 installed acceptance remain OPEN.

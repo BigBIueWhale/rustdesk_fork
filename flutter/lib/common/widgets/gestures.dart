@@ -475,82 +475,63 @@ class DoubleFinerTapGestureRecognizer extends GestureRecognizer {
   GestureTapCancelCallback? onDoubleFinerTapCancel;
 
   Timer? _firstTapTimer;
-  _TapTracker? _firstTap;
-
-  PointerDownEvent? _lastPointerDownEvent;
-
-  var _isStart = false;
-
+  TapDownDetails? _pairDetails;
   final Set<int> _upTap = {};
-
-  final Map<int, _TapTracker> _trackers = <int, _TapTracker>{};
+  final Map<int, ({PointerDownEvent down, GestureArenaEntry entry})> _trackers = {};
+  bool _finishing = false;
+  bool _disposed = false;
 
   @override
-  bool isPointerAllowed(PointerDownEvent event) {
-    if (_firstTap == null) {
-      switch (event.buttons) {
-        case kPrimaryButton:
-          if (onDoubleFinerTapDown == null &&
-              onDoubleFinerTap == null &&
-              onDoubleFinerTapCancel == null) {
-            return false;
-          }
-          break;
-        default:
-          return false;
-      }
-    }
-    return super.isPointerAllowed(event);
-  }
+  bool isPointerAllowed(PointerDownEvent event) =>
+      !_disposed && event.buttons == kPrimaryButton &&
+      (onDoubleFinerTapDown != null || onDoubleFinerTap != null ||
+          onDoubleFinerTapCancel != null) &&
+      super.isPointerAllowed(event);
 
   @override
   void addAllowedPointer(PointerDownEvent event) {
-    debugPrint("addAllowedPointer");
-    if (_isStart) {
-      // second
-      if (onDoubleFinerTapDown != null) {
-        final TapDownDetails details = TapDownDetails(
-          globalPosition: event.position,
-          localPosition: event.localPosition,
-          kind: getKindForPointer(event.pointer),
-        );
-        invokeCallback<void>(
-            'onDoubleFinerTapDown', () => onDoubleFinerTapDown!(details));
-      }
-    } else {
-      // first tap
-      _isStart = true;
-      _lastPointerDownEvent = event;
-      _startFirstTapDownTimer();
+    if (_disposed || _finishing) return;
+    if (_trackers.length == 2 ||
+        (_trackers.isNotEmpty && _trackers.values.first.down.kind != event.kind)) {
+      _finish(false);
+      return;
     }
-    _trackTap(event);
-  }
+    if (_upTap.isNotEmpty) _finish(false);
+    if (_disposed || _finishing) return;
 
-  void _trackTap(PointerDownEvent event) {
-    final _TapTracker tracker = _TapTracker(
-      event: event,
+    _trackers[event.pointer] = (
+      down: event,
       entry: GestureBinding.instance.gestureArena.add(event.pointer, this),
-      doubleTapMinTime: kDoubleTapMinTime,
-      gestureSettings: gestureSettings,
     );
-    _trackers[event.pointer] = tracker;
-    // debugPrint("_trackers:$_trackers");
-    tracker.startTrackingPointer(_handleEvent, event.transform);
-
-    _registerTap(tracker);
+    GestureBinding.instance.gestureArena.hold(event.pointer);
+    GestureBinding.instance.pointerRouter.addRoute(
+        event.pointer, _handleEvent, event.transform);
+    if (_trackers.length == 1) {
+      _firstTapTimer = Timer(kDoubleTapTimeout, _timeoutCheck);
+    } else {
+      final details = TapDownDetails(
+        globalPosition: event.position,
+        localPosition: event.localPosition,
+        kind: event.kind,
+      );
+      _pairDetails = details;
+      final down = onDoubleFinerTapDown;
+      if (down != null) {
+        invokeCallback<void>('onDoubleFinerTapDown', () => down(details));
+      }
+    }
   }
 
   void _handleEvent(PointerEvent event) {
-    final _TapTracker tracker = _trackers[event.pointer]!;
+    final tracker = _trackers[event.pointer];
+    if (tracker == null) return;
     if (event is PointerUpEvent) {
-      debugPrint("PointerUpEvent");
-      _upTap.add(tracker.pointer);
-    } else if (event is PointerMoveEvent) {
-      if (!tracker.isWithinGlobalTolerance(event, kDoubleTapTouchSlop)) {
-        _reject(tracker);
-      }
-    } else if (event is PointerCancelEvent) {
-      _reject(tracker);
+      GestureBinding.instance.pointerRouter.removeRoute(event.pointer, _handleEvent);
+      _upTap.add(event.pointer);
+    } else if (event is PointerCancelEvent ||
+        (event is PointerMoveEvent &&
+            (event.position - tracker.down.position).distance > kDoubleTapTouchSlop)) {
+      _finish(false);
     }
   }
 
@@ -559,102 +540,59 @@ class DoubleFinerTapGestureRecognizer extends GestureRecognizer {
 
   @override
   void rejectGesture(int pointer) {
-    _TapTracker? tracker = _trackers[pointer];
-    // If tracker isn't in the list, check if this is the first tap tracker
-    if (tracker == null && _firstTap != null && _firstTap!.pointer == pointer) {
-      tracker = _firstTap;
-    }
-    // If tracker is still null, we rejected ourselves already
-    if (tracker != null) {
-      _reject(tracker);
-    }
+    if (_trackers.containsKey(pointer)) _finish(false);
   }
 
-  void _reject(_TapTracker tracker) {
-    _trackers.remove(tracker.pointer);
-    tracker.entry.resolve(GestureDisposition.rejected);
-    _freezeTracker(tracker);
-    if (_firstTap != null) {
-      if (tracker == _firstTap) {
-        _reset();
-      } else {
-        _checkCancel();
-        if (_trackers.isEmpty) {
-          _reset();
-        }
+  void _timeoutCheck() {
+    _finish(_trackers.length == 2 && _upTap.length == 2);
+  }
+
+  void _finish(bool accepted) {
+    if (_trackers.isEmpty) return;
+    _finishing = true;
+    final trackers = _trackers.values.toList(growable: false);
+    final details = _pairDetails;
+    _firstTapTimer?.cancel();
+    _firstTapTimer = null;
+    for (final tracker in trackers) {
+      if (!_upTap.contains(tracker.down.pointer)) {
+        GestureBinding.instance.pointerRouter.removeRoute(
+            tracker.down.pointer, _handleEvent);
       }
+    }
+    _trackers.clear();
+    _upTap.clear();
+    _pairDetails = null;
+    try {
+      for (final tracker in trackers) {
+        tracker.entry.resolve(accepted
+            ? GestureDisposition.accepted : GestureDisposition.rejected);
+      }
+    } finally {
+      for (final tracker in trackers) {
+        GestureBinding.instance.gestureArena.release(tracker.down.pointer);
+      }
+      _finishing = false;
+    }
+    if (_disposed || details == null) return;
+    final tap = onDoubleFinerTap;
+    final cancel = onDoubleFinerTapCancel;
+    if (accepted) {
+      if (tap != null) invokeCallback<void>('onDoubleFinerTap', () => tap(details));
+    } else if (cancel != null) {
+      invokeCallback<void>('onDoubleFinerTapCancel', cancel);
     }
   }
 
   @override
   void dispose() {
-    _reset();
+    _disposed = true;
+    _finish(false);
     super.dispose();
   }
 
-  void _reset() {
-    _stopFirstTapUpTimer();
-    _firstTap = null;
-    _clearTrackers();
-  }
-
-  void _registerTap(_TapTracker tracker) {
-    GestureBinding.instance.gestureArena.hold(tracker.pointer);
-    // Note, order is important below in order for the clear -> reject logic to
-    // work properly.
-  }
-
-  void _clearTrackers() {
-    _trackers.values.toList().forEach(_reject);
-    assert(_trackers.isEmpty);
-  }
-
-  void _freezeTracker(_TapTracker tracker) {
-    tracker.stopTrackingPointer(_handleEvent);
-  }
-
-  void _startFirstTapDownTimer() {
-    _firstTapTimer ??= Timer(kDoubleTapTimeout, _timeoutCheck);
-  }
-
-  void _stopFirstTapUpTimer() {
-    if (_firstTapTimer != null) {
-      _firstTapTimer!.cancel();
-      _firstTapTimer = null;
-    }
-  }
-
-  void _timeoutCheck() {
-    _isStart = false;
-    if (_upTap.length == 2) {
-      _resolve();
-    } else {
-      _reset();
-    }
-    _upTap.clear();
-  }
-
-  void _resolve() {
-    // TODO tap down details
-    if (onDoubleFinerTap != null) {
-      onDoubleFinerTap!(TapDownDetails(
-        kind: _lastPointerDownEvent?.kind,
-      ));
-    }
-    _trackers.forEach((key, value) {
-      value.entry.resolve(GestureDisposition.accepted);
-    });
-    _reset();
-  }
-
-  void _checkCancel() {
-    if (onDoubleFinerTapCancel != null) {
-      invokeCallback<void>('onHoldDragCancel', onDoubleFinerTapCancel!);
-    }
-  }
-
   @override
-  String get debugDescription => 'double tap';
+  String get debugDescription => 'two finger tap';
 }
 
 /// TapTracker helps track individual tap sequences as part of a

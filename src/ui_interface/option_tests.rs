@@ -182,7 +182,7 @@ fn native_option_export_preserves_refusal_and_missing_receiver() {
 
 fn reverse_mouse_wheel_commit_before_publication(root: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
-    use futures::FutureExt;
+    use hbb_common::{futures::FutureExt, message_proto::message};
     let peers = Config::file().parent().unwrap().join("peers");
     assert!(peers.starts_with(root));
     let peer = "127.0.0.1:24016";

@@ -14,7 +14,11 @@ customImageQualityWidget(
     required Function(double)? setQuality,
     required Function(double)? setFps,
     required bool showFps,
-    required bool showMoreQuality}) {
+    required bool showMoreQuality,
+    String Function(String)? translateText,
+    bool? mobileLayout}) {
+  final text = translateText ?? translate;
+  final mobile = mobileLayout ?? isMobile;
   if (initQuality < kMinQuality ||
       initQuality > (showMoreQuality ? kMaxMoreQuality : kMaxQuality)) {
     initQuality = kDefaultQuality;
@@ -74,13 +78,13 @@ customImageQualityWidget(
                     style: const TextStyle(fontSize: 15),
                   )),
               Expanded(
-                  flex: isMobile ? 2 : 1,
+                  flex: mobile ? 2 : 1,
                   child: Text(
-                    translate('Bitrate'),
+                    text('Bitrate'),
                     style: const TextStyle(fontSize: 15),
                   )),
               // mobile doesn't have enough space
-              if (showMoreQuality && !isMobile)
+              if (showMoreQuality && !mobile)
                 Expanded(
                     flex: 1,
                     child: Row(
@@ -90,13 +94,13 @@ customImageQualityWidget(
                           onChanged: onMoreChanged,
                         ),
                         Expanded(
-                          child: Text(translate('More')),
+                          child: Text(text('More')),
                         )
                       ],
                     ))
             ],
           )),
-      if (showMoreQuality && isMobile)
+      if (showMoreQuality && mobile)
         Obx(() => Row(
               children: [
                 Expanded(
@@ -109,7 +113,7 @@ customImageQualityWidget(
                   ),
                 ),
                 Expanded(
-                  child: Text(translate('More')),
+                  child: Text(text('More')),
                 )
               ],
             )),
@@ -140,7 +144,7 @@ customImageQualityWidget(
                 Expanded(
                     flex: 2,
                     child: Text(
-                      translate('FPS'),
+                      text('FPS'),
                       style: const TextStyle(fontSize: 15),
                     ))
               ],

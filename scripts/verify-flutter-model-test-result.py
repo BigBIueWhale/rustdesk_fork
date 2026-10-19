@@ -111,6 +111,17 @@ KEYBOARD_LAYOUT_TESTS = {
     "keyboard layout callback preserves its model after native failure",
 }
 SETTING_OPTION_TESTS = {
+    "quality editor retains drafts and current writers across rebuild",
+    "quality editor removal retires timers and captured edits",
+    "quality editor serializes a field and preserves independent FPS",
+    "quality editor failures stay visible and permit identical retry",
+    "quality editor uses confirmed effective quality and FPS",
+    "quality editor fixed quality disables its More control",
+    "quality editor hiding FPS cancels its queued save",
+    "quality editor replacement ignores retired callbacks and errors",
+    "quality editor clean values follow external refresh",
+    "quality editor leaving More saves its bounded current value",
+    "quality editor preserves narrow mobile layout and hidden FPS",
     "trackpad disabling retires queued work without bypassing a pending save",
     "trackpad retired save errors cannot affect a replacement",
     "trackpad draft survives rebuild and uses the current save callback",

@@ -64,7 +64,188 @@ Future<void> _slideTrackpad(WidgetTester tester, int value) async {
   await tester.pump();
 }
 
+Future<void> _qualityEditor(WidgetTester tester, {
+  double quality = 50,
+  double fps = 30,
+  Future<double?> Function(double)? saveQuality,
+  Future<double?> Function(double)? saveFps,
+  bool showFps = true,
+  bool mobile = false,
+  Key editorKey = const ValueKey('quality'),
+}) => tester.pumpWidget(MaterialApp(
+  home: Scaffold(body: SizedBox(width: 360, child: KeyedSubtree(
+    key: editorKey,
+    child: customImageQualityWidget(
+      initQuality: quality, initFps: fps,
+      setQuality: saveQuality, setFps: saveFps,
+      showFps: showFps, showMoreQuality: true,
+      translateText: (text) => text, mobileLayout: mobile,
+    ),
+  ))),
+));
+
+Slider _qualitySlider(WidgetTester tester, int index) =>
+    tester.widget<Slider>(find.byType(Slider).at(index));
+
+Future<void> _slideQuality(WidgetTester tester, int index, double value) async {
+  _qualitySlider(tester, index).onChanged!(value);
+  await tester.pump();
+}
+
 void main() {
+  testWidgets('quality editor retains drafts and current writers across rebuild', (tester) async {
+    final oldCalls = <double>[];
+    final newCalls = <double>[];
+    await _qualityEditor(tester,
+      saveQuality: (v) async { oldCalls.add(v); return v; },
+      saveFps: (v) async { oldCalls.add(v); return v; });
+    await _slideQuality(tester, 0, 80);
+    await _slideQuality(tester, 1, 40);
+    await tester.pump(const Duration(milliseconds: 500));
+    await _qualityEditor(tester,
+      saveQuality: (v) async { newCalls.add(v); return v; },
+      saveFps: (v) async { newCalls.add(v); return v; });
+    expect(_qualitySlider(tester, 0).value, 80);
+    expect(_qualitySlider(tester, 1).value, 40);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(oldCalls, isEmpty);
+    expect(newCalls, [80, 40]);
+  });
+
+  testWidgets('quality editor removal retires timers and captured edits', (tester) async {
+    final calls = <double>[];
+    Future<double?> save(double v) async { calls.add(v); return v; }
+    await _qualityEditor(tester, saveQuality: save, saveFps: save);
+    final quality = _qualitySlider(tester, 0).onChanged!;
+    final fps = _qualitySlider(tester, 1).onChanged!;
+    final more = tester.widget<Checkbox>(find.byType(Checkbox)).onChanged!;
+    await _slideQuality(tester, 0, 80);
+    await _slideQuality(tester, 1, 40);
+    await tester.pumpWidget(const SizedBox.shrink());
+    quality(90); fps(50); more(true);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('quality editor serializes a field and preserves independent FPS', (tester) async {
+    final pending = Completer<double?>();
+    final quality = <double>[];
+    final fps = <double>[];
+    await _qualityEditor(tester,
+      saveQuality: (v) { quality.add(v); return quality.length == 1 ? pending.future : Future.value(v); },
+      saveFps: (v) async { fps.add(v); return v; });
+    await _slideQuality(tester, 0, 80);
+    await tester.pump(const Duration(seconds: 1));
+    await _slideQuality(tester, 0, 90);
+    await _slideQuality(tester, 1, 40);
+    await tester.pump(const Duration(milliseconds: 500));
+    await _slideQuality(tester, 0, 100);
+    await tester.pump(const Duration(seconds: 1));
+    expect(quality, [80]);
+    expect(fps, [40]);
+    pending.complete(80);
+    await tester.pump();
+    expect(quality, [80, 100]);
+    expect(_qualitySlider(tester, 0).value, 100);
+  });
+
+  testWidgets('quality editor failures stay visible and permit identical retry', (tester) async {
+    final calls = <double>[];
+    await _qualityEditor(tester, saveQuality: (v) {
+      calls.add(v);
+      switch (calls.length) {
+        case 1: throw StateError('sync quality failure');
+        case 2: return Future.error(StateError('async quality failure'));
+        case 3: return Future.value(null);
+        default: return Future.value(v);
+      }
+    });
+    await _slideQuality(tester, 0, 80);
+    await tester.pump(const Duration(seconds: 1));
+    for (var i = 0; i < 3; i++) {
+      expect(find.text('Failed'), findsOneWidget);
+      expect(_qualitySlider(tester, 0).value, 80);
+      await tester.tap(find.text('Retry'));
+      await tester.pump();
+    }
+    expect(calls, [80, 80, 80, 80]);
+    expect(find.text('Failed'), findsNothing);
+  });
+
+  testWidgets('quality editor uses confirmed effective quality and FPS', (tester) async {
+    await _qualityEditor(tester,
+      saveQuality: (_) async => 75, saveFps: (_) async => 45);
+    await _slideQuality(tester, 0, 80);
+    await _slideQuality(tester, 1, 50);
+    await tester.pump(const Duration(seconds: 1));
+    expect(_qualitySlider(tester, 0).value, 75);
+    expect(_qualitySlider(tester, 1).value, 45);
+  });
+
+  testWidgets('quality editor fixed quality disables its More control', (tester) async {
+    await _qualityEditor(tester, saveFps: (v) async => v);
+    expect(_qualitySlider(tester, 0).onChanged, isNull);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).onChanged, isNull);
+    expect(_qualitySlider(tester, 1).onChanged, isNotNull);
+  });
+
+  testWidgets('quality editor hiding FPS cancels its queued save', (tester) async {
+    final calls = <double>[];
+    Future<double?> save(double v) async { calls.add(v); return v; }
+    await _qualityEditor(tester, saveQuality: save, saveFps: save);
+    await _slideQuality(tester, 1, 40);
+    await _qualityEditor(tester, showFps: false, saveQuality: save, saveFps: save);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(Slider), findsOneWidget);
+    expect(calls, isEmpty);
+  });
+
+  testWidgets('quality editor replacement ignores retired callbacks and errors', (tester) async {
+    final pending = Completer<double?>();
+    final calls = <double>[];
+    await _qualityEditor(tester, saveQuality: (v) { calls.add(v); return pending.future; });
+    final oldEdit = _qualitySlider(tester, 0).onChanged!;
+    await _slideQuality(tester, 0, 80);
+    await tester.pump(const Duration(seconds: 1));
+    await _qualityEditor(tester, quality: 60,
+      editorKey: const ValueKey('replacement'), saveQuality: (v) async => v);
+    oldEdit(100);
+    pending.completeError(StateError('retired quality failure'));
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, [80]);
+    expect(_qualitySlider(tester, 0).value, 60);
+    expect(tester.takeException(), isNull);
+    expect(find.text('Failed'), findsNothing);
+  });
+
+  testWidgets('quality editor clean values follow external refresh', (tester) async {
+    Future<double?> save(double v) async => v;
+    await _qualityEditor(tester, saveQuality: save, saveFps: save);
+    await _qualityEditor(tester, quality: 70, fps: 50, saveQuality: save, saveFps: save);
+    expect(_qualitySlider(tester, 0).value, 70);
+    expect(_qualitySlider(tester, 1).value, 50);
+  });
+
+  testWidgets('quality editor leaving More saves its bounded current value', (tester) async {
+    final calls = <double>[];
+    await _qualityEditor(tester, quality: 500, saveQuality: (v) async { calls.add(v); return v; });
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    expect(_qualitySlider(tester, 0).value, 100);
+    expect(_qualitySlider(tester, 0).max, 100);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, [100]);
+  });
+
+  testWidgets('quality editor preserves narrow mobile layout and hidden FPS', (tester) async {
+    await _qualityEditor(tester, mobile: true, showFps: false, saveQuality: (v) async => v);
+    expect(find.byType(Slider), findsOneWidget);
+    expect(find.byType(Checkbox), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('trackpad draft survives rebuild and uses the current save callback',
       (tester) async {
     final firstCalls = <int>[];

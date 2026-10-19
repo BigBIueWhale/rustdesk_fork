@@ -346,85 +346,72 @@ class _TrackpadFling {
 class InputModel {
   late final reverseMouseWheel = ReverseMouseWheelPreferences(parent);
 
-  // Side mouse button support for Linux.
-  // Flutter's Linux embedder drops X11 button 8/9 events, so we capture them
-  // natively via GDK and forward through the platform channel.
+  // Linux forwards back/forward buttons over a dedicated per-engine channel.
   static InputModel? _activeSideButtonModel;
-  // Tracks per-button which model received a side button down event, so the
-  // matching up event is routed there even if the pointer has left the view
-  // or a different button was pressed in between.
-  static final Map<MouseButtons, InputModel> _sideButtonDownModels = {};
+  static final Map<MouseButtons, ({InputModel model, SessionID sessionId})>
+      _sideButtonPresses = {};
   static bool _sideButtonChannelInitialized = false;
 
-  /// Each Flutter engine (main window + sub-windows from desktop_multi_window)
-  /// runs its own Dart isolate with its own statics. Called from initEnv()
-  /// which runs per-engine, so each isolate registers its own handler tied
-  /// to its own set of InputModels.
   static void initSideButtonChannel() {
-    if (!isLinux) return;
-    if (_sideButtonChannelInitialized) return;
+    if (!isLinux || _sideButtonChannelInitialized) return;
     _sideButtonChannelInitialized = true;
 
     const channel = MethodChannel('org.rustdesk.rustdesk/side_buttons');
     channel.setMethodCallHandler((call) async {
-      if (call.method == 'onSideMouseButton') {
-        final args = call.arguments as Map<dynamic, dynamic>;
-        final button = args['button'] as String;
-        final type = args['type'] as String;
-        final mb = button == 'back' ? MouseButtons.back : MouseButtons.forward;
+      if (call.method != 'onSideMouseButton') return null;
+      final args = call.arguments;
+      if (args is! Map) return null;
+      final button = switch (args['button']) {
+        'back' => MouseButtons.back,
+        'forward' => MouseButtons.forward,
+        _ => null,
+      };
+      final type = args['type'];
+      if (button == null || (type != 'down' && type != 'up')) return null;
 
-        if (type == 'down') {
-          final model = _activeSideButtonModel;
-          if (model != null &&
-              !(model.isViewOnly && !model.showMyCursor) &&
-              model.keyboardPerm &&
-              !model.isViewCamera) {
-            _sideButtonDownModels[mb] = model;
-            // Fire-and-forget to avoid blocking the platform channel handler.
-            unawaited(
-                model.sendSideMouseButton(type, mb,
-                    expectedSessionId: model.sessionId).catchError((Object e) {
-              debugPrint(
-                  '[InputModel] failed to send side button $type for $mb: $e');
-            }));
-          }
-        } else {
-          // Only route 'up' when we recorded the matching 'down';
-          // dropping avoids sending unpaired 'up' to an unrelated session.
-          // Use _sendMouseUnchecked to bypass permission checks so the
-          // release always goes through even if permissions changed.
-          final model = _sideButtonDownModels.remove(mb);
-          if (model != null) {
-            unawaited(
-                model.sendSideMouseButton(type, mb,
-                    expectedSessionId: model.sessionId).catchError((Object e) {
-              debugPrint(
-                  '[InputModel] failed to send side button $type for $mb: $e');
-            }));
-          }
+      if (type == 'down') {
+        if (_sideButtonPresses.containsKey(button)) return null;
+        final model = _activeSideButtonModel;
+        final owner = model?.parent.target;
+        if (model == null || owner == null) return null;
+        final selectedSession = owner.sessionId;
+        if (!owner.isCurrentSessionOwner(selectedSession, owner.clientOwnerId) ||
+            model.isViewOnly || !model.keyboardPerm || model.isViewCamera) {
+          return null;
+        }
+        _sideButtonPresses[button] = (model: model, sessionId: selectedSession);
+        unawaited(model.sendSideMouseButton('down', button,
+            expectedSessionId: selectedSession).catchError((Object error) {
+          debugPrint('[InputModel] failed to send side button down for $button: $error');
+        }));
+      } else {
+        final press = _sideButtonPresses.remove(button);
+        if (press != null) {
+          unawaited(press.model.sendSideMouseButton('up', button,
+              expectedSessionId: press.sessionId).catchError((Object error) {
+            debugPrint('[InputModel] failed to send side button up for $button: $error');
+          }));
         }
       }
       return null;
     });
   }
 
-  /// Clear any static references to this model (prevents stale routing).
-  /// Releases any held side buttons on the peer so closing a session
-  /// mid-press does not leave a stuck button.
   void disposeSideButtonTracking({SessionID? expectedSessionId}) {
-    if (_activeSideButtonModel == this) _activeSideButtonModel = null;
-    final held = _sideButtonDownModels.entries
-        .where((e) => e.value == this)
-        .map((e) => e.key)
-        .toList();
-    for (final mb in held) {
-      _sideButtonDownModels.remove(mb);
-      // Best-effort release; session may already be tearing down.
-      unawaited(
-          sendSideMouseButton('up', mb,
-              expectedSessionId: expectedSessionId ?? sessionId)
-              .catchError((Object e) {
-        debugPrint('[InputModel] failed to release side button $mb: $e');
+    if (_activeSideButtonModel == this &&
+        (expectedSessionId == null || parent.target?.sessionId == expectedSessionId)) {
+      _activeSideButtonModel = null;
+    }
+    final held = _sideButtonPresses.entries.where((entry) =>
+        entry.value.model == this && (expectedSessionId == null ||
+            entry.value.sessionId == expectedSessionId)).toList();
+    for (final entry in held) {
+      _sideButtonPresses.remove(entry.key);
+    }
+    for (final entry in held) {
+      unawaited(sendSideMouseButton('up', entry.key,
+          expectedSessionId: entry.value.sessionId).catchError((Object error) {
+        debugPrint('[InputModel] failed to release side button ${entry.key}: $error');
       }));
     }
   }

@@ -3069,6 +3069,7 @@ run_focused_rust_tests() {
             )
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+            source_fingerprints+=(libs/surface_it/Cargo.toml libs/surface_it/src/lib.rs libs/surface_it/tests/surface.rs)
             required_tests=(
                 socket_surface::tests::unbound_ipv4_udp_is_refused
                 socket_surface::tests::unbound_ipv6_udp_is_refused
@@ -3078,15 +3079,16 @@ run_focused_rust_tests() {
                 socket_surface::tests::ipv6_listener_is_refused
                 socket_surface::tests::foreign_process_udp_is_not_part_of_this_process_surface
                 socket_surface::tests::unbound_tcp_is_not_a_listener
-                socket_surface::tests::ipv6_table_missing_is_optional_and_readable_contents_are_preserved
-                socket_surface::tests::ipv6_table_permission_failure_is_not_an_empty_table
-                socket_surface::tests::ipv6_table_invalid_utf8_is_reported
-                socket_surface::tests::ipv6_table_directory_failure_is_reported
-                socket_surface::tests::socket_inode_lookup_permission_failure_is_reported
-                socket_surface::tests::socket_inode_vanished_entry_is_ignored
-                socket_surface::tests::socket_inode_iterator_failure_is_reported
-                socket_surface::tests::socket_inode_nonlink_failure_is_reported
+                socket_surface::tests::closed_descriptor_is_ignored
+                socket_surface::tests::descriptor_iterator_failure_is_reported
                 socket_surface::tests::live_process_surface_tracks_owned_tcp_and_udp
+                r_f4_pinned_port_constant
+                policy_accepts_the_audited_surface
+                policy_rejects_any_udp_socket
+                policy_rejects_a_second_tcp_listener
+                policy_rejects_zero_listeners
+                policy_rejects_an_ipv6_face
+                policy_rejects_the_wrong_port
                 fs::tests::directory_entry_link_directory_permission_failure_is_reported
                 fs::tests::directory_entry_link_file_permission_failure_is_reported
                 fs::tests::directory_entry_link_cycle_preserves_the_link_entry
@@ -4785,6 +4787,24 @@ run_focused_rust_tests() {
                                     exit "$group_status"
                                 fi
                             done
+                            cd /source
+                            cargo test --offline --locked -p surface_it --test surface --no-run \
+                                --message-format=json-render-diagnostics --color never \
+                                >/cargo-target/socket-policy-build.json
+                            policy_executable="$(python3 -I -S /source/scripts/select-hbb-common-test-artifact.py \
+                                /cargo-target/socket-policy-build.json surface_it)"
+                            [ -f "$policy_executable" ] && [ ! -L "$policy_executable" ] \
+                                && [ -x "$policy_executable" ] \
+                                && [ "$(stat -c "%u:%g:%h" -- "$policy_executable")" = 1000:1000:1 ]
+                            policy_sha="$(sha256sum "$policy_executable" | cut -d " " -f 1)"
+                            printf "SOCKET_POLICY_ARTIFACT_START=observed sha256=%s executable=%s\n" \
+                                "$policy_sha" "$policy_executable"
+                            timeout --signal=TERM --kill-after=5s 20s \
+                                "$policy_executable" --color never --test-threads=1 --show-output
+                            [ "$(sha256sum "$policy_executable" | cut -d " " -f 1)" = "$policy_sha" ]
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            printf "SOCKET_POLICY_ARTIFACT=pass sha256=%s executable=%s tests=7 unchanged=before-after\n" \
+                                "$policy_sha" "$policy_executable"
                         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
                             for group in config::tests::config_transaction_ config::option_tests::; do
                                 group_status=0
@@ -5495,7 +5515,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
-        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=14; fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=15; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=4; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=2; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
@@ -5536,6 +5556,11 @@ PY
             || fail 'filesystem test artifact receipt is absent, malformed or duplicated'
         hbb_test_artifact_sha=${hbb_artifact_receipts[0]#*sha256=}
         hbb_test_artifact_sha=${hbb_test_artifact_sha%% *}
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+            [ "$(grep -Ec '^SOCKET_POLICY_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/surface-[0-9a-f]{16} tests=7 unchanged=before-after$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fc 'SOCKET_POLICY_ARTIFACT=' "$output")" -eq 1 ] \
+                || fail 'socket policy artifact receipt differs'
+        fi
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             local group count
@@ -6123,7 +6148,8 @@ PY
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            [ "$tests_passed" -eq 77 ] || fail 'file metadata test total differs'
+            [ "$tests_passed" -eq 86 ] || fail 'file metadata test total differs'
+            grep -E '^test (policy_[a-z0-9_]+|r_f4_pinned_port_constant) [.][.][.] ok$|^SOCKET_DESCRIPTOR=|^SOCKET_POLICY_ARTIFACT' "$output"
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=|^test socket_surface::tests::[a-z0-9_]+ [.][.][.] ok$|^SOCKET_SURFACE_IO=' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'

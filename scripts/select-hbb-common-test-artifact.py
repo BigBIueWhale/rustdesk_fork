@@ -13,6 +13,8 @@ def select_artifact(output, package="hbb_common", source_root="/source"):
     manifest_package, executable_dir = package, "/cargo-target/debug/deps"
     if package == "cpace_it" and source_root == "/source":
         name, kind, source = "handshake", ["test"], "tests/handshake.rs"
+    elif package == "surface_it" and source_root == "/source":
+        name, kind, source = "surface", ["test"], "tests/surface.rs"
     elif package == "probe_client" and source_root == "/source":
         manifest_package = "hbb_common"
         name, kind, source = "probe_client", ["example"], "../../examples/probe_client.rs"

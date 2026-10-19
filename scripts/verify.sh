@@ -13462,18 +13462,17 @@ fi
 # and zero UDP sockets, scoped to THIS PROCESS. The box is NOT guaranteed its own
 # network namespace (docs/DEPLOYMENT.md runs it alongside SSH + systemd-resolved),
 # so the read is scoped to this process's own sockets, not the whole netns. Linux and
-# Android both map /proc/self/fd socket:[inode] links back to /proc/self/net rows
-# (read_proc_self_net_owned); Windows filters the IP Helper owner-PID TCP/UDP
+# Android query owned descriptors; Windows filters the IP Helper owner-PID TCP/UDP
 # tables to this process. This is intentionally a source-structure gate here;
 # platform artifact/runtime jobs provide the native execution evidence.
 r_a4_platform=
 r_a4_surface=libs/hbb_common/src/socket_surface.rs
 for marker in \
-  'parse_tcp_listen_ports_for_inodes' \
-  'count_udp_sockets_for_inodes' \
-  'parse_proc_fd_socket_inode' \
-  'read_proc_self_socket_inodes' \
-  'read_proc_self_net_owned' \
+  'read_process_socket_surface' \
+  'F_DUPFD_CLOEXEC' \
+  'SO_DOMAIN' \
+  'SO_PROTOCOL' \
+  'SO_ACCEPTCONN' \
   'read_windows_process_tables' \
   'GetExtendedTcpTable' \
   'GetExtendedUdpTable' \
@@ -13482,17 +13481,15 @@ for marker in \
 do
   grep -q "$marker" "$r_a4_surface" || r_a4_platform="$r_a4_platform socket_surface:$marker"
 done
-# The Linux surface read is PROCESS-SCOPED (owned-inode filtered), so a co-resident
-# SSH/systemd-resolved socket is correctly ignored rather than counted. Assert the owned read is
-# compiled for Linux (not android-only), and that no netns-wide unfiltered reader
-# (fn read_proc_self_net) is present.
+# The collector must query this process on Linux and Android without namespace tables.
 grep -q 'cfg(any(target_os = "linux", target_os = "android"))' "$r_a4_surface" || r_a4_platform="$r_a4_platform socket_surface:linux-process-scoped-cfg"
-if grep -qE 'fn read_proc_self_net\(' "$r_a4_surface"; then r_a4_platform="$r_a4_platform socket_surface:netns-wide-read-still-present"; fi
+if grep -q '/proc/self/net/' "$r_a4_surface"; then r_a4_platform="$r_a4_platform socket_surface:netns-table-read-still-present"; fi
 for feature in '"iphlpapi"' '"iprtrmib"' '"tcpmib"' '"udpmib"' '"winerror"' '"ws2def"'; do
   grep -q "$feature" libs/hbb_common/Cargo.toml || r_a4_platform="$r_a4_platform hbb_common-winapi:$feature"
 done
-grep -q 'process_inode_filter_counts_only_this_process_sockets' libs/surface_it/tests/surface.rs || r_a4_platform="$r_a4_platform surface_it:inode-filter-test"
-grep -q 'proc_fd_socket_inode_parser_is_strict' libs/surface_it/tests/surface.rs || r_a4_platform="$r_a4_platform surface_it:fd-inode-parser-test"
+for test in unbound_ipv4_udp_is_refused unbound_ipv6_udp_is_refused foreign_process_udp_is_not_part_of_this_process_surface; do
+  grep -q "fn $test(" "$r_a4_surface" || r_a4_platform="$r_a4_platform socket_surface:$test"
+done
 if [ -n "$r_a4_platform" ]; then
   echo "  FAIL R-A4: Windows/Android process-owned socket-surface assertion gap:$r_a4_platform"; rc=1
 else

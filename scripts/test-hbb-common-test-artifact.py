@@ -110,6 +110,25 @@ class ArtifactSelectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             select_artifact(encode(artifact, FINISHED), "cpace_it", "/cargo-target/fuse-test-source")
 
+    def test_surface_policy_target_is_exact(self):
+        artifact = copy.deepcopy(ARTIFACT)
+        artifact["manifest_path"] = "/source/libs/surface_it/Cargo.toml"
+        artifact["target"] = {"name": "surface", "kind": ["test"],
+                              "src_path": "/source/libs/surface_it/tests/surface.rs"}
+        artifact["executable"] = "/cargo-target/debug/deps/surface-0123456789abcdef"
+        self.assertEqual(select_artifact(encode(artifact, FINISHED), "surface_it"),
+                         artifact["executable"])
+        for field in ("manifest_path", "target", "profile", "executable"):
+            candidate = dict(artifact, **{field: ARTIFACT[field]})
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                select_artifact(encode(candidate, FINISHED), "surface_it")
+        for output in (encode(FINISHED), encode(artifact, artifact, FINISHED),
+                       encode(artifact), encode(artifact, FINISHED, FINISHED)):
+            with self.assertRaises(ValueError):
+                select_artifact(output, "surface_it")
+        with self.assertRaises(ValueError):
+            select_artifact(encode(artifact, FINISHED), "surface_it", "/cargo-target/fuse-test-source")
+
     def test_probe_example_target_is_exact(self):
         artifact = copy.deepcopy(ARTIFACT)
         artifact["target"] = {"name": "probe_client", "kind": ["example"],

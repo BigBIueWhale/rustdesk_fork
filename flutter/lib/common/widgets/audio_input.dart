@@ -12,7 +12,7 @@ typedef AudioInputDeviceLoader = Future<Map<String, Object>> Function(
 typedef AudioInputDeviceWriter = Future<void> Function(
     String device, bool isCm, bool isVoiceCall);
 
-class AudioInput extends StatelessWidget {
+class AudioInput extends StatefulWidget {
   final AudioInputBuilder builder;
   final bool isCm;
   final bool isVoiceCall;
@@ -80,17 +80,100 @@ class AudioInput extends StatelessWidget {
   }
 
   @override
+  State<AudioInput> createState() => _AudioInputState();
+}
+
+class _AudioInputState extends State<AudioInput> {
+  late Future<Map<String, Object>> _devices;
+  Object _owner = Object();
+  Object? _readToken;
+  bool _readPending = false;
+
+  Future<Map<String, Object>> _readDevices() {
+    final token = Object();
+    _readToken = token;
+    _readPending = true;
+    final load = widget.loadDevicesInfo ?? AudioInput.getDevicesInfo;
+    final isCm = widget.isCm;
+    final isVoiceCall = widget.isVoiceCall;
+    return Future<Map<String, Object>>.sync(() => load(isCm, isVoiceCall))
+        .whenComplete(() {
+      if (identical(_readToken, token)) _readPending = false;
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _devices = _readDevices();
+  }
+
+  @override
+  void didUpdateWidget(covariant AudioInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final ownerChanged = oldWidget.isCm != widget.isCm ||
+        oldWidget.isVoiceCall != widget.isVoiceCall ||
+        oldWidget.loadDevicesInfo != widget.loadDevicesInfo ||
+        oldWidget.writeDevice != widget.writeDevice;
+    if (ownerChanged) _owner = Object();
+    if (ownerChanged || !_readPending) _devices = _readDevices();
+  }
+
+  @override
+  void dispose() {
+    _owner = Object();
+    _readToken = null;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return futureBuilder(
-      future: (loadDevicesInfo ?? getDevicesInfo)(isCm, isVoiceCall),
-      hasData: (data) {
-        String currentDevice = data['current'];
-        List<String> devices = data['devices'] as List<String>;
-        if (devices.isEmpty) {
-          return const Offstage();
+    final read = _devices;
+    final owner = _owner;
+    final write = widget.writeDevice ?? AudioInput.setDevice;
+    final isCm = widget.isCm;
+    final isVoiceCall = widget.isVoiceCall;
+    return FutureBuilder<Map<String, Object>>(
+      future: read,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const SizedBox(height: 2, child: LinearProgressIndicator());
         }
-        return builder(devices, currentDevice,
-            (device) => (writeDevice ?? setDevice)(device, isCm, isVoiceCall));
+        if (snapshot.hasError) {
+          debugPrint('Failed to load audio inputs: ${snapshot.error}');
+          return Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              Text(widget.failureText ?? translate('Failed')),
+              TextButton(
+                onPressed: () {
+                  if (!mounted ||
+                      !identical(owner, _owner) ||
+                      !identical(read, _devices)) return;
+                  setState(() => _devices = _readDevices());
+                },
+                child: Text(widget.retryText ?? translate('Retry')),
+              ),
+            ],
+          );
+        }
+        final data = snapshot.data!;
+        final currentDevice = data['current'] as String;
+        final devices = data['devices'] as List<String>;
+        if (devices.isEmpty) return const Offstage();
+        return widget.builder(devices, currentDevice, (device) async {
+          if (!mounted ||
+              !identical(owner, _owner) ||
+              !identical(read, _devices)) return;
+          try {
+            await write(device, isCm, isVoiceCall);
+          } finally {
+            if (mounted && identical(owner, _owner)) {
+              setState(() => _devices = _readDevices());
+            }
+          }
+        });
       },
     );
   }

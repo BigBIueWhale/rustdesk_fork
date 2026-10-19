@@ -689,8 +689,23 @@ class _CmControlPanel extends StatelessWidget {
                 child: buildButton(context,
                     color: MyTheme.accent,
                     onClick: null, onTapDown: (details) async {
-                  final devicesInfo =
-                      await AudioInput.getDevicesInfo(true, true);
+                  bool isCurrent() =>
+                      context.mounted &&
+                      context.widget is _CmControlPanel &&
+                      identical(
+                          (context.widget as _CmControlPanel).client, client) &&
+                      !client.disconnected &&
+                      client.inVoiceCall;
+                  if (!isCurrent()) return;
+                  Map<String, Object> devicesInfo;
+                  try {
+                    devicesInfo = await AudioInput.getDevicesInfo(true, true);
+                  } catch (error) {
+                    debugPrint('Failed to load CM audio inputs: $error');
+                    if (isCurrent()) showToast(translate('Failed'));
+                    return;
+                  }
+                  if (!isCurrent()) return;
                   List<String> devices = devicesInfo['devices'] as List<String>;
                   if (devices.isEmpty) {
                     msgBox(
@@ -708,6 +723,10 @@ class _CmControlPanel extends StatelessWidget {
                   final x = details.globalPosition.dx;
                   final y = details.globalPosition.dy;
                   final position = RelativeRect.fromLTRB(x, y, x, y);
+                  Future<void> selectDevice(String device) async {
+                    if (!isCurrent()) return;
+                    await AudioInput.setDevice(device, true, true);
+                  }
                   showMenu(
                     context: context,
                     position: position,
@@ -716,14 +735,14 @@ class _CmControlPanel extends StatelessWidget {
                               value: d,
                               height: 18,
                               padding: EdgeInsets.zero,
-                              onTap: () => AudioInput.setDevice(d, true, true),
+                              onTap: () => selectDevice(d),
                               child: IgnorePointer(
                                   child: RadioMenuButton(
                                 value: d,
                                 groupValue: currentDevice,
                                 onChanged: (v) {
                                   if (v != null)
-                                    AudioInput.setDevice(v, true, true);
+                                    selectDevice(v);
                                 },
                                 child: Container(
                                   child: Text(

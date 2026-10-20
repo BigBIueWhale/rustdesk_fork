@@ -1344,8 +1344,17 @@ pub fn main_forget_password(id: String) -> Result<()> {
     forget_password(id)
 }
 
-pub fn main_peer_has_password(id: String) -> bool {
-    peer_has_password(id)
+pub struct PeerCredentialStatus {
+    pub has_saved_prs: bool,
+    pub can_forget: bool,
+}
+
+pub fn main_get_peer_credential_status(id: String) -> Result<PeerCredentialStatus> {
+    let status = get_peer_credential_status(id)?;
+    Ok(PeerCredentialStatus {
+        has_saved_prs: status.has_saved_prs,
+        can_forget: status.can_forget,
+    })
 }
 
 pub fn main_peer_exists(id: String) -> bool {

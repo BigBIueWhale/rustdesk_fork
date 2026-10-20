@@ -599,6 +599,13 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_NAVIGATION_SUITES = {
+    "peer_credential_badge_test.dart": {
+        "peer credential badge renders only saved PRS and reads once",
+        "peer credential badge reports errors and admits one retry",
+        "peer credential badge retires old reads and old display data",
+        "peer credential badge rejects a retired retry callback",
+        "peer credential badge drains a failed read after disposal",
+    },
     "peer_removal_test.dart": {
         "peer option workflow waits for write and refresh with exact arguments",
         "peer option workflow reports write or refresh failure and retries",

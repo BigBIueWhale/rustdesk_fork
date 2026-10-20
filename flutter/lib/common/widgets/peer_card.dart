@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
+import 'package:flutter_hbb/common/widgets/peer_credential_badge.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/peer_tab_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -47,24 +48,6 @@ class _PeerCardState extends State<_PeerCard>
   final double _cardRadius = 16;
   final double _tileRadius = 5;
   final double _borderWidth = 2;
-  // I-6: whether the fork has a saved per-address CPace credential (PRS) for this peer. Fetched
-  // async once (only on the recent/favorite tabs — the address-book tab is structurally disabled) so
-  // the key/lock badge reflects the REAL stored PRS, not the dead shared-address-book `password` field.
-  bool _hasPassword = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.tab == PeerTabIndex.recent || widget.tab == PeerTabIndex.fav) {
-      () async {
-        final has = await bind.mainPeerHasPassword(id: widget.peer.id);
-        if (mounted && has != _hasPassword) {
-          setState(() => _hasPassword = has);
-        }
-      }();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -339,11 +322,14 @@ class _PeerCardState extends State<_PeerCard>
     // key badge (I-6) is kept.
     return Stack(children: [
       child,
-      if (_shouldBuildPasswordIcon(peer))
+      if (widget.tab == PeerTabIndex.recent || widget.tab == PeerTabIndex.fav)
         Positioned(
           top: 4,
           left: 12,
-          child: Icon(Icons.key, size: 12, color: Colors.white),
+          child: PeerCredentialBadge(
+            peerId: peer.id,
+            retryLabel: translate('Retry'),
+          ),
         ),
     ]);
   }
@@ -411,14 +397,6 @@ class _PeerCardState extends State<_PeerCard>
       onPointerUp: (_) => _showPeerMenu(peer.id),
       child: build_more(context));
 
-  bool _shouldBuildPasswordIcon(Peer peer) {
-    // The lock reflects the native per-address saved credential.
-    if (widget.tab != PeerTabIndex.recent && widget.tab != PeerTabIndex.fav) {
-      return false;
-    }
-    return _hasPassword;
-  }
-
   /// Show the peer menu and handle user's choice.
   /// User might remove the peer or send a file to the peer.
   void _showPeerMenu(String id) async {
@@ -468,6 +446,16 @@ abstract class BasePeerCard extends StatelessWidget {
 
   @protected
   Future<List<MenuEntryBase<String>>> _buildMenuItems(BuildContext context);
+
+  Future<bool> _canForgetPassword() async {
+    try {
+      return (await bind.mainGetPeerCredentialStatus(id: peer.id)).canForget;
+    } catch (error) {
+      debugPrint('Failed to read peer credential status: $error');
+      showToast(translate('Failed'));
+      return false;
+    }
+  }
 
   MenuEntryBase<String> _connectCommonAction(
     BuildContext context,
@@ -815,7 +803,7 @@ class RecentPeerCard extends BasePeerCard {
     if (isMobile || isDesktop || isWebDesktop) {
       menuItems.add(_renameAction(peer.id));
     }
-    if (await bind.mainPeerHasPassword(id: peer.id)) {
+    if (await _canForgetPassword()) {
       menuItems.add(_unrememberPasswordAction(peer.id));
     }
 
@@ -867,7 +855,7 @@ class FavoritePeerCard extends BasePeerCard {
     if (isMobile || isDesktop || isWebDesktop) {
       menuItems.add(_renameAction(peer.id));
     }
-    if (await bind.mainPeerHasPassword(id: peer.id)) {
+    if (await _canForgetPassword()) {
       menuItems.add(_unrememberPasswordAction(peer.id));
     }
     menuItems.add(_rmFavAction(peer.id, () async {

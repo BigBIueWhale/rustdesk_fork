@@ -3360,6 +3360,12 @@ pub struct PeerListInfo {
     pub alias: String,
 }
 
+#[derive(Debug, Default, PartialEq, Serialize)]
+pub struct PeerCredentialStatus {
+    pub has_saved_prs: bool,
+    pub can_forget: bool,
+}
+
 #[derive(Default, Deserialize)]
 struct PeerListFile {
     #[serde(default)]
@@ -3539,6 +3545,14 @@ impl PeerConfig {
             config.store(id)?;
         }
         Ok(config.port_forwards)
+    }
+
+    pub fn credential_status(id: &str) -> crate::ResultType<PeerCredentialStatus> {
+        let has_saved_prs = !Self::load(id).password_prs.is_empty();
+        Ok(PeerCredentialStatus {
+            has_saved_prs,
+            can_forget: has_saved_prs,
+        })
     }
 
     pub fn ui_info_json(id: &str) -> crate::ResultType<String> {

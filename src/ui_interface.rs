@@ -209,8 +209,8 @@ pub fn set_kb_layout_type(kb_layout_type: String) -> hbb_common::ResultType<()> 
 }
 
 #[inline]
-pub fn peer_has_password(id: String) -> bool {
-    !PeerConfig::load(&id).password_prs.is_empty()
+pub fn get_peer_credential_status(id: String) -> hbb_common::ResultType<config::PeerCredentialStatus> {
+    PeerConfig::credential_status(&id)
 }
 
 #[inline]

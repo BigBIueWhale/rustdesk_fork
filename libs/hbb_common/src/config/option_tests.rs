@@ -498,6 +498,119 @@ fn peer_retired_password_forget_purges_old_only_files_and_retries_failure() {
 }
 
 #[test]
+fn peer_credential_status_read_does_not_migrate_the_record() {
+    in_private_process("config::option_tests::peer_credential_status_read_does_not_migrate_the_record", |_| {
+        let id = "peer-credential-status-readonly";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-status-unwrapped-prs".to_vec();
+        let path = PeerConfig::path(id);
+        store_path(path.clone(), &peer).unwrap();
+        let original = fs::read(&path).unwrap();
+        let status = PeerConfig::credential_status(id).unwrap();
+        let preserved = fs::read(&path).unwrap() == original;
+        println!("OPTION_COMMIT_PEER_CREDENTIAL_STATUS=observed kind=migration file_preserved={preserved}");
+        assert!(preserved && status.has_saved_prs && status.can_forget);
+        assert_eq!(serde_json::to_value(status).unwrap(), serde_json::json!({"has_saved_prs": true, "can_forget": true}));
+        assert_eq!(PeerConfig::load_for_write(id).unwrap().password_prs, peer.password_prs);
+        assert_ne!(fs::read(path).unwrap(), original);
+    });
+}
+
+#[test]
+fn peer_credential_status_corruption_refuses_without_recovery() {
+    in_private_process("config::option_tests::peer_credential_status_corruption_refuses_without_recovery", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let id = "peer-credential-status-corrupt";
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        for source in [b"password_prs = [private-status-source\n".as_slice(), b"\xff\n".as_slice()] {
+            fs::write(&path, source).unwrap();
+            let before = fs::metadata(&path).unwrap();
+            let names = || {
+                let mut names = fs::read_dir(parent).unwrap().map(|entry| entry.unwrap().file_name()).collect::<Vec<_>>();
+                names.sort();
+                names
+            };
+            let original_names = names();
+            let status = PeerConfig::credential_status(id);
+            let preserved = fs::read(&path).map(|bytes| bytes == source).unwrap_or(false);
+            let same_file = fs::metadata(&path).map(|after| (before.dev(), before.ino()) == (after.dev(), after.ino())).unwrap_or(false);
+            let directory_unchanged = names() == original_names;
+            println!("OPTION_COMMIT_PEER_CREDENTIAL_STATUS=observed kind=corrupt error_reported={} file_preserved={preserved} same_file={same_file} directory_unchanged={directory_unchanged}", status.is_err());
+            assert!(status.is_err() && preserved && same_file && directory_unchanged);
+            let error = status.unwrap_err().to_string();
+            assert!(!error.contains("private-status-source"));
+        }
+    });
+}
+
+#[test]
+fn peer_credential_status_read_denial_is_reported_and_retryable() {
+    in_private_process("config::option_tests::peer_credential_status_read_denial_is_reported_and_retryable", |_| {
+        let id = "peer-credential-status-denied";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-status-prs".to_vec();
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        assert_eq!(fs::read(&path).unwrap_err().kind(), std::io::ErrorKind::PermissionDenied);
+        let status = PeerConfig::credential_status(id);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let preserved = fs::read(&path).unwrap() == original;
+        println!("OPTION_COMMIT_PEER_CREDENTIAL_STATUS=observed kind=read_denial error_reported={} file_preserved={preserved}", status.is_err());
+        assert!(status.is_err() && preserved);
+        assert_eq!(PeerConfig::credential_status(id).unwrap(), PeerCredentialStatus { has_saved_prs: true, can_forget: true });
+    });
+}
+
+#[test]
+fn peer_credential_status_does_not_initialize_controlled_config() {
+    in_private_process("config::option_tests::peer_credential_status_does_not_initialize_controlled_config", |_| {
+        let id = "peer-credential-status-no-global";
+        let path = PeerConfig::path(id);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let peer = b"password_prs = []\n";
+        fs::write(&path, peer).unwrap();
+        let global_path = Config::file_("");
+        let global = b"password = [private-status-source\n";
+        fs::write(&global_path, global).unwrap();
+        let status = PeerConfig::credential_status(id).unwrap();
+        let preserved = fs::read(global_path).map(|bytes| bytes == global).unwrap_or(false);
+        println!("OPTION_COMMIT_PEER_CREDENTIAL_STATUS=observed kind=global_config file_preserved={preserved}");
+        assert!(preserved && status == PeerCredentialStatus::default());
+        assert_eq!(fs::read(path).unwrap(), peer);
+    });
+}
+
+#[test]
+fn peer_credential_status_distinguishes_saved_prs_and_retired_data() {
+    in_private_process("config::option_tests::peer_credential_status_distinguishes_saved_prs_and_retired_data", |_| {
+        let id = "peer-credential-status-presence";
+        assert_eq!(PeerConfig::credential_status(id).unwrap(), PeerCredentialStatus::default());
+        assert!(!PeerConfig::path(id).exists());
+        for has_prs in [false, true] {
+            for retired in ["", "password = 'private-status-source'\n", "password = [111,108,100]\n", "password = {unexpected = 'private-status-source'}\n"] {
+                let mut peer = PeerConfig::default();
+                if has_prs { peer.password_prs = b"fixture-status-presence-prs".to_vec(); }
+                peer.store(id).unwrap();
+                let path = PeerConfig::path(id);
+                let mut original = retired.as_bytes().to_vec();
+                original.extend(fs::read(&path).unwrap());
+                fs::write(&path, &original).unwrap();
+                let status = PeerConfig::credential_status(id).unwrap();
+                println!("OPTION_COMMIT_PEER_CREDENTIAL_STATUS=observed kind=presence prs={has_prs} retired={} can_forget={}", !retired.is_empty(), status.can_forget);
+                assert_eq!(status, PeerCredentialStatus { has_saved_prs: has_prs, can_forget: has_prs || !retired.is_empty() });
+                assert_eq!(fs::read(&path).unwrap(), original);
+                PeerConfig::forget_password(id).unwrap();
+                assert_eq!(PeerConfig::credential_status(id).unwrap(), PeerCredentialStatus::default());
+            }
+        }
+    });
+}
+
+#[test]
 fn peer_listing_does_not_migrate_credentials() {
     in_private_process("config::option_tests::peer_listing_does_not_migrate_credentials", |_| {
         let id = "peer-listing-no-migration";

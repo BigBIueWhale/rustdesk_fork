@@ -3209,6 +3209,11 @@ run_focused_rust_tests() {
                 config::option_tests::peer_listing_corrupt_records_stay_in_place
                 config::option_tests::peer_listing_does_not_load_controlled_credentials
                 config::option_tests::peer_listing_returns_only_metadata_and_alias
+                config::option_tests::peer_credential_status_read_does_not_migrate_the_record
+                config::option_tests::peer_credential_status_corruption_refuses_without_recovery
+                config::option_tests::peer_credential_status_read_denial_is_reported_and_retryable
+                config::option_tests::peer_credential_status_does_not_initialize_controlled_config
+                config::option_tests::peer_credential_status_distinguishes_saved_prs_and_retired_data
                 config::option_tests::peer_transfer_write_failure_is_reported_and_retryable
                 config::option_tests::peer_transfer_unreadable_source_refuses_without_replacing_credentials
                 config::option_tests::peer_transfer_changes_only_the_checkpoint_and_preserves_siblings
@@ -9030,7 +9035,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_FILE_NAVIGATION_TEST_JSON
-            expected_result='suites=6 tests=98'
+            expected_result='suites=7 tests=103'
         elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
             memory=3g
             memory_bytes=3221225472
@@ -9551,7 +9556,7 @@ run_flutter_model_tests() {
                     tests=(test_probes/file_navigation_ordering_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
-                    tests=(test/file_navigation_sort_test.dart test/file_command_session_ownership_test.dart test/file_dialog_event_loop_test.dart test/file_conflict_dialog_test.dart test/file_rename_dialog_test.dart test/peer_removal_test.dart)
+                    tests=(test/file_navigation_sort_test.dart test/file_command_session_ownership_test.dart test/file_dialog_event_loop_test.dart test/file_conflict_dialog_test.dart test/file_rename_dialog_test.dart test/peer_removal_test.dart test/peer_credential_badge_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
                     tests=(test/peer_decode_test.dart)
@@ -9921,7 +9926,7 @@ run_flutter_model_tests() {
             && [ "$(grep -Fc 'FLUTTER_FILE_NAVIGATION_BRIDGE_USE=' "$output")" -eq 1 ] \
             || fail 'file-navigation generated API publication or use differs'
         grep -E '^FLUTTER_FILE_NAVIGATION_(GENERATED|BRIDGE_USE)=' "$output"
-        printf 'FLUTTER_FILE_NAVIGATION_TESTS_VM=pass commit=%s tree=%s suites=6 tests=98 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-navigation-tests cleanup=joined\n' \
+        printf 'FLUTTER_FILE_NAVIGATION_TESTS_VM=pass commit=%s tree=%s suites=7 tests=103 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-navigation-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

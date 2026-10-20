@@ -1968,6 +1968,31 @@ impl<T> ConfigLoad<T> {
     }
 }
 
+fn read_config_view<T: serde::de::DeserializeOwned + Default>(
+    path: &Path,
+) -> crate::ResultType<T> {
+    #[cfg(windows)]
+    let bytes = if windows_machine_config::contains(path) {
+        windows_machine_config::read(path)
+    } else {
+        windows_config_acl::verify_config_path_for_read(path)
+            .map_err(|_| anyhow!("Failed to read configuration view"))?;
+        fs::read(path)
+    };
+    #[cfg(not(windows))]
+    let bytes = fs::read(path);
+    match bytes {
+        Ok(bytes) => {
+            let text = std::str::from_utf8(&bytes)
+                .map_err(|_| anyhow!("Failed to read configuration view"))?;
+            toml::from_str(text)
+                .map_err(|_| anyhow!("Failed to read configuration view"))
+        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(T::default()),
+        Err(_) => Err(anyhow!("Failed to read configuration view")),
+    }
+}
+
 pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug>(
     file: PathBuf,
 ) -> T {
@@ -3526,7 +3551,7 @@ impl PeerConfig {
         if RETIRED_RDP_CREDENTIAL_OPTIONS.contains(&name) {
             return Ok(String::new());
         }
-        let mut file: PeerOptionsFile = Self::read_display_path(&Self::path(id))?;
+        let mut file: PeerOptionsFile = read_config_view(&Self::path(id))?;
         Ok(file.options.remove(name).unwrap_or_default())
     }
 
@@ -3578,7 +3603,7 @@ impl PeerConfig {
     }
 
     pub fn credential_status(id: &str) -> crate::ResultType<PeerCredentialStatus> {
-        let file: PeerCredentialFile = Self::read_display_path(&Self::path(id))?;
+        let file: PeerCredentialFile = read_config_view(&Self::path(id))?;
         let has_saved_prs = !file.password_prs.is_empty();
         Ok(PeerCredentialStatus {
             has_saved_prs,
@@ -3587,33 +3612,8 @@ impl PeerConfig {
     }
 
     pub fn ui_info_json(id: &str) -> crate::ResultType<String> {
-        let info: PeerUiInfo = Self::read_display_path(&Self::path(id))?;
+        let info: PeerUiInfo = read_config_view(&Self::path(id))?;
         Ok(serde_json::to_string(&info)?)
-    }
-
-    fn read_display_path<T: serde::de::DeserializeOwned + Default>(
-        path: &Path,
-    ) -> crate::ResultType<T> {
-        #[cfg(windows)]
-        let bytes = if windows_machine_config::contains(path) {
-            windows_machine_config::read(path)
-        } else {
-            windows_config_acl::verify_config_path_for_read(path)
-                .map_err(|_| anyhow!("Failed to read peer display information"))?;
-            fs::read(path)
-        };
-        #[cfg(not(windows))]
-        let bytes = fs::read(path);
-        match bytes {
-            Ok(bytes) => {
-                let text = std::str::from_utf8(&bytes)
-                    .map_err(|_| anyhow!("Failed to read peer display information"))?;
-                toml::from_str(text)
-                    .map_err(|_| anyhow!("Failed to read peer display information"))
-            }
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(T::default()),
-            Err(_) => Err(anyhow!("Failed to read peer display information")),
-        }
     }
 
     pub fn remove(id: &str) -> crate::ResultType<()> {
@@ -3840,7 +3840,7 @@ impl PeerConfig {
     }
 
     fn load_list_info(path: PathBuf) -> crate::ResultType<PeerListInfo> {
-        let file: PeerListFile = Self::read_display_path(&path)?;
+        let file: PeerListFile = read_config_view(&path)?;
         Ok(PeerListInfo {
             info: file.info,
             alias: file.options.alias,
@@ -4270,9 +4270,9 @@ impl UserDefaultConfig {
         let mut cfg = USER_DEFAULT_CONFIG.write().unwrap();
         // Refresh external changes at most once a second, retaining confirmed values on failure.
         if cfg.1.elapsed() > Duration::from_secs(1) {
-            let loaded = load_path_with_status::<Self>(Config::file_("_default"));
-            if matches!(loaded.status, ConfigLoadStatus::Loaded | ConfigLoadStatus::NotFound) {
-                cfg.0 = loaded.value;
+            match read_config_view::<Self>(&Config::file_("_default")) {
+                Ok(loaded) => cfg.0 = loaded,
+                Err(err) => log::error!("Failed to refresh display defaults: {err}"),
             }
             cfg.1 = Instant::now();
         }
@@ -4284,7 +4284,13 @@ impl UserDefaultConfig {
     }
 
     pub fn load() -> UserDefaultConfig {
-        Config::load_::<UserDefaultConfig>("_default")
+        match read_config_view(&Config::file_("_default")) {
+            Ok(loaded) => loaded,
+            Err(err) => {
+                log::error!("Failed to load display defaults: {err}");
+                Self::default()
+            }
+        }
     }
 
     pub fn get(&self, key: &str) -> String {
@@ -4317,14 +4323,9 @@ impl UserDefaultConfig {
     pub fn set_option(key: String, value: String) -> crate::ResultType<String> {
         let mut cache = USER_DEFAULT_CONFIG.write().unwrap();
         let file = Config::file_("_default");
-        let loaded = load_path_with_status::<Self>(file.clone());
-        if !matches!(
-            loaded.status,
-            ConfigLoadStatus::Loaded | ConfigLoadStatus::NotFound
-        ) {
-            return Err(anyhow!("Failed to read default settings"));
-        }
-        let mut candidate = loaded.value.clone();
+        let loaded = read_config_view::<Self>(&file)
+            .map_err(|_| anyhow!("Failed to read default settings"))?;
+        let mut candidate = loaded.clone();
         if !is_option_can_save(
             &OVERWRITE_DISPLAY_SETTINGS,
             &key,
@@ -4336,7 +4337,7 @@ impl UserDefaultConfig {
             candidate.options.insert(key.clone(), value);
         }
         let effective = candidate.get(&key);
-        if candidate.options != loaded.value.options {
+        if candidate.options != loaded.options {
             store_path(file, &candidate)?;
         }
         *cache = (candidate, Instant::now());

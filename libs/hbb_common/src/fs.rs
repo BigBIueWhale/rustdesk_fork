@@ -4788,6 +4788,129 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
+    fn file_metadata_mutations_traverse_search_only_ancestors() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        const CHILD_ENV: &str = "RUSTDESK_SEARCH_PARENT_CHILD";
+        const TEST: &str = "fs::tests::file_metadata_mutations_traverse_search_only_ancestors";
+        let Some(mode) = std::env::var_os(CHILD_ENV) else {
+            let mut passed = true;
+            for mode in ["absolute", "relative"] {
+                let output = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                    .env(CHILD_ENV, mode)
+                    .output().unwrap();
+                assert!(output.stdout.len() + output.stderr.len() < 32_768);
+                for line in String::from_utf8_lossy(&output.stdout).lines()
+                    .filter(|line| line.starts_with("FILE_METADATA_SEARCH=")) {
+                    println!("{line}");
+                }
+                passed &= output.status.success();
+            }
+            assert!(passed, "search-only ancestry must preserve permitted native operations");
+            return;
+        };
+        assert_ne!(unsafe { crate::libc::geteuid() }, 0);
+        assert!(mode == "absolute" || mode == "relative");
+        let original_cwd = std::env::current_dir().unwrap();
+        let root = TestTempDir::new("mutation-search-ancestor");
+        let ancestor = root.join("ancestor");
+        let parent = ancestor.join("parent");
+        std::fs::create_dir_all(&parent).unwrap();
+        std::fs::set_permissions(&ancestor, std::fs::Permissions::from_mode(0o111)).unwrap();
+        if mode == "relative" { std::env::set_current_dir(&ancestor).unwrap(); }
+        let fds = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for round in 0..8 {
+            for operation in ["remove", "rename", "directory", "tree"] {
+                let base = parent.join(format!("{round}-{operation}"));
+                std::fs::create_dir(&base).unwrap();
+                let source = base.join("source");
+                let probe = base.join("native");
+                if operation == "remove" || operation == "rename" {
+                    std::fs::write(&source, b"source bytes").unwrap();
+                    std::fs::write(&probe, b"native bytes").unwrap();
+                } else {
+                    std::fs::create_dir(&source).unwrap();
+                    std::fs::create_dir(&probe).unwrap();
+                    if operation == "tree" { std::fs::create_dir_all(source.join("child/deeper")).unwrap(); }
+                }
+                match operation {
+                    "remove" => std::fs::remove_file(&probe).unwrap(),
+                    "rename" => std::fs::rename(&probe, base.join("native-target")).unwrap(),
+                    _ => std::fs::remove_dir(&probe).unwrap(),
+                }
+                let identity = std::fs::metadata(&source).unwrap();
+                let selected = if mode == "relative" {
+                    PathBuf::from("parent").join(base.file_name().unwrap()).join("source")
+                } else { source.clone() };
+                let result = match operation {
+                    "remove" => remove_file(selected.to_str().unwrap()),
+                    "rename" => rename_file(selected.to_str().unwrap(), "target"),
+                    "directory" => remove_directory(&selected),
+                    _ => remove_empty_directory_tree(&selected),
+                };
+                let correct = result.is_ok() && !source.exists() && if operation == "rename" {
+                    let target = base.join("target");
+                    std::fs::metadata(&target).map(|m| (m.dev(), m.ino()))
+                        .ok() == Some((identity.dev(), identity.ino()))
+                        && std::fs::read(&target).unwrap() == b"source bytes"
+                } else { !base.join("target").exists() };
+                println!("FILE_METADATA_SEARCH=observed mode={} round={round} operation={operation} native_allowed=true success={} correct={correct}", mode.to_str().unwrap(), result.is_ok());
+                passed &= correct;
+            }
+        }
+        let after_fds = fds();
+        println!("FILE_METADATA_SEARCH=handles mode={} before={before_fds} after={after_fds}", mode.to_str().unwrap());
+        std::env::set_current_dir(original_cwd).unwrap();
+        std::fs::set_permissions(&ancestor, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(before_fds, after_fds);
+        assert!(passed);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn file_metadata_parent_walk_keeps_search_and_sync_authority() {
+        use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
+        use std::os::unix::io::AsRawFd;
+        assert_ne!(unsafe { crate::libc::geteuid() }, 0);
+        let root = TestTempDir::new("mutation-parent-authority");
+        let parent = root.join("ancestor/parent");
+        std::fs::create_dir_all(&parent).unwrap();
+        let ancestor = root.join("ancestor");
+        let source = parent.join("source");
+        std::fs::write(&source, b"retained data").unwrap();
+        let identity = |path: &Path| std::fs::metadata(path).map(|m| (m.dev(), m.ino(), m.mode())).ok();
+        let before = identity(&source);
+        for (kind, changed, permissions) in [("no-search", &ancestor, 0o400), ("final-unreadable", &parent, 0o300)] {
+            std::fs::set_permissions(changed, std::fs::Permissions::from_mode(permissions)).unwrap();
+            let refused = rename_file(source.to_str().unwrap(), "target").is_err();
+            std::fs::set_permissions(changed, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let preserved = identity(&source) == before && !parent.join("target").exists()
+                && std::fs::read(&source).unwrap() == b"retained data";
+            println!("FILE_METADATA_SEARCH=control kind={kind} refused={refused} preserved={preserved}");
+            assert!(refused && preserved);
+        }
+        let alias = root.join("alias");
+        symlink(&ancestor, &alias).unwrap();
+        let refused = rename_file(alias.join("parent/source").to_str().unwrap(), "target").is_err();
+        assert!(refused && identity(&source) == before && !parent.join("target").exists());
+        println!("FILE_METADATA_SEARCH=control kind=ancestor-link refused=true preserved=true");
+        let directory = open_parent_dir_no_follow(&parent, false).unwrap();
+        let flags = unsafe { crate::libc::fcntl(directory.as_raw_fd(), crate::libc::F_GETFL) };
+        assert!(flags >= 0 && flags & crate::libc::O_PATH == 0);
+        assert_ne!(unsafe { crate::libc::fcntl(directory.as_raw_fd(), crate::libc::F_GETFD) } & crate::libc::FD_CLOEXEC, 0);
+        directory.sync_all().unwrap();
+        drop(directory);
+        rename_file(source.to_str().unwrap(), "target").unwrap();
+        assert_eq!(identity(&parent.join("target")), before);
+        create_dir(parent.join("created/nested").to_str().unwrap()).unwrap();
+        assert!(parent.join("created/nested").is_dir());
+        println!("FILE_METADATA_SEARCH=control kind=final-sync-and-create path_only=false sync=true retry=true create=true");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn file_metadata_mutations_refuse_file_directory_suffixes() {
         use std::os::unix::fs::{symlink, MetadataExt};
         let root = TestTempDir::new("mutation-file-suffixes");

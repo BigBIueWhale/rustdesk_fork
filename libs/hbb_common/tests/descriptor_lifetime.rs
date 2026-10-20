@@ -11,12 +11,14 @@ mod linux {
         time::{Duration, Instant},
     };
 
-    async fn observations(root: &Path, mode: &str) -> bool {
+    async fn observations(root: &Path, mode: &str, report: bool) -> bool {
         let listing = product::read_dir(root, true).map(|value| {
             value.entries.into_iter().map(|entry| entry.name).collect::<BTreeSet<_>>()
                 == ["file", "link", "sub"].iter().map(|name| name.to_string()).collect()
         }).unwrap_or(false);
-        println!("FILE_METADATA_DESCRIPTOR_LIFETIME=case mode={mode} operation=list ok={listing}");
+        if report {
+            println!("FILE_METADATA_DESCRIPTOR_LIFETIME=case mode={mode} operation=list ok={listing}");
+        }
         let mut good = listing;
         for name in ["file", "link"] {
             let result = async {
@@ -27,7 +29,9 @@ mod linux {
                 let data: &[u8] = block.data.as_ref();
                 Ok::<_, anyhow::Error>(!block.compressed && data == b"data")
             }.await.unwrap_or(false);
-            println!("FILE_METADATA_DESCRIPTOR_LIFETIME=case mode={mode} operation={name} ok={result}");
+            if report {
+                println!("FILE_METADATA_DESCRIPTOR_LIFETIME=case mode={mode} operation={name} ok={result}");
+            }
             good &= result;
         }
         good
@@ -52,14 +56,17 @@ mod linux {
         let kernel = leader_available == (mode == "alive") && alias && path_read;
         println!("FILE_METADATA_DESCRIPTOR_LIFETIME=kernel mode={mode} leader_available={leader_available} thread_alias={alias} path_read={path_read}");
         let handles = || fs::read_dir("/proc/thread-self/fd").expect("enumerate the worker's descriptors").count();
-        let before = handles();
         // This synchronous process worker explicitly owns its sole test runtime.
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()
             .expect("create the isolated worker runtime");
-        let good = runtime.block_on(observations(&root, &mode));
-        drop(runtime);
+        let mut good = runtime.block_on(observations(&root, &mode, false));
+        let before = handles();
+        for round in 0..8 {
+            good &= runtime.block_on(observations(&root, &mode, round == 7));
+        }
         let after = handles();
-        println!("FILE_METADATA_DESCRIPTOR_LIFETIME=resources mode={mode} fds_before={before} fds_after={after}");
+        println!("FILE_METADATA_DESCRIPTOR_LIFETIME=resources mode={mode} rounds=8 fds_before={before} fds_after={after}");
+        drop(runtime);
         drop(probe);
         std::process::exit(if kernel && good && before == after { 0 } else { 73 });
     }

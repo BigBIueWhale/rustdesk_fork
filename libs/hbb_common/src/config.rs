@@ -3443,7 +3443,7 @@ impl PeerConfig {
             return Ok(());
         }
         config.transfer = transfer.clone();
-        allow_err!(config.store(id));
+        crate::allow_err!(config.store(id));
         Ok(())
     }
 

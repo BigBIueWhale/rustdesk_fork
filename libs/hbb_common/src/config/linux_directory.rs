@@ -93,14 +93,59 @@ fn private_directory(file: &File, device: u64) -> Result<Metadata> {
     Ok(m)
 }
 
+fn chmod_retained_directory(file: &File) -> Result<()> {
+    let path = CString::new("/proc/thread-self/fd")?;
+    let descriptors = open_dir(libc::AT_FDCWD, &path, true)?;
+    let mut filesystem = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    if unsafe { libc::fstatfs(descriptors.as_raw_fd(), filesystem.as_mut_ptr()) } != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    if unsafe { filesystem.assume_init() }.f_type as u64 != libc::PROC_SUPER_MAGIC as u64 {
+        return Err(anyhow!("Configuration directory descriptor path is not procfs"));
+    }
+    let name = CString::new(file.as_raw_fd().to_string())?;
+    let mut target = std::mem::MaybeUninit::<libc::stat>::uninit();
+    if unsafe { libc::fstatat(descriptors.as_raw_fd(), name.as_ptr(), target.as_mut_ptr(), 0) } != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    let target = unsafe { target.assume_init() };
+    let metadata = file.metadata()?;
+    if !metadata.is_dir() || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.mode() & 0o5077 != 0
+        || [target.st_dev as u64, target.st_ino as u64] != [metadata.dev(), metadata.ino()]
+    {
+        return Err(anyhow!("Configuration directory descriptor identity changed"));
+    }
+    // The numeric entry is a kernel alias of our retained O_PATH descriptor.
+    if unsafe { libc::fchmodat(descriptors.as_raw_fd(), name.as_ptr(), 0o700, 0) } != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    private_directory(file, metadata.dev())?;
+    Ok(())
+}
+
 fn make_private(parent: &File, name: &CStr, device: u64) -> Result<File> {
     if unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), 0o700) } != 0 {
         return Err(io::Error::last_os_error().into());
     }
-    let file = open_dir(parent.as_raw_fd(), name, true)?;
-    let m = file.metadata()?;
-    if !m.is_dir() || m.dev() != device || m.uid() != unsafe { libc::geteuid() } {
-        return Err(anyhow!("New configuration directory has an unexpected owner or filesystem"));
+    let retained = open_dir(parent.as_raw_fd(), name, false)?;
+    let m = retained.metadata()?;
+    if !m.is_dir() || m.dev() != device || m.uid() != unsafe { libc::geteuid() }
+        || m.mode() & 0o5077 != 0
+    {
+        return Err(anyhow!("New configuration directory metadata is unsafe"));
+    }
+    require_named(parent, name, &retained)?;
+    let file = match open_dir(parent.as_raw_fd(), name, true) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied && m.mode() & 0o400 == 0 => {
+            chmod_retained_directory(&retained)?;
+            open_dir(retained.as_raw_fd(), dot()?, true)?
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if id(&file)? != id(&retained)? {
+        return Err(anyhow!("New configuration directory changed before permission update"));
     }
     if unsafe { libc::fchmod(file.as_raw_fd(), 0o700) } != 0 {
         return Err(io::Error::last_os_error().into());

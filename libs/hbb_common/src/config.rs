@@ -1969,6 +1969,74 @@ impl<T> ConfigLoad<T> {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn open_existing_config_parent(path: &Path) -> crate::ResultType<Option<fs::File>> {
+    use std::{
+        ffi::{CStr, CString},
+        os::unix::{
+            ffi::OsStrExt,
+            io::{AsRawFd, FromRawFd},
+        },
+        path::Component,
+    };
+
+    fn open_directory(parent: i32, name: &CStr) -> io::Result<fs::File> {
+        let fd = unsafe {
+            crate::libc::openat(
+                parent,
+                name.as_ptr(),
+                crate::libc::O_PATH
+                    | crate::libc::O_DIRECTORY
+                    | crate::libc::O_NOFOLLOW
+                    | crate::libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(unsafe { fs::File::from_raw_fd(fd) })
+        }
+    }
+
+    let path_bytes = path.as_os_str().as_bytes();
+    if path_bytes.len() >= crate::libc::PATH_MAX as usize {
+        return Err(io::Error::from_raw_os_error(crate::libc::ENAMETOOLONG).into());
+    }
+    if path_bytes.contains(&0) {
+        return Err(anyhow!("Configuration path contains a NUL byte"));
+    }
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("Configuration path has no file name"))?;
+    if path_bytes.rsplit(|byte| *byte == b'/').next() != Some(file_name.as_bytes()) {
+        return Err(anyhow!("Invalid configuration file path component"));
+    }
+    let path = path
+        .parent()
+        .ok_or_else(|| anyhow!("Configuration path has no parent directory"))?;
+    let mut names = Vec::new();
+    for component in path.components() {
+        let name = match component {
+            Component::RootDir | Component::CurDir => continue,
+            Component::Normal(name) => CString::new(name.as_bytes())?,
+            Component::ParentDir | Component::Prefix(_) => {
+                return Err(anyhow!("Invalid configuration directory path component"));
+            }
+        };
+        names.push(name);
+    }
+    let start = CString::new(if path.is_absolute() { "/" } else { "." })?;
+    let mut parent = open_directory(crate::libc::AT_FDCWD, &start)?;
+    for name in names {
+        match open_directory(parent.as_raw_fd(), &name) {
+            Ok(next) => parent = next,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(Some(parent))
+}
+
 enum ConfigReadFailure {
     Corrupt,
     Unreadable,
@@ -1987,11 +2055,51 @@ fn read_config_file<T: serde::de::DeserializeOwned>(
     };
     #[cfg(unix)]
     let bytes = (|| -> io::Result<Vec<u8>> {
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
-            .open(path)?;
+        #[cfg(target_os = "linux")]
+        let mut file = {
+            use std::{
+                ffi::CString,
+                os::unix::{
+                    ffi::OsStrExt,
+                    io::{AsRawFd, FromRawFd},
+                },
+            };
+
+            let parent = open_existing_config_parent(path)
+                .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?
+                .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+            let name = path.file_name().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Configuration path has no file name",
+                )
+            })?;
+            let name = CString::new(name.as_bytes())
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+            let fd = unsafe {
+                crate::libc::openat(
+                    parent.as_raw_fd(),
+                    name.as_ptr(),
+                    crate::libc::O_RDONLY
+                        | crate::libc::O_NONBLOCK
+                        | crate::libc::O_NOCTTY
+                        | crate::libc::O_NOFOLLOW
+                        | crate::libc::O_CLOEXEC,
+                )
+            };
+            if fd < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            unsafe { fs::File::from_raw_fd(fd) }
+        };
+        #[cfg(not(target_os = "linux"))]
+        let mut file = {
+            use std::os::unix::fs::OpenOptionsExt;
+            fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
+                .open(path)?
+        };
         if !file.metadata()?.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -3768,53 +3876,11 @@ impl PeerConfig {
 
     #[cfg(target_os = "linux")]
     fn open_removal_parent(path: &Path) -> crate::ResultType<Option<fs::File>> {
-        use std::{
-            ffi::{CStr, CString},
-            os::unix::{
-                ffi::OsStrExt,
-                fs::MetadataExt,
-                io::{AsRawFd, FromRawFd},
-            },
-            path::Component,
+        use std::os::unix::fs::MetadataExt;
+
+        let Some(parent) = open_existing_config_parent(path)? else {
+            return Ok(None);
         };
-
-        fn open_directory(parent: i32, name: &CStr) -> io::Result<fs::File> {
-            let fd = unsafe {
-                crate::libc::openat(
-                    parent,
-                    name.as_ptr(),
-                    crate::libc::O_PATH
-                        | crate::libc::O_DIRECTORY
-                        | crate::libc::O_NOFOLLOW
-                        | crate::libc::O_CLOEXEC,
-                )
-            };
-            if fd < 0 {
-                Err(io::Error::last_os_error())
-            } else {
-                Ok(unsafe { fs::File::from_raw_fd(fd) })
-            }
-        }
-
-        let path = path
-            .parent()
-            .ok_or_else(|| anyhow!("Peer configuration path has no parent directory"))?;
-        let start = CString::new(if path.is_absolute() { "/" } else { "." })?;
-        let mut parent = open_directory(crate::libc::AT_FDCWD, &start)?;
-        for component in path.components() {
-            let name = match component {
-                Component::RootDir | Component::CurDir => continue,
-                Component::Normal(name) => CString::new(name.as_bytes())?,
-                Component::ParentDir | Component::Prefix(_) => {
-                    return Err(anyhow!("Invalid peer directory path component"));
-                }
-            };
-            match open_directory(parent.as_raw_fd(), &name) {
-                Ok(next) => parent = next,
-                Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-                Err(error) => return Err(error.into()),
-            }
-        }
         let metadata = parent.metadata()?;
         if !metadata.file_type().is_dir()
             || metadata.uid() != unsafe { crate::libc::geteuid() }

@@ -13583,6 +13583,22 @@ rejected stale harness-total run and its correction, and joined bounded-RAM clea
 Linux library evidence; Windows, Android and Darwin compilation/execution, case-insensitive
 case-only behavior, installed command integration and the Unix source-name race remain OPEN.
 
+**Unix mutation terminal-path semantics (`ab1ed0d8`).** File, directory and Rename admission
+checks the raw final component before the retained-parent walk instead of silently dropping terminal
+`.` components. A trailing slash remains a directory requirement: file unlink refuses it, Rename
+proves the admitted source is a directory before any same-name fast path, and directory removal
+keeps ordinary trailing slashes functional. The receive-file acquisition helpers are unchanged.
+At unchanged-product preparation `d51a0705`, native calls refuse all thirty selectors while RustDesk
+accepts them: twenty-two cases delete or rename entries and eight same-name cases falsely succeed.
+Two regressions fail with 33 controls passing before the shard stops. The byte-identical tests pass
+in the complete 98-case/16-group Linux shard after correction: all thirty refusals preserve source,
+link targets, directory subtrees and namespace state; sixteen control cycles perform 192 valid
+file/link/directory calls, including Unicode directory names and trailing-slash no-ops, with
+handles 6→6. `mutation-suffix-ab1ed0d8.json` binds exact sources/artifacts, native refusal oracles,
+A/B observations and joined bounded-RAM cleanup. Nonroot component evidence only. Native other-Unix
+compilation/behavior, installed/root and caller/UI/peer result delivery, concurrent namespace and
+source-name races, full R-S0/R-F5 and release acceptance remain OPEN.
+
 Exact Android/iOS/Windows/Linux/macOS and applicable web artifacts must still exercise native
 create/rename/delete, hostile namespace replacement, reordered results, dispatch failure,
 close/reconnect/persistence, job/dialog/wakelock finality, task-swipe/reopen/Force-Stop, desktop

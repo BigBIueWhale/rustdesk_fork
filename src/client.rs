@@ -1552,6 +1552,12 @@ impl LoginConfigHandler {
         self.config = config;
     }
 
+    pub fn save_transfer(&mut self, transfer: hbb_common::config::TransferSerde) -> ResultType<()> {
+        PeerConfig::set_transfer(&self.id, &transfer)?;
+        self.config.transfer = transfer;
+        Ok(())
+    }
+
     /// Set an option for handler's [`PeerConfig`].
     ///
     /// # Arguments

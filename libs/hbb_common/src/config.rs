@@ -3437,6 +3437,16 @@ impl PeerConfig {
         config.store(id)
     }
 
+    pub fn set_transfer(id: &str, transfer: &TransferSerde) -> crate::ResultType<()> {
+        let mut config = Self::load(id);
+        if config.transfer == *transfer {
+            return Ok(());
+        }
+        config.transfer = transfer.clone();
+        allow_err!(config.store(id));
+        Ok(())
+    }
+
     pub fn remove(id: &str) -> crate::ResultType<()> {
         match fs::remove_file(Self::path(id)) {
             Ok(()) => Ok(()),

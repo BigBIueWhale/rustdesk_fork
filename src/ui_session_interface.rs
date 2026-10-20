@@ -2337,12 +2337,28 @@ impl<T: InvokeUiSession> Session<T> {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
-pub(crate) async fn io_loop<T: InvokeUiSession>(
+pub(crate) fn io_loop<T: InvokeUiSession>(
     handler: Session<T>,
     round: u64,
     video_refresh_receiver: ViewerVideoRefreshReceiver,
 ) {
+    let lc = handler.lc.clone();
+    let saved = match io_loop_with_checkpoint(handler, round, video_refresh_receiver) {
+        Ok(Some(transfer)) => lc.write().unwrap().save_transfer(transfer),
+        Ok(None) => Ok(()),
+        Err(err) => Err(err),
+    };
+    if let Err(err) = saved {
+        log::error!("Failed to save file-transfer checkpoint: {err}");
+    }
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn io_loop_with_checkpoint<T: InvokeUiSession>(
+    handler: Session<T>,
+    round: u64,
+    video_refresh_receiver: ViewerVideoRefreshReceiver,
+) -> ResultType<Option<hbb_common::config::TransferSerde>> {
     let (sender, mut receiver) = viewer_command_channel();
     *handler.sender.write().unwrap() = Some(sender.clone());
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2355,7 +2371,7 @@ pub(crate) async fn io_loop<T: InvokeUiSession>(
                 || port <= 0
             {
                 handler.on_error("Invalid arguments, usage:<br><br> rustdesk --port-forward remote-id listen-port remote-host remote-port");
-                return;
+                return Ok(None);
             }
         }
 
@@ -2363,7 +2379,7 @@ pub(crate) async fn io_loop<T: InvokeUiSession>(
             Ok(supervisor) => supervisor,
             Err(err) => {
                 handler.on_error(&err);
-                return;
+                return Ok(None);
             }
         };
 
@@ -2465,11 +2481,11 @@ pub(crate) async fn io_loop<T: InvokeUiSession>(
         if let Err(err) = supervisor.close_and_join().await {
             handler.on_error(&err);
         }
-        return;
+        return Ok(None);
     }
     let mut remote = Remote::new(handler, receiver, sender, video_refresh_receiver);
     remote.io_loop(round).await;
-    let _ = remote.sync_jobs_status_to_local().await;
+    remote.transfer_checkpoint()
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

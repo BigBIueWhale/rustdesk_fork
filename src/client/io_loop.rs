@@ -33,7 +33,7 @@ use hbb_common::futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt
 use hbb_common::ResultType;
 use hbb_common::{
     allow_err,
-    config::{self, Config, LocalConfig, PeerConfig, TransferSerde},
+    config::{self, Config, LocalConfig, TransferSerde},
     fs::{
         self, can_enable_overwrite_detection, get_job, get_string, new_send_confirm,
         DigestCheckResult, RemoveJobMeta,
@@ -2548,26 +2548,20 @@ impl<T: InvokeUiSession> Remote<T> {
         sent
     }
 
-    pub async fn sync_jobs_status_to_local(&mut self) -> bool {
+    pub fn transfer_checkpoint(&self) -> hbb_common::ResultType<Option<TransferSerde>> {
         if !self.is_connected {
-            return false;
+            return Ok(None);
         }
-        let mut config: PeerConfig = self.handler.load_config();
         let mut transfer_metas = TransferSerde::default();
         for job in self.read_jobs.iter() {
-            let json_str = serde_json::to_string(&job.gen_meta()).unwrap_or_default();
+            let json_str = serde_json::to_string(&job.gen_meta())?;
             transfer_metas.read_jobs.push(json_str);
         }
         for job in self.write_jobs.iter() {
-            let json_str = serde_json::to_string(&job.gen_meta()).unwrap_or_default();
+            let json_str = serde_json::to_string(&job.gen_meta())?;
             transfer_metas.write_jobs.push(json_str);
         }
-        log::info!("meta: {:?}", transfer_metas);
-        if config.transfer != transfer_metas {
-            config.transfer = transfer_metas;
-            self.handler.save_config(config);
-        }
-        true
+        Ok(Some(transfer_metas))
     }
 
     async fn send_toggle_virtual_display_msg(&self, peer: &mut Stream) {

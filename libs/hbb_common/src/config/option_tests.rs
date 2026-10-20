@@ -226,6 +226,111 @@ fn peer_listing_reads_the_enumerated_alias_and_preserves_read_denial() {
 }
 
 #[test]
+fn peer_transfer_write_failure_is_reported_and_retryable() {
+    in_private_process("config::option_tests::peer_transfer_write_failure_is_reported_and_retryable", |_| {
+        let id = "peer-transfer-write";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-transfer-prs".to_vec();
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.transfer.read_jobs.push("old-read".into());
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        for transfer in [TransferSerde { read_jobs: vec!["new-read".into()], write_jobs: vec!["new-write".into()] }, TransferSerde::default()] {
+            let original = fs::read(&path).unwrap();
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+            let result = PeerConfig::set_transfer(id, &transfer);
+            let preserved = fs::read(&path).unwrap() == original;
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            println!("OPTION_COMMIT_PEER_TRANSFER=observed kind=write clearing={} reported={} file_preserved={preserved}", transfer == TransferSerde::default(), result.is_err());
+            assert!(result.is_err() && preserved);
+            PeerConfig::set_transfer(id, &transfer).unwrap();
+            let stored = PeerConfig::load_for_write(id).unwrap();
+            assert_eq!(stored.transfer, transfer);
+            assert_eq!(stored.password_prs, b"fixture-transfer-prs");
+            assert_eq!(stored.options.get("unrelated").map(String::as_str), Some("preserved"));
+        }
+    });
+}
+
+#[test]
+fn peer_transfer_unreadable_source_refuses_without_replacing_credentials() {
+    in_private_process("config::option_tests::peer_transfer_unreadable_source_refuses_without_replacing_credentials", |_| {
+        let id = "peer-transfer-read";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-transfer-prs".to_vec();
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.transfer.read_jobs.push("old-read".into());
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        let transfer = TransferSerde { read_jobs: vec!["new-read".into()], write_jobs: vec!["new-write".into()] };
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let native = fs::read(&path).unwrap_err();
+        let result = PeerConfig::set_transfer(id, &transfer);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let preserved = fs::read(&path).unwrap() == original;
+        println!("OPTION_COMMIT_PEER_TRANSFER=observed kind=read errno={} reported={} file_preserved={preserved}", native.raw_os_error().unwrap(), result.is_err());
+        assert_eq!(native.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(result.is_err() && preserved);
+        PeerConfig::set_transfer(id, &transfer).unwrap();
+        let stored = PeerConfig::load_for_write(id).unwrap();
+        assert_eq!(stored.transfer, transfer);
+        assert_eq!(stored.password_prs, b"fixture-transfer-prs");
+        assert_eq!(stored.options.get("unrelated").map(String::as_str), Some("preserved"));
+    });
+}
+
+#[test]
+fn peer_transfer_changes_only_the_checkpoint_and_preserves_siblings() {
+    in_private_process("config::option_tests::peer_transfer_changes_only_the_checkpoint_and_preserves_siblings", |_| {
+        let id = "peer-transfer-selected";
+        let sibling = "peer-transfer-sibling";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-transfer-prs".to_vec();
+        peer.options.insert("alias".into(), "preserved".into());
+        peer.ui_flutter.insert("canvas".into(), "preserved".into());
+        peer.info.platform = "Linux".into();
+        peer.store(id).unwrap();
+        peer.store(sibling).unwrap();
+        let sibling_bytes = fs::read(PeerConfig::path(sibling)).unwrap();
+        let mut expected = PeerConfig::load_for_write(id).unwrap();
+        for transfer in [TransferSerde { read_jobs: vec!["read-1".into(), "read-2".into()], write_jobs: vec!["write-1".into()] }, TransferSerde::default()] {
+            PeerConfig::set_transfer(id, &transfer).unwrap();
+            expected.transfer = transfer;
+            assert_eq!(PeerConfig::load_for_write(id).unwrap(), expected);
+            assert_eq!(fs::read(PeerConfig::path(sibling)).unwrap(), sibling_bytes);
+        }
+    });
+}
+
+#[test]
+fn peer_transfer_unchanged_and_missing_empty_checkpoints_avoid_writes() {
+    in_private_process("config::option_tests::peer_transfer_unchanged_and_missing_empty_checkpoints_avoid_writes", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let id = "peer-transfer-unchanged";
+        let missing = "peer-transfer-missing";
+        PeerConfig::set_transfer(missing, &TransferSerde::default()).unwrap();
+        assert!(!PeerConfig::path(missing).exists());
+        let transfer = TransferSerde { read_jobs: vec!["read".into()], write_jobs: vec!["write".into()] };
+        PeerConfig::set_transfer(id, &transfer).unwrap();
+        let path = PeerConfig::path(id);
+        let bytes = fs::read(&path).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        let parent = path.parent().unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        let unchanged = PeerConfig::set_transfer(id, &transfer);
+        let missing_empty = PeerConfig::set_transfer(missing, &TransferSerde::default());
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        let after = fs::metadata(&path).unwrap();
+        assert!(unchanged.is_ok() && missing_empty.is_ok());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!((before.dev(), before.ino()), (after.dev(), after.ino()));
+        assert!(!PeerConfig::path(missing).exists());
+    });
+}
+
+#[test]
 fn peer_option_write_failure_preserves_settings_and_retries_set_and_remove() {
     in_private_process("config::option_tests::peer_option_write_failure_preserves_settings_and_retries_set_and_remove", |_| {
         let id = "peer-option-write";

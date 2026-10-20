@@ -2,6 +2,156 @@ use super::*;
 use std::os::unix::fs::PermissionsExt;
 
 #[test]
+fn core_load_links_are_transient_without_recovery() {
+    use std::os::unix::fs::{symlink, MetadataExt};
+    in_private_process("config::option_tests::core_load_links_are_transient_without_recovery", |root| {
+        let mut all_refused = true;
+        for kind in ["file", "corrupt_file", "dangling_file", "parent", "ancestor", "dangling_parent"] {
+            let base = root.join(kind);
+            fs::create_dir(&base).unwrap();
+            let target = base.join("target");
+            let link = base.join("selected");
+            let directory = matches!(kind, "parent" | "ancestor" | "dangling_parent");
+            let suffix = if kind == "ancestor" { "child/record.toml" } else { "record.toml" };
+            let (path, target_file) = if directory {
+                (link.join(suffix), target.join(suffix))
+            } else { (link.clone(), target.clone()) };
+            let dangling = kind.starts_with("dangling");
+            let source: &[u8] = if kind == "corrupt_file" { b"= = invalid TOML [[[" } else { b"[options]\nkey = 'preserved'\n" };
+            if !dangling {
+                fs::create_dir_all(target_file.parent().unwrap()).unwrap();
+                fs::write(&target_file, source).unwrap();
+            }
+            symlink(&target, &link).unwrap();
+            let before = fs::symlink_metadata(&link).unwrap();
+            let names = || {
+                let mut names = fs::read_dir(&base).unwrap().map(|entry| entry.unwrap().file_name()).collect::<Vec<_>>();
+                names.sort(); names
+            };
+            let original_names = names();
+            let mut refused = true;
+            for _ in 0..2 {
+                let loaded: ConfigLoad<Config2> = load_path_with_status(path.clone());
+                refused &= loaded.status == ConfigLoadStatus::TransientError && loaded.value == Config2::default();
+            }
+            let preserved = fs::symlink_metadata(&link).map(|after| {
+                after.file_type().is_symlink() && (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode())
+            }).unwrap_or(false) && fs::read_link(&link).ok().as_ref() == Some(&target)
+                && names() == original_names
+                && if dangling { !target.exists() } else { fs::read(&target_file).unwrap() == source };
+            println!("OPTION_COMMIT_CORE_LOAD_LINK=observed kind={kind} refused={refused} preserved={preserved}");
+            all_refused &= refused && preserved;
+        }
+        assert!(all_refused);
+    });
+}
+
+#[test]
+fn core_load_fifo_refuses_and_retires_handles() {
+    const TEST: &str = "config::option_tests::core_load_fifo_refuses_and_retires_handles";
+    const CHILD: &str = "RUSTDESK_CORE_CONFIG_FIFO_CHILD";
+    in_private_process(TEST, |_| {
+        use std::os::unix::fs::{FileTypeExt, MetadataExt};
+        let file = Config::file_("_core_fifo");
+        if std::env::var_os(CHILD).is_some() {
+            println!("CORE_LOAD_FIFO_BEGIN=entered");
+            std::io::stdout().flush().unwrap();
+            let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+            let before = fds();
+            for _ in 0..100 {
+                let loaded: ConfigLoad<Config> = load_path_with_status(file.clone());
+                assert_eq!(loaded.status, ConfigLoadStatus::TransientError);
+                assert_eq!(loaded.value, Config::default());
+            }
+            let after = fds();
+            assert_eq!(after, before);
+            println!("OPTION_COMMIT_CORE_LOAD_FIFO=observed kind=reader iterations=100 refused=true fds_before={before} fds_after={after}");
+            return;
+        }
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let name = std::ffi::CString::new(std::os::unix::ffi::OsStrExt::as_bytes(file.as_os_str())).unwrap();
+        assert_eq!(unsafe { crate::libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        let before = fs::metadata(&file).unwrap();
+        assert!(before.file_type().is_fifo());
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([TEST, "--exact", "--color", "never", "--test-threads=1", "--nocapture"])
+            .env(CHILD, "1")
+            .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+            .spawn().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let timed_out = loop {
+            if child.try_wait().unwrap().is_some() { break false; }
+            if Instant::now() >= deadline { child.kill().unwrap(); break true; }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let output = child.wait_with_output().unwrap();
+        assert!(output.stdout.len() + output.stderr.len() <= 16384);
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let entered = stdout.lines().any(|line| line.contains("CORE_LOAD_FIFO_BEGIN=entered"));
+        for line in stdout.lines().filter(|line| line.starts_with("OPTION_COMMIT_")) { println!("{line}"); }
+        let after = fs::metadata(&file).unwrap();
+        let preserved = after.file_type().is_fifo() && (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode());
+        println!("OPTION_COMMIT_CORE_LOAD_FIFO=observed kind=parent child_entered={entered} timed_out={timed_out} child_success={} fifo_preserved={preserved} cleanup=joined", output.status.success());
+        assert!(entered && !timed_out && output.status.success() && preserved);
+    });
+}
+
+#[test]
+fn core_load_regular_data_and_read_failures_keep_status() {
+    use std::os::unix::fs::MetadataExt;
+    in_private_process("config::option_tests::core_load_regular_data_and_read_failures_keep_status", |root| {
+        let path = Config::file_("");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let expected = Config {
+            id: "legacy-id".into(), enc_id: "stored-id".into(),
+            password: "storage".into(), password_prs: "prs".into(),
+            salt: "sält".into(), key_pair: (vec![1, 2], vec![3, 4]),
+        };
+        let literal = "id = \"legacy\\u002did\"\r\nenc_id = 'stored-id'\r\npassword = 'storage'\r\npassword_prs = 'prs'\r\nsalt = 'sält'\r\nkey_pair = [[1, 2], [3, 4]]\r\nfuture = 'ignored'\r\n";
+        for source in [toml::to_string_pretty(&expected).unwrap().into_bytes(), literal.as_bytes().to_vec()] {
+            fs::write(&path, &source).unwrap();
+            let before = fs::metadata(&path).unwrap();
+            for _ in 0..2 {
+                let loaded: ConfigLoad<Config> = load_path_with_status(path.clone());
+                assert_eq!(loaded.status, ConfigLoadStatus::Loaded);
+                assert_eq!(loaded.value, expected);
+                assert_eq!(Config::load_::<Config>(""), expected);
+            }
+            let after = fs::metadata(&path).unwrap();
+            assert_eq!((before.ino(), before.mode()), (after.ino(), after.mode()));
+            assert_eq!(fs::read(&path).unwrap(), source);
+        }
+        let invalid = b"password = 'invalid \xff'";
+        fs::write(&path, invalid).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        for _ in 0..2 {
+            let loaded: ConfigLoad<Config> = load_path_with_status(path.clone());
+            assert_eq!(loaded.status, ConfigLoadStatus::TransientError);
+            assert_eq!(loaded.value, Config::default());
+        }
+        let after = fs::metadata(&path).unwrap();
+        assert_eq!((before.ino(), before.mode()), (after.ino(), after.mode()));
+        assert_eq!(fs::read(&path).unwrap(), invalid);
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+        fs::write(&path, literal).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        assert_eq!(fs::read(&path).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        let denied: ConfigLoad<Config> = load_path_with_status(path.clone());
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(denied.status, ConfigLoadStatus::TransientError);
+        let retry: ConfigLoad<Config> = load_path_with_status(path.clone());
+        assert_eq!(retry.status, ConfigLoadStatus::Loaded);
+        assert_eq!(retry.value, expected);
+        assert_eq!(fs::read(&path).unwrap(), literal.as_bytes());
+        let missing = root.join("absent/nested/config.toml");
+        let first: ConfigLoad<Config> = load_path_with_status(missing);
+        assert_eq!(first.status, ConfigLoadStatus::NotFound);
+        assert!(!root.join("absent").exists());
+        println!("OPTION_COMMIT_CORE_LOAD_CONTROL=pass current_round_trip=true legacy_literals=true repeats=2 bytes_identity_preserved=true utf8_transient_preserved=true eacces_retry=true missing_no_create=true");
+    });
+}
+
+#[test]
 fn config_initial_load_keeps_credentials_out_of_trace_logs() {
     use std::os::unix::fs::MetadataExt;
 

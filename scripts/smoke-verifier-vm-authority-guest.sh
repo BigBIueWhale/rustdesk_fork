@@ -3170,6 +3170,13 @@ run_focused_rust_tests() {
                 config::tests::config_transaction_rejects_symlink_parent_and_replaces_final_link_itself
                 config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options
                 config::tests::test_load_reads_legacy_plaintext_id_without_storing
+                config::tests::test_load_path_first_run_returns_default_without_creating_file
+                config::tests::test_load_path_valid_file_loads_unchanged
+                config::tests::test_load_path_present_but_corrupt_is_preserved_not_overwritten
+                config::tests::test_load_path_present_but_unreadable_is_transient_not_stale
+                config::option_tests::core_load_links_are_transient_without_recovery
+                config::option_tests::core_load_fifo_refuses_and_retires_handles
+                config::option_tests::core_load_regular_data_and_read_failures_keep_status
                 config::option_tests::failed_write_preserves_memory_and_allows_the_same_retry
                 config::option_tests::ordinary_option_source_invalid_records_refuse_repeated_changes
                 config::option_tests::ordinary_option_source_denial_preserves_state_and_allows_retry
@@ -4909,7 +4916,7 @@ run_focused_rust_tests() {
                             printf "SOCKET_POLICY_ARTIFACT=pass sha256=%s executable=%s tests=7 unchanged=before-after\n" \
                                 "$policy_sha" "$policy_executable"
                         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
-                            for group in config::tests::config_transaction_ config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options config::tests::test_load_reads_legacy_plaintext_id_without_storing config::option_tests::; do
+                            for group in config::tests::config_transaction_ config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options config::tests::test_load_reads_legacy_plaintext_id_without_storing config::tests::test_load_path_ config::option_tests::; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \

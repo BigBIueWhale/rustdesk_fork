@@ -6135,226 +6135,66 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 
 ### Authoritative native/runtime evidence retained
 
-- The R-S11b/R-B4 portable Linux transaction at clean pushed commit
-  `250e775b9a88a62a980937e1f278ad053f2d9d58` built and executed the real server as numeric nonroot
-  against sealed offline inputs. It proved parked/no-listener startup, container-loopback-only direct
-  listening, correct/wrong CPace keying, authenticated Remote and FileTransfer admission, capacity and
-  forged-frame refusal, and joined shutdown. It did not exercise an installed root service, a real display,
-  a renderer, another native OS, soak, or release artifacts.
-- The Windows transaction at clean pushed commit
-  `f0ff7532721da0ccccf3ba186274db5ade8cdb8e` compiled the native authority-critical suites and completed
-  one package build in a zero-interface VM with loopback-only VNC and listener/process cleanup. It is a
-  single-pass named-commit result, not cold A==B release evidence or proof for later source changes.
-  R-S11ay selected-token environment acceptance remains **OPEN** for exact-artifact principal,
-  mixed-case collision, construction failure, child-environment observation and cleanup tests.
-- The installed LocalSystem CM transaction at clean pushed commit
-  `032c2f622b324f92b183a1ae37fb13f65523ada0` passed package install, six authenticated CM directory
-  round trips, generation reuse/replacement, abrupt owner cleanup, SCM stop, and SCM restart. It does not
-  cover macOS CM behavior, concurrent race/soak, graphical remote control, focus/background latency, or
-  current cold release artifacts.
-- R-S11gj's installed SCM credential transaction is green at
-  `0a12ed407e63129cac4065f4418911ab71adf3ca`: the installed CLI/LocalSystem service path exercised
-  authorization refusal, credential mutation, live replica convergence, service restart, store reload, and
-  stop finality for those package bytes. It remains a named single-build result, not current-master R-B2.
-- R-S11dh verifier-VM run admission now permits only one unreconciled `run.*` entry per run root, with the default verifier and acquisition roots mutually exclusive.
-  `smoke-verifier-vm-authority.sh::reserve_verifier_run` retains and validates the private directory,
-  takes a nonblocking exclusive directory lock, checks for any existing run entry, and allocates the
-  sole run relative to that descriptor before releasing it. Refusal precedes input digest walks,
-  payload construction, VM-disk creation, or process launch; no failed-run admission bypass exists.
-  Successful joined cleanup removes the exact run. Failure retains its run directory and diagnostics,
-  blocking the next run until explicit reconciliation. After exact VM/virtiofsd cleanup succeeds,
-  the receiver now checks the disposable overlay and ISO files are current-user regular single-link
-  files before removing them; cleanup uncertainty or a substituted path retains the files for manual
-  inspection rather than risking an active or foreign target. The historical 119-run cleanup recovered
-  approximately 975 GiB; later individual failed roots were explicitly reconciled, not counted as
-  successful product tests. The current directory has zero `run.*` entries and zero overlays.
-  The focused nonroot guest test exercised retained-directory, file, symlink, lock, unsafe-mode,
-  readmission, and 16-caller/one-winner admission; it also executed the exact new retirement helper
-  against regular, symlink, and hardlink files. The zero-NIC authority transaction passed in 79 seconds;
-  raw serial `authority-smoke-run.iutqcaUaPv.serial.log` is 81,467 bytes, SHA-256
-  `af7f068830ce07ab274ae304f9f6c0a41e13f627d9b28bbc6cece4ae9dc6f5fe`.
-  Its outer audit found no harness-added listener and all owned VM/container processes joined.
-  A deliberately failed full-QEMU cleanup path was not exercised in this slice; the native helper
-  fixture plus the reviewed cleanup ordering are narrower evidence. This is harness storage/admission
-  work, not product, installed-service, or release closure.
-  The separate outbound acquisition entry now uses the same descriptor-relative, nonblocking
-  one-run reservation for `online-fetch-runs`, before input digest walks, boot derivation,
-  payload construction or process launch. Its prior unguarded allocation is removed. Failed
-  evidence remains explicit and blocks another acquisition; successful joined retirement is
-  unchanged. Exact pushed `1156b66cfb2455118a2f4de99a4c49c2db1809fd`, tree
-  `66ef79ef19492c936d31cf6395b27f4f6635ec39`, passed both production functions' real
-  retained/file/symlink/unsafe/lock/readmission and 16-caller/one-winner cases in the zero-NIC
-  VM in 26,790 host BOOTTIME ms. The old unguarded allocation primitive admitted two real
-  directories. The actual outbound-only acquisition authority smoke passed in 35,180 ms;
-  a second actual outer invocation refused with status 1 before input digests and preserved
-  the sole live run identity/count. Both runs self-retired after joined cleanup with unchanged
-  inputs and no harness-added host listener. The native audit reported process drift zero;
-  the acquisition receipt records listener-drift bytes zero. Complete native/integration raw serials
-  are `evidence/acquisition-admission-1156b66c.serial.log` (68,857 bytes, SHA-256
-  `8dd9287ee2cdaac28f3ac52195201c18c457a73abbccdc2cd6bde4c8ef45c8bd`) and
-  `evidence/acquisition-entry-1156b66c.serial.log` (66,357 bytes, SHA-256
-  `a9f9027915961ef6363152c553d59ad7b89253889d0125c452b744a90dc62a56`);
-  duplicate diagnostics are retained separately. This closes acquisition run admission,
-  not engine-input acquisition, Flutter/product behavior, LPE or release evidence.
-  Commit `23218f93` closed the remaining cross-root gap: both default entry points serialize
-  admission on the shared parent directory and refuse a retained run in either root.
-  In a zero-NIC VM the focused native test passed both cross-root refusal directions and
-  16 mixed concurrent callers with one winner. The broader authority smoke reached that
-  result but timed out at its 90-second bound while another VM was running, so it is not a full
-  smoke pass. Its disposable disk was retired after joined cleanup; the exact 124 KiB
-  retained diagnostic directory was then explicitly reconciled. Zero run directories and
-  overlays remain under the verifier-VM root.
-- The R-S11dh VM-entry preflight now parses the kernel's complete `/proc/PID/stat`
-  record after the final closing parenthesis, not whitespace field 22, for both daemon-generation
-  checks. Canonical PID, bounded record, fixed-field shape/state and decimal start time are required;
-  unavailable or malformed identity refuses. The native regression extracts that exact production
-  function and uses a real nonroot guest process with five PR_SET_NAME cases, comparing unchanged
-  lifetime identity against the old whitespace parser and refusing invalid/missing PIDs. Exact
-  pushed `3e3a8ccb`, tree `bd31944e306113fd1a82db6b7b903eef1472e440`, passed all five native
-  cases: the old parser mismatched in all four irregular cases; the corrected parser preserved
-  one kernel start time. Invalid/missing PIDs refused. The complete focused capsule/admission
-  transaction passed in 26,970 host BOOTTIME ms, with unchanged inputs/listeners, zero process
-  drift, joined cleanup and automatic scratch retirement. Complete 68,417-byte raw serial is
-  `evidence/process-stat-3e3a8ccb.serial.log`, SHA-256
-  `b58838de88c5d95a3d599bc8dffeb07ea7ddb1505cdb779f801e9f1ac1a41536`.
-  The shared authority integration then refused the newly expanded stdout, which must contain
-  only its existing admission receipt; native cases still passed, but the transaction exited 1.
-  Complete 67,203-byte failure serial and bounded listener/capture records are retained at
-  `evidence/process-stat-integration-3e3a8ccb.*`; the exact stopped scratch was reconciled.
-  Native diagnostics now use stderr, preserving the sole stdout receipt. Exact corrected source
-  `4bda02dc34c45988da8d86c8c6bf62b5d25f776c`, tree `f2f604225d04d22f65898a6994ae4188a202a972`,
-  passed the complete shared authority integration in 92,610 host BOOTTIME ms (88 harness seconds),
-  including the same native A/B, admission and all existing entry/runtime/source gates. Inputs and
-  host listeners were unchanged, process drift was zero, owned cleanup joined and scratch
-  self-retired. Complete 77,108-byte raw serial is
-  `evidence/process-stat-integration-4bda02dc.serial.log`, SHA-256
-  `1f66576a273fc5f0894ead3ca7d363cfa081063e28317c371236a28c39a775f1`.
-  This is a parser correction, not a pidfd/reuse-race or LPE closure claim.
-- The verifier and acquisition outer launchers now parse bounded, complete kernel stat records
-  after the final task-name parenthesis instead of whitespace fields 22/3. Helper liveness
-  requires a matching start time and non-zombie state from the same record; invalid or unreadable
-  identity refuses. The existing VM-only regression is consolidated across all three parsers and
-  includes five real task-name cases, five unreaped-child cases, stale-generation/executable
-  refusal and invalid/missing PIDs. Exact pushed `757d955d063120dd3d8b337b3588544bf8fc8005`, tree
-  `d93b2fc8519192080a3de18e72f1c02b40858fbd`, passed the native extension in the zero-NIC
-  focused transaction (25,360 host BOOTTIME ms), complete shared authority integration
-  (79,290 ms), and actual outbound-only acquisition authority smoke (29,920 ms).
-  All three parsers preserved start time for every live/zombie name; both outer helper predicates
-  accepted the live fixture and rejected stale generation, wrong executable and every zombie.
-  The original awk mismatched all four irregular names. Full raw serials under `evidence/`:
-  `outer-process-stat-focused-757d955d.serial.log` (71,703 bytes, SHA256
-  `3dd32cbfd900549b999eadd98ad6bc87093a096c526e384d97ddb368edb016f0`);
-  `outer-process-stat-integration-757d955d.serial.log` (81,870 bytes, SHA256
-  `c9cb7aaebc4edfc28853a83c69819b3a6db6bf354148481aa58fbde354973531`);
-  `outer-process-stat-acquisition-757d955d.serial.log` (66,396 bytes, SHA256
-  `975b7a493016e2fc914865f434632907343f0e652b864cfdb5f7f7dd40ab40e8`).
-  Inputs/listeners were unchanged, native process drift and acquisition listener drift zero,
-  owned cleanup joined and each scratch self-retired. No run/overlay remains. Numeric-PID
-  signalling/reuse races, other guest readers, installed/native LPE and release closure remain OPEN.
-  Other guest and authority process-stat readers remain OPEN for audit/migration; these results
-  do not close untested callers or numeric-PID signal authority.
-  Kernel contracts: [proc field definition](https://docs.kernel.org/filesystems/proc.html)
-  and [Linux 6.1 stat producer](https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/proc/array.c).
-- R-S11dh/R-S11cj's protocol/endpoint-only listener collectors at
-  `47183f864dd12917ea910e4a7c17eb989b41fdb2` each passed real guest IPv4/IPv6 TCP/UDP cases:
-  two protocol-paired ports, four added endpoints, four observed nonzero queues with unchanged
-  inventories, and exact socket retirement. The complete zero-NIC authority smoke passed in
-  86 seconds with unchanged inputs, no added host endpoint and joined cleanup; its scratch retired.
-  Under `.harness-state/verifier-vm/`, raw `authority-smoke-run.ivyvYhnvdd.serial.log` is
-  82,391 bytes/SHA-256 `c0352d154f58d403dce055663e8d52c6ffab37d52ba1546983b99d90066e070a`;
-  nonindependent assistant-observed `evidence/listener-inventory-run.ivyvYhnvdd.outer.receipt` is
-  1,018 bytes/SHA-256 `cd4ca58a01df8d0840c832de4206fa5eb39b0173715ec808dedd0a8c83f7072a`.
-  This establishes native collector addition/queue-stability/retirement, not whole host-launcher abort.
-  The earlier outbound-only acquisition authority smoke at `227c3c63` passed in 23 seconds;
-  `.harness-state/verifier-vm/online-fetch-receipts/run.Ivut9euxxT.receipt` retains its v4
-  endpoint-only receipt and private-fixture-only exports. It has not been replayed here.
-  **OPEN:** whole host added-listener abort/failure-injection and cleanup coverage, collector
-  malformed-output/tool-failure negatives, installed/product privilege boundaries and release acceptance.
-- The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only
-  Docker daemon, and confined numeric-nonroot container lifecycle. Its exact kernel/initramfs are independently
-  derived from the authenticated base, digest-pinned, retained by descriptor, and direct-booted; the guest proves
-  the exact kernel command line and runtime unit masks. Expanded twelve-entry passes complete in about 20–49 seconds and
-  pass
-  AppArmor/seccomp/resource/namespace, no-bridge/no-forward/no-firewall-mutation, private-channel,
-  listener-invariance, complete-bounded-capture, joined-process, and successful-run residue-free cleanup assertions.
-  Controlled cancellation joined the exact processes and left no listener while retaining only exact private
-  diagnostics, which were then explicitly reconciled. It executed the minimal read-only repository subset needed
-  for the real `verify.sh --self-test-workspace`, which drives the descriptor-owned private-tree fixtures,
-  and `dart-verify.sh --self-test-vm-authority`,
-  `frb-codegen.sh --self-test-vm-authority`, `smoke-server.sh --self-test-vm-authority`, and
-  `dart-audit.sh --self-test-vm-authority`, `audit.sh --self-test-vm-authority`, the identity-access-free
-  `gen-android-keystore.sh --self-test-vm-authority`, the source/signing/output-access-free
-  `build-android.sh --self-test-vm-authority`, the private-fixture-only
-  `build-debian.sh --self-test-vm-authority`, the source/online-access-free
-  `android-rust-check.sh --self-test-vm-authority`, and the source/online-access-free two-profile
-  `test-android-gradle-cache.sh --self-test-vm-authority`, and source/input-free
-  `apple-conform-check.sh --self-test-vm-authority` entries. Each performs an actual fixed-client Docker request with
-  client/daemon pre/post generation replay; the applicable entries reject root and a foreign principal, and the Dart
-  verifier proves its nested FRB child. The retained Dart/FRB focused checker runs inside the guest; the Dart-advisory
-  checker was reduced from a 958-line cross-subsystem mutation catalog to a compact no-fallback/launch-shape check;
-  the Rust-advisory checker was similarly reduced from a 1,053-line cross-subsystem mutation catalog; the Android
-  signing checker was reduced from 718 to 318 lines and its duplicate 362-line workspace meta-check was deleted; the Android
-  builder checker was reduced from 2,196 to 376 lines and its duplicate 912-line workspace block was deleted; and the guest
-  runs the separate 31-decision Dart and 20-decision Rust scanner-result behavioral tests. The Android image-distribution
-  checker is now a compact Android-specific pin/Dockerfile/loader/certification/promotion invariant rather than a
-  cross-document mutation catalog, and its duplicate workspace validator is absent. The Debian image-distribution checker
-  is likewise a compact Debian-specific invariant rather than a cross-document mutation catalog; its reciprocal workspace
-  validator is absent. The Debian compiler-authority checker was reduced from a 1,093-line cross-document mutation catalog
-  to a focused launch/VM-funnel invariant, and its duplicate 292-line workspace verifier block is absent. The same admitted
-  UID/GID-4000 guest executes the generic archive/OCI provenance self-test, including
-  40 Android, nine certified-Debian, and 22 Windows role/archive/direct-normalization decisions. The default classic-store
-  profile rejects use of a certified builder's OCI-index digest as Docker's runtime reference and accepts only the
-  separately pinned config digest. The fixed online-acquisition VM instead authenticates Docker's containerd image store
-  and uses the explicit publication-index runtime mode, which binds the separately pinned OCI-index digest that this store
-  resolves after loading the same archive; that exception is restricted to certified builders and is not an ambient
-  fallback. At exact clean commit `dce876543d80b6f5e71aa2dce4d09dfc83e1fa8e`, the 48-second authority smoke also
-  executed the production Windows-helper runtime's `small` profile against the real guest daemon: root and UID/GID-4001
-  were refused, UID/GID-4000 completed, seven hostile mount shapes were refused, resource/security/read-only/network
-  properties were observed in the container, and exact cleanup joined without residue. The Android Gradle entry likewise
-  executes both exact production profiles against a minimal probe,
-  observes their resource/security/read-only/network properties, and proves the guest container inventory is unchanged;
-  it does not execute Gradle. The Debian entry executes its exact production compiler envelope, including private source,
-  hidden Git, read-only online, security, namespace, and resource controls, while truthfully leaving the compiler workload
-  unexecuted. Complete authority runs finished in 28–71 seconds with host listeners unchanged. It did not execute RustDesk,
-  the verifier image, FRB code generation, a Gradle or Rust build, a Debian compiler/toolchain workload, an OSV or RustSec scan, the certified
-  Windows helper archive/kernel/KVM/Windows workloads, the complete source/input transaction, an artifact, or an
-  output-publication transaction.
-- The focused R-S11dh filesystem transaction at clean pushed commit
-  `76cc2fefc6470aeaeb76b50d34b4dc377b39ba49` and tree
-  `f6297534ce3cf8f4460df324d31abf4d031b304d` executed the exact archived source in a direct-booted
-  Debian VM with `-nic none` and a fresh guest-only Docker daemon configured with no bridge, forwarding,
-  firewall mutation, or container network. A read-only, no-device/no-setuid/no-exec virtiofs mount exposed
-  the sealed Rust 1.75 archive, 2.3-GiB Cargo vendor closure
-  `b1c746659a19393c8f38e5b36ab76f357d4f7089c53cf45ffca8a45ec7a4f1d6`, and certified Debian-builder
-  archive through a nonroot Landlock-confined `virtiofsd`; TCP bind/connect were denied and every serving
-  thread entered seccomp filtering after QEMU attached. The fresh daemon proved that the certified OCI index
-  `sha256:48596720e13492e8a511b35ad88932f23f19dd9271b9eb3da3c12c016698dabb` recovers the runnable immutable
-  config identity `sha256:304b251e77fafe03192e035cc22479e0909d688035fbd30b1ac685e878ae9646` rather than relying on a
-  pre-existing build image. All 57 `fs::tests` passed under numeric UID/GID 1000, a read-only container root,
-  no capabilities, no-new-privileges, `docker-default`, and bounded resources. The 137-second outer receipt
-  proved unchanged host listeners and sealed inputs plus joined VM, container, Docker, capture, and virtiofs
-  cleanup. Windows-only junction/exact-handle tests did not execute, and this result does not exercise an
-  end-to-end peer file transfer or installed/release artifact.
-- R-S11bg's current devcheck reconstruction uses the exact Rust 1.75 base digest, fixed signed Debian/security
-  snapshots, a fixed source epoch, an exact installed-package manifest, a Dockerfile-only private context, and
-  BuildKit provenance that binds the base, arguments, source bytes, and `default` then `none` RUN network modes.
-  Repeated real builds exposed and then removed four nondeterministic generated artifacts: two machine-ID files,
-  the ldconfig auxiliary cache, and the alternatives log. Acquisition receipt `run.wcNY41uIe8` then completed two
-  no-cache builds with the same runnable manifest
-  `sha256:286817b35058612e5ff25790d3c30bc77274b2337aef79df8d24bf8e4f6f2466` and config
-  `sha256:5bf549eb60a88e1039a751ffb37de390b655895c20009db97fb48f54e09415fa`, verified both captures, and atomically
-  published the second private candidate. Fresh promotion receipt `run.LjHqqPoRtu` verified the exact
-  681,163,937-byte archive at SHA-256
-  `7fdb435c7fd6323fef3e5b54d410c4c5df85ea6a3636aa836359a18deec0abd7`, promoted it without clobbering, loaded it
-  into an empty guest containerd image store, and passed its networkless/nonroot runtime contract. Both receipts
-  report `hostfwd=absent`, unchanged host listeners, guest-only Docker/BuildKit, and joined cleanup. This is one-VM
-  two-build runtime reproducibility plus a separate fresh-VM load check, not a separately administered independent
-  rebuild, a full verifier/product run, an artifact build, native behavior, or release evidence. A final 70-second
-  no-NIC authority smoke on the completed worktree passed the affected image-provenance decisions and the real guest
-  authority/runtime fixtures with unchanged host listeners and joined cleanup; its unexecuted product-workload
-  entries remain only authority checks, not product evidence.
-- No evidence above used host RustDesk, Haggai, a host firewall/network change, a published container port,
-  a VM NIC, root/sudo on the host, or a non-loopback host listener.
+These are observations of the named source/artifact generations. They do not establish
+current-master execution, installed/native privilege closure or release readiness.
+Full historical receipts, hashes, rejected runs and intermediate cleanup records remain
+in `git show 6940683e:HARDENING_STATUS.md` under this heading. The index below retains
+the distinct executed layers and acceptance gaps; no new execution is claimed.
+
+| Surface and source | What actually ran | Evidence limit / remaining acceptance |
+| --- | --- | --- |
+| Portable Linux server, `250e775b9a88a62a980937e1f278ad053f2d9d58` | Numeric-nonroot real server with sealed offline inputs: parked startup, container-loopback listening, correct/wrong CPace keying, authenticated Remote/FileTransfer admission, capacity/forged-frame refusal and joined shutdown. | Installed root service, display/renderer, other OS, soak and release artifacts were not exercised. |
+| Native Windows build, `f0ff7532721da0ccccf3ba186274db5ade8cdb8e` | Authority-critical native suites and one package build in a zero-interface VM, loopback-only VNC and joined process/listener cleanup. | One named single pass, not cold A==B or later-source proof. R-S11ay selected-token environment acceptance remains OPEN: exact principal, mixed-case collision, construction failure, observed child environment and cleanup. |
+| Installed LocalSystem CM, `032c2f622b324f92b183a1ae37fb13f65523ada0` | Package install, six authenticated CM directory round trips, generation reuse/replacement, abrupt owner cleanup, SCM stop/restart. | macOS CM, concurrent races/soak, graphical control, focus/background latency and current cold artifacts remain OPEN. |
+| Installed SCM credential path, R-S11gj, `0a12ed407e63129cac4065f4418911ab71adf3ca` | CLI/LocalSystem authorization refusal, credential mutation, live replica convergence, service restart/store reload and stop finality for those package bytes. | Named single-build evidence; current-master installed acceptance and R-B2 remain OPEN. |
+| Verifier/acquisition run admission, R-S11dh/R-S11cj, `1156b66c` and `23218f93` | Real retained-directory/file/symlink/unsafe-mode/lock/readmission cases; sixteen same-root and mixed cross-root callers with one winner; both cross-root refusal directions. The old primitive admitted two directories. A real second acquisition invocation refused before digest work and preserved the live identity; admitted owners joined and retired. | Shared-parent locking and descriptor-relative reservation block another run until retained failures are explicitly reconciled. Retirement fixtures cover regular/symlink/hardlink outputs; deliberately failed full-QEMU cleanup was not exercised. The broader `23218f93` smoke timed out and is not accepted as a complete pass. No current zero-residue assertion is inferred from an old cleanup. |
+| Kernel process-stat identity, R-S11dh, `3e3a8ccb` / `4bda02dc` / `757d955d` | The exact preflight and both outer-helper parsers used real guest task names and unreaped children. All three retained start times across five live/zombie names; outer helpers rejected stale generation, wrong executable and zombies. The old whitespace parser mismatched four irregular names. Focused, shared-authority and outbound-acquisition transactions passed at the named final source. | The intermediate stdout-receipt integration failed; diagnostics moved to stderr before the accepted integration. Numeric-PID signalling/reuse races, other guest/stat readers, installed LPE and release acceptance remain OPEN. |
+| Endpoint-only collectors, R-S11dh/R-S11cj, `47183f864dd12917ea910e4a7c17eb989b41fdb2` | Real guest IPv4/IPv6 TCP/UDP: paired ports, four added endpoints, nonzero queues without inventory changes and exact socket retirement; complete authority smoke passed. Earlier outbound acquisition `227c3c63` has its separate v4 receipt and was not replayed. | Collector behavior is not whole-host added-listener abort proof. Abort/failure-injection/cleanup coverage, malformed-output/tool failures, installed/product boundaries and release acceptance remain OPEN. |
+| Verifier-VM entry/runtime envelopes, including `dce876543d80b6f5e71aa2dce4d09dfc83e1fa8e` | Nonroot-host direct-boot QEMU/KVM, networkless guest, fresh guest-only Docker and numeric-nonroot confined containers. Real fixed-client daemon exchanges, pre/post generation replay, applicable root/foreign-principal refusal, nested FRB ownership, bounded capture, controlled cancellation and joined cleanup. Production Windows-helper small, both Android Gradle and Debian compiler envelopes were observed with minimal fixtures; Windows-helper rejected seven hostile mount shapes. | Authority/envelope tests did not execute RustDesk, the full verifier image, FRB generation, Gradle/Rust/Debian compilation, advisory scans, the certified Windows-helper archive/kernel/KVM/Windows workloads, the complete source/input transaction, artifact generation or output publication. These remain separate native/artifact obligations. |
+| Isolated Linux filesystem baseline, `76cc2fefc6470aeaeb76b50d34b4dc377b39ba49` | All 57 filesystem tests in the exact archived source, Rust 1.75, sealed vendor `b1c746659a19393c8f38e5b36ab76f357d4f7089c53cf45ffca8a45ec7a4f1d6` and certified Debian builder. Read-only virtiofs inputs used a nonroot Landlock/seccomp-confined server; the fresh daemon loaded the pinned archive and selected its runnable config identity. Numeric UID/GID1000, read-only root, no capabilities, no-new-privileges, AppArmor and bounded resources; owners joined. | Named Linux library evidence, not Windows junction/handle behavior, end-to-end transfer, installed service or release-artifact acceptance. Later library observations retain their own source bindings. |
+| Devcheck reconstruction, R-S11bg, `run.wcNY41uIe8` / promotion `run.LjHqqPoRtu` | Two no-cache builds in one acquisition VM produced equal runnable manifest/config; a separate fresh VM verified, promoted without clobber, loaded and ran the archive. Inputs bind Rust1.75 base, signed Debian snapshots, source epoch, exact package manifest, Dockerfile-only context and BuildKit base/argument/source/network provenance. Machine-ID, ldconfig cache and alternatives-log nondeterminism was removed. Final authority integration passed. | One-VM two-build reproducibility plus a fresh load, not separately administered independent rebuilding, full verifier/product execution, an application artifact, native product behavior or release evidence. |
+
+The run-admission receipts are `authority-smoke-run.iutqcaUaPv.serial.log` and
+`evidence/acquisition-{admission,entry}-1156b66c.serial.log`.
+Process-stat receipts are `evidence/process-stat-3e3a8ccb.serial.log`,
+`evidence/process-stat-integration-{3e3a8ccb,4bda02dc}.*` and
+`evidence/outer-process-stat-{focused,integration,acquisition}-757d955d.serial.log`.
+Collector evidence is `authority-smoke-run.ivyvYhnvdd.serial.log`, its nonindependent
+assistant-observed `evidence/listener-inventory-run.ivyvYhnvdd.outer.receipt`, and
+`online-fetch-receipts/run.Ivut9euxxT.receipt` under `.harness-state/verifier-vm/`
+except the explicitly prefixed `evidence/` paths. Archive history above binds their
+original full hashes, sizes and timings; references do not upgrade their evidence scope.
+
+Those entry tests executed `verify.sh --self-test-workspace` and the
+`--self-test-vm-authority` entries of `dart-verify.sh`, `frb-codegen.sh`,
+`smoke-server.sh`, `dart-audit.sh`, `audit.sh`, `gen-android-keystore.sh`,
+`build-android.sh`, `build-debian.sh`, `android-rust-check.sh`,
+`test-android-gradle-cache.sh` and `apple-conform-check.sh`. The signing/build
+authority-only cases leave their protected identity/source/signing/output inputs
+untouched. Runtime fixtures retain AppArmor/seccomp, no bridge/forward/firewall
+mutation, private channels, resource/mount/namespace limits and exact owner retirement.
+Separate scanner-result tests cover 31 Dart and 20 Rust decisions. Archive/provenance
+fixtures cover 40 Android, nine certified-Debian and 22 Windows decisions. Compact
+no-fallback/provenance checks replace the former cross-subsystem wording/mutation
+catalogues; their deletion counts are historical, not runtime coverage.
+
+Classic Docker storage uses the separately pinned runnable config digest; the authenticated
+acquisition containerd store alone uses the explicit certified-builder publication-index
+mode. This is a store-bound contract, never an ambient fallback. The reconstructed
+devcheck manifest is `286817b35058612e5ff25790d3c30bc77274b2337aef79df8d24bf8e4f6f2466`,
+config `5bf549eb60a88e1039a751ffb37de390b655895c20009db97fb48f54e09415fa`, and
+681,163,937-byte archive SHA-256
+`7fdb435c7fd6323fef3e5b54d410c4c5df85ea6a3636aa836359a18deec0abd7`.
+Process-stat design references remain the
+[kernel field definition](https://docs.kernel.org/filesystems/proc.html) and
+[Linux6.1 stat producer](https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/proc/array.c).
+
+The named transactions report their own input/listener observations and joined cleanup;
+they are not present host inventories or proof for later trees. None authorizes using host
+RustDesk, Haggai, host-root Docker, host service/network changes, published ports, or
+nonloopback management listeners. All fifteen current installed credential-action
+acceptance rows and the shared native/device/performance/resource/cold-artifact/
+independent-reproduction/external-review obligations remain OPEN.
 
 ### Open / STOP-SHIP evidence
 

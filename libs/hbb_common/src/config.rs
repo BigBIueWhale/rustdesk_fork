@@ -3388,6 +3388,20 @@ struct PeerListOptions {
     alias: String,
 }
 
+#[derive(Deserialize)]
+struct PeerOptionsFile {
+    #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
+    options: HashMap<String, String>,
+}
+
+impl Default for PeerOptionsFile {
+    fn default() -> Self {
+        Self {
+            options: PeerConfig::default_options(),
+        }
+    }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct PeerUiHostInfo {
     #[serde(default, deserialize_with = "deserialize_string")]
@@ -3509,8 +3523,11 @@ impl PeerConfig {
     }
 
     pub fn read_option(id: &str, name: &str) -> crate::ResultType<String> {
-        let config = Self::load(id);
-        Ok(config.options.get(name).cloned().unwrap_or_default())
+        if RETIRED_RDP_CREDENTIAL_OPTIONS.contains(&name) {
+            return Ok(String::new());
+        }
+        let mut file: PeerOptionsFile = Self::read_display_path(&Self::path(id))?;
+        Ok(file.options.remove(name).unwrap_or_default())
     }
 
     pub fn forget_password(id: &str) -> crate::ResultType<()> {

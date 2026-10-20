@@ -2129,6 +2129,153 @@ fn local_source_expected(mut source: LocalConfig, action: &str) -> serde_json::V
 }
 
 #[test]
+fn local_source_schema_failures_preserve_all_fields_and_refuse_mutations() {
+    in_private_process("config::option_tests::local_source_schema_failures_preserve_all_fields_and_refuse_mutations", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let confirmed = local_source_seed("confirmed");
+        let healthy = toml::to_string(&confirmed).unwrap();
+        let document: toml::Value = toml::from_str(&healthy).unwrap();
+        let file = Config::file_("_local");
+        store_path(file.clone(), &confirmed).unwrap();
+        let parent = file.parent().unwrap();
+        let names = || {
+            let mut entries = fs::read_dir(parent).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+            entries.sort(); entries
+        };
+        let original_names = names();
+        let mut all_preserved = true;
+        for field in ["remote_id", "kb_layout_type", "fav", "options", "ui_flutter"] {
+            let nested = match field {
+                "fav" => toml::Value::Array(vec![toml::Value::Integer(7)]),
+                "options" | "ui_flutter" => toml::Value::Table([("preserved".into(), toml::Value::String("keep".into())), ("invalid".into(), toml::Value::Integer(7))].into_iter().collect()),
+                _ => toml::Value::Array(vec![toml::Value::String("invalid".into())]),
+            };
+            for (kind, malformed) in [("integer", toml::Value::Integer(7)), ("boolean", toml::Value::Boolean(false)), ("nested", nested)] {
+                let mut broken = document.clone();
+                broken.as_table_mut().unwrap().insert(field.into(), malformed);
+                let bytes = toml::to_string(&broken).unwrap().into_bytes();
+                fs::write(&file, &bytes).unwrap();
+                let initial_rejected = LocalConfig::load() == LocalConfig::default()
+                    && LocalConfig::get_option_from_file("selected").is_empty();
+                let mut refused = true;
+                let mut repeated_refused = true;
+                let mut fixed_errors = true;
+                let mut file_preserved = true;
+                let mut cache_preserved = true;
+                let mut same_file = true;
+                let mut retry_durable = true;
+                for (name, action) in local_source_actions() {
+                    *LOCAL_CONFIG.write().unwrap() = confirmed.clone();
+                    fs::write(&file, &bytes).unwrap();
+                    let before = fs::metadata(&file).unwrap();
+                    let first = action();
+                    let second = action();
+                    refused &= first.is_err();
+                    repeated_refused &= second.is_err();
+                    fixed_errors &= [&first, &second].iter().all(|result| result.as_ref().err().map(|error| error.to_string()).as_deref() == Some("Failed to read local preferences"));
+                    file_preserved &= fs::read(&file).unwrap() == bytes && names() == original_names;
+                    cache_preserved &= *LOCAL_CONFIG.read().unwrap() == confirmed;
+                    let after = fs::metadata(&file).unwrap();
+                    same_file &= (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode());
+                    fs::write(&file, &healthy).unwrap();
+                    action().unwrap();
+                    let expected = local_source_expected(confirmed.clone(), name);
+                    retry_durable &= serde_json::to_value(LocalConfig::load()).unwrap() == expected
+                        && serde_json::to_value(&*LOCAL_CONFIG.read().unwrap()).unwrap() == expected;
+                }
+                println!("OPTION_COMMIT_PREFERENCE_SCHEMA=observed store=local field={field} kind={kind} actions=5 initial_rejected={initial_rejected} refused={refused} repeated_refused={repeated_refused} fixed_errors={fixed_errors} file_preserved={file_preserved} cache_preserved={cache_preserved} same_file={same_file} retry_durable={retry_durable}");
+                all_preserved &= initial_rejected && refused && repeated_refused && fixed_errors && file_preserved && cache_preserved && same_file && retry_durable;
+            }
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn default_schema_failures_preserve_source_cache_and_retry() {
+    in_private_process("config::option_tests::default_schema_failures_preserve_source_cache_and_retry", |_| {
+        use std::os::unix::fs::MetadataExt;
+        UserDefaultConfig::set_option("selected".into(), "confirmed".into()).unwrap();
+        UserDefaultConfig::set_option("unrelated".into(), "preserved".into()).unwrap();
+        let file = Config::file_("_default");
+        let healthy = fs::read(&file).unwrap();
+        let confirmed = UserDefaultConfig::load();
+        let parent = file.parent().unwrap();
+        let names = || {
+            let mut entries = fs::read_dir(parent).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+            entries.sort(); entries
+        };
+        let original_names = names();
+        let mut all_preserved = true;
+        for (kind, source) in [
+            ("integer", "options = 7\n"), ("boolean", "options = false\n"),
+            ("string", "options = 'invalid'\n"), ("array", "options = []\n"),
+            ("entry_integer", "[options]\nunrelated = 'preserved'\ninvalid = 7\n"),
+            ("entry_array", "[options]\nunrelated = 'preserved'\ninvalid = ['invalid']\n"),
+        ] {
+            fs::write(&file, source).unwrap();
+            *USER_DEFAULT_CONFIG.write().unwrap() = (confirmed.clone(), Instant::now() - Duration::from_secs(2));
+            let before = fs::metadata(&file).unwrap();
+            let initial_default = UserDefaultConfig::load().options.is_empty();
+            let refresh_preserved = UserDefaultConfig::get_option("selected") == "confirmed"
+                && UserDefaultConfig::get_option("unrelated") == "preserved";
+            let first = UserDefaultConfig::set_option("selected".into(), "requested".into());
+            let second = UserDefaultConfig::set_option("selected".into(), "requested".into());
+            let fixed_errors = [&first, &second].iter().all(|result| result.as_ref().err().map(|error| error.to_string()).as_deref() == Some("Failed to read default settings"));
+            let cache_preserved = USER_DEFAULT_CONFIG.read().unwrap().0.options == confirmed.options;
+            let file_preserved = fs::read(&file).unwrap() == source.as_bytes() && names() == original_names;
+            let after = fs::metadata(&file).unwrap();
+            let same_file = (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode());
+            fs::write(&file, &healthy).unwrap();
+            let retry = UserDefaultConfig::set_option("selected".into(), "requested".into()).unwrap();
+            let stored = UserDefaultConfig::load();
+            let retry_durable = retry == "requested" && stored.get("selected") == "requested"
+                && stored.get("unrelated") == "preserved" && USER_DEFAULT_CONFIG.read().unwrap().0.options == stored.options;
+            println!("OPTION_COMMIT_PREFERENCE_SCHEMA=observed store=default kind={kind} initial_default={initial_default} refresh_preserved={refresh_preserved} refused={} repeated_refused={} fixed_errors={fixed_errors} file_preserved={file_preserved} cache_preserved={cache_preserved} same_file={same_file} retry_durable={retry_durable}", first.is_err(), second.is_err());
+            all_preserved &= initial_default && refresh_preserved && first.is_err() && second.is_err() && fixed_errors && file_preserved && cache_preserved && same_file && retry_durable;
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn local_source_schema_missing_fields_preserve_healthy_round_trips() {
+    in_private_process("config::option_tests::local_source_schema_missing_fields_preserve_healthy_round_trips", |_| {
+        let confirmed = local_source_seed("confirmed");
+        let healthy = toml::to_string(&confirmed).unwrap();
+        let document: toml::Value = toml::from_str(&healthy).unwrap();
+        let file = Config::file_("_local");
+        store_path(file.clone(), &confirmed).unwrap();
+        for field in ["remote_id", "kb_layout_type", "fav", "options", "ui_flutter"] {
+            let mut sparse = document.clone();
+            sparse.as_table_mut().unwrap().remove(field);
+            let bytes = toml::to_string(&sparse).unwrap();
+            let mut expected = serde_json::to_value(&confirmed).unwrap();
+            expected[field] = serde_json::to_value(LocalConfig::default()).unwrap()[field].clone();
+            for (name, action) in local_source_actions() {
+                fs::write(&file, &bytes).unwrap();
+                let loaded = LocalConfig::load();
+                assert_eq!(serde_json::to_value(&loaded).unwrap(), expected);
+                let expected_after = local_source_expected(loaded, name);
+                action().unwrap();
+                assert_eq!(serde_json::to_value(LocalConfig::load()).unwrap(), expected_after);
+                assert_eq!(serde_json::to_value(&*LOCAL_CONFIG.read().unwrap()).unwrap(), expected_after);
+            }
+        }
+        fs::write(&file, "").unwrap();
+        assert_eq!(LocalConfig::load(), LocalConfig::default());
+        let file = Config::file_("_default");
+        fs::write(&file, "").unwrap();
+        assert!(UserDefaultConfig::load().options.is_empty());
+        assert_eq!(UserDefaultConfig::set_option(keys::OPTION_CUSTOM_FPS.into(), "25".into()).unwrap(), "25");
+        assert_eq!(UserDefaultConfig::load().get(keys::OPTION_CUSTOM_FPS), "25");
+        assert_eq!(UserDefaultConfig::set_option(keys::OPTION_CUSTOM_FPS.into(), String::new()).unwrap(), "30");
+        assert!(UserDefaultConfig::load().options.is_empty());
+        println!("OPTION_COMMIT_PREFERENCE_SCHEMA=observed kind=controls sparse_local_fields=5 actions_per_field=5 missing_fields_default=true valid_round_trips=true display_defaults_and_removal=true");
+    });
+}
+
+#[test]
 fn local_source_initial_and_direct_reads_preserve_corruption() {
     in_private_process("config::option_tests::local_source_initial_and_direct_reads_preserve_corruption", |_| {
         use std::os::unix::fs::MetadataExt;

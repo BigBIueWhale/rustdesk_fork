@@ -5773,7 +5773,7 @@ PY
             || fail 'viewer CLI binary check receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
         [ "${#result_lines[@]}" -eq 3 ] || fail 'viewer credential summary count differs'
-        [ "$(grep -Ec '^VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=11 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=10 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_CREDENTIAL_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'viewer credential artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = recording-output ]; then

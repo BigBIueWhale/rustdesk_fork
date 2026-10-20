@@ -2509,6 +2509,21 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Configuration-load diagnostics (`544d4b36`).** The core loader returns
+its record without formatting it into trace logs; the three unused generic
+`Debug` bounds are removed. At unchanged-product preparation `cc82c73f`,
+an actual trace-enabled log sink receives all five selected fixture strings,
+including both credential storage fields, while 127 controls pass. The identical
+128-case Linux library shard passes after correction: the two same-target trace
+controls and read-error log remain visible, two healthy loads retain every field
+and file bytes/inode/mode, absence creates nothing, and a directory read failure
+preserves its source. `config-load-logging-544d4b36.json` binds source/artifacts,
+observations and joined bounded-RAM cleanup. This removes one live whole-record
+disclosure when trace logging is enabled; default log levels were not evidence
+of secrecy. Storage/decryption/recovery and other diagnostics are unchanged.
+Full app/installed logger sinks and permissions, previous log retention, native
+other-platform, R-S0/R-F5 and release acceptance remain OPEN.
+
 **Retired heartbeat status storage (`44281c4f`).** The unused shared `Status`
 model, lazy cache, `_status` reader/writer, public `common_store`, private
 `Config::store_` wrapper and now-unreferenced tolerant map decoder are deleted.

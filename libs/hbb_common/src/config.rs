@@ -3600,12 +3600,98 @@ impl PeerConfig {
 
     fn remove_with_unlink_hook(id: &str, before_unlink: impl FnOnce()) -> crate::ResultType<()> {
         let path = Self::path(id);
-        before_unlink();
-        match fs::remove_file(path) {
+        #[cfg(target_os = "linux")]
+        let result = {
+            use std::{
+                ffi::CString,
+                os::unix::{ffi::OsStrExt, io::AsRawFd},
+            };
+
+            let name = path
+                .file_name()
+                .ok_or_else(|| anyhow!("Peer configuration path has no file name"))?;
+            let name = CString::new(name.as_bytes())?;
+            let Some(parent) = Self::open_removal_parent(&path)? else {
+                return Ok(());
+            };
+            before_unlink();
+            if unsafe { crate::libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), 0) } == 0 {
+                Ok(())
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        };
+        #[cfg(not(target_os = "linux"))]
+        let result = {
+            before_unlink();
+            fs::remove_file(path)
+        };
+        match result {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn open_removal_parent(path: &Path) -> crate::ResultType<Option<fs::File>> {
+        use std::{
+            ffi::{CStr, CString},
+            os::unix::{
+                ffi::OsStrExt,
+                fs::MetadataExt,
+                io::{AsRawFd, FromRawFd},
+            },
+            path::Component,
+        };
+
+        fn open_directory(parent: i32, name: &CStr) -> io::Result<fs::File> {
+            let fd = unsafe {
+                crate::libc::openat(
+                    parent,
+                    name.as_ptr(),
+                    crate::libc::O_PATH
+                        | crate::libc::O_DIRECTORY
+                        | crate::libc::O_NOFOLLOW
+                        | crate::libc::O_CLOEXEC,
+                )
+            };
+            if fd < 0 {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(unsafe { fs::File::from_raw_fd(fd) })
+            }
+        }
+
+        let path = path
+            .parent()
+            .ok_or_else(|| anyhow!("Peer configuration path has no parent directory"))?;
+        let start = CString::new(if path.is_absolute() { "/" } else { "." })?;
+        let mut parent = open_directory(crate::libc::AT_FDCWD, &start)?;
+        for component in path.components() {
+            let name = match component {
+                Component::RootDir | Component::CurDir => continue,
+                Component::Normal(name) => CString::new(name.as_bytes())?,
+                Component::ParentDir | Component::Prefix(_) => {
+                    return Err(anyhow!("Invalid peer directory path component"));
+                }
+            };
+            match open_directory(parent.as_raw_fd(), &name) {
+                Ok(next) => parent = next,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => return Err(error.into()),
+            }
+        }
+        let metadata = parent.metadata()?;
+        if !metadata.file_type().is_dir()
+            || metadata.uid() != unsafe { crate::libc::geteuid() }
+            || metadata.mode() & 0o022 != 0
+        {
+            return Err(anyhow!(
+                "Peer directory failed ownership/write-permission verification"
+            ));
+        }
+        Ok(Some(parent))
     }
 
     fn path(id: &str) -> PathBuf {

@@ -45,7 +45,7 @@ void main() {
       expect(harness.calls.last.id, id);
       expect(find.byIcon(Icons.key), findsNothing);
       harness.calls.last.result.complete(status);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(find.byIcon(Icons.key),
           status.hasSavedPrs ? findsOneWidget : findsNothing);
       await tester.pumpWidget(harness.view(id));
@@ -58,7 +58,7 @@ void main() {
     final harness = _Harness();
     await tester.pumpWidget(harness.view('selected'));
     harness.calls.single.result.completeError(StateError('read denied'));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byIcon(Icons.key), findsNothing);
     expect(find.byIcon(Icons.error_outline), findsOneWidget);
     expect(tester.widget<Tooltip>(find.byType(Tooltip)).message,
@@ -72,10 +72,10 @@ void main() {
     retry();
     expect(harness.calls.length, 2);
     expect(harness.calls.last.id, 'selected');
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byIcon(Icons.error_outline), findsNothing);
     harness.calls.last.result.complete(_saved);
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byIcon(Icons.key), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -87,15 +87,15 @@ void main() {
     final old = harness.calls.single;
     await tester.pumpWidget(harness.view('current'));
     old.result.complete(_saved);
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byIcon(Icons.key), findsNothing);
     harness.calls.last.result.complete(_saved);
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byIcon(Icons.key), findsOneWidget);
     await tester.pumpWidget(harness.view('replacement'));
     expect(find.byIcon(Icons.key), findsNothing);
     harness.calls.last.result.complete(_retired);
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byIcon(Icons.key), findsNothing);
     expect(harness.calls.map((call) => call.id),
         ['old', 'current', 'replacement']);
@@ -106,7 +106,7 @@ void main() {
     final harness = _Harness();
     await tester.pumpWidget(harness.view('old'));
     harness.calls.single.result.completeError(StateError('read denied'));
-    await tester.pump();
+    await tester.pumpAndSettle();
     final retry = tester
         .widget<GestureDetector>(find.ancestor(
             of: find.byIcon(Icons.error_outline),
@@ -116,7 +116,7 @@ void main() {
     retry();
     expect(harness.calls.length, 2);
     harness.calls.last.result.complete(_empty);
-    await tester.pump();
+    await tester.pumpAndSettle();
     retry();
     expect(harness.calls.length, 2);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -131,7 +131,7 @@ void main() {
     await tester.pumpWidget(harness.view('retiring'));
     await tester.pumpWidget(const SizedBox.shrink());
     harness.calls.single.result.completeError(StateError('late failure'));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(harness.calls.length, 1);
     expect(tester.takeException(), isNull);
   });

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/common/widgets/setting_checkbox.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get.dart';
@@ -29,21 +30,16 @@ class DefaultOptionCheckbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = value == 'Y';
-    change(bool next) async {
-      await saveOption(optionKey, next ? 'Y' : falseValue);
-    }
-
-    return GestureDetector(
-      child: Row(children: [
-        Padding(
-          padding: const EdgeInsets.only(right: 5),
-          child: Checkbox(value: selected,
-              onChanged: enabled ? (_) => change(!selected) : null),
-        ),
-        Expanded(child: Text(label)),
-      ]),
-      onTap: enabled ? () => change(!selected) : null,
+    return SettingCheckbox(
+      key: ValueKey(('user-default', optionKey)),
+      label: label,
+      value: value == 'Y',
+      enabled: enabled,
+      failureText: failureText,
+      saveValue: (next) async {
+        final effective = await saveOption(optionKey, next ? 'Y' : falseValue);
+        return effective == null ? null : effective == 'Y';
+      },
     );
   }
 }

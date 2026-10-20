@@ -634,11 +634,7 @@ mod windows_machine_config {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|duration| duration.as_nanos())
             .unwrap_or(0);
-        let file_name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| invalid("machine config file name is not UTF-8"))?;
-        let backup_name = component_wide(OsStr::new(&format!("{file_name}.corrupt.{stamp}")))?;
+        let backup_name = component_wide(OsStr::new(&super::config_recovery_file_name(path, stamp)?))?;
         with_parent(path, true, |parent, name| {
             let handle = unsafe {
                 open_at(
@@ -1361,12 +1357,36 @@ fn keep_encrypted_storage_if_plaintext_unchanged(plain: &str, stored: &str) -> S
 }
 
 // F1: preserve a present-but-corrupt config for operator recovery instead of letting a
-// fresh default overwrite it. Rename it aside to a timestamped `<name>.corrupt.<nanos>`
+// fresh default overwrite it. Rename it aside to a bounded, native-name-tagged recovery
 // sibling, harden the recovery file, then let callers create a fresh config at the vacated
 // path. Repeated corruption events never clobber an earlier backup.
 fn config_recovery_file_name(file: &Path, ts: u128) -> io::Result<String> {
-    let name = file.file_name().and_then(|name| name.to_str()).unwrap_or("config");
-    Ok(format!("{name}.corrupt.{ts}"))
+    let name = file.file_name().ok_or_else(|| io::Error::new(
+        io::ErrorKind::InvalidInput, "Configuration recovery path has no file name",
+    ))?;
+    #[cfg(any(unix, windows))]
+    {
+        use crate::sha2::{Digest, Sha256};
+
+        // Hash native bytes/code units without lossy conversion. The ASCII leaf is at most 119 bytes;
+        // exclusive publication refuses any tag/timestamp collision.
+        let mut tag = Sha256::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            tag.update(b"unix\0");
+            tag.update(name.as_bytes());
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            tag.update(b"windows\0");
+            for unit in name.encode_wide() { tag.update(unit.to_le_bytes()); }
+        }
+        Ok(format!("config.corrupt.{:x}.{ts}", tag.finalize()))
+    }
+    #[cfg(not(any(unix, windows)))]
+    Err(io::Error::new(io::ErrorKind::Unsupported, "native config recovery names are unavailable"))
 }
 
 impl ConfigFileRead<'_> {

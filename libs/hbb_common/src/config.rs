@@ -862,7 +862,6 @@ lazy_static::lazy_static! {
     static ref CONFIG: RwLock<Config> = RwLock::new(Config::load());
     static ref CONFIG2: RwLock<Config2> = RwLock::new(Config2::load());
     static ref LOCAL_CONFIG: RwLock<LocalConfig> = RwLock::new(LocalConfig::load());
-    static ref STATUS: RwLock<Status> = RwLock::new(Status::load());
     // R-X4: EXE_RENDEZVOUS_SERVER (the exe-name license rendezvous server) removed.
     pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());
     static ref KEY_PAIR: Mutex<Option<KeyPair>> = Default::default();
@@ -2697,13 +2696,6 @@ impl Config {
         cfg
     }
 
-    fn store_<T: serde::Serialize>(config: &T, suffix: &str) {
-        let file = Self::file_(suffix);
-        if let Err(err) = store_path(file, config) {
-            log::error!("Failed to store {suffix} config: {err}");
-        }
-    }
-
     fn load() -> Config {
         let file = Self::file_("");
         let mut config = Config::load_::<Config>("");
@@ -4504,7 +4496,6 @@ macro_rules! deserialize_default {
 
 deserialize_default!(deserialize_string, String);
 deserialize_default!(deserialize_keypair, KeyPair);
-deserialize_default!(deserialize_hashmap_string_string, HashMap<String, String>);
 
 #[inline]
 fn get_or(
@@ -4985,46 +4976,6 @@ pub fn common_load<
     suffix: &str,
 ) -> T {
     Config::load_::<T>(suffix)
-}
-
-pub fn common_store<T: serde::Serialize>(config: &T, suffix: &str) {
-    Config::store_(config, suffix);
-}
-
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct Status {
-    #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
-    values: HashMap<String, String>,
-}
-
-impl Status {
-    fn load() -> Status {
-        Config::load_::<Status>("_status")
-    }
-
-    fn store(&self) {
-        Config::store_(self, "_status");
-    }
-
-    pub fn get(k: &str) -> String {
-        STATUS
-            .read()
-            .unwrap()
-            .values
-            .get(k)
-            .cloned()
-            .unwrap_or_default()
-    }
-
-    pub fn set(k: &str, v: String) {
-        if Self::get(k) == v {
-            return;
-        }
-
-        let mut st = STATUS.write().unwrap();
-        st.values.insert(k.to_owned(), v);
-        st.store();
-    }
 }
 
 #[cfg(test)]
@@ -5922,7 +5873,7 @@ unrelated = "preserved"
         let _file_guard = ConfigFileRestoreGuard::new(file);
         let mut raw = Config::default();
         raw.id = "123456789".to_owned();
-        Config::store_(&raw, "");
+        store_path(Config::file_(""), &raw).unwrap();
 
         let loaded = Config::load();
 

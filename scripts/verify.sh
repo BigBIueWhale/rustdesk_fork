@@ -1338,6 +1338,7 @@ fi
 echo "== (3b-iii-a1b) credential-bearing peer config uses one durable transactional writer (R-S11b-4d/R-S11hj) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_path_writes_owner_only_permissions --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::config_transaction --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_reads_legacy_plaintext_id_without_storing --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::config_temp_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::config_parent_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_corrupt_is_preserved_not_overwritten --color never
@@ -12731,6 +12732,11 @@ else
   echo "  ok  R-SV6(b) hbbs_http namespace files absent"
 fi
 ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_hbbs_sync_async|start_hbbs_sync|hbbs_http::sync|mod hbbs_http|signal_receiver\(|is_pro\(' 'R-SV6(b) HBBS heartbeat/sysinfo egress + sync namespace' || rc=1
+if grep -En 'struct Status|STATUS: RwLock|common_store|fn store_<|deserialize_hashmap_string_string' libs/hbb_common/src/config.rs; then
+  echo "  FAIL R-SV6(b): retired status store or unused generic writer returned"; rc=1
+else
+  echo "  ok  R-SV6(b) retired status store and unused generic writers absent"
+fi
 # R-S18 / Appendix C #22: the viewer's auto-sent OS-credential leak is removed — upstream
 # built `os_login: Some(OSLogin {os-username, os-password})` + the hwid device fingerprint
 # into the LoginRequest on EVERY connect (client.rs create_login_msg), so a substituted

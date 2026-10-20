@@ -169,6 +169,7 @@ obligation mapping, exact comparisons and any counts for their named historical 
 | Direct-only configuration | R-X3/R-X4, R-A4/R-A6 and Appendix C #6; an inert baked constant grants no channel authority | `direct-only-authority-document-role-3a0306a4.json` |
 | Release metadata and codec provenance | Native-codec source/advisory-ledger synchronization; the versioning guide separates release provenance from the specification hash | `codec-specification-provenance-390120c4.json` |
 | Acquisition authority | Complete pinned-input contract and isolated acquisition authority | `acquisition-document-roles-951a4a8e.json` |
+| Cargo tool installation contract | R-S11cm retains both exact producer identities, all pins, read-only inputs/private outputs, explicit digest selection, sealed modes, no-clobber publication, recovery/rollback, executable filesystem cases and the focused source contract. Three historical incident sentences and output-completion claims are removed; separate provenance, producer, cold-artifact, native/device and external-review acceptance remains explicit. Appendix C #232, R-S11cp and executable sources are unchanged. Cold acquisition and release acceptance remain OPEN. | `cargo-tool-contract-bbcef4f6.json` |
 | Session capabilities | R-S19 | `capability-contract-document-role-d9a3e80c.json` |
 | Viewer configuration | R-S15 | `viewer-config-document-role-6f5a56bf.json` |
 | Controlled policy | R-S16 | `policy-funnel-document-role-f88494a4.json` |

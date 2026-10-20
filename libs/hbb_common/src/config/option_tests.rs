@@ -1,6 +1,112 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+#[test]
+fn linux_config_read_links_are_errors_without_source_changes() {
+    use std::os::unix::fs::{symlink, MetadataExt};
+    in_private_process("config::option_tests::linux_config_read_links_are_errors_without_source_changes", |root| {
+        let mut all_refused = true;
+        for kind in ["file", "dangling_file", "parent", "ancestor", "dangling_parent"] {
+            let base = root.join(kind);
+            fs::create_dir(&base).unwrap();
+            let directory_link = matches!(kind, "parent" | "ancestor" | "dangling_parent");
+            let target = base.join("target");
+            let link = base.join("selected");
+            let suffix = if kind == "ancestor" { "child/record.toml" } else { "record.toml" };
+            let (path, target_file) = if directory_link {
+                (link.join(suffix), target.join(suffix))
+            } else { (link.clone(), target.clone()) };
+            let dangling = kind.starts_with("dangling");
+            if !dangling {
+                fs::create_dir_all(target_file.parent().unwrap()).unwrap();
+                fs::write(&target_file, b"answer = 7\n").unwrap();
+            }
+            symlink(&target, &link).unwrap();
+            let before = fs::symlink_metadata(&link).unwrap();
+            let mut refused = true;
+            for _ in 0..2 {
+                refused &= matches!(read_config_file::<toml::Value>(&path), Err(ConfigReadFailure::Unreadable));
+            }
+            let after = fs::symlink_metadata(&link).unwrap();
+            let preserved = before.ino() == after.ino() && before.mode() == after.mode()
+                && after.file_type().is_symlink() && fs::read_link(&link).unwrap() == target
+                && if dangling { !target.exists() } else { fs::read(&target_file).unwrap() == b"answer = 7\n" };
+            println!("OPTION_COMMIT_CONFIG_READ_LINK=observed kind={kind} refused={refused} preserved={preserved}");
+            all_refused &= refused && preserved;
+        }
+        assert!(all_refused);
+    });
+}
+
+#[test]
+fn linux_config_read_peer_views_and_mutation_refuse_linked_source() {
+    use std::os::unix::fs::symlink;
+    in_private_process("config::option_tests::linux_config_read_peer_views_and_mutation_refuse_linked_source", |root| {
+        let id = "linked-peer-source";
+        let path = PeerConfig::path(id);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let target = root.join("outside-peer.toml");
+        let source = b"[options]\nalias = 'linked source'\n[info]\nhostname = 'host'\nplatform = 'Linux'\n";
+        fs::write(&target, source).unwrap();
+        symlink(&target, &path).unwrap();
+        let mut refused = true;
+        for _ in 0..2 {
+            refused &= [
+                PeerConfig::read_option(id, "alias").is_err(),
+                PeerConfig::ui_info_json(id).is_err(),
+                PeerConfig::credential_status(id).is_err(),
+                PeerConfig::load_list_info(path.clone()).is_err(),
+                PeerConfig::load_for_write(id).is_err(),
+            ].iter().all(|result| *result);
+            let (peers, next) = PeerConfig::batch_peers(&[(id.into(), SystemTime::UNIX_EPOCH, path.clone())], 0, None);
+            refused &= peers.is_empty() && next == 1;
+        }
+        let mutation_refused = PeerConfig::set_option(id, "alias", "after".into()).is_err();
+        let preserved = fs::read(&target).unwrap() == source
+            && fs::symlink_metadata(&path).unwrap().file_type().is_symlink();
+        println!("OPTION_COMMIT_CONFIG_READ_PEER=observed views_refused={refused} mutation_refused={mutation_refused} source_preserved={preserved}");
+        fs::remove_file(&path).unwrap();
+        fs::write(&path, source).unwrap();
+        PeerConfig::set_option(id, "alias", "after".into()).unwrap();
+        assert_eq!(PeerConfig::read_option(id, "alias").unwrap(), "after");
+        assert_eq!(fs::read(target).unwrap(), source);
+        assert!(refused && mutation_refused && preserved);
+    });
+}
+
+#[test]
+fn linux_config_read_regular_missing_and_search_only_controls() {
+    in_private_process("config::option_tests::linux_config_read_regular_missing_and_search_only_controls", |root| {
+        let ancestor = root.join("search-only");
+        let parent = ancestor.join("config");
+        fs::create_dir_all(&parent).unwrap();
+        let path = parent.join("record.toml");
+        fs::write(&path, b"answer = 7\n").unwrap();
+        fs::set_permissions(&ancestor, fs::Permissions::from_mode(0o111)).unwrap();
+        let healthy = |path: &Path| match read_config_file::<toml::Value>(path) {
+            Ok(Some(value)) => value.get("answer").and_then(toml::Value::as_integer) == Some(7),
+            _ => false,
+        };
+        let absolute = healthy(&path);
+        let previous = std::env::current_dir().unwrap();
+        std::env::set_current_dir(root).unwrap();
+        let relative = healthy(Path::new("./search-only/config/record.toml"));
+        std::env::set_current_dir(previous).unwrap();
+        fs::set_permissions(&ancestor, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(absolute && relative);
+        let missing = root.join("absent/nested/record.toml");
+        assert!(matches!(read_config_file::<toml::Value>(&missing), Ok(None)));
+        assert!(!root.join("absent").exists());
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        assert_eq!(fs::read(&path).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        let denied = matches!(read_config_file::<toml::Value>(&path), Err(ConfigReadFailure::Unreadable));
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(denied && healthy(&path));
+        assert_eq!(fs::read(path).unwrap(), b"answer = 7\n");
+        println!("OPTION_COMMIT_CONFIG_READ_CONTROL=pass absolute=true relative=true search_only=true missing_no_create=true eacces=true");
+    });
+}
+
 #[cfg(target_os = "linux")]
 fn config_parent_acl(directory: &Path, mask: u16) -> Vec<u8> {
     use std::os::unix::io::AsRawFd;

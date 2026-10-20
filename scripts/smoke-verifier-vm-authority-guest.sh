@@ -3245,6 +3245,9 @@ run_focused_rust_tests() {
                 config::option_tests::config_parent_writable_modes_refuse_without_mutation
                 config::option_tests::config_parent_acl_write_mask_refuses_without_mutation
                 config::option_tests::config_parent_safe_modes_and_masked_acl_remain_functional
+                config::option_tests::linux_config_read_links_are_errors_without_source_changes
+                config::option_tests::linux_config_read_peer_views_and_mutation_refuse_linked_source
+                config::option_tests::linux_config_read_regular_missing_and_search_only_controls
                 config::option_tests::peer_load_status_controls_preserve_missing_denied_and_directory
                 config::option_tests::peer_option_read_preserves_credentials_and_file_identity
                 config::option_tests::peer_option_read_corrupt_records_refuse_without_recovery

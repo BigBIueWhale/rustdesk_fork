@@ -7,6 +7,47 @@ import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get.dart';
 
+class DefaultOptionCheckbox extends StatelessWidget {
+  const DefaultOptionCheckbox({
+    super.key,
+    required this.optionKey,
+    required this.label,
+    required this.value,
+    required this.falseValue,
+    required this.enabled,
+    required this.saveOption,
+    required this.failureText,
+  });
+
+  final String optionKey;
+  final String label;
+  final String value;
+  final String falseValue;
+  final bool enabled;
+  final Future<String?> Function(String, String) saveOption;
+  final String failureText;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = value == 'Y';
+    change(bool next) async {
+      await saveOption(optionKey, next ? 'Y' : falseValue);
+    }
+
+    return GestureDetector(
+      child: Row(children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 5),
+          child: Checkbox(value: selected,
+              onChanged: enabled ? (_) => change(!selected) : null),
+        ),
+        Expanded(child: Text(label)),
+      ]),
+      onTap: enabled ? () => change(!selected) : null,
+    );
+  }
+}
+
 class CustomImageQualityWidget extends StatefulWidget {
   const CustomImageQualityWidget({
     super.key,

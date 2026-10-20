@@ -122,7 +122,148 @@ Widget _settingCheckboxPage({
 Checkbox _settingCheckbox(WidgetTester tester) =>
     tester.widget<Checkbox>(find.byType(Checkbox));
 
+Widget _defaultCheckboxPage({
+  String optionKey = 'show-remote-cursor',
+  String value = '',
+  String falseValue = '',
+  bool enabled = true,
+  required Future<String?> Function(String, String) save,
+}) => MaterialApp(theme: MyTheme.lightTheme, home: Scaffold(body: SizedBox(
+  width: 320,
+  child: DefaultOptionCheckbox(optionKey: optionKey, label: 'Default option',
+    value: value, falseValue: falseValue, enabled: enabled,
+    saveOption: save, failureText: 'Failed'),
+)));
+
 void main() {
+  testWidgets('default checkbox owns one pending save through parent rebuild', (tester) async {
+    final pending = Completer<String?>();
+    final writes = <String>[];
+    Future<String?> save(String key, String value) {
+      writes.add('$key=$value'); return pending.future;
+    }
+    await tester.pumpWidget(_defaultCheckboxPage(save: save));
+    final callback = _settingCheckbox(tester).onChanged!;
+    callback(true);
+    callback(true);
+    await tester.pumpWidget(_defaultCheckboxPage(save: save));
+    final disabled = _settingCheckbox(tester).onChanged == null;
+    final progress = find.byType(LinearProgressIndicator).evaluate().length;
+    callback(true);
+    pending.complete('Y');
+    await tester.pump();
+    expect(writes, ['show-remote-cursor=Y']);
+    expect(disabled, isTrue);
+    expect(progress, 1);
+    expect(_settingCheckbox(tester).value, isTrue);
+    expect(_settingCheckbox(tester).onChanged, isNotNull);
+  });
+
+  testWidgets('default checkbox refusal and mismatch preserve identical retry', (tester) async {
+    final writes = <String>[];
+    await tester.pumpWidget(_defaultCheckboxPage(save: (key, value) async {
+      writes.add('$key=$value');
+      return writes.length == 1 ? null : writes.length == 2 ? '' : 'Y';
+    }));
+    for (var attempt = 0; attempt < 2; attempt++) {
+      _settingCheckbox(tester).onChanged!(true);
+      await tester.pump();
+      expect(_settingCheckbox(tester).value, isFalse);
+      expect(find.text('Failed'), findsOneWidget);
+      expect(_settingCheckbox(tester).onChanged, isNotNull);
+    }
+    _settingCheckbox(tester).onChanged!(true);
+    await tester.pump();
+    expect(writes, List.filled(3, 'show-remote-cursor=Y'));
+    expect(_settingCheckbox(tester).value, isTrue);
+    expect(find.text('Failed'), findsNothing);
+  });
+
+  testWidgets('default checkbox catches save errors and keeps the choice retryable', (tester) async {
+    final escaped = <Object>[];
+    var writes = 0;
+    await tester.pumpWidget(_defaultCheckboxPage(save: (key, value) {
+      writes++;
+      if (writes == 1) throw StateError('dispatch refused');
+      if (writes == 2) return Future.error(StateError('storage refused'));
+      return Future.value(value);
+    }));
+    for (var attempt = 0; attempt < 2; attempt++) {
+      runZonedGuarded(() => _settingCheckbox(tester).onChanged!(true),
+          (Object error, StackTrace stack) => escaped.add(error));
+      await tester.pump();
+      expect(escaped, isEmpty);
+      expect(_settingCheckbox(tester).value, isFalse);
+      expect(find.text('Failed'), findsOneWidget);
+      expect(_settingCheckbox(tester).onChanged, isNotNull);
+    }
+    _settingCheckbox(tester).onChanged!(true);
+    await tester.pump();
+    expect(writes, 3);
+    expect(_settingCheckbox(tester).value, isTrue);
+  });
+
+  testWidgets('default checkbox disabled and retired callbacks cannot save', (tester) async {
+    final writes = <String>[];
+    Future<String?> save(String key, String value) async {
+      writes.add('$key=$value'); return value;
+    }
+    await tester.pumpWidget(_defaultCheckboxPage(save: save));
+    final callback = _settingCheckbox(tester).onChanged!;
+    await tester.pumpWidget(_defaultCheckboxPage(save: save, enabled: false));
+    callback(true);
+    await tester.pump();
+    final disabledWrites = List<String>.of(writes);
+    await tester.pumpWidget(_defaultCheckboxPage(save: save));
+    final retired = _settingCheckbox(tester).onChanged!;
+    await tester.pumpWidget(const SizedBox.shrink());
+    retired(true);
+    await tester.pump();
+    expect(disabledWrites, isEmpty);
+    expect(writes, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('default checkbox replacement retires the old option owner', (tester) async {
+    final pending = Completer<String?>();
+    final writes = <String>[];
+    await tester.pumpWidget(_defaultCheckboxPage(save: (key, value) {
+      writes.add('$key=$value'); return pending.future;
+    }));
+    final oldCallback = _settingCheckbox(tester).onChanged!;
+    oldCallback(true);
+    await tester.pumpWidget(_defaultCheckboxPage(optionKey: 'mute',
+      save: (key, value) async { writes.add('$key=$value'); return value; }));
+    oldCallback(true);
+    pending.complete('Y');
+    await tester.pump();
+    expect(_settingCheckbox(tester).value, isFalse);
+    _settingCheckbox(tester).onChanged!(true);
+    await tester.pump();
+    expect(writes, ['show-remote-cursor=Y', 'mute=Y']);
+    expect(_settingCheckbox(tester).value, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('default checkbox preserves empty and explicit false encodings', (tester) async {
+    final writes = <String>[];
+    for (final falseValue in ['', 'N']) {
+      for (final value in ['', 'N', 'Y']) {
+        await tester.pumpWidget(_defaultCheckboxPage(value: value,
+          falseValue: falseValue, save: (key, selected) async {
+            writes.add('$key=$selected'); return selected;
+          }));
+        await tester.tap(find.text('Default option'));
+        await tester.pumpAndSettle();
+        expect(writes.last, 'show-remote-cursor=${value == 'Y' ? falseValue : 'Y'}');
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    }
+    expect(writes, ['show-remote-cursor=Y', 'show-remote-cursor=Y',
+      'show-remote-cursor=', 'show-remote-cursor=Y',
+      'show-remote-cursor=Y', 'show-remote-cursor=N']);
+  });
+
   testWidgets('setting checkbox pending commit survives parent rebuild', (tester) async {
     final pending = Completer<bool?>();
     final notifications = <bool>[];

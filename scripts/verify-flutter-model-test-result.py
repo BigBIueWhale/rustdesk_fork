@@ -317,6 +317,12 @@ HOLD_DRAG_TESTS = {
 }
 
 SETTING_OPTION_TESTS = {
+    "default checkbox owns one pending save through parent rebuild",
+    "default checkbox refusal and mismatch preserve identical retry",
+    "default checkbox catches save errors and keeps the choice retryable",
+    "default checkbox disabled and retired callbacks cannot save",
+    "default checkbox replacement retires the old option owner",
+    "default checkbox preserves empty and explicit false encodings",
     "setting checkbox pending commit survives parent rebuild",
     "setting checkbox serializes captured callbacks through rebuild",
     "setting checkbox rejected readback retries the identical choice",

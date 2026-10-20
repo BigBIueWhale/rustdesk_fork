@@ -10,12 +10,14 @@ use async_trait::async_trait;
 use hbb_common::anyhow::anyhow;
 #[cfg(all(target_os = "windows", not(feature = "flutter")))]
 use hbb_common::config::keys;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use hbb_common::config::MAX_OWNED_PORT_FORWARD_MAPPINGS;
 #[cfg(not(feature = "flutter"))]
 use hbb_common::fs;
 use hbb_common::ResultType;
 use hbb_common::{
     allow_err, bail,
-    config::{Config, LocalConfig, PeerConfig, MAX_OWNED_PORT_FORWARD_MAPPINGS},
+    config::{Config, LocalConfig, PeerConfig},
     get_version_number, log,
     message_proto::*,
     rendezvous_proto::ConnType,
@@ -835,6 +837,10 @@ impl<T: InvokeUiSession> Session<T> {
         remote_host: String,
         remote_port: i32,
     ) -> ResultType<()> {
+        if port != 0 && !(1..=u16::MAX as i32).contains(&port) {
+            bail!("Invalid local port-forward port");
+        }
+        PortForwardTarget::new(remote_host.clone(), remote_port)?;
         let pf = (port, remote_host, remote_port);
         let added = self.lc.write().unwrap().add_port_forward(&pf)?;
         if added {

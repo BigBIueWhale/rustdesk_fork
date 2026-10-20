@@ -3485,7 +3485,7 @@ impl PeerConfig {
         id: &str,
         mapping: &(i32, String, i32),
     ) -> crate::ResultType<(Vec<(i32, String, i32)>, bool)> {
-        let mut config = Self::load(id);
+        let mut config = Self::load_for_write(id)?;
         if config.port_forwards.iter().any(|entry| entry.0 == mapping.0) {
             return Ok((config.port_forwards, false));
         }
@@ -3495,17 +3495,16 @@ impl PeerConfig {
             ));
         }
         config.port_forwards.push(mapping.clone());
-        if let Err(err) = config.store(id) {
-            log::error!("Failed to save port-forward mappings: {err}");
-        }
+        config.store(id)?;
         Ok((config.port_forwards, true))
     }
 
     pub fn remove_port_forward(id: &str, port: i32) -> crate::ResultType<Vec<(i32, String, i32)>> {
-        let mut config = Self::load(id);
+        let mut config = Self::load_for_write(id)?;
+        let previous_len = config.port_forwards.len();
         config.port_forwards.retain(|entry| entry.0 != port);
-        if let Err(err) = config.store(id) {
-            log::error!("Failed to save port-forward mappings: {err}");
+        if config.port_forwards.len() != previous_len {
+            config.store(id)?;
         }
         Ok(config.port_forwards)
     }

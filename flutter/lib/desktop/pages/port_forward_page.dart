@@ -200,22 +200,36 @@ class _PortForwardPageState extends State<PortForwardPage>
             inputFormatters: portInputFormatter),
         ElevatedButton(
           onPressed: () async {
-            int? localPort = int.tryParse(localPortController.text);
-            int? remotePort = int.tryParse(remotePortController.text);
+            if (!mounted) return;
+            final localDraft = localPortController.text;
+            final hostDraft = remoteHostController.text;
+            final remoteDraft = remotePortController.text;
+            int? localPort = int.tryParse(localDraft);
+            int? remotePort = int.tryParse(remoteDraft);
             if (localPort != null &&
                 remotePort != null &&
-                (remoteHostController.text.isEmpty ||
-                    remoteHostController.text.trim().isNotEmpty)) {
-              await bind.sessionAddPortForward(
-                  sessionId: _ffi.sessionId,
-                  localPort: localPort,
-                  remoteHost: remoteHostController.text.trim().isEmpty
-                      ? 'localhost'
-                      : remoteHostController.text.trim(),
-                  remotePort: remotePort);
-              localPortController.clear();
-              remoteHostController.clear();
-              remotePortController.clear();
+                (hostDraft.isEmpty || hostDraft.trim().isNotEmpty)) {
+              try {
+                await bind.sessionAddPortForward(
+                    sessionId: _ffi.sessionId,
+                    localPort: localPort,
+                    remoteHost: hostDraft.trim().isEmpty
+                        ? 'localhost'
+                        : hostDraft.trim(),
+                    remotePort: remotePort);
+              } catch (e) {
+                debugPrint("Failed to add tunnel:$e");
+                if (mounted) showToast(translate('Failed'));
+                return;
+              }
+              if (!mounted) return;
+              if (localPortController.text == localDraft &&
+                  remoteHostController.text == hostDraft &&
+                  remotePortController.text == remoteDraft) {
+                localPortController.clear();
+                remoteHostController.clear();
+                remotePortController.clear();
+              }
               refreshTunnelConfig();
             }
           },
@@ -268,8 +282,16 @@ class _PortForwardPageState extends State<PortForwardPage>
           child: IconButton(
             icon: const Icon(Icons.close),
             onPressed: () async {
-              await bind.sessionRemovePortForward(
-                  sessionId: _ffi.sessionId, localPort: pf.localPort);
+              if (!mounted) return;
+              try {
+                await bind.sessionRemovePortForward(
+                    sessionId: _ffi.sessionId, localPort: pf.localPort);
+              } catch (e) {
+                debugPrint("Failed to remove tunnel:$e");
+                if (mounted) showToast(translate('Failed'));
+                return;
+              }
+              if (!mounted) return;
               refreshTunnelConfig();
             },
           ),

@@ -14821,7 +14821,7 @@ pf_setup=$(awk '/async fn connect_and_login/,/^}/' src/port_forward.rs)
 if grep -qE 'forward\.next|Data::Login|Data::Message|Vec::new' <<<"$pf_setup"; then r_t17_missing="$r_t17_missing prelogin-local-read-or-obsolete-control"; fi
 grep -qF 'relay_after_authorization(setup' src/port_forward.rs || r_t17_missing="$r_t17_missing authorization-before-relay"
 if grep -qF 'allow_err!' src/port_forward.rs; then r_t17_missing="$r_t17_missing silent-tunnel-io-error"; fi
-grep -qF 'pub(crate) const MAX_OWNED_PORT_FORWARD_MAPPINGS: usize = 32;' src/port_forward.rs || r_t17_missing="$r_t17_missing process-mapping-cap"
+grep -qF 'pub const MAX_OWNED_PORT_FORWARD_MAPPINGS: usize = 32;' libs/hbb_common/src/config.rs || r_t17_missing="$r_t17_missing process-mapping-cap"
 grep -qF 'fn try_acquire() -> Result<Self, String>' src/port_forward.rs || r_t17_missing="$r_t17_missing opaque-process-mapping-admission"
 if grep -qE 'PortForwardMappingPermit::try_acquire\([^)]' src/port_forward.rs src/ui_session_interface.rs; then r_t17_missing="$r_t17_missing caller-selected-mapping-semaphore"; fi
 grep -qF 'mpsc::channel(1)' src/port_forward.rs || r_t17_missing="$r_t17_missing one-slot-mapping-control"

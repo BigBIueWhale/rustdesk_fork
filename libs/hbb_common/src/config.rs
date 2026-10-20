@@ -2430,6 +2430,20 @@ fn store_config_bytes_transaction_unix(
     }
 
     let parent = open_parent(path)?;
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::MetadataExt;
+
+        let metadata = parent.metadata()?;
+        if !metadata.file_type().is_dir()
+            || metadata.uid() != unsafe { crate::libc::geteuid() }
+            || metadata.mode() & 0o022 != 0
+        {
+            return Err(anyhow!(
+                "Config directory failed ownership/write-permission verification"
+            ));
+        }
+    }
     let parent_fd = parent.as_raw_fd();
     let final_name = component(
         path.file_name()

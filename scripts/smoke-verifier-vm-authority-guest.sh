@@ -3206,6 +3206,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_digest_matching_subseconds_keep_overwrite_hint
                 fs::tests::file_metadata_rename_existing_targets_are_preserved
                 fs::tests::file_metadata_rename_late_collision_is_atomic
+                fs::tests::file_metadata_rename_rechecks_source_after_retired_hardlink
                 fs::tests::file_metadata_rename_vacant_names_and_noops_preserve_entries
                 fs::tests::file_metadata_mutations_refuse_file_directory_suffixes
                 fs::tests::file_metadata_directory_mutations_refuse_terminal_dot

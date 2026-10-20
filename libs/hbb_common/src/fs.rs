@@ -1599,7 +1599,9 @@ fn unix_rename_admitted_entry(
     target_name: &std::ffi::CStr,
     admitted: &crate::libc::stat,
 ) -> std::io::Result<()> {
-    unix_rename_admitted_entry_with(parent, source_name, target_name, admitted, || Ok(()))
+    unix_rename_admitted_entry_with(parent, source_name, target_name, admitted, || {
+        unix_rename_no_replace(parent, source_name, target_name)
+    })
 }
 
 #[cfg(unix)]
@@ -1608,7 +1610,7 @@ fn unix_rename_admitted_entry_with(
     source_name: &std::ffi::CStr,
     target_name: &std::ffi::CStr,
     admitted: &crate::libc::stat,
-    before_rename: impl FnOnce() -> std::io::Result<()>,
+    rename: impl FnOnce() -> std::io::Result<()>,
 ) -> std::io::Result<()> {
     use std::os::unix::io::AsRawFd;
 
@@ -1622,10 +1624,9 @@ fn unix_rename_admitted_entry_with(
 
     let current = unix_fstatat_no_follow(parent.as_raw_fd(), source_name)?;
     unix_require_same_object(admitted, &current, "rename source")?;
-    before_rename()?;
     // Destination vacancy is enforced atomically. Source identity still has a final name-exchange
     // window on Unix; the identity checks make observable mismatches caller-visible.
-    unix_rename_no_replace(parent, source_name, target_name)?;
+    rename()?;
 
     let renamed = unix_fstatat_no_follow(parent.as_raw_fd(), target_name).map_err(|error| {
         std::io::Error::new(
@@ -5361,7 +5362,7 @@ mod tests {
                     _ => std::fs::write(&target, b"late-target")?,
                 }
                 created.set(identity(&target));
-                Ok(())
+                unix_rename_no_replace(&parent, &source_name, &target_name)
             });
             let refused = result.as_ref().err().and_then(|e| e.raw_os_error()) == Some(crate::libc::EEXIST);
             let preserved = entered.get() && created.get().is_some() && identity(&source) == original
@@ -5370,6 +5371,68 @@ mod tests {
             all_preserved &= refused && preserved;
         }
         assert!(all_preserved);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn file_metadata_rename_rechecks_source_after_retired_hardlink() {
+        use std::os::unix::{fs::MetadataExt, io::AsRawFd};
+
+        let root = TestTempDir::new("rename-source-finality");
+        let identity = |path: &Path| std::fs::symlink_metadata(path)
+            .map(|m| (m.dev(), m.ino(), m.mode())).ok();
+        let fds = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for round in 0..2 {
+            for linked in [false, true] {
+                for replaced in [false, true] {
+                    let base = root.join(format!("{round}-{linked}-{replaced}"));
+                    std::fs::create_dir(&base).unwrap();
+                    let source = base.join("source");
+                    let target = base.join("target");
+                    std::fs::write(&source, b"admitted source").unwrap();
+                    if linked { std::fs::hard_link(&source, &target).unwrap(); }
+                    let original = identity(&source);
+                    let parent = open_parent_dir_no_follow(&base, false).unwrap();
+                    let source_name = cstring_file_name(&source).unwrap();
+                    let target_name = cstring_file_name(&target).unwrap();
+                    let admitted = unix_fstatat_no_follow(parent.as_raw_fd(), &source_name).unwrap();
+                    let mut replacement = None;
+                    let mut renamed = false;
+                    let result = unix_rename_admitted_entry_with(
+                        &parent, &source_name, &target_name, &admitted, || {
+                            if linked { std::fs::remove_file(&target)?; }
+                            unix_rename_no_replace(&parent, &source_name, &target_name)?;
+                            renamed = true;
+                            if replaced {
+                                std::fs::write(&source, b"replacement entry")?;
+                                replacement = identity(&source);
+                            }
+                            Ok(())
+                        },
+                    );
+                    let outcome = if replaced {
+                        result.as_ref().err().map(|error| {
+                            error.kind() == std::io::ErrorKind::PermissionDenied
+                                && error.to_string().contains("source name was replaced before finality")
+                        }).unwrap_or(false)
+                    } else { result.is_ok() };
+                    let preserved = renamed && original.is_some() && identity(&target) == original
+                        && std::fs::read(&target).unwrap() == b"admitted source"
+                        && if replaced {
+                            replacement.is_some() && identity(&source) == replacement
+                                && std::fs::read(&source).unwrap() == b"replacement entry"
+                        } else { identity(&source).is_none() };
+                    println!("FILE_METADATA_RENAME_FINALITY=observed round={round} initial_hardlink={linked} source_replaced={replaced} renamed={renamed} reported_correctly={outcome} preserved={preserved}");
+                    passed &= outcome && preserved;
+                }
+            }
+        }
+        let after_fds = fds();
+        println!("FILE_METADATA_RENAME_FINALITY=handles before={before_fds} after={after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(passed, "a retired destination hard link cannot waive source-name finality");
     }
 
     #[test]

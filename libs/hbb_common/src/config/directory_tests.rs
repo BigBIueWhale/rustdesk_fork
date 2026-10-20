@@ -106,7 +106,8 @@ fn publication_case(test: &str, fail_at: usize) {
         let first_identity = fs::metadata(&first).ok().map(|m| (m.dev(), m.ino()));
         let private: Vec<_> = fs::read_dir(&base).unwrap().map(|e| e.unwrap().path())
             .filter(|p| p.file_name().unwrap().to_string_lossy().starts_with(".config-dir-stage.")).collect();
-        let staged_identity = private.first().map(|p| { let m = fs::metadata(p).unwrap(); (m.dev(), m.ino()) });
+        let staged_file = private.first().map(|p| fs::File::open(p).unwrap());
+        let staged_identity = staged_file.as_ref().map(|f| { let m = f.metadata().unwrap(); (m.dev(), m.ino()) });
         let correct_phase = match fail_at {
             0 => !refused && !file_absent,
             1 => refused && file_absent && first_identity.is_none() && private.is_empty(),
@@ -120,10 +121,12 @@ fn publication_case(test: &str, fail_at: usize) {
         let after = fs::metadata(&first).unwrap();
         let identity = (after.dev(), after.ino());
         let selected_preserved = fail_at != 3 || Some(identity) == first_identity;
-        let unselected_retired = fail_at != 2 || staged_identity.map(|old| old != identity).unwrap_or(false);
+        let unselected_retired = fail_at != 2 || staged_identity.map(|old| old != identity).unwrap_or(false)
+            && staged_file.as_ref().unwrap().metadata().unwrap().nlink() == 0;
         let retry = fs::read(&path).unwrap() == b"healthy retry"
             && fs::metadata(&path).unwrap().mode() & 0o7777 == 0o600
             && private.iter().all(|p| !p.exists()) && selected_preserved && unselected_retired;
+        drop(staged_file);
         let after_fds = fds();
         println!("OPTION_COMMIT_DIRECTORY=retry fail_at={fail_at} correct={retry} selected_preserved={selected_preserved} unselected_retired={unselected_retired}");
         println!("OPTION_COMMIT_DIRECTORY=handles fail_at={fail_at} before={before_fds} after={after_fds}");
@@ -151,4 +154,188 @@ fn directory_postrename_sync_error_recovers_selected_identity() {
 #[test]
 fn directory_normal_publication_and_repeated_save_remain_functional() {
     publication_case("config::option_tests::directory_tests::directory_normal_publication_and_repeated_save_remain_functional", 0);
+}
+fn entries_with_prefix(base: &Path, prefix: &str) -> Vec<PathBuf> {
+    fs::read_dir(base).unwrap().map(|entry| entry.unwrap().path())
+        .filter(|path| path.file_name().unwrap().to_string_lossy().starts_with(prefix)).collect()
+}
+
+fn pending_directory(root: &Path, fail_at: usize) -> (PathBuf, fs::File, PathBuf) {
+    let base = root.join("directory-publication");
+    fs::create_dir(&base).unwrap();
+    fs::set_permissions(&base, fs::Permissions::from_mode(0o700)).unwrap();
+    let directory = fs::File::open(&base).unwrap();
+    observe_directory_sync(&directory, fail_at);
+    let path = base.join("first/second/config.toml");
+    assert!(store_config_bytes_transaction(&path, b"uncommitted", ConfigStoreFault::None).is_err());
+    assert!(!path.exists());
+    assert_eq!(SYNC_CALLS.load(Ordering::Relaxed), fail_at);
+    SYNC_FAIL_AT.store(0, Ordering::Relaxed);
+    (base, directory, path)
+}
+
+fn only_lease(base: &Path) -> PathBuf {
+    let entries = entries_with_prefix(base, ".config-dir-lease.");
+    assert_eq!(entries.len(), 1);
+    entries[0].clone()
+}
+
+#[test]
+fn directory_moved_unselected_tree_refuses_without_adoption() {
+    in_private_process("config::option_tests::directory_tests::directory_moved_unselected_tree_refuses_without_adoption", |root| {
+        let (base, _directory, path) = pending_directory(root, 2);
+        let stages = entries_with_prefix(&base, ".config-dir-stage.");
+        assert_eq!(stages.len(), 1);
+        let retained = fs::File::open(&stages[0]).unwrap();
+        let identity = retained.metadata().unwrap().ino();
+        let lease = only_lease(&base);
+        let journal = fs::read(&lease).unwrap();
+        fs::rename(&stages[0], base.join("first")).unwrap();
+        let sentinel = base.join("first/second/preserve");
+        fs::write(&sentinel, b"preserve moved tree").unwrap();
+        assert!(store_config_bytes_transaction(&path, b"refused", ConfigStoreFault::None).is_err());
+        assert!(!path.exists());
+        assert_eq!(fs::metadata(base.join("first")).unwrap().ino(), identity);
+        assert_eq!(fs::read(&sentinel).unwrap(), b"preserve moved tree");
+        assert_eq!(fs::read(&lease).unwrap(), journal);
+        assert!(!stages[0].exists());
+        assert!(!SYNC_HANDLER_ERROR.load(Ordering::Relaxed));
+        println!("OPTION_COMMIT_DIRECTORY_JOURNAL=moved_unselected refused=true preserved=true");
+    });
+}
+
+#[test]
+fn directory_replaced_selected_tree_refuses_without_mutation() {
+    in_private_process("config::option_tests::directory_tests::directory_replaced_selected_tree_refuses_without_mutation", |root| {
+        let (base, _directory, path) = pending_directory(root, 3);
+        let lease = only_lease(&base);
+        let journal = fs::read(&lease).unwrap();
+        let original = fs::metadata(base.join("first")).unwrap().ino();
+        fs::rename(base.join("first"), base.join("selected-original")).unwrap();
+        fs::create_dir_all(base.join("first/second")).unwrap();
+        fs::set_permissions(base.join("first"), fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(base.join("first/second"), fs::Permissions::from_mode(0o700)).unwrap();
+        let replacement = fs::metadata(base.join("first")).unwrap().ino();
+        assert_ne!(replacement, original);
+        let sentinel = base.join("first/second/preserve");
+        fs::write(&sentinel, b"preserve replacement").unwrap();
+        assert!(store_config_bytes_transaction(&path, b"refused", ConfigStoreFault::None).is_err());
+        assert!(!path.exists());
+        assert_eq!(fs::metadata(base.join("first")).unwrap().ino(), replacement);
+        assert_eq!(fs::metadata(base.join("selected-original")).unwrap().ino(), original);
+        assert_eq!(fs::read(&sentinel).unwrap(), b"preserve replacement");
+        assert_eq!(fs::read(&lease).unwrap(), journal);
+        assert!(!SYNC_HANDLER_ERROR.load(Ordering::Relaxed));
+        println!("OPTION_COMMIT_DIRECTORY_JOURNAL=replaced_selected refused=true preserved=true");
+    });
+}
+
+#[test]
+fn directory_torn_selection_retires_private_identity_and_retries() {
+    in_private_process("config::option_tests::directory_tests::directory_torn_selection_retires_private_identity_and_retries", |root| {
+        let (base, _directory, path) = pending_directory(root, 2);
+        let stages = entries_with_prefix(&base, ".config-dir-stage.");
+        assert_eq!(stages.len(), 1);
+        let retained = fs::File::open(&stages[0]).unwrap();
+        let original = retained.metadata().unwrap().ino();
+        let lease = only_lease(&base);
+        let mut journal = fs::OpenOptions::new().append(true).open(&lease).unwrap();
+        journal.write_all(&[0x40, 0]).unwrap();
+        journal.sync_all().unwrap();
+        drop(journal);
+        store_config_bytes_transaction(&path, b"after torn append", ConfigStoreFault::None).unwrap();
+        assert_eq!(retained.metadata().unwrap().nlink(), 0);
+        assert_ne!(fs::metadata(base.join("first")).unwrap().ino(), original);
+        assert!(!stages[0].exists());
+        assert_eq!(fs::read(&path).unwrap(), b"after torn append");
+        assert_eq!(fs::metadata(&path).unwrap().mode() & 0o7777, 0o600);
+        assert_eq!(fs::metadata(&lease).unwrap().len(), 0);
+        assert!(!SYNC_HANDLER_ERROR.load(Ordering::Relaxed));
+        println!("OPTION_COMMIT_DIRECTORY_JOURNAL=torn_selection retired=true retry=true");
+    });
+}
+
+#[test]
+fn directory_concurrent_first_saves_all_complete() {
+    in_private_process("config::option_tests::directory_tests::directory_concurrent_first_saves_all_complete", |root| {
+        let base = root.join("directory-concurrent");
+        fs::create_dir(&base).unwrap();
+        let before = fs::read_dir("/proc/self/fd").unwrap().count();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let mut threads = Vec::new();
+        for index in 0..8 {
+            let barrier = barrier.clone();
+            let path = base.join(format!("first/second/{index}.toml"));
+            threads.push(std::thread::spawn(move || {
+                barrier.wait();
+                store_config_bytes_transaction(&path, format!("writer {index}").as_bytes(), ConfigStoreFault::None)
+            }));
+        }
+        for thread in threads { thread.join().unwrap().unwrap(); }
+        for index in 0..8 {
+            let path = base.join(format!("first/second/{index}.toml"));
+            assert_eq!(fs::read(&path).unwrap(), format!("writer {index}").as_bytes());
+            assert_eq!(fs::metadata(&path).unwrap().mode() & 0o7777, 0o600);
+        }
+        assert_eq!(fs::metadata(only_lease(&base)).unwrap().len(), 0);
+        assert!(entries_with_prefix(&base, ".config-dir-stage.").is_empty());
+        let after = fs::read_dir("/proc/self/fd").unwrap().count();
+        assert_eq!(before, after);
+        println!("OPTION_COMMIT_DIRECTORY_JOURNAL=concurrent writers=8 joined=8 correct=true before={before} after={after}");
+    });
+}
+
+#[test]
+fn directory_unsafe_journals_refuse_without_creation_or_side_effects() {
+    in_private_process("config::option_tests::directory_tests::directory_unsafe_journals_refuse_without_creation_or_side_effects", |root| {
+        let before = fs::read_dir("/proc/self/fd").unwrap().count();
+        for kind in ["symlink", "fifo", "hardlink", "mode", "oversized", "malformed"] {
+            let base = root.join(kind);
+            fs::create_dir(&base).unwrap();
+            let path = base.join("first/second/config.toml");
+            store_config_bytes_transaction(&path, b"initial", ConfigStoreFault::None).unwrap();
+            let lease = only_lease(&base);
+            fs::remove_dir_all(base.join("first")).unwrap();
+            fs::remove_file(&lease).unwrap();
+            let sentinel = base.join("sentinel");
+            fs::write(&sentinel, b"unchanged sentinel").unwrap();
+            match kind {
+                "symlink" => std::os::unix::fs::symlink(&sentinel, &lease).unwrap(),
+                "fifo" => {
+                    use std::os::unix::ffi::OsStrExt;
+                    let name = std::ffi::CString::new(lease.as_os_str().as_bytes()).unwrap();
+                    assert_eq!(unsafe { crate::libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+                }
+                "hardlink" => fs::hard_link(&sentinel, &lease).unwrap(),
+                "mode" => {
+                    fs::write(&lease, b"").unwrap();
+                    fs::set_permissions(&lease, fs::Permissions::from_mode(0o644)).unwrap();
+                }
+                "oversized" => {
+                    fs::write(&lease, vec![0u8; 512 * 1024]).unwrap();
+                    fs::set_permissions(&lease, fs::Permissions::from_mode(0o600)).unwrap();
+                }
+                "malformed" => {
+                    fs::write(&lease, [1, 0, 0, 0, b'x']).unwrap();
+                    fs::set_permissions(&lease, fs::Permissions::from_mode(0o600)).unwrap();
+                }
+                _ => unreachable!(),
+            }
+            let old = fs::symlink_metadata(&lease).unwrap();
+            let old_bytes = if old.is_file() { Some(fs::read(&lease).unwrap()) } else { None };
+            assert!(store_config_bytes_transaction(&path, b"refused", ConfigStoreFault::None).is_err());
+            assert!(!base.join("first").exists());
+            let after = fs::symlink_metadata(&lease).unwrap();
+            assert_eq!((old.dev(), old.ino(), old.mode(), old.nlink(), old.len()),
+                (after.dev(), after.ino(), after.mode(), after.nlink(), after.len()));
+            if let Some(bytes) = old_bytes { assert_eq!(fs::read(&lease).unwrap(), bytes); }
+            if kind == "symlink" { assert_eq!(fs::read_link(&lease).unwrap(), sentinel); }
+            assert_eq!(fs::read(&sentinel).unwrap(), b"unchanged sentinel");
+            assert!(entries_with_prefix(&base, ".config-dir-stage.").is_empty());
+            println!("OPTION_COMMIT_DIRECTORY_JOURNAL=unsafe kind={kind} refused=true preserved=true");
+        }
+        let after = fs::read_dir("/proc/self/fd").unwrap().count();
+        assert_eq!(before, after);
+        println!("OPTION_COMMIT_DIRECTORY_JOURNAL=unsafe_handles before={before} after={after}");
+    });
 }

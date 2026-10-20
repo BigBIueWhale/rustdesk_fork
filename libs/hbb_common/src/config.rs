@@ -24,6 +24,9 @@ use sodiumoxide::crypto::sign;
 
 mod permanent_password;
 
+#[cfg(target_os = "linux")]
+mod linux_directory;
+
 #[cfg(test)]
 use permanent_password::compute_permanent_password_h1;
 use permanent_password::{
@@ -2515,6 +2518,12 @@ fn store_config_bytes_transaction_unix(
             .map_err(|err| anyhow!("Invalid {context} path component: {err}"))
     }
 
+    #[cfg(target_os = "linux")]
+    fn open_parent(path: &Path) -> Result<fs::File> {
+        linux_directory::open_parent(path)
+    }
+
+    #[cfg(not(target_os = "linux"))]
     fn open_parent(path: &Path) -> Result<fs::File> {
         let parent = path
             .parent()

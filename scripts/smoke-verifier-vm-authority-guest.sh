@@ -3292,6 +3292,7 @@ run_focused_rust_tests() {
             source_fingerprints+=(
                 libs/hbb_common/src/config/option_tests.rs
                 libs/hbb_common/src/config/directory_tests.rs
+                libs/hbb_common/src/config/linux_directory.rs
             )
             required_tests=(
                 config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal
@@ -3412,6 +3413,11 @@ run_focused_rust_tests() {
                 config::option_tests::directory_tests::directory_preselection_sync_error_retires_only_private_tree
                 config::option_tests::directory_tests::directory_postrename_sync_error_recovers_selected_identity
                 config::option_tests::directory_tests::directory_normal_publication_and_repeated_save_remain_functional
+                config::option_tests::directory_tests::directory_moved_unselected_tree_refuses_without_adoption
+                config::option_tests::directory_tests::directory_replaced_selected_tree_refuses_without_mutation
+                config::option_tests::directory_tests::directory_torn_selection_retires_private_identity_and_retries
+                config::option_tests::directory_tests::directory_concurrent_first_saves_all_complete
+                config::option_tests::directory_tests::directory_unsafe_journals_refuse_without_creation_or_side_effects
                 config::option_tests::config_parent_writable_modes_refuse_without_mutation
                 config::option_tests::config_parent_acl_write_mask_refuses_without_mutation
                 config::option_tests::config_parent_safe_modes_and_masked_acl_remain_functional

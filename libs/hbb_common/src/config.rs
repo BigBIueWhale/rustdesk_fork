@@ -4138,16 +4138,16 @@ serde_field_bool!(
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct LocalConfig {
-    #[serde(default, deserialize_with = "deserialize_string")]
+    #[serde(default)]
     remote_id: String, // latest used one
-    #[serde(default, deserialize_with = "deserialize_string")]
+    #[serde(default)]
     kb_layout_type: String,
-    #[serde(default, deserialize_with = "deserialize_vec_string")]
+    #[serde(default)]
     pub fav: Vec<String>,
-    #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
+    #[serde(default)]
     options: HashMap<String, String>,
     // Various data for flutter ui
-    #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
+    #[serde(default)]
     ui_flutter: HashMap<String, String>,
 }
 
@@ -4280,7 +4280,7 @@ impl LocalConfig {
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct UserDefaultConfig {
-    #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
+    #[serde(default)]
     options: HashMap<String, String>,
 }
 

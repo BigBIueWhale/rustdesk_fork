@@ -1,6 +1,161 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+#[cfg(target_arch = "x86_64")]
+fn core_recovery_sync_case(test: &str, mode: &str) {
+    use std::os::unix::fs::MetadataExt;
+
+    in_private_process(test, |root| {
+        assert_ne!(unsafe { crate::libc::getegid() }, 0);
+        let base = root.join("recovery-sync");
+        fs::create_dir(&base).unwrap();
+        let path = base.join("broken.toml");
+        let bytes = b"== invalid TOML [[[";
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        let valid = base.join("valid.toml");
+        fs::write(&valid, b"marker = 'retained'\n").unwrap();
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let directory = fs::File::open(&base).unwrap();
+        directory.sync_all().unwrap();
+        let loaded: ConfigLoad<HashMap<String, String>> = load_path_with_status_after_read(path.clone(), || {
+            let mut matching = Vec::new();
+            let mut scanned = 0;
+            for entry in fs::read_dir("/proc/self/fd").unwrap() {
+                scanned += 1;
+                assert!(scanned < 64);
+                let fd = entry.unwrap().file_name().to_str().unwrap().parse::<i32>().unwrap();
+                let mut stat = std::mem::MaybeUninit::<crate::libc::stat>::uninit();
+                if unsafe { crate::libc::fstat(fd, stat.as_mut_ptr()) } != 0 {
+                    assert_eq!(io::Error::last_os_error().raw_os_error(), Some(crate::libc::EBADF));
+                    continue;
+                }
+                let stat = unsafe { stat.assume_init() };
+                if stat.st_dev as u64 == before.dev() && stat.st_ino as u64 == before.ino() {
+                    matching.push(fd);
+                }
+            }
+            assert_eq!(matching.len(), 1);
+            let source_fd = matching[0];
+            if mode != "healthy" {
+                let statement = |code, k| crate::libc::sock_filter { code: code as u16, jt: 0, jf: 0, k };
+                let jump = |code, k, jt, jf| crate::libc::sock_filter { code: code as u16, jt, jf, k };
+                let load = crate::libc::BPF_LD | crate::libc::BPF_W | crate::libc::BPF_ABS;
+                let equal = crate::libc::BPF_JMP | crate::libc::BPF_JEQ | crate::libc::BPF_K;
+                let bits = crate::libc::BPF_JMP | crate::libc::BPF_JSET | crate::libc::BPF_K;
+                let ret = crate::libc::BPF_RET | crate::libc::BPF_K;
+                let mut filter = [
+                    statement(load, 4),
+                    jump(equal, 0xc000003e, 1, 0),
+                    statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+                    statement(load, 0),
+                    jump(bits, 0x40000000, 0, 1),
+                    statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+                    jump(equal, crate::libc::SYS_fsync as u32, 0, 3),
+                    statement(load, 16),
+                    jump(equal, source_fd as u32, u8::from(mode == "parent"), u8::from(mode == "file")),
+                    statement(ret, crate::libc::SECCOMP_RET_ERRNO | crate::libc::EIO as u32),
+                    statement(ret, crate::libc::SECCOMP_RET_ALLOW),
+                ];
+                let program = crate::libc::sock_fprog { len: filter.len() as u16, filter: filter.as_mut_ptr() };
+                assert_eq!(unsafe { crate::libc::prctl(crate::libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) }, 0);
+                assert_eq!(unsafe {
+                    crate::libc::syscall(crate::libc::SYS_seccomp, crate::libc::SECCOMP_SET_MODE_FILTER,
+                        crate::libc::SECCOMP_FILTER_FLAG_TSYNC, &program)
+                }, 0, "install child fsync filter: {}", io::Error::last_os_error());
+            }
+            let file_errno = if unsafe { crate::libc::fsync(source_fd) } == 0 {
+                0
+            } else { io::Error::last_os_error().raw_os_error().unwrap() };
+            let directory_result = directory.sync_all();
+            let directory_errno = directory_result.as_ref().err().and_then(io::Error::raw_os_error).unwrap_or(0);
+            assert_eq!(file_errno, if mode == "file" { crate::libc::EIO } else { 0 });
+            assert_eq!(directory_errno, if mode == "parent" { crate::libc::EIO } else { 0 });
+            println!("OPTION_COMMIT_RECOVERY_SYNC=probe mode={mode} file_errno={file_errno} directory_errno={directory_errno}");
+        });
+        drop(directory);
+        let backup = base.join(config_recovery_file_name(&path, 0).unwrap());
+        let backup = fs::read_dir(&base).unwrap().map(|entry| entry.unwrap().path())
+            .find(|entry| entry.file_name().unwrap().to_string_lossy().starts_with("config.corrupt."))
+            .unwrap_or(backup);
+        let preserved = fs::metadata(&backup).map(|after| {
+            (after.dev(), after.ino()) == (before.dev(), before.ino())
+                && after.mode() & 0o777 == 0o600 && after.nlink() == 1
+                && fs::read(&backup).unwrap() == bytes
+        }).unwrap_or(false) && !path.exists();
+        let expected = if mode == "healthy" { ConfigLoadStatus::Corrupt } else { ConfigLoadStatus::TransientError };
+        let correct = loaded.status == expected && loaded.value.is_empty();
+        let valid_loaded: ConfigLoad<HashMap<String, String>> = load_path_with_status(valid);
+        let valid_control = valid_loaded.status == ConfigLoadStatus::Loaded
+            && valid_loaded.value.get("marker").map(String::as_str) == Some("retained");
+        let after_fds = fds();
+        println!("OPTION_COMMIT_RECOVERY_SYNC=observed mode={mode} status={:?} correct={correct} backup_preserved={preserved} valid_control={valid_control}", loaded.status);
+        println!("OPTION_COMMIT_RECOVERY_SYNC=handles mode={mode} before={before_fds} after={after_fds}");
+        assert!(correct && preserved && valid_control);
+        assert_eq!(before_fds, after_fds);
+    });
+}
+
+#[test]
+#[cfg(target_arch = "x86_64")]
+fn core_recovery_file_sync_error_is_transient() {
+    core_recovery_sync_case("config::option_tests::core_recovery_file_sync_error_is_transient", "file");
+}
+
+#[test]
+#[cfg(target_arch = "x86_64")]
+fn core_recovery_parent_sync_error_is_transient() {
+    core_recovery_sync_case("config::option_tests::core_recovery_parent_sync_error_is_transient", "parent");
+}
+
+#[test]
+#[cfg(target_arch = "x86_64")]
+fn core_recovery_success_syncs_and_preserves() {
+    core_recovery_sync_case("config::option_tests::core_recovery_success_syncs_and_preserves", "healthy");
+}
+
+#[test]
+fn core_recovery_requires_syncable_parent_before_publication() {
+    use std::os::unix::fs::MetadataExt;
+    in_private_process("config::option_tests::core_recovery_requires_syncable_parent_before_publication", |root| {
+        let base = root.join("recovery-parent-read");
+        fs::create_dir(&base).unwrap();
+        let path = base.join("broken.toml");
+        let bytes = b"== invalid TOML [[[";
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        let valid = base.join("valid.toml");
+        fs::write(&valid, b"marker = 'retained'\n").unwrap();
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o300)).unwrap();
+        let valid_loaded: ConfigLoad<HashMap<String, String>> = load_path_with_status(valid);
+        let valid_control = valid_loaded.status == ConfigLoadStatus::Loaded
+            && valid_loaded.value.get("marker").map(String::as_str) == Some("retained");
+        let loaded: ConfigLoad<HashMap<String, String>> = load_path_with_status(path.clone());
+        let refused = loaded.status == ConfigLoadStatus::TransientError;
+        let mode_preserved = fs::metadata(&base).unwrap().mode() & 0o777 == 0o300;
+        let preserved = fs::metadata(&path).map(|after| {
+            (after.dev(), after.ino(), after.mode()) == (before.dev(), before.ino(), before.mode())
+                && fs::read(&path).unwrap() == bytes
+        }).unwrap_or(false);
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o700)).unwrap();
+        let retried: ConfigLoad<HashMap<String, String>> = load_path_with_status(path.clone());
+        let backups = fs::read_dir(&base).unwrap().map(|entry| entry.unwrap().path())
+            .filter(|entry| entry.file_name().unwrap().to_string_lossy().starts_with("config.corrupt.")).collect::<Vec<_>>();
+        let recovered = retried.status == ConfigLoadStatus::Corrupt && !path.exists() && backups.len() == 1
+            && fs::read(&backups[0]).unwrap() == bytes;
+        let after_fds = fds();
+        println!("OPTION_COMMIT_RECOVERY_SYNC=preflight refused={refused} source_preserved={preserved} mode_preserved={mode_preserved} valid_control={valid_control} retry_recovered={recovered}");
+        println!("OPTION_COMMIT_RECOVERY_SYNC=handles mode=preflight before={before_fds} after={after_fds}");
+        assert!(refused && preserved && mode_preserved && valid_control && recovered);
+        assert_eq!(before_fds, after_fds);
+    });
+}
+
 fn config_store_native_name_round_trip(path: &Path) -> bool {
     use std::os::unix::{ffi::OsStrExt, fs::MetadataExt};
     fs::write(path, b"marker = 'native-probe'\n").unwrap();

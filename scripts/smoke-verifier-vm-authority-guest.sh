@@ -3323,6 +3323,10 @@ run_focused_rust_tests() {
                 config::option_tests::core_recovery_read_owners_retire_on_every_outcome
                 config::option_tests::core_recovery_full_length_native_names_archive_exact_sources
                 config::option_tests::core_recovery_native_name_tags_separate_sources_and_preserve_collisions
+                config::option_tests::core_recovery_file_sync_error_is_transient
+                config::option_tests::core_recovery_parent_sync_error_is_transient
+                config::option_tests::core_recovery_success_syncs_and_preserves
+                config::option_tests::core_recovery_requires_syncable_parent_before_publication
                 config::option_tests::config_store_invalid_paths_preserve_namespace
                 config::option_tests::config_store_overlong_paths_refuse_before_creation
                 config::option_tests::config_store_path_controls_round_trip

@@ -31,6 +31,7 @@ def test_observer_age(environment):
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 typedef void Display;
 typedef struct { int unused; } ViewerWindow;
 typedef struct { int failed; } SourceHistory;

@@ -1968,15 +1968,20 @@ impl<T> ConfigLoad<T> {
     }
 }
 
-fn read_config_view<T: serde::de::DeserializeOwned + Default>(
+enum ConfigReadFailure {
+    Corrupt,
+    Unreadable,
+}
+
+fn read_config_file<T: serde::de::DeserializeOwned>(
     path: &Path,
-) -> crate::ResultType<T> {
+) -> Result<Option<T>, ConfigReadFailure> {
     #[cfg(windows)]
     let bytes = if windows_machine_config::contains(path) {
         windows_machine_config::read(path)
     } else {
         windows_config_acl::verify_config_path_for_read(path)
-            .map_err(|_| anyhow!("Failed to read configuration view"))?;
+            .map_err(|_| ConfigReadFailure::Unreadable)?;
         fs::read(path)
     };
     #[cfg(not(windows))]
@@ -1984,13 +1989,22 @@ fn read_config_view<T: serde::de::DeserializeOwned + Default>(
     match bytes {
         Ok(bytes) => {
             let text = std::str::from_utf8(&bytes)
-                .map_err(|_| anyhow!("Failed to read configuration view"))?;
+                .map_err(|_| ConfigReadFailure::Corrupt)?;
             toml::from_str(text)
-                .map_err(|_| anyhow!("Failed to read configuration view"))
+                .map(Some)
+                .map_err(|_| ConfigReadFailure::Corrupt)
         }
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(T::default()),
-        Err(_) => Err(anyhow!("Failed to read configuration view")),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err(ConfigReadFailure::Unreadable),
     }
+}
+
+fn read_config_view<T: serde::de::DeserializeOwned + Default>(
+    path: &Path,
+) -> crate::ResultType<T> {
+    read_config_file(path)
+        .map(|value| value.unwrap_or_default())
+        .map_err(|_| anyhow!("Failed to read configuration view"))
 }
 
 pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug>(
@@ -3489,11 +3503,29 @@ impl PeerConfig {
     }
 
     fn load_path_with_status(path: PathBuf) -> PeerConfigLoad {
-        let _lock = CONFIG.read().unwrap();
-        let loaded: ConfigLoad<PeerConfigFile> = load_path_with_status(path.clone());
+        let loaded: ConfigLoad<PeerConfigFile> = match read_config_file(&path) {
+            Ok(Some(file)) => ConfigLoad::new(file, ConfigLoadStatus::Loaded),
+            Ok(None) => ConfigLoad::new(PeerConfigFile::default(), ConfigLoadStatus::NotFound),
+            Err(failure) => {
+                log::error!("Failed to read peer settings");
+                let status = match failure {
+                    ConfigReadFailure::Corrupt => ConfigLoadStatus::Corrupt,
+                    ConfigReadFailure::Unreadable => ConfigLoadStatus::TransientError,
+                };
+                ConfigLoad::new(PeerConfigFile::default(), status)
+            }
+        };
         let mut config = loaded.value.config;
         let mut retired_password_present = loaded.value.retired_password_present;
         let status = loaded.status;
+        if status != ConfigLoadStatus::Loaded {
+            return PeerConfigLoad {
+                value: config,
+                status,
+                retired_password_present,
+            };
+        }
+        let _lock = CONFIG.read().unwrap();
         let (password_prs, _, mut store) =
             decrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION);
         config.password_prs = password_prs;

@@ -640,7 +640,6 @@ abstract class BasePeerCard extends StatelessWidget {
         renameDialog(
             oldName: oldName,
             onSubmit: (String newName, bool Function() isCurrent) async {
-              if (newName == oldName) return true;
               if (!await mainSetPeerOption(id, 'alias', newName,
                   reloadPeers: _update)) return false;
               if (isCurrent()) showToast(translate('Successful'));

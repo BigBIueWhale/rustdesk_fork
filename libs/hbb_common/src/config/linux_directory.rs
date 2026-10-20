@@ -54,8 +54,8 @@ fn open_dir(parent: i32, name: &CStr, readable: bool) -> io::Result<File> {
     else { Ok(unsafe { File::from_raw_fd(fd) }) }
 }
 
-fn optional_dir(parent: &File, name: &CStr) -> Result<Option<File>> {
-    match open_dir(parent.as_raw_fd(), name, true) {
+fn optional_dir(parent: &File, name: &CStr, readable: bool) -> Result<Option<File>> {
+    match open_dir(parent.as_raw_fd(), name, readable) {
         Ok(file) => Ok(Some(file)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.into()),
@@ -192,6 +192,41 @@ fn selected_chain(root: &File, record: &Record, private: bool) -> Result<()> {
             require_named(&current, &name, &next)?;
             current = next;
         }
+    }
+    Ok(())
+}
+
+fn retire_empty_reservation(lease: &Lease, parent: &File, record: &Record, root: &File) -> Result<()> {
+    let metadata = root.metadata()?;
+    // Before fchmod, mkdir may leave only owner bits plus inherited set-group-ID.
+    if !metadata.is_dir() || metadata.dev() != record.parent[0]
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.mode() & 0o5077 != 0 || record.root.is_some() || record.selected.is_some()
+    {
+        return Err(anyhow!("Unrecorded directory reservation metadata is unsafe"));
+    }
+    let stage = CString::new(record.stage.as_bytes())?;
+    let target = component(&record.target)?;
+    lease.require_current(parent)?;
+    require_named(parent, &stage, root)?;
+    if named(parent, &target)?.is_some() {
+        return Err(anyhow!("Unrecorded configuration directory left its private reservation"));
+    }
+    let namespace = parent.metadata()?;
+    let uid = unsafe { libc::geteuid() };
+    let private = namespace.uid() == uid && namespace.mode() & 0o022 == 0;
+    let sticky = namespace.mode() & libc::S_ISVTX != 0
+        && (namespace.uid() == uid || namespace.uid() == 0);
+    if [namespace.dev(), namespace.ino()] != record.parent || !(private || sticky) {
+        return Err(anyhow!("Unrecorded directory reservation has no protected namespace"));
+    }
+    // mkdir may precede fchmod/identity logging. The kernel permits only an empty
+    // reservation to be removed; never read, normalize or adopt this directory.
+    if unsafe { libc::unlinkat(parent.as_raw_fd(), stage.as_ptr(), libc::AT_REMOVEDIR) } != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    if root.metadata()?.nlink() != 0 {
+        return Err(anyhow!("Retired directory reservation remains linked"));
     }
     Ok(())
 }
@@ -417,14 +452,18 @@ impl Lease {
         self.file.sync_all()?;
         let sync_parent = open_dir(parent.as_raw_fd(), dot()?, true)?;
         let stage_name = CString::new(record.stage.as_bytes())?;
-        let stage = optional_dir(parent, &stage_name)?;
-        let public = optional_dir(parent, target)?;
+        let stage = optional_dir(parent, &stage_name, record.root.is_some())?;
+        let public = optional_dir(parent, target, true)?;
         if record.selected.is_none() {
             if public.is_some() {
                 return Err(anyhow!("Unselected configuration directory moved or target is occupied"));
             }
             if let Some(stage) = stage {
-                retire_private(self, &sync_parent, &record, &stage)?;
+                if record.root.is_some() {
+                    retire_private(self, &sync_parent, &record, &stage)?;
+                } else {
+                    retire_empty_reservation(self, &sync_parent, &record, &stage)?;
+                }
             }
             sync_parent.sync_all()?;
             return self.clear(parent);

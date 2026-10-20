@@ -7473,8 +7473,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `gui/<effective-uid>/<label>` LaunchAgent. Both require the containing domain before classifying target absence;
   removal uses checked `bootout` plus an absence recheck, while install/restart uses checked `enable` and
   `bootstrap` plus a present-state recheck. Uninstall proves target absence before deleting privileged artifacts.
-  The focused production-source invariant guards those command and ordering properties. It does not execute
-  launchd. Exact signed installed artifacts still require the full present/absent/disabled/wrong-domain,
+  The Python launchd spelling checker, its shared invocation and the duplicate shared/Apple lifecycle
+  wording gates are deleted: source strings, counts and order do not establish command-result propagation
+  or launchd state. The real Rust effective-UID/domain/target regression remains, as do the separate
+  command-descriptor, environment and helper-identity checks. No native lifecycle execution is claimed.
+  Exact signed installed artifacts still require the full present/absent/disabled/wrong-domain,
   partial-install, failure, retry, upgrade, logout/user-switch, restart, uninstall, abrupt-exit, state-agreement,
   and resource-cleanup matrix on supported macOS versions.
 - **R-S11bj/R-S11e-76 — Android APK builder container and source authority — SOURCE CLOSED; CURRENT

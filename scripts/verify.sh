@@ -1293,14 +1293,6 @@ else
   echo "  ok  mobile at-rest encryption uses an injected OS-protected storage key; get_uuid is separated; legacy config-keypair ciphertext is decrypt-only and rewrapped"
 fi
 
-echo "== (3b-iii-a1a) macOS launchd explicit-domain lifecycle authority (R-S11bi/R-S11e-75) =="
-if /usr/bin/python3 -I -S scripts/verify-macos-launchd-lifecycle.py --repo .; then
-  echo "  ok  R-S11e-75 macOS daemon/agent lifecycle source uses explicit domains and checked state transitions"
-else
-  echo "  FAIL R-S11e-75 macOS launchd lifecycle retains implicit-domain or legacy completion authority"
-  rc=1
-fi
-
 echo "== (3b-iii-a1a0) compiled Linux installed-executable path regression (R-S11bn/R-S11e-80) =="
 installed_classifier_test='platform::linux::installed_executable_path_tests::r_s11e80_linux_installed_classifier_requires_an_exact_supported_executable'
 installed_classifier_output="$VERIFY_TMP/installed-classifier-test.out"
@@ -8498,7 +8490,7 @@ fi
 if [ -n "$r_s11c5" ]; then echo "  FAIL R-S11c-5 macOS privileged service packaging:$r_s11c5"; rc=1; else
   echo "  ok  R-S11c-5 macOS LaunchDaemon uses a signed root-owned PrivilegedHelperTools executable, and _service IPC identity matches that deployed helper model; dormant updater and active-user config import are absent"; fi
 
-echo "== (3b-iii-g2) desktop service lifecycle completion authority (R-S11c-16) =="
+echo "== (3b-iii-g2) CLI/Linux service lifecycle source invariants (R-S11c-16) =="
 r_s11c16=
 core_install_block=$(awk '/args\[0\] == "--install-service"/,/args\[0\] == "--uninstall-service"/' src/core_main.rs)
 core_uninstall_block=$(awk '/args\[0\] == "--uninstall-service"/,/args\[0\] == "--service"/' src/core_main.rs)
@@ -8528,35 +8520,8 @@ fi
 if grep -Fq 'let _ = systemctl_service' src/platform/linux.rs; then
   r_s11c16="$r_s11c16 linux-systemctl-result-discard"
 fi
-grep -q 'fn run_checked_command(command: &mut Command, description: &str) -> bool' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-checked-command-helper"
-grep -q 'Ok(status) if status.success() => true' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-status-success-not-explicit"
-grep -q 'fn launchctl_service_loaded(domain: &str, service_target: &str) -> Option<bool>' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-domain-aware-launchctl-query"
-grep -q 'fn ensure_launchctl_service_removed(domain: &str, service_target: &str) -> bool' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-launchctl-bootout-verifier"
-grep -q 'fn restart_launch_agent(agent_plist_file: &str, label: &str) -> bool' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-launch-agent-restart-verifier"
-macos_install_service_body=$(awk '/pub fn install_service\(\) -> bool/,/^}/' src/platform/macos.rs)
-echo "$macos_install_service_body" | grep -Fq 'run_service_install(context)' || r_s11c16="$r_s11c16 macos-install-wrapper-not-checked-install"
-if echo "$macos_install_service_body" | grep -Fq 'service_plists_exist'; then
-  r_s11c16="$r_s11c16 macos-install-wrapper-plist-only-success"
-fi
-grep -q 'restart_launch_agent(&context.agent_plist_file, &server_launch_agent_label())' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-install-agent-load-not-authoritative"
-grep -q 'return func();' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-sync-uninstall-return-not-propagated"
-grep -q 'if !ensure_launchctl_service_removed(&launch_agent_domain, &launch_agent_target)' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-uninstall-agent-bootout-not-authoritative"
-if perl -0ne 'exit(/\.status\(\)\s*\.ok\(\)/ ? 0 : 1)' src/platform/macos.rs; then
-  r_s11c16="$r_s11c16 macos-status-result-discard"
-fi
-grep -q 'set unload_existing_service to "/bin/launchctl print system' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-no-domain-aware-daemon-bootout"
-grep -q 'set load_service to "/bin/launchctl enable ' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-daemon-enable-missing"
-grep -q '/bin/launchctl bootstrap system ' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-daemon-bootstrap-missing"
-grep -q 'unload_existing_service.*load_service' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-order-not-pinned"
-grep -q 'set unload_service to "/bin/launchctl print system' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-no-domain-aware-daemon-bootout"
-grep -q 'set verify_unloaded to "/bin/launchctl print system' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-daemon-bootout-not-verified"
-grep -q 'set verify_removed to "if \[ -e " & quoted form of daemon_plist' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-plist-removal-not-verified"
-grep -q 'set sh to "set -e;"' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-not-set-e"
-if grep -qE '/bin/launchctl (list|load|unload|remove)( |")' "$install_scpt" "$uninstall_scpt"; then
-  r_s11c16="$r_s11c16 macos-legacy-launchctl-lifecycle-present"
-fi
 if [ -n "$r_s11c16" ]; then echo "  FAIL R-S11c-16 desktop service lifecycle completion authority:$r_s11c16"; rc=1; else
-  echo "  ok  R-S11c-16 service lifecycle wrappers propagate CLI failure, Linux service install does not import user config, and macOS AppleScript/launchctl/plist completion is checked"; fi
+  echo "  ok  R-S11c-16 CLI/Linux lifecycle source invariants; native service completion remains separate evidence"; fi
 
 # (3b-iii-h) R-S11c-10a: Linux root-context desktop discovery must not build passwd/proc
 # lookups through a shell. This is a narrow sub-slice: env/home discovery

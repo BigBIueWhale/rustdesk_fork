@@ -4038,42 +4038,6 @@ else
   note "ok  R-S11e-66 administrator-authorized service scripts receive only the fixed system PATH/C locale and root working directory"
 fi
 
-echo "== (2b-iv-b) R-S11c-16 macOS privileged service completion authority =="
-r_s11c16=
-grep -q 'fn run_checked_command(command: &mut Command, description: &str) -> bool' "$macos_rs" || r_s11c16="$r_s11c16 no-checked-command-helper"
-grep -q 'Ok(status) if status.success() => true' "$macos_rs" || r_s11c16="$r_s11c16 status-success-not-explicit"
-grep -q 'fn launchctl_service_loaded(domain: &str, service_target: &str) -> Option<bool>' "$macos_rs" || r_s11c16="$r_s11c16 no-domain-aware-launchctl-query"
-grep -q 'fn ensure_launchctl_service_removed(domain: &str, service_target: &str) -> bool' "$macos_rs" || r_s11c16="$r_s11c16 no-launchctl-bootout-verifier"
-grep -q 'fn restart_launch_agent(agent_plist_file: &str, label: &str) -> bool' "$macos_rs" || r_s11c16="$r_s11c16 no-launch-agent-restart-verifier"
-macos_install_service_body=$(awk '/pub fn install_service\(\) -> bool/,/^}/' "$macos_rs")
-echo "$macos_install_service_body" | grep -Fq 'run_service_install(context)' || r_s11c16="$r_s11c16 install-wrapper-not-checked-install"
-if echo "$macos_install_service_body" | grep -Fq 'service_plists_exist'; then
-  r_s11c16="$r_s11c16 install-wrapper-plist-only-success"
-fi
-grep -q 'restart_launch_agent(&context.agent_plist_file, &server_launch_agent_label())' "$macos_rs" || r_s11c16="$r_s11c16 install-agent-load-not-authoritative"
-grep -q 'return func();' "$macos_rs" || r_s11c16="$r_s11c16 sync-uninstall-return-not-propagated"
-grep -q 'if !ensure_launchctl_service_removed(&launch_agent_domain, &launch_agent_target)' "$macos_rs" || r_s11c16="$r_s11c16 uninstall-agent-bootout-not-authoritative"
-if perl -0ne 'exit(/\.status\(\)\s*\.ok\(\)/ ? 0 : 1)' "$macos_rs"; then
-  r_s11c16="$r_s11c16 status-result-discard"
-fi
-grep -q 'set unload_existing_service to "/bin/launchctl print system' "$install_scpt" || r_s11c16="$r_s11c16 install-no-domain-aware-daemon-bootout"
-grep -q 'set load_service to "/bin/launchctl enable ' "$install_scpt" || r_s11c16="$r_s11c16 install-daemon-enable-missing"
-grep -q '/bin/launchctl bootstrap system ' "$install_scpt" || r_s11c16="$r_s11c16 install-daemon-bootstrap-missing"
-grep -q 'unload_existing_service.*load_service' "$install_scpt" || r_s11c16="$r_s11c16 install-order-not-pinned"
-grep -q 'set unload_service to "/bin/launchctl print system' "$uninstall_scpt" || r_s11c16="$r_s11c16 uninstall-no-domain-aware-daemon-bootout"
-grep -q 'set verify_unloaded to "/bin/launchctl print system' "$uninstall_scpt" || r_s11c16="$r_s11c16 uninstall-daemon-bootout-not-verified"
-grep -q 'set verify_removed to "if \[ -e " & quoted form of daemon_plist' "$uninstall_scpt" || r_s11c16="$r_s11c16 uninstall-plist-removal-not-verified"
-grep -q 'set sh to "set -e;"' "$uninstall_scpt" || r_s11c16="$r_s11c16 uninstall-not-set-e"
-if grep -qE '/bin/launchctl (list|load|unload|remove)( |")' "$install_scpt" "$uninstall_scpt"; then
-  r_s11c16="$r_s11c16 legacy-launchctl-lifecycle-present"
-fi
-if [ -n "$r_s11c16" ]; then
-  echo "  FAIL R-S11c-16 macOS privileged service completion authority:$r_s11c16"
-  rc=1
-else
-  note "ok  R-S11c-16 macOS service install/uninstall checks AppleScript exit status, launchd label state, and plist postconditions"
-fi
-
 echo "== (2b-iv-c) R-S11c-20 Unix terminal shell command provenance =="
 r_s11c20=
 terminal_service_rs="$REPO/src/server/terminal_service.rs"

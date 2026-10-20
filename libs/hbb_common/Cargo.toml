@@ -8,6 +8,12 @@ edition = "2018"
 name = "probe_client"
 path = "../../examples/probe_client.rs"
 
+[[test]]
+name = "descriptor_lifetime"
+path = "tests/descriptor_lifetime.rs"
+harness = false
+test = false
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]

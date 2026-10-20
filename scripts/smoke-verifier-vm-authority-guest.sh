@@ -3180,6 +3180,7 @@ run_focused_rust_tests() {
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             source_fingerprints+=(libs/surface_it/Cargo.toml libs/surface_it/src/lib.rs libs/surface_it/tests/surface.rs)
+            source_fingerprints+=(libs/hbb_common/tests/descriptor_lifetime.rs)
             required_tests=(
                 socket_surface::tests::unbound_ipv4_udp_is_refused
                 socket_surface::tests::unbound_ipv6_udp_is_refused
@@ -5095,6 +5096,26 @@ run_focused_rust_tests() {
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             printf "SOCKET_POLICY_ARTIFACT=pass sha256=%s executable=%s tests=7 unchanged=before-after\n" \
                                 "$policy_sha" "$policy_executable"
+                            cargo test --offline --locked -p hbb_common --test descriptor_lifetime --no-run \
+                                --message-format=json-render-diagnostics --color never \
+                                >/cargo-target/descriptor-lifetime-build.json
+                            lifetime_executable="$(python3 -I -S /source/scripts/select-hbb-common-test-artifact.py \
+                                /cargo-target/descriptor-lifetime-build.json descriptor_lifetime)"
+                            [ -f "$lifetime_executable" ] && [ ! -L "$lifetime_executable" ] \
+                                && [ -x "$lifetime_executable" ] \
+                                && [ "$(stat -c "%u:%g:%h" -- "$lifetime_executable")" = 1000:1000:1 ]
+                            lifetime_sha="$(sha256sum "$lifetime_executable" | cut -d " " -f 1)"
+                            lifetime_status=0
+                            timeout --signal=TERM --kill-after=5s 20s "$lifetime_executable" \
+                                || lifetime_status=$?
+                            [ "$(sha256sum "$lifetime_executable" | cut -d " " -f 1)" = "$lifetime_sha" ]
+                            if [ "$lifetime_status" -ne 0 ]; then
+                                printf "FILE_METADATA_DESCRIPTOR_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
+                                    "$lifetime_sha" "$lifetime_status"
+                                exit "$lifetime_status"
+                            fi
+                            printf "FILE_METADATA_DESCRIPTOR_ARTIFACT=pass sha256=%s executable=%s modes=2 cases=6 unchanged=before-after\n" \
+                                "$lifetime_sha" "$lifetime_executable"
                         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
                             for group in config::tests::config_transaction_ config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options config::tests::test_load_reads_legacy_plaintext_id_without_storing config::tests::test_load_path_ config::option_tests:: config::linux_directory::lease_tests::; do
                                 group_status=0
@@ -5850,6 +5871,10 @@ PY
             [ "$(grep -Ec '^SOCKET_POLICY_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/surface-[0-9a-f]{16} tests=7 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'SOCKET_POLICY_ARTIFACT=' "$output")" -eq 1 ] \
                 || fail 'socket policy artifact receipt differs'
+            [ "$(grep -Ec '^FILE_METADATA_DESCRIPTOR_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/descriptor_lifetime-[0-9a-f]{16} modes=2 cases=6 unchanged=before-after$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fc 'FILE_METADATA_DESCRIPTOR_ARTIFACT=' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc 'FILE_METADATA_DESCRIPTOR_LIFETIME=pass modes=2 cases=6 children=joined fixture=retired' "$output")" -eq 1 ] \
+                || fail 'filesystem worker descriptor lifetime receipt differs'
         fi
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then

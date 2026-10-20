@@ -110,6 +110,25 @@ class ArtifactSelectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             select_artifact(encode(artifact, FINISHED), "cpace_it", "/cargo-target/fuse-test-source")
 
+    def test_descriptor_lifetime_target_is_exact(self):
+        artifact = copy.deepcopy(ARTIFACT)
+        artifact["target"] = {"name": "descriptor_lifetime", "kind": ["test"],
+                              "src_path": "/source/libs/hbb_common/tests/descriptor_lifetime.rs"}
+        artifact["executable"] = "/cargo-target/debug/deps/descriptor_lifetime-0123456789abcdef"
+        self.assertEqual(select_artifact(encode(artifact, FINISHED), "descriptor_lifetime"),
+                         artifact["executable"])
+        for field, value in [("manifest_path", "/source/Cargo.toml"),
+                             ("target", dict(artifact["target"], kind=["lib"])),
+                             ("target", dict(artifact["target"], src_path="/source/other.rs")),
+                             ("profile", {"test": False}), ("profile", {"test": 1}),
+                             ("executable", EXECUTABLE)]:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                select_artifact(encode(dict(artifact, **{field: value}), FINISHED), "descriptor_lifetime")
+        for output in (encode(FINISHED), encode(artifact, artifact, FINISHED),
+                       encode(artifact), encode(artifact, FINISHED, FINISHED)):
+            with self.assertRaises(ValueError):
+                select_artifact(output, "descriptor_lifetime")
+
     def test_surface_policy_target_is_exact(self):
         artifact = copy.deepcopy(ARTIFACT)
         artifact["manifest_path"] = "/source/libs/surface_it/Cargo.toml"

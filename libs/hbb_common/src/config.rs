@@ -3466,6 +3466,10 @@ impl PeerConfig {
         config.store(id)
     }
 
+    pub fn ui_info_json(id: &str) -> crate::ResultType<String> {
+        Ok(serde_json::to_string(&Self::load(id))?)
+    }
+
     pub fn remove(id: &str) -> crate::ResultType<()> {
         match fs::remove_file(Self::path(id)) {
             Ok(()) => Ok(()),

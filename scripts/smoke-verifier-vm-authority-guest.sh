@@ -3213,6 +3213,10 @@ run_focused_rust_tests() {
                 config::option_tests::peer_retired_password_normal_save_omits_the_field_and_preserves_prs
                 config::option_tests::peer_retired_password_forget_purges_old_only_files_and_retries_failure
                 config::option_tests::peer_retired_password_shapes_preserve_live_state_and_allow_explicit_cleanup
+                config::option_tests::peer_ui_info_excludes_credentials_and_unrelated_state
+                config::option_tests::peer_ui_info_read_denial_reports_error_and_preserves_the_record
+                config::option_tests::peer_ui_info_does_not_migrate_credentials_for_a_display_read
+                config::option_tests::peer_ui_info_missing_record_has_empty_display_fields_without_creation
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then

@@ -3343,7 +3343,7 @@ Widget buildErrorBanner(BuildContext context,
 String getDesktopTabLabel(String peerId, String alias) {
   String label = alias.isEmpty ? peerId : alias;
   try {
-    String peer = bind.mainGetPeerSync(id: peerId);
+    String peer = bind.mainGetPeerUiInfo(id: peerId);
     Map<String, dynamic> config = jsonDecode(peer);
     if (config['info']['hostname'] is String) {
       String hostname = config['info']['hostname'];

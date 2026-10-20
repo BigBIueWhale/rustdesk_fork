@@ -129,6 +129,91 @@ fn insert_retired_peer_password(id: &str) {
 }
 
 #[test]
+fn peer_ui_info_excludes_credentials_and_unrelated_state() {
+    in_private_process("config::option_tests::peer_ui_info_excludes_credentials_and_unrelated_state", |_| {
+        let id = "peer-ui-fields";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-private-ui-prs".to_vec();
+        peer.info.hostname = "public-host".into();
+        peer.info.username = "private-username".into();
+        peer.info.platform = "Linux".into();
+        peer.port_forwards = vec![(8000, "destination".into(), 80), (9000, "other".into(), 443)];
+        peer.options.insert("private-option".into(), "private-value".into());
+        peer.ui_flutter.insert("canvas".into(), "private-canvas".into());
+        peer.transfer.read_jobs.push("private-transfer".into());
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        let info: serde_json::Value = serde_json::from_str(&PeerConfig::ui_info_json(id).unwrap()).unwrap();
+        let fields = info.as_object().unwrap();
+        let exposed = fields.contains_key("password_prs");
+        println!("OPTION_COMMIT_PEER_UI=observed kind=fields credential_returned={exposed} fields={}", fields.len());
+        assert!(!exposed && fields.len() == 2);
+        assert_eq!(info["info"], serde_json::json!({"hostname": "public-host"}));
+        assert_eq!(info["port_forwards"], serde_json::json!([[8000, "destination", 80], [9000, "other", 443]]));
+        assert_eq!(fs::read(path).unwrap(), original);
+    });
+}
+
+#[test]
+fn peer_ui_info_read_denial_reports_error_and_preserves_the_record() {
+    in_private_process("config::option_tests::peer_ui_info_read_denial_reports_error_and_preserves_the_record", |_| {
+        let id = "peer-ui-read";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-private-ui-prs".to_vec();
+        peer.info.hostname = "public-host".into();
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let native = fs::read(&path).unwrap_err();
+        let result = PeerConfig::ui_info_json(id);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let preserved = fs::read(&path).unwrap() == original;
+        println!("OPTION_COMMIT_PEER_UI=observed kind=read errno={} reported={} file_preserved={preserved}", native.raw_os_error().unwrap(), result.is_err());
+        assert_eq!(native.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(result.is_err() && preserved);
+        let info: serde_json::Value = serde_json::from_str(&PeerConfig::ui_info_json(id).unwrap()).unwrap();
+        assert_eq!(info["info"]["hostname"], "public-host");
+    });
+}
+
+#[test]
+fn peer_ui_info_does_not_migrate_credentials_for_a_display_read() {
+    in_private_process("config::option_tests::peer_ui_info_does_not_migrate_credentials_for_a_display_read", |_| {
+        let id = "peer-ui-no-credential-work";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-unwrapped-ui-prs".to_vec();
+        peer.info.hostname = "public-host".into();
+        peer.port_forwards = vec![(8000, "destination".into(), 80)];
+        let path = PeerConfig::path(id);
+        store_path(path.clone(), &peer).unwrap();
+        let original = fs::read(&path).unwrap();
+        let info: serde_json::Value = serde_json::from_str(&PeerConfig::ui_info_json(id).unwrap()).unwrap();
+        let untouched = fs::read(&path).unwrap() == original;
+        println!("OPTION_COMMIT_PEER_UI=observed kind=credential_work file_unchanged={untouched}");
+        assert!(untouched);
+        assert_eq!(info["info"]["hostname"], "public-host");
+        assert_eq!(info["port_forwards"], serde_json::json!([[8000, "destination", 80]]));
+        assert_eq!(PeerConfig::load_for_write(id).unwrap().password_prs, peer.password_prs);
+        assert_ne!(fs::read(path).unwrap(), original);
+    });
+}
+
+#[test]
+fn peer_ui_info_missing_record_has_empty_display_fields_without_creation() {
+    in_private_process("config::option_tests::peer_ui_info_missing_record_has_empty_display_fields_without_creation", |_| {
+        let id = "peer-ui-missing";
+        let path = PeerConfig::path(id);
+        assert!(!path.exists());
+        let info: serde_json::Value = serde_json::from_str(&PeerConfig::ui_info_json(id).unwrap()).unwrap();
+        assert_eq!(info["info"]["hostname"], "");
+        assert_eq!(info["port_forwards"], serde_json::json!([]));
+        assert!(!path.exists());
+    });
+}
+
+#[test]
 fn peer_retired_password_read_does_not_rewrite_or_publish_the_value() {
     in_private_process("config::option_tests::peer_retired_password_read_does_not_rewrite_or_publish_the_value", |_| {
         let id = "peer-retired-read";

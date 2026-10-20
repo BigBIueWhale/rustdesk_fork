@@ -1122,9 +1122,8 @@ class RustdeskImpl {
     });
   }
 
-  String mainGetPeerSync({required String id, dynamic hint}) {
-    // TODO:
-    throw UnimplementedError("mainGetPeerSync");
+  String mainGetPeerUiInfo({required String id, dynamic hint}) {
+    throw UnimplementedError("mainGetPeerUiInfo");
   }
 
   Future<void> mainStartStatusSync({dynamic hint}) {

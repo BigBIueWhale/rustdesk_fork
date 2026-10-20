@@ -471,8 +471,8 @@ pub fn set_permanent_password_with_result(password: String) -> bool {
 }
 
 #[inline]
-pub fn get_peer(id: String) -> PeerConfig {
-    PeerConfig::load(&id)
+pub fn get_peer_ui_info(id: String) -> hbb_common::ResultType<String> {
+    PeerConfig::ui_info_json(&id)
 }
 
 #[inline]

@@ -278,15 +278,19 @@ class _PortForwardPageState extends State<PortForwardPage>
     );
   }
 
-  void refreshTunnelConfig() async {
-    String peer = bind.mainGetPeerSync(id: widget.id);
-    Map<String, dynamic> config = jsonDecode(peer);
-    List<dynamic> infos = config['port_forwards'] as List;
-    List<_PortForward> result = List.empty(growable: true);
-    for (var e in infos) {
-      result.add(_PortForward.fromJson(e));
+  void refreshTunnelConfig() {
+    try {
+      String peer = bind.mainGetPeerUiInfo(id: widget.id);
+      Map<String, dynamic> config = jsonDecode(peer);
+      List<dynamic> infos = config['port_forwards'] as List;
+      List<_PortForward> result = List.empty(growable: true);
+      for (var e in infos) {
+        result.add(_PortForward.fromJson(e));
+      }
+      pfs.value = result;
+    } catch (e) {
+      debugPrint("Failed to read tunnel configuration:$e");
     }
-    pfs.value = result;
   }
 
   buildRdp(BuildContext context) {

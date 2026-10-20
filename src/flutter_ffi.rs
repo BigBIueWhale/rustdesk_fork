@@ -1154,9 +1154,8 @@ pub fn main_set_favorites(ids: Vec<String>, favorite: bool) -> Result<()> {
     set_favorites(ids, favorite)
 }
 
-pub fn main_get_peer_sync(id: String) -> SyncReturn<String> {
-    let conf = get_peer(id);
-    SyncReturn(serde_json::to_string(&conf).unwrap_or("".to_string()))
+pub fn main_get_peer_ui_info(id: String) -> Result<SyncReturn<String>> {
+    Ok(SyncReturn(get_peer_ui_info(id)?))
 }
 
 pub fn main_start_status_sync() {

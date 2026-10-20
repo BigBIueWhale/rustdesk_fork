@@ -8385,56 +8385,31 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   and publication-refusal runtime negatives, current replacement-path execution, broader crash/failure/resource
   bounds, installed/native/device behavior, cold R-B2/R-B10 artifacts, independent reproduction and external
   review. Source/mutation checks and historical transaction fixtures do not close those obligations.
-- **R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority — CURRENT
-  NUMERIC-NONROOT FILESYSTEM TRANSACTION GREEN 2026-09-12; COLD ACQUISITION AND RELEASE EVIDENCE
-  OPEN.** The closed FRB/cargo-ndk producer funnel still gives each pinned builder read-only access to
-  `online` and exactly one private writable Cargo-install root. Exact package, version, feature,
-  binary, target, profile, Rust-archive, pre/post-input, and independent publication-verdict bindings
-  remain in force.
+- **R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority — SOURCE IMPLEMENTED;
+  HISTORICAL FILESYSTEM EVIDENCE RETAINED; CURRENT ACQUISITION AND RELEASE ACCEPTANCE OPEN.**
+  The Linux FRB/cargo-ndk funnel in `scripts/online-fetch.sh` gives each pinned builder read-only
+  acquisition inputs and one private writable Cargo-install root, with exact tool/input bindings
+  and independent producer, input, output and publication verdicts. `scripts/online-cargo-tool-output.py`
+  validates and seals the tree, durably selects its digest before no-clobber publication, and checks
+  identity, content and modes afterward. Recovery validates selected output and preserves/refuses
+  changed or ambiguous topology and moved unselected/legacy-v1 output; existing complete root-owned
+  tools remain read-only-checkable. R-S11cm and Appendix C #232 own the detailed transaction contract.
 
-  A follow-up audit found that the first publication helper did not implement the recovery promise it
-  documented. Its v1 state was durable before producer bytes existed but contained no verified digest
-  or publication-selection phase. `recover()` then classified the recorded inode as published solely
-  because it appeared under `frb-tool` or `cargo-ndk-tool`; it neither validated the tree nor proved
-  that publication had been selected. `online-fetch.sh` subsequently ran `check-complete`, so malformed
-  bytes still failed closed, but recovery had already discarded the transaction distinction and could
-  accept a manually moved, semantically valid yet unselected tree. New current-user-owned outputs also
-  remained owner-writable after publication. This was transaction finality, durability, and immutable-
-  input correctness debt—not evidence of exploitation, host root, a container escape, a listener,
-  host RustDesk/service/firewall/network mutation, or compromise.
+  At `8f9b7970`, the real filesystem self-test passed for both tool kinds in a networkless,
+  read-only-root container as UID/GID 1000:1000 with capabilities dropped and no-new-privileges.
+  It exercised writes/fsyncs/renames, normal publication and final modes, selected pre/post-rename
+  recovery, moved-unselected/legacy preservation and refusal, digest tampering, rollback,
+  interrupted preparation, occupied destinations, wrong metadata and link/xattr/set-id rejection.
+  The focused producer/order source check also passed; host listening sockets were unchanged.
+  Git history at that commit and the audit journal retain the implementation, deleted-checker
+  history and run details. This is historical component evidence, not validation of later source
+  or a real Cargo installation. `scripts/verify.sh` retains the executable self-test and the
+  supplementary `scripts/verify-online-fetch-cargo-tool-output-authority.py` check.
 
-  The v2 state now starts explicitly `unselected` with no digest. Post-producer verification normalizes
-  the current-user-owned tree to a private mode-0700 root, mode-0500 descendants/executable, and
-  mode-0400 Cargo metadata; rejects foreign ownership, mounts, links, special files, xattrs, unsafe
-  modes, unstable reads, excess bounds, noncanonical metadata, or a wrong ELF; and computes a domain-
-  separated path/type/mode/content digest. Every file and directory is fsynced and the candidate is
-  revalidated before a replacement state record durably selects that digest. Only that selection may
-  precede `renameat2(RENAME_NOREPLACE)`. Publication changes the root to mode 0500, fsyncs the output and
-  both namespaces, and revalidates the exact identity, digest, modes, and semantics. Rollback returns
-  only that inode to private mode without clobbering.
-
-  Recovery now distinguishes authority from topology. A selected private tree is accepted only after
-  exact digest/semantic validation; a selected tree interrupted after rename is validated in mode 0700,
-  sealed to 0500, fsynced, and validated again. A changed selected tree, ambiguous topology, moved
-  unselected tree, or moved legacy-v1 tree is preserved and rejected. A preparation interrupted before
-  a state record may retire only its still-private output. Existing root-owned complete tools remain
-  non-mutatingly checkable; new current-user-owned tools have one exact sealed form.
-
-  The current executable self-test passed for both tool kinds in a networkless, read-only-root,
-  capability-free, no-new-privileges container as numeric UID/GID 1000:1000. It performs real temporary-
-  filesystem writes, fsyncs, renames, mode transitions, rollback cleanup, and tampering, covering normal
-  publication; selected pre-rename and post-rename recovery; moved-unselected and moved-v1 refusal with
-  preservation; selected digest change; exact final modes; occupied destination; wrong metadata;
-  symlink, external hardlink, xattr, and set-id rejection; and interrupted preparation. The compact
-  focused source contract also passed, binding only the producer envelope and validate-sync-select-
-  rename-seal-postcheck order. The obsolete 36-string mutation catalog and 289-line duplicate workspace
-  verifier were deleted; they did not observe the transaction behavior and had missed this defect.
-  Host listening sockets were identical before and after each confined run.
-
-  No networked Cargo installation, online-cache mutation, image pull/build/tag, release build, root
-  command, or host RustDesk process/service/config/listener/firewall/network operation was performed.
-  Cold acquisition with the exact pinned builders, reproducible tool-binary provenance, exact release
-  artifacts, native/device evidence, and external R-V3 review remain open.
+  Still OPEN: current isolated transaction evidence, exact pinned-builder cold acquisition and
+  real current tool outputs, reproducible tool-binary provenance, cold A/B and exact release
+  artifacts, installed/native/device acceptance, independent reproduction and R-V3 external review.
+  `cargo-tool-ledger-3cacb5d9.json` retains this consolidation's classification and document evidence.
 - **R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority — SOURCE AND
   CURRENT NUMERIC-NONROOT FILESYSTEM SELF-TEST GREEN; CURRENT SEALED CACHE/OFFLINE-REPLAY
   EVIDENCE RETAINED; COLD ACQUISITION, CANONICAL REPLACEMENT, AND RELEASE EVIDENCE OPEN.**

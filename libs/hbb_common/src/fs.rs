@@ -293,7 +293,7 @@ impl DirectoryContext {
         use std::os::unix::io::AsRawFd;
 
         // The owned parent keeps this descriptor prefix valid through every entry lookup.
-        PathBuf::from(format!("/proc/self/fd/{}", self.parent.as_raw_fd()))
+        PathBuf::from(format!("/proc/thread-self/fd/{}", self.parent.as_raw_fd()))
     }
 
     fn read_dir(&self) -> std::io::Result<std::fs::ReadDir> {
@@ -3977,7 +3977,7 @@ impl TransferJob {
             let path = {
                 use std::os::unix::io::AsRawFd;
 
-                PathBuf::from(format!("/proc/self/fd/{}", source.as_raw_fd()))
+                PathBuf::from(format!("/proc/thread-self/fd/{}", source.as_raw_fd()))
             };
             let mut options = std::fs::OpenOptions::new();
             options.read(true);

@@ -220,8 +220,13 @@ pub fn forget_password(id: String) -> hbb_common::ResultType<()> {
 
 #[inline]
 pub fn get_peer_option(id: String, name: String) -> String {
-    let c = PeerConfig::load(&id);
-    c.options.get(&name).unwrap_or(&"".to_owned()).to_owned()
+    match PeerConfig::read_option(&id, &name) {
+        Ok(value) => value,
+        Err(err) => {
+            log::error!("Failed to read peer option: {err}");
+            String::new()
+        }
+    }
 }
 
 #[inline]

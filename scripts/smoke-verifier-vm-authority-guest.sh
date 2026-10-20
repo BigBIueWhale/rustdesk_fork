@@ -3207,6 +3207,12 @@ run_focused_rust_tests() {
                 config::option_tests::peer_option_unreadable_source_refuses_without_losing_credentials
                 config::option_tests::peer_option_preserves_other_state_and_avoids_idempotent_or_missing_removal_writes
                 config::option_tests::peer_option_explicit_inherited_default_persists_and_missing_removal_is_absent
+                config::option_tests::peer_option_read_preserves_credentials_and_file_identity
+                config::option_tests::peer_option_read_corrupt_records_refuse_without_recovery
+                config::option_tests::peer_option_read_denial_is_reported_and_retryable
+                config::option_tests::peer_option_read_does_not_initialize_controlled_credentials
+                config::option_tests::peer_option_read_ignores_unrelated_record_shapes
+                config::option_tests::peer_option_read_preserves_values_defaults_and_retired_key_masking
                 config::option_tests::peer_listing_omits_empty_records_without_deleting_them
                 config::option_tests::peer_listing_empty_snapshot_cannot_delete_a_replacement_record
                 config::option_tests::peer_listing_preserves_visible_and_incomplete_records_and_batch_boundaries

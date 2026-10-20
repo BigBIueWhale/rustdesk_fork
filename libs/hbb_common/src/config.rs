@@ -3508,6 +3508,11 @@ impl PeerConfig {
         config.store(id)
     }
 
+    pub fn read_option(id: &str, name: &str) -> crate::ResultType<String> {
+        let config = Self::load(id);
+        Ok(config.options.get(name).cloned().unwrap_or_default())
+    }
+
     pub fn forget_password(id: &str) -> crate::ResultType<()> {
         let loaded = Self::load_for_write_with_status(id)?;
         let mut config = loaded.value;

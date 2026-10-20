@@ -942,6 +942,145 @@ fn peer_transfer_unchanged_and_missing_empty_checkpoints_avoid_writes() {
 }
 
 #[test]
+fn peer_option_read_preserves_credentials_and_file_identity() {
+    in_private_process("config::option_tests::peer_option_read_preserves_credentials_and_file_identity", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let id = "peer-option-display-migration";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-unwrapped-option-prs".to_vec();
+        peer.options.insert("alias".into(), "visible alias".into());
+        peer.options.insert("rdp_password".into(), "fixture-retired-secret".into());
+        let path = PeerConfig::path(id);
+        store_path(path.clone(), &peer).unwrap();
+        let original = fs::read(&path).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        let value = PeerConfig::read_option(id, "alias").unwrap();
+        let after = fs::metadata(&path).unwrap();
+        let preserved = fs::read(&path).unwrap() == original;
+        let same_file = (before.dev(), before.ino()) == (after.dev(), after.ino());
+        println!("OPTION_COMMIT_PEER_OPTION_READ=observed kind=migration file_preserved={preserved} same_file={same_file}");
+        assert_eq!(value, "visible alias");
+        assert!(preserved && same_file);
+        assert_eq!(PeerConfig::read_option(id, "rdp_password").unwrap(), "");
+        assert_eq!(fs::read(&path).unwrap(), original);
+        let loaded = PeerConfig::load_for_write(id).unwrap();
+        assert_eq!(loaded.password_prs, peer.password_prs);
+        assert!(!loaded.options.contains_key("rdp_password"));
+        assert_ne!(fs::read(path).unwrap(), original);
+    });
+}
+
+#[test]
+fn peer_option_read_corrupt_records_refuse_without_recovery() {
+    in_private_process("config::option_tests::peer_option_read_corrupt_records_refuse_without_recovery", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let path = PeerConfig::path("peer-option-display-corrupt");
+        let parent = path.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        for (kind, source) in [("syntax", b"password = [private-option-source\n".as_slice()), ("utf8", b"\xffprivate-option-source".as_slice())] {
+            fs::write(&path, source).unwrap();
+            let before = fs::metadata(&path).unwrap();
+            let names = || {
+                let mut names = fs::read_dir(parent).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+                names.sort(); names
+            };
+            let original_names = names();
+            let result = PeerConfig::read_option("peer-option-display-corrupt", "alias");
+            let preserved = fs::read(&path).map(|bytes| bytes == source).unwrap_or(false);
+            let same_file = fs::metadata(&path).map(|m| (m.dev(), m.ino()) == (before.dev(), before.ino())).unwrap_or(false);
+            println!("OPTION_COMMIT_PEER_OPTION_READ=observed kind={kind} refused={} file_preserved={preserved} same_file={same_file}", result.is_err());
+            assert!(result.is_err() && preserved && same_file && names() == original_names);
+            assert!(!result.unwrap_err().to_string().contains("private-option-source"));
+        }
+    });
+}
+
+#[test]
+fn peer_option_read_denial_is_reported_and_retryable() {
+    in_private_process("config::option_tests::peer_option_read_denial_is_reported_and_retryable", |_| {
+        let id = "peer-option-display-denied";
+        let path = PeerConfig::path(id);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let source = b"[options]\nalias = 'visible alias'\n";
+        fs::write(&path, source).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let native = fs::read(&path).unwrap_err();
+        let result = PeerConfig::read_option(id, "alias");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let preserved = fs::read(&path).unwrap() == source;
+        println!("OPTION_COMMIT_PEER_OPTION_READ=observed kind=denial errno={} refused={} file_preserved={preserved}", native.raw_os_error().unwrap(), result.is_err());
+        assert_eq!(native.kind(), io::ErrorKind::PermissionDenied);
+        assert!(result.is_err() && preserved);
+        assert_eq!(PeerConfig::read_option(id, "alias").unwrap(), "visible alias");
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        let child = path.join("preserved");
+        fs::write(&child, source).unwrap();
+        assert!(PeerConfig::read_option(id, "alias").is_err());
+        assert_eq!(fs::read(child).unwrap(), source);
+    });
+}
+
+#[test]
+fn peer_option_read_does_not_initialize_controlled_credentials() {
+    in_private_process("config::option_tests::peer_option_read_does_not_initialize_controlled_credentials", |_| {
+        let id = "peer-option-display-no-global";
+        let path = PeerConfig::path(id);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let source = b"[options]\nalias = 'visible alias'\n";
+        fs::write(&path, source).unwrap();
+        let global_path = Config::file_("");
+        let global = b"password = [private-option-global\n";
+        fs::write(&global_path, global).unwrap();
+        let result = PeerConfig::read_option(id, "alias").unwrap();
+        let preserved = fs::read(global_path).map(|bytes| bytes == global).unwrap_or(false);
+        println!("OPTION_COMMIT_PEER_OPTION_READ=observed kind=global_config file_preserved={preserved}");
+        assert!(preserved);
+        assert_eq!(result, "visible alias");
+        assert_eq!(fs::read(path).unwrap(), source);
+    });
+}
+
+#[test]
+fn peer_option_read_ignores_unrelated_record_shapes() {
+    in_private_process("config::option_tests::peer_option_read_ignores_unrelated_record_shapes", |_| {
+        let id = "peer-option-display-projection";
+        let path = PeerConfig::path(id);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let source = b"password_prs = {private = 'ignored'}\npassword = ['ignored']\ninfo = 42\ntransfer = 42\nui_flutter = 42\n[options]\nalias = 'visible alias'\nrdp_port = '3390'\n";
+        fs::write(&path, source).unwrap();
+        let value = PeerConfig::read_option(id, "alias").unwrap();
+        let preserved = fs::read(&path).map(|bytes| bytes == source).unwrap_or(false);
+        println!("OPTION_COMMIT_PEER_OPTION_READ=observed kind=projection value_preserved={} file_preserved={preserved}", value == "visible alias");
+        assert!(preserved && value == "visible alias");
+        assert_eq!(PeerConfig::read_option(id, "rdp_port").unwrap(), "3390");
+    });
+}
+
+#[test]
+fn peer_option_read_preserves_values_defaults_and_retired_key_masking() {
+    in_private_process("config::option_tests::peer_option_read_preserves_values_defaults_and_retired_key_masking", |_| {
+        let id = "peer-option-display-values";
+        let path = PeerConfig::path(id);
+        let key = keys::OPTION_CUSTOM_FPS;
+        UserDefaultConfig::set_option(key.into(), "25".into()).unwrap();
+        assert_eq!(PeerConfig::read_option(id, key).unwrap(), "25");
+        assert_eq!(PeerConfig::read_option(id, "alias").unwrap(), "");
+        assert!(!path.exists());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        for source in ["password_prs = []\n", "options = 42\n", "[options]\n", "[options]\nalias = 'visible alias'\nrdp_port = '3390'\nrdp_username = 'retired-user'\nrdp_password = 'retired-secret'\n"] {
+            fs::write(&path, source).unwrap();
+            assert_eq!(PeerConfig::read_option(id, key).unwrap(), "");
+            assert_eq!(PeerConfig::read_option(id, "alias").unwrap(), if source.contains("visible alias") { "visible alias" } else { "" });
+            for name in RETIRED_RDP_CREDENTIAL_OPTIONS {
+                assert_eq!(PeerConfig::read_option(id, name).unwrap(), "");
+            }
+        }
+        println!("OPTION_COMMIT_PEER_OPTION_READ=observed kind=controls inherited_missing_default=true existing_empty_distinct=true retired_keys_masked=true");
+    });
+}
+
+#[test]
 fn peer_option_write_failure_preserves_settings_and_retries_set_and_remove() {
     in_private_process("config::option_tests::peer_option_write_failure_preserves_settings_and_retries_set_and_remove", |_| {
         let id = "peer-option-write";

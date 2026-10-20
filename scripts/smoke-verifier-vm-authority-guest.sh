@@ -1103,7 +1103,7 @@ run_debian_package_tests() {
 
 run_debian_archive_integration_tests() {
     local work work_id load_output inspect status=0 source_before
-    local archive=/mnt/rustdesk-verifier-inputs/deb-builder.docker.tar.gz
+    local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local output=$ROOT/debian-package-tests.out
     local -a sources=("$VERIFY_REPO/build.py" "$VERIFY_REPO/scripts/verify-debian-package-authority.py"
         "$VERIFY_REPO/res/com.carriez.RustDesk.policy" "$OFFLINE_IMAGE_PROVENANCE" "$ENTRY_PREFLIGHT")
@@ -1113,16 +1113,15 @@ run_debian_archive_integration_tests() {
         /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
         DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
         /usr/bin/python3 -B -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
-            --archive "$archive" --archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
-            --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" --role deb-builder \
-            --expected-id "$DEB_BUILDER_IMAGE_ID" --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
-            --dockerfile-sha "$SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE" \
-            --recipe-sha "$SHA256_DEB_BUILDER_DOCKERFILE" --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST" \
-            --bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID" \
-            --bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID" \
-            --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" --config-id "$DEB_BUILDER_CONFIG_ID" \
-            --manifest-id "$DEB_BUILDER_MANIFEST_ID")" || fail 'Debian package-test compiler verification/load failed'
-    [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
+            --archive "$archive" --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+            --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" --role devcheck \
+            --expected-id "$DEV_CHECK_IMAGE_ID" --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+            --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+            --cargo-sha "$SHA256_DEV_CHECK_CARGO" --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+            --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+            --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
+            --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID")" || fail 'Debian package-test compiler verification/load failed'
+    [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail 'Debian package-test compiler receipt differs'
     work="$(setpriv --reuid=4000 --regid=4000 --clear-groups /usr/bin/mktemp -d /tmp/debian-package-tests.XXXXXXXXXX)"
     [ "$(stat -c '%u:%g:%a' "$work")" = 4000:4000:700 ] || fail 'Debian package scratch authority differs'
@@ -1138,13 +1137,13 @@ run_debian_archive_integration_tests() {
         --mount "type=bind,source=$VERIFY_REPO/res/com.carriez.RustDesk.policy,target=/repo/res/com.carriez.RustDesk.policy,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$work,target=/work,bind-recursive=disabled" \
         --env PATH=/usr/bin:/bin --env LC_ALL=C --env HOME=/nonexistent --env TMPDIR=/work \
-        --workdir /work --entrypoint /usr/bin/python3 "$DEB_BUILDER_CONFIG_ID" -B -I -S -c \
+        --workdir /work --entrypoint /usr/bin/python3 "$DEV_CHECK_IMAGE_CONFIG_ID" -B -I -S -c \
         'import runpy,sys; scope=runpy.run_path("/repo/scripts/verify-debian-package-authority.py"); scope["require_native_fixture_principal"](); sys.argv=["package-checker","--repo","/repo","--self-test"]; scope["main"]()')" \
         || fail 'cannot create the confined Debian package-test container'
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'Debian package-test container identity differs'
     inspect=$ROOT/debian-package-container.json
     "$CLIENT" --host "unix://$SOCK" inspect "$CONTAINER_ID" >"$inspect"
-    /usr/bin/python3 -B -I -S - "$inspect" "$DEB_BUILDER_CONFIG_ID" "$VERIFY_REPO" "$work" <<'PY'
+    /usr/bin/python3 -B -I -S - "$inspect" "$DEV_CHECK_IMAGE_CONFIG_ID" "$VERIFY_REPO" "$work" <<'PY'
 import json,sys
 from pathlib import Path
 container,=json.loads(Path(sys.argv[1]).read_text())
@@ -1188,7 +1187,7 @@ for digest in [value[name] for name in ("fixture_archive_sha256","production_arc
 PY
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
-    "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
+    "$CLIENT" --host "unix://$SOCK" image rm "$DEV_CHECK_IMAGE_CONFIG_ID" >/dev/null
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] || fail 'Debian package tests left Docker objects'
     setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -1199,7 +1198,7 @@ PY
     stop_docker_authority
     cat "$output"
     printf 'DEBIAN_PACKAGE_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=%s generator_sha256=%s checker_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
-        "$DEB_BUILDER_CONFIG_ID" "$(sha256sum "${sources[0]}" | awk '{print $1}')" "$(sha256sum "${sources[1]}" | awk '{print $1}')"
+        "$DEV_CHECK_IMAGE_CONFIG_ID" "$(sha256sum "${sources[0]}" | awk '{print $1}')" "$(sha256sum "${sources[1]}" | awk '{print $1}')"
 }
 
 run_fixed_archive_tests() {

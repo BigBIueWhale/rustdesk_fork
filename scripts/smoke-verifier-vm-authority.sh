@@ -2427,12 +2427,12 @@ if { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] ||
 fi
 if [ "$MODE" = debian-package-tests ]; then
     verify_committed_test_source "$REPO_ROOT/res/com.carriez.RustDesk.policy"
-    [ -f "$DEB_BUILDER_ARCHIVE" ] && [ ! -L "$DEB_BUILDER_ARCHIVE" ] \
-        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' "$DEB_BUILDER_ARCHIVE")" = \
-            "$HOST_UID:$HOST_GID:400:1:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
+    [ -f "$DEV_CHECK_IMAGE_ARCHIVE" ] && [ ! -L "$DEV_CHECK_IMAGE_ARCHIVE" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' "$DEV_CHECK_IMAGE_ARCHIVE")" = \
+            "$HOST_UID:$HOST_GID:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
         || fail 'Debian package-test compiler image authority differs'
-    verify_sha256 "$DEB_BUILDER_ARCHIVE" "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"
-    debian_package_inputs_before="$(/usr/bin/sha256sum "$DEB_BUILDER_ARCHIVE" "$REPO_ROOT/res/com.carriez.RustDesk.policy")"
+    verify_sha256 "$DEV_CHECK_IMAGE_ARCHIVE" "$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
+    debian_package_inputs_before="$(/usr/bin/sha256sum "$DEV_CHECK_IMAGE_ARCHIVE" "$REPO_ROOT/res/com.carriez.RustDesk.policy")"
 fi
 if [ "$MODE" = fixed-archive-tests ]; then
     for source in "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
@@ -4153,7 +4153,7 @@ elif { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] 
     lifecycle_payload_grafts=("repo/build.py=$DEBIAN_CONTROL_SOURCE")
     if [ "$MODE" = debian-package-tests ]; then
         lifecycle_payload_grafts+=(
-            "deb-builder.docker.tar.gz=$DEB_BUILDER_ARCHIVE"
+            "devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
             "repo/res/com.carriez.RustDesk.policy=$REPO_ROOT/res/com.carriez.RustDesk.policy"
         )
     fi
@@ -5142,7 +5142,7 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_VM=pass harness=$FOCUSED_TEST_COMMIT manifest=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 source=readonly network=none docker=retired cleanup=joined" 'installed Linux receiver fixture finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed Linux receiver guest completion'
 elif [ "$MODE" = debian-package-tests ]; then
-    debian_package_receipt="DEBIAN_PACKAGE_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=$DEB_BUILDER_CONFIG_ID generator_sha256=$(/usr/bin/sha256sum "$DEBIAN_CONTROL_SOURCE" | /usr/bin/awk '{print $1}') checker_sha256=$(/usr/bin/sha256sum "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" | /usr/bin/awk '{print $1}') source=readonly network=none docker=retired scratch=retired cleanup=joined"
+    debian_package_receipt="DEBIAN_PACKAGE_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=$DEV_CHECK_IMAGE_CONFIG_ID generator_sha256=$(/usr/bin/sha256sum "$DEBIAN_CONTROL_SOURCE" | /usr/bin/awk '{print $1}') checker_sha256=$(/usr/bin/sha256sum "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" | /usr/bin/awk '{print $1}') source=readonly network=none docker=retired scratch=retired cleanup=joined"
     require_exact_fixed_receipt 'ok  Debian package archive and production-finalizer self-tests passed' 'compiled Debian archive integration result'
     require_exact_fixed_receipt "$debian_package_receipt" 'compiled Debian package test finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Debian package guest completion'
@@ -7742,7 +7742,7 @@ if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engin
     fi
 fi
 if [ "$MODE" = debian-package-tests ]; then
-    [ "$(/usr/bin/sha256sum "$DEB_BUILDER_ARCHIVE" "$REPO_ROOT/res/com.carriez.RustDesk.policy")" = "$debian_package_inputs_before" ] \
+    [ "$(/usr/bin/sha256sum "$DEV_CHECK_IMAGE_ARCHIVE" "$REPO_ROOT/res/com.carriez.RustDesk.policy")" = "$debian_package_inputs_before" ] \
         || fail 'Debian package-test compiler image or policy changed during execution'
 fi
 RUN_COMPLETE=1

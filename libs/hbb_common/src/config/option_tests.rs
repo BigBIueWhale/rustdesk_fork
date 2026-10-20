@@ -58,7 +58,8 @@ fn linux_config_read_peer_views_and_mutation_refuse_linked_source() {
                 PeerConfig::load_list_info(path.clone()).is_err(),
                 PeerConfig::load_for_write(id).is_err(),
             ].iter().all(|result| *result);
-            let (peers, next) = PeerConfig::batch_peers(&[(id.into(), SystemTime::UNIX_EPOCH, path.clone())], 0, None);
+            let all = vec![(id.into(), SystemTime::UNIX_EPOCH, path.clone())];
+            let (peers, next) = PeerConfig::batch_peers(&all, 0, None);
             refused &= peers.is_empty() && next == 1;
         }
         let mutation_refused = PeerConfig::set_option(id, "alias", "after".into()).is_err();
@@ -71,6 +72,26 @@ fn linux_config_read_peer_views_and_mutation_refuse_linked_source() {
         assert_eq!(PeerConfig::read_option(id, "alias").unwrap(), "after");
         assert_eq!(fs::read(target).unwrap(), source);
         assert!(refused && mutation_refused && preserved);
+    });
+}
+
+#[test]
+fn linux_config_read_invalid_paths_do_not_become_missing_defaults() {
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
+    in_private_process("config::option_tests::linux_config_read_invalid_paths_do_not_become_missing_defaults", |root| {
+        let missing = root.join("invalid-absent");
+        let long = missing.join("component/".repeat(500)).join("record.toml");
+        assert!(long.as_os_str().as_bytes().len() >= crate::libc::PATH_MAX as usize);
+        let nul = missing.join(std::ffi::OsString::from_vec(b"invalid\0name".to_vec()));
+        let parent = missing.join("../record.toml");
+        let mut all_refused = true;
+        for (kind, path) in [("long", long), ("nul", nul), ("parent", parent)] {
+            let refused = matches!(read_config_file::<toml::Value>(&path), Err(ConfigReadFailure::Unreadable));
+            println!("OPTION_COMMIT_CONFIG_READ_PATH=observed kind={kind} refused={refused}");
+            all_refused &= refused;
+        }
+        assert!(!missing.exists());
+        assert!(all_refused);
     });
 }
 

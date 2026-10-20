@@ -2002,7 +2002,7 @@ fn peer_schema_healthy_sparse_and_normalized_values_keep_their_semantics() {
     });
 }
 
-fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
+pub(super) fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
     const ROOT_ENV: &str = "RUSTDESK_OPTION_COMMIT_TEST_ROOT";
     if let Some(root) = std::env::var_os(ROOT_ENV) {
         let root = PathBuf::from(root);

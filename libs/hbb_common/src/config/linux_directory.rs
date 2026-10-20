@@ -15,6 +15,10 @@ const MAX_RECORD: usize = 128 * 1024;
 const MAX_JOURNAL: usize = 3 * (MAX_RECORD + 36);
 const DOMAIN: &[u8] = b"rustdesk-config-directory-v1\0";
 
+#[cfg(all(test, target_arch = "x86_64"))]
+#[path = "directory_lease_tests.rs"]
+mod lease_tests;
+
 #[derive(Clone, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Record {

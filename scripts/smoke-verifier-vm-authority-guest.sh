@@ -3294,6 +3294,7 @@ run_focused_rust_tests() {
                 libs/hbb_common/src/config/directory_tests.rs
                 libs/hbb_common/src/config/directory_crash_tests.rs
                 libs/hbb_common/src/config/directory_umask_tests.rs
+                libs/hbb_common/src/config/directory_lease_tests.rs
                 libs/hbb_common/src/config/linux_directory.rs
             )
             required_tests=(
@@ -3476,6 +3477,7 @@ run_focused_rust_tests() {
                 config::option_tests::peer_port_forward_edits_preserve_other_fields_siblings_and_capacity
                 config::option_tests::peer_port_forward_idempotent_edits_avoid_writes
                 config::option_tests::peer_port_forward_missing_removal_does_not_create_record
+                config::linux_directory::lease_tests::directory_lease_metadata_admission_precedes_io
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
@@ -5094,7 +5096,7 @@ run_focused_rust_tests() {
                             printf "SOCKET_POLICY_ARTIFACT=pass sha256=%s executable=%s tests=7 unchanged=before-after\n" \
                                 "$policy_sha" "$policy_executable"
                         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
-                            for group in config::tests::config_transaction_ config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options config::tests::test_load_reads_legacy_plaintext_id_without_storing config::tests::test_load_path_ config::option_tests::; do
+                            for group in config::tests::config_transaction_ config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options config::tests::test_load_reads_legacy_plaintext_id_without_storing config::tests::test_load_path_ config::option_tests:: config::linux_directory::lease_tests::; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \

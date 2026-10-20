@@ -2178,10 +2178,16 @@ impl LinuxConfigReadSource {
     }
 
     fn preserve(self, backup: &Path, before_harden: impl FnOnce(&Path) -> Result<()>) -> Result<()> {
-        use std::os::unix::{ffi::OsStrExt, io::AsRawFd};
+        use std::os::unix::{ffi::OsStrExt, io::{AsRawFd, FromRawFd}};
 
         let name = backup.file_name().ok_or_else(|| anyhow!("Recovery path has no file name"))?;
         let name = std::ffi::CString::new(name.as_bytes())?;
+        let fd = unsafe { crate::libc::openat(
+            self.parent.as_raw_fd(), b".\0".as_ptr() as *const crate::libc::c_char,
+            crate::libc::O_RDONLY | crate::libc::O_DIRECTORY | crate::libc::O_CLOEXEC | crate::libc::O_NOFOLLOW,
+        ) };
+        if fd < 0 { return Err(io::Error::last_os_error().into()); }
+        let sync_parent = unsafe { fs::File::from_raw_fd(fd) };
         self.require_named_source(&self.name)?;
         let result = unsafe { crate::libc::syscall(
             crate::libc::SYS_renameat2,
@@ -2193,6 +2199,8 @@ impl LinuxConfigReadSource {
             before_harden(backup)?;
             self.require_named_source(&name)?;
             harden_open_recovery_file(&self.file, backup)?;
+            self.file.sync_all()?;
+            sync_parent.sync_all()?;
             self.require_named_source(&name)?;
             match self.named_metadata(&self.name) {
                 Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),

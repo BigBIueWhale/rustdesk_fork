@@ -2658,7 +2658,7 @@ fn store_config_bytes_transaction_unix(
         let metadata = file.metadata()?;
         if !metadata.file_type().is_file()
             || metadata.uid() != unsafe { crate::libc::geteuid() }
-            || metadata.mode() & 0o777 != 0o600
+            || metadata.mode() & 0o7777 != 0o600
             || metadata.nlink() != 1
         {
             return Err(anyhow!(

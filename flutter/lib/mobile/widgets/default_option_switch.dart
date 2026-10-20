@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_hbb/common/widgets/setting_boolean.dart';
 import 'package:settings_ui/settings_ui.dart';
 
 class DefaultOptionSwitch extends StatelessWidget {
@@ -23,12 +24,25 @@ class DefaultOptionSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SettingsTile.switchTile(
-      initialValue: value == 'Y',
-      title: Text(label),
-      onToggle: enabled ? (next) async {
-        await saveOption(optionKey, next ? 'Y' : falseValue);
-      } : null,
+    return SettingBooleanControl(
+      key: ValueKey(('user-default', optionKey)),
+      value: value == 'Y',
+      enabled: enabled,
+      saveValue: (next) async {
+        final effective = await saveOption(optionKey, next ? 'Y' : falseValue);
+        return effective == null ? null : effective == 'Y';
+      },
+      builder: (current, change, saving, failed) => SettingsTile.switchTile(
+        initialValue: current,
+        enabled: change != null,
+        onToggle: change == null ? null : (next) => change(next),
+        title: Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label),
+          if (saving) const LinearProgressIndicator(minHeight: 2),
+          if (failed) Text(failureText),
+        ]),
+      ),
     );
   }
 }

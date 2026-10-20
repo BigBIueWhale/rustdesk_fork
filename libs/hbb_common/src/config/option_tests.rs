@@ -1555,6 +1555,81 @@ fn config_temp_link_count_change_refuses_publication() {
     });
 }
 
+#[test]
+fn config_temp_special_modes_refuse_publication_and_allow_repair() {
+    use std::{cell::RefCell, os::unix::{ffi::OsStrExt, fs::MetadataExt}};
+
+    in_private_process("config::option_tests::config_temp_special_modes_refuse_publication_and_allow_repair", |_| {
+        let config = Config2::file();
+        let parent = config.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut all_refused = true;
+        for replacement in [false, true] {
+            for special in 1..=7 {
+                let mode = 0o600 | (special << 9);
+                let path = parent.join(format!("mode-{replacement}-{special}.toml"));
+                if replacement {
+                    fs::write(&path, b"original config bytes").unwrap();
+                    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+                }
+                let original = fs::metadata(&path).ok();
+                let temporary = RefCell::new(None);
+                let result = store_config_bytes_transaction_unix(
+                    &path, b"requested config bytes", ConfigStoreFault::None,
+                    &|_| panic!("mode refusal must precede publication"),
+                    &|_, name, source| {
+                        source.set_permissions(fs::Permissions::from_mode(mode))?;
+                        let metadata = source.metadata()?;
+                        assert_eq!(metadata.mode() & 0o7777, mode);
+                        assert_eq!(metadata.gid(), unsafe { crate::libc::getegid() });
+                        let named = parent.join(std::ffi::OsStr::from_bytes(name.to_bytes()));
+                        *temporary.borrow_mut() = Some((named, metadata.dev(), metadata.ino()));
+                        Ok(())
+                    },
+                );
+                let (temporary, device, inode) = temporary.into_inner().unwrap();
+                let target_preserved = match original {
+                    Some(before) => fs::metadata(&path).map(|after| {
+                        (after.dev(), after.ino(), after.mode(), after.nlink())
+                            == (before.dev(), before.ino(), before.mode(), before.nlink())
+                            && fs::read(&path).unwrap() == b"original config bytes"
+                    }).unwrap_or(false),
+                    None => matches!(fs::symlink_metadata(&path),
+                        Err(error) if error.kind() == io::ErrorKind::NotFound),
+                };
+                let staged_preserved = fs::metadata(&temporary).map(|after| {
+                    (after.dev(), after.ino()) == (device, inode)
+                        && after.mode() & 0o7777 == mode && after.nlink() == 1
+                        && fs::read(&temporary).unwrap() == b"requested config bytes"
+                }).unwrap_or(false);
+                let published_special = fs::metadata(&path).map(|after| {
+                    after.mode() & 0o7000 == mode & 0o7000
+                        && fs::read(&path).unwrap() == b"requested config bytes"
+                }).unwrap_or(false);
+                println!("OPTION_COMMIT_TEMP_MODE=observed replacement={replacement} mode={mode:04o} refused={} target_preserved={target_preserved} staged_preserved={staged_preserved} published_special={published_special}", result.is_err());
+                all_refused &= result.is_err() && target_preserved && staged_preserved;
+                if temporary.exists() {
+                    let retained = fs::metadata(&temporary).unwrap();
+                    assert_eq!((retained.dev(), retained.ino()), (device, inode));
+                    fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600)).unwrap();
+                    fs::remove_file(&temporary).unwrap();
+                }
+                store_config_bytes_transaction(&path, b"healthy retry", ConfigStoreFault::None).unwrap();
+                assert_eq!(fs::read(&path).unwrap(), b"healthy retry");
+                assert_eq!(fs::metadata(&path).unwrap().mode() & 0o7777, 0o600);
+                assert!(!temporary.exists());
+                println!("OPTION_COMMIT_TEMP_MODE=retry replacement={replacement} mode={mode:04o} saved=true exact_mode=true temporary_retired=true");
+            }
+        }
+        let after_fds = fds();
+        println!("OPTION_COMMIT_TEMP_MODE=handles before={before_fds} after={after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(all_refused);
+    });
+}
+
 fn exercise_peer_projection_types(kind: &str, id: &str, cases: &[&str]) {
     use std::os::unix::fs::MetadataExt;
     let path = PeerConfig::path(id);

@@ -3406,6 +3406,7 @@ run_focused_rust_tests() {
                 config::option_tests::config_temp_substitution_refuses_foreign_publication
                 config::option_tests::config_temp_failed_publication_cannot_delete_a_replacement_entry
                 config::option_tests::config_temp_link_count_change_refuses_publication
+                config::option_tests::config_temp_special_modes_refuse_publication_and_allow_repair
                 config::option_tests::config_parent_writable_modes_refuse_without_mutation
                 config::option_tests::config_parent_acl_write_mask_refuses_without_mutation
                 config::option_tests::config_parent_safe_modes_and_masked_acl_remain_functional

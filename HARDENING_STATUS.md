@@ -157,6 +157,7 @@ obligation mapping, exact comparisons and any counts for their named historical 
 | Appendix C #212–#232 (selected) | Thirteen historical listener, installer, package, helper and build-authority findings become timeless boundaries. Six disposition summaries replace progress tense and FIX markers with obligations; mechanisms, acceptance duties and requirement references remain. All other specification bytes, IDs, anchors and links are unchanged. Native and exact-artifact acceptance remains OPEN. | `execution-authority-document-role-333795e3.json` |
 | Controlled-host launch and local administration | R-X9–R-X11 now agree with R-S11b/R-S11c/R-S11f/R-S11i/R-S11x: exact service-owned launch, direct Linux credential drop, protected macOS LaunchAgent/helper roles, no generic elevation or runtime service-disable actuator, and functional typed administrator operations. Installed/native acceptance remains OPEN. | `launch-authority-document-role-bc6f0c09.json` |
 | Capture and input backend contracts | R-X12/R-X13/R-X12a and Appendix C #192 state enduring X11/XTEST, alternate-source/endpoint absence, macOS backend and iOS viewer-only limits. Inherited dual-backend/uinput repair narration and the obsolete sole-cross-user-socket claim are removed; supported injection, session/display authorization, consent and native/artifact acceptance remain required. Product and verifier sources are unchanged; native/release acceptance remains OPEN. | `capture-input-contract-role-ed085c5d.json` |
+| Existing Linux desktops and retired session resources | R-X14 and Appendix C #17/#151 retain the peer-credential/PAM/session-creation prohibition, existing-session and greeter discovery, pinned headless policy, receiver-owned terminal principals and operator-started R-D8 automation. The obsolete launcher/configuration cannot return as source or fresh packaged resources. Historical live-path narration and the administrator-conffile implication are removed. Installed/native and upgrade acceptance remain OPEN. | `retired-desktop-resources-9c8ebb1c.json` |
 | Other Appendix C dispositions | Vulnerability classes and required dispositions | `appendix-disposition-classification-a22e5d80-v2.json` |
 | Writer contract | R-T3/R-T18; R-S11gx and Appendix C #359 reference the same contract | `writer-contract-doc-role-deb907f8.json` |
 | Transport lifecycle and authentication | R-T9/R-T10/R-T11/R-T12/R-T13/R-T15; listener exclusivity agrees with R-T17 | `transport-lifecycle-document-role.json` |
@@ -2430,6 +2431,23 @@ review are all still open. Source gates, compilation, callback receipt, and hist
 those obligations.
 
 ## R-S11b/R-S11c/R-S11i — service-owned IPC authority
+
+**R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
+dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty
+`etc/rustdesk` directory. Their session-spawning consumers were already absent; this removes
+packaged residue, not a newly demonstrated live escalation. Existing-session discovery,
+capture and operator-started user-owned X11 remain unchanged. The isolated non-root,
+networkless package test reproduces the old archive failure, then passes seven resource
+cases using production control staging, finalization and archive creation: exact retained
+inventory/conffiles/modes/ownership/command link/md5sums, plus refusal of each restored file
+in staging, data archives and conffile metadata. Seven existing polkit-dependency cases also
+pass. Payload contents are controlled fixtures; no full application, installed service or
+real polkit receiver ran. Retained evidence: `retired-desktop-resources-9c8ebb1c.json`.
+Installed upgrade handling of old administrator-edited conffiles, current release artifacts,
+existing-session/headless native functionality and R-S0 acceptance remain OPEN. The broader
+legacy build.py AST catalogue remains unaccepted: its two-process-launch and fixed
+constructor inventory assumptions predate the native-xdo builder; this focused archive run
+does not validate or repair that catalogue. No installed conffile cleanup is performed.
 
 **Verdict: source topology largely implemented; Android controlled-CM admission is source-corrected,
 but installed/native and release evidence remain OPEN.** The ordinary desktop IPC protocol has no password request,

@@ -3521,22 +3521,6 @@ else
   note "ok  R-S11c-5 LaunchDaemon uses a signed root-owned PrivilegedHelperTools executable, and _service IPC identity matches that deployed helper model; dormant updater and active-user config import are absent"
 fi
 
-echo "== (2b-iii-c5a) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="
-r_s11e61=
-python3 "$REPO/scripts/verify-macos-helper-build-binding.py" --repo "$REPO" \
-  || r_s11e61="$r_s11e61 macos-helper-build-binding-semantic-invalid"
-python3 "$REPO/scripts/verify-macos-helper-build-binding.py" --repo "$REPO" --self-test \
-  || r_s11e61="$r_s11e61 macos-helper-build-binding-mutations-invalid"
-python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
-  "$REPO/scripts/verify-macos-helper-build-binding.py" \
-  || r_s11e61="$r_s11e61 validator-python-syntax-invalid"
-if [ -n "$r_s11e61" ]; then
-  echo "  FAIL R-S11e-61 macOS helper current-build binding:$r_s11e61"
-  rc=1
-else
-  note "ok  R-S11e-61 signed installed-app nested code, deployed helper bytes, stale-upgrade detection/reinstall, and partial-state uninstall share one current-build authority"
-fi
-
 echo "== (2b-iv-a) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="
 r_s11e38=
 for obsolete in 'fn run_as_user' 'fn run_as_user_with_env' 'command.arg("asuser")' 'macos_launch_env_key_is_allowed'; do

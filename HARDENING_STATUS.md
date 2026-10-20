@@ -6694,7 +6694,20 @@ exists only to make the current source disposition discoverable.
 - R-S11e-58 — protected Unix service IPC foreground lifecycle ownership
 - R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership
 - R-S11e-60 — permit-owned Linux service admission; raw-password UID lookup contract OPEN (R-S11at above)
-- R-S11e-61 — macOS privileged helper current-build binding
+- **R-S11au/R-S11e-61 — macOS helper current-build binding — SOURCE IMPLEMENTED;
+  SIGNED INSTALLED-ARTIFACT ACCEPTANCE OPEN.** Runtime helper trust and service status
+  use the deployed/current-app byte comparator in `src/ipc/auth.rs`; the installer
+  rechecks the signed app and deployed helper before launch. The 331-line Python
+  wording checker and its 23 in-memory replacements are deleted, together with its
+  repeated shared/Apple invocations, syntax checks and self-wiring assertions.
+  They checked strings, textual order and verifier headings without reading helper
+  bytes, invoking code-signing APIs or observing an install/upgrade. The existing
+  four-combination Rust status-predicate regression and separate packaging,
+  command-descriptor and environment checks remain. The predicate test does not
+  exercise file comparison or Apple identity. Exact signed current/stale/tampered
+  app/helper pairs, every architecture, upgrade/relaunch, administrator-authorized
+  reinstall, partial-state uninstall, refusal, resources and cleanup still require
+  native macOS evidence. R-S0, cold/artifact, independent and release acceptance remain OPEN.
 - R-S11e-62 — macOS variadic file-creation ABI
 - **R-S11aw/R-S11e-63 — explicit Windows listener DACL source policy;
   native pipe admission OPEN.** The 893-line

@@ -6716,22 +6716,6 @@ echo "== (3b-iii-d9ch) protected Unix service IPC foreground lifecycle ownership
 echo "== (3b-iii-d9cj) Linux service cached-UID negative-prefilter policy (R-S11at/R-S11e-60) =="
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e60_ --color never
 
-# (3b-iii-d9ck) R-S11au/R-S11e-61: a macOS LaunchDaemon helper is
-# current only when it is the exact nested helper of the signed installed app.
-echo "== (3b-iii-d9ck) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="
-r_s11e61=
-python3 scripts/verify-macos-helper-build-binding.py --repo . \
-  || r_s11e61="$r_s11e61 macos-helper-build-binding-semantic-invalid"
-python3 scripts/verify-macos-helper-build-binding.py --repo . --self-test \
-  || r_s11e61="$r_s11e61 macos-helper-build-binding-mutations-invalid"
-python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
-  scripts/verify-macos-helper-build-binding.py \
-  || r_s11e61="$r_s11e61 validator-python-syntax-invalid"
-grep -qF 'macOS privileged helper current-build binding (R-S11au/R-S11e-61)' scripts/apple-conform-check.sh \
-  || r_s11e61="$r_s11e61 apple-source-conformance-gate-missing"
-if [ -n "$r_s11e61" ]; then echo "  FAIL R-S11e-61 macOS helper current-build binding:$r_s11e61"; rc=1; else
-  echo "  ok  R-S11e-61 signed installed-app nested code, deployed helper bytes, upgrade status, reinstall, and partial-state uninstall share one current-build authority"; fi
-
 # (3b-iii-d9cn) R-S11ax/R-S11dd/R-S11e-64/R-S11e-122 runtime smoke.
 # Supplementary source invariants bind the sole verifier-VM Docker authority,
 # deleted privileged-container routes, exact-source mounts and confined launches.

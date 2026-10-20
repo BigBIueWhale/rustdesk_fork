@@ -317,6 +317,14 @@ HOLD_DRAG_TESTS = {
 }
 
 SETTING_OPTION_TESTS = {
+    "setting checkbox pending commit survives parent rebuild",
+    "setting checkbox serializes captured callbacks through rebuild",
+    "setting checkbox rejected readback retries the identical choice",
+    "setting checkbox thrown save stays visible and retryable",
+    "setting checkbox disabled and retired callbacks cannot write",
+    "setting checkbox replacement ignores admitted completion",
+    "setting checkbox clean parent refresh replaces confirmed display",
+    "setting checkbox row taps publish confirmed values and icons",
     "combo uses keys independently of display labels",
     "combo duplicate labels preserve distinct selection identities",
     "combo pending and failed changes retain the confirmed selection",

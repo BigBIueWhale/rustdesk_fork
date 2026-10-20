@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
 import 'package:flutter_hbb/common/widgets/auto_disconnect_timeout_field.dart';
+import 'package:flutter_hbb/common/widgets/setting_checkbox.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
@@ -1308,54 +1309,25 @@ Widget _OptionCheckBox(
   bool value = getOpt();
   final isOptFixed = isOptionFixed(key);
   if (reverse) value = !value;
-  var ref = value.obs;
-  onChanged(option) async {
-    if (option != null) {
-      if (reverse) option = !option;
+  if (fakeValue != null) enabled = false;
+  return SettingCheckbox(
+    key: ValueKey((isServer, key)),
+    label: translate(label),
+    value: fakeValue ?? value,
+    enabled: enabled && !isOptFixed && fakeValue == null,
+    failureText: translate('Failed'),
+    checkedIcon: checkedIcon,
+    labelStyle: TextStyle(color: disabledTextColor(context, enabled)),
+    saveValue: (displayed) async {
+      final option = reverse ? !displayed : displayed;
       final setter =
           optSetter ?? (isServer ? mainSetBoolOption : mainSetLocalBoolOption);
-      if (!await setter(key, option) || !context.mounted) return;
-      final readOption = getOpt();
-      if (reverse) {
-        ref.value = !readOption;
-      } else {
-        ref.value = readOption;
-      }
-      update?.call(readOption);
-    }
-  }
-
-  if (fakeValue != null) {
-    ref.value = fakeValue;
-    enabled = false;
-  }
-
-  return GestureDetector(
-    child: Obx(
-      () => Row(
-        children: [
-          Checkbox(
-                  value: ref.value,
-                  onChanged: enabled && !isOptFixed ? onChanged : null)
-              .marginOnly(right: 5),
-          Offstage(
-            offstage: !ref.value || checkedIcon == null,
-            child: checkedIcon?.marginOnly(right: 5),
-          ),
-          Expanded(
-              child: Text(
-            translate(label),
-            style: TextStyle(color: disabledTextColor(context, enabled)),
-          ))
-        ],
-      ),
-    ).marginOnly(left: _kCheckBoxLeftMargin),
-    onTap: enabled && !isOptFixed
-        ? () {
-            onChanged(!ref.value);
-          }
-        : null,
-  );
+      if (!await setter(key, option) || !context.mounted) return null;
+      final effective = getOpt();
+      return reverse ? !effective : effective;
+    },
+    onChanged: (displayed) => update?.call(reverse ? !displayed : displayed),
+  ).marginOnly(left: _kCheckBoxLeftMargin);
 }
 
 // R-G1 (§19): render a controlled-side policy-PINNED (R-S16) capability as a READ-ONLY indicator —

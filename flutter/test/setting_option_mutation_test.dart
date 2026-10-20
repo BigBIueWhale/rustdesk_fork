@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
+import 'package:flutter_hbb/common/widgets/setting_checkbox.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/common/widgets/toolbar.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -105,7 +106,176 @@ Widget _comboPage(Map<String, String> options, String selected,
 DropdownButton<String> _comboButton(WidgetTester tester) =>
     tester.widget<DropdownButton<String>>(find.byType(DropdownButton<String>));
 
+Widget _settingCheckboxPage({
+  bool value = false,
+  bool enabled = true,
+  Key controlKey = const ValueKey('option'),
+  required Future<bool?> Function(bool) save,
+  ValueChanged<bool>? changed,
+}) => MaterialApp(theme: MyTheme.lightTheme, home: Scaffold(body: SizedBox(
+  width: 320,
+  child: SettingCheckbox(key: controlKey, label: 'Option', value: value,
+    enabled: enabled, saveValue: save, onChanged: changed, failureText: 'Failed',
+    checkedIcon: const Icon(Icons.check)),
+)));
+
+Checkbox _settingCheckbox(WidgetTester tester) =>
+    tester.widget<Checkbox>(find.byType(Checkbox));
+
 void main() {
+  testWidgets('setting checkbox pending commit survives parent rebuild', (tester) async {
+    final pending = Completer<bool?>();
+    final notifications = <bool>[];
+    Future<bool?> save(bool value) => pending.future;
+    await tester.pumpWidget(_settingCheckboxPage(save: save, changed: notifications.add));
+    _settingCheckbox(tester).onChanged!(true);
+    await tester.pump();
+    final before = _settingCheckbox(tester).value;
+    await tester.pumpWidget(_settingCheckboxPage(save: save, changed: notifications.add));
+    pending.complete(true);
+    await tester.pump();
+    expect(before, isFalse);
+    expect(notifications, [true]);
+    expect(_settingCheckbox(tester).value, isTrue);
+  });
+
+  testWidgets('setting checkbox serializes captured callbacks through rebuild', (tester) async {
+    final pending = Completer<bool?>();
+    final writes = <bool>[];
+    Future<bool?> save(bool value) { writes.add(value); return pending.future; }
+    await tester.pumpWidget(_settingCheckboxPage(save: save));
+    final callback = _settingCheckbox(tester).onChanged!;
+    callback(true);
+    callback(true);
+    await tester.pumpWidget(_settingCheckboxPage(save: save));
+    final disabled = _settingCheckbox(tester).onChanged == null;
+    final progress = find.byType(LinearProgressIndicator).evaluate().length;
+    callback(true);
+    pending.complete(true);
+    await tester.pump();
+    expect(writes, [true]);
+    expect(disabled, isTrue);
+    expect(progress, 1);
+    expect(_settingCheckbox(tester).value, isTrue);
+    expect(_settingCheckbox(tester).onChanged, isNotNull);
+  });
+
+  testWidgets('setting checkbox rejected readback retries the identical choice', (tester) async {
+    final writes = <bool>[];
+    final notifications = <bool>[];
+    await tester.pumpWidget(_settingCheckboxPage(save: (value) async {
+      writes.add(value);
+      return writes.length == 1 ? null : writes.length == 2 ? false : value;
+    }, changed: notifications.add));
+    for (var attempt = 0; attempt < 2; attempt++) {
+      _settingCheckbox(tester).onChanged!(true);
+      await tester.pump();
+      expect(_settingCheckbox(tester).value, isFalse);
+      expect(find.text('Failed'), findsOneWidget);
+      expect(_settingCheckbox(tester).onChanged, isNotNull);
+    }
+    _settingCheckbox(tester).onChanged!(true);
+    await tester.pump();
+    expect(writes, [true, true, true]);
+    expect(notifications, [false, true]);
+    expect(_settingCheckbox(tester).value, isTrue);
+    expect(find.text('Failed'), findsNothing);
+  });
+
+  testWidgets('setting checkbox thrown save stays visible and retryable', (tester) async {
+    final escaped = <Object>[];
+    var writes = 0;
+    await tester.pumpWidget(_settingCheckboxPage(save: (value) {
+      writes++;
+      if (writes == 1) throw StateError('dispatch refused');
+      if (writes == 2) return Future.error(StateError('write refused'));
+      return Future.value(value);
+    }));
+    for (var attempt = 0; attempt < 2; attempt++) {
+      runZonedGuarded(() => _settingCheckbox(tester).onChanged!(true),
+          (Object error, StackTrace stack) => escaped.add(error));
+      await tester.pump();
+      expect(escaped, isEmpty);
+      expect(_settingCheckbox(tester).value, isFalse);
+      expect(find.text('Failed'), findsOneWidget);
+      expect(_settingCheckbox(tester).onChanged, isNotNull);
+    }
+    _settingCheckbox(tester).onChanged!(true);
+    await tester.pump();
+    expect(writes, 3);
+    expect(_settingCheckbox(tester).value, isTrue);
+    expect(find.text('Failed'), findsNothing);
+  });
+
+  testWidgets('setting checkbox disabled and retired callbacks cannot write', (tester) async {
+    final writes = <bool>[];
+    Future<bool?> save(bool value) async { writes.add(value); return value; }
+    await tester.pumpWidget(_settingCheckboxPage(save: save));
+    final callback = _settingCheckbox(tester).onChanged!;
+    await tester.pumpWidget(_settingCheckboxPage(save: save, enabled: false));
+    callback(true);
+    await tester.pump();
+    final disabledWrites = List<bool>.of(writes);
+    await tester.pumpWidget(_settingCheckboxPage(save: save));
+    final retiredCallback = _settingCheckbox(tester).onChanged!;
+    await tester.pumpWidget(const SizedBox.shrink());
+    retiredCallback(true);
+    await tester.pump();
+    expect(disabledWrites, isEmpty);
+    expect(writes, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('setting checkbox replacement ignores admitted completion', (tester) async {
+    final pending = Completer<bool?>();
+    final oldNotifications = <bool>[];
+    final newNotifications = <bool>[];
+    var writes = 0;
+    await tester.pumpWidget(_settingCheckboxPage(save: (_) {
+      writes++; return pending.future;
+    }, changed: oldNotifications.add));
+    _settingCheckbox(tester).onChanged!(true);
+    await tester.pumpWidget(_settingCheckboxPage(
+      controlKey: const ValueKey('replacement'), save: (value) async => value,
+      changed: newNotifications.add));
+    pending.complete(true);
+    await tester.pump();
+    expect(writes, 1);
+    expect(oldNotifications, isEmpty);
+    expect(newNotifications, isEmpty);
+    expect(_settingCheckbox(tester).value, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('setting checkbox clean parent refresh replaces confirmed display', (tester) async {
+    final writes = <bool>[];
+    Future<bool?> save(bool value) async { writes.add(value); return value; }
+    await tester.pumpWidget(_settingCheckboxPage(save: save));
+    await tester.pumpWidget(_settingCheckboxPage(value: true, save: save));
+    expect(_settingCheckbox(tester).value, isTrue);
+    await tester.pumpWidget(_settingCheckboxPage(save: save));
+    expect(_settingCheckbox(tester).value, isFalse);
+    expect(writes, isEmpty);
+  });
+
+  testWidgets('setting checkbox row taps publish confirmed values and icons', (tester) async {
+    final writes = <bool>[];
+    final notifications = <bool>[];
+    await tester.pumpWidget(_settingCheckboxPage(save: (value) async {
+      writes.add(value); return value;
+    }, changed: notifications.add));
+    await tester.tap(find.text('Option'));
+    await tester.pumpAndSettle();
+    expect(_settingCheckbox(tester).value, isTrue);
+    expect(find.byIcon(Icons.check), findsOneWidget);
+    await tester.tap(find.text('Option'));
+    await tester.pumpAndSettle();
+    expect(_settingCheckbox(tester).value, isFalse);
+    expect(find.byIcon(Icons.check), findsNothing);
+    expect(writes, [true, false]);
+    expect(notifications, [true, false]);
+  });
+
   testWidgets('combo uses keys independently of display labels', (tester) async {
     final requests = <String>[];
     await tester.pumpWidget(_comboPage(

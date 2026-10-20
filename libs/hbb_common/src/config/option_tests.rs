@@ -2147,7 +2147,7 @@ fn local_source_schema_failures_preserve_all_fields_and_refuse_mutations() {
         for field in ["remote_id", "kb_layout_type", "fav", "options", "ui_flutter"] {
             let nested = match field {
                 "fav" => toml::Value::Array(vec![toml::Value::Integer(7)]),
-                "options" | "ui_flutter" => toml::Value::Table([("preserved".into(), toml::Value::String("keep".into())), ("invalid".into(), toml::Value::Integer(7))].into_iter().collect()),
+                "options" | "ui_flutter" => toml::Value::Table(vec![("preserved".into(), toml::Value::String("keep".into())), ("invalid".into(), toml::Value::Integer(7))].into_iter().collect()),
                 _ => toml::Value::Array(vec![toml::Value::String("invalid".into())]),
             };
             for (kind, malformed) in [("integer", toml::Value::Integer(7)), ("boolean", toml::Value::Boolean(false)), ("nested", nested)] {

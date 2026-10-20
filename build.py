@@ -31,8 +31,6 @@ skip_cargo = False
 DEBIAN_MAINTAINER_SCRIPTS = ("preinst", "postinst", "prerm", "postrm")
 DEBIAN_CONFFILES = (
     "etc/init.d/rustdesk",
-    "etc/rustdesk/startwm.sh",
-    "etc/rustdesk/xorg.conf",
 )
 DEBIAN_CONTROL_MODES = {
     "control": 0o644,
@@ -42,7 +40,6 @@ DEBIAN_CONTROL_MODES = {
 }
 DEBIAN_DATA_EXECUTABLES = {
     "etc/init.d/rustdesk",
-    "etc/rustdesk/startwm.sh",
     "usr/share/rustdesk/files/manual/rustdesk-service",
     "usr/share/rustdesk/files/openrc/rustdesk",
     "usr/share/rustdesk/files/runit/run",
@@ -71,7 +68,6 @@ DEBIAN_FLUTTER_LIBRARIES = {
 DEBIAN_DATA_REQUIRED_DIRECTORIES = {
     "etc",
     "etc/init.d",
-    "etc/rustdesk",
     "usr",
     "usr/bin",
     "usr/lib",
@@ -99,8 +95,6 @@ DEBIAN_DATA_REQUIRED_DIRECTORIES = {
 }
 DEBIAN_DATA_REQUIRED_FILES = {
     "etc/init.d/rustdesk",
-    "etc/rustdesk/startwm.sh",
-    "etc/rustdesk/xorg.conf",
     "usr/lib/systemd/system/rustdesk.service",
     "usr/lib/rustdesk-fork/libxdo.so.3",
     "usr/share/applications/rustdesk-link.desktop",
@@ -548,7 +542,6 @@ def build_flutter_deb(version, features):
     system2('/bin/rm -rf tmpdeb')
     system2('mkdir -p tmpdeb/usr/share/rustdesk')
     system2('mkdir -p tmpdeb/etc/init.d/')
-    system2('mkdir -p tmpdeb/etc/rustdesk/')
     system2('mkdir -p tmpdeb/usr/bin/')
     system2('mkdir -p tmpdeb/usr/lib/systemd/system/')
     native_xdo = Path(__file__).resolve().parent / "libs/libxdo-sys-stub/native"
@@ -580,10 +573,6 @@ def build_flutter_deb(version, features):
         'cp ../res/rustdesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop')
     system2(
         'cp ../res/com.carriez.RustDesk.policy tmpdeb/usr/share/polkit-1/actions/')
-    system2(
-        'cp ../res/startwm.sh tmpdeb/etc/rustdesk/')
-    system2(
-        'cp ../res/xorg.conf tmpdeb/etc/rustdesk/')
     shutil.copyfile(
         'tmpdeb/usr/share/rustdesk/rustdesk',
         'tmpdeb/usr/share/rustdesk/rustdesk-service-child',

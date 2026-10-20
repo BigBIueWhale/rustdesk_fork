@@ -33,12 +33,9 @@ POLKIT_POLICY_DEFAULTS = {
 }
 CONFFILE_PATHS = (
     "./etc/init.d/rustdesk",
-    "./etc/rustdesk/startwm.sh",
-    "./etc/rustdesk/xorg.conf",
 )
 DATA_EXECUTABLES = {
     "./etc/init.d/rustdesk",
-    "./etc/rustdesk/startwm.sh",
     "./usr/share/rustdesk/files/manual/rustdesk-service",
     "./usr/share/rustdesk/files/openrc/rustdesk",
     "./usr/share/rustdesk/files/runit/run",
@@ -62,7 +59,6 @@ DATA_REQUIRED_DIRECTORIES = {
     ".",
     "./etc",
     "./etc/init.d",
-    "./etc/rustdesk",
     "./usr",
     "./usr/bin",
     "./usr/lib",
@@ -90,8 +86,6 @@ DATA_REQUIRED_DIRECTORIES = {
 }
 DATA_REQUIRED_FILES = {
     "./etc/init.d/rustdesk",
-    "./etc/rustdesk/startwm.sh",
-    "./etc/rustdesk/xorg.conf",
     "./usr/lib/systemd/system/rustdesk.service",
     "./usr/lib/rustdesk-fork/libxdo.so.3",
     "./usr/share/applications/rustdesk-link.desktop",
@@ -1423,7 +1417,7 @@ def validate_build_py(repo):
         )
     package_start = direct_call_positions[stage_calls[0]]
     package_prefix = flutter_body[:package_start]
-    if len(package_prefix) != 27:
+    if len(package_prefix) != 24:
         raise ValidationError("build.py Flutter Debian constructor pre-package inventory differs")
     cargo_block = package_prefix[0]
     if (not isinstance(cargo_block, ast.If)
@@ -1458,7 +1452,6 @@ def validate_build_py(repo):
         "/bin/rm -rf tmpdeb",
         "mkdir -p tmpdeb/usr/share/rustdesk",
         "mkdir -p tmpdeb/etc/init.d/",
-        "mkdir -p tmpdeb/etc/rustdesk/",
         "mkdir -p tmpdeb/usr/bin/",
         "mkdir -p tmpdeb/usr/lib/systemd/system/",
         "mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/",
@@ -1466,10 +1459,10 @@ def validate_build_py(repo):
         "mkdir -p tmpdeb/usr/share/applications/",
         "mkdir -p tmpdeb/usr/share/polkit-1/actions",
     )
-    for statement, command in zip(package_prefix[2:14], static_package_commands):
+    for statement, command in zip(package_prefix[2:13], static_package_commands):
         if not direct_call_statement(statement, "system2", (("string", command),)):
             raise ValidationError("build.py Flutter Debian constructor setup operations are not exact")
-    bundle_copy = package_prefix[14]
+    bundle_copy = package_prefix[13]
     if (not isinstance(bundle_copy, ast.Expr)
             or not isinstance(bundle_copy.value, ast.Call)
             or ast_call_name(bundle_copy.value) != "system2"
@@ -1491,14 +1484,12 @@ def validate_build_py(repo):
         "cp ../res/rustdesk.desktop tmpdeb/usr/share/applications/rustdesk.desktop",
         "cp ../res/rustdesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop",
         "cp ../res/com.carriez.RustDesk.policy tmpdeb/usr/share/polkit-1/actions/",
-        "cp ../res/startwm.sh tmpdeb/etc/rustdesk/",
-        "cp ../res/xorg.conf tmpdeb/etc/rustdesk/",
     )
-    for statement, command in zip(package_prefix[15:25], resource_copy_commands):
+    for statement, command in zip(package_prefix[14:22], resource_copy_commands):
         if not direct_call_statement(statement, "system2", (("string", command),)):
             raise ValidationError("build.py Flutter Debian resource copies are not exact")
     if not direct_call_statement(
-        package_prefix[25],
+        package_prefix[22],
         "shutil.copyfile",
         (
             ("string", "tmpdeb/usr/share/rustdesk/rustdesk"),
@@ -1507,7 +1498,7 @@ def validate_build_py(repo):
     ):
         raise ValidationError("build.py Flutter Debian service-child copy is not exact")
     if not direct_call_statement(
-        package_prefix[26],
+        package_prefix[23],
         "os.symlink",
         (
             ("string", "../share/rustdesk/rustdesk"),
@@ -1574,7 +1565,7 @@ def validate_build_py(repo):
         system2_owners[owner_name] = system2_owners.get(owner_name, 0) + 1
     if system2_owners != {
         "ffi_bindgen_function_refactor": 1,
-        "build_flutter_deb": 25,
+        "build_flutter_deb": 22,
         "build_flutter_dmg": 4,
         "build_flutter_windows": 2,
     }:
@@ -1685,9 +1676,7 @@ def make_synthetic_tree(root, polkit_policy):
         write_file(root / f"DEBIAN/{script}", "#!/bin/sh\nset -e\nexit 0\n", 0o755)
     for name in sorted(DATA_REQUIRED_FILES):
         path = root / name[2:]
-        if name == "./etc/rustdesk/startwm.sh":
-            contents = "#!/bin/sh\nset -e\nexit 0\n"
-        elif name == "./usr/share/rustdesk/rustdesk":
+        if name == "./usr/share/rustdesk/rustdesk":
             contents = "#!/bin/sh\nexit 0\n"
         elif name == "./usr/lib/systemd/system/rustdesk.service":
             contents = "[Service]\nExecStart=/usr/bin/rustdesk --service\n"
@@ -2839,7 +2828,7 @@ def run_production_finalizer_self_test(repo, tmp, polkit_policy):
     linked = tmp / "linked-payload"
     shutil.copytree(staging, linked, symlinks=True)
     (linked / "DEBIAN/md5sums").unlink()
-    os.link(linked / "etc/rustdesk/startwm.sh", linked / "etc/rustdesk/hardlink")
+    os.link(linked / "etc/init.d/rustdesk", linked / "etc/init.d/hardlink")
     expect_operation_failure(
         lambda: build_module.finalize_debian_package_tree(linked),
         "special file or hardlink",
@@ -3772,7 +3761,7 @@ def run_self_test(repo, polkit_policy):
         write_modified_deb(
             good_deb,
             bad_conffiles_deb,
-            control_transform=replace_tar_member("./conffiles", contents=b"/etc/rustdesk/startwm.sh\n"),
+            control_transform=replace_tar_member("./conffiles", contents=b"/etc/init.d/unexpected\n"),
         )
         expect_validation_failure(bad_conffiles_deb, "content differs from the exact configuration inventory")
 

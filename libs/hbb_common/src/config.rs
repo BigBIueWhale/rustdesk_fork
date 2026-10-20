@@ -4102,7 +4102,7 @@ serde_field_bool!(
     "SyncInitClipboard::default_sync_init_clipboard"
 );
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct LocalConfig {
     #[serde(default, deserialize_with = "deserialize_string")]
     remote_id: String, // latest used one
@@ -4119,7 +4119,27 @@ pub struct LocalConfig {
 
 impl LocalConfig {
     fn load() -> LocalConfig {
-        Config::load_::<LocalConfig>("_local")
+        match read_config_view(&Config::file_("_local")) {
+            Ok(loaded) => loaded,
+            Err(err) => {
+                log::error!("Failed to load local preferences: {err}");
+                Self::default()
+            }
+        }
+    }
+
+    fn update(mutate: impl FnOnce(&mut Self)) -> crate::ResultType<()> {
+        let mut config = LOCAL_CONFIG.write().unwrap();
+        let file = Config::file_("_local");
+        let loaded: Self = read_config_view(&file)
+            .map_err(|_| anyhow!("Failed to read local preferences"))?;
+        let mut candidate = loaded.clone();
+        mutate(&mut candidate);
+        if candidate != loaded {
+            store_path(file, &candidate)?;
+        }
+        *config = candidate;
+        Ok(())
     }
 
     pub fn get_kb_layout_type() -> String {
@@ -4127,27 +4147,11 @@ impl LocalConfig {
     }
 
     pub fn set_kb_layout_type(kb_layout_type: String) -> crate::ResultType<()> {
-        let mut config = LOCAL_CONFIG.write().unwrap();
-        if config.kb_layout_type == kb_layout_type {
-            return Ok(());
-        }
-        let mut candidate = config.clone();
-        candidate.kb_layout_type = kb_layout_type;
-        store_path(Config::file_("_local"), &candidate)?;
-        *config = candidate;
-        Ok(())
+        Self::update(|candidate| candidate.kb_layout_type = kb_layout_type)
     }
 
     pub fn set_remote_id(remote_id: &str) -> crate::ResultType<()> {
-        let mut config = LOCAL_CONFIG.write().unwrap();
-        if remote_id == config.remote_id {
-            return Ok(());
-        }
-        let mut candidate = config.clone();
-        candidate.remote_id = remote_id.into();
-        store_path(Config::file_("_local"), &candidate)?;
-        *config = candidate;
-        Ok(())
+        Self::update(|candidate| candidate.remote_id = remote_id.into())
     }
 
     pub fn get_remote_id() -> String {
@@ -4155,23 +4159,17 @@ impl LocalConfig {
     }
 
     pub fn set_favorites(ids: Vec<String>, favorite: bool) -> crate::ResultType<()> {
-        let mut config = LOCAL_CONFIG.write().unwrap();
-        let mut candidate = config.clone();
-        if favorite {
-            for id in ids {
-                if !candidate.fav.contains(&id) {
-                    candidate.fav.push(id);
+        Self::update(|candidate| {
+            if favorite {
+                for id in ids {
+                    if !candidate.fav.contains(&id) {
+                        candidate.fav.push(id);
+                    }
                 }
+            } else {
+                candidate.fav.retain(|id| !ids.contains(id));
             }
-        } else {
-            candidate.fav.retain(|id| !ids.contains(id));
-        }
-        if candidate.fav == config.fav {
-            return Ok(());
-        }
-        store_path(Config::file_("_local"), &candidate)?;
-        *config = candidate;
-        Ok(())
+        })
     }
 
     pub fn get_fav() -> Vec<String> {
@@ -4204,24 +4202,18 @@ impl LocalConfig {
     }
 
     pub fn set_option(k: String, v: String) -> crate::ResultType<()> {
-        let mut config = LOCAL_CONFIG.write().unwrap();
-        let mut candidate = config.clone();
-        if !is_option_can_save(&OVERWRITE_LOCAL_SETTINGS, &k, &DEFAULT_LOCAL_SETTINGS, &v) {
-            candidate.options.remove(&k);
-        } else if k == keys::OPTION_LANGUAGE && v == "default" {
-            // An explicit system language shadows a custom client's default language.
-            candidate.options.insert(k, String::new());
-        } else if v.is_empty() {
-            candidate.options.remove(&k);
-        } else {
-            candidate.options.insert(k, v);
-        }
-        if candidate.options == config.options {
-            return Ok(());
-        }
-        store_path(Config::file_("_local"), &candidate)?;
-        *config = candidate;
-        Ok(())
+        Self::update(|candidate| {
+            if !is_option_can_save(&OVERWRITE_LOCAL_SETTINGS, &k, &DEFAULT_LOCAL_SETTINGS, &v) {
+                candidate.options.remove(&k);
+            } else if k == keys::OPTION_LANGUAGE && v == "default" {
+                // An explicit system language shadows a custom client's default language.
+                candidate.options.insert(k, String::new());
+            } else if v.is_empty() {
+                candidate.options.remove(&k);
+            } else {
+                candidate.options.insert(k, v);
+            }
+        })
     }
 
     pub fn get_flutter_option(k: &str) -> String {
@@ -4235,20 +4227,13 @@ impl LocalConfig {
     }
 
     pub fn set_flutter_option(k: String, v: String) -> crate::ResultType<()> {
-        let mut config = LOCAL_CONFIG.write().unwrap();
-        let v2 = if v.is_empty() { None } else { Some(&v) };
-        if v2 == config.ui_flutter.get(&k) {
-            return Ok(());
-        }
-        let mut candidate = config.clone();
-        if v2.is_none() {
-            candidate.ui_flutter.remove(&k);
-        } else {
-            candidate.ui_flutter.insert(k, v);
-        }
-        store_path(Config::file_("_local"), &candidate)?;
-        *config = candidate;
-        Ok(())
+        Self::update(|candidate| {
+            if v.is_empty() {
+                candidate.ui_flutter.remove(&k);
+            } else {
+                candidate.ui_flutter.insert(k, v);
+            }
+        })
     }
 }
 

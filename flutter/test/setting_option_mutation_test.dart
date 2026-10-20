@@ -99,7 +99,7 @@ Widget _combo(Map<String, String> options, String selected,
 
 Widget _comboPage(Map<String, String> options, String selected,
         ValueChanged<String> onChanged, {bool enabled = true}) =>
-    MaterialApp(home: Scaffold(body: SizedBox(width: 320,
+    MaterialApp(theme: MyTheme.lightTheme, home: Scaffold(body: SizedBox(width: 320,
         child: _combo(options, selected, onChanged, enabled: enabled))));
 
 DropdownButton<String> _comboButton(WidgetTester tester) =>
@@ -141,7 +141,7 @@ void main() {
     final requests = <String>[];
     var completion = Completer<String>();
     Future<void>? pending;
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 320,
+    await tester.pumpWidget(MaterialApp(theme: MyTheme.lightTheme, home: Scaffold(body: SizedBox(width: 320,
         child: StatefulBuilder(builder: (context, update) {
           return _combo({'A': 'A', 'B': 'B'}, selected, (requested) {
             requests.add(requested);

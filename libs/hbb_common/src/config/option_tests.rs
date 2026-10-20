@@ -611,6 +611,23 @@ fn peer_credential_status_distinguishes_saved_prs_and_retired_data() {
 }
 
 #[test]
+fn peer_credential_status_rejects_malformed_prs_shape() {
+    in_private_process("config::option_tests::peer_credential_status_rejects_malformed_prs_shape", |_| {
+        let id = "peer-credential-status-shape";
+        let path = PeerConfig::path(id);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        for source in ["password_prs = 42\n", "password_prs = 'private-status-source'\n", "password_prs = ['private-status-source']\n"] {
+            fs::write(&path, source).unwrap();
+            let status = PeerConfig::credential_status(id);
+            println!("OPTION_COMMIT_PEER_CREDENTIAL_STATUS=observed kind=prs_shape error_reported={} file_preserved={}", status.is_err(), fs::read(&path).unwrap() == source.as_bytes());
+            assert!(status.is_err());
+            assert!(!status.unwrap_err().to_string().contains("private-status-source"));
+            assert_eq!(fs::read(&path).unwrap(), source.as_bytes());
+        }
+    });
+}
+
+#[test]
 fn peer_listing_does_not_migrate_credentials() {
     in_private_process("config::option_tests::peer_listing_does_not_migrate_credentials", |_| {
         let id = "peer-listing-no-migration";

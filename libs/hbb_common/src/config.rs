@@ -3367,6 +3367,14 @@ pub struct PeerCredentialStatus {
 }
 
 #[derive(Default, Deserialize)]
+struct PeerCredentialFile {
+    #[serde(default)]
+    password_prs: Vec<u8>,
+    #[serde(rename = "password", default, deserialize_with = "discard_retired_peer_password")]
+    retired_password_present: bool,
+}
+
+#[derive(Default, Deserialize)]
 struct PeerListFile {
     #[serde(default)]
     info: PeerInfoSerde,
@@ -3548,10 +3556,11 @@ impl PeerConfig {
     }
 
     pub fn credential_status(id: &str) -> crate::ResultType<PeerCredentialStatus> {
-        let has_saved_prs = !Self::load(id).password_prs.is_empty();
+        let file: PeerCredentialFile = Self::read_display_path(&Self::path(id))?;
+        let has_saved_prs = !file.password_prs.is_empty();
         Ok(PeerCredentialStatus {
             has_saved_prs,
-            can_forget: has_saved_prs,
+            can_forget: has_saved_prs || file.retired_password_present,
         })
     }
 

@@ -3214,6 +3214,7 @@ run_focused_rust_tests() {
                 config::option_tests::peer_credential_status_read_denial_is_reported_and_retryable
                 config::option_tests::peer_credential_status_does_not_initialize_controlled_config
                 config::option_tests::peer_credential_status_distinguishes_saved_prs_and_retired_data
+                config::option_tests::peer_credential_status_rejects_malformed_prs_shape
                 config::option_tests::peer_transfer_write_failure_is_reported_and_retryable
                 config::option_tests::peer_transfer_unreadable_source_refuses_without_replacing_credentials
                 config::option_tests::peer_transfer_changes_only_the_checkpoint_and_preserves_siblings

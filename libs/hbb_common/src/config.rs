@@ -1004,8 +1004,7 @@ macro_rules! serde_field_string {
         where
             D: de::Deserializer<'de>,
         {
-            let s: String =
-                de::Deserialize::deserialize(deserializer).unwrap_or(Self::$default_func());
+            let s: String = de::Deserialize::deserialize(deserializer)?;
             if s.is_empty() {
                 return Ok(Self::$default_func());
             }
@@ -1018,7 +1017,7 @@ macro_rules! serde_field_bool {
     ($struct_name: ident, $field_name: literal, $func: ident, $default: literal) => {
         #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
         pub struct $struct_name {
-            #[serde(default = $default, rename = $field_name, deserialize_with = "deserialize_bool")]
+            #[serde(default = $default, rename = $field_name)]
             pub v: bool,
         }
         impl Default for $struct_name {
@@ -1090,13 +1089,13 @@ pub struct Resolution {
 pub struct PeerConfig {
     // R-S9: the viewer's derived Argon2id CPace PRS, encrypted at rest.
     // Feed it to CPace without re-derivation; empty means no remembered credential.
-    #[serde(default, deserialize_with = "deserialize_vec_u8")]
+    #[serde(default)]
     pub password_prs: Vec<u8>,
-    #[serde(default, deserialize_with = "deserialize_size")]
+    #[serde(default)]
     pub size: Size,
-    #[serde(default, deserialize_with = "deserialize_size")]
+    #[serde(default)]
     pub size_ft: Size,
-    #[serde(default, deserialize_with = "deserialize_size")]
+    #[serde(default)]
     pub size_pf: Size,
     #[serde(
         default = "PeerConfig::default_view_style",
@@ -1138,7 +1137,7 @@ pub struct PeerConfig {
     pub privacy_mode: PrivacyMode,
     #[serde(flatten)]
     pub allow_swap_key: AllowSwapKey,
-    #[serde(default, deserialize_with = "deserialize_vec_i32_string_i32")]
+    #[serde(default)]
     pub port_forwards: Vec<(i32, String, i32)>,
     #[serde(flatten)]
     pub disable_audio: DisableAudio,
@@ -1154,7 +1153,6 @@ pub struct PeerConfig {
     pub follow_remote_window: FollowRemoteWindow,
     #[serde(
         default,
-        deserialize_with = "deserialize_string",
         skip_serializing_if = "String::is_empty"
     )]
     pub keyboard_mode: String,
@@ -1192,7 +1190,6 @@ pub struct PeerConfig {
 
     #[serde(
         default,
-        deserialize_with = "deserialize_hashmap_resolutions",
         skip_serializing_if = "HashMap::is_empty"
     )]
     pub custom_resolutions: HashMap<String, Resolution>,
@@ -1200,12 +1197,11 @@ pub struct PeerConfig {
     // The other scalar value must before this
     #[serde(
         default,
-        deserialize_with = "deserialize_hashmap_string_string",
         skip_serializing_if = "HashMap::is_empty"
     )]
     pub options: HashMap<String, String>, // not use delete to represent default values
     // Various data for flutter ui
-    #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
+    #[serde(default)]
     pub ui_flutter: HashMap<String, String>,
     #[serde(default)]
     pub info: PeerInfoSerde,
@@ -1286,11 +1282,11 @@ impl Default for PeerConfig {
 
 #[derive(Debug, PartialEq, Default, Serialize, Deserialize, Clone)]
 pub struct PeerInfoSerde {
-    #[serde(default, deserialize_with = "deserialize_string")]
+    #[serde(default)]
     pub username: String,
-    #[serde(default, deserialize_with = "deserialize_string")]
+    #[serde(default)]
     pub hostname: String,
-    #[serde(default, deserialize_with = "deserialize_string")]
+    #[serde(default)]
     pub platform: String,
 }
 
@@ -1311,9 +1307,9 @@ pub fn bound_peer_config_string(s: &str) -> String {
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct TransferSerde {
-    #[serde(default, deserialize_with = "deserialize_vec_string")]
+    #[serde(default)]
     pub write_jobs: Vec<String>,
-    #[serde(default, deserialize_with = "deserialize_vec_string")]
+    #[serde(default)]
     pub read_jobs: Vec<String>,
 }
 
@@ -3472,8 +3468,6 @@ struct PeerUiHostInfo {
 
 #[derive(Default, Deserialize)]
 struct PeerConfigFile {
-    #[serde(default)]
-    password_prs: Vec<u8>,
     #[serde(flatten)]
     config: PeerConfig,
     #[serde(
@@ -3540,7 +3534,6 @@ impl PeerConfig {
             }
         };
         let mut config = loaded.value.config;
-        config.password_prs = loaded.value.password_prs;
         let mut retired_password_present = loaded.value.retired_password_present;
         let status = loaded.status;
         if status != ConfigLoadStatus::Loaded {
@@ -4441,14 +4434,9 @@ macro_rules! deserialize_default {
 }
 
 deserialize_default!(deserialize_string, String);
-deserialize_default!(deserialize_bool, bool);
-deserialize_default!(deserialize_vec_u8, Vec<u8>);
-deserialize_default!(deserialize_vec_string, Vec<String>);
 deserialize_default!(deserialize_vec_i32_string_i32, Vec<(i32, String, i32)>);
 deserialize_default!(deserialize_keypair, KeyPair);
-deserialize_default!(deserialize_size, Size);
 deserialize_default!(deserialize_hashmap_string_string, HashMap<String, String>);
-deserialize_default!(deserialize_hashmap_resolutions, HashMap<String, Resolution>);
 
 #[inline]
 fn get_or(

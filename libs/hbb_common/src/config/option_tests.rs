@@ -85,7 +85,7 @@ fn config_store_path_controls_round_trip() {
             PathBuf::from("relative/record.toml"), PathBuf::from("./dotparent/record.toml"),
             PathBuf::from("..."), PathBuf::from("space/данные.toml"), PathBuf::from("back\\slash.toml"),
             PathBuf::from("repeated//middle/./record.toml"),
-            PathBuf::from(std::ffi::OsString::from_vec(b"nonutf8-\xff.toml".to_vec())),
+            PathBuf::from(std::ffi::OsString::from_vec(b"nonutf8-\xff/record.toml".to_vec())),
             root.join("absolute/record.toml"),
         ];
         let boundary = config_store_test_path_length(root, crate::libc::PATH_MAX as usize - 1);

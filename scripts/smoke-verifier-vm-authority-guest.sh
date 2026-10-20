@@ -3293,6 +3293,7 @@ run_focused_rust_tests() {
                 libs/hbb_common/src/config/option_tests.rs
                 libs/hbb_common/src/config/directory_tests.rs
                 libs/hbb_common/src/config/directory_crash_tests.rs
+                libs/hbb_common/src/config/directory_umask_tests.rs
                 libs/hbb_common/src/config/linux_directory.rs
             )
             required_tests=(
@@ -3417,6 +3418,8 @@ run_focused_rust_tests() {
                 config::option_tests::directory_tests::crash_tests::directory_created_before_identity_record_recovers_after_process_exit
                 config::option_tests::directory_tests::crash_tests::directory_unrecorded_stage_changes_refuse_and_preserve
                 config::option_tests::directory_tests::crash_tests::directory_unrecorded_stage_recovery_sync_error_is_retryable
+                config::option_tests::directory_tests::crash_tests::umask_tests::directory_first_saves_and_replacements_preserve_every_owner_umask
+                config::option_tests::directory_tests::crash_tests::umask_tests::directory_retained_chmod_failure_preserves_reservation_and_retries
                 config::option_tests::directory_tests::directory_moved_unselected_tree_refuses_without_adoption
                 config::option_tests::directory_tests::directory_replaced_selected_tree_refuses_without_mutation
                 config::option_tests::directory_tests::directory_torn_selection_retires_private_identity_and_retries

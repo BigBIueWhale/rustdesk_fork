@@ -1,6 +1,9 @@
 use super::*;
 use std::{os::unix::fs::OpenOptionsExt, process::{Command, Output, Stdio}};
 
+#[path = "directory_umask_tests.rs"]
+mod umask_tests;
+
 std::arch::global_asm!(
     ".global rustdesk_config_test_mkdirat",
     ".type rustdesk_config_test_mkdirat,@function",

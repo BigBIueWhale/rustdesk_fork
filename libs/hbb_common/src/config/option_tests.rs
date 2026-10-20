@@ -1,6 +1,112 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+fn exercise_peer_projection_types(kind: &str, id: &str, cases: &[&str]) {
+    use std::os::unix::fs::MetadataExt;
+    let path = PeerConfig::path(id);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let global = Config::file_("");
+    let global_source = b"password = [private-projection-global\n";
+    fs::write(&global, global_source).unwrap();
+    let mut all_refused = true;
+    for (case, source) in cases.iter().enumerate() {
+        fs::write(&path, source).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        let names = || {
+            let mut names = fs::read_dir(path.parent().unwrap()).unwrap()
+                .map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+            names.sort(); names
+        };
+        let original_names = names();
+        let mut refused = true;
+        let mut batch_ok = true;
+        for _ in 0..2 {
+            let result = match kind {
+                "options" => PeerConfig::read_option(id, "alias").map(|_| ()),
+                "ui" => PeerConfig::ui_info_json(id).map(|_| ()),
+                "list" => PeerConfig::load_list_info(path.clone()).map(|_| ()),
+                _ => panic!("unknown test view"),
+            };
+            if let Err(error) = &result {
+                assert!(!format!("{error:?}").contains("private-projection"));
+            }
+            refused &= result.is_err();
+            if kind == "list" {
+                let all = vec![(id.into(), SystemTime::UNIX_EPOCH, path.clone())];
+                let (peers, next) = PeerConfig::batch_peers(&all, 0, None);
+                batch_ok &= peers.is_empty() && next == 1;
+            }
+        }
+        let after = fs::metadata(&path).unwrap();
+        let preserved = fs::read(&path).unwrap() == source.as_bytes()
+            && (before.dev(), before.ino(), before.permissions().mode())
+                == (after.dev(), after.ino(), after.permissions().mode())
+            && names() == original_names && fs::read(&global).unwrap() == global_source;
+        println!("OPTION_COMMIT_PEER_VIEW_SCHEMA=observed kind={kind} case={case} refused={refused} batch_ok={batch_ok} preserved={preserved}");
+        all_refused &= refused && batch_ok && preserved;
+    }
+    let healthy = match kind {
+        "options" => "password_prs = {private = 'ignored'}\ninfo = 42\nport_forwards = false\ntransfer = 42\n[options]\nalias = 'visible alias'\n",
+        "ui" => "password_prs = {private = 'ignored'}\noptions = 42\ntransfer = 42\nport_forwards = [[8000, 'destination', 80]]\n[info]\nhostname = 'host'\nusername = 42\nplatform = []\n",
+        "list" => "password_prs = {private = 'ignored'}\nport_forwards = false\ntransfer = 42\n[info]\nusername = 'owner'\nhostname = 'host'\nplatform = 'Linux'\n[options]\nalias = 'visible alias'\nunrelated = 42\n",
+        _ => panic!("unknown test view"),
+    };
+    fs::write(&path, healthy).unwrap();
+    match kind {
+        "options" => assert_eq!(PeerConfig::read_option(id, "alias").unwrap(), "visible alias"),
+        "ui" => {
+            let value: serde_json::Value = serde_json::from_str(&PeerConfig::ui_info_json(id).unwrap()).unwrap();
+            assert_eq!(value, serde_json::json!({"info": {"hostname": "host"}, "port_forwards": [[8000, "destination", 80]]}));
+        }
+        "list" => {
+            let all = vec![(id.into(), SystemTime::UNIX_EPOCH, path.clone())];
+            let (peers, next) = PeerConfig::batch_peers(&all, 0, None);
+            assert_eq!(next, 1);
+            assert_eq!(peers.len(), 1);
+            assert_eq!(peers[0].2.alias, "visible alias");
+            assert_eq!(peers[0].2.info.hostname, "host");
+        }
+        _ => panic!("unknown test view"),
+    }
+    assert_eq!(fs::read(&path).unwrap(), healthy.as_bytes());
+    assert_eq!(fs::read(global).unwrap(), global_source);
+    println!("OPTION_COMMIT_PEER_VIEW_SCHEMA=observed kind={kind} healthy_retry=true unrelated_shapes_ignored=true global_preserved=true");
+    assert!(all_refused);
+}
+
+#[test]
+fn peer_option_projection_wrong_types_are_explicit_without_mutation() {
+    in_private_process("config::option_tests::peer_option_projection_wrong_types_are_explicit_without_mutation", |_| {
+        exercise_peer_projection_types("options", "peer-view-options", &[
+            "options = 42\n", "options = []\n", "[options]\nalias = 42\n",
+            "[options]\nalias = 'visible alias'\nother = false\n",
+        ]);
+    });
+}
+
+#[test]
+fn peer_ui_projection_wrong_types_are_explicit_without_mutation() {
+    in_private_process("config::option_tests::peer_ui_projection_wrong_types_are_explicit_without_mutation", |_| {
+        exercise_peer_projection_types("ui", "peer-view-ui", &[
+            "info = 42\n", "[info]\nhostname = 42\n", "[info]\nhostname = []\n",
+            "port_forwards = true\n", "port_forwards = [[8000, 7, 80]]\n",
+            "port_forwards = [[8000, 'destination', 80], [2147483648, 'other', 80]]\n",
+        ]);
+    });
+}
+
+#[test]
+fn peer_list_projection_wrong_alias_types_are_omitted_without_mutation() {
+    in_private_process("config::option_tests::peer_list_projection_wrong_alias_types_are_omitted_without_mutation", |_| {
+        exercise_peer_projection_types("list", "peer-view-list", &[
+            "options = 42\n[info]\nplatform = 'Linux'\n",
+            "[info]\nplatform = 'Linux'\n[options]\nalias = 42\n",
+            "[info]\nplatform = 'Linux'\n[options]\nalias = false\n",
+            "[info]\nplatform = 'Linux'\n[options]\nalias = []\n",
+        ]);
+    });
+}
+
 fn exercise_peer_schema_cases(id: &str, cases: &[(&str, &str)]) {
     use std::os::unix::fs::MetadataExt;
     let mut peer = PeerConfig::default();
@@ -1301,7 +1407,7 @@ fn peer_option_read_preserves_values_defaults_and_retired_key_masking() {
         assert_eq!(PeerConfig::read_option(id, "alias").unwrap(), "");
         assert!(!path.exists());
         fs::create_dir_all(path.parent().unwrap()).unwrap();
-        for source in ["password_prs = []\n", "options = 42\n", "[options]\n", "[options]\nalias = 'visible alias'\nrdp_port = '3390'\nrdp_username = 'retired-user'\nrdp_password = 'retired-secret'\n"] {
+        for source in ["password_prs = []\n", "[options]\n", "[options]\nalias = 'visible alias'\nrdp_port = '3390'\nrdp_username = 'retired-user'\nrdp_password = 'retired-secret'\n"] {
             fs::write(&path, source).unwrap();
             assert_eq!(PeerConfig::read_option(id, key).unwrap(), "");
             assert_eq!(PeerConfig::read_option(id, "alias").unwrap(), if source.contains("visible alias") { "visible alias" } else { "" });

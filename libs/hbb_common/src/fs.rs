@@ -4767,6 +4767,131 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
+    fn file_metadata_mutations_refuse_file_directory_suffixes() {
+        use std::os::unix::fs::{symlink, MetadataExt};
+        let root = TestTempDir::new("mutation-file-suffixes");
+        std::fs::create_dir_all(&root.path).unwrap();
+        let mut all_refused = true;
+        for operation in ["remove", "rename", "rename_same"] {
+            for kind in ["file", "symlink"] {
+                for (index, suffix) in ["/", "//", "/.", "/./"].iter().enumerate() {
+                    let base = root.join(&format!("{operation}-{kind}-{index}"));
+                    std::fs::create_dir(&base).unwrap();
+                    let source = base.join("source");
+                    let outside = base.join("outside");
+                    std::fs::write(&outside, b"outside data").unwrap();
+                    if kind == "file" { std::fs::write(&source, b"source data").unwrap(); }
+                    else { symlink(&outside, &source).unwrap(); }
+                    let selected = format!("{}{suffix}", source.to_str().unwrap());
+                    let target_name = if operation == "rename_same" { "source" } else { "target" };
+                    let identity = |path: &Path| std::fs::symlink_metadata(path).map(|m| (m.dev(), m.ino(), m.mode(), m.nlink())).ok();
+                    let source_before = identity(&source);
+                    let outside_before = identity(&outside);
+                    let names = || {
+                        let mut names = std::fs::read_dir(&base).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+                        names.sort(); names
+                    };
+                    let before_names = names();
+                    let native_refused = if operation == "remove" { std::fs::remove_file(&selected).is_err() }
+                        else { std::fs::rename(&selected, base.join(target_name)).is_err() };
+                    assert!(native_refused && identity(&source) == source_before && names() == before_names);
+                    let refused = if operation == "remove" { remove_file(&selected).is_err() }
+                        else { rename_file(&selected, target_name).is_err() };
+                    let preserved = identity(&source) == source_before && identity(&outside) == outside_before
+                        && names() == before_names && std::fs::read(&outside).unwrap() == b"outside data"
+                        && if kind == "file" { std::fs::read(&source).map(|b| b == b"source data").unwrap_or(false) }
+                            else { std::fs::read_link(&source).ok().as_ref() == Some(&outside) };
+                    println!("FILE_METADATA_PATH=observed kind=file operation={operation} source={kind} suffix={index} native_refused={native_refused} refused={refused} preserved={preserved}");
+                    all_refused &= refused && preserved;
+                }
+            }
+        }
+        assert!(all_refused);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn file_metadata_directory_mutations_refuse_terminal_dot() {
+        use std::os::unix::fs::MetadataExt;
+        let root = TestTempDir::new("mutation-directory-dot");
+        std::fs::create_dir_all(&root.path).unwrap();
+        let mut all_refused = true;
+        for operation in ["remove", "tree", "rename"] {
+            for (index, suffix) in ["/.", "/./"].iter().enumerate() {
+                let base = root.join(&format!("{operation}-{index}"));
+                let source = base.join("source");
+                std::fs::create_dir_all(&source).unwrap();
+                let selected = PathBuf::from(format!("{}{suffix}", source.to_str().unwrap()));
+                let native_refused = if operation == "rename" { std::fs::rename(&selected, base.join("target")).is_err() }
+                    else { std::fs::remove_dir(&selected).is_err() };
+                assert!(native_refused && source.is_dir());
+                if operation == "tree" { std::fs::create_dir_all(source.join("child/deeper")).unwrap(); }
+                let identity = |path: &Path| std::fs::symlink_metadata(path).map(|m| (m.dev(), m.ino(), m.mode())).ok();
+                let before = identity(&source);
+                let child_before = identity(&source.join("child/deeper"));
+                let result = match operation {
+                    "remove" => remove_directory(&selected),
+                    "tree" => remove_empty_directory_tree(&selected),
+                    _ => rename_file(selected.to_str().unwrap(), "target"),
+                };
+                let preserved = identity(&source) == before && identity(&source.join("child/deeper")) == child_before
+                    && std::fs::read_dir(&base).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>() == vec![source.file_name().unwrap()];
+                println!("FILE_METADATA_PATH=observed kind=directory operation={operation} suffix={index} native_refused={native_refused} refused={} preserved={preserved}", result.is_err());
+                all_refused &= result.is_err() && preserved;
+            }
+        }
+        assert!(all_refused);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn file_metadata_mutation_suffix_controls_and_handles() {
+        use std::os::unix::fs::{symlink, MetadataExt};
+        let root = TestTempDir::new("mutation-suffix-controls");
+        std::fs::create_dir_all(&root.path).unwrap();
+        let fds = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        for round in 0..16 {
+            let base = root.join(&round.to_string());
+            std::fs::create_dir(&base).unwrap();
+            for (index, suffix) in ["/", "//"].iter().enumerate() {
+                let source = base.join(format!("source-é-{index}"));
+                std::fs::create_dir_all(source.join("child/deeper")).unwrap();
+                let before = std::fs::metadata(&source).unwrap();
+                let name = format!("target-é-{index}");
+                let target = base.join(&name);
+                rename_file(&format!("{}{suffix}", source.to_str().unwrap()), &name).unwrap();
+                assert!(!source.exists() && target.join("child/deeper").is_dir());
+                let after = std::fs::metadata(&target).unwrap();
+                assert_eq!((before.dev(), before.ino(), before.mode()), (after.dev(), after.ino(), after.mode()));
+                rename_file(&format!("{}{suffix}", target.to_str().unwrap()), &name).unwrap();
+                remove_empty_directory_tree(&PathBuf::from(format!("{}{suffix}", target.to_str().unwrap()))).unwrap();
+                assert!(!target.exists());
+                let empty = base.join(format!("empty-{index}"));
+                std::fs::create_dir(&empty).unwrap();
+                remove_directory(&PathBuf::from(format!("{}{suffix}", empty.to_str().unwrap()))).unwrap();
+                assert!(!empty.exists());
+            }
+            let source = base.join("file");
+            let target = base.join("renamed");
+            std::fs::write(&source, b"preserved data").unwrap();
+            rename_file(source.to_str().unwrap(), "renamed").unwrap();
+            assert_eq!(std::fs::read(&target).unwrap(), b"preserved data");
+            remove_file(target.to_str().unwrap()).unwrap();
+            let outside = base.join("outside");
+            std::fs::write(&outside, b"outside data").unwrap();
+            symlink(&outside, &source).unwrap();
+            rename_file(source.to_str().unwrap(), "renamed").unwrap();
+            remove_file(target.to_str().unwrap()).unwrap();
+            assert_eq!(std::fs::read(&outside).unwrap(), b"outside data");
+        }
+        let after_fds = fds();
+        println!("FILE_METADATA_PATH=observed kind=controls rounds=16 directory_suffixes=2 plain_file_and_link=true fds_before={before_fds} fds_after={after_fds}");
+        assert_eq!(before_fds, after_fds);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn file_metadata_rename_existing_targets_are_preserved() {
         use std::os::unix::fs::{symlink, MetadataExt};
         let root = TestTempDir::new("rename-existing-targets");

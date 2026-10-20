@@ -3209,6 +3209,9 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_rename_existing_targets_are_preserved
                 fs::tests::file_metadata_rename_late_collision_is_atomic
                 fs::tests::file_metadata_rename_vacant_names_and_noops_preserve_entries
+                fs::tests::file_metadata_mutations_refuse_file_directory_suffixes
+                fs::tests::file_metadata_directory_mutations_refuse_terminal_dot
+                fs::tests::file_metadata_mutation_suffix_controls_and_handles
                 fs::tests::rename_file_rejects_invalid_new_name
                 fs::tests::rename_file_accepts_valid_new_name
                 fs::tests::rename_file_moves_a_source_symlink_without_touching_its_target
@@ -6404,7 +6407,7 @@ PY
                 "$hbb_test_artifact_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-            [ "$tests_passed" -eq 95 ] || fail 'file metadata test total differs'
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'file metadata test total differs'
             grep -E '^test (policy_[a-z0-9_]+|r_f4_pinned_port_constant) [.][.][.] ok$|^SOCKET_DESCRIPTOR=|^SOCKET_POLICY_ARTIFACT' "$output"
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|rename_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=|^test socket_surface::tests::[a-z0-9_]+ [.][.][.] ok$|^SOCKET_SURFACE_IO=' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then

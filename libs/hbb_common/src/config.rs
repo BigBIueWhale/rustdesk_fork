@@ -3334,6 +3334,20 @@ fn remove_retired_rdp_credential_options(options: &mut HashMap<String, String>) 
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
+struct PeerUiInfo {
+    #[serde(default)]
+    info: PeerUiHostInfo,
+    #[serde(default, deserialize_with = "deserialize_vec_i32_string_i32")]
+    port_forwards: Vec<(i32, String, i32)>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct PeerUiHostInfo {
+    #[serde(default, deserialize_with = "deserialize_string")]
+    hostname: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct PeerConfigFile {
     #[serde(flatten)]
     config: PeerConfig,
@@ -3467,7 +3481,12 @@ impl PeerConfig {
     }
 
     pub fn ui_info_json(id: &str) -> crate::ResultType<String> {
-        Ok(serde_json::to_string(&Self::load(id))?)
+        let _lock = CONFIG.read().unwrap();
+        let loaded: ConfigLoad<PeerUiInfo> = load_path_with_status(Self::path(id));
+        if !matches!(loaded.status, ConfigLoadStatus::Loaded | ConfigLoadStatus::NotFound) {
+            return Err(anyhow!("Failed to read peer display information"));
+        }
+        Ok(serde_json::to_string(&loaded.value)?)
     }
 
     pub fn remove(id: &str) -> crate::ResultType<()> {

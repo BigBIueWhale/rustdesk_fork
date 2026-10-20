@@ -4809,6 +4809,116 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
+    fn file_metadata_create_traverses_search_only_ancestors() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        const ENV: &str = "RUSTDESK_CREATE_SEARCH_CHILD";
+        const TEST: &str = "fs::tests::file_metadata_create_traverses_search_only_ancestors";
+        let Some(mode) = std::env::var_os(ENV) else {
+            let mut passed = true;
+            for mode in ["absolute", "relative"] {
+                let output = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                    .env(ENV, mode).output().unwrap();
+                assert!(output.stdout.len() + output.stderr.len() < 32_768);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let lines = stdout.lines().filter_map(|line| {
+                    line.find("FILE_METADATA_CREATE=").map(|start| &line[start..])
+                }).collect::<Vec<_>>();
+                assert_eq!(lines.len(), 17, "each exact child must finish every native scenario");
+                for line in lines { println!("{line}"); }
+                passed &= output.status.success();
+            }
+            assert!(passed, "directory creation must traverse searchable existing ancestors");
+            return;
+        };
+        assert_ne!(unsafe { crate::libc::geteuid() }, 0);
+        assert!(mode == "absolute" || mode == "relative");
+        let original_cwd = std::env::current_dir().unwrap();
+        let root = TestTempDir::new("create-search-ancestor");
+        let ancestor = root.join("ancestor");
+        let parent = ancestor.join("parent");
+        std::fs::create_dir_all(&parent).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let parent_before = std::fs::metadata(&parent).unwrap();
+        std::fs::set_permissions(&ancestor, std::fs::Permissions::from_mode(0o111)).unwrap();
+        if mode == "relative" { std::env::set_current_dir(&ancestor).unwrap(); }
+        let fds = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for round in 0..8 {
+            for kind in ["chain", "existing"] {
+                let suffix = if kind == "chain" { format!("new-{round}/child/deeper") } else { String::new() };
+                let target = parent.join(&suffix);
+                let probe = if kind == "chain" { parent.join(format!("native-{round}/child/deeper")) } else { parent.clone() };
+                std::fs::create_dir_all(&probe).unwrap();
+                let probe_mode = std::fs::metadata(&probe).unwrap().mode();
+                let selected = if mode == "relative" { PathBuf::from("parent").join(&suffix) } else { target.clone() };
+                let first = create_dir(selected.to_str().unwrap());
+                let first_identity = std::fs::metadata(&target).map(|m| (m.dev(), m.ino(), m.mode())).ok();
+                let repeat = create_dir(selected.to_str().unwrap());
+                let after = std::fs::metadata(&target).map(|m| (m.dev(), m.ino(), m.mode())).ok();
+                let parent_after = std::fs::metadata(&parent).unwrap();
+                let correct = first.is_ok() && repeat.is_ok() && target.is_dir()
+                    && first_identity == after && after.map(|m| m.2) == Some(probe_mode)
+                    && (parent_before.dev(), parent_before.ino(), parent_before.mode())
+                        == (parent_after.dev(), parent_after.ino(), parent_after.mode())
+                    && std::fs::metadata(&ancestor).unwrap().mode() & 0o777 == 0o111;
+                println!("FILE_METADATA_CREATE=observed mode={} round={round} kind={kind} native_allowed=true first={} repeat={} correct={correct}", mode.to_str().unwrap(), first.is_ok(), repeat.is_ok());
+                passed &= correct;
+            }
+        }
+        let after_fds = fds();
+        println!("FILE_METADATA_CREATE=handles mode={} before={before_fds} after={after_fds}", mode.to_str().unwrap());
+        std::env::set_current_dir(original_cwd).unwrap();
+        std::fs::set_permissions(&ancestor, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(before_fds, after_fds);
+        assert!(passed);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn file_metadata_create_refuses_before_unsyncable_publication() {
+        use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
+        assert_ne!(unsafe { crate::libc::geteuid() }, 0);
+        let root = TestTempDir::new("create-parent-authority");
+        let parent = root.join("parent");
+        std::fs::create_dir_all(&parent).unwrap();
+        let before = std::fs::metadata(&parent).unwrap();
+        let fds = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        for (kind, mode) in [("no-read", 0o300), ("no-write", 0o500), ("no-search", 0o600)] {
+            std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(mode)).unwrap();
+            let mut refused = true;
+            for _ in 0..8 { refused &= create_dir(parent.join("new/child").to_str().unwrap()).is_err(); }
+            let mode_preserved = std::fs::metadata(&parent).unwrap().mode() & 0o777 == mode;
+            std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let preserved = !parent.join("new").exists() && mode_preserved
+                && std::fs::metadata(&parent).unwrap().ino() == before.ino();
+            println!("FILE_METADATA_CREATE=control kind={kind} attempts=8 refused={refused} preserved={preserved}");
+            assert!(refused && preserved);
+        }
+        let link = root.join("alias");
+        symlink(&parent, &link).unwrap();
+        assert!(create_dir(link.join("new/child").to_str().unwrap()).is_err());
+        assert!(!parent.join("new").exists());
+        let file = parent.join("file");
+        std::fs::write(&file, b"retained bytes").unwrap();
+        assert!(create_dir(file.join("child").to_str().unwrap()).is_err());
+        assert_eq!(std::fs::read(&file).unwrap(), b"retained bytes");
+        assert!(create_dir(root.join("early/../late").to_str().unwrap()).is_err());
+        assert!(!root.join("early").exists() && !root.join("late").exists());
+        println!("FILE_METADATA_CREATE=control kind=link-file-traversal refused=true preserved=true");
+        create_dir(parent.join("new/child").to_str().unwrap()).unwrap();
+        let directory = open_parent_dir_no_follow(&parent.join("new/child"), true).unwrap();
+        directory.sync_all().unwrap();
+        drop(directory);
+        let after_fds = fds();
+        println!("FILE_METADATA_CREATE=control kind=retry-sync success=true before={before_fds} after={after_fds}");
+        assert_eq!(before_fds, after_fds);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn file_metadata_mutations_traverse_search_only_ancestors() {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
         const CHILD_ENV: &str = "RUSTDESK_SEARCH_PARENT_CHILD";

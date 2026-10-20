@@ -3214,6 +3214,8 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_mutation_suffix_controls_and_handles
                 fs::tests::file_metadata_mutations_traverse_search_only_ancestors
                 fs::tests::file_metadata_parent_walk_keeps_search_and_sync_authority
+                fs::tests::file_metadata_create_traverses_search_only_ancestors
+                fs::tests::file_metadata_create_refuses_before_unsyncable_publication
                 fs::tests::rename_file_rejects_invalid_new_name
                 fs::tests::rename_file_accepts_valid_new_name
                 fs::tests::rename_file_moves_a_source_symlink_without_touching_its_target

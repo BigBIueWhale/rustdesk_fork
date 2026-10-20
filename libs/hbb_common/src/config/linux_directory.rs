@@ -97,7 +97,7 @@ fn private_directory(file: &File, device: u64) -> Result<Metadata> {
     Ok(m)
 }
 
-fn chmod_retained_directory(file: &File) -> Result<()> {
+fn descriptor_directory() -> Result<File> {
     let path = CString::new("/proc/thread-self/fd")?;
     let descriptors = open_dir(libc::AT_FDCWD, &path, true)?;
     let mut filesystem = std::mem::MaybeUninit::<libc::statfs>::uninit();
@@ -107,6 +107,11 @@ fn chmod_retained_directory(file: &File) -> Result<()> {
     if unsafe { filesystem.assume_init() }.f_type as u64 != libc::PROC_SUPER_MAGIC as u64 {
         return Err(anyhow!("Configuration directory descriptor path is not procfs"));
     }
+    Ok(descriptors)
+}
+
+fn chmod_retained_directory(file: &File) -> Result<()> {
+    let descriptors = descriptor_directory()?;
     let name = CString::new(file.as_raw_fd().to_string())?;
     let mut target = std::mem::MaybeUninit::<libc::stat>::uninit();
     if unsafe { libc::fstatat(descriptors.as_raw_fd(), name.as_ptr(), target.as_mut_ptr(), 0) } != 0 {
@@ -341,8 +346,9 @@ impl Lease {
         hash.update(target);
         let name = CString::new(format!("{prefix}config-dir-lease.{:x}", hash.finalize()))?;
         let flags = libc::O_RDWR | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_NOCTTY;
+        let metadata_flags = libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW;
         let mut fresh = false;
-        let mut fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags, 0o600) };
+        let mut fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), metadata_flags) };
         if fd < 0 {
             let error = io::Error::last_os_error();
             if error.kind() != io::ErrorKind::NotFound { return Err(error.into()); }
@@ -353,11 +359,11 @@ impl Lease {
             if fd < 0 {
                 let error = io::Error::last_os_error();
                 if error.kind() != io::ErrorKind::AlreadyExists { return Err(error.into()); }
-                fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags, 0o600) };
+                fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), metadata_flags) };
                 if fd < 0 { return Err(io::Error::last_os_error().into()); }
             } else { fresh = true; }
         }
-        let lease = Self { file: unsafe { File::from_raw_fd(fd) }, name };
+        let mut lease = Self { file: unsafe { File::from_raw_fd(fd) }, name };
         let metadata = lease.file.metadata()?;
         if !metadata.is_file() || metadata.uid() != unsafe { libc::geteuid() } || metadata.nlink() != 1 {
             return Err(anyhow!("Configuration directory lease is not an owned single-link file"));
@@ -365,8 +371,25 @@ impl Lease {
         if fresh && unsafe { libc::fchmod(fd, 0o600) } != 0 {
             return Err(io::Error::last_os_error().into());
         }
+        if !fresh {
+            lease.require_current(parent)?;
+            let descriptors = descriptor_directory()?;
+            let descriptor = CString::new(lease.file.as_raw_fd().to_string())?;
+            // Only the admitted retained inode may acquire read/write journal authority.
+            let fd = unsafe { libc::openat(
+                descriptors.as_raw_fd(), descriptor.as_ptr(),
+                libc::O_RDWR | libc::O_CLOEXEC | libc::O_NONBLOCK | libc::O_NOCTTY,
+            ) };
+            if fd < 0 { return Err(io::Error::last_os_error().into()); }
+            let file = unsafe { File::from_raw_fd(fd) };
+            if id(&file)? != id(&lease.file)? {
+                return Err(anyhow!("Configuration directory lease changed during descriptor reopening"));
+            }
+            lease.file = file;
+        }
         lease.require_current(parent)?;
         // Each traversal holds only one lease. Closing this file releases it on every outcome.
+        let fd = lease.file.as_raw_fd();
         if unsafe { libc::flock(fd, libc::LOCK_EX) } != 0 {
             return Err(anyhow!("Configuration directory preparation is unavailable: {}", io::Error::last_os_error()));
         }

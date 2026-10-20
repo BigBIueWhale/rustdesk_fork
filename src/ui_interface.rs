@@ -1,5 +1,7 @@
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use hbb_common::password_security;
+#[cfg(feature = "flutter")]
+use hbb_common::config::PeerListInfo;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::sleep;
 use hbb_common::{
@@ -575,16 +577,13 @@ pub fn create_shortcut(_id: String) {
 }
 
 #[cfg(feature = "flutter")]
-pub fn peer_to_map(id: String, p: PeerConfig) -> HashMap<&'static str, String> {
+pub fn peer_to_map(id: String, p: PeerListInfo) -> HashMap<&'static str, String> {
     HashMap::<&str, String>::from_iter([
         ("id", id),
-        ("username", p.info.username.clone()),
-        ("hostname", p.info.hostname.clone()),
-        ("platform", p.info.platform.clone()),
-        (
-            "alias",
-            p.options.get("alias").unwrap_or(&"".to_owned()).to_owned(),
-        ),
+        ("username", p.info.username),
+        ("hostname", p.info.hostname),
+        ("platform", p.info.platform),
+        ("alias", p.alias),
     ])
 }
 

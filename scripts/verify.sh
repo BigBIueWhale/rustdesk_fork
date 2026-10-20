@@ -1382,7 +1382,7 @@ grep -q 'Self::load_path_with_status(Self::path(id))' libs/hbb_common/src/config
 peer_config_load=$(awk '/^impl PeerConfig \{/,/^[[:space:]]*fn store_path_/' libs/hbb_common/src/config.rs)
 grep -q 'path: PathBuf' <<<"$peer_config_load" || index_s11b4d="$index_s11b4d peer-config-exact-path-input-missing"
 grep -q 'load_path_with_status(path.clone())' <<<"$peer_config_load" || index_s11b4d="$index_s11b4d peer-config-exact-path-load-missing"
-grep -Fq 'Self::batch_peers_with_loader(all, from, to, Self::load_path_with_status)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-listing-loader-missing"
+grep -Fq 'Self::batch_peers_with_loader(all, from, to, Self::load_list_info)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-listing-loader-missing"
 grep -Fq 'let loaded = load(p.clone());' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-listing-not-bound-to-enumerated-path"
 peer_batch=$(awk '/^[[:space:]]*pub fn batch_peers\(/,/^[[:space:]]*pub fn exists\(/' libs/hbb_common/src/config.rs)
 if grep -Eq 'remove_file|Self::remove' <<<"$peer_batch"; then

@@ -3354,6 +3354,12 @@ struct PeerUiInfo {
     port_forwards: Vec<(i32, String, i32)>,
 }
 
+#[derive(Debug, Default, PartialEq, Serialize)]
+pub struct PeerListInfo {
+    pub info: PeerInfoSerde,
+    pub alias: String,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct PeerUiHostInfo {
     #[serde(default, deserialize_with = "deserialize_string")]
@@ -3677,7 +3683,13 @@ impl PeerConfig {
         });
     }
 
-    pub fn peers(id_filters: Option<Vec<String>>) -> Vec<(String, SystemTime, PeerConfig)> {
+    fn load_list_info(path: PathBuf) -> crate::ResultType<PeerListInfo> {
+        let mut config = Self::load_path_with_status(path).value;
+        let alias = config.options.remove("alias").unwrap_or_default();
+        Ok(PeerListInfo { info: config.info, alias })
+    }
+
+    pub fn peers(id_filters: Option<Vec<String>>) -> Vec<(String, SystemTime, PeerListInfo)> {
         let vec_id_modified_time_path = Self::get_vec_id_modified_time_path(&id_filters);
         Self::batch_peers(
             &vec_id_modified_time_path,
@@ -3691,16 +3703,16 @@ impl PeerConfig {
         all: &Vec<(String, SystemTime, PathBuf)>,
         from: usize,
         to: Option<usize>,
-    ) -> (Vec<(String, SystemTime, PeerConfig)>, usize) {
-        Self::batch_peers_with_loader(all, from, to, Self::load_path_with_status)
+    ) -> (Vec<(String, SystemTime, PeerListInfo)>, usize) {
+        Self::batch_peers_with_loader(all, from, to, Self::load_list_info)
     }
 
     fn batch_peers_with_loader(
         all: &Vec<(String, SystemTime, PathBuf)>,
         from: usize,
         to: Option<usize>,
-        mut load: impl FnMut(PathBuf) -> PeerConfigLoad,
-    ) -> (Vec<(String, SystemTime, PeerConfig)>, usize) {
+        mut load: impl FnMut(PathBuf) -> crate::ResultType<PeerListInfo>,
+    ) -> (Vec<(String, SystemTime, PeerListInfo)>, usize) {
         if from >= all.len() {
             return (vec![], 0);
         }
@@ -3719,7 +3731,13 @@ impl PeerConfig {
             .iter()
             .filter_map(|(id, t, p)| {
                 let loaded = load(p.clone());
-                let c = loaded.value;
+                let c = match loaded {
+                    Ok(info) => info,
+                    Err(err) => {
+                        log::error!("Failed to read peer list information: {err}");
+                        return None;
+                    }
+                };
                 if c.info.platform.is_empty() {
                     return None;
                 }

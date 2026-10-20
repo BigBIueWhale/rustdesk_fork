@@ -3205,6 +3205,10 @@ run_focused_rust_tests() {
                 config::option_tests::peer_listing_empty_snapshot_cannot_delete_a_replacement_record
                 config::option_tests::peer_listing_preserves_visible_and_incomplete_records_and_batch_boundaries
                 config::option_tests::peer_listing_reads_the_enumerated_alias_and_preserves_read_denial
+                config::option_tests::peer_listing_does_not_migrate_credentials
+                config::option_tests::peer_listing_corrupt_records_stay_in_place
+                config::option_tests::peer_listing_does_not_load_controlled_credentials
+                config::option_tests::peer_listing_returns_only_metadata_and_alias
                 config::option_tests::peer_transfer_write_failure_is_reported_and_retryable
                 config::option_tests::peer_transfer_unreadable_source_refuses_without_replacing_credentials
                 config::option_tests::peer_transfer_changes_only_the_checkpoint_and_preserves_siblings

@@ -498,6 +498,99 @@ fn peer_retired_password_forget_purges_old_only_files_and_retries_failure() {
 }
 
 #[test]
+fn peer_listing_does_not_migrate_credentials() {
+    in_private_process("config::option_tests::peer_listing_does_not_migrate_credentials", |_| {
+        let id = "peer-listing-no-migration";
+        let mut peer = PeerConfig::default();
+        peer.info.platform = "Linux".into();
+        peer.info.hostname = "visible-host".into();
+        peer.options.insert("alias".into(), "visible-alias".into());
+        peer.password_prs = b"fixture-unwrapped-list-prs".to_vec();
+        let path = PeerConfig::path(id);
+        store_path(path.clone(), &peer).unwrap();
+        let original = fs::read(&path).unwrap();
+        let (peers, next) = PeerConfig::batch_peers(&vec![(id.into(), SystemTime::UNIX_EPOCH, path.clone())], 0, None);
+        let preserved = fs::read(&path).unwrap() == original;
+        println!("OPTION_COMMIT_PEER_LIST_VIEW=observed kind=credential_work file_preserved={preserved}");
+        assert!(preserved && peers.len() == 1 && next == 1);
+        assert_eq!(peers[0].2.info, peer.info);
+        assert_eq!(peers[0].2.alias, "visible-alias");
+        assert_eq!(PeerConfig::load_for_write(id).unwrap().password_prs, peer.password_prs);
+        assert_ne!(fs::read(path).unwrap(), original);
+    });
+}
+
+#[test]
+fn peer_listing_corrupt_records_stay_in_place() {
+    in_private_process("config::option_tests::peer_listing_corrupt_records_stay_in_place", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let id = "peer-listing-corrupt";
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        for source in [b"password_prs = [private-list-source\n".as_slice(), b"info = 42\n".as_slice()] {
+            fs::write(&path, source).unwrap();
+            let before = fs::metadata(&path).unwrap();
+            let names = || {
+                let mut names = fs::read_dir(parent).unwrap().map(|entry| entry.unwrap().file_name()).collect::<Vec<_>>();
+                names.sort();
+                names
+            };
+            let original_names = names();
+            let (peers, next) = PeerConfig::batch_peers(&vec![(id.into(), SystemTime::UNIX_EPOCH, path.clone())], 0, None);
+            let preserved = fs::read(&path).map(|bytes| bytes == source).unwrap_or(false);
+            let same_file = fs::metadata(&path).map(|after| (before.dev(), before.ino()) == (after.dev(), after.ino())).unwrap_or(false);
+            let directory_unchanged = names() == original_names;
+            println!("OPTION_COMMIT_PEER_LIST_VIEW=observed kind=corrupt file_preserved={preserved} same_file={same_file} directory_unchanged={directory_unchanged}");
+            assert!(peers.is_empty() && next == 1 && preserved && same_file && directory_unchanged);
+        }
+    });
+}
+
+#[test]
+fn peer_listing_does_not_load_controlled_credentials() {
+    in_private_process("config::option_tests::peer_listing_does_not_load_controlled_credentials", |_| {
+        let id = "peer-listing-no-global";
+        let path = PeerConfig::path(id);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let peer = b"[info]\nusername = 'user'\nhostname = 'host'\nplatform = 'Linux'\n[options]\nalias = 'alias'\n";
+        fs::write(&path, peer).unwrap();
+        let global_path = Config::file_("");
+        let global = b"password = [private-list-source\n";
+        fs::write(&global_path, global).unwrap();
+        let (peers, next) = PeerConfig::batch_peers(&vec![(id.into(), SystemTime::UNIX_EPOCH, path.clone())], 0, None);
+        let preserved = fs::read(global_path).map(|bytes| bytes == global).unwrap_or(false);
+        println!("OPTION_COMMIT_PEER_LIST_VIEW=observed kind=global_config file_preserved={preserved}");
+        assert!(preserved && peers.len() == 1 && next == 1);
+        assert_eq!(peers[0].2.alias, "alias");
+        assert_eq!(fs::read(path).unwrap(), peer);
+    });
+}
+
+#[test]
+fn peer_listing_returns_only_metadata_and_alias() {
+    in_private_process("config::option_tests::peer_listing_returns_only_metadata_and_alias", |_| {
+        let id = "peer-listing-closed-view";
+        let mut peer = PeerConfig::default();
+        peer.info = PeerInfoSerde { username: "user".into(), hostname: "host".into(), platform: "Linux".into() };
+        peer.options.insert("alias".into(), "alias".into());
+        peer.options.insert("private".into(), "private-list-source".into());
+        peer.password_prs = b"fixture-private-list-prs".to_vec();
+        peer.ui_flutter.insert("canvas".into(), "private-list-source".into());
+        peer.transfer.read_jobs.push("private-list-source".into());
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        let (peers, next) = PeerConfig::batch_peers(&vec![(id.into(), SystemTime::UNIX_EPOCH, path.clone())], 0, None);
+        assert_eq!(next, 1);
+        assert_eq!(peers.len(), 1);
+        let info = serde_json::to_value(&peers[0].2).unwrap();
+        assert_eq!(info, serde_json::json!({"info": {"username": "user", "hostname": "host", "platform": "Linux"}, "alias": "alias"}));
+        assert_eq!(fs::read(path).unwrap(), original);
+    });
+}
+
+#[test]
 fn peer_listing_omits_empty_records_without_deleting_them() {
     in_private_process("config::option_tests::peer_listing_omits_empty_records_without_deleting_them", |_| {
         let id = "peer-listing-empty";
@@ -527,13 +620,12 @@ fn peer_listing_empty_snapshot_cannot_delete_a_replacement_record() {
         let mut reads = 0;
         let (peers, next) = PeerConfig::batch_peers_with_loader(&all, 0, None, |actual| {
             assert_eq!(actual, path);
-            let loaded = PeerConfig::load_path_with_status(actual);
-            assert_eq!(loaded.status, ConfigLoadStatus::Loaded);
-            assert_eq!(loaded.value, PeerConfig::default());
+            let loaded = PeerConfig::load_list_info(actual).unwrap();
+            assert_eq!(loaded, PeerListInfo::default());
             replacement.store(id).unwrap();
             written = fs::read(&path).unwrap();
             reads += 1;
-            loaded
+            Ok(loaded)
         });
         let preserved = fs::read(&path).ok().as_deref() == Some(written.as_slice());
         println!("OPTION_COMMIT_PEER_LISTING=observed kind=replacement real_reads={reads} replacement_committed={} snapshot_omitted={} next={next} replacement_preserved={preserved}", !written.is_empty(), peers.is_empty());
@@ -571,7 +663,7 @@ fn peer_listing_preserves_visible_and_incomplete_records_and_batch_boundaries() 
         assert_eq!(peers[0].0, visible_id);
         assert_eq!(peers[0].1, SystemTime::UNIX_EPOCH);
         assert_eq!(peers[0].2.info.platform, "Linux");
-        assert_eq!(peers[0].2.options.get("alias").map(String::as_str), Some("visible"));
+        assert_eq!(peers[0].2.alias, "visible");
         let (peers, next) = PeerConfig::batch_peers(&all, 1, None);
         assert!(peers.is_empty() && next == 2);
         let (peers, next) = PeerConfig::batch_peers(&all, 2, None);
@@ -601,14 +693,15 @@ fn peer_listing_reads_the_enumerated_alias_and_preserves_read_denial() {
         let (peers, next) = PeerConfig::batch_peers(&all, 0, None);
         assert_eq!(next, 1);
         assert_eq!(peers.len(), 1);
-        assert_eq!(peers[0].2.password_prs, b"fixture-alias-prs");
-        assert_eq!(peers[0].2.options.get("alias").map(String::as_str), Some("enumerated"));
+        assert_eq!(peers[0].2.info, peer.info);
+        assert_eq!(peers[0].2.alias, "enumerated");
         fs::set_permissions(&alias, fs::Permissions::from_mode(0o000)).unwrap();
         assert_eq!(fs::read(&alias).unwrap_err().kind(), std::io::ErrorKind::PermissionDenied);
         let (peers, next) = PeerConfig::batch_peers(&all, 0, None);
         fs::set_permissions(&alias, fs::Permissions::from_mode(0o600)).unwrap();
         assert!(peers.is_empty() && next == 1);
-        assert_eq!(fs::read(alias).unwrap(), alias_bytes);
+        assert_eq!(fs::read(&alias).unwrap(), alias_bytes);
+        assert_eq!(PeerConfig::load_path_with_status(alias).value.password_prs, peer.password_prs);
         assert_eq!(fs::read(canonical).unwrap(), canonical_bytes);
     });
 }

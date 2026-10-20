@@ -237,6 +237,97 @@ fn core_load_links_are_transient_without_recovery() {
 }
 
 #[test]
+fn core_recovery_full_length_native_names_archive_exact_sources() {
+    use std::os::unix::{ffi::{OsStrExt, OsStringExt}, fs::MetadataExt, io::{AsRawFd, FromRawFd}};
+    in_private_process("config::option_tests::core_recovery_full_length_native_names_archive_exact_sources", |root| {
+        let names = [std::ffi::OsString::from("a".repeat(240)), std::ffi::OsString::from("b".repeat(255)),
+            std::ffi::OsString::from(format!("{}a", "é".repeat(127))),
+            std::ffi::OsString::from_vec([vec![b'n'; 254], vec![0xff]].concat())];
+        let mut paths = names.iter().enumerate().map(|(i, name)| root.join(i.to_string()).join(name)).collect::<Vec<_>>();
+        paths.push(config_store_test_path_length(&root.join("path-limit"), crate::libc::PATH_MAX as usize - 1));
+        let mut all_recovered = true;
+        for (index, path) in paths.iter().enumerate() {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let bytes = format!("= = original corrupt source {index} [[[").into_bytes();
+            fs::write(path, &bytes).unwrap();
+            fs::set_permissions(path, fs::Permissions::from_mode(0o640)).unwrap();
+            let original = fs::metadata(path).unwrap();
+            let parent = open_existing_config_parent(path).unwrap().unwrap();
+            let result = preserve_corrupt_config_at(path, u128::MAX);
+            let entries = fs::read_dir(path.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+            let mut archive_exact = false;
+            let mut bounded = false;
+            if result.is_ok() && entries.len() == 1 && !path.exists() {
+                bounded = entries[0].as_bytes().len() <= 119 && entries[0].as_bytes().is_ascii();
+                let name = std::ffi::CString::new(entries[0].as_bytes()).unwrap();
+                let fd = unsafe { crate::libc::openat(parent.as_raw_fd(), name.as_ptr(), crate::libc::O_RDONLY | crate::libc::O_CLOEXEC | crate::libc::O_NOFOLLOW) };
+                assert!(fd >= 0);
+                let mut archive = unsafe { fs::File::from_raw_fd(fd) };
+                let metadata = archive.metadata().unwrap();
+                let mut actual = Vec::new();
+                std::io::Read::read_to_end(&mut archive, &mut actual).unwrap();
+                archive_exact = actual == bytes && (metadata.dev(), metadata.ino()) == (original.dev(), original.ino())
+                    && metadata.mode() & 0o777 == 0o600;
+            }
+            let intact_on_error = result.is_ok() || fs::metadata(path).map(|m| {
+                (m.dev(), m.ino(), m.mode()) == (original.dev(), original.ino())
+            }).unwrap_or(false) && fs::read(path).unwrap() == bytes && entries.len() == 1;
+            println!("OPTION_COMMIT_RECOVERY_NAME=observed kind=length index={index} source_bytes={} archived={archive_exact} bounded={bounded} intact_on_error={intact_on_error}", path.file_name().unwrap().as_bytes().len());
+            all_recovered &= archive_exact && bounded && intact_on_error;
+        }
+        assert!(all_recovered);
+    });
+}
+
+#[test]
+fn core_recovery_native_name_tags_separate_sources_and_preserve_collisions() {
+    use std::os::unix::{ffi::OsStringExt, fs::MetadataExt};
+    in_private_process("config::option_tests::core_recovery_native_name_tags_separate_sources_and_preserve_collisions", |root| {
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let cases = [
+            (b"record-\xff.toml".as_slice(), "130b490ce9dc9849821bb01e70564cc9c2c932a1cde647854756dec410e9c3f8"),
+            (b"record-\xfe.toml".as_slice(), "10ed6322d1d57196310fdc38836117d8071eb2b9d5dafb6820cd058a38d1e051"),
+            ("record-�.toml".as_bytes(), "66fb20ed5746088a82eb42f77081aa7b14362652d1fe1229a3ec507f1a85d978"),
+        ];
+        let mut all_recovered = true;
+        let mut archives = Vec::new();
+        for (index, (name, tag)) in cases.iter().enumerate() {
+            let path = root.join(std::ffi::OsString::from_vec(name.to_vec()));
+            let bytes = format!("= = source {index} corrupt bytes [[[").into_bytes();
+            fs::write(&path, &bytes).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+            let source = fs::metadata(&path).unwrap();
+            let expected = root.join(format!("config.corrupt.{tag}.0"));
+            let result = preserve_corrupt_config_at(&path, 0);
+            let recovered = result.is_ok() && !path.exists() && fs::metadata(&expected).map(|m| {
+                (m.dev(), m.ino()) == (source.dev(), source.ino()) && m.mode() & 0o777 == 0o600
+            }).unwrap_or(false) && fs::read(&expected).map(|b| b == bytes).unwrap_or(false);
+            println!("OPTION_COMMIT_RECOVERY_NAME=observed kind=association index={index} moved={} source_tag_matches={recovered}", result.is_ok());
+            all_recovered &= recovered;
+            archives.push((expected, bytes, (source.dev(), source.ino())));
+        }
+        if all_recovered {
+            let path = root.join(std::ffi::OsString::from_vec(cases[0].0.to_vec()));
+            fs::write(&path, b"later corrupt source").unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+            let before = fs::metadata(&path).unwrap();
+            let refused = preserve_corrupt_config_at(&path, 0).is_err();
+            let after = fs::metadata(&path).unwrap();
+            let preserved = (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode())
+                && fs::read(&path).unwrap() == b"later corrupt source"
+                && archives.iter().all(|(p, b, id)| fs::read(p).unwrap() == *b && fs::metadata(p).map(|m| (m.dev(), m.ino()) == *id && m.mode() & 0o777 == 0o600).unwrap_or(false));
+            println!("OPTION_COMMIT_RECOVERY_NAME=observed kind=collision refused={refused} preserved={preserved}");
+            assert!(refused && preserved);
+        }
+        let after_fds = fds();
+        println!("OPTION_COMMIT_RECOVERY_NAME=observed kind=handles before={before_fds} after={after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(all_recovered);
+    });
+}
+
+#[test]
 fn core_recovery_source_changes_after_read_are_refused() {
     use std::{cell::{Cell, RefCell}, os::unix::fs::{symlink, MetadataExt}};
     in_private_process("config::option_tests::core_recovery_source_changes_after_read_are_refused", |root| {
@@ -319,7 +410,7 @@ fn core_recovery_replaced_backup_is_never_permission_hardened() {
     in_private_process("config::option_tests::core_recovery_replaced_backup_is_never_permission_hardened", |root| {
         let path = root.join("selected.toml");
         let saved = root.join("admitted-recovery");
-        let backup = root.join("selected.toml.corrupt.17");
+        let backup = root.join(config_recovery_file_name(&path, 17).unwrap());
         fs::write(&path, b"read corrupt bytes").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
         let identity = |p: &Path| fs::metadata(p).map(|m| (m.dev(), m.ino(), m.mode(), m.nlink())).ok();
@@ -377,7 +468,7 @@ fn core_recovery_collision_preserves_source_and_prior_backup() {
             let base = root.join(kind);
             fs::create_dir(&base).unwrap();
             let source = base.join("selected.toml");
-            let backup = base.join("selected.toml.corrupt.0");
+            let backup = base.join(config_recovery_file_name(&source, 0).unwrap());
             let outside = base.join("outside");
             fs::write(&source, b"= = current corrupt bytes [[[").unwrap();
             fs::set_permissions(&source, fs::Permissions::from_mode(0o640)).unwrap();

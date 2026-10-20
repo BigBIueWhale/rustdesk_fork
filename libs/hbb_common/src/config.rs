@@ -1364,6 +1364,11 @@ fn keep_encrypted_storage_if_plaintext_unchanged(plain: &str, stored: &str) -> S
 // fresh default overwrite it. Rename it aside to a timestamped `<name>.corrupt.<nanos>`
 // sibling, harden the recovery file, then let callers create a fresh config at the vacated
 // path. Repeated corruption events never clobber an earlier backup.
+fn config_recovery_file_name(file: &Path, ts: u128) -> io::Result<String> {
+    let name = file.file_name().and_then(|name| name.to_str()).unwrap_or("config");
+    Ok(format!("{name}.corrupt.{ts}"))
+}
+
 impl ConfigFileRead<'_> {
     fn preserve_corrupt(self) -> Result<()> {
         let ts = SystemTime::now()
@@ -1377,12 +1382,8 @@ impl ConfigFileRead<'_> {
         self, ts: u128, before_harden: impl FnOnce(&Path) -> Result<()>,
     ) -> Result<()> {
         let file = self.path;
-        let name = file
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("config");
         let mut backup = file.to_path_buf();
-        backup.set_file_name(format!("{name}.corrupt.{ts}"));
+        backup.set_file_name(config_recovery_file_name(file, ts)?);
         #[cfg(target_os = "linux")]
         self.source.preserve(&backup, before_harden)?;
         #[cfg(not(target_os = "linux"))]

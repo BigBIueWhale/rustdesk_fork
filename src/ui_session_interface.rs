@@ -2343,7 +2343,7 @@ pub(crate) fn io_loop<T: InvokeUiSession>(
     video_refresh_receiver: ViewerVideoRefreshReceiver,
 ) {
     let lc = handler.lc.clone();
-    let saved = match io_loop_with_checkpoint(handler, round, video_refresh_receiver) {
+    let saved = match run_io_runtime(handler, round, video_refresh_receiver) {
         Ok(Some(transfer)) => lc.write().unwrap().save_transfer(transfer),
         Ok(None) => Ok(()),
         Err(err) => Err(err),
@@ -2354,7 +2354,7 @@ pub(crate) fn io_loop<T: InvokeUiSession>(
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn io_loop_with_checkpoint<T: InvokeUiSession>(
+async fn run_io_runtime<T: InvokeUiSession>(
     handler: Session<T>,
     round: u64,
     video_refresh_receiver: ViewerVideoRefreshReceiver,

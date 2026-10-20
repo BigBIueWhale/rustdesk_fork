@@ -3438,13 +3438,12 @@ impl PeerConfig {
     }
 
     pub fn set_transfer(id: &str, transfer: &TransferSerde) -> crate::ResultType<()> {
-        let mut config = Self::load(id);
+        let mut config = Self::load_for_write(id)?;
         if config.transfer == *transfer {
             return Ok(());
         }
         config.transfer = transfer.clone();
-        crate::allow_err!(config.store(id));
-        Ok(())
+        config.store(id)
     }
 
     pub fn remove(id: &str) -> crate::ResultType<()> {

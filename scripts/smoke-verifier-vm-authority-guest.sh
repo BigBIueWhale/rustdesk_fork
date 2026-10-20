@@ -3218,6 +3218,11 @@ run_focused_rust_tests() {
                 config::option_tests::peer_option_unreadable_source_refuses_without_losing_credentials
                 config::option_tests::peer_option_preserves_other_state_and_avoids_idempotent_or_missing_removal_writes
                 config::option_tests::peer_option_explicit_inherited_default_persists_and_missing_removal_is_absent
+                config::option_tests::peer_load_corruption_preserves_source_and_repeated_actions_refuse
+                config::option_tests::peer_load_missing_does_not_initialize_controlled_config
+                config::option_tests::peer_load_corrupt_does_not_initialize_controlled_config
+                config::option_tests::peer_load_utf8_is_corrupt_without_recovery
+                config::option_tests::peer_load_status_controls_preserve_missing_denied_and_directory
                 config::option_tests::peer_option_read_preserves_credentials_and_file_identity
                 config::option_tests::peer_option_read_corrupt_records_refuse_without_recovery
                 config::option_tests::peer_option_read_denial_is_reported_and_retryable

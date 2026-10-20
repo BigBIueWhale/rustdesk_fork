@@ -942,6 +942,134 @@ fn peer_transfer_unchanged_and_missing_empty_checkpoints_avoid_writes() {
 }
 
 #[test]
+fn peer_load_corruption_preserves_source_and_repeated_actions_refuse() {
+    in_private_process("config::option_tests::peer_load_corruption_preserves_source_and_repeated_actions_refuse", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let id = "peer-load-preserve-source";
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        let actions: [(&str, fn(&str) -> crate::ResultType<()>); 6] = [
+            ("read", |id| PeerConfig::load_for_write(id).map(|_| ())),
+            ("option", |id| PeerConfig::set_option(id, "alias", "requested".into())),
+            ("forget", PeerConfig::forget_password),
+            ("transfer", |id| PeerConfig::set_transfer(id, &TransferSerde::default())),
+            ("add_forward", |id| PeerConfig::add_port_forward(id, &(8001, "destination".into(), 80)).map(|_| ())),
+            ("remove_forward", |id| PeerConfig::remove_port_forward(id, 8001).map(|_| ())),
+        ];
+        let mut all_preserved = true;
+        for (kind, source) in [("syntax", b"password_prs = [private-peer-source\n".as_slice()), ("utf8", b"\xffprivate-peer-source".as_slice())] {
+            for (name, action) in actions {
+                fs::write(&path, source).unwrap();
+                let before = fs::metadata(&path).unwrap();
+                let names = || {
+                    let mut names = fs::read_dir(parent).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+                    names.sort(); names
+                };
+                let original_names = names();
+                let first = action(id);
+                let second = action(id);
+                let preserved = fs::read(&path).map(|bytes| bytes == source).unwrap_or(false);
+                let same_file = fs::metadata(&path).map(|m| (m.dev(), m.ino()) == (before.dev(), before.ino())).unwrap_or(false);
+                let directory_unchanged = names() == original_names;
+                println!("OPTION_COMMIT_PEER_LOAD=observed kind={kind} action={name} first_refused={} repeated_refused={} file_preserved={preserved} same_file={same_file} directory_unchanged={directory_unchanged}", first.is_err(), second.is_err());
+                if let Err(err) = first.as_ref() { assert!(!err.to_string().contains("private-peer-source")); }
+                all_preserved &= first.is_err() && second.is_err() && preserved && same_file && directory_unchanged;
+            }
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn peer_load_missing_does_not_initialize_controlled_config() {
+    in_private_process("config::option_tests::peer_load_missing_does_not_initialize_controlled_config", |_| {
+        let global = Config::file_("");
+        fs::create_dir_all(global.parent().unwrap()).unwrap();
+        let source = b"password = [private-peer-global\n";
+        fs::write(&global, source).unwrap();
+        let id = "peer-load-missing-no-global";
+        let path = PeerConfig::path(id);
+        assert!(!path.exists());
+        let loaded = PeerConfig::load_with_status(id);
+        let preserved = fs::read(&global).map(|bytes| bytes == source).unwrap_or(false);
+        println!("OPTION_COMMIT_PEER_LOAD=observed kind=missing_global global_preserved={preserved} peer_absent={}", !path.exists());
+        assert_eq!(loaded.status, ConfigLoadStatus::NotFound);
+        assert!(preserved && !path.exists() && loaded.value.password_prs.is_empty());
+    });
+}
+
+#[test]
+fn peer_load_corrupt_does_not_initialize_controlled_config() {
+    in_private_process("config::option_tests::peer_load_corrupt_does_not_initialize_controlled_config", |_| {
+        let id = "peer-load-corrupt-no-global";
+        let path = PeerConfig::path(id);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let peer = b"password_prs = [private-peer-source\n";
+        fs::write(&path, peer).unwrap();
+        let global = Config::file_("");
+        let source = b"password = [private-peer-global\n";
+        fs::write(&global, source).unwrap();
+        let loaded = PeerConfig::load_with_status(id);
+        let preserved = fs::read(global).map(|bytes| bytes == source).unwrap_or(false);
+        let peer_preserved = fs::read(path).map(|bytes| bytes == peer).unwrap_or(false);
+        println!("OPTION_COMMIT_PEER_LOAD=observed kind=corrupt_global global_preserved={preserved} peer_preserved={peer_preserved}");
+        assert_eq!(loaded.status, ConfigLoadStatus::Corrupt);
+        assert!(preserved && peer_preserved && loaded.value.password_prs.is_empty());
+    });
+}
+
+#[test]
+fn peer_load_utf8_is_corrupt_without_recovery() {
+    in_private_process("config::option_tests::peer_load_utf8_is_corrupt_without_recovery", |_| {
+        let id = "peer-load-bad-utf8";
+        let path = PeerConfig::path(id);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let source = b"\xffprivate-peer-source";
+        fs::write(&path, source).unwrap();
+        let loaded = PeerConfig::load_with_status(id);
+        let preserved = fs::read(path).unwrap() == source;
+        println!("OPTION_COMMIT_PEER_LOAD=observed kind=utf8_classification corrupt={} file_preserved={preserved}", loaded.status == ConfigLoadStatus::Corrupt);
+        assert_eq!(loaded.status, ConfigLoadStatus::Corrupt);
+        assert!(preserved && loaded.value.password_prs.is_empty());
+    });
+}
+
+#[test]
+fn peer_load_status_controls_preserve_missing_denied_and_directory() {
+    in_private_process("config::option_tests::peer_load_status_controls_preserve_missing_denied_and_directory", |_| {
+        let id = "peer-load-status-controls";
+        let path = PeerConfig::path(id);
+        assert_eq!(PeerConfig::load_with_status(id).status, ConfigLoadStatus::NotFound);
+        assert!(PeerConfig::load_for_write(id).is_ok() && !path.exists());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let source = b"password_prs = []\n[options]\nalias = 'preserved'\n";
+        fs::write(&path, source).unwrap();
+        let loaded = PeerConfig::load_with_status(id);
+        assert_eq!(loaded.status, ConfigLoadStatus::Loaded);
+        assert_eq!(loaded.value.options.get("alias").map(String::as_str), Some("preserved"));
+        assert_eq!(fs::read(&path).unwrap(), source);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let native = fs::read(&path).unwrap_err();
+        let denied = PeerConfig::load_with_status(id);
+        let refused = PeerConfig::load_for_write(id).is_err();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(native.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(denied.status, ConfigLoadStatus::TransientError);
+        assert!(refused && fs::read(&path).unwrap() == source);
+        assert_eq!(PeerConfig::load_with_status(id).status, ConfigLoadStatus::Loaded);
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        let child = path.join("preserved");
+        fs::write(&child, source).unwrap();
+        assert_eq!(PeerConfig::load_with_status(id).status, ConfigLoadStatus::TransientError);
+        assert!(PeerConfig::load_for_write(id).is_err());
+        assert_eq!(fs::read(child).unwrap(), source);
+        println!("OPTION_COMMIT_PEER_LOAD=observed kind=controls missing_absent=true loaded_preserved=true denied_errno={} transient=true retry_loaded=true directory_preserved=true", native.raw_os_error().unwrap());
+    });
+}
+
+#[test]
 fn peer_option_read_preserves_credentials_and_file_identity() {
     in_private_process("config::option_tests::peer_option_read_preserves_credentials_and_file_identity", |_| {
         use std::os::unix::fs::MetadataExt;

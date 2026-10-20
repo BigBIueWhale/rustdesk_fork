@@ -2228,12 +2228,33 @@ fn read_config_record(path: &Path) -> io::Result<ConfigFileRead<'_>> {
     let record = (|| -> io::Result<ConfigFileRead<'_>> {
         use std::os::unix::fs::MetadataExt;
 
+        fn verify_metadata(metadata: &fs::Metadata) -> io::Result<()> {
+            use std::os::unix::fs::MetadataExt;
+
+            if !metadata.is_file() || metadata.nlink() != 1 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Configuration is not a single-link regular file",
+                ));
+            }
+            if metadata.uid() != unsafe { crate::libc::geteuid() }
+                || metadata.mode() & 0o022 != 0
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "Configuration ownership or write permissions are unsafe",
+                ));
+            }
+            Ok(())
+        }
+
         #[cfg(target_os = "linux")]
         let (mut file, parent, name) = {
             use std::{
                 ffi::CString,
                 os::unix::{
                     ffi::OsStrExt,
+                    fs::OpenOptionsExt,
                     io::{AsRawFd, FromRawFd},
                 },
             };
@@ -2253,9 +2274,7 @@ fn read_config_record(path: &Path) -> io::Result<ConfigFileRead<'_>> {
                 crate::libc::openat(
                     parent.as_raw_fd(),
                     name.as_ptr(),
-                    crate::libc::O_RDONLY
-                        | crate::libc::O_NONBLOCK
-                        | crate::libc::O_NOCTTY
+                    crate::libc::O_PATH
                         | crate::libc::O_NOFOLLOW
                         | crate::libc::O_CLOEXEC,
                 )
@@ -2263,7 +2282,38 @@ fn read_config_record(path: &Path) -> io::Result<ConfigFileRead<'_>> {
             if fd < 0 {
                 return Err(io::Error::last_os_error());
             }
-            (unsafe { fs::File::from_raw_fd(fd) }, parent, name)
+            let source = unsafe { fs::File::from_raw_fd(fd) };
+            let metadata = source.metadata()?;
+            verify_metadata(&metadata)?;
+
+            let descriptors = fs::OpenOptions::new().read(true)
+                .custom_flags(crate::libc::O_PATH | crate::libc::O_DIRECTORY
+                    | crate::libc::O_NOFOLLOW | crate::libc::O_CLOEXEC)
+                .open("/proc/thread-self/fd")?;
+            let mut filesystem = std::mem::MaybeUninit::<crate::libc::statfs>::uninit();
+            if unsafe { crate::libc::fstatfs(descriptors.as_raw_fd(), filesystem.as_mut_ptr()) } != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if unsafe { filesystem.assume_init() }.f_type as u64 != crate::libc::PROC_SUPER_MAGIC as u64 {
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied,
+                    "Configuration descriptor directory is not procfs"));
+            }
+            let descriptor = CString::new(source.as_raw_fd().to_string())
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+            // This kernel alias reopens the admitted inode without resolving its original name.
+            let fd = unsafe { crate::libc::openat(
+                descriptors.as_raw_fd(), descriptor.as_ptr(),
+                crate::libc::O_RDONLY | crate::libc::O_NONBLOCK
+                    | crate::libc::O_NOCTTY | crate::libc::O_CLOEXEC,
+            ) };
+            if fd < 0 { return Err(io::Error::last_os_error()); }
+            let file = unsafe { fs::File::from_raw_fd(fd) };
+            let reopened = file.metadata()?;
+            if (metadata.dev(), metadata.ino()) != (reopened.dev(), reopened.ino()) {
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied,
+                    "Configuration source changed during descriptor reopening"));
+            }
+            (file, parent, name)
         };
         #[cfg(not(target_os = "linux"))]
         let mut file = {
@@ -2273,21 +2323,7 @@ fn read_config_record(path: &Path) -> io::Result<ConfigFileRead<'_>> {
                 .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
                 .open(path)?
         };
-        let metadata = file.metadata()?;
-        if !metadata.is_file() || metadata.nlink() != 1 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Configuration is not a single-link regular file",
-            ));
-        }
-        if metadata.uid() != unsafe { crate::libc::geteuid() }
-            || metadata.mode() & 0o022 != 0
-        {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "Configuration ownership or write permissions are unsafe",
-            ));
-        }
+        verify_metadata(&file.metadata()?)?;
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
         Ok(ConfigFileRead {

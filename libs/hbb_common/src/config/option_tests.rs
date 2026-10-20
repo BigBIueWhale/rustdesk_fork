@@ -109,6 +109,102 @@ fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
     assert!(output.status.success(), "option worker failed: {}", String::from_utf8_lossy(&output.stderr));
 }
 
+fn insert_retired_peer_password(id: &str) {
+    let path = PeerConfig::path(id);
+    let source = fs::read_to_string(&path).unwrap();
+    let document: toml::Value = toml::from_str(&source).unwrap();
+    let source = if let Some(value) = document.get("password") {
+        assert_eq!(value, &toml::Value::Array(vec![]));
+        let mut removed = 0;
+        let lines: Vec<_> = source.lines().filter(|line| {
+            if *line == "password = []" { removed += 1; false } else { true }
+        }).collect();
+        assert_eq!(removed, 1);
+        lines.join("\n")
+    } else {
+        source
+    };
+    let value = b"fixture-retired-peer-hash".iter().map(u8::to_string).collect::<Vec<_>>().join(", ");
+    fs::write(path, format!("password = [{value}]\n{source}\n")).unwrap();
+}
+
+#[test]
+fn peer_retired_password_read_does_not_rewrite_or_publish_the_value() {
+    in_private_process("config::option_tests::peer_retired_password_read_does_not_rewrite_or_publish_the_value", |_| {
+        let id = "peer-retired-read";
+        let mut peer = PeerConfig::default();
+        peer.info.platform = "Linux".into();
+        peer.options.insert("alias".into(), "preserved".into());
+        peer.store(id).unwrap();
+        insert_retired_peer_password(id);
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        let loaded = PeerConfig::load_for_write(id).unwrap();
+        let public = serde_json::to_value(&loaded).unwrap();
+        let untouched = fs::read(&path).unwrap() == original;
+        let excluded = public.get("password").is_none();
+        println!("OPTION_COMMIT_PEER_RETIRED=observed kind=read file_unchanged={untouched} value_excluded={excluded}");
+        assert!(untouched && excluded);
+        assert!(loaded.password_prs.is_empty());
+        assert_eq!(loaded.info.platform, "Linux");
+        assert_eq!(loaded.options.get("alias").map(String::as_str), Some("preserved"));
+    });
+}
+
+#[test]
+fn peer_retired_password_normal_save_omits_the_field_and_preserves_prs() {
+    in_private_process("config::option_tests::peer_retired_password_normal_save_omits_the_field_and_preserves_prs", |_| {
+        let id = "peer-retired-save";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-current-peer-prs".to_vec();
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.store(id).unwrap();
+        insert_retired_peer_password(id);
+        assert_eq!(PeerConfig::load_for_write(id).unwrap().password_prs, peer.password_prs);
+        PeerConfig::set_option(id, "alias", "selected".into()).unwrap();
+        let document: toml::Value = toml::from_str(&fs::read_to_string(PeerConfig::path(id)).unwrap()).unwrap();
+        let excluded = document.get("password").is_none();
+        println!("OPTION_COMMIT_PEER_RETIRED=observed kind=save field_omitted={excluded}");
+        assert!(excluded);
+        let loaded = PeerConfig::load_for_write(id).unwrap();
+        assert_eq!(loaded.password_prs, b"fixture-current-peer-prs");
+        assert_eq!(loaded.options.get("unrelated").map(String::as_str), Some("preserved"));
+        assert_eq!(loaded.options.get("alias").map(String::as_str), Some("selected"));
+    });
+}
+
+#[test]
+fn peer_retired_password_forget_purges_old_only_files_and_retries_failure() {
+    in_private_process("config::option_tests::peer_retired_password_forget_purges_old_only_files_and_retries_failure", |_| {
+        let id = "peer-retired-forget";
+        let mut peer = PeerConfig::default();
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.store(id).unwrap();
+        insert_retired_peer_password(id);
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        let original = fs::read(&path).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        let failed = PeerConfig::forget_password(id).is_err();
+        let preserved = fs::read(&path).unwrap() == original;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(failed && preserved);
+        PeerConfig::forget_password(id).unwrap();
+        let document: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let excluded = document.get("password").is_none();
+        println!("OPTION_COMMIT_PEER_RETIRED=observed kind=forget failure_reported={failed} failed_file_preserved={preserved} field_omitted={excluded}");
+        assert!(excluded);
+        let loaded = PeerConfig::load_for_write(id).unwrap();
+        assert!(loaded.password_prs.is_empty());
+        assert_eq!(loaded.options.get("unrelated").map(String::as_str), Some("preserved"));
+        let bytes = fs::read(&path).unwrap();
+        let before = std::os::unix::fs::MetadataExt::ino(&fs::metadata(&path).unwrap());
+        PeerConfig::forget_password(id).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!(std::os::unix::fs::MetadataExt::ino(&fs::metadata(path).unwrap()), before);
+    });
+}
+
 #[test]
 fn peer_listing_omits_empty_records_without_deleting_them() {
     in_private_process("config::option_tests::peer_listing_omits_empty_records_without_deleting_them", |_| {
@@ -490,7 +586,6 @@ fn peer_forget_clears_both_credentials_preserves_settings_and_is_idempotent() {
         let id = "peer-forget-selected";
         let sibling = "peer-forget-sibling";
         let mut peer = PeerConfig::default();
-        peer.password = b"fixture-legacy".to_vec();
         peer.password_prs = b"fixture-forget-prs".to_vec();
         peer.options.insert("unrelated".into(), "preserved".into());
         peer.ui_flutter.insert("selected".into(), "preserved".into());
@@ -498,8 +593,8 @@ fn peer_forget_clears_both_credentials_preserves_settings_and_is_idempotent() {
         peer.store(sibling).unwrap();
         let sibling_bytes = fs::read(PeerConfig::path(sibling)).unwrap();
         let mut expected = PeerConfig::load_for_write(id).unwrap();
-        expected.password.clear();
         expected.password_prs.clear();
+        insert_retired_peer_password(id);
         PeerConfig::forget_password(id).unwrap();
         assert_eq!(PeerConfig::load_for_write(id).unwrap(), expected);
         assert_eq!(fs::read(PeerConfig::path(sibling)).unwrap(), sibling_bytes);

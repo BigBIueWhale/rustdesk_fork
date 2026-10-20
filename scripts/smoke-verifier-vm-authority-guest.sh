@@ -3209,6 +3209,9 @@ run_focused_rust_tests() {
                 config::option_tests::peer_transfer_unreadable_source_refuses_without_replacing_credentials
                 config::option_tests::peer_transfer_changes_only_the_checkpoint_and_preserves_siblings
                 config::option_tests::peer_transfer_unchanged_and_missing_empty_checkpoints_avoid_writes
+                config::option_tests::peer_retired_password_read_does_not_rewrite_or_publish_the_value
+                config::option_tests::peer_retired_password_normal_save_omits_the_field_and_preserves_prs
+                config::option_tests::peer_retired_password_forget_purges_old_only_files_and_retries_failure
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then

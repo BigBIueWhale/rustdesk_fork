@@ -1343,6 +1343,7 @@ echo "== (3b-iii-a1b) credential-bearing peer config uses one durable transactio
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_unreadable_is_transient_not_stale --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_listing_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_transfer_ --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_retired_password_ --color never
 index_s11b4d=
 grep -q 'store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d toml-store-not-routed-through-transaction"
 unix_config_transaction=$(awk '/fn store_config_bytes_transaction_unix\(/,/^}/' libs/hbb_common/src/config.rs)

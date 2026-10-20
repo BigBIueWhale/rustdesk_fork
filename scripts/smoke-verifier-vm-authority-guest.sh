@@ -40,6 +40,9 @@ case "$#:${8:-}" in
     8:--debian-polkit-tests)
         MODE=debian-polkit-tests
         ;;
+    8:--debian-package-tests)
+        MODE=debian-package-tests
+        ;;
     8:--debian-elf-role-tests)
         MODE=debian-elf-role-tests
         ;;
@@ -1096,6 +1099,107 @@ run_debian_package_tests() {
     fi
     printf 'DEBIAN_POLKIT_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes generator_sha256=%s checker_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
         "$(sha256sum "$generator" | awk '{print $1}')" "$(sha256sum "$checker" | awk '{print $1}')"
+}
+
+run_debian_archive_integration_tests() {
+    local work work_id load_output inspect status=0 source_before
+    local archive=/mnt/rustdesk-verifier-inputs/deb-builder.docker.tar.gz
+    local output=$ROOT/debian-package-tests.out
+    local -a sources=("$VERIFY_REPO/build.py" "$VERIFY_REPO/scripts/verify-debian-package-authority.py"
+        "$VERIFY_REPO/res/com.carriez.RustDesk.policy" "$OFFLINE_IMAGE_PROVENANCE" "$ENTRY_PREFLIGHT")
+    source_before="$(sha256sum "${sources[@]}")"
+    setpriv --reuid=4000 --regid=4000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    load_output="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+        /usr/bin/python3 -B -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
+            --archive "$archive" --archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
+            --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" --role deb-builder \
+            --expected-id "$DEB_BUILDER_IMAGE_ID" --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+            --dockerfile-sha "$SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE" \
+            --recipe-sha "$SHA256_DEB_BUILDER_DOCKERFILE" --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST" \
+            --bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID" \
+            --bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+            --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" --config-id "$DEB_BUILDER_CONFIG_ID" \
+            --manifest-id "$DEB_BUILDER_MANIFEST_ID")" || fail 'Debian package-test compiler verification/load failed'
+    [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
+        || fail 'Debian package-test compiler receipt differs'
+    work="$(setpriv --reuid=4000 --regid=4000 --clear-groups /usr/bin/mktemp -d /tmp/debian-package-tests.XXXXXXXXXX)"
+    [ "$(stat -c '%u:%g:%a' "$work")" = 4000:4000:700 ] || fail 'Debian package scratch authority differs'
+    work_id="$(stat -c '%d:%i' "$work")"
+    CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
+        --pull=never --network=none --read-only --user 4000:4000 \
+        --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
+        --memory=512m --memory-swap=512m --cpus=2 --pids-limit=64 --cgroupns=private --ipc=private \
+        --ulimit nofile=256:256 --ulimit core=0:0 --ulimit fsize=16777216:16777216 \
+        --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=700,uid=4000,gid=4000 \
+        --mount "type=bind,source=$VERIFY_REPO/build.py,target=/repo/build.py,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$VERIFY_REPO/scripts/verify-debian-package-authority.py,target=/repo/scripts/verify-debian-package-authority.py,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$VERIFY_REPO/res/com.carriez.RustDesk.policy,target=/repo/res/com.carriez.RustDesk.policy,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$work,target=/work,bind-recursive=disabled" \
+        --env PATH=/usr/bin:/bin --env LC_ALL=C --env HOME=/nonexistent --env TMPDIR=/work \
+        --workdir /work --entrypoint /usr/bin/python3 "$DEB_BUILDER_CONFIG_ID" -B -I -S -c \
+        'import runpy,sys; scope=runpy.run_path("/repo/scripts/verify-debian-package-authority.py"); scope["require_native_fixture_principal"](); sys.argv=["package-checker","--repo","/repo","--self-test"]; scope["main"]()')" \
+        || fail 'cannot create the confined Debian package-test container'
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'Debian package-test container identity differs'
+    inspect=$ROOT/debian-package-container.json
+    "$CLIENT" --host "unix://$SOCK" inspect "$CONTAINER_ID" >"$inspect"
+    /usr/bin/python3 -B -I -S - "$inspect" "$DEB_BUILDER_CONFIG_ID" "$VERIFY_REPO" "$work" <<'PY'
+import json,sys
+from pathlib import Path
+container,=json.loads(Path(sys.argv[1]).read_text())
+config=container["Config"]; host=container["HostConfig"]
+assert container["Image"]==sys.argv[2] and config["User"]=="4000:4000"
+assert config["Entrypoint"]==["/usr/bin/python3"] and not config.get("ExposedPorts")
+assert host["NetworkMode"]=="none" and host["ReadonlyRootfs"] is True
+assert host["Memory"]==host["MemorySwap"]==536870912 and host["NanoCpus"]==2000000000
+assert host["PidsLimit"]==64 and host["CapDrop"]==["ALL"] and not host.get("CapAdd")
+assert set(host["SecurityOpt"])=={"no-new-privileges","apparmor=docker-default"}
+assert host["Privileged"] is False and not host["PidMode"] and not host["UTSMode"]
+assert host["IpcMode"]==host["CgroupnsMode"]=="private"
+assert not host.get("Devices") and not host.get("PortBindings") and not host["PublishAllPorts"]
+repo=sys.argv[3];work=sys.argv[4]
+expected={"/repo/"+name:(repo+"/"+name,False) for name in
+          ("build.py","scripts/verify-debian-package-authority.py","res/com.carriez.RustDesk.policy")}
+expected["/work"]=(work,True)
+actual={mount["Destination"]:(mount["Source"],mount["RW"]) for mount in container["Mounts"] if mount["Type"]=="bind"}
+assert actual==expected
+assert all(mount["Type"]=="bind" or (mount["Type"]=="tmpfs" and mount["Destination"]=="/tmp") for mount in container["Mounts"])
+assert set(host["Tmpfs"])=={"/tmp"}
+assert set(host["Tmpfs"]["/tmp"].split(","))==set("rw,noexec,nosuid,nodev,size=16m,mode=700,uid=4000,gid=4000".split(","))
+PY
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' "$output")" -le 65536 ] || fail 'Debian package-test output exceeded its bound'
+    [ "$status" -eq 0 ] \
+        && [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+        || { tail -n 60 "$output" >&2; fail 'Debian archive integration tests failed'; }
+    [ "$(grep -Fxc 'ok  Debian package archive and production-finalizer self-tests passed' "$output")" -eq 1 ] \
+        && [ "$(wc -l <"$output")" -eq 2 ] || fail 'Debian archive integration result differs'
+    /usr/bin/python3 -B -I -S - "$output" <<'PY'
+import json,re,sys
+from pathlib import Path
+lines=Path(sys.argv[1]).read_text().splitlines()
+assert lines[0].startswith("DEBIAN_PACKAGE_SELF_TEST_ARTIFACTS=")
+value=json.loads(lines[0].split("=",1)[1])
+assert set(value)=={"fixture_archive_sha256","production_archive_sha256","runner_sha256","libraries_sha256","compiler_sha256","cli_verified_archives"}
+assert value["cli_verified_archives"]==2 and len(value["libraries_sha256"])==12
+for digest in [value[name] for name in ("fixture_archive_sha256","production_archive_sha256","runner_sha256","compiler_sha256")]+list(value["libraries_sha256"].values()):
+ assert re.fullmatch("[0-9a-f]{64}",digest)
+PY
+    "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+    CONTAINER_ID=
+    "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] || fail 'Debian package tests left Docker objects'
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/verify-private-tree-closure.py" \
+        --remove-empty-private-root "$work" --expected-identity "$work_id"
+    [ ! -e "$work" ] && [ ! -L "$work" ] || fail 'Debian package-test scratch remains'
+    [ "$(sha256sum "${sources[@]}")" = "$source_before" ] || fail 'Debian package-test source changed'
+    stop_docker_authority
+    cat "$output"
+    printf 'DEBIAN_PACKAGE_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=%s generator_sha256=%s checker_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
+        "$DEB_BUILDER_CONFIG_ID" "$(sha256sum "${sources[0]}" | awk '{print $1}')" "$(sha256sum "${sources[1]}" | awk '{print $1}')"
 }
 
 run_fixed_archive_tests() {
@@ -11065,6 +11169,10 @@ if [ "$MODE" = ledger-token-count ]; then
 fi
 if [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; then
     run_debian_package_tests
+    exit 0
+fi
+if [ "$MODE" = debian-package-tests ]; then
+    run_debian_archive_integration_tests
     exit 0
 fi
 if [ "$MODE" = linux-service-receiver-tests ]; then

@@ -2688,6 +2688,33 @@ def run_self_test(repo, polkit_policy):
         )
         expect_validation_failure(extra_md5_deb, "inventory differs")
 
+        admission_repo = tmp / "admission-source"
+        write_file(admission_repo / POLKIT_POLICY_SOURCE, polkit_policy.decode("utf-8"), 0o644)
+        write_file(admission_repo / "res/rustdesk.service", expected_systemd_unit.decode("utf-8"), 0o644)
+        archives = (good_deb, tmp / "production-finalizer.deb")
+        command = [sys.executable, "-B", "-I", "-S", str(Path(__file__).resolve()),
+                   "--repo", str(admission_repo)]
+        for archive in archives:
+            command.extend(("--deb", str(archive)))
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        expected_output = "".join(f"ok  Debian package archive verified: {path}\n" for path in archives).encode()
+        if result.returncode != 0 or result.stdout != expected_output:
+            raise ValidationError(f"valid package CLI admission failed: {result.returncode} {result.stdout[:8192]!r}")
+        compiler = shutil.which("cc")
+        if compiler is None:
+            raise ValidationError("fixture compiler disappeared")
+        print("DEBIAN_PACKAGE_SELF_TEST_ARTIFACTS=" + json.dumps({
+            "fixture_archive_sha256": hashlib.sha256(good_deb.read_bytes()).hexdigest(),
+            "production_archive_sha256": hashlib.sha256(archives[1].read_bytes()).hexdigest(),
+            "runner_sha256": hashlib.sha256((good_tree / PRIMARY_BINARY[2:]).read_bytes()).hexdigest(),
+            "libraries_sha256": {
+                name: hashlib.sha256((good_tree / name[2:]).read_bytes()).hexdigest()
+                for name in sorted(FLUTTER_LIBRARIES | {NATIVE_XDO_LIBRARY})
+            },
+            "compiler_sha256": hashlib.sha256(Path(compiler).read_bytes()).hexdigest(),
+            "cli_verified_archives": len(archives),
+        }, sort_keys=True, separators=(",", ":")))
+
 
 def main():
     parser = argparse.ArgumentParser(description="Verify Debian package payload authority for the RustDesk root service.")

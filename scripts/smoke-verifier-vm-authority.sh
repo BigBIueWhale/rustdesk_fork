@@ -321,6 +321,11 @@ case "$#:${1:-}" in
             || { echo 'Debian polkit-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=debian-polkit-tests
         ;;
+    1:--debian-package-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Debian package-test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=debian-package-tests
+        ;;
     1:--dependency-inventory)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'dependency inventory input/run overrides are forbidden' >&2; exit 2; }
@@ -527,6 +532,7 @@ case "$#:${1:-}" in
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
         printf 'Focused Debian authorization dependency tests: %s --debian-polkit-tests\n' "${0##*/}" >&2
+        printf 'Compiled Debian archive integration tests: %s --debian-package-tests\n' "${0##*/}" >&2
         printf 'Real VM boot from a private read-only base copy: %s --base-readonly-test\n' "${0##*/}" >&2
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
@@ -869,6 +875,10 @@ elif [ "$MODE" = flutter-model-tests ]; then
         readonly VM_MEMORY=8192
     fi
 elif [ "$MODE" = android-owner-tests ]; then
+    readonly VM_TIMEOUT_SECONDS=300
+    readonly OVERLAY_SIZE=8G
+    readonly VM_MEMORY=2048
+elif [ "$MODE" = debian-package-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
@@ -2338,7 +2348,7 @@ frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-   || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+   || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
         && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; }; then
@@ -2356,6 +2366,7 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$M
     fi
 fi
 debian_polkit_sources_before=
+debian_package_inputs_before=
 ledger_token_inputs_before=
 for source in "$VM_HOST_NETWORK_SOURCE" "$VM_HOST_NETWORK_TEST"; do
     [ -f "$source" ] && [ ! -L "$source" ] || fail 'host network source is absent or ambiguous'
@@ -2407,12 +2418,21 @@ if [ "$MODE" = ledger-token-count ]; then
     ledger_input_sha=$(/usr/bin/sha256sum "$HARDENING_SOURCE" | /usr/bin/awk '{print $1}')
     ledger_recipe_sha=$(/usr/bin/sha256sum "$LEDGER_TOKEN_COUNT_SOURCE" | /usr/bin/awk '{print $1}')
 fi
-if { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; }; then
+if { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; }; then
     for source in "$DEBIAN_CONTROL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE"; do
         [ -f "$source" ] && [ ! -L "$source" ] || fail 'Debian polkit-test source is absent or ambiguous'
         verify_committed_test_source "$source"
     done
     debian_polkit_sources_before="$(/usr/bin/sha256sum "$DEBIAN_CONTROL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE")"
+fi
+if [ "$MODE" = debian-package-tests ]; then
+    verify_committed_test_source "$REPO_ROOT/res/com.carriez.RustDesk.policy"
+    [ -f "$DEB_BUILDER_ARCHIVE" ] && [ ! -L "$DEB_BUILDER_ARCHIVE" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' "$DEB_BUILDER_ARCHIVE")" = \
+            "$HOST_UID:$HOST_GID:400:1:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
+        || fail 'Debian package-test compiler image authority differs'
+    verify_sha256 "$DEB_BUILDER_ARCHIVE" "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"
+    debian_package_inputs_before="$(/usr/bin/sha256sum "$DEB_BUILDER_ARCHIVE" "$REPO_ROOT/res/com.carriez.RustDesk.policy")"
 fi
 if [ "$MODE" = fixed-archive-tests ]; then
     for source in "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
@@ -3139,7 +3159,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
     if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-       || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
+       || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
     fi
@@ -4128,9 +4148,15 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_OWNER_SOURCE_ARCHIVE")
-elif { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; }; then
+elif { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; }; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("repo/build.py=$DEBIAN_CONTROL_SOURCE")
+    if [ "$MODE" = debian-package-tests ]; then
+        lifecycle_payload_grafts+=(
+            "deb-builder.docker.tar.gz=$DEB_BUILDER_ARCHIVE"
+            "repo/res/com.carriez.RustDesk.policy=$REPO_ROOT/res/com.carriez.RustDesk.policy"
+        )
+    fi
     if [ "$MODE" = debian-polkit-tests ]; then
         debian_cli_baseline=$VM_TRANSIENT/debian-package-cli-baseline.py
         (
@@ -4488,6 +4514,8 @@ elif [ "$MODE" = debian-elf-role-tests ]; then
     guest_invocation+=' --debian-elf-role-tests'
 elif [ "$MODE" = debian-polkit-tests ]; then
     guest_invocation+=' --debian-polkit-tests'
+elif [ "$MODE" = debian-package-tests ]; then
+    guest_invocation+=' --debian-package-tests'
 elif [ "$MODE" = dependency-inventory ]; then
     guest_invocation+=" --dependency-inventory $inventory_index_sha $inventory_helper_sha"
 elif [ "$MODE" = ledger-token-count ]; then
@@ -5113,6 +5141,12 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     fi
     require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_VM=pass harness=$FOCUSED_TEST_COMMIT manifest=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 source=readonly network=none docker=retired cleanup=joined" 'installed Linux receiver fixture finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed Linux receiver guest completion'
+elif [ "$MODE" = debian-package-tests ]; then
+    debian_package_receipt="DEBIAN_PACKAGE_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=$DEB_BUILDER_CONFIG_ID generator_sha256=$(/usr/bin/sha256sum "$DEBIAN_CONTROL_SOURCE" | /usr/bin/awk '{print $1}') checker_sha256=$(/usr/bin/sha256sum "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" | /usr/bin/awk '{print $1}') source=readonly network=none docker=retired scratch=retired cleanup=joined"
+    require_exact_fixed_receipt 'ok  Debian package archive and production-finalizer self-tests passed' 'compiled Debian archive integration result'
+    require_exact_fixed_receipt "$debian_package_receipt" 'compiled Debian package test finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Debian package guest completion'
+    printf '%s\n' "$debian_package_receipt"
 elif [ "$MODE" = debian-elf-role-tests ]; then
     require_exact_fixed_receipt \
         'DEBIAN_ELF_ROLES=pass cases=9 packages=2 gate=elf-partition old-pie=accepted current-pie=refused native-dlopen=refused shared-call=pass runners=types-metadata entry=valid-exit0-invalid-SIGSEGV product=unexecuted cleanup=joined' \
@@ -7652,7 +7686,7 @@ if [ "$MODE" = ledger-token-count ]; then
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'ledger token-count source or inputs changed during execution'
 fi
-if { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; }; then
+if { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; }; then
     [ "$(/usr/bin/sha256sum "$DEBIAN_CONTROL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE")" = "$debian_polkit_sources_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
@@ -7707,6 +7741,10 @@ if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engin
         ARTIFACT_PUBLISHED=1
     fi
 fi
+if [ "$MODE" = debian-package-tests ]; then
+    [ "$(/usr/bin/sha256sum "$DEB_BUILDER_ARCHIVE" "$REPO_ROOT/res/com.carriez.RustDesk.policy")" = "$debian_package_inputs_before" ] \
+        || fail 'Debian package-test compiler image or policy changed during execution'
+fi
 RUN_COMPLETE=1
 if [ "$BASE_READONLY_TEST" -eq 1 ]; then
     printf 'VERIFIER_VM_BASE_READONLY=pass host_uid=%s commit=%s tree=%s profile=444 source=private-copy boot=actual assets=cold-derived scratch=ram canonical=unchanged overrides=forbidden network=none cleanup=joined elapsed_seconds=%s\n' \
@@ -7734,6 +7772,9 @@ elif [ "$MODE" = fixed-archive-tests ]; then
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = debian-elf-role-tests ]; then
     printf 'DEBIAN_ELF_ROLE_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted scope=debian-elf-partition cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = debian-package-tests ]; then
+    printf 'DEBIAN_PACKAGE_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = debian-polkit-tests ]; then
     printf 'DEBIAN_POLKIT_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only receiver=unexecuted cleanup=joined elapsed_seconds=%s\n' \

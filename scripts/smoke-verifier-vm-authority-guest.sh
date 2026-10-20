@@ -3181,6 +3181,12 @@ run_focused_rust_tests() {
                 config::option_tests::local_option_failure_preserves_state_and_retries_replacement_and_removal
                 config::option_tests::local_option_purge_failure_preserves_overrides_and_defaults
                 config::option_tests::local_system_language_is_explicit_durable_and_retryable
+                config::option_tests::local_source_initial_and_direct_reads_preserve_corruption
+                config::option_tests::local_source_denial_refuses_every_mutation_and_allows_retry
+                config::option_tests::local_source_corruption_refuses_repeated_mutations_without_recovery
+                config::option_tests::local_source_mutations_preserve_completed_external_changes
+                config::option_tests::local_source_idempotence_uses_durable_values_and_refreshes_cache
+                config::option_tests::local_source_missing_noops_do_not_create_and_first_saves_work
                 config::option_tests::last_peer_failure_preserves_state_and_retries_the_identical_value
                 config::option_tests::retired_local_geometry_is_ignored_without_losing_live_preferences
                 config::option_tests::default_single_key_writes_preserve_other_keys_and_concurrent_writers

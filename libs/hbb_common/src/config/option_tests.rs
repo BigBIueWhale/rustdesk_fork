@@ -1941,6 +1941,186 @@ fn results_distinguish_failed_saves_from_durable_and_idempotent_success() {
     });
 }
 
+fn local_source_seed(tag: &str) -> LocalConfig {
+    LocalConfig {
+        remote_id: format!("host-{tag}"),
+        kb_layout_type: format!("layout-{tag}"),
+        fav: vec![format!("peer-{tag}")],
+        options: [("selected".into(), tag.into()), ("unrelated".into(), format!("keep-{tag}"))].into(),
+        ui_flutter: [("selected".into(), tag.into()), ("unrelated".into(), format!("keep-{tag}"))].into(),
+    }
+}
+
+fn local_source_actions() -> [(&'static str, fn() -> crate::ResultType<()>); 5] {
+    [
+        ("history", || LocalConfig::set_remote_id("requested-host")),
+        ("keyboard", || LocalConfig::set_kb_layout_type("Not ISO".into())),
+        ("favorites", || LocalConfig::set_favorites(vec!["requested-peer".into()], true)),
+        ("option", || LocalConfig::set_option("selected".into(), "requested".into())),
+        ("flutter", || LocalConfig::set_flutter_option("selected".into(), "requested".into())),
+    ]
+}
+
+fn local_source_expected(mut source: LocalConfig, action: &str) -> serde_json::Value {
+    match action {
+        "history" => source.remote_id = "requested-host".into(),
+        "keyboard" => source.kb_layout_type = "Not ISO".into(),
+        "favorites" => source.fav.push("requested-peer".into()),
+        "option" => { source.options.insert("selected".into(), "requested".into()); }
+        "flutter" => { source.ui_flutter.insert("selected".into(), "requested".into()); }
+        _ => panic!("unknown local action"),
+    }
+    serde_json::to_value(source).unwrap()
+}
+
+#[test]
+fn local_source_initial_and_direct_reads_preserve_corruption() {
+    in_private_process("config::option_tests::local_source_initial_and_direct_reads_preserve_corruption", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let file = Config::file_("_local");
+        let parent = file.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        let readers: [(&str, fn()); 2] = [("initial", || { let _ = LocalConfig::load(); }), ("direct", || { let _ = LocalConfig::get_option_from_file("selected"); })];
+        let mut all_preserved = true;
+        for (kind, bytes) in [("syntax", b"[options]\nprivate-local-source = [\n".as_slice()), ("utf8", b"\xffprivate-local-source".as_slice())] {
+            for (reader, read) in readers {
+                fs::write(&file, bytes).unwrap();
+                let before = fs::metadata(&file).unwrap();
+                read();
+                let preserved = fs::read(&file).map(|b| b == bytes).unwrap_or(false);
+                let same_file = fs::metadata(&file).map(|s| (s.dev(), s.ino()) == (before.dev(), before.ino())).unwrap_or(false);
+                println!("OPTION_COMMIT_LOCAL_SOURCE=observed kind={kind} reader={reader} file_preserved={preserved} same_file={same_file}");
+                all_preserved &= preserved && same_file;
+            }
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn local_source_denial_refuses_every_mutation_and_allows_retry() {
+    in_private_process("config::option_tests::local_source_denial_refuses_every_mutation_and_allows_retry", |_| {
+        let source = local_source_seed("confirmed");
+        let file = Config::file_("_local");
+        let mut all_preserved = true;
+        for (name, action) in local_source_actions() {
+            store_path(file.clone(), &source).unwrap();
+            *LOCAL_CONFIG.write().unwrap() = source.clone();
+            let bytes = fs::read(&file).unwrap();
+            fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
+            let native = fs::read(&file).unwrap_err();
+            let result = action();
+            fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+            let preserved = fs::read(&file).unwrap() == bytes;
+            let cache_preserved = serde_json::to_value(&*LOCAL_CONFIG.read().unwrap()).unwrap() == serde_json::to_value(&source).unwrap();
+            assert_eq!(native.kind(), io::ErrorKind::PermissionDenied);
+            println!("OPTION_COMMIT_LOCAL_SOURCE=observed kind=denial action={name} errno={} refused={} file_preserved={preserved} cache_preserved={cache_preserved}", native.raw_os_error().unwrap(), result.is_err());
+            all_preserved &= result.is_err() && preserved && cache_preserved;
+            store_path(file.clone(), &source).unwrap();
+            *LOCAL_CONFIG.write().unwrap() = source.clone();
+            action().unwrap();
+            let stored: LocalConfig = toml::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+            assert_eq!(serde_json::to_value(stored).unwrap(), local_source_expected(source.clone(), name));
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn local_source_corruption_refuses_repeated_mutations_without_recovery() {
+    in_private_process("config::option_tests::local_source_corruption_refuses_repeated_mutations_without_recovery", |_| {
+        let source = local_source_seed("confirmed");
+        let file = Config::file_("_local");
+        store_path(file.clone(), &source).unwrap();
+        let mut all_preserved = true;
+        for (kind, bytes) in [("syntax", b"[options]\nprivate-local-source = [\n".as_slice()), ("utf8", b"\xffprivate-local-source".as_slice())] {
+            for (name, action) in local_source_actions() {
+                *LOCAL_CONFIG.write().unwrap() = source.clone();
+                fs::write(&file, bytes).unwrap();
+                let first = action();
+                let second = action();
+                let preserved = fs::read(&file).map(|b| b == bytes).unwrap_or(false);
+                let cache_preserved = serde_json::to_value(&*LOCAL_CONFIG.read().unwrap()).unwrap() == serde_json::to_value(&source).unwrap();
+                println!("OPTION_COMMIT_LOCAL_SOURCE=observed kind={kind} action={name} first_refused={} repeated_refused={} file_preserved={preserved} cache_preserved={cache_preserved}", first.is_err(), second.is_err());
+                if let Err(error) = first.as_ref() { assert!(!error.to_string().contains("private-local-source")); }
+                all_preserved &= first.is_err() && second.is_err() && preserved && cache_preserved;
+            }
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn local_source_mutations_preserve_completed_external_changes() {
+    in_private_process("config::option_tests::local_source_mutations_preserve_completed_external_changes", |_| {
+        let cached = local_source_seed("cached");
+        let external = local_source_seed("external");
+        let file = Config::file_("_local");
+        let mut all_preserved = true;
+        for (name, action) in local_source_actions() {
+            store_path(file.clone(), &external).unwrap();
+            *LOCAL_CONFIG.write().unwrap() = cached.clone();
+            action().unwrap();
+            let stored: LocalConfig = toml::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+            let expected = local_source_expected(external.clone(), name);
+            let file_current = serde_json::to_value(stored).unwrap() == expected;
+            let cache_current = serde_json::to_value(&*LOCAL_CONFIG.read().unwrap()).unwrap() == expected;
+            println!("OPTION_COMMIT_LOCAL_SOURCE=observed kind=external action={name} file_current={file_current} cache_current={cache_current}");
+            all_preserved &= file_current && cache_current;
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn local_source_idempotence_uses_durable_values_and_refreshes_cache() {
+    in_private_process("config::option_tests::local_source_idempotence_uses_durable_values_and_refreshes_cache", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let cached = local_source_seed("cached");
+        let external = local_source_seed("external");
+        let file = Config::file_("_local");
+        let parent = file.parent().unwrap();
+        let mut all_preserved = true;
+        for (name, action) in local_source_actions() {
+            let expected = local_source_expected(external.clone(), name);
+            let durable: LocalConfig = serde_json::from_value(expected.clone()).unwrap();
+            store_path(file.clone(), &durable).unwrap();
+            *LOCAL_CONFIG.write().unwrap() = cached.clone();
+            let before = fs::metadata(&file).unwrap();
+            let bytes = fs::read(&file).unwrap();
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+            let result = action();
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            let same_file = fs::metadata(&file).unwrap().ino() == before.ino() && fs::read(&file).unwrap() == bytes;
+            let cache_current = serde_json::to_value(&*LOCAL_CONFIG.read().unwrap()).unwrap() == expected;
+            println!("OPTION_COMMIT_LOCAL_SOURCE=observed kind=idempotent action={name} success={} same_file={same_file} cache_current={cache_current}", result.is_ok());
+            all_preserved &= result.is_ok() && same_file && cache_current;
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn local_source_missing_noops_do_not_create_and_first_saves_work() {
+    in_private_process("config::option_tests::local_source_missing_noops_do_not_create_and_first_saves_work", |_| {
+        let file = Config::file_("_local");
+        LocalConfig::set_remote_id("").unwrap();
+        LocalConfig::set_kb_layout_type(String::new()).unwrap();
+        LocalConfig::set_favorites(vec!["missing".into()], false).unwrap();
+        LocalConfig::set_option("selected".into(), String::new()).unwrap();
+        LocalConfig::set_flutter_option("selected".into(), String::new()).unwrap();
+        assert!(!file.exists());
+        for (name, action) in local_source_actions() {
+            if file.exists() { fs::remove_file(&file).unwrap(); }
+            *LOCAL_CONFIG.write().unwrap() = LocalConfig::default();
+            action().unwrap();
+            let stored: LocalConfig = toml::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+            assert_eq!(serde_json::to_value(stored).unwrap(), local_source_expected(LocalConfig::default(), name));
+        }
+        println!("OPTION_COMMIT_LOCAL_SOURCE=observed kind=controls missing_noops_absent=true first_saves=5");
+    });
+}
+
 #[test]
 fn favorite_failure_preserves_state_and_retries_the_exact_membership_change() {
     in_private_process("config::option_tests::favorite_failure_preserves_state_and_retries_the_exact_membership_change", |_| {

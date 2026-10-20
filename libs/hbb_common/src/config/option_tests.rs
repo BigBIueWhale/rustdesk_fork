@@ -1,6 +1,88 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+fn exercise_config_temp_ownership(kind: &str) {
+    use std::{cell::RefCell, os::unix::{ffi::OsStrExt, fs::MetadataExt}};
+    let path = Config2::file();
+    let parent = path.parent().unwrap();
+    fs::create_dir_all(parent).unwrap();
+    let old = b"original config bytes";
+    let next = b"new config bytes";
+    if kind == "publication_failure" {
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join("preserved"), old).unwrap();
+        let probe = parent.join("native-probe");
+        fs::write(&probe, b"probe").unwrap();
+        assert_eq!(fs::rename(&probe, &path).unwrap_err().raw_os_error(), Some(crate::libc::EISDIR));
+        fs::remove_file(probe).unwrap();
+    } else {
+        fs::write(&path, old).unwrap();
+    }
+    let temporary = RefCell::new(None);
+    let relocated = parent.join("relocated-owned-temp");
+    let result = store_config_bytes_transaction_unix(
+        &path, next, ConfigStoreFault::None,
+        &|_| panic!("refusal must precede publication"),
+        &|_, name, source| {
+            let named = parent.join(std::ffi::OsStr::from_bytes(name.to_bytes()));
+            assert_eq!(fs::read(&named).unwrap(), next);
+            match kind {
+                "substitution" => {
+                    fs::remove_file(&named)?;
+                    fs::write(&named, b"foreign temporary entry")?;
+                    assert_eq!(source.metadata()?.nlink(), 0);
+                }
+                "publication_failure" => {
+                    fs::rename(&named, &relocated)?;
+                    fs::write(&named, b"foreign temporary entry")?;
+                    assert_eq!(source.metadata()?.nlink(), 1);
+                }
+                "hardlink" => {
+                    fs::hard_link(&named, &relocated)?;
+                    assert_eq!(source.metadata()?.nlink(), 2);
+                }
+                _ => panic!("unknown test scenario"),
+            }
+            *temporary.borrow_mut() = Some(named);
+            Ok(())
+        },
+    );
+    let temporary = temporary.into_inner().unwrap();
+    let target_preserved = if kind == "publication_failure" {
+        path.is_dir() && fs::read(path.join("preserved")).unwrap() == old
+    } else {
+        fs::read(&path).unwrap() == old
+    };
+    let unrelated_preserved = if kind == "hardlink" {
+        fs::read(&relocated).unwrap() == next
+    } else {
+        fs::read(&temporary).map(|v| v == b"foreign temporary entry").unwrap_or(false)
+    };
+    println!("OPTION_COMMIT_CONFIG_TEMP=observed kind={kind} refused={} target_preserved={target_preserved} unrelated_preserved={unrelated_preserved}", result.is_err());
+    assert!(result.is_err() && target_preserved && unrelated_preserved);
+}
+
+#[test]
+fn config_temp_substitution_refuses_foreign_publication() {
+    in_private_process("config::option_tests::config_temp_substitution_refuses_foreign_publication", |_| {
+        exercise_config_temp_ownership("substitution");
+    });
+}
+
+#[test]
+fn config_temp_failed_publication_cannot_delete_a_replacement_entry() {
+    in_private_process("config::option_tests::config_temp_failed_publication_cannot_delete_a_replacement_entry", |_| {
+        exercise_config_temp_ownership("publication_failure");
+    });
+}
+
+#[test]
+fn config_temp_link_count_change_refuses_publication() {
+    in_private_process("config::option_tests::config_temp_link_count_change_refuses_publication", |_| {
+        exercise_config_temp_ownership("hardlink");
+    });
+}
+
 fn exercise_peer_projection_types(kind: &str, id: &str, cases: &[&str]) {
     use std::os::unix::fs::MetadataExt;
     let path = PeerConfig::path(id);

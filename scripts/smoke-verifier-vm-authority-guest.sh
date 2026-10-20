@@ -3238,6 +3238,9 @@ run_focused_rust_tests() {
                 config::option_tests::peer_option_projection_wrong_types_are_explicit_without_mutation
                 config::option_tests::peer_ui_projection_wrong_types_are_explicit_without_mutation
                 config::option_tests::peer_list_projection_wrong_alias_types_are_omitted_without_mutation
+                config::option_tests::config_temp_substitution_refuses_foreign_publication
+                config::option_tests::config_temp_failed_publication_cannot_delete_a_replacement_entry
+                config::option_tests::config_temp_link_count_change_refuses_publication
                 config::option_tests::peer_load_status_controls_preserve_missing_denied_and_directory
                 config::option_tests::peer_option_read_preserves_credentials_and_file_identity
                 config::option_tests::peer_option_read_corrupt_records_refuse_without_recovery

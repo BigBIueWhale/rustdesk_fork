@@ -2176,10 +2176,16 @@ fn config_temp_file_name(path: &Path, attempt: u32) -> Result<String> {
 
 #[cfg(unix)]
 fn store_config_bytes_transaction(path: &Path, data: &[u8], fault: ConfigStoreFault) -> Result<()> {
-    store_config_bytes_transaction_unix(path, data, fault, &|message| {
-        log::error!("Fatal config durability failure after replacement: {message}");
-        std::process::abort()
-    })
+    store_config_bytes_transaction_unix(
+        path,
+        data,
+        fault,
+        &|message| {
+            log::error!("Fatal config durability failure after replacement: {message}");
+            std::process::abort()
+        },
+        &|_, _, _| Ok(()),
+    )
 }
 
 #[cfg(unix)]
@@ -2188,6 +2194,7 @@ fn store_config_bytes_transaction_unix(
     data: &[u8],
     fault: ConfigStoreFault,
     fatal_after_replace: &dyn Fn(&str) -> Result<()>,
+    before_replace: &dyn Fn(&fs::File, &std::ffi::CStr, &fs::File) -> Result<()>,
 ) -> Result<()> {
     use std::{
         ffi::{CStr, CString, OsStr},
@@ -2420,6 +2427,7 @@ fn store_config_bytes_transaction_unix(
             verify_file(&temp, path)?;
             temp.write_all(data)?;
             sync_temp_file(&temp)?;
+            before_replace(&parent, &temp_name, &temp)?;
             if fault == ConfigStoreFault::BeforeReplace {
                 return Err(anyhow!("injected config failure before replacement"));
             }
@@ -5394,6 +5402,7 @@ unrelated = "preserved"
             b"new-before",
             ConfigStoreFault::BeforeReplace,
             &|_| panic!("pre-replacement failure must not be fatal"),
+            &|_, _, _| Ok(()),
         );
         assert!(before.is_err());
         assert_eq!(fs::read(&path).unwrap(), b"old");
@@ -5407,6 +5416,7 @@ unrelated = "preserved"
                 fatal.store(true, Ordering::Release);
                 Err(anyhow!("simulated process-fatal durability outcome"))
             },
+            &|_, _, _| Ok(()),
         );
         assert!(after.is_err());
         assert!(fatal.load(Ordering::Acquire));

@@ -2346,7 +2346,7 @@ fn store_config_bytes_transaction_unix(
         Ok(dir)
     }
 
-    fn verify_file(file: &fs::File, path: &Path) -> Result<()> {
+    fn verify_file(file: &fs::File, path: &Path) -> Result<fs::Metadata> {
         use std::os::unix::fs::MetadataExt;
 
         let metadata = file.metadata()?;
@@ -2358,6 +2358,39 @@ fn store_config_bytes_transaction_unix(
             return Err(anyhow!(
                 "Config file '{}' failed regular-file/owner/mode/link verification",
                 path.display()
+            ));
+        }
+        Ok(metadata)
+    }
+
+    fn verify_temp_entry(
+        parent_fd: i32,
+        name: &CStr,
+        file: &fs::File,
+        path: &Path,
+    ) -> Result<()> {
+        use std::os::unix::fs::MetadataExt;
+
+        let opened = verify_file(file, path)?;
+        let mut named = std::mem::MaybeUninit::<crate::libc::stat>::uninit();
+        if unsafe {
+            crate::libc::fstatat(
+                parent_fd,
+                name.as_ptr(),
+                named.as_mut_ptr(),
+                crate::libc::AT_SYMLINK_NOFOLLOW,
+            )
+        } != 0
+        {
+            return Err(anyhow!(
+                "Failed to inspect temporary config entry: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        let named = unsafe { named.assume_init() };
+        if named.st_dev as u64 != opened.dev() || named.st_ino as u64 != opened.ino() {
+            return Err(anyhow!(
+                "Temporary config entry no longer names the retained file"
             ));
         }
         Ok(())
@@ -2375,16 +2408,25 @@ fn store_config_bytes_transaction_unix(
         Ok(())
     }
 
-    fn unlink_temp(parent_fd: i32, name: &CStr) -> Result<()> {
-        if unsafe { crate::libc::unlinkat(parent_fd, name.as_ptr(), 0) } == 0 {
+    fn retire_temp(parent: &fs::File, name: &CStr, file: &fs::File, path: &Path) -> Result<()> {
+        use std::os::unix::fs::MetadataExt;
+
+        if file.metadata()?.nlink() == 0 {
             return Ok(());
         }
-        let err = io::Error::last_os_error();
-        if err.kind() == io::ErrorKind::NotFound {
-            Ok(())
-        } else {
-            Err(anyhow!("Failed to remove temporary config file: {err}"))
+        let parent_fd = parent.as_raw_fd();
+        verify_temp_entry(parent_fd, name, file, path)?;
+        if unsafe { crate::libc::unlinkat(parent_fd, name.as_ptr(), 0) } != 0 {
+            return Err(anyhow!(
+                "Failed to remove temporary config file: {}",
+                io::Error::last_os_error()
+            ));
         }
+        parent.sync_all()?;
+        if file.metadata()?.nlink() != 0 {
+            return Err(anyhow!("Temporary config file still has links after cleanup"));
+        }
+        Ok(())
     }
 
     let parent = open_parent(path)?;
@@ -2417,6 +2459,7 @@ fn store_config_bytes_transaction_unix(
             return Err(anyhow!("Failed to create temporary config file: {err}"));
         }
         let mut temp = unsafe { fs::File::from_raw_fd(fd) };
+        let mut published = false;
         let transaction = (|| -> Result<()> {
             if unsafe { crate::libc::fchmod(fd, 0o600 as crate::libc::mode_t) } != 0 {
                 return Err(anyhow!(
@@ -2431,6 +2474,7 @@ fn store_config_bytes_transaction_unix(
             if fault == ConfigStoreFault::BeforeReplace {
                 return Err(anyhow!("injected config failure before replacement"));
             }
+            verify_temp_entry(parent_fd, &temp_name, &temp, path)?;
             if unsafe {
                 crate::libc::renameat(
                     parent_fd,
@@ -2446,6 +2490,7 @@ fn store_config_bytes_transaction_unix(
                     io::Error::last_os_error()
                 ));
             }
+            published = true;
             if fault == ConfigStoreFault::AfterReplace {
                 return fatal_after_replace("injected failure before parent-directory sync");
             }
@@ -2468,9 +2513,11 @@ fn store_config_bytes_transaction_unix(
             );
             fatal_after_replace(&message)
         })();
-        drop(temp);
         if let Err(error) = transaction {
-            return match unlink_temp(parent_fd, &temp_name) {
+            if published {
+                return Err(error);
+            }
+            return match retire_temp(&parent, &temp_name, &temp, path) {
                 Ok(()) => Err(error),
                 Err(cleanup) => Err(anyhow!("{error}; cleanup also failed: {cleanup}")),
             };

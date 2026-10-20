@@ -10082,7 +10082,7 @@ echo "== (3c-i-b) permanent-password PRS credential durability (R-S9) =="
 #       (load_path distinguishes NotFound=first-run from unparseable=corruption; Config::load
 #       refuses to store over a present file it read as default);
 #   F2  the "a permanent password is set" signal (has_permanent_password -> is_permanent_password_set,
-#       the IPC status, peer_has_password) keys on the LIVE PRS the auth boundary actually consumes,
+#       the controlled-side IPC status) keys on the LIVE PRS the auth boundary actually consumes,
 #       so a password-set/prs-empty half-state or an undecryptable 01 blob no longer reports "set"
 #       on a box that refuses every connection;
 #   F3  a coincident store() during a TRANSIENT machine-UUID read failure preserves a well-formed

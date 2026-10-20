@@ -759,7 +759,7 @@ CFG
             # with the §3.2 x64-linux features.
             # --llvm-compiler-opts: give ffigen'\''s libclang the clang BUILTIN-header dir so it
             # can resolve <stdbool.h>. Without it ffigen emits "[SEVERE] stdbool.h not found" and
-            # DEGRADES every bool-returning binding (e.g. mainPeerHasPassword) to a raw
+            # DEGRADES every bool-returning binding to a raw
             # NativeFunction<Int...> → the flutter `kernel_snapshot` Dart compile then fails.
             flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
                 --dart-output ./flutter/lib/generated_bridge.dart \

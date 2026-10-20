@@ -7,12 +7,14 @@ class PeerCredentialBadge extends StatefulWidget {
   const PeerCredentialBadge({
     required this.peerId,
     required this.retryLabel,
+    this.size = 12,
     this.readStatus,
     super.key,
   });
 
   final String peerId;
   final String retryLabel;
+  final double size;
   final Future<PeerCredentialStatus> Function(String)? readStatus;
 
   @override
@@ -72,13 +74,13 @@ class _PeerCredentialBadgeState extends State<PeerCredentialBadge> {
             message: '${snapshot.error}\n${widget.retryLabel}',
             child: GestureDetector(
               onTap: () => _retry(generation),
-              child: const Icon(Icons.error_outline,
-                  size: 12, color: Colors.white),
+              child: Icon(Icons.error_outline,
+                  size: widget.size, color: Colors.white),
             ),
           );
         }
         return snapshot.data?.hasSavedPrs == true
-            ? const Icon(Icons.key, size: 12, color: Colors.white)
+            ? Icon(Icons.key, size: widget.size, color: Colors.white)
             : const SizedBox.shrink();
       },
     );

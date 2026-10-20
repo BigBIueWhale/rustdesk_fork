@@ -152,11 +152,16 @@ class _PeerCardState extends State<_PeerCard>
               children: [
                 getPlatformImage(peer.platform, size: isPortrait ? 38 : 30)
                     .paddingAll(6),
-                if (_shouldBuildPasswordIcon(peer))
+                if (widget.tab == PeerTabIndex.recent ||
+                    widget.tab == PeerTabIndex.fav)
                   Positioned(
                     top: 1,
                     left: 1,
-                    child: Icon(Icons.key, size: 6, color: Colors.white),
+                    child: PeerCredentialBadge(
+                      peerId: peer.id,
+                      retryLabel: translate('Retry'),
+                      size: 6,
+                    ),
                   ),
               ],
             )),

@@ -1227,6 +1227,153 @@ fn peer_removal_unlinks_a_symlink_without_removing_its_target() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
+fn peer_removal_refuses_a_symlinked_peer_parent() {
+    in_private_process("config::option_tests::peer_removal_refuses_a_symlinked_peer_parent", |root| {
+        let id = "peer-removal-linked-parent";
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        fs::create_dir_all(parent.parent().unwrap()).unwrap();
+        let outside = root.join("outside-peers");
+        fs::create_dir(&outside).unwrap();
+        let target = outside.join(path.file_name().unwrap());
+        fs::write(&target, b"outside peer bytes").unwrap();
+        std::os::unix::fs::symlink(&outside, parent).unwrap();
+        let result = PeerConfig::remove(id);
+        let preserved = fs::read(&target).ok().as_deref() == Some(b"outside peer bytes".as_slice());
+        println!("OPTION_COMMIT_PEER_REMOVE_PARENT=observed kind=parent_link refused={} outside_preserved={preserved}", result.is_err());
+        assert!(result.is_err() && preserved);
+        assert!(fs::symlink_metadata(parent).unwrap().file_type().is_symlink());
+    });
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn peer_removal_refuses_a_symlinked_config_ancestor() {
+    in_private_process("config::option_tests::peer_removal_refuses_a_symlinked_config_ancestor", |root| {
+        let id = "peer-removal-linked-ancestor";
+        let path = PeerConfig::path(id);
+        let config_root = path.parent().unwrap().parent().unwrap();
+        fs::create_dir_all(config_root.parent().unwrap()).unwrap();
+        let outside = root.join("outside-config");
+        let outside_peers = outside.join(PEERS);
+        fs::create_dir_all(&outside_peers).unwrap();
+        let target = outside_peers.join(path.file_name().unwrap());
+        fs::write(&target, b"outside ancestor bytes").unwrap();
+        std::os::unix::fs::symlink(&outside, config_root).unwrap();
+        let result = PeerConfig::remove(id);
+        let preserved = fs::read(&target).ok().as_deref() == Some(b"outside ancestor bytes".as_slice());
+        println!("OPTION_COMMIT_PEER_REMOVE_PARENT=observed kind=ancestor_link refused={} outside_preserved={preserved}", result.is_err());
+        assert!(result.is_err() && preserved);
+        assert!(fs::symlink_metadata(config_root).unwrap().file_type().is_symlink());
+    });
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn peer_removal_retains_its_parent_across_path_replacement() {
+    in_private_process("config::option_tests::peer_removal_retains_its_parent_across_path_replacement", |root| {
+        let id = "peer-removal-parent-replaced";
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::write(&path, b"selected original bytes").unwrap();
+        let sibling = parent.join("sibling.toml");
+        fs::write(&sibling, b"retained sibling bytes").unwrap();
+        let outside = root.join("replacement-target");
+        fs::create_dir(&outside).unwrap();
+        let target = outside.join(path.file_name().unwrap());
+        fs::write(&target, b"outside replacement bytes").unwrap();
+        let moved = parent.with_file_name("retained-original-peers");
+        let mut hooks = 0;
+        let result = PeerConfig::remove_with_unlink_hook(id, || {
+            fs::rename(parent, &moved).unwrap();
+            std::os::unix::fs::symlink(&outside, parent).unwrap();
+            hooks += 1;
+        });
+        let outside_preserved = fs::read(&target).ok().as_deref() == Some(b"outside replacement bytes".as_slice());
+        let selected_removed = !moved.join(path.file_name().unwrap()).exists();
+        println!("OPTION_COMMIT_PEER_REMOVE_PARENT=observed kind=replacement hooks={hooks} success={} selected_removed={selected_removed} outside_preserved={outside_preserved}", result.is_ok());
+        assert!(result.is_ok() && hooks == 1 && selected_removed && outside_preserved);
+        assert_eq!(fs::read(moved.join("sibling.toml")).unwrap(), b"retained sibling bytes");
+        assert!(fs::symlink_metadata(parent).unwrap().file_type().is_symlink());
+    });
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn peer_removal_refuses_shared_writable_parents_without_repair() {
+    in_private_process("config::option_tests::peer_removal_refuses_shared_writable_parents_without_repair", |_| {
+        let id = "peer-removal-shared-parent";
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        for mode in [0o720, 0o702] {
+            fs::write(&path, b"selected private bytes").unwrap();
+            fs::set_permissions(parent, fs::Permissions::from_mode(mode)).unwrap();
+            let result = PeerConfig::remove(id);
+            let preserved = fs::read(&path).ok().as_deref() == Some(b"selected private bytes".as_slice());
+            let unchanged_mode = fs::metadata(parent).unwrap().permissions().mode() & 0o777 == mode;
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            println!("OPTION_COMMIT_PEER_REMOVE_PARENT=observed kind=shared_parent mode={mode:o} refused={} file_preserved={preserved} mode_unchanged={unchanged_mode}", result.is_err());
+            assert!(result.is_err() && preserved && unchanged_mode);
+        }
+        PeerConfig::remove(id).unwrap();
+        assert!(!path.exists());
+    });
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn peer_removal_missing_parents_and_repeats_release_descriptors() {
+    in_private_process("config::option_tests::peer_removal_missing_parents_and_repeats_release_descriptors", |_| {
+        let id = "peer-removal-fd-control";
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        assert!(!parent.exists());
+        PeerConfig::remove(id).unwrap();
+        PeerConfig::remove(id).unwrap();
+        assert!(!parent.exists());
+        fs::create_dir_all(parent).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before = fds();
+        for _ in 0..100 {
+            fs::write(&path, b"selected bytes").unwrap();
+            PeerConfig::remove(id).unwrap();
+            PeerConfig::remove(id).unwrap();
+        }
+        let after = fds();
+        println!("OPTION_COMMIT_PEER_REMOVE_PARENT=observed kind=repeat iterations=100 missing_parents_not_created=true fds_before={before} fds_after={after}");
+        assert_eq!(after, before);
+        assert!(!path.exists());
+    });
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn peer_removal_supports_write_search_only_parents() {
+    in_private_process("config::option_tests::peer_removal_supports_write_search_only_parents", |_| {
+        let id = "peer-removal-search-only";
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        fs::write(&path, b"selected bytes").unwrap();
+        let sibling = parent.join("sibling.toml");
+        fs::write(&sibling, b"preserved bytes").unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o300)).unwrap();
+        assert_eq!(fs::read_dir(parent).err().unwrap().kind(), std::io::ErrorKind::PermissionDenied);
+        let result = PeerConfig::remove(id);
+        let unchanged_mode = fs::metadata(parent).unwrap().permissions().mode() & 0o777 == 0o300;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        println!("OPTION_COMMIT_PEER_REMOVE_PARENT=observed kind=search_only success={} mode_unchanged={unchanged_mode}", result.is_ok());
+        assert!(result.is_ok() && unchanged_mode && !path.exists());
+        assert_eq!(fs::read(sibling).unwrap(), b"preserved bytes");
+    });
+}
+
+#[test]
 fn peer_store_reports_failure_preserves_the_file_and_refuses_unreadable_source() {
     in_private_process("config::option_tests::peer_store_reports_failure_preserves_the_file_and_refuses_unreadable_source", |_| {
         let id = "peer-commit-fixture";

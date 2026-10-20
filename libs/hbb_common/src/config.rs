@@ -3595,7 +3595,13 @@ impl PeerConfig {
     }
 
     pub fn remove(id: &str) -> crate::ResultType<()> {
-        match fs::remove_file(Self::path(id)) {
+        Self::remove_with_unlink_hook(id, || {})
+    }
+
+    fn remove_with_unlink_hook(id: &str, before_unlink: impl FnOnce()) -> crate::ResultType<()> {
+        let path = Self::path(id);
+        before_unlink();
+        match fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),

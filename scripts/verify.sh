@@ -1342,6 +1342,7 @@ echo "== (3b-iii-a1b) credential-bearing peer config uses one durable transactio
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::preserved_config_hardening_rejects_symlink_targets --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_unreadable_is_transient_not_stale --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_listing_ --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_removal_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_transfer_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_retired_password_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_ui_info_ --color never

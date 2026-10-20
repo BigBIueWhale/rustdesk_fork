@@ -12517,9 +12517,6 @@ R-V3 external review; causation; and complete connection-flow correctness and pe
 
 ### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership (2026-08-17)
 
-**KEYED WRITER COMPONENT CORRECTED; NAMED LINUX TRANSPORT CASES PASS;
-BROADER TEST LANE, WHOLE-APPLICATION, OTHER-PLATFORM AND RELEASE EVIDENCE OPEN.**
-
 **Evidence boundary for R-S11gx–R-S11hd.** Historical inspection receipts established
 parser/syntax, focused source-gate, and document-size results only; they executed none of the
 Rust regressions or target-native socket/CM/clipboard/tray/power behavior named below.
@@ -12530,234 +12527,84 @@ is recorded in the service-owned authority matrix above, not in superseded per-s
 asset-availability snapshots. Named runtime results elsewhere retain their exact artifact,
 scenario, and evidence-layer scope; this reconciliation adds no behavior verdict.
 
-Platforms: shared Android, iOS, Windows, Linux, and macOS viewer/controlled transport. Surface:
-ordinary and receipt-bearing post-CPace sends through `FramedStream`, its bounded `WriterCommand`
-FIFO, and the sole writer task with independently owned framed output.
+**Named Linux component and transport results are retained; exact-current native,
+whole-application, other-platform and release acceptance remain OPEN.**
 
-The inherited defect was real: the 512-command Tokio channel returned capacity when the writer
-dequeued a frame, before `sink.send` completed, leaving the active ciphertext outside its stated
-count. There was no retained-byte budget, and both keyed send paths sealed and advanced their nonce
-before discovering backpressure or enforcing the engaged 32 MiB session ceiling. This shared path
-carries media, file, clipboard, tunnel, screenshot, and control traffic. The mechanism is consistent
-with cleanup-mediated recovery, but source review does not establish that an unidentified deployed
-artifact exercised it or that it caused the reported display delay.
+Current source in `libs/hbb_common/src/tcp.rs` gives each keyed `FramedStream` one
+producer and one independently owned sink writer. Channel capacity is reserved
+before measurement, protobuf encoding or sealing. Separate admission counts the
+active frame and queued ciphertext together: 512 frames and exact ciphertext
+bytes up to twice the packet ceiling engaged at keying, with checked MAC-size
+addition. One `send_payload` path serves ordinary, receipt-bearing and byte sends.
+The writer owns its encoded output, active reservation, queued work and completion;
+failure retires output before permits and completion. Fatal send, receive and
+drain paths close admission, abort and join the retained writer before returning.
+A cancelled join retains its handle for the next poisoned entry to finish.
+Hard synchronous Drop only requests cancellation. Clean EOF retains its semantics.
+The read half preserves its exact receive codec and prefetched bytes independently;
+failed writer flushes are not retried by close.
 
-The current design creates one `WriterAdmission` from the exact codec ceiling at keying.
-Each keyed send first nonblockingly reserves a writer-channel slot. Before
-protobuf encoding or sealing, keyed sends add secretbox `MACBYTES` with overflow checking,
-reject oversized frames, and
-nonblockingly reserve one of 512 active-plus-queued frame permits plus exact ciphertext bytes from
-a two-maximum-packet budget. Those owned permits travel in `WriterFrameReservation` through the
-sole sink await. Sink failure drops encoded sink state before releasing the reservation; all fatal
-send, drain, receive, admission, and hard-drop paths close admission before aborting the exact
-writer. No retry, reconnect, alternate writer, queue, timer, task, runtime, listener, dependency,
-privilege transition, or Android persistent-service change is part of this design. One private
-`send_payload` path serves ordinary protobuf, receipt-bearing protobuf and existing byte payloads.
-It reserves against the checked computed size before invoking the protobuf encoder, validates
-the encoded length, then seals/enqueues. Encoding errors close admission and abort the exact
-writer. This bounds admission of the serialized copy; caller-owned messages and total process
-memory are separate obligations.
+The framing-only API has no raw-mode selector or unframed encode/decode branch.
+`send_raw` remains a framed byte-payload send through the engaged cipher.
+Removing the unused mode was API closure, not a reproduced application plaintext
+exposure. R-T2/R-T3/R-T8/R-T9/R-T16/R-T18 and R-A3/R-S5 own the normative contracts;
+R-T5/R-T14 own partial-read frame preservation and receive-counter behavior.
 
-Four original writer-admission regressions remain in `libs/hbb_common/src/tcp.rs`:
+The shared verifier retains
+`cargo test -p hbb_common --lib r_s11gx_ --color never` inside isolation and the
+four executable admission regressions:
 
 - `r_s11gx_writer_admission_checks_size_count_and_bytes_before_ownership`
 - `r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort`
 - `r_s11gx_failed_drain_retires_writer_admission`
 - `r_s11gx_oversized_plaintext_is_rejected_before_peer_delivery`
 
-The shared gate retains the direct command
-`cargo test -p hbb_common --lib r_s11gx_ --color never`. This is the relevant executable regression
-entry point. The bounded `--hbb-common-fs` VM lane also runs the complete writer-receipt module.
-At `8944cdfa`, the real generated encoder ran before oversize refusal on both protobuf APIs,
-and injected encoding failure left the stream reusable: all three new regressions failed.
-Exact correction `ec94f87b` passed 155 focused Linux library tests in 188 VM seconds, including
-all eleven writer cases. The unchanged tests exercise five ordinary-send and six receipt-send
-refusal states, encoding failure on both APIs, exact writer join, returned permits and no peer
-bytes. An instrumented wrapper delegates to the generated protobuf encoder; it does not measure
-all allocations. The real TCP positive control delivers ordinary and receipt-bearing messages
-in sequence, while the existing cases cover active/queued ownership, sink failure and receipts.
-Source, artifact, all named writer results, baseline, raw serial, controls and joined cleanup
-are retained in `.harness-state/verifier-vm/protobuf-admission-corrected-ec94f87b.json`.
-This is Linux component evidence; no full application, installed principal, CPace handshake,
-other-platform, process-wide memory/latency, sustained socket-backpressure or LPE closure follows.
+The focused `--cpace-recovery-tests` profile selects wire, writer, EOF, codec,
+lifetime and compiler cases. The broader `--hbb-common-fs` lane also selects the
+writer module; its historical filesystem failures below are not a transport pass
+for that entire lane. No product or behavioral test ran for this ledger cleanup.
 
-**Writer-channel refusal — named Linux component cases PASS; broader lane FAILS.**
-At `9aea38ae`, both ordinary and receipt-bearing protobuf sends encoded once and advanced
-their nonce before discovering a full channel or an already failed writer. Both new tests
-failed; the eleven existing writer controls passed. Product `4e92169b` reserves channel
-capacity before size measurement, retained-byte admission, encoding and sealing, then consumes
-that slot for FIFO handoff. Error exits release the slot and follow the existing terminal
-stream transition. The obsolete source-string writer gate is deleted; executable regressions
-cover refusal ordering, retained permits, sink outcomes and healthy TCP delivery.
+Evidence filenames below are relative to `.harness-state/verifier-vm/`.
+Each row applies only to its named source and scenarios.
 
-Exact source `537dcb90` passes all thirteen named writer cases, four TCP/EOF cases and twelve
-codec cases in the zero-NIC Linux VM. The new tests use the generated protobuf encoder,
-real ciphers and Tokio duplex streams; they cover both send APIs after an actual sink failure
-and with 512 queued drain commands, asserting zero encoding, unchanged next nonce, returned
-permits and exact writer join. The unchanged real TCP positive controls also pass.
-The writer stage takes 0.07s; the VM supervisor records 151.744s. The broader lane exits 1:
-136 filesystem cases pass and three parked receive pre-I/O race cases fail with `Owner died`
-instead of their expected refusal errors. Those cases are unchanged and remain OPEN.
-Later address/socket/probe stages do not run, and no final whole-lane artifact receipt exists.
-An earlier candidate run reached the later filesystem failure but its bounded diagnostic tail
-omitted writer results; it is retained as incomplete component evidence. The corrected failure
-export retains bounded named transport outcomes and group summaries alongside every filesystem
-failure, without changing the executable tests or their container execution sequence.
-`.harness-state/verifier-vm/writer-channel-component-537dcb90.json` binds baseline, both
-candidate observations, source/artifact identities, frozen controls, endpoints and joined RAM/VM
-cleanup. That component run does not establish CPace integration, other-platform behavior,
-full-app latency recovery or LPE acceptance.
+| Source / scope | Accepted observation and limit | Retained evidence |
+| --- | --- | --- |
+| `10ff6494`, Linux transport integration | 59 cases pass: 20 CPace wire, 13 writer-receipt, four EOF, twelve codec, six lifetime and four native compiler cases. Fatal send/read/drain observe joined writer, retired encoded-buffer ownership, returned permits and retired completion before return; cancelling retirement retains ownership and send/read/drain retries finish the join. The transport artifact matches the earlier 35-case `99fa6b07` component result. | `cpace-integration-59-10ff6494.json`; `writer-fatal-retirement-native-99fa6b07.json` |
+| `a9adf6dc`, real TCP output ownership | Both new lifetime cases fail at `56c8ed4f` while 49 controls pass; the unchanged candidate cases pass 51/51. Actual partial writes/backpressure, authenticated reverse traffic, peer reset and reader-side authentication failure exercise buffer-owner retirement while the stream remains retained. | `writer-buffer-ownership-a9adf6dc.json` |
+| `537dcb90`, channel-refusal component | Thirteen writer, four EOF and twelve codec cases pass. The two new tests fail at `9aea38ae`; corrected `4e92169b` reserves the channel before encoding/sealing. Actual sink failure and 512 queued drain commands cover both send APIs, zero encoding, unchanged next nonce, returned permits and exact join. The broader lane exits 1: 136 filesystem cases pass and three parked receive pre-I/O cases fail with `Owner died`. Later address/socket/probe stages do not run and no final whole-lane artifact receipt exists. An earlier candidate omitted writer outcomes and remains incomplete evidence. | `writer-channel-component-537dcb90.json` |
+| `ec94f87b`, protobuf admission | Three new cases fail at `8944cdfa`; 155 candidate library cases pass, including eleven writer cases. Five ordinary-send and six receipt-send refusal states, encoder failure on both APIs and actual TCP ordinary/receipt delivery are covered. The instrumented wrapper delegates to the generated encoder; it does not measure all allocations. | `protobuf-admission-corrected-ec94f87b.json` |
+| `593aff91`, framing-only API | At `44f25b0e` the unchanged compiler fixture accepts all three forbidden raw-mode calls, so three negative cases fail while 51 runtime controls pass. The candidate passes those 51 runtime cases and all four compiler cases: supported setup plus three separate compile refusals. | `framing-only-api-593aff91.json` |
+| `6133c7c7`, pending-read replacement | All 20 wire cases pass. The replacement observes actual one-, two- and nine-byte TCP prefixes before dropping Pending reads; the receive counter stays zero until the retained owner authenticates the two exact frames at counters one and two. This corrects the test/evidence, not a demonstrated product cancellation defect. | `cpace-pending-read-6133c7c7.json` |
+| `c3b1ac6d`, earlier CPace integration | Twenty real-loopback wire cases cover handshake/keying, post-key exchange, malformed/oversized and partial pre-key frames, timeout, wrong-password/guess classification, replay and writer refusal. Its old cancellation case selected an always-ready branch without polling the read; that result does not prove partial-read cancellation safety. The replacement above supplies that observation. | `cpace-transport-current-c3b1ac6d.json` |
 
-**Encoded writer storage — real TCP failure/cancellation A/B PASS on Linux.**
-The old futures split shared the complete `Framed` between sink and reader. After a
-failed or aborted writer joined and returned every admission permit, the retained
-reader still owned its encoded output buffer. At baseline `56c8ed4f`, both new
-real-TCP ownership cases fail and all 49 existing wire/transport controls pass.
-Both cases observe an actual partial write and socket backpressure, then receive
-an authenticated control frame while output remains blocked. A peer reset causes
-a real write error; malformed incoming ciphertext causes reader-side poison and
-writer cancellation. After exact writer join, the buffer remains stream-owned;
-dropping the stream is the positive control that retires that ownership.
+The 59-case transport artifact is
+`c1d92cc9c89a61dadd3d9c9708f42f09416baa6b6e10084dec0f886e76dd8c5e`;
+the replacement pending-read artifact is
+`87d9499e6b53f9ee2252cdf1dde0ac1ec6b5c1396b53486a08a8c12d6f22106e`.
+Receipts bind exact sources, artifacts, named results, raw logs, endpoint records,
+resource admission and joined zero-NIC VM/RAM cleanup. The 59-case integration
+has equal before/live/after source snapshots. Buffer-ownership and pending-read
+runs have equal before/after captures without an independent during-file capture.
+The lifetime witness deliberately retains a one-byte alias: it proves retirement
+of stream/task aliases, not physical allocation release or whole-process memory
+bounds. The abort-only baseline `cb575f82` was refused by RAM admission before
+execution; there is no native A/B failure claim for fatal-operation retirement.
+Historical inspection/source-mutation receipts do not extend any native result.
 
-Product `a9adf6dc` splits the I/O rather than sharing the complete framed object.
-The reader preserves its exact receive codec, decoder state and prefetched bytes
-through `FramedParts`. The sole writer independently owns its `FramedWrite`,
-active reservation, queued commands and current completion. Field order retires
-encoded output before active admission and completion on cancellation; explicit
-failure handling drops this owner before reporting the error. Failed flushes are
-not retried by close. R-T8 now states this ownership requirement; the 27-line
-source-string/split-count gate that forced the old shared frame is deleted.
+**Remaining STOP-SHIP evidence:** exact-current artifacts and authorized/refused
+installed principals on Android, iOS, Windows, Linux and macOS; hard-Drop and
+read-owned socket finality; physical memory, task, handle and whole-process bounds;
+complete real-socket backpressure/failure/drain/abort and nonce/non-delivery
+coverage; Android task-swipe/reopen/Force-Stop and Windows focus/minimize recovery;
+cross-version behavior and sustained reconnect/focus/backpressure/resource/latency
+soaks; R-F5 capture-through-presentation age and input-visible recovery budgets;
+cold R-B2/R-B10 artifacts, independent reproduction and R-V3 external review.
+No component result establishes deployed-symptom causation, full connection-flow
+correctness/performance, local privilege-escalation immunity or release acceptance.
+The three parked filesystem failures and all other user parks remain OPEN/PARKED.
 
-The unchanged two-case lifetime fixture and guest recipe pass at `a9adf6dc`:
-all 51 named cases pass (20 CPace wire, 13 writer-receipt, four EOF, twelve codec,
-two writer-lifetime). Both cases retain the stream through exact writer join and
-observe returned permits plus retired buffer ownership. The refcount witness
-deliberately retains a one-byte alias; this proves stream/task ownership retirement,
-not physical allocation release or total-process memory bounds. Both exact Cargo
-artifacts keep their digests across execution. Baseline and candidate take 175.136
-and 175.870 supervisor seconds, with RAM-scratch peaks 3,931,291,648 and
-3,932,270,592 bytes under the unchanged 6 GiB scratch/4 GiB QEMU ceiling.
-Both VMs join, RAM workspaces and private roots retire, and all four endpoint
-snapshots per run have zero additions/removals. The candidate has equal source
-freezes before and after execution; an independent live freeze was not captured.
-`.harness-state/verifier-vm/writer-buffer-ownership-a9adf6dc.json` retains source,
-artifact, every named result, raw logs, controls and cleanup. Linux transport
-integration is accepted for this slice. Production Drop still requests abort
-without joining; synchronous socket/task finality, the three parked filesystem
-race failures, installed/full-app and other-platform behavior, presentation latency,
-long-session memory bounds, LPE acceptance and release remain OPEN.
-
-**Fatal-operation writer retirement — Linux transport integration PASS; broader acceptance OPEN.**
-Product `08fe0fd7` makes fatal send, receive and drain paths close admission, request
-cancellation and await the exact writer before returning their original error. The stream
-retains `Option<JoinHandle<()>>` across the borrowed await and clears it only after joining;
-poisoned entry guards resume an interrupted join. Clean EOF keeps its existing semantics.
-The pinned Tokio 1.44.2 `runtime/task/join.rs` documents borrowed-handle cancellation safety
-and that requesting abort does not establish completion. No worker, queue, runtime,
-dependency, reconnect or privilege transition is added. Hard synchronous Drop still only
-requests cancellation; read-owned socket finality and physical memory release remain OPEN.
-
-At `10ff6494`, the unchanged `--cpace-recovery-tests` profile passes all 59 cases with
-pinned Rust/rustdoc 1.75.0: 20 CPace wire, 13 writer-receipt, four EOF, twelve codec,
-six lifetime and four framing API compiler cases. The wire cases include actual pending
-reads after one/two/nine TCP bytes and exact later frame/counter recovery. Fatal send,
-receive and drain observe writer join, encoded-buffer ownership retirement, returned
-permits and completion retirement before test cleanup. Cancelling retirement preserves
-the handle; send/read/drain entry guards finish the join. These are Linux transport and
-compiler observations, not physical memory release or whole-process bounds.
-
-The run takes 200 outer/202.938 supervisor seconds; its six behavioral/compiler summaries
-total 2.91 seconds. RAM scratch peaks at 4,121,268,224 bytes under the unchanged 8 GiB
-guest/6 GiB scratch/4 GiB QEMU ceiling/6 GiB headroom profile. Exact QEMU join, RAM/private
-root retirement, four complete endpoint comparisons with zero changes and equal source
-snapshots before/during/after pass. The transport artifact is byte-identical to the earlier
-35-case `99fa6b07` result:
-`c1d92cc9c89a61dadd3d9c9708f42f09416baa6b6e10084dec0f886e76dd8c5e`.
-Current source, all named results, artifacts, observations and cleanup are retained in
-`.harness-state/verifier-vm/cpace-integration-59-10ff6494.json`; the earlier component
-receipt remains in `writer-fatal-retirement-native-99fa6b07.json` in the same directory.
-
-Abort-only baseline `cb575f82` has the identical test modules and recipe but was refused
-by RAM admission before execution; no native A/B failure is claimed. The deleted R-T2
-presence/count gate could not establish retirement behavior. This integration pass adds
-no product or test change. Hard Drop, read-owned socket finality, physical memory bounds,
-other-platform/installed behavior, full-app latency/soak, LPE and release acceptance remain OPEN.
-
-R-T2 now states terminal-error and retained-writer ownership requirements directly.
-Its obsolete per-write-timeout walkthrough and alternative-design proposal are removed;
-R-T3/R-T8/R-T9/R-T14/R-T16/R-T18 retain independent control, ordering, drain, cancellation
-and EOF contracts. This specification cleanup supplies no compilation or native evidence.
-The duplicate §20 preamble and its false cross-backend zero-byte cancellation claim are
-deleted. R-T5/R-T14 retain frame preservation and target-native read/accept ownership proof;
-the referenced keying, cipher, replay, boundary and TCP-only requirements remain unchanged.
-
-**Framing-only API (R-A3/R-S5) — native compiler and Linux transport cases PASS.**
-Product `593aff91` removes the unused raw-mode selector from `BytesCodec`,
-`FramedStream` and `Stream`, including the codec flag and unframed encode/decode
-branches. No application caller used that mode. The old keyed setter already
-refused downgrade; this is removal of an unsupported alternate API, not a newly
-reproduced application plaintext exposure or LPE closure. `send_raw` remains a
-byte-payload send through framing and the engaged cipher. Normal cap, EOF,
-authentication, ordering, receipt and tunnel wire behavior remain covered.
-
-The identical 872-byte compiler fixture at baseline `44f25b0e` accepts the supported
-API and all three forbidden raw-mode calls; its three negative cases fail, while
-all 51 runtime controls pass. At `593aff91`, all 51 runtime cases and four compiler
-cases pass: supported setup compiles, and each former public raw-mode call refuses
-separately. The framed EOF case retains its empty/coalesced-frame checks; only its
-obsolete raw-mode tail is deleted. The guest recipe is identical across A/B.
-Both runs use pinned Rust/rustdoc 1.75, exact stable wire/library artifacts,
-zero-NIC Linux and guest-only networkless unprivileged Docker. Supervisor times
-are 199.338/217.949 seconds; admitted RAM scratch peaks at
-4,116,758,528/4,116,234,240 bytes. Before/live/after source freezes match within
-each run; complete endpoint observations have zero additions/removals. Exact
-joins and RAM/private-root retirement pass. R-A3 and Appendix C #4 now require
-mode absence, and the shared verifier runs the four compiler cases instead of
-requiring the obsolete setter/panic source strings. The full shared catalogue is
-unexecuted for this slice; its changed shell parses, and the exact compiler command
-ran in the focused VM. `.harness-state/verifier-vm/framing-only-api-593aff91.json`
-retains fixture, source, every named result, raw logs, artifact and cleanup bindings.
-Full app, installed/principal, other-platform, real-peer tunnel, latency/soak and
-release acceptance remain OPEN; parked filesystem failures are unchanged.
-
-**Earlier transport integration — all 20 CPace wire cases PASS.** Subsequent exact harness
-`c3b1ac6d` ran the unchanged `libs/cpace_it/tests/handshake.rs` suite against the current
-production source through `ec94f87b`. The 152-second zero-NIC transaction freshly built and
-selected the exact Cargo integration-test executable, checked its digest before/after, and
-retained every named case. It exercises the real loopback TCP handshake/keying transition,
-post-key exchange, malformed/oversized frames, pre-key timeout, wrong-password and
-guess classification, replay and writer refusal. This adds transport integration evidence
-to the separate library component result; it does not execute the full viewer or installed service.
-The dedicated CPace storage profile retains the 8 GiB guest, 6 GiB host headroom and 1 GiB
-overhead while imposing 6 GiB RAM scratch and a 4 GiB QEMU file ceiling. The run reused the
-authenticated boot cache; measured peaks were 3,675,156,480 scratch bytes and 3,515,224,064
-overlay bytes. Admission, prepared-input capacity, live monitoring and joined retirement
-remain mandatory, with no disk fallback. Source/artifact/raw/case/control/storage bindings are
-in `.harness-state/verifier-vm/cpace-transport-current-c3b1ac6d.json`.
-
-**Pending-read cancellation — replacement Linux wire evidence ACCEPTED; broader acceptance OPEN.** The
-former `r_t5_dropped_next_does_not_advance_read_seq` put an always-ready branch first in a
-biased select, so it did not poll the read. Its pass at `c3b1ac6d` does not establish safety
-after partial socket input. R-T5/R-T14 now require retained frame/codec ownership, no nonce
-advance while incomplete, and exact later delivery; they do not require zero kernel bytes read.
-Exact source `6133c7c7` passed all 20 wire cases in 143 VM seconds. The replacement observes
-actual TCP prefixes of one, two and nine bytes before dropping each Pending read; the receive
-counter stays zero, then the same retained owner authenticates both exact frames at counters
-one and two. Artifact SHA-256 `87d9499e6b53f9ee2252cdf1dde0ac1ec6b5c1396b53486a08a8c12d6f22106e`
-is stable before/after. `.harness-state/verifier-vm/cpace-pending-read-6133c7c7.json` binds
-source, named outcomes, actual observation, pinned inputs, equal 146-file before/after controls,
-four unchanged native-window endpoint snapshots and joined RAM/VM cleanup. No independent
-during-file capture was taken. This corrects the test/specification evidence rather than a
-demonstrated product cancellation defect. Other platforms, full application and all broader
-obligations remain open.
-
-Remaining STOP-SHIP evidence includes exact-current native execution on every supported target;
-real `FramedStream` socket backpressure, sink-failure, drain, abort, nonce/non-delivery, latency, and
-retained-resource observation; physical Android task-swipe/reopen/Force-Stop and Windows focus/
-minimize reproduction; Linux/macOS/iOS and cross-version behavior; sustained reconnect/focus/
-backpressure/resource/performance soak; cold R-B2/R-B10 artifact equality and installed behavior;
-independent reproduction; R-V3 external review; causation; and proof that the complete connection
-flow is correct and performant.
+Classification and the preserved evidence inventory are retained in
+`writer-evidence-ledger-8d7e58b2.json`.
 
 ### R-S11gy/R-S11e-237 — bounded connection-manager result ownership (2026-08-17)
 

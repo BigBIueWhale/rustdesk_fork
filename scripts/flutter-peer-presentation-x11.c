@@ -1032,6 +1032,9 @@ static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
         state = viewer_state(display, viewer, &captured_us);
         age_valid = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
         now = monotonic_millis();
+        if (age_valid && age > *maximum_age_ms) {
+            *maximum_age_ms = age;
+        }
         if (history->failed || now >= deadline) {
             return -1;
         }
@@ -1039,9 +1042,6 @@ static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
             if (saw_fresh == 0) {
                 *first_fresh_ms = now - start;
                 saw_fresh = 1;
-            }
-            if (age > *maximum_age_ms) {
-                *maximum_age_ms = age;
             }
             if (state != last_state) {
                 last_state = state;
@@ -1090,15 +1090,15 @@ static int observe_current_frames_for_duration(Display *source, Display *display
         state = viewer_state(display, viewer, &captured_us);
         age_valid = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
         now = monotonic_millis();
+        if (age_valid && age > *maximum_age_ms) {
+            *maximum_age_ms = age;
+        }
         if (history->failed) {
             return -1;
         }
         fresh = age_valid && age <= FRESH_LIMIT_MS;
         if (fresh) {
             last_fresh = now;
-            if (age > *maximum_age_ms) {
-                *maximum_age_ms = age;
-            }
             if (state != last_state) {
                 last_state = state;
                 *distinct_states += 1U;

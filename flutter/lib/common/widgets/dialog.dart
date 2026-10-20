@@ -614,13 +614,11 @@ void showWindowsSessionsDialog(
   } catch (e) {
     print(e);
   }
-  List<String> sids = [];
-  List<String> names = [];
+  final options = <String, String>{};
   for (var session in sessionsList) {
-    sids.add(session['sid']);
-    names.add(session['name']);
+    options[session['sid']] = session['name'];
   }
-  String selectedUserValue = sids.first;
+  String selectedUserValue = options.keys.first;
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
     submit() {
@@ -636,11 +634,10 @@ void showWindowsSessionsDialog(
         children: [
           msgboxContent(type, title, text).marginOnly(bottom: 12),
           ComboBox(
-              keys: sids,
-              values: names,
-              initialKey: selectedUserValue,
+              options: options,
+              selectedKey: selectedUserValue,
               onChanged: (value) {
-                selectedUserValue = value;
+                setState(() => selectedUserValue = value);
               }),
         ],
       ),

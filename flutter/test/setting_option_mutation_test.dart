@@ -94,8 +94,8 @@ Future<void> _slideQuality(WidgetTester tester, int index, double value) async {
 
 Widget _combo(Map<String, String> options, String selected,
         ValueChanged<String> onChanged, {bool enabled = true}) =>
-    ComboBox(keys: options.keys.toList(), values: options.values.toList(),
-        initialKey: selected, onChanged: onChanged, enabled: enabled);
+    ComboBox(options: options, selectedKey: selected,
+        onChanged: onChanged, enabled: enabled);
 
 Widget _comboPage(Map<String, String> options, String selected,
         ValueChanged<String> onChanged, {bool enabled = true}) =>

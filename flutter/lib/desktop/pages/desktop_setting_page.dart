@@ -314,6 +314,8 @@ class _General extends StatefulWidget {
 }
 
 class _GeneralState extends State<_General> {
+  bool _languageSaving = false;
+
   @override
   Widget build(BuildContext context) {
     final scrollController = ScrollController();
@@ -512,9 +514,8 @@ class _GeneralState extends State<_General> {
 
     builder(devices, currentDevice, setDevice) {
       final child = ComboBox(
-        keys: devices,
-        values: devices,
-        initialKey: currentDevice,
+        options: {for (final device in devices) device: device},
+        selectedKey: currentDevice,
         onChanged: (key) async {
           await setDevice(key);
           if (!mounted) return;
@@ -632,27 +633,29 @@ class _GeneralState extends State<_General> {
       Map<String, String> data = res as Map<String, String>;
       List<dynamic> langsList = jsonDecode(data['langs']!);
       Map<String, String> langsMap = {for (var v in langsList) v[0]: v[1]};
-      List<String> keys = langsMap.keys.toList();
-      List<String> values = langsMap.values.toList();
-      keys.insert(0, defaultOptionLang);
-      values.insert(0, translate('Default'));
+      final options = {defaultOptionLang: translate('Default'), ...langsMap};
       String currentKey = bind.mainGetLocalOption(key: kCommConfKeyLang);
-      if (!keys.contains(currentKey)) {
+      if (!options.containsKey(currentKey)) {
         currentKey = defaultOptionLang;
       }
       final isOptFixed = isOptionFixed(kCommConfKeyLang);
       return ComboBox(
-        keys: keys,
-        values: values,
-        initialKey: currentKey,
+        options: options,
+        selectedKey: currentKey,
         onChanged: (key) async {
-          if (!await mainSetLocalOption(kCommConfKeyLang, key) || !mounted) return;
-          key = bind.mainGetLocalOption(key: kCommConfKeyLang);
-          if (isWeb) reloadCurrentWindow();
-          if (!isWeb) reloadAllWindows();
-          if (!isWeb) bind.mainChangeLanguage(lang: key);
+          if (!mounted || _languageSaving) return;
+          setState(() => _languageSaving = true);
+          try {
+            if (!await mainSetLocalOption(kCommConfKeyLang, key) || !mounted) return;
+            key = bind.mainGetLocalOption(key: kCommConfKeyLang);
+            if (isWeb) reloadCurrentWindow();
+            if (!isWeb) reloadAllWindows();
+            if (!isWeb) bind.mainChangeLanguage(lang: key);
+          } finally {
+            if (mounted) setState(() => _languageSaving = false);
+          }
         },
-        enabled: !isOptFixed,
+        enabled: !isOptFixed && !_languageSaving,
       ).marginOnly(left: _kContentHMargin);
     });
   }

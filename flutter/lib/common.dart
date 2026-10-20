@@ -3638,36 +3638,28 @@ ColorFilter? svgColor(Color? color) {
   }
 }
 
-// ignore: must_be_immutable
 class ComboBox extends StatelessWidget {
-  late final List<String> keys;
-  late final List<String> values;
-  late final String initialKey;
-  late final Function(String key) onChanged;
-  late final bool enabled;
-  late String current;
+  final Map<String, String> options;
+  final String selectedKey;
+  final ValueChanged<String> onChanged;
+  final bool enabled;
 
   ComboBox({
     Key? key,
-    required this.keys,
-    required this.values,
-    required this.initialKey,
+    required Map<String, String> options,
+    required this.selectedKey,
     required this.onChanged,
     this.enabled = true,
-  }) : super(key: key);
+  })  : options = Map.unmodifiable(options),
+        super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    var index = keys.indexOf(initialKey);
-    if (index < 0) {
-      index = 0;
-    }
-    var ref = values[index].obs;
-    current = keys[index];
+    final selectable = enabled && options.isNotEmpty;
     return Container(
       decoration: BoxDecoration(
         border: Border.all(
-          color: enabled
+          color: selectable
               ? MyTheme.color(context).border2 ?? MyTheme.border
               : MyTheme.border,
         ),
@@ -3675,39 +3667,41 @@ class ComboBox extends StatelessWidget {
             BorderRadius.circular(8), //border raiuds of dropdown button
       ),
       height: 42, // should be the height of a TextField
-      child: Obx(() => DropdownButton<String>(
-            isExpanded: true,
-            value: ref.value,
-            elevation: 16,
-            underline: Container(),
-            style: TextStyle(
-                color: enabled
-                    ? Theme.of(context).textTheme.titleMedium?.color
-                    : disabledTextColor(context, enabled)),
-            icon: const Icon(
-              Icons.expand_more_sharp,
-              size: 20,
-            ).marginOnly(right: 15),
-            onChanged: enabled
-                ? (String? newValue) {
-                    if (newValue != null && newValue != ref.value) {
-                      ref.value = newValue;
-                      current = newValue;
-                      onChanged(keys[values.indexOf(newValue)]);
-                    }
-                  }
-                : null,
-            items: values.map<DropdownMenuItem<String>>((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Text(
-                  value,
-                  style: const TextStyle(fontSize: 15),
-                  overflow: TextOverflow.ellipsis,
-                ).marginOnly(left: 15),
-              );
-            }).toList(),
-          )),
+      child: DropdownButton<String>(
+        isExpanded: true,
+        value: options.containsKey(selectedKey) ? selectedKey : null,
+        hint: Text(selectedKey, overflow: TextOverflow.ellipsis)
+            .marginOnly(left: 15),
+        elevation: 16,
+        underline: Container(),
+        style: TextStyle(
+            color: selectable
+                ? Theme.of(context).textTheme.titleMedium?.color
+                : disabledTextColor(context, false)),
+        icon: const Icon(
+          Icons.expand_more_sharp,
+          size: 20,
+        ).marginOnly(right: 15),
+        onChanged: selectable
+            ? (String? newKey) {
+                if (newKey != null &&
+                    newKey != selectedKey &&
+                    options.containsKey(newKey)) {
+                  onChanged(newKey);
+                }
+              }
+            : null,
+        items: options.entries.map<DropdownMenuItem<String>>((option) {
+          return DropdownMenuItem<String>(
+            value: option.key,
+            child: Text(
+              option.value,
+              style: const TextStyle(fontSize: 15),
+              overflow: TextOverflow.ellipsis,
+            ).marginOnly(left: 15),
+          );
+        }).toList(),
+      ),
     ).marginOnly(bottom: 5);
   }
 }

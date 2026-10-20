@@ -2444,10 +2444,9 @@ in staging, data archives and conffile metadata. Seven existing polkit-dependenc
 pass. Payload contents are controlled fixtures; no full application, installed service or
 real polkit receiver ran. Retained evidence: `retired-desktop-resources-9c8ebb1c.json`.
 Installed upgrade handling of old administrator-edited conffiles, current release artifacts,
-existing-session/headless native functionality and R-S0 acceptance remain OPEN. The broader
-legacy build.py AST catalogue remains unaccepted: its two-process-launch and fixed
-constructor inventory assumptions predate the native-xdo builder; this focused archive run
-does not validate or repair that catalogue. No installed conffile cleanup is performed.
+existing-session/headless native functionality and R-S0 acceptance remain OPEN. Package
+archive admission and source-layout catalogue deletion are recorded below. No installed
+conffile cleanup is performed.
 
 **Verdict: source topology largely implemented; Android controlled-CM admission is source-corrected,
 but installed/native and release evidence remain OPEN.** The ordinary desktop IPC protocol has no password request,
@@ -4972,14 +4971,23 @@ unaccepted. This closes these artifact admission defects only; no RustDesk proce
 or root service ran. Complete final RustDesk package validation, installed
 loader/service behavior, release and independent reproduction remain OPEN.
 
-**Debian shared-gate cleanup.** `verify.sh` delegates constructor/package authority
-to the existing semantic validator and its self-test. Thirty-four duplicate
-text-check lines are deleted, including the counter that treated a fixture's
-generated-plugin pathname spelling as authority. The package checker, required
-constructor/generated-state negatives, actual finalizer/archive tests and native
-ELF fixture are byte-identical to the named acceptance above. Bash syntax, exact
-checker digest and deletion-only diff review pass; this is maintenance correction,
-without new package installation or service evidence.
+**Debian archive admission.** `229b13d3` removes the obsolete producer-layout AST
+catalogue and its source-mutation tests from `verify-debian-package-authority.py`.
+Actual archive validation no longer imports or executes `build.py`, and an invocation
+without an archive or explicit self-test is refused. Archive ownership, modes, exact
+inventory/link, policy, checksum and ELF validators are unchanged; source RPATH pins and
+maintainer-script checks remain in `verify.sh`, with emitted-script checks in `build-debian.sh`.
+The no-NIC/non-root VM passes seven production-package resource cases, seven dependency
+cases and four CLI cases: the exact historical checker rejects the current producer's
+third native-xdo process call, whereas current archive admission reaches ELF refusal,
+binds the service-unit bytes and rejects empty requests without executing the producer.
+Nine retained native ELF cases also pass, including actual shared-library loading/function
+calls and executable entry/refusal controls. These 27 focused cases do not run RustDesk,
+an installed service or the compiler-dependent full archive/finalizer self-test; those
+integration, current release and independent-reproduction obligations remain OPEN.
+R-S11ac now agrees with R-X14's obsolete-resource absence rather than permitting those
+conffiles. Retained source classification, exact logs and cleanup evidence:
+`debian-archive-admission-229b13d3.json`.
 
 The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and

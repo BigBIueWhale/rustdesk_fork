@@ -3360,6 +3360,20 @@ pub struct PeerListInfo {
     pub alias: String,
 }
 
+#[derive(Default, Deserialize)]
+struct PeerListFile {
+    #[serde(default)]
+    info: PeerInfoSerde,
+    #[serde(default)]
+    options: PeerListOptions,
+}
+
+#[derive(Default, Deserialize)]
+struct PeerListOptions {
+    #[serde(default, deserialize_with = "deserialize_string")]
+    alias: String,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct PeerUiHostInfo {
     #[serde(default, deserialize_with = "deserialize_string")]
@@ -3528,28 +3542,33 @@ impl PeerConfig {
     }
 
     pub fn ui_info_json(id: &str) -> crate::ResultType<String> {
-        let path = Self::path(id);
+        let info: PeerUiInfo = Self::read_display_path(&Self::path(id))?;
+        Ok(serde_json::to_string(&info)?)
+    }
+
+    fn read_display_path<T: serde::de::DeserializeOwned + Default>(
+        path: &Path,
+    ) -> crate::ResultType<T> {
         #[cfg(windows)]
-        let bytes = if windows_machine_config::contains(&path) {
-            windows_machine_config::read(&path)
+        let bytes = if windows_machine_config::contains(path) {
+            windows_machine_config::read(path)
         } else {
-            windows_config_acl::verify_config_path_for_read(&path)
+            windows_config_acl::verify_config_path_for_read(path)
                 .map_err(|_| anyhow!("Failed to read peer display information"))?;
-            fs::read(&path)
+            fs::read(path)
         };
         #[cfg(not(windows))]
-        let bytes = fs::read(&path);
-        let info: PeerUiInfo = match bytes {
+        let bytes = fs::read(path);
+        match bytes {
             Ok(bytes) => {
                 let text = std::str::from_utf8(&bytes)
                     .map_err(|_| anyhow!("Failed to read peer display information"))?;
                 toml::from_str(text)
-                    .map_err(|_| anyhow!("Failed to read peer display information"))?
+                    .map_err(|_| anyhow!("Failed to read peer display information"))
             }
-            Err(err) if err.kind() == io::ErrorKind::NotFound => PeerUiInfo::default(),
-            Err(_) => return Err(anyhow!("Failed to read peer display information")),
-        };
-        Ok(serde_json::to_string(&info)?)
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(T::default()),
+            Err(_) => Err(anyhow!("Failed to read peer display information")),
+        }
     }
 
     pub fn remove(id: &str) -> crate::ResultType<()> {
@@ -3684,9 +3703,11 @@ impl PeerConfig {
     }
 
     fn load_list_info(path: PathBuf) -> crate::ResultType<PeerListInfo> {
-        let mut config = Self::load_path_with_status(path).value;
-        let alias = config.options.remove("alias").unwrap_or_default();
-        Ok(PeerListInfo { info: config.info, alias })
+        let file: PeerListFile = Self::read_display_path(&path)?;
+        Ok(PeerListInfo {
+            info: file.info,
+            alias: file.options.alias,
+        })
     }
 
     pub fn peers(id_filters: Option<Vec<String>>) -> Vec<(String, SystemTime, PeerListInfo)> {

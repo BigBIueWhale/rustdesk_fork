@@ -1,6 +1,166 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+fn exercise_peer_schema_cases(id: &str, cases: &[(&str, &str)]) {
+    use std::os::unix::fs::MetadataExt;
+    let mut peer = PeerConfig::default();
+    peer.password_prs = b"fixture-schema-prs".to_vec();
+    peer.options.insert("selected".into(), "before".into());
+    peer.options.insert("unrelated".into(), "preserved".into());
+    peer.ui_flutter.insert("canvas".into(), "preserved".into());
+    peer.info.hostname = "preserved-host".into();
+    peer.transfer.read_jobs = vec!["preserved-job".into()];
+    peer.port_forwards = vec![(8000, "localhost".into(), 80)];
+    peer.custom_resolutions.insert("0".into(), Resolution { w: 1920, h: 1080 });
+    peer.store(id).unwrap();
+    let path = PeerConfig::path(id);
+    let healthy = fs::read_to_string(&path).unwrap();
+    let mut expected = PeerConfig::load_for_write(id).unwrap();
+    expected.options.insert("selected".into(), "after".into());
+    let mut all_preserved = true;
+    for (case, (field, value)) in cases.iter().enumerate() {
+        let mut document: toml::Value = toml::from_str(&healthy).unwrap();
+        let replacement: toml::Value = toml::from_str(&format!("value = {value}")).unwrap();
+        let parts: Vec<_> = field.split('.').collect();
+        let mut table = document.as_table_mut().unwrap();
+        for part in &parts[..parts.len() - 1] {
+            table = table.get_mut(*part).unwrap().as_table_mut().unwrap();
+        }
+        table.insert(parts[parts.len() - 1].into(), replacement["value"].clone());
+        let invalid = toml::to_string(&document).unwrap();
+        let mut refused = true;
+        let mut preserved = true;
+        for _ in 0..2 {
+            fs::write(&path, &invalid).unwrap();
+            let before = fs::metadata(&path).unwrap();
+            let names = || {
+                let mut names = fs::read_dir(path.parent().unwrap()).unwrap()
+                    .map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+                names.sort(); names
+            };
+            let original_names = names();
+            let loaded = PeerConfig::load_with_status(id);
+            let checked = PeerConfig::load_for_write(id);
+            let result = PeerConfig::set_option(id, "selected", "after".into());
+            refused &= loaded.status == ConfigLoadStatus::Corrupt && checked.is_err() && result.is_err();
+            preserved &= fs::read(&path).unwrap() == invalid.as_bytes()
+                && fs::metadata(&path).unwrap().ino() == before.ino()
+                && fs::metadata(&path).unwrap().permissions().mode() == before.permissions().mode()
+                && names() == original_names;
+        }
+        fs::write(&path, &healthy).unwrap();
+        let retry = PeerConfig::set_option(id, "selected", "after".into()).is_ok()
+            && PeerConfig::load_for_write(id).unwrap() == expected;
+        println!("OPTION_COMMIT_PEER_SCHEMA=observed case={case} field={field} refused={refused} preserved={preserved} retry={retry}");
+        all_preserved &= refused && preserved && retry;
+    }
+    assert!(all_preserved);
+}
+
+#[test]
+fn peer_schema_scalars_refuse_wrong_types_without_replacing_state() {
+    in_private_process("config::option_tests::peer_schema_scalars_refuse_wrong_types_without_replacing_state", |_| {
+        let mut cases = Vec::new();
+        for field in ["show_remote_cursor", "follow_remote_cursor", "follow_remote_window",
+            "show_quality_monitor", "disable_audio", "enable-file-copy-paste", "disable_clipboard",
+            "lock_after_session_end", "terminal-persistent", "privacy_mode", "allow_swap_key",
+            "view_only", "show_my_cursor", "sync-init-clipboard"] {
+            cases.push((field, "'wrong-boolean'"));
+            cases.push((field, "42"));
+        }
+        for field in ["view_style", "scroll_style", "image_quality", "reverse_mouse_wheel",
+            "displays_as_individual_windows", "use_all_my_displays_for_the_remote_session", "keyboard_mode"] {
+            cases.push((field, "42"));
+            cases.push((field, "[]"));
+        }
+        cases.extend([("trackpad-speed", "'wrong-integer'"),
+            ("edge_scroll_edge_thickness", "false")]);
+        exercise_peer_schema_cases("peer-schema-scalars", &cases);
+    });
+}
+
+#[test]
+fn peer_schema_collections_and_metadata_refuse_lossy_defaults() {
+    in_private_process("config::option_tests::peer_schema_collections_and_metadata_refuse_lossy_defaults", |_| {
+        exercise_peer_schema_cases("peer-schema-collections", &[
+            ("size", "false"), ("size", "[1, 2, 3]"),
+            ("size_ft", "[1, 2, 'wrong', 4]"), ("size_pf", "{}"),
+            ("port_forwards", "true"), ("port_forwards", "[[8000, 7, 80]]"),
+            ("port_forwards", "[[8000, 'localhost', 80], [2147483648, 'other', 80]]"),
+            ("custom_resolutions", "true"),
+            ("custom_resolutions", "{'0' = {w = 'wrong', h = 1080}}"),
+            ("custom_resolutions", "{'0' = {w = 1920, h = 1080}, '1' = {w = 640}}"),
+            ("options", "42"), ("options", "{preserved = 'keep', invalid = 7}"),
+            ("ui_flutter", "[]"), ("ui_flutter", "{canvas = 'keep', invalid = false}"),
+            ("custom_image_quality", "'wrong-array'"), ("custom_image_quality", "[50, 'wrong']"),
+            ("info", "42"), ("info.username", "true"),
+            ("info.hostname", "42"), ("info.platform", "[]"),
+            ("transfer", "42"), ("transfer.read_jobs", "true"),
+            ("transfer.read_jobs", "['keep', 7]"), ("transfer.write_jobs", "'wrong-array'"),
+            ("transfer.write_jobs", "[false]"),
+        ]);
+    });
+}
+
+#[test]
+fn peer_schema_failure_precedes_credential_migration_and_global_loading() {
+    in_private_process("config::option_tests::peer_schema_failure_precedes_credential_migration_and_global_loading", |_| {
+        let id = "peer-schema-no-migration";
+        let path = PeerConfig::path(id);
+        let global = Config::file_("");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let source = b"password_prs = [1, 2, 3]\nkeyboard_mode = 42\n[options]\nrdp_password = 'private-retired'\n";
+        let global_source = b"password = [private-invalid-global\n";
+        fs::write(&path, source).unwrap();
+        fs::write(&global, global_source).unwrap();
+        let loaded = PeerConfig::load_with_status(id);
+        let corrupt = loaded.status == ConfigLoadStatus::Corrupt;
+        let peer_preserved = fs::read(&path).map(|b| b == source).unwrap_or(false);
+        let global_preserved = fs::read(&global).map(|b| b == global_source).unwrap_or(false);
+        println!("OPTION_COMMIT_PEER_SCHEMA=observed kind=admission corrupt={corrupt} peer_preserved={peer_preserved} global_preserved={global_preserved}");
+        assert!(corrupt && peer_preserved && global_preserved && loaded.value.password_prs.is_empty());
+    });
+}
+
+#[test]
+fn peer_schema_healthy_sparse_and_normalized_values_keep_their_semantics() {
+    in_private_process("config::option_tests::peer_schema_healthy_sparse_and_normalized_values_keep_their_semantics", |_| {
+        let id = "peer-schema-valid";
+        let path = PeerConfig::path(id);
+        assert_eq!(PeerConfig::load_with_status(id).status, ConfigLoadStatus::NotFound);
+        assert!(!path.exists());
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-schema-healthy-prs".to_vec();
+        peer.size = (-10, 20, 1920, 1080);
+        peer.size_ft = (1, 2, 640, 480);
+        peer.size_pf = (3, 4, 800, 600);
+        peer.options.insert("alias".into(), "preserved".into());
+        peer.ui_flutter.insert("canvas".into(), "preserved".into());
+        peer.port_forwards = vec![(8000, "localhost".into(), 80)];
+        peer.custom_resolutions.insert("0".into(), Resolution { w: 1920, h: 1080 });
+        peer.info = PeerInfoSerde { username: "owner".into(), hostname: "host".into(), platform: "Linux".into() };
+        peer.transfer = TransferSerde { read_jobs: vec!["read".into()], write_jobs: vec!["write".into()] };
+        peer.store(id).unwrap();
+        assert_eq!(PeerConfig::load_for_write(id).unwrap(), peer);
+        let source = "view_style = ''\nscroll_style = ''\ncustom_image_quality = []\ntrackpad-speed = 0\nedge_scroll_edge_thickness = 1\nfuture_field = 'ignored'\n[custom_resolutions.0]\nw = 1920\nh = 1080\nfuture_field = 'ignored'\n";
+        fs::write(&path, source).unwrap();
+        let loaded = PeerConfig::load_for_write(id).unwrap();
+        let mut expected = PeerConfig::default();
+        expected.options.clear();
+        expected.custom_resolutions.insert("0".into(), Resolution { w: 1920, h: 1080 });
+        assert_eq!(loaded, expected);
+        assert_eq!(fs::read(&path).unwrap(), source.as_bytes());
+        PeerConfig::set_option(id, "alias", "after".into()).unwrap();
+        expected.options.insert("alias".into(), "after".into());
+        assert_eq!(PeerConfig::load_for_write(id).unwrap(), expected);
+        fs::write(&path, "").unwrap();
+        let mut empty = PeerConfig::default();
+        empty.options.clear();
+        assert_eq!(PeerConfig::load_for_write(id).unwrap(), empty);
+        println!("OPTION_COMMIT_PEER_SCHEMA=observed kind=healthy full_round_trip=true sparse=true empty_defaults=true normalization=true unknown_fields_ignored=true");
+    });
+}
+
 fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
     const ROOT_ENV: &str = "RUSTDESK_OPTION_COMMIT_TEST_ROOT";
     if let Some(root) = std::env::var_os(ROOT_ENV) {

@@ -6329,49 +6329,6 @@ unrelated = "preserved"
         );
     }
 
-    #[test]
-    fn test_peer_config_deserialize() {
-        let default_peer_config = toml::from_str::<PeerConfig>("").unwrap();
-        // test custom_resolution
-        {
-            let wrong_type_str = r#"
-            view_style = "adaptive"
-            scroll_style = "scrollbar"
-            custom_resolutions = true
-            "#;
-            let mut cfg_to_compare = default_peer_config.clone();
-            cfg_to_compare.view_style = "adaptive".to_string();
-            cfg_to_compare.scroll_style = "scrollbar".to_string();
-            let cfg = toml::from_str::<PeerConfig>(wrong_type_str);
-            assert_eq!(cfg, Ok(cfg_to_compare), "Failed to test wrong_type_str");
-
-            let wrong_type_str = r#"
-            view_style = "adaptive"
-            scroll_style = "scrollbar"
-            [custom_resolutions.0]
-            w = "1920"
-            h = 1080
-            "#;
-            let mut cfg_to_compare = default_peer_config.clone();
-            cfg_to_compare.view_style = "adaptive".to_string();
-            cfg_to_compare.scroll_style = "scrollbar".to_string();
-            let cfg = toml::from_str::<PeerConfig>(wrong_type_str);
-            assert_eq!(cfg, Ok(cfg_to_compare), "Failed to test wrong_type_str");
-
-            let wrong_field_str = r#"
-            [custom_resolutions.0]
-            w = 1920
-            h = 1080
-            hello = "world"
-            [ui_flutter]
-            "#;
-            let mut cfg_to_compare = default_peer_config.clone();
-            cfg_to_compare.custom_resolutions =
-                HashMap::from([("0".to_string(), Resolution { w: 1920, h: 1080 })]);
-            let cfg = toml::from_str::<PeerConfig>(wrong_field_str);
-            assert_eq!(cfg, Ok(cfg_to_compare), "Failed to test wrong_field_str");
-        }
-    }
 
     #[test]
     fn test_store_load() {

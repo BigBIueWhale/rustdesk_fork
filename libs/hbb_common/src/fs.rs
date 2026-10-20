@@ -1131,13 +1131,27 @@ fn open_parent_dir_no_follow(
     }
 
     let access_mode = |_remaining: usize| {
-        // Existing-path ancestors need search authority only. Keep the final parent readable
-        // for enumeration/fsync, and every create-missing parent syncable before publication.
+        // Existing ancestors need search authority only. The final parent remains syncable;
+        // a missing child separately requires a syncable publication parent before mkdirat.
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        if !create_missing && _remaining != 0 {
+        if _remaining != 0 {
             return crate::libc::O_PATH;
         }
         crate::libc::O_RDONLY
+    };
+    let open_directory = |parent_fd, name: &std::ffi::CStr, access| {
+        let fd = unsafe {
+            crate::libc::openat(
+                parent_fd,
+                name.as_ptr(),
+                access | crate::libc::O_DIRECTORY | crate::libc::O_CLOEXEC | crate::libc::O_NOFOLLOW,
+            )
+        };
+        if fd < 0 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(unsafe { std::fs::File::from_raw_fd(fd) })
+        }
     };
     let mut dir = std::fs::OpenOptions::new()
         .read(true)
@@ -1159,46 +1173,39 @@ fn open_parent_dir_no_follow(
             std::path::Component::Normal(name) => {
                 let name_c = cstring_from_os_str(name, "filesystem parent")?;
                 remaining -= 1;
-                let mut created = false;
-                if create_missing {
-                    let rc = unsafe {
-                        crate::libc::mkdirat(
-                            dir.as_raw_fd(),
-                            name_c.as_ptr(),
-                            0o777 as crate::libc::mode_t,
-                        )
-                    };
-                    if rc == 0 {
-                        created = true;
-                    } else {
-                        let err = std::io::Error::last_os_error();
-                        if err.raw_os_error() != Some(crate::libc::EEXIST) {
-                            return Err(err);
+                dir = match open_directory(dir.as_raw_fd(), &name_c, access_mode(remaining)) {
+                    Ok(child) => child,
+                    Err(error) if create_missing && error.kind() == std::io::ErrorKind::NotFound => {
+                        // Resolve only `.` from the retained descriptor, never the parent pathname.
+                        // Acquire read/fsync authority before publishing any missing child.
+                        let dot = cstring_from_os_str(std::ffi::OsStr::new("."), "filesystem parent")?;
+                        let publication_parent =
+                            open_directory(dir.as_raw_fd(), &dot, crate::libc::O_RDONLY)?;
+                        let rc = unsafe {
+                            crate::libc::mkdirat(
+                                publication_parent.as_raw_fd(),
+                                name_c.as_ptr(),
+                                0o777 as crate::libc::mode_t,
+                            )
+                        };
+                        if rc == 0 {
+                            // Persist this new entry before descending into it. A later file fsync
+                            // cannot establish the durability of a newly created ancestor.
+                            sync_recv_directory(&publication_parent)?;
+                        } else {
+                            let error = std::io::Error::last_os_error();
+                            if error.raw_os_error() != Some(crate::libc::EEXIST) {
+                                return Err(error);
+                            }
                         }
+                        // EEXIST may be a concurrent file or link. The same no-follow directory
+                        // admission is mandatory whether this call created the entry or lost a race.
+                        open_directory(
+                            publication_parent.as_raw_fd(), &name_c, access_mode(remaining),
+                        )?
                     }
-                }
-
-                // A successful mkdirat publishes a new entry in `dir`. Persist that entry before
-                // descending into it, otherwise a later file fsync cannot make a newly created
-                // ancestor survive a crash. Existing directories need no creation barrier here.
-                if created {
-                    sync_recv_directory(&dir)?;
-                }
-
-                let fd = unsafe {
-                    crate::libc::openat(
-                        dir.as_raw_fd(),
-                        name_c.as_ptr(),
-                        access_mode(remaining)
-                            | crate::libc::O_DIRECTORY
-                            | crate::libc::O_CLOEXEC
-                            | crate::libc::O_NOFOLLOW,
-                    )
+                    Err(error) => return Err(error),
                 };
-                if fd < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                dir = unsafe { std::fs::File::from_raw_fd(fd) };
             }
             std::path::Component::ParentDir => {
                 return Err(io_invalid_input(format!(
@@ -1528,8 +1535,8 @@ fn unix_remove_file_no_follow(path: &Path) -> std::io::Result<()> {
 
 #[cfg(unix)]
 fn unix_create_directory(path: &Path) -> std::io::Result<()> {
-    // Passing the complete destination makes the shared walk create and then no-follow-open every
-    // component, including the final directory. The returned handle proves the complete walk.
+    // Walk the complete destination, creating and synchronizing only missing components.
+    // The returned no-follow directory handle proves the complete walk, including the final entry.
     let directory = open_parent_dir_no_follow(path, true)?;
     drop(directory);
     Ok(())

@@ -1747,8 +1747,9 @@ and ignored-SIGCHLD refusal passed. An actual replay installed its limit before 
 The first materialization rejection exposed a current-versus-producer project-lock mismatch;
 `32eb62b8` corrected that calculation and admitted the same retained `a3755044` app with
 the selected `63493887` engine. Initial fresh pixels took 94 ms; the three 2/6/12-second
-focus-loss checks kept the same connection, with focus recovery at most 5 ms and measured
-pixel age at most 319 ms. The full run FAILED its first server replacement because the
+focus-loss checks kept the same connection, with focus recovery at most 5 ms and accepted
+fresh-sample age at most 319 ms; that observer excluded stale ages from its maximum.
+The full run FAILED its first server replacement because the
 historical app did not map the current protected input provider; no reconnect or complete
 six-lifecycle pass follows. Its loader's system paths omit the current fixed provider path.
 A compatible current app artifact is required; no search-path, preload or mapping-check
@@ -1760,6 +1761,18 @@ and retired with unchanged endpoint observations. Intentional bounded failure ev
 exact artifacts/sources, storage and cleanup. This is partial retained-app integration,
 not current QoS execution, network-impairment/soak, installed/LPE or release acceptance.
 R-F5 remains OPEN. All user-parked consumer/allocator/libyuv/X11 work remains OPEN/PARKED.
+
+**Observer age maximum (`b197ec9b`).** Both controller observation loops now retain every
+valid measured age, including stale samples, in `maximum_age_ms`. First-fresh timing,
+distinct-frame counts, freshness/gap limits and timeout decisions are unchanged. The
+exact-loop native aggregation regression reproduces a 5,000 ms observation reported as
+1,000 ms at unchanged-observer `705793fc`, then passes five recovery, duration, stale-timeout
+and unknown-age cases after correction. The new cases use synthetic samples and clocks;
+the existing actual X11 pixel/history, geometry and whole-counter-cycle checks also pass
+in the zero-NIC VM. The full controller compiles; RustDesk peers did not run in this slice.
+`observer-age-b197ec9b.json` binds sources, compiled fixture, A/B outcomes and joined
+bounded-RAM cleanup. Current-app impairment recovery, input-to-visible latency, multi-hour
+freshness, all fifteen credential actions and R-S0/R-F5 acceptance remain OPEN.
 
 ### Current source disposition — not native closure
 

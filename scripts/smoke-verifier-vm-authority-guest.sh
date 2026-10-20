@@ -3295,6 +3295,9 @@ run_focused_rust_tests() {
                 config::option_tests::config_store_invalid_paths_preserve_namespace
                 config::option_tests::config_store_overlong_paths_refuse_before_creation
                 config::option_tests::config_store_path_controls_round_trip
+                config::option_tests::config_store_full_length_native_names_round_trip
+                config::option_tests::config_store_non_utf8_native_names_round_trip
+                config::option_tests::config_store_native_names_preserve_precommit_and_retire_temps
                 config::option_tests::failed_write_preserves_memory_and_allows_the_same_retry
                 config::option_tests::ordinary_option_source_invalid_records_refuse_repeated_changes
                 config::option_tests::ordinary_option_source_denial_preserves_state_and_allows_retry

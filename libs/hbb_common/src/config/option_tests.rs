@@ -1,6 +1,93 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+fn config_store_native_name_round_trip(path: &Path) -> bool {
+    use std::os::unix::{ffi::OsStrExt, fs::MetadataExt};
+    fs::write(path, b"marker = 'native-probe'\n").unwrap();
+    assert_eq!(read_config_view::<HashMap<String, String>>(path).unwrap().get("marker").map(String::as_str), Some("native-probe"));
+    fs::remove_file(path).unwrap();
+    let mut stored = true;
+    for value in ["first", "replacement"] {
+        let expected = HashMap::from([("marker".to_owned(), value.to_owned())]);
+        let result = store_path(path.to_path_buf(), &expected);
+        let readback = read_config_view::<HashMap<String, String>>(path).map(|value| value == expected).unwrap_or(false);
+        let private_mode = fs::metadata(path).map(|metadata| metadata.mode() & 0o777 == 0o600).unwrap_or(false);
+        println!("OPTION_COMMIT_TEMP_NAME=observed bytes={} utf8={} stage={value} native_probe=true saved={} readback={readback} private_mode={private_mode}", path.file_name().unwrap().as_bytes().len(), path.file_name().unwrap().to_str().is_some(), result.is_ok());
+        stored &= result.is_ok() && readback && private_mode;
+    }
+    let entries = fs::read_dir(path.parent().unwrap()).unwrap().map(|entry| entry.unwrap().file_name()).collect::<Vec<_>>();
+    stored && entries == vec![path.file_name().unwrap()]
+}
+
+#[test]
+fn config_store_full_length_native_names_round_trip() {
+    in_private_process("config::option_tests::config_store_full_length_native_names_round_trip", |root| {
+        let mut all_stored = true;
+        for (index, name) in ["a".repeat(190), "a".repeat(240), "a".repeat(255), format!("a{}", "é".repeat(127))].iter().enumerate() {
+            let base = root.join(format!("length-{index}"));
+            fs::create_dir(&base).unwrap();
+            all_stored &= config_store_native_name_round_trip(&base.join(name));
+        }
+        assert!(all_stored);
+    });
+}
+
+#[test]
+fn config_store_non_utf8_native_names_round_trip() {
+    in_private_process("config::option_tests::config_store_non_utf8_native_names_round_trip", |root| {
+        use std::os::unix::ffi::OsStringExt;
+        let mut all_stored = true;
+        for (index, bytes) in [b"record-\xff.toml".as_slice(), b"\x80.toml".as_slice()].iter().enumerate() {
+            let base = root.join(format!("bytes-{index}"));
+            fs::create_dir(&base).unwrap();
+            let name = std::ffi::OsString::from_vec(bytes.to_vec());
+            all_stored &= config_store_native_name_round_trip(&base.join(name));
+        }
+        assert!(all_stored);
+    });
+}
+
+#[test]
+fn config_store_native_names_preserve_precommit_and_retire_temps() {
+    in_private_process("config::option_tests::config_store_native_names_preserve_precommit_and_retire_temps", |root| {
+        use std::{cell::Cell, os::unix::{ffi::OsStringExt, fs::MetadataExt}};
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut all_preserved = true;
+        for (index, name) in [std::ffi::OsString::from("n".repeat(255)), std::ffi::OsString::from_vec(b"record-\xff.toml".to_vec())].iter().enumerate() {
+            let base = root.join(format!("fault-{index}"));
+            fs::create_dir(&base).unwrap();
+            let path = base.join(name);
+            fs::write(&path, b"confirmed").unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+            let before = fs::metadata(&path).unwrap();
+            let mut entered = 0;
+            let mut preserved = true;
+            for _ in 0..16 {
+                let reached = Cell::new(false);
+                let result = store_config_bytes_transaction_unix(&path, b"requested", ConfigStoreFault::BeforeReplace,
+                    &|_| panic!("precommit refusal reached fatal callback"), &|_, temporary_name, temporary| {
+                        reached.set(true);
+                        assert!(temporary_name.to_bytes().len() <= 100 && temporary_name.to_bytes().is_ascii());
+                        assert_eq!(temporary.metadata()?.mode() & 0o777, 0o600);
+                        Ok(())
+                    });
+                entered += usize::from(reached.get());
+                let after = fs::metadata(&path).unwrap();
+                preserved &= result.is_err() && fs::read(&path).unwrap() == b"confirmed"
+                    && (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode())
+                    && fs::read_dir(&base).unwrap().map(|entry| entry.unwrap().file_name()).collect::<Vec<_>>() == vec![name.clone()];
+            }
+            println!("OPTION_COMMIT_TEMP_NAME=observed kind=precommit index={index} iterations=16 entered={entered} preserved={preserved}");
+            all_preserved &= entered == 16 && preserved;
+        }
+        let after_fds = fds();
+        println!("OPTION_COMMIT_TEMP_NAME=observed kind=handles before={before_fds} after={after_fds}");
+        assert!(all_preserved);
+        assert_eq!(after_fds, before_fds);
+    });
+}
+
 fn config_store_test_path_length(root: &Path, length: usize) -> PathBuf {
     use std::os::unix::ffi::OsStrExt;
     let mut path = root.join("uncreated");

@@ -633,7 +633,7 @@ class _GeneralState extends State<_General> {
       Map<String, String> data = res as Map<String, String>;
       List<dynamic> langsList = jsonDecode(data['langs']!);
       Map<String, String> langsMap = {for (var v in langsList) v[0]: v[1]};
-      final options = {defaultOptionLang: translate('Default'), ...langsMap};
+      final options = <String, String>{defaultOptionLang: translate('Default'), ...langsMap};
       String currentKey = bind.mainGetLocalOption(key: kCommConfKeyLang);
       if (!options.containsKey(currentKey)) {
         currentKey = defaultOptionLang;

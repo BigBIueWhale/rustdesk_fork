@@ -20,7 +20,7 @@ class ShareRdpChangeLifecycle {
     required void Function() notifyChanged,
     required ShareRdpChangeError onError,
   }) async {
-    if (_pending) return;
+    if (_pending || !isMounted()) return;
     _pending = true;
     notifyChanged();
     try {

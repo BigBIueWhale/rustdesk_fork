@@ -2532,6 +2532,12 @@ controls and the InputModel/CanvasModel in `flutter/lib/models/`.
 
 Evidence filenames are relative to `.harness-state/verifier-vm/`.
 
+The settings tests use production setters directly. Six obsolete setter replicas and seven
+assertions of their old behavior are deleted (`ff0a5ab3`); real failure/retry, cache/file
+preservation and concurrency checks remain. `settings-replicas-ff0a5ab3.json` retains the
+current 103-case native pass and all 179 unchanged production observations. This removes
+test duplication; broader installed, platform and release acceptance is unchanged.
+
 | Surface | Current source behavior | Accepted evidence and practical limit |
 | --- | --- | --- |
 | Desktop timeout field | The state owns/disposes its controller, preserves drafts through rebuilds, accepts clean external refresh and holds one submitted save. Failed/mismatched readback remains editable with Retry; stale/disabled callbacks cannot bypass pending admission. Full-value numeric validation retains valid input and empty/default. | Rendered control with controlled save/readback: `timeout-field-c25fc184.json`. No full settings-page, real IPC, restart or global-writer acceptance. |

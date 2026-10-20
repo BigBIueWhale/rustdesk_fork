@@ -1102,15 +1102,18 @@ fn open_parent_dir_no_follow(
     parent: &Path,
     create_missing: bool,
 ) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::io::{AsRawFd, FromRawFd};
 
     // Validate the complete walk before a create-missing caller can publish an early component.
     // The second pass below performs the actual descriptor-relative walk.
+    let mut remaining = 0usize;
     for component in parent.components() {
         match component {
             std::path::Component::RootDir | std::path::Component::CurDir => {}
             std::path::Component::Normal(name) => {
                 cstring_from_os_str(name, "filesystem parent")?;
+                remaining += 1;
             }
             std::path::Component::ParentDir => {
                 return Err(io_invalid_input(format!(
@@ -1127,17 +1130,35 @@ fn open_parent_dir_no_follow(
         }
     }
 
-    let mut dir = if parent.is_absolute() {
-        std::fs::File::open(Path::new("/"))?
-    } else {
-        std::fs::File::open(Path::new("."))?
+    let access_mode = |_remaining: usize| {
+        // Existing-path ancestors need search authority only. Keep the final parent readable
+        // for enumeration/fsync, and every create-missing parent syncable before publication.
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        if !create_missing && _remaining != 0 {
+            return crate::libc::O_PATH;
+        }
+        crate::libc::O_RDONLY
     };
+    let mut dir = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(
+            access_mode(remaining)
+                | crate::libc::O_DIRECTORY
+                | crate::libc::O_CLOEXEC
+                | crate::libc::O_NOFOLLOW,
+        )
+        .open(if parent.is_absolute() {
+            Path::new("/")
+        } else {
+            Path::new(".")
+        })?;
 
     for component in parent.components() {
         match component {
             std::path::Component::RootDir | std::path::Component::CurDir => {}
             std::path::Component::Normal(name) => {
                 let name_c = cstring_from_os_str(name, "filesystem parent")?;
+                remaining -= 1;
                 let mut created = false;
                 if create_missing {
                     let rc = unsafe {
@@ -1168,7 +1189,7 @@ fn open_parent_dir_no_follow(
                     crate::libc::openat(
                         dir.as_raw_fd(),
                         name_c.as_ptr(),
-                        crate::libc::O_RDONLY
+                        access_mode(remaining)
                             | crate::libc::O_DIRECTORY
                             | crate::libc::O_CLOEXEC
                             | crate::libc::O_NOFOLLOW,

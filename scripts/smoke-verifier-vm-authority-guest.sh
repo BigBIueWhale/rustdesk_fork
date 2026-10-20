@@ -3216,6 +3216,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_create_traverses_search_only_ancestors
                 fs::tests::file_metadata_create_refuses_before_unsyncable_publication
                 fs::tests::file_metadata_create_stops_after_native_parent_sync_failure
+                fs::tests::file_metadata_removal_reports_native_parent_sync_failure
                 fs::tests::rename_file_rejects_invalid_new_name
                 fs::tests::rename_file_accepts_valid_new_name
                 fs::tests::rename_file_moves_a_source_symlink_without_touching_its_target

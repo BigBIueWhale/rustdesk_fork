@@ -4811,6 +4811,133 @@ mod tests {
 
     #[test]
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn file_metadata_removal_reports_native_parent_sync_failure() {
+        use std::os::unix::fs::{symlink, MetadataExt};
+        const ENV: &str = "RUSTDESK_REMOVAL_SYNC_CHILD";
+        const TEST: &str = "fs::tests::file_metadata_removal_reports_native_parent_sync_failure";
+        let Some(mode) = std::env::var_os(ENV) else {
+            let mut passed = true;
+            for mode in ["healthy", "fault"] {
+                let output = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                    .env(ENV, mode).output().unwrap();
+                assert!(output.stdout.len() + output.stderr.len() < 32_768);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let lines = stdout.lines().filter_map(|line| {
+                    line.find("FILE_METADATA_REMOVE_SYNC=").map(|start| &line[start..])
+                }).collect::<Vec<_>>();
+                assert_eq!(lines.len(), 15, "each exact child must finish every scenario");
+                for line in lines { println!("{line}"); }
+                passed &= output.status.success();
+            }
+            assert!(passed, "removal must report native parent synchronization failure");
+            return;
+        };
+        assert_ne!(unsafe { crate::libc::geteuid() }, 0);
+        assert_ne!(unsafe { crate::libc::getegid() }, 0);
+        assert!(mode == "healthy" || mode == "fault");
+        let fault = mode == "fault";
+        let root = TestTempDir::new("removal-sync-native-error");
+        std::fs::create_dir_all(&root.path).unwrap();
+        let sentinel = root.join("sentinel");
+        std::fs::write(&sentinel, b"unchanged data").unwrap();
+        let identity = |path: &Path| {
+            let m = std::fs::symlink_metadata(path).unwrap();
+            (m.dev(), m.ino(), m.mode(), m.nlink())
+        };
+        let sentinel_before = identity(&sentinel);
+        let probe = std::fs::File::open(&root.path).unwrap();
+        probe.sync_all().unwrap();
+        if fault {
+            let statement = |code, k| crate::libc::sock_filter { code: code as u16, jt: 0, jf: 0, k };
+            let jump = |code, k, jt, jf| crate::libc::sock_filter { code: code as u16, jt, jf, k };
+            let load = crate::libc::BPF_LD | crate::libc::BPF_W | crate::libc::BPF_ABS;
+            let equal = crate::libc::BPF_JMP | crate::libc::BPF_JEQ | crate::libc::BPF_K;
+            let bits = crate::libc::BPF_JMP | crate::libc::BPF_JSET | crate::libc::BPF_K;
+            let ret = crate::libc::BPF_RET | crate::libc::BPF_K;
+            let mut filter = [
+                statement(load, 4),
+                jump(equal, 0xc000003e, 1, 0),
+                statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+                statement(load, 0),
+                jump(bits, 0x40000000, 0, 1),
+                statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+                jump(equal, crate::libc::SYS_fsync as u32, 0, 1),
+                statement(ret, crate::libc::SECCOMP_RET_ERRNO | crate::libc::EIO as u32),
+                statement(ret, crate::libc::SECCOMP_RET_ALLOW),
+            ];
+            let program = crate::libc::sock_fprog { len: filter.len() as u16, filter: filter.as_mut_ptr() };
+            assert_eq!(unsafe { crate::libc::prctl(crate::libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) }, 0);
+            assert_eq!(unsafe {
+                crate::libc::syscall(crate::libc::SYS_seccomp, crate::libc::SECCOMP_SET_MODE_FILTER,
+                    crate::libc::SECCOMP_FILTER_FLAG_TSYNC, &program)
+            }, 0, "install child filter: {}", std::io::Error::last_os_error());
+        }
+        let probe_result = probe.sync_all();
+        let probe_errno = probe_result.as_ref().err().and_then(std::io::Error::raw_os_error).unwrap_or(0);
+        assert_eq!(probe_result.is_ok(), !fault);
+        assert_eq!(probe_errno, if fault { crate::libc::EIO } else { 0 });
+        println!("FILE_METADATA_REMOVE_SYNC=probe mode={} filter={fault} errno={probe_errno}", mode.to_str().unwrap());
+        drop(probe);
+        let fds = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for round in 0..2 {
+            for kind in ["file", "link", "directory", "tree_root", "tree_child", "tree_link"] {
+                let base = root.join(&format!("{kind}-{round}"));
+                std::fs::create_dir(&base).unwrap();
+                let source = base.join("source");
+                let nested = kind == "tree_child" || kind == "tree_link";
+                let first = if nested { source.join("child") } else { source.clone() };
+                match kind {
+                    "file" => std::fs::write(&source, b"removed data").unwrap(),
+                    "link" => symlink(&sentinel, &source).unwrap(),
+                    "tree_child" => std::fs::create_dir_all(&first).unwrap(),
+                    "tree_link" => {
+                        std::fs::create_dir(&source).unwrap();
+                        symlink(&sentinel, &first).unwrap();
+                    }
+                    _ => std::fs::create_dir(&source).unwrap(),
+                }
+                let result = match kind {
+                    "file" | "link" => remove_file(source.to_str().unwrap()),
+                    "directory" => remove_directory(&source),
+                    _ => remove_empty_directory_tree(&source),
+                };
+                let uncertain = result.as_ref().err().map(|error| {
+                    error.to_string().contains("parent-directory durability is uncertain")
+                }).unwrap_or(false);
+                let first_removed = std::fs::symlink_metadata(&first).err()
+                    .map(|error| error.kind() == std::io::ErrorKind::NotFound).unwrap_or(false);
+                let root_retained = source.is_dir();
+                let preserved = identity(&sentinel) == sentinel_before
+                    && std::fs::read(&sentinel).unwrap() == b"unchanged data";
+                let correct = result.is_ok() == !fault && uncertain == fault && first_removed
+                    && root_retained == (fault && nested) && preserved;
+                println!("FILE_METADATA_REMOVE_SYNC=observed mode={} round={round} kind={kind} success={} uncertain={uncertain} first_removed={first_removed} root_retained={root_retained} sentinel_preserved={preserved} correct={correct}", mode.to_str().unwrap(), result.is_ok());
+                passed &= correct;
+            }
+        }
+        let missing = remove_file(root.join("missing").to_str().unwrap()).is_err();
+        let linked_root = root.join("linked-root");
+        symlink(&sentinel, &linked_root).unwrap();
+        let link_refused = remove_empty_directory_tree(&linked_root).is_err()
+            && std::fs::read_link(&linked_root).unwrap() == sentinel;
+        let nonempty = root.join("nonempty");
+        std::fs::create_dir(&nonempty).unwrap();
+        std::fs::write(nonempty.join("file"), b"retained file").unwrap();
+        let nonempty_refused = remove_empty_directory_tree(&nonempty).is_err()
+            && std::fs::read(nonempty.join("file")).unwrap() == b"retained file";
+        let controls = missing && link_refused && nonempty_refused;
+        let after_fds = fds();
+        println!("FILE_METADATA_REMOVE_SYNC=controls mode={} missing={missing} root_link={link_refused} nonempty={nonempty_refused}", mode.to_str().unwrap());
+        println!("FILE_METADATA_REMOVE_SYNC=handles mode={} before={before_fds} after={after_fds}", mode.to_str().unwrap());
+        assert_eq!(before_fds, after_fds);
+        assert!(passed && controls);
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn file_metadata_create_stops_after_native_parent_sync_failure() {
         use std::os::unix::fs::MetadataExt;
         const ENV: &str = "RUSTDESK_CREATE_SYNC_CHILD";

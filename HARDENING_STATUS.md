@@ -4972,22 +4972,24 @@ or root service ran. Complete final RustDesk package validation, installed
 loader/service behavior, release and independent reproduction remain OPEN.
 
 **Debian archive admission.** `229b13d3` removes the obsolete producer-layout AST
-catalogue and its source-mutation tests from `verify-debian-package-authority.py`.
-Actual archive validation no longer imports or executes `build.py`, and an invocation
-without an archive or explicit self-test is refused. Archive ownership, modes, exact
-inventory/link, policy, checksum and ELF validators are unchanged; source RPATH pins and
-maintainer-script checks remain in `verify.sh`, with emitted-script checks in `build-debian.sh`.
-The no-NIC/non-root VM passes seven production-package resource cases, seven dependency
-cases and four CLI cases: the exact historical checker rejects the current producer's
-third native-xdo process call, whereas current archive admission reaches ELF refusal,
-binds the service-unit bytes and rejects empty requests without executing the producer.
-Nine retained native ELF cases also pass, including actual shared-library loading/function
-calls and executable entry/refusal controls. These 27 focused cases do not run RustDesk,
-an installed service or the compiler-dependent full archive/finalizer self-test; those
-integration, current release and independent-reproduction obligations remain OPEN.
-R-S11ac now agrees with R-X14's obsolete-resource absence rather than permitting those
-conffiles. Retained source classification, exact logs and cleanup evidence:
-`debian-archive-admission-229b13d3.json`.
+catalogue and source-mutation tests. Actual archive admission does not import or execute
+`build.py`; an invocation without an archive or explicit self-test is refused. Archive
+ownership, modes, inventory/link, policy, checksum and ELF validators remain unchanged.
+Source RPATH and maintainer-script checks remain in `verify.sh`, with emitted-script
+checks in `build-debian.sh`. The 27 focused package/CLI/native ELF cases and R-S11ac/R-X14
+resource consistency are bound by `debian-archive-admission-229b13d3.json`.
+The explicit `--debian-package-tests` integration mode additionally passes the complete
+compiler-dependent archive and production-finalizer self-test using the pinned development
+verifier image. It compiles ELF fixtures, exercises malformed archive/policy/ELF/checksum,
+owner/mode/inventory/link refusal, and production staging/finalizer failure cases, then
+admits both valid fixture packages through the actual CLI with only unit/policy source
+files present. Exact package, runner, library and compiler digests are retained.
+Execution uses the no-NIC bounded-RAM VM and one nonroot, capability-free, no-new-privileges
+container with read-only root/source, three source-file mounts and one private scratch
+mount; exact container/image, scratch and VM retirement are required before acceptance.
+Source/fixture/harness evidence is in `debian-package-integration-3e385d30.json`.
+These are compiled packaging fixtures, not the final RustDesk product. Current release
+packages, installed service/settings/upgrade behavior and independent reproduction remain OPEN.
 
 The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and

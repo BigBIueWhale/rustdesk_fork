@@ -1,12 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoSwitch;
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
 import 'package:flutter_hbb/common/widgets/setting_checkbox.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/common/widgets/toolbar.dart';
+import 'package:flutter_hbb/mobile/widgets/default_option_switch.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settings_ui/settings_ui.dart';
 
 Map<String, Object> _audioDevices(String current,
         {List<String> devices = const ['Mic A', 'Mic B', 'Mic C']}) =>
@@ -136,6 +139,158 @@ Widget _defaultCheckboxPage({
 )));
 
 void main() {
+  for (final platform in [DevicePlatform.android, DevicePlatform.iOS]) {
+    final skin = platform == DevicePlatform.iOS ? 'iOS' : 'Android';
+    Widget page({String optionKey = 'show-remote-cursor', String value = '',
+      String falseValue = '', bool enabled = true,
+      required Future<String?> Function(String, String) save}) => MaterialApp(
+      theme: MyTheme.lightTheme.copyWith(platform: platform == DevicePlatform.iOS
+          ? TargetPlatform.iOS : TargetPlatform.android),
+      home: Scaffold(body: SizedBox(width: 360, child: SettingsList(
+        platform: platform,
+        sections: [SettingsSection(tiles: [CustomSettingsTile(
+          child: DefaultOptionSwitch(optionKey: optionKey, label: 'Default switch',
+            value: value, falseValue: falseValue, enabled: enabled,
+            saveOption: save, failureText: 'Failed'),
+        )])],
+      ))),
+    );
+    ValueChanged<bool>? change(WidgetTester tester) => platform == DevicePlatform.iOS
+      ? tester.widget<CupertinoSwitch>(find.byType(CupertinoSwitch)).onChanged
+      : tester.widget<Switch>(find.byType(Switch)).onChanged;
+    bool selected(WidgetTester tester) => platform == DevicePlatform.iOS
+      ? tester.widget<CupertinoSwitch>(find.byType(CupertinoSwitch)).value
+      : tester.widget<Switch>(find.byType(Switch)).value;
+
+    testWidgets('mobile default switch $skin owns pending save through rebuild', (tester) async {
+      final pending = Completer<String?>();
+      final writes = <String>[];
+      Future<String?> save(String key, String value) {
+        writes.add('$key=$value'); return pending.future;
+      }
+      await tester.pumpWidget(page(save: save));
+      final callback = change(tester)!;
+      callback(true);
+      callback(true);
+      await tester.pumpWidget(page(save: save));
+      final disabled = change(tester) == null;
+      final progress = find.byType(LinearProgressIndicator).evaluate().length;
+      callback(true);
+      pending.complete('Y');
+      await tester.pump();
+      expect(writes, ['show-remote-cursor=Y']);
+      expect(disabled, isTrue);
+      expect(progress, 1);
+      expect(selected(tester), isTrue);
+      expect(change(tester), isNotNull);
+    });
+
+    testWidgets('mobile default switch $skin refusal and mismatch keep identical retry', (tester) async {
+      final writes = <String>[];
+      await tester.pumpWidget(page(save: (key, value) async {
+        writes.add('$key=$value');
+        return writes.length == 1 ? null : writes.length == 2 ? '' : 'Y';
+      }));
+      for (var attempt = 0; attempt < 2; attempt++) {
+        change(tester)!(true);
+        await tester.pump();
+        expect(selected(tester), isFalse);
+        expect(find.text('Failed'), findsOneWidget);
+        expect(change(tester), isNotNull);
+      }
+      change(tester)!(true);
+      await tester.pump();
+      expect(writes, List.filled(3, 'show-remote-cursor=Y'));
+      expect(selected(tester), isTrue);
+      expect(find.text('Failed'), findsNothing);
+    });
+
+    testWidgets('mobile default switch $skin catches writer errors for retry', (tester) async {
+      final escaped = <Object>[];
+      var writes = 0;
+      await tester.pumpWidget(page(save: (key, value) {
+        writes++;
+        if (writes == 1) throw StateError('dispatch refused');
+        if (writes == 2) return Future.error(StateError('storage refused'));
+        return Future.value(value);
+      }));
+      for (var attempt = 0; attempt < 2; attempt++) {
+        runZonedGuarded(() => change(tester)!(true),
+            (Object error, StackTrace stack) => escaped.add(error));
+        await tester.pump();
+        expect(escaped, isEmpty);
+        expect(selected(tester), isFalse);
+        expect(find.text('Failed'), findsOneWidget);
+        expect(change(tester), isNotNull);
+      }
+      change(tester)!(true);
+      await tester.pump();
+      expect(writes, 3);
+      expect(selected(tester), isTrue);
+    });
+
+    testWidgets('mobile default switch $skin disabled and retired callbacks refuse', (tester) async {
+      final writes = <String>[];
+      Future<String?> save(String key, String value) async {
+        writes.add('$key=$value'); return value;
+      }
+      await tester.pumpWidget(page(save: save));
+      final callback = change(tester)!;
+      await tester.pumpWidget(page(save: save, enabled: false));
+      callback(true);
+      await tester.pump();
+      final disabledWrites = List<String>.of(writes);
+      await tester.pumpWidget(page(save: save));
+      final retired = change(tester)!;
+      await tester.pumpWidget(const SizedBox.shrink());
+      retired(true);
+      await tester.pump();
+      expect(disabledWrites, isEmpty);
+      expect(writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('mobile default switch $skin replacement retires old option owner', (tester) async {
+      final pending = Completer<String?>();
+      final writes = <String>[];
+      await tester.pumpWidget(page(save: (key, value) {
+        writes.add('$key=$value'); return pending.future;
+      }));
+      final callback = change(tester)!;
+      callback(true);
+      await tester.pumpWidget(page(optionKey: 'mute', save: (key, value) async {
+        writes.add('$key=$value'); return value;
+      }));
+      callback(true);
+      pending.complete('Y');
+      await tester.pump();
+      expect(selected(tester), isFalse);
+      change(tester)!(true);
+      await tester.pump();
+      expect(writes, ['show-remote-cursor=Y', 'mute=Y']);
+      expect(selected(tester), isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('mobile default switch $skin keeps empty and explicit false encodings', (tester) async {
+      final writes = <String>[];
+      for (final falseValue in ['', 'N']) {
+        for (final value in ['', 'N', 'Y']) {
+          await tester.pumpWidget(page(value: value, falseValue: falseValue,
+            save: (key, value) async { writes.add('$key=$value'); return value; }));
+          await tester.tap(platform == DevicePlatform.iOS
+              ? find.byType(CupertinoSwitch) : find.byType(Switch));
+          await tester.pumpAndSettle();
+          expect(writes.last, 'show-remote-cursor=${value == 'Y' ? falseValue : 'Y'}');
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+      }
+      expect(writes, ['show-remote-cursor=Y', 'show-remote-cursor=Y',
+        'show-remote-cursor=', 'show-remote-cursor=Y',
+        'show-remote-cursor=Y', 'show-remote-cursor=N']);
+    });
+  }
+
   testWidgets('default checkbox owns one pending save through parent rebuild', (tester) async {
     final pending = Completer<String?>();
     final writes = <String>[];

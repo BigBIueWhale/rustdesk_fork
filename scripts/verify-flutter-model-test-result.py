@@ -317,6 +317,18 @@ HOLD_DRAG_TESTS = {
 }
 
 SETTING_OPTION_TESTS = {
+    "mobile default switch Android owns pending save through rebuild",
+    "mobile default switch Android refusal and mismatch keep identical retry",
+    "mobile default switch Android catches writer errors for retry",
+    "mobile default switch Android disabled and retired callbacks refuse",
+    "mobile default switch Android replacement retires old option owner",
+    "mobile default switch Android keeps empty and explicit false encodings",
+    "mobile default switch iOS owns pending save through rebuild",
+    "mobile default switch iOS refusal and mismatch keep identical retry",
+    "mobile default switch iOS catches writer errors for retry",
+    "mobile default switch iOS disabled and retired callbacks refuse",
+    "mobile default switch iOS replacement retires old option owner",
+    "mobile default switch iOS keeps empty and explicit false encodings",
     "default checkbox owns one pending save through parent rebuild",
     "default checkbox refusal and mismatch preserve identical retry",
     "default checkbox catches save errors and keeps the choice retryable",

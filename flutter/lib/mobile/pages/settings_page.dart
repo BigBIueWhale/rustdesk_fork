@@ -16,6 +16,7 @@ import '../../common/widgets/dialog.dart';
 import '../../consts.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
+import '../widgets/default_option_switch.dart';
 import '../widgets/dialog.dart';
 import 'home_page.dart';
 
@@ -636,22 +637,16 @@ class __DisplayPageState extends State<_DisplayPage> {
     );
   }
 
-  SettingsTile otherRow(String label, String key) {
-    final value = bind.mainGetUserDefaultOption(key: key) == 'Y';
-    final isOptFixed = isOptionFixed(key);
-    return SettingsTile.switchTile(
-      initialValue: value,
-      title: Text(translate(label)),
-      onToggle: isOptFixed
-          ? null
-          : (b) async {
-              await _saveDefaultOption(
-                  key,
-                  b
-                      ? 'Y'
-                      : (key == kOptionEnableFileCopyPaste ? 'N' : defaultOptionNo));
-            },
-    );
+  AbstractSettingsTile otherRow(String label, String key) {
+    return CustomSettingsTile(child: DefaultOptionSwitch(
+      optionKey: key,
+      label: translate(label),
+      value: bind.mainGetUserDefaultOption(key: key),
+      falseValue: key == kOptionEnableFileCopyPaste ? 'N' : defaultOptionNo,
+      enabled: !isOptionFixed(key),
+      saveOption: _saveDefaultOption,
+      failureText: translate('Failed'),
+    ));
   }
 }
 

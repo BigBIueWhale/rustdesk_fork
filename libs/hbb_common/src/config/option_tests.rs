@@ -1112,6 +1112,108 @@ fn core_load_fifo_refuses_and_retires_handles() {
 }
 
 #[test]
+#[cfg(target_arch = "x86_64")]
+fn config_read_admits_metadata_before_io_open() {
+    use std::os::unix::{ffi::OsStrExt, fs::{symlink, MetadataExt, OpenOptionsExt}, io::{AsRawFd, FromRawFd}};
+
+    in_private_process("config::option_tests::config_read_admits_metadata_before_io_open", |root| {
+        let regular = root.join("preopen-regular");
+        fs::write(&regular, b"marker = 'retained'\n").unwrap();
+        fs::set_permissions(&regular, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(read_config_record(&regular).unwrap().bytes, b"marker = 'retained'\n");
+        let fifo = root.join("preopen-fifo");
+        let name = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { crate::libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        let directory = root.join("preopen-directory");
+        fs::create_dir(&directory).unwrap();
+        let socket = root.join("preopen-socket");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let link = root.join("preopen-link");
+        symlink(&regular, &link).unwrap();
+        let linked = root.join("preopen-hardlink");
+        fs::write(&linked, b"unchanged").unwrap();
+        fs::hard_link(&linked, root.join("preopen-alias")).unwrap();
+        let shared = root.join("preopen-shared");
+        fs::write(&shared, b"unchanged").unwrap();
+        fs::set_permissions(&shared, fs::Permissions::from_mode(0o620)).unwrap();
+        // The immutable guest image provides the foreign-owned regular-file control.
+        assert_eq!(fs::metadata("/etc/passwd").unwrap().uid(), 0);
+        let master = unsafe { crate::libc::posix_openpt(crate::libc::O_RDWR | crate::libc::O_NOCTTY | crate::libc::O_CLOEXEC) };
+        assert!(master >= 0);
+        let master = unsafe { fs::File::from_raw_fd(master) };
+        assert_eq!(unsafe { crate::libc::grantpt(master.as_raw_fd()) }, 0);
+        assert_eq!(unsafe { crate::libc::unlockpt(master.as_raw_fd()) }, 0);
+        let mut terminal = [0 as crate::libc::c_char; 256];
+        assert_eq!(unsafe { crate::libc::ptsname_r(master.as_raw_fd(), terminal.as_mut_ptr(), terminal.len()) }, 0);
+        let terminal = PathBuf::from(std::ffi::OsStr::from_bytes(unsafe { std::ffi::CStr::from_ptr(terminal.as_ptr()) }.to_bytes()));
+        let cases = [
+            ("fifo", fifo, io::ErrorKind::InvalidInput),
+            ("directory", directory, io::ErrorKind::InvalidInput),
+            ("socket", socket, io::ErrorKind::InvalidInput),
+            ("symlink", link, io::ErrorKind::InvalidInput),
+            ("hardlink", linked, io::ErrorKind::InvalidInput),
+            ("shared", shared, io::ErrorKind::PermissionDenied),
+            ("foreign", PathBuf::from("/etc/passwd"), io::ErrorKind::PermissionDenied),
+            ("terminal", terminal, io::ErrorKind::InvalidInput),
+        ];
+        let identity = |path: &Path| {
+            let m = fs::symlink_metadata(path).unwrap();
+            (m.dev(), m.ino(), m.uid(), m.gid(), m.mode(), m.nlink(), m.len())
+        };
+        let original = cases.iter().map(|(_, path, _)| identity(path)).collect::<Vec<_>>();
+        let handles = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before = handles();
+        let statement = |code, k| crate::libc::sock_filter { code: code as u16, jt: 0, jf: 0, k };
+        let jump = |code, k, jt, jf| crate::libc::sock_filter { code: code as u16, jt, jf, k };
+        let load = crate::libc::BPF_LD | crate::libc::BPF_W | crate::libc::BPF_ABS;
+        let equal = crate::libc::BPF_JMP | crate::libc::BPF_JEQ | crate::libc::BPF_K;
+        let bits = crate::libc::BPF_JMP | crate::libc::BPF_JSET | crate::libc::BPF_K;
+        let ret = crate::libc::BPF_RET | crate::libc::BPF_K;
+        let mut filter = [
+            statement(load, 4),
+            jump(equal, 0xc000003e, 1, 0),
+            statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+            statement(load, 0),
+            jump(bits, 0x40000000, 0, 1),
+            statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+            jump(equal, crate::libc::SYS_openat as u32, 3, 0),
+            jump(equal, crate::libc::SYS_open as u32, 4, 0),
+            jump(equal, crate::libc::SYS_openat2 as u32, 5, 0),
+            statement(ret, crate::libc::SECCOMP_RET_ALLOW),
+            statement(load, 32),
+            statement(crate::libc::BPF_JMP | crate::libc::BPF_JA, 1),
+            statement(load, 24),
+            jump(bits, (crate::libc::O_PATH | crate::libc::O_DIRECTORY) as u32, 1, 0),
+            statement(ret, crate::libc::SECCOMP_RET_ERRNO | crate::libc::EOWNERDEAD as u32),
+            statement(ret, crate::libc::SECCOMP_RET_ALLOW),
+        ];
+        let program = crate::libc::sock_fprog { len: filter.len() as u16, filter: filter.as_mut_ptr() };
+        assert_eq!(unsafe { crate::libc::prctl(crate::libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) }, 0);
+        assert_eq!(unsafe { crate::libc::syscall(crate::libc::SYS_seccomp, crate::libc::SECCOMP_SET_MODE_FILTER, crate::libc::SECCOMP_FILTER_FLAG_TSYNC, &program) }, 0);
+        // Prove the filter distinguishes metadata acquisition from a real I/O open.
+        assert_eq!(fs::File::open(&regular).unwrap_err().raw_os_error(), Some(crate::libc::EOWNERDEAD));
+        let metadata = fs::OpenOptions::new().read(true).custom_flags(crate::libc::O_PATH | crate::libc::O_NOFOLLOW).open(&regular).unwrap();
+        assert!(metadata.metadata().unwrap().is_file());
+        drop(metadata);
+        let mut admitted_before_io = true;
+        for ((kind, path, expected), original) in cases.iter().zip(&original) {
+            for attempt in 0..2 {
+                let error = read_config_record(path).err().expect("unsafe configuration must refuse");
+                let refused_before_io = error.kind() == *expected && error.raw_os_error() != Some(crate::libc::EOWNERDEAD);
+                let preserved = identity(path) == *original;
+                println!("OPTION_COMMIT_READ_PREOPEN=observed kind={kind} attempt={attempt} refused_before_io={refused_before_io} preserved={preserved}");
+                admitted_before_io &= refused_before_io && preserved;
+            }
+        }
+        let reopen_refused = read_config_record(&regular).err().unwrap().raw_os_error() == Some(crate::libc::EOWNERDEAD);
+        let after = handles();
+        println!("OPTION_COMMIT_READ_PREOPEN=observed kind=controls metadata_allowed=true io_canary_denied=true regular_reopen_refused={reopen_refused} fds_before={before} fds_after={after}");
+        assert!(admitted_before_io && reopen_refused);
+        assert_eq!(before, after);
+    });
+}
+
+#[test]
 fn core_load_regular_data_and_read_failures_keep_status() {
     use std::os::unix::fs::MetadataExt;
     in_private_process("config::option_tests::core_load_regular_data_and_read_failures_keep_status", |root| {

@@ -3313,6 +3313,7 @@ run_focused_rust_tests() {
                 config::option_tests::peer_read_shared_write_acl_refuses_mutation_and_retries
                 config::option_tests::config_read_owned_readonly_and_masked_acl_controls
                 config::option_tests::core_load_fifo_refuses_and_retires_handles
+                config::option_tests::config_read_admits_metadata_before_io_open
                 config::option_tests::core_load_regular_data_and_read_failures_keep_status
                 config::option_tests::core_recovery_fifo_refuses_and_retires_handles
                 config::option_tests::core_recovery_terminal_refuses_without_controlling_tty

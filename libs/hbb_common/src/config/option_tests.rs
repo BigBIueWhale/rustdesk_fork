@@ -261,6 +261,66 @@ fn peer_port_forward_missing_removal_does_not_create_record() {
 }
 
 #[test]
+fn peer_ui_info_corrupt_record_stays_in_place() {
+    in_private_process("config::option_tests::peer_ui_info_corrupt_record_stays_in_place", |_| {
+        let source = b"password_prs = [private-display-source\n";
+        assert!(toml::from_str::<toml::Value>(std::str::from_utf8(source).unwrap()).is_err());
+        assert_display_read_refusal_preserves_file("peer-ui-corrupt", source, "syntax");
+    });
+}
+
+#[test]
+fn peer_ui_info_wrong_display_shape_stays_in_place() {
+    in_private_process("config::option_tests::peer_ui_info_wrong_display_shape_stays_in_place", |_| {
+        let source = b"password_prs = [1, 2, 3]\ninfo = 42\n";
+        assert!(toml::from_str::<toml::Value>(std::str::from_utf8(source).unwrap()).is_ok());
+        assert!(toml::from_str::<PeerUiInfo>(std::str::from_utf8(source).unwrap()).is_err());
+        assert_display_read_refusal_preserves_file("peer-ui-wrong-shape", source, "shape");
+    });
+}
+
+#[test]
+fn peer_ui_info_invalid_utf8_and_directory_refuse_without_mutation() {
+    in_private_process("config::option_tests::peer_ui_info_invalid_utf8_and_directory_refuse_without_mutation", |_| {
+        let id = "peer-ui-invalid-input";
+        assert_display_read_refusal_preserves_file(id, b"\xffprivate-display-source", "utf8");
+        let path = PeerConfig::path(id);
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        let child = path.join("preserved");
+        fs::write(&child, b"private-display-source").unwrap();
+        assert!(PeerConfig::ui_info_json(id).is_err());
+        let preserved = path.is_dir() && fs::read(child).unwrap() == b"private-display-source";
+        println!("OPTION_COMMIT_PEER_UI_READONLY=observed kind=directory children_preserved={preserved}");
+        assert!(preserved);
+    });
+}
+
+fn assert_display_read_refusal_preserves_file(id: &str, source: &[u8], kind: &str) {
+    use std::os::unix::fs::MetadataExt;
+    let path = PeerConfig::path(id);
+    let parent = path.parent().unwrap();
+    fs::create_dir_all(parent).unwrap();
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::write(&path, source).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    let before = fs::metadata(&path).unwrap();
+    let names = || {
+        let mut names = fs::read_dir(parent).unwrap().map(|entry| entry.unwrap().file_name()).collect::<Vec<_>>();
+        names.sort();
+        names
+    };
+    let original_names = names();
+    let error = PeerConfig::ui_info_json(id).unwrap_err();
+    let preserved = fs::read(&path).map(|bytes| bytes == source).unwrap_or(false);
+    let same_file = fs::metadata(&path).map(|after| (before.dev(), before.ino()) == (after.dev(), after.ino())).unwrap_or(false);
+    let directory_unchanged = names() == original_names;
+    println!("OPTION_COMMIT_PEER_UI_READONLY=observed kind={kind} file_preserved={preserved} same_file={same_file} directory_unchanged={directory_unchanged}");
+    assert!(!format!("{error:?}").contains("private-display-source"));
+    assert!(preserved && same_file && directory_unchanged);
+}
+
+#[test]
 fn peer_ui_info_excludes_credentials_and_unrelated_state() {
     in_private_process("config::option_tests::peer_ui_info_excludes_credentials_and_unrelated_state", |_| {
         let id = "peer-ui-fields";

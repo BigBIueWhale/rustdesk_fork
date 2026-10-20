@@ -3350,7 +3350,7 @@ fn discard_retired_peer_password<'de, D>(deserializer: D) -> Result<bool, D::Err
 where
     D: de::Deserializer<'de>,
 {
-    let _: de::IgnoredAny = de::Deserialize::deserialize(deserializer)?;
+    let _: serde::de::IgnoredAny = de::Deserialize::deserialize(deserializer)?;
     Ok(true)
 }
 

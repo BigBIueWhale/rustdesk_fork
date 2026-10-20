@@ -90,7 +90,7 @@ pub fn check_controlled_surface(s: &SocketSurface, expected_tcp_port: u16) -> Re
 /// Every retained query descriptor closes before returning, including on failure.
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn read_process_socket_surface() -> std::io::Result<SocketSurface> {
-    read_process_socket_descriptors(std::fs::read_dir("/proc/self/fd")?.map(|entry| {
+    read_process_socket_descriptors(std::fs::read_dir("/proc/thread-self/fd")?.map(|entry| {
         entry?.file_name().to_str()
             .and_then(|name| name.parse::<std::os::fd::RawFd>().ok())
             .filter(|fd| *fd >= 0)
@@ -352,8 +352,7 @@ pub fn read_windows_process_tables() -> std::io::Result<SocketSurface> {
 pub fn check_surface(expected_tcp_port: u16) -> SurfaceCheck {
     let surface = match read_process_socket_surface() {
         Ok(s) => s,
-        // Fail-closed: /proc/self always exists for the running process; if we
-        // cannot read it we cannot confirm the audited surface, so refuse.
+        // Incomplete descriptor inspection cannot confirm the audited surface.
         Err(e) => {
             return SurfaceCheck::Violation(format!(
                 "cannot query this process's socket surface: {e}"

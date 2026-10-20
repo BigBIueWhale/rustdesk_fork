@@ -1083,6 +1083,21 @@ fn cstring_file_name(path: &Path) -> std::io::Result<std::ffi::CString> {
 }
 
 #[cfg(unix)]
+fn unix_mutation_entry_name(path: &Path) -> std::io::Result<(std::ffi::CString, bool)> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let name = cstring_file_name(path)?;
+    let bytes = path.as_os_str().as_bytes();
+    let end = bytes.iter().rposition(|byte| *byte != b'/').map_or(0, |index| index + 1);
+    // Path component iteration drops terminal dots and slashes. A mutation must name the
+    // actual final entry, retaining a trailing slash's directory requirement separately.
+    if bytes[..end].rsplit(|byte| *byte == b'/').next() != Some(name.as_bytes()) {
+        return Err(io_invalid_input("filesystem mutation path must end in a normal entry name"));
+    }
+    Ok((name, bytes.last() == Some(&b'/')))
+}
+
+#[cfg(unix)]
 fn open_parent_dir_no_follow(
     parent: &Path,
     create_missing: bool,
@@ -1446,8 +1461,8 @@ fn unix_acquire_directory_no_follow(
 ) -> std::io::Result<(std::fs::File, std::ffi::CString, std::fs::File)> {
     use std::os::unix::io::AsRawFd;
 
+    let (name, _) = unix_mutation_entry_name(path)?;
     let parent = open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
-    let name = cstring_file_name(path)?;
     let directory = unix_open_directory_at_no_follow(parent.as_raw_fd(), &name, None)?;
     Ok((parent, name, directory))
 }
@@ -1471,8 +1486,11 @@ fn unix_remove_directory(path: &Path, recursive: bool) -> std::io::Result<()> {
 fn unix_remove_file_no_follow(path: &Path) -> std::io::Result<()> {
     use std::os::unix::io::AsRawFd;
 
+    let (name, directory_only) = unix_mutation_entry_name(path)?;
+    if directory_only {
+        return Err(io_invalid_input("file-removal path has a trailing directory separator"));
+    }
     let parent = open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
-    let name = cstring_file_name(path)?;
     let admitted = unix_fstatat_no_follow(parent.as_raw_fd(), &name)?;
     if unix_file_type(&admitted) == crate::libc::S_IFDIR as crate::libc::mode_t {
         return Err(io_invalid_input("file-removal target is a directory"));
@@ -1622,10 +1640,13 @@ fn unix_rename_admitted_entry_with(
 fn unix_rename_entry(path: &Path, new_name: &str) -> std::io::Result<()> {
     use std::os::unix::io::AsRawFd;
 
+    let (source_name, directory_only) = unix_mutation_entry_name(path)?;
     let parent = open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
-    let source_name = cstring_file_name(path)?;
     let target_name = cstring_from_os_str(std::ffi::OsStr::new(new_name), "rename target")?;
     let admitted = unix_fstatat_no_follow(parent.as_raw_fd(), &source_name)?;
+    if directory_only && unix_file_type(&admitted) != crate::libc::S_IFDIR as crate::libc::mode_t {
+        return Err(io_invalid_input("rename source with a trailing separator is not a directory"));
+    }
     unix_rename_admitted_entry(&parent, &source_name, &target_name, &admitted)
 }
 

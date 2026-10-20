@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/generated_bridge.dart'
     if (dart.library.html) 'package:flutter_hbb/web/bridge.dart';
+import 'package:flutter_hbb/models/peer_credential_changes.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 
 class PeerCredentialBadge extends StatefulWidget {
@@ -43,7 +44,27 @@ class _PeerCredentialBadgeState extends State<PeerCredentialBadge> {
   @override
   void initState() {
     super.initState();
+    peerCredentialChanges.addListener(_passwordForgotten);
     _read();
+  }
+
+  void _passwordForgotten() {
+    if (!mounted || peerCredentialChanges.forgottenPeerId != widget.peerId) {
+      return;
+    }
+    setState(() {
+      _generation = Object();
+      _pending = false;
+      _status = Future.value(
+          const PeerCredentialStatus(hasSavedPrs: false, canForget: false));
+    });
+  }
+
+  @override
+  void dispose() {
+    peerCredentialChanges.removeListener(_passwordForgotten);
+    _generation = Object();
+    super.dispose();
   }
 
   @override

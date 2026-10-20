@@ -606,6 +606,10 @@ FILE_COMMAND_TESTS = {
 }
 FILE_NAVIGATION_SUITES = {
     "peer_credential_badge_test.dart": {
+        "confirmed forget clears matching badges without another read",
+        "failed forget preserves the badge and the same peer can retry",
+        "confirmed forget retires an older credential read",
+        "confirmed forget retires an older error and retry callback",
         "peer credential badge renders only saved PRS and reads once",
         "peer credential badge reports errors and admits one retry",
         "peer credential badge retires old reads and old display data",

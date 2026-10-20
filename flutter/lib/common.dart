@@ -13,6 +13,7 @@ import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/main.dart';
 import 'package:flutter_hbb/models/android_permission_request_coordinator.dart';
+import 'package:flutter_hbb/models/peer_credential_changes.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
 import 'package:flutter_hbb/models/peer_tab_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -1757,6 +1758,7 @@ Future<bool> mainForgetPassword(String id,
   final forget = forgetPassword ?? (id) => bind.mainForgetPassword(id: id);
   try {
     await forget(id);
+    peerCredentialChanges.passwordForgotten(id);
     return true;
   } catch (error) {
     debugPrint('Failed to forget peer password: $error');

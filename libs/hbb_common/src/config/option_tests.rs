@@ -84,8 +84,10 @@ fn linux_config_read_invalid_paths_do_not_become_missing_defaults() {
         assert!(long.as_os_str().as_bytes().len() >= crate::libc::PATH_MAX as usize);
         let nul = missing.join(std::ffi::OsString::from_vec(b"invalid\0name".to_vec()));
         let parent = missing.join("../record.toml");
+        let slash = missing.join("record.toml/");
+        let dot = missing.join("record.toml/.");
         let mut all_refused = true;
-        for (kind, path) in [("long", long), ("nul", nul), ("parent", parent)] {
+        for (kind, path) in [("long", long), ("nul", nul), ("parent", parent), ("slash", slash), ("dot", dot)] {
             let refused = matches!(read_config_file::<toml::Value>(&path), Err(ConfigReadFailure::Unreadable));
             println!("OPTION_COMMIT_CONFIG_READ_PATH=observed kind={kind} refused={refused}");
             all_refused &= refused;

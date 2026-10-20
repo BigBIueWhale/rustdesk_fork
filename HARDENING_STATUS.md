@@ -2507,6 +2507,22 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Retired heartbeat status storage (`44281c4f`).** The unused shared `Status`
+model, lazy cache, `_status` reader/writer, public `common_store`, private
+`Config::store_` wrapper and now-unreferenced tolerant map decoder are deleted.
+Git history `8879e473` removes their last HBBS sysinfo-hash/version callers;
+current-tree review finds no remaining consumer. Existing `_status` files are
+not read, migrated or removed. The live codec-cache `common_load` reader and
+typed password-operation status protocols remain. One existing inert-ID test
+now prepares its file through checked `store_path` instead of retaining a
+production wrapper for the fixture. The focused Linux VM compiles the changed
+library and passes all 123 selected tests, including that fixture and the 122
+prior transaction/settings controls. `retired-status-store-44281c4f.json` binds
+the exact deletion reconstruction, caller/history classification, source/artifact
+and joined bounded-RAM evidence. This removes dormant code, not an established
+active LPE; full app/other-platform, installed/R-S0/R-F5 and release acceptance
+remain OPEN.
+
 **Settings persistence and UI lifetime — named Linux component evidence; full interaction/platform acceptance OPEN.**
 
 The selected user/viewer settings below report persistence failures and retain their

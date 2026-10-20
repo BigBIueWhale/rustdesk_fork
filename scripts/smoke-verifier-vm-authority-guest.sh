@@ -3220,6 +3220,7 @@ run_focused_rust_tests() {
                 config::option_tests::peer_ui_info_corrupt_record_stays_in_place
                 config::option_tests::peer_ui_info_wrong_display_shape_stays_in_place
                 config::option_tests::peer_ui_info_invalid_utf8_and_directory_refuse_without_mutation
+                config::option_tests::peer_ui_info_does_not_load_controlled_credentials
                 config::option_tests::peer_port_forward_write_failure_reports_error_and_retries_add_remove
                 config::option_tests::peer_port_forward_unreadable_source_refuses_add_remove
                 config::option_tests::peer_port_forward_edits_preserve_other_fields_siblings_and_capacity

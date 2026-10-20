@@ -261,6 +261,21 @@ fn peer_port_forward_missing_removal_does_not_create_record() {
 }
 
 #[test]
+fn peer_ui_info_does_not_load_controlled_credentials() {
+    in_private_process("config::option_tests::peer_ui_info_does_not_load_controlled_credentials", |_| {
+        let global_path = Config::file_("");
+        fs::create_dir_all(global_path.parent().unwrap()).unwrap();
+        let source = b"password = [private-display-source\n";
+        fs::write(&global_path, source).unwrap();
+        let info: serde_json::Value = serde_json::from_str(&PeerConfig::ui_info_json("peer-ui-no-global-load").unwrap()).unwrap();
+        let preserved = fs::read(&global_path).map(|bytes| bytes == source).unwrap_or(false);
+        println!("OPTION_COMMIT_PEER_UI_READONLY=observed kind=global_config file_preserved={preserved}");
+        assert!(preserved);
+        assert_eq!(info, serde_json::json!({"info": {"hostname": ""}, "port_forwards": []}));
+    });
+}
+
+#[test]
 fn peer_ui_info_corrupt_record_stays_in_place() {
     in_private_process("config::option_tests::peer_ui_info_corrupt_record_stays_in_place", |_| {
         let source = b"password_prs = [private-display-source\n";

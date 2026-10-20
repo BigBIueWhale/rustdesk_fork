@@ -1558,6 +1558,18 @@ mod windows_config_acl {
         Ok(())
     }
 
+    pub(super) fn verify_config_path_for_read(path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            if parent.try_exists()? {
+                verify_hardened_path(parent, true)?;
+            }
+        }
+        if path.try_exists()? {
+            verify_config_file(path)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn prepare_config_path_for_store(path: &Path) -> Result<()> {
         let parent = path
             .parent()
@@ -3510,12 +3522,28 @@ impl PeerConfig {
     }
 
     pub fn ui_info_json(id: &str) -> crate::ResultType<String> {
-        let _lock = CONFIG.read().unwrap();
-        let loaded: ConfigLoad<PeerUiInfo> = load_path_with_status(Self::path(id));
-        if !matches!(loaded.status, ConfigLoadStatus::Loaded | ConfigLoadStatus::NotFound) {
-            return Err(anyhow!("Failed to read peer display information"));
-        }
-        Ok(serde_json::to_string(&loaded.value)?)
+        let path = Self::path(id);
+        #[cfg(windows)]
+        let bytes = if windows_machine_config::contains(&path) {
+            windows_machine_config::read(&path)
+        } else {
+            windows_config_acl::verify_config_path_for_read(&path)
+                .map_err(|_| anyhow!("Failed to read peer display information"))?;
+            fs::read(&path)
+        };
+        #[cfg(not(windows))]
+        let bytes = fs::read(&path);
+        let info: PeerUiInfo = match bytes {
+            Ok(bytes) => {
+                let text = std::str::from_utf8(&bytes)
+                    .map_err(|_| anyhow!("Failed to read peer display information"))?;
+                toml::from_str(text)
+                    .map_err(|_| anyhow!("Failed to read peer display information"))?
+            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => PeerUiInfo::default(),
+            Err(_) => return Err(anyhow!("Failed to read peer display information")),
+        };
+        Ok(serde_json::to_string(&info)?)
     }
 
     pub fn remove(id: &str) -> crate::ResultType<()> {

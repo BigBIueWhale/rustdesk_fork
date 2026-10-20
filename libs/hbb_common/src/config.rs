@@ -1408,7 +1408,12 @@ fn harden_preserved_config_file(path: &Path) -> Result<()> {
 
     let file = fs::OpenOptions::new()
         .read(true)
-        .custom_flags(crate::libc::O_CLOEXEC | crate::libc::O_NOFOLLOW)
+        .custom_flags(
+            crate::libc::O_CLOEXEC
+                | crate::libc::O_NOFOLLOW
+                | crate::libc::O_NONBLOCK
+                | crate::libc::O_NOCTTY,
+        )
         .open(path)
         .map_err(|err| {
             anyhow!(

@@ -5,12 +5,11 @@ std::arch::global_asm!(
     ".global rustdesk_config_test_fsync",
     ".type rustdesk_config_test_fsync,@function",
     "rustdesk_config_test_fsync:",
-    "mov eax, {number}",
+    "mov eax, 74",
     "syscall",
     ".global rustdesk_config_test_fsync_resume",
     "rustdesk_config_test_fsync_resume:",
     "ret",
-    number = const crate::libc::SYS_fsync,
 );
 
 extern "C" {
@@ -49,6 +48,7 @@ extern "C" fn sync_signal(_signal: i32, _info: *mut crate::libc::siginfo_t,
 }
 
 fn observe_directory_sync(directory: &fs::File, fail_at: usize) {
+    assert_eq!(crate::libc::SYS_fsync, 74);
     let metadata = directory.metadata().unwrap();
     SYNC_DEVICE.store(metadata.dev(), Ordering::Relaxed);
     SYNC_INODE.store(metadata.ino(), Ordering::Relaxed);

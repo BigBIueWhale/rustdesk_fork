@@ -3342,14 +3342,6 @@ fn remove_retired_rdp_credential_options(options: &mut HashMap<String, String>) 
     options.len() != original_len
 }
 
-fn is_semantically_empty_peer_config(config: &PeerConfig) -> bool {
-    config == &PeerConfig::default()
-}
-
-fn should_remove_empty_peer_config(status: ConfigLoadStatus, config: &PeerConfig) -> bool {
-    matches!(status, ConfigLoadStatus::Loaded) && is_semantically_empty_peer_config(config)
-}
-
 impl PeerConfig {
     pub fn load(id: &str) -> PeerConfig {
         Self::load_with_status(id).into_value()
@@ -3618,12 +3610,8 @@ impl PeerConfig {
             .iter()
             .filter_map(|(id, t, p)| {
                 let loaded = load(p.clone());
-                let status = loaded.status;
                 let c = loaded.value;
                 if c.info.platform.is_empty() {
-                    if should_remove_empty_peer_config(status, &c) {
-                        fs::remove_file(p).ok();
-                    }
                     return None;
                 }
                 Some((id.clone(), t.clone(), c))
@@ -5719,34 +5707,6 @@ unrelated = "preserved"
     }
 
     #[test]
-    fn empty_peer_cleanup_requires_loaded_semantically_empty_config() {
-        let empty = PeerConfig::default();
-        assert!(should_remove_empty_peer_config(
-            ConfigLoadStatus::Loaded,
-            &empty
-        ));
-        assert!(!should_remove_empty_peer_config(
-            ConfigLoadStatus::NotFound,
-            &empty
-        ));
-        assert!(!should_remove_empty_peer_config(
-            ConfigLoadStatus::Corrupt,
-            &empty
-        ));
-        assert!(!should_remove_empty_peer_config(
-            ConfigLoadStatus::TransientError,
-            &empty
-        ));
-
-        let mut with_peer_prs = PeerConfig::default();
-        with_peer_prs.password_prs = b"connect-equivalent".to_vec();
-        assert!(!should_remove_empty_peer_config(
-            ConfigLoadStatus::Loaded,
-            &with_peer_prs
-        ));
-    }
-
-    #[test]
     fn peer_store_drops_retired_rdp_credential_options() {
         let dir = unique_tmp_dir("rdp-credential-store");
         let file = dir.join("peer.toml");
@@ -5806,38 +5766,6 @@ unrelated = "preserved"
             Some("3390")
         );
         fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn peer_cleanup_decision_is_bound_to_the_enumerated_path() {
-        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
-        let id = "r_s11b4d_alias_cleanup";
-        let canonical_path = PeerConfig::path(id);
-        let _canonical_guard = ConfigFileRestoreGuard::new(canonical_path.clone());
-        if let Some(parent) = canonical_path.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        store_path(canonical_path, PeerConfig::default()).unwrap();
-
-        let alias_dir = unique_tmp_dir("peer-alias-cleanup");
-        let alias_path = alias_dir.join(format!(
-            "base64_{}.toml",
-            base64::encode(id, base64::Variant::Original)
-        ));
-        let mut alias_config = PeerConfig::default();
-        alias_config.password_prs = b"connect-equivalent".to_vec();
-        store_path(alias_path.clone(), alias_config).unwrap();
-
-        let all = vec![(id.to_owned(), SystemTime::UNIX_EPOCH, alias_path.clone())];
-        let (peers, next) = PeerConfig::batch_peers(&all, 0, None);
-
-        assert!(peers.is_empty());
-        assert_eq!(next, 1);
-        assert!(
-            alias_path.exists(),
-            "peer cleanup must not delete an enumerated file based on a different canonical path load"
-        );
-        fs::remove_dir_all(&alias_dir).ok();
     }
 
     #[test]

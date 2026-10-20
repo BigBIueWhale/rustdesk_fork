@@ -1341,8 +1341,7 @@ echo "== (3b-iii-a1b) credential-bearing peer config uses one durable transactio
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_corrupt_is_preserved_not_overwritten --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::preserved_config_hardening_rejects_symlink_targets --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_unreadable_is_transient_not_stale --color never
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::empty_peer_cleanup_requires_loaded_semantically_empty_config --color never
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::peer_cleanup_decision_is_bound_to_the_enumerated_path --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_listing_ --color never
 index_s11b4d=
 grep -q 'store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d toml-store-not-routed-through-transaction"
 unix_config_transaction=$(awk '/fn store_config_bytes_transaction_unix\(/,/^}/' libs/hbb_common/src/config.rs)
@@ -1379,17 +1378,17 @@ grep -q 'Self::load_path_with_status(Self::path(id))' libs/hbb_common/src/config
 peer_config_load=$(awk '/^impl PeerConfig \{/,/^[[:space:]]*fn store_path_/' libs/hbb_common/src/config.rs)
 grep -q 'path: PathBuf' <<<"$peer_config_load" || index_s11b4d="$index_s11b4d peer-config-exact-path-input-missing"
 grep -q 'load_path_with_status(path.clone())' <<<"$peer_config_load" || index_s11b4d="$index_s11b4d peer-config-exact-path-load-missing"
-grep -q 'fn is_semantically_empty_peer_config(config: &PeerConfig) -> bool' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d semantic-empty-peer-helper-missing"
-grep -q 'config == &PeerConfig::default()' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d semantic-empty-peer-not-default-comparison"
-grep -q 'fn should_remove_empty_peer_config(status: ConfigLoadStatus, config: &PeerConfig) -> bool' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-policy-missing"
-grep -q 'matches!(status, ConfigLoadStatus::Loaded) && is_semantically_empty_peer_config(config)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-not-loaded-empty-only"
-grep -q 'if should_remove_empty_peer_config(status, &c)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-cleanup-not-status-and-content-gated"
-grep -q 'let loaded = PeerConfig::load_path_with_status(p.clone());' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-cleanup-not-bound-to-enumerated-path"
+grep -Fq 'Self::batch_peers_with_loader(all, from, to, Self::load_path_with_status)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-listing-loader-missing"
+grep -Fq 'let loaded = load(p.clone());' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-listing-not-bound-to-enumerated-path"
+peer_batch=$(awk '/^[[:space:]]*pub fn batch_peers\(/,/^[[:space:]]*pub fn exists\(/' libs/hbb_common/src/config.rs)
+if grep -Eq 'remove_file|Self::remove' <<<"$peer_batch"; then
+  index_s11b4d="$index_s11b4d batch-peer-listing-deletes-records"
+fi
 grep -Fq 'const RETIRED_RDP_CREDENTIAL_OPTIONS: [&str; 2] = ["rdp_username", "rdp_password"];' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-policy-missing"
 grep -Fq 'options.retain(|key, _| !RETIRED_RDP_CREDENTIAL_OPTIONS.contains(&key.as_str()));' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-scrub-missing"
 grep -Fq 'peer_store_drops_retired_rdp_credential_options' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-store-test-missing"
 grep -Fq 'peer_load_removes_and_rewrites_legacy_rdp_credential_options' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-load-test-missing"
-grep -q 'peer_cleanup_decision_is_bound_to_the_enumerated_path' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d alias-path-cleanup-regression-missing"
+grep -q 'peer_listing_reads_the_enumerated_alias_and_preserves_read_denial' libs/hbb_common/src/config/option_tests.rs || index_s11b4d="$index_s11b4d alias-path-listing-regression-missing"
 if grep -q 'let loaded = PeerConfig::load_with_status(&id)' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d batch-peer-cleanup-loads-canonical-id-path"
 fi
@@ -1408,7 +1407,7 @@ if grep -q 'fs::set_permissions(&backup, fs::Permissions::from_mode(0o600))' lib
   index_s11b4d="$index_s11b4d corrupt-recovery-path-chmod-present"
 fi
 if [ -n "$index_s11b4d" ]; then echo "  FAIL R-S11b-4d local credential-bearing store hardening:$index_s11b4d"; rc=1; else
-  echo "  ok  R-S11b-4d peer TOML uses the no-follow, owner-only, synchronized temp-and-replace transaction; cleanup remains exact-path, loaded-only, and semantically-empty-only; retired account raw stores are absent under R-S11hj"; fi
+  echo "  ok  R-S11b-4d peer TOML uses the no-follow, owner-only, synchronized temp-and-replace transaction; listing has no empty-record deletion; retired account raw stores are absent under R-S11hj"; fi
 
 echo "== (3b-iii-a2) Linux _pa audio helper requires capture authority (R-S11c-7) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pa_capture_authority --color never

@@ -154,7 +154,7 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --password-fields || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --window-dispatch || "${13}" = --peer-data || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
+        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --window-dispatch || "${13}" = --peer-data || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
         MODE=flutter-model-tests
         FLUTTER_TEST_PROFILE=${13#--}
         ;;
@@ -9043,6 +9043,9 @@ run_flutter_model_tests() {
         if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
             result_prefix=FLUTTER_FRAME_QUEUE_TEST_JSON
             expected_result='suites=1 tests=24'
+        elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
+            result_prefix=FLUTTER_SHARE_RDP_TEST_JSON
+            expected_result='suites=1 tests=4'
         elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
             result_prefix=FLUTTER_PASSWORD_FIELD_TEST_JSON
             expected_result='suites=1 tests=4'
@@ -9092,6 +9095,8 @@ run_flutter_model_tests() {
         source_writable=false
         if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
             printf 'FLUTTER_FRAME_QUEUE_STAGE=verify-source-and-inputs\n'
+        elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
+            printf 'FLUTTER_SHARE_RDP_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
             printf 'FLUTTER_PASSWORD_FIELD_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
@@ -9432,6 +9437,8 @@ run_flutter_model_tests() {
                 format_paths=(lib/models/latest_frame_queue.dart test/latest_frame_queue_test.dart)
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
                     format_paths=(lib/common/formatter/direct_address.dart test/address_validator_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
+                    format_paths=(lib/models/share_rdp_change_lifecycle.dart test/share_rdp_change_lifecycle_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
                     format_paths=(lib/common/widgets/password_text_field.dart test/password_text_field_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
@@ -9576,6 +9583,8 @@ run_flutter_model_tests() {
                 test_concurrency=4
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
                     tests=(test/address_validator_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
+                    tests=(test/share_rdp_change_lifecycle_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
                     tests=(test/password_text_field_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
@@ -9675,7 +9684,7 @@ run_flutter_model_tests() {
                     exit 1
                 fi
                 file_navigation_stage source-postconditions
-                if [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = share-rdp ]]; then
                     cat /work/test.json
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
@@ -9702,6 +9711,9 @@ run_flutter_model_tests() {
                     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
                         cmp /source/flutter/lib/models/latest_frame_queue.dart lib/models/latest_frame_queue.dart
                         cmp /source/flutter/test/latest_frame_queue_test.dart test/latest_frame_queue_test.dart
+                    elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
+                        cmp /source/flutter/lib/models/share_rdp_change_lifecycle.dart lib/models/share_rdp_change_lifecycle.dart
+                        cmp /source/flutter/test/share_rdp_change_lifecycle_test.dart test/share_rdp_change_lifecycle_test.dart
                     elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
                         cmp /source/flutter/lib/common/widgets/password_text_field.dart lib/common/widgets/password_text_field.dart
                         cmp /source/flutter/test/password_text_field_test.dart test/password_text_field_test.dart
@@ -9801,6 +9813,8 @@ run_flutter_model_tests() {
         printf 'FLUTTER_FRAME_QUEUE_STAGE=run-production-queue-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
         printf 'FLUTTER_DIRECT_ADDRESS_STAGE=run-production-validator-tests\n'
+    elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
+        printf 'FLUTTER_SHARE_RDP_STAGE=run-production-lifecycle-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
         printf 'FLUTTER_PASSWORD_FIELD_STAGE=run-production-input-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
@@ -9920,6 +9934,14 @@ run_flutter_model_tests() {
         printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=19 flutter=3.24.5 validator=%s tests_source=%s vectors=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$address_sha256" "$tests_sha256" "$vectors_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+            "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
+        local lifecycle_sha256
+        lifecycle_sha256="$(sha256sum "$source_root/flutter/lib/models/share_rdp_change_lifecycle.dart" | awk '{print $1}')"
+        tests_sha256="$(sha256sum "$source_root/flutter/test/share_rdp_change_lifecycle_test.dart" | awk '{print $1}')"
+        printf 'FLUTTER_SHARE_RDP_TESTS_VM=pass commit=%s tree=%s suites=1 tests=4 flutter=3.24.5 lifecycle=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-rdp-sharing-lifecycle-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+            "$lifecycle_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
         local password_sha256

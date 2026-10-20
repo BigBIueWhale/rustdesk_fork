@@ -4,6 +4,26 @@ import 'package:flutter_hbb/models/share_rdp_change_lifecycle.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('r_s11ir an unmounted owner refuses admission', () async {
+    var applications = 0;
+    var notifications = 0;
+    var errors = 0;
+    final lifecycle = ShareRdpChangeLifecycle();
+
+    await lifecycle.request(
+      enabled: true,
+      apply: (_) async => applications += 1,
+      isMounted: () => false,
+      notifyChanged: () => notifications += 1,
+      onError: (error, stackTrace) => errors += 1,
+    );
+
+    expect(applications, 0);
+    expect(notifications, 0);
+    expect(errors, 0);
+    expect(lifecycle.pending, isFalse);
+  });
+
   test('r_s11ir duplicate UI actions share one synchronous request latch',
       () async {
     final release = Completer<void>();

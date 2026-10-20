@@ -117,6 +117,12 @@ WINDOW_DISPATCH_TESTS = {
     "window dispatch refuses a malformed sender envelope",
     "window dispatch joins event failure before replying",
 }
+SHARE_RDP_TESTS = {
+    "r_s11ir an unmounted owner refuses admission",
+    "r_s11ir duplicate UI actions share one synchronous request latch",
+    "r_s11ir failure is visible before the mounted latch is released",
+    "r_s11ir an unmounted owner receives no late UI callback",
+}
 PASSWORD_FIELD_TESTS = {
     "password keyboard policy survives reveal on android",
     "password keyboard policy survives reveal on iOS",
@@ -805,7 +811,7 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -816,6 +822,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"address_validator_test.dart"}
         expected_tests = len(DIRECT_ADDRESS_TESTS)
         expected_names = DIRECT_ADDRESS_TESTS
+    elif profile == "share-rdp":
+        expected_suites = {"share_rdp_change_lifecycle_test.dart"}
+        expected_tests = len(SHARE_RDP_TESTS)
+        expected_names = SHARE_RDP_TESTS
     elif profile == "password-fields":
         expected_suites = {"password_text_field_test.dart"}
         expected_tests = len(PASSWORD_FIELD_TESTS)
@@ -968,7 +978,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -981,6 +991,7 @@ def main():
         "frame-queue": "FLUTTER_FRAME_QUEUE_TEST_JSON",
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
+        "share-rdp": "FLUTTER_SHARE_RDP_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
         "modifier-release": "FLUTTER_MODIFIER_RELEASE_TEST_JSON",
         "auto-disconnect": "FLUTTER_AUTO_DISCONNECT_TEST_JSON",

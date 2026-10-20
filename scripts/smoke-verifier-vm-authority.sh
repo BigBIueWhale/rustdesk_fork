@@ -282,7 +282,7 @@ case "$#:${1:-}" in
         MODE=flutter-model-tests
         ;;
     2:--flutter-model-tests)
-        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --password-fields || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --window-dispatch || "$2" = --peer-data || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
+        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --window-dispatch || "$2" = --peer-data || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Flutter shard or input/run authority differs' >&2; exit 2; }
@@ -537,6 +537,7 @@ case "$#:${1:-}" in
         printf 'Focused production frame-queue runtime: %s --flutter-model-tests --frame-queue\n' "${0##*/}" >&2
         printf 'Focused direct-address validation: %s --flutter-model-tests --direct-address\n' "${0##*/}" >&2
         printf 'Focused password keyboard policy: %s --flutter-model-tests --password-fields\n' "${0##*/}" >&2
+        printf 'Focused RDP-sharing UI lifetime: %s --flutter-model-tests --share-rdp\n' "${0##*/}" >&2
         printf 'Focused credential dialog lifetime: %s --flutter-model-tests --credential-dialog\n' "${0##*/}" >&2
         printf 'Focused terminal output and model lifetime: %s --flutter-model-tests --terminal-output\n' "${0##*/}" >&2
         printf 'Focused desktop window error replies: %s --flutter-model-tests --window-dispatch\n' "${0##*/}" >&2
@@ -7270,6 +7271,12 @@ else
         require_exact_fixed_receipt \
             "FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=19 flutter=$FLUTTER_VERSION validator=$address_sha256 tests_source=$address_tests_sha256 vectors=$address_vectors_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined" \
             'focused Flutter direct-address receipt'
+    elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
+        lifecycle_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/share_rdp_change_lifecycle.dart" | /usr/bin/awk '{print $1}')"
+        lifecycle_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/share_rdp_change_lifecycle_test.dart" | /usr/bin/awk '{print $1}')"
+        require_exact_fixed_receipt \
+            "FLUTTER_SHARE_RDP_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=4 flutter=$FLUTTER_VERSION lifecycle=$lifecycle_sha256 tests_source=$lifecycle_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-rdp-sharing-lifecycle-tests cleanup=joined" \
+            'focused Flutter RDP-sharing lifecycle receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
         password_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/common/widgets/password_text_field.dart" | /usr/bin/awk '{print $1}')"
         password_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/password_text_field_test.dart" | /usr/bin/awk '{print $1}')"
@@ -8019,6 +8026,9 @@ else
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
         printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-address-tests cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
+        printf 'FLUTTER_SHARE_RDP_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-rdp-sharing-lifecycle-tests cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
         printf 'FLUTTER_PASSWORD_FIELD_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-password-field-tests cleanup=joined elapsed_seconds=%s\n' \

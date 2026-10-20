@@ -3408,7 +3408,7 @@ fn remove_retired_rdp_credential_options(options: &mut HashMap<String, String>) 
 struct PeerUiInfo {
     #[serde(default)]
     info: PeerUiHostInfo,
-    #[serde(default, deserialize_with = "deserialize_vec_i32_string_i32")]
+    #[serde(default)]
     port_forwards: Vec<(i32, String, i32)>,
 }
 
@@ -3442,13 +3442,13 @@ struct PeerListFile {
 
 #[derive(Default, Deserialize)]
 struct PeerListOptions {
-    #[serde(default, deserialize_with = "deserialize_string")]
+    #[serde(default)]
     alias: String,
 }
 
 #[derive(Deserialize)]
 struct PeerOptionsFile {
-    #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
+    #[serde(default)]
     options: HashMap<String, String>,
 }
 
@@ -3462,7 +3462,7 @@ impl Default for PeerOptionsFile {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct PeerUiHostInfo {
-    #[serde(default, deserialize_with = "deserialize_string")]
+    #[serde(default)]
     hostname: String,
 }
 
@@ -4434,7 +4434,6 @@ macro_rules! deserialize_default {
 }
 
 deserialize_default!(deserialize_string, String);
-deserialize_default!(deserialize_vec_i32_string_i32, Vec<(i32, String, i32)>);
 deserialize_default!(deserialize_keypair, KeyPair);
 deserialize_default!(deserialize_hashmap_string_string, HashMap<String, String>);
 

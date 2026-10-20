@@ -270,7 +270,7 @@ fn core_recovery_full_length_native_names_archive_exact_sources() {
                     && metadata.mode() & 0o777 == 0o600;
             }
             let intact_on_error = result.is_ok() || fs::metadata(path).map(|m| {
-                (m.dev(), m.ino(), m.mode()) == (original.dev(), original.ino())
+                (m.dev(), m.ino(), m.mode()) == (original.dev(), original.ino(), original.mode())
             }).unwrap_or(false) && fs::read(path).unwrap() == bytes && entries.len() == 1;
             println!("OPTION_COMMIT_RECOVERY_NAME=observed kind=length index={index} source_bytes={} archived={archive_exact} bounded={bounded} intact_on_error={intact_on_error}", path.file_name().unwrap().as_bytes().len());
             all_recovered &= archive_exact && bounded && intact_on_error;

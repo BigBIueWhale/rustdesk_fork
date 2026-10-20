@@ -237,6 +237,138 @@ fn core_load_links_are_transient_without_recovery() {
 }
 
 #[test]
+fn core_recovery_source_changes_after_read_are_refused() {
+    use std::{cell::{Cell, RefCell}, os::unix::fs::{symlink, MetadataExt}};
+    in_private_process("config::option_tests::core_recovery_source_changes_after_read_are_refused", |root| {
+        let mut all_preserved = true;
+        for kind in ["file", "symlink", "missing"] {
+            let base = root.join(kind);
+            fs::create_dir(&base).unwrap();
+            let path = base.join("selected.toml");
+            let saved = base.join("read-source");
+            let outside = base.join("outside");
+            fs::write(&path, b"= = read corrupt bytes [[[ ").unwrap();
+            fs::write(&outside, b"outside sentinel").unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+            let identity = |p: &Path| fs::symlink_metadata(p).map(|m| (m.dev(), m.ino(), m.mode(), m.nlink())).ok();
+            let original = identity(&path);
+            let expected_source = Cell::new(None);
+            let expected_names = RefCell::new(Vec::new());
+            let entered = Cell::new(false);
+            let names = || {
+                let mut names = fs::read_dir(&base).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+                names.sort(); names
+            };
+            let loaded: ConfigLoad<Config2> = load_path_with_status_after_read(path.clone(), || {
+                entered.set(true);
+                fs::rename(&path, &saved).unwrap();
+                match kind {
+                    "file" => { fs::write(&path, b"replacement bytes").unwrap(); fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap(); }
+                    "symlink" => symlink(&outside, &path).unwrap(),
+                    _ => {}
+                }
+                expected_source.set(identity(&path));
+                *expected_names.borrow_mut() = names();
+            });
+            let refused = loaded.status == ConfigLoadStatus::TransientError;
+            let preserved = entered.get() && identity(&saved) == original && identity(&path) == expected_source.get()
+                && names() == *expected_names.borrow() && fs::read(&saved).unwrap() == b"= = read corrupt bytes [[[ "
+                && fs::read(&outside).unwrap() == b"outside sentinel";
+            println!("OPTION_COMMIT_RECOVERY_OWNER=observed kind=source_{kind} entered={} refused={refused} preserved={preserved}", entered.get());
+            all_preserved &= refused && preserved;
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn core_recovery_parent_changes_stay_with_the_read_parent() {
+    use std::os::unix::fs::MetadataExt;
+    in_private_process("config::option_tests::core_recovery_parent_changes_stay_with_the_read_parent", |root| {
+        let base = root.join("selected-parent");
+        let retained = root.join("retained-parent");
+        fs::create_dir(&base).unwrap();
+        let path = base.join("selected.toml");
+        fs::write(&path, b"= = read corrupt bytes [[[ ").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        let original = fs::metadata(&path).unwrap();
+        let loaded: ConfigLoad<Config2> = load_path_with_status_after_read(path.clone(), || {
+            fs::rename(&base, &retained).unwrap();
+            fs::create_dir(&base).unwrap();
+            fs::write(&path, b"replacement bytes").unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        });
+        let backup = fs::read_dir(&retained).unwrap().map(|e| e.unwrap().path())
+            .find(|p| p.file_name().unwrap().to_string_lossy().contains(".corrupt."));
+        let recovered = loaded.status == ConfigLoadStatus::Corrupt && backup.map(|p| {
+            let m = fs::metadata(&p).unwrap();
+            (m.dev(), m.ino()) == (original.dev(), original.ino()) && m.mode() & 0o777 == 0o600
+                && fs::read(&p).unwrap() == b"= = read corrupt bytes [[[ "
+        }).unwrap_or(false) && !retained.join("selected.toml").exists();
+        let preserved = fs::read(&path).map(|b| b == b"replacement bytes").unwrap_or(false)
+            && fs::metadata(&path).map(|m| m.mode() & 0o777 == 0o644).unwrap_or(false)
+            && fs::read_dir(&base).unwrap().count() == 1;
+        println!("OPTION_COMMIT_RECOVERY_OWNER=observed kind=parent recovered={recovered} replacement_preserved={preserved}");
+        assert!(recovered && preserved);
+    });
+}
+
+#[test]
+fn core_recovery_replaced_backup_is_never_permission_hardened() {
+    use std::{cell::Cell, os::unix::fs::MetadataExt};
+    in_private_process("config::option_tests::core_recovery_replaced_backup_is_never_permission_hardened", |root| {
+        let path = root.join("selected.toml");
+        let saved = root.join("admitted-recovery");
+        let backup = root.join("selected.toml.corrupt.17");
+        fs::write(&path, b"read corrupt bytes").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        let identity = |p: &Path| fs::metadata(p).map(|m| (m.dev(), m.ino(), m.mode(), m.nlink())).ok();
+        let original = identity(&path);
+        let replacement = Cell::new(None);
+        let entered = Cell::new(false);
+        let record = read_config_record(&path).unwrap();
+        let result = record.preserve_corrupt_at_with(&path, 17, |named| {
+            entered.set(true);
+            fs::rename(named, &saved)?;
+            fs::write(named, b"replacement recovery bytes")?;
+            fs::set_permissions(named, fs::Permissions::from_mode(0o644))?;
+            replacement.set(identity(named));
+            Ok(())
+        });
+        let refused = result.is_err();
+        let preserved = entered.get() && identity(&saved) == original && identity(&backup) == replacement.get()
+            && fs::read(&saved).unwrap() == b"read corrupt bytes"
+            && fs::read(&backup).unwrap() == b"replacement recovery bytes";
+        println!("OPTION_COMMIT_RECOVERY_OWNER=observed kind=backup entered={} refused={refused} preserved={preserved}", entered.get());
+        assert!(refused && preserved);
+    });
+}
+
+#[test]
+fn core_recovery_read_owners_retire_on_every_outcome() {
+    in_private_process("config::option_tests::core_recovery_read_owners_retire_on_every_outcome", |root| {
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before = fds();
+        for index in 0..24 {
+            let base = root.join(index.to_string());
+            fs::create_dir(&base).unwrap();
+            let path = base.join("selected.toml");
+            let (bytes, status): (&[u8], _) = match index % 3 {
+                0 => (b"[options]\nmarker = 'retained'\n", ConfigLoadStatus::Loaded),
+                1 => (b"= = corrupt bytes [[[", ConfigLoadStatus::Corrupt),
+                _ => (b"\xff", ConfigLoadStatus::TransientError),
+            };
+            fs::write(&path, bytes).unwrap();
+            let loaded: ConfigLoad<Config2> = load_path_with_status(path);
+            assert_eq!(loaded.status, status);
+        }
+        let after = fds();
+        println!("OPTION_COMMIT_RECOVERY_OWNER=observed kind=controls loaded=8 recovered=8 transient=8 fds_before={before} fds_after={after}");
+        assert_eq!(before, after);
+    });
+}
+
+#[test]
 fn core_recovery_collision_preserves_source_and_prior_backup() {
     use std::os::unix::fs::{symlink, MetadataExt};
     in_private_process("config::option_tests::core_recovery_collision_preserves_source_and_prior_backup", |root| {

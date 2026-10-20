@@ -1364,32 +1364,42 @@ fn keep_encrypted_storage_if_plaintext_unchanged(plain: &str, stored: &str) -> S
 // fresh default overwrite it. Rename it aside to a timestamped `<name>.corrupt.<nanos>`
 // sibling, harden the recovery file, then let callers create a fresh config at the vacated
 // path. Repeated corruption events never clobber an earlier backup.
-fn preserve_corrupt_config(file: &Path) -> Result<()> {
-    let ts = SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    preserve_corrupt_config_at(file, ts)
+impl ConfigFileRead {
+    fn preserve_corrupt(self, file: &Path) -> Result<()> {
+        let ts = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        self.preserve_corrupt_at_with(file, ts, |_| Ok(()))
+    }
+
+    fn preserve_corrupt_at_with(
+        self, file: &Path, ts: u128, before_harden: impl FnOnce(&Path) -> Result<()>,
+    ) -> Result<()> {
+        let name = file
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("config");
+        let mut backup = file.to_path_buf();
+        backup.set_file_name(format!("{name}.corrupt.{ts}"));
+        move_config_to_vacant_recovery(file, &backup).map_err(|err| anyhow!(
+            "Could not move corrupt config '{}' to '{}': {err}", file.display(), backup.display()
+        ))?;
+        before_harden(&backup)?;
+        harden_preserved_config_file(&backup).map_err(|err| anyhow!(
+            "Config was moved to '{}', but recovery-file hardening failed: {err}", backup.display()
+        ))?;
+        log::error!(
+            "Preserved corrupt config '{}' as '{}' for recovery (original not overwritten)",
+            file.display(), backup.display()
+        );
+        Ok(())
+    }
 }
 
+#[cfg(test)]
 fn preserve_corrupt_config_at(file: &Path, ts: u128) -> Result<()> {
-    let name = file
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("config");
-    let mut backup = file.to_path_buf();
-    backup.set_file_name(format!("{name}.corrupt.{ts}"));
-    move_config_to_vacant_recovery(file, &backup).map_err(|err| anyhow!(
-        "Could not move corrupt config '{}' to '{}': {err}", file.display(), backup.display()
-    ))?;
-    harden_preserved_config_file(&backup).map_err(|err| anyhow!(
-        "Config was moved to '{}', but recovery-file hardening failed: {err}", backup.display()
-    ))?;
-    log::error!(
-        "Preserved corrupt config '{}' as '{}' for recovery (original not overwritten)",
-        file.display(), backup.display()
-    );
-    Ok(())
+    read_config_record(file)?.preserve_corrupt_at_with(file, ts, |_| Ok(()))
 }
 
 fn move_config_to_vacant_recovery(file: &Path, backup: &Path) -> Result<()> {
@@ -2088,7 +2098,11 @@ enum ConfigReadFailure {
     Unreadable,
 }
 
-fn read_config_file_bytes(path: &Path) -> io::Result<Vec<u8>> {
+struct ConfigFileRead {
+    bytes: Vec<u8>,
+}
+
+fn read_config_record(path: &Path) -> io::Result<ConfigFileRead> {
     #[cfg(windows)]
     let bytes = if windows_machine_config::contains(path) {
         windows_machine_config::read(path)
@@ -2159,15 +2173,15 @@ fn read_config_file_bytes(path: &Path) -> io::Result<Vec<u8>> {
     })();
     #[cfg(not(any(unix, windows)))]
     let bytes = fs::read(path);
-    bytes
+    bytes.map(|bytes| ConfigFileRead { bytes })
 }
 
 fn read_config_file<T: serde::de::DeserializeOwned>(
     path: &Path,
 ) -> Result<Option<T>, ConfigReadFailure> {
-    match read_config_file_bytes(path) {
-        Ok(bytes) => {
-            let text = std::str::from_utf8(&bytes)
+    match read_config_record(path) {
+        Ok(record) => {
+            let text = std::str::from_utf8(&record.bytes)
                 .map_err(|_| ConfigReadFailure::Corrupt)?;
             toml::from_str(text)
                 .map(Some)
@@ -2196,6 +2210,12 @@ fn load_path_with_status<
     T: serde::de::DeserializeOwned + Default,
 >(
     file: PathBuf,
+) -> ConfigLoad<T> {
+    load_path_with_status_after_read(file, || {})
+}
+
+fn load_path_with_status_after_read<T: serde::de::DeserializeOwned + Default>(
+    file: PathBuf, after_read: impl FnOnce(),
 ) -> ConfigLoad<T> {
     #[cfg(windows)]
     if windows_machine_config::contains(&file) {
@@ -2242,8 +2262,8 @@ fn load_path_with_status<
         return ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError);
     }
 
-    let bytes = match read_config_file_bytes(&file) {
-        Ok(bytes) => bytes,
+    let record = match read_config_record(&file) {
+        Ok(record) => record,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             return ConfigLoad::new(T::default(), ConfigLoadStatus::NotFound);
         }
@@ -2255,7 +2275,8 @@ fn load_path_with_status<
             return ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError);
         }
     };
-    let text = match std::str::from_utf8(&bytes) {
+    after_read();
+    let text = match std::str::from_utf8(&record.bytes) {
         Ok(text) => text,
         Err(_) => {
             log::error!(
@@ -2272,7 +2293,7 @@ fn load_path_with_status<
                 "Config '{}' is unparseable; preserving it and starting from defaults",
                 file.display()
             );
-            if let Err(err) = preserve_corrupt_config(&file) {
+            if let Err(err) = record.preserve_corrupt(&file) {
                 log::error!("Could not preserve corrupt config '{}': {err}", file.display());
                 return ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError);
             }

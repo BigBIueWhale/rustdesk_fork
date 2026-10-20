@@ -1509,6 +1509,44 @@ fn unix_optional_fstatat_no_follow(
 }
 
 #[cfg(unix)]
+fn unix_rename_no_replace(
+    parent: &std::fs::File,
+    source_name: &std::ffi::CStr,
+    target_name: &std::ffi::CStr,
+) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let result = unsafe {
+            crate::libc::syscall(
+                crate::libc::SYS_renameat2,
+                parent.as_raw_fd(), source_name.as_ptr(),
+                parent.as_raw_fd(), target_name.as_ptr(),
+                crate::libc::RENAME_NOREPLACE,
+            )
+        };
+        if result != 0 { Err(std::io::Error::last_os_error()) } else { Ok(()) }
+    }
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        let result = unsafe {
+            crate::libc::renameatx_np(
+                parent.as_raw_fd(), source_name.as_ptr(),
+                parent.as_raw_fd(), target_name.as_ptr(),
+                crate::libc::RENAME_EXCL,
+            )
+        };
+        if result != 0 { Err(std::io::Error::last_os_error()) } else { Ok(()) }
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios")))]
+    {
+        Err(std::io::Error::new(std::io::ErrorKind::Unsupported,
+            "atomic non-replacing rename is unavailable on this platform"))
+    }
+}
+
+#[cfg(unix)]
 fn unix_rename_admitted_entry(
     parent: &std::fs::File,
     source_name: &std::ffi::CStr,
@@ -1539,21 +1577,9 @@ fn unix_rename_admitted_entry_with(
     let current = unix_fstatat_no_follow(parent.as_raw_fd(), source_name)?;
     unix_require_same_object(admitted, &current, "rename source")?;
     before_rename()?;
-    // POSIX renameat is parent-descriptor-relative and never follows the destination leaf. As with
-    // unlinkat, no portable interface binds the source name atomically to a previously opened
-    // inode, so a writer already able to mutate this exact parent retains a final name-exchange
-    // window. The checks before and after make every observable mismatch caller-visible.
-    if unsafe {
-        crate::libc::renameat(
-            parent.as_raw_fd(),
-            source_name.as_ptr(),
-            parent.as_raw_fd(),
-            target_name.as_ptr(),
-        )
-    } != 0
-    {
-        return Err(std::io::Error::last_os_error());
-    }
+    // Destination vacancy is enforced atomically. Source identity still has a final name-exchange
+    // window on Unix; the identity checks make observable mismatches caller-visible.
+    unix_rename_no_replace(parent, source_name, target_name)?;
 
     let renamed = unix_fstatat_no_follow(parent.as_raw_fd(), target_name).map_err(|error| {
         std::io::Error::new(
@@ -2387,7 +2413,7 @@ mod nt_nofollow {
                 source.as_raw_handle() as HANDLE,
                 parent.as_raw_handle() as HANDLE,
                 new_name,
-                true,
+                false,
             )?;
         }
         let named = unsafe {

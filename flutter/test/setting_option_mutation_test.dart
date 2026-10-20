@@ -92,7 +92,135 @@ Future<void> _slideQuality(WidgetTester tester, int index, double value) async {
   await tester.pump();
 }
 
+Widget _combo(Map<String, String> options, String selected,
+        ValueChanged<String> onChanged, {bool enabled = true}) =>
+    ComboBox(keys: options.keys.toList(), values: options.values.toList(),
+        initialKey: selected, onChanged: onChanged, enabled: enabled);
+
+Widget _comboPage(Map<String, String> options, String selected,
+        ValueChanged<String> onChanged, {bool enabled = true}) =>
+    MaterialApp(home: Scaffold(body: SizedBox(width: 320,
+        child: _combo(options, selected, onChanged, enabled: enabled))));
+
+DropdownButton<String> _comboButton(WidgetTester tester) =>
+    tester.widget<DropdownButton<String>>(find.byType(DropdownButton<String>));
+
 void main() {
+  testWidgets('combo uses keys independently of display labels', (tester) async {
+    final requests = <String>[];
+    await tester.pumpWidget(_comboPage(
+        {'a': 'First label', 'b': 'Second label'}, 'a', requests.add));
+    expect(_comboButton(tester).value, 'a');
+    expect(_comboButton(tester).items!.map((item) => item.value), ['a', 'b']);
+    await tester.tap(find.byType(DropdownButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byWidgetPredicate(
+        (widget) => widget is DropdownMenuItem<String> && widget.value == 'b').last);
+    await tester.pumpAndSettle();
+    expect(requests, ['b']);
+    expect(_comboButton(tester).value, 'a');
+  });
+
+  testWidgets('combo duplicate labels preserve distinct selection identities', (tester) async {
+    final requests = <String>[];
+    await tester.pumpWidget(_comboPage(
+        {'a': 'Shared label', 'b': 'Shared label'}, 'a', requests.add));
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byType(DropdownButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byWidgetPredicate(
+        (widget) => widget is DropdownMenuItem<String> && widget.value == 'b').last);
+    await tester.pumpAndSettle();
+    expect(requests, ['b']);
+    expect(_comboButton(tester).value, 'a');
+  });
+
+  testWidgets('combo pending and failed changes retain the confirmed selection', (tester) async {
+    var selected = 'A';
+    var failures = 0;
+    final requests = <String>[];
+    var completion = Completer<String>();
+    Future<void>? pending;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 320,
+        child: StatefulBuilder(builder: (context, update) {
+          return _combo({'A': 'A', 'B': 'B'}, selected, (requested) {
+            requests.add(requested);
+            pending = completion.future.then<void>((effective) {
+              update(() => selected = effective);
+            }, onError: (Object error, StackTrace stack) {
+              failures++;
+            });
+          });
+        })))));
+    _comboButton(tester).onChanged!('B');
+    await tester.pump();
+    final whilePending = _comboButton(tester).value;
+    completion.completeError(StateError('store refused'));
+    await pending;
+    await tester.pump();
+    final afterFailure = _comboButton(tester).value;
+    completion = Completer<String>();
+    _comboButton(tester).onChanged!('B');
+    await tester.pump();
+    final duringRetry = _comboButton(tester).value;
+    completion.complete('B');
+    await pending;
+    await tester.pump();
+    expect(requests, ['B', 'B']);
+    expect(failures, 1);
+    expect([whilePending, afterFailure, duringRetry], ['A', 'A', 'A']);
+    expect(_comboButton(tester).value, 'B');
+  });
+
+  testWidgets('combo refreshed confirmed value replaces the displayed selection', (tester) async {
+    final requests = <String>[];
+    const options = {'A': 'A', 'B': 'B', 'C': 'C'};
+    await tester.pumpWidget(_comboPage(options, 'A', requests.add));
+    await tester.pumpWidget(_comboPage(options, 'C', requests.add));
+    expect(_comboButton(tester).value, 'C');
+    expect(requests, isEmpty);
+  });
+
+  testWidgets('combo empty options disable selection without inventing a value', (tester) async {
+    final requests = <String>[];
+    await tester.pumpWidget(_comboPage({}, '', requests.add));
+    expect(tester.takeException(), isNull);
+    expect(_comboButton(tester).value, isNull);
+    expect(_comboButton(tester).items, isEmpty);
+    expect(_comboButton(tester).onChanged, isNull);
+    expect(requests, isEmpty);
+  });
+
+  testWidgets('combo unavailable selection stays visible without choosing another key', (tester) async {
+    final requests = <String>[];
+    await tester.pumpWidget(_comboPage(
+        {'A': 'Available A', 'B': 'Available B'}, 'Unplugged microphone', requests.add));
+    expect(_comboButton(tester).value, isNull);
+    expect(find.text('Unplugged microphone'), findsOneWidget);
+    expect(requests, isEmpty);
+  });
+
+  testWidgets('combo disabled and unchanged choices dispatch nothing', (tester) async {
+    final requests = <String>[];
+    const options = {'A': 'A', 'B': 'B'};
+    await tester.pumpWidget(_comboPage(options, 'A', requests.add, enabled: false));
+    expect(_comboButton(tester).onChanged, isNull);
+    await tester.pumpWidget(_comboPage(options, 'A', requests.add));
+    _comboButton(tester).onChanged!(null);
+    _comboButton(tester).onChanged!('A');
+    await tester.pump();
+    expect(requests, isEmpty);
+    expect(_comboButton(tester).value, 'A');
+  });
+
+  testWidgets('combo label refresh preserves its selected identity', (tester) async {
+    final requests = <String>[];
+    await tester.pumpWidget(_comboPage({'a': 'English label'}, 'a', requests.add));
+    await tester.pumpWidget(_comboPage({'a': 'Translated label'}, 'a', requests.add));
+    expect(_comboButton(tester).value, 'a');
+    expect(find.text('Translated label'), findsOneWidget);
+    expect(requests, isEmpty);
+  });
   test('view style choice joins persistence before canvas publication', () async {
     final pending = Completer<String>();
     final canvas = Completer<bool>();

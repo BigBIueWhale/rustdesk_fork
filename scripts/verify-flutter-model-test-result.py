@@ -317,6 +317,14 @@ HOLD_DRAG_TESTS = {
 }
 
 SETTING_OPTION_TESTS = {
+    "combo uses keys independently of display labels",
+    "combo duplicate labels preserve distinct selection identities",
+    "combo pending and failed changes retain the confirmed selection",
+    "combo refreshed confirmed value replaces the displayed selection",
+    "combo empty options disable selection without inventing a value",
+    "combo unavailable selection stays visible without choosing another key",
+    "combo disabled and unchanged choices dispatch nothing",
+    "combo label refresh preserves its selected identity",
     "view style choice joins persistence before canvas publication",
     "view style refusal and mismatch leave the canvas and preserve retry",
     "view style canvas refusal and failure remain visible and retryable",

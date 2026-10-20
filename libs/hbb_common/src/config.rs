@@ -1076,7 +1076,7 @@ pub struct Config {
 // more variable configs
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Config2 {
-    #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
+    #[serde(default)]
     pub options: HashMap<String, String>,
 }
 
@@ -1339,7 +1339,13 @@ mod option_tests;
 
 impl Config2 {
     fn load() -> Config2 {
-        Config::load_::<Config2>("2")
+        match read_config_view(&Self::file()) {
+            Ok(loaded) => loaded,
+            Err(err) => {
+                log::error!("Failed to load options: {err}");
+                Self::default()
+            }
+        }
     }
 
     pub fn file() -> PathBuf {
@@ -1984,7 +1990,24 @@ fn read_config_file<T: serde::de::DeserializeOwned>(
             .map_err(|_| ConfigReadFailure::Unreadable)?;
         fs::read(path)
     };
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    let bytes = (|| -> io::Result<Vec<u8>> {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
+            .open(path)?;
+        if !file.metadata()?.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Configuration is not a regular file",
+            ));
+        }
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)?;
+        Ok(bytes)
+    })();
+    #[cfg(not(any(unix, windows)))]
     let bytes = fs::read(path);
     match bytes {
         Ok(bytes) => {
@@ -3157,19 +3180,19 @@ impl Config {
             && !v.is_empty())
             .then_some(v);
         let mut config = CONFIG2.write().unwrap();
-        if config.options.get(&k) == desired.as_ref() {
-            return Ok(());
-        }
-        let mut candidate = config.clone();
-        match desired {
-            Some(value) => {
-                candidate.options.insert(k, value);
+        let mut candidate: Config2 = read_config_view(&Config2::file())
+            .map_err(|_| anyhow!("Failed to read options"))?;
+        if candidate.options.get(&k) != desired.as_ref() {
+            match desired {
+                Some(value) => {
+                    candidate.options.insert(k, value);
+                }
+                None => {
+                    candidate.options.remove(&k);
+                }
             }
-            None => {
-                candidate.options.remove(&k);
-            }
+            candidate.store()?;
         }
-        candidate.store()?;
         *config = candidate;
         Ok(())
     }

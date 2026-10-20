@@ -2281,10 +2281,15 @@ fn config_temp_file_name(path: &Path, attempt: u32) -> Result<String> {
         .unwrap_or(0);
     let name = path
         .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| anyhow!("Config path '{}' has no UTF-8 file name", path.display()))?;
+        .ok_or_else(|| anyhow!("Config path '{}' has no file name", path.display()))?;
+    // Different leading bytes keep the temporary and destination components distinct.
+    let prefix = if name.as_encoded_bytes().starts_with(b".") {
+        "_"
+    } else {
+        "."
+    };
     Ok(format!(
-        ".{name}.tmp.{}.{}.{}",
+        "{prefix}config.tmp.{}.{}.{}",
         std::process::id(),
         stamp,
         attempt

@@ -13494,9 +13494,10 @@ path before mutation, then creates and no-follow-opens every component through t
 descriptor or Windows NT-handle walk. Native rename rejects anything other than one nonempty
 normal basename and stays relative to the retained no-follow source parent. Windows opens the
 exact source with DELETE authority, renames that handle with parent-relative
-`FileRenameInformation`, and re-proves that the destination names the same volume/file identity.
+`FileRenameInformation` with replacement disabled, and re-proves that the destination names the same volume/file identity.
 Unix immediately revalidates the admitted no-follow source identity, calls retained-parent
-`renameat`, re-proves the destination identity and required old-name absence, and synchronizes the
+atomic exclusive rename (`renameat2(RENAME_NOREPLACE)` on Linux/Android or
+`renameatx_np(RENAME_EXCL)` on Darwin), re-proves the destination identity and required old-name absence, and synchronizes the
 parent; every post-rename failure reports that the visible/durable outcome is uncertain. As with
 unlink, POSIX has no atomic rename-by-previously-open-inode primitive, so a principal already able
 to mutate that exact parent retains the final identity-check/rename syscall window but cannot
@@ -13526,7 +13527,7 @@ admitted handle, renames its object, plants a replacement junction, and requires
 remove only the acquired object; the Unix counterpart requires the changed root edge to fail
 without touching or traversing the replacement. Additional native regressions cover legitimate
 and idempotent nested creation, complete validation before creation, symlink/junction-parent
-refusal, exact/same-name rename, destination-symlink replacement without target mutation, Unix
+refusal, exact/same-name rename, destination collision refusal and source-symlink movement without target mutation, Unix
 source-generation mismatch and retained-parent path swap, and Windows exact-source-handle rename
 after its original name is replaced.
 `flutter/test/file_command_session_ownership_test.dart` retains its real invocation in
@@ -13561,6 +13562,20 @@ audit and joined cleanup in 158 VM seconds. Exact artifacts and retained evidenc
 R-S11fi above. The earlier `d853188a` guest success still has an invalid outer result; its failures and
 other historical attempts remain in the deep-audit journal. This accepted library run does not prove
 an installed transfer, a broader platform boundary, an LPE or the display-delay cause.
+
+**Destination collision refusal (`a3a78310`).** File-manager Rename has no replacement authority:
+the dialog rejects occupied names, and the native receiver now enforces vacancy atomically even
+when a destination appears after its final metadata checks. No replacing or copy/unlink fallback
+exists. The unchanged-product Linux baseline fails both collision regressions while 30 controls
+pass. The accepted `--file-metadata-tests` transaction at `48b4df0d` passes all 95 cases in 16 groups:
+seven existing-destination cases and four deterministic last-boundary collisions preserve both
+entries; 48 file/directory/source-link cycles preserve identity through valid renames and exact
+same-name no-ops, with stable descriptor counts. The former destination-link overwrite test was
+incorrect for this action and is replaced by collision refusal plus source-link-to-vacancy coverage.
+`rename-collision-a3a78310.json` binds the baseline and candidate artifacts, observations, the
+rejected stale harness-total run and its correction, and joined bounded-RAM cleanup. This is
+Linux library evidence; Windows, Android and Darwin compilation/execution, case-insensitive
+case-only behavior, installed command integration and the Unix source-name race remain OPEN.
 
 Exact Android/iOS/Windows/Linux/macOS and applicable web artifacts must still exercise native
 create/rename/delete, hostile namespace replacement, reordered results, dispatch failure,

@@ -1618,10 +1618,6 @@ fn unix_rename_admitted_entry_with(
         let current = unix_fstatat_no_follow(parent.as_raw_fd(), source_name)?;
         return unix_require_same_object(admitted, &current, "rename source");
     }
-    let destination_was_same_object =
-        unix_optional_fstatat_no_follow(parent.as_raw_fd(), target_name)?
-            .map_or(false, |target| unix_same_object(admitted, &target));
-
     let current = unix_fstatat_no_follow(parent.as_raw_fd(), source_name)?;
     unix_require_same_object(admitted, &current, "rename source")?;
     // Destination vacancy is enforced atomically. Source identity still has a final name-exchange
@@ -1640,21 +1636,19 @@ fn unix_rename_admitted_entry_with(
             format!("rename completed, but target identity is uncertain: {error}"),
         )
     })?;
-    if !destination_was_same_object {
-        match unix_optional_fstatat_no_follow(parent.as_raw_fd(), source_name) {
-            Ok(None) => {}
-            Ok(Some(_)) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "rename completed, but the source name was replaced before finality",
-                ));
-            }
-            Err(error) => {
-                return Err(std::io::Error::new(
-                    error.kind(),
-                    format!("rename completed, but source-name absence is uncertain: {error}"),
-                ));
-            }
+    match unix_optional_fstatat_no_follow(parent.as_raw_fd(), source_name) {
+        Ok(None) => {}
+        Ok(Some(_)) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "rename completed, but the source name was replaced before finality",
+            ));
+        }
+        Err(error) => {
+            return Err(std::io::Error::new(
+                error.kind(),
+                format!("rename completed, but source-name absence is uncertain: {error}"),
+            ));
         }
     }
     sync_recv_directory(parent).map_err(|error| {

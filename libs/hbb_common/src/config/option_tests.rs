@@ -2,6 +2,10 @@ use super::*;
 use std::os::unix::fs::PermissionsExt;
 
 #[cfg(target_arch = "x86_64")]
+#[path = "directory_tests.rs"]
+mod directory_tests;
+
+#[cfg(target_arch = "x86_64")]
 fn core_recovery_sync_case(test: &str, mode: &str) {
     use std::os::unix::fs::MetadataExt;
 

@@ -3291,6 +3291,7 @@ run_focused_rust_tests() {
         if [ "$RUST_TEST_PROFILE" = config-options ]; then
             source_fingerprints+=(
                 libs/hbb_common/src/config/option_tests.rs
+                libs/hbb_common/src/config/directory_tests.rs
             )
             required_tests=(
                 config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal
@@ -3407,6 +3408,10 @@ run_focused_rust_tests() {
                 config::option_tests::config_temp_failed_publication_cannot_delete_a_replacement_entry
                 config::option_tests::config_temp_link_count_change_refuses_publication
                 config::option_tests::config_temp_special_modes_refuse_publication_and_allow_repair
+                config::option_tests::directory_tests::directory_initial_sync_error_precedes_private_creation
+                config::option_tests::directory_tests::directory_preselection_sync_error_retires_only_private_tree
+                config::option_tests::directory_tests::directory_postrename_sync_error_recovers_selected_identity
+                config::option_tests::directory_tests::directory_normal_publication_and_repeated_save_remain_functional
                 config::option_tests::config_parent_writable_modes_refuse_without_mutation
                 config::option_tests::config_parent_acl_write_mask_refuses_without_mutation
                 config::option_tests::config_parent_safe_modes_and_masked_acl_remain_functional

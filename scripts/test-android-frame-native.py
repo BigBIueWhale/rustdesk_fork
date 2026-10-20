@@ -18,6 +18,103 @@ def require(value, message):
         raise RuntimeError(message)
 
 
+def test_observer_age(environment):
+    # Execute the exact controller loops with deterministic sample/clock inputs.
+    # This tests aggregation and freshness decisions, not presented RustDesk pixels.
+    controller = Path("/work/scripts/flutter-peer-presentation-x11.c").read_text()
+    begin = "static int wait_for_current_frames("
+    end = "static int read_connection_identity("
+    require(controller.count(begin) == controller.count(end) == 1,
+            "observer function boundaries are ambiguous")
+    loops = controller[controller.index(begin):controller.index(end)]
+    fixture = r'''
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+typedef void Display;
+typedef struct { int unused; } ViewerWindow;
+typedef struct { int failed; } SourceHistory;
+#define FRESH_LIMIT_MS 1000U
+#define SAMPLE_INTERVAL_MS 40U
+static uint64_t clock_ms, sample_age;
+static unsigned int sample_index, mode;
+static uint64_t monotonic_millis(void) { return clock_ms; }
+static int sleep_millis(unsigned int duration) {
+    clock_ms += duration;
+    sample_index += 1U;
+    return 0;
+}
+static int64_t source_state(Display *display) { (void)display; return 0; }
+static int64_t viewer_state(Display *display, const ViewerWindow *viewer,
+                             uint64_t *captured_us) {
+    (void)display; (void)viewer;
+    *captured_us = clock_ms * 1000U;
+    return sample_index;
+}
+static int x11_frame_age(SourceHistory *history, const char *directory, int64_t state,
+                         uint64_t captured_us, uint64_t *age) {
+    (void)history; (void)directory; (void)state; (void)captured_us;
+    if (mode == 3U || (mode == 0U && sample_index == 1U)) return -1;
+    sample_age = mode == 0U ? (sample_index == 0U ? 5000U :
+                 sample_index == 2U ? 1000U : 30U) :
+                 mode == 1U ? (sample_index == 0U ? 1500U : 30U) : 2000U;
+    *age = sample_age;
+    return 0;
+}
+#define REQUIRE(condition) do { if (!(condition)) { \
+    fprintf(stderr, "X11_OBSERVER_AGE_FAIL line=%d mode=%u sample=%u max=%llu\n", \
+            __LINE__, mode, sample_index, (unsigned long long)maximum_age); \
+    return 1; } } while (0)
+'''
+    fixture += loops + r'''
+int main(void) {
+    SourceHistory history = {0};
+    ViewerWindow viewer = {0};
+    uint64_t first_fresh, maximum_age, maximum_gap;
+    unsigned int distinct;
+    int status;
+    status = wait_for_current_frames(NULL, &viewer, &history, 500U, 2U,
+                                     &first_fresh, &maximum_age);
+    REQUIRE(status == 0 && first_fresh == 80U && maximum_age == 5000U &&
+            sample_index == 3U);
+    puts("X11_OBSERVER_AGE_CASE recovery=pass stale_ms=5000 unknown=ignored boundary_ms=1000 first_fresh_ms=80");
+    mode = 1U; clock_ms = 0U; sample_index = 0U;
+    status = observe_current_frames_for_duration(NULL, NULL, &viewer, &history, 1200U,
+                                                 &maximum_gap, &maximum_age, &distinct);
+    REQUIRE(status == 0 && maximum_age == 1500U && maximum_gap == 0U && distinct == 29U);
+    puts("X11_OBSERVER_AGE_CASE duration=pass stale_ms=1500 fresh_distinct=29");
+    mode = 2U; clock_ms = 0U; sample_index = 0U;
+    status = wait_for_current_frames(NULL, &viewer, &history, 120U, 1U,
+                                     &first_fresh, &maximum_age);
+    REQUIRE(status == -1 && maximum_age == 2000U && first_fresh == 0U && sample_index == 3U);
+    puts("X11_OBSERVER_AGE_CASE recovery_timeout=refused maximum_age_ms=2000");
+    clock_ms = 0U; sample_index = 0U;
+    status = observe_current_frames_for_duration(NULL, NULL, &viewer, &history, 1200U,
+                                                 &maximum_gap, &maximum_age, &distinct);
+    REQUIRE(status == -1 && maximum_age == 2000U && maximum_gap == 1040U && distinct == 0U);
+    puts("X11_OBSERVER_AGE_CASE stale_duration=refused maximum_age_ms=2000 gap_ms=1040");
+    mode = 3U; clock_ms = 0U; sample_index = 0U;
+    status = observe_current_frames_for_duration(NULL, NULL, &viewer, &history, 1200U,
+                                                 &maximum_gap, &maximum_age, &distinct);
+    REQUIRE(status == -1 && maximum_age == 0U && maximum_gap == 1040U && distinct == 0U);
+    puts("X11_OBSERVER_AGE_CASE unknown_duration=refused measured_age=unavailable gap_ms=1040");
+    puts("X11_OBSERVER_AGE=pass scope=controller-aggregation inputs=synthetic freshness=unchanged");
+    return 0;
+}
+'''
+    source = Path("/build/observer-age.c")
+    source.write_text(fixture)
+    binary = Path("/build/observer-age")
+    subprocess.run(["/usr/bin/cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+                    str(source), "-o", str(binary)], env=environment, check=True, timeout=30)
+    print("X11_OBSERVER_AGE_BUILD "
+          f"loops_sha256={hashlib.sha256(loops.encode()).hexdigest()} "
+          f"fixture_sha256={hashlib.sha256(source.read_bytes()).hexdigest()} "
+          f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()}", flush=True)
+    subprocess.run([str(binary)], env=dict(environment, RUSTDESK_PRESENTATION_TRACE="0"),
+                   check=True, timeout=5)
+
+
 
 def inspect_retained_android_frame(decoder):
     # Exact failed Android decoder input from b126297e, not its later ADB PNG.
@@ -150,6 +247,7 @@ def main():
                     "-o", "/build/x11-controller"], env=environment, check=True, timeout=30)
     print("ANDROID_FRAME_NATIVE_X11_BUILD copies=2 equal=true controller=compiled "
           f"sha256={hashlib.sha256(oracle_bytes).hexdigest()} bytes={len(oracle_bytes)}", flush=True)
+    test_observer_age(environment)
     children = []
     display = None
     lib = ctypes.CDLL("libX11.so.6")

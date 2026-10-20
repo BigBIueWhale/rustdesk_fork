@@ -110,6 +110,91 @@ fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
 }
 
 #[test]
+fn peer_option_write_failure_preserves_settings_and_retries_set_and_remove() {
+    in_private_process("config::option_tests::peer_option_write_failure_preserves_settings_and_retries_set_and_remove", |_| {
+        let id = "peer-option-write";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-option-prs".to_vec();
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        for value in ["selected", ""] {
+            let original = fs::read(&path).unwrap();
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+            let result = PeerConfig::set_option(id, "alias", value.into());
+            let preserved = fs::read(&path).unwrap() == original;
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            println!("OPTION_COMMIT_PEER_OPTION=observed kind=write remove={} reported={} file_preserved={preserved}", value.is_empty(), result.is_err());
+            assert!(preserved && result.is_err());
+            PeerConfig::set_option(id, "alias", value.into()).unwrap();
+            let stored = PeerConfig::load_for_write(id).unwrap();
+            assert_eq!(stored.options.get("alias").map(String::as_str), if value.is_empty() { None } else { Some(value) });
+            assert_eq!(stored.options.get("unrelated").map(String::as_str), Some("preserved"));
+            assert_eq!(stored.password_prs, b"fixture-option-prs");
+        }
+    });
+}
+
+#[test]
+fn peer_option_unreadable_source_refuses_without_losing_credentials() {
+    in_private_process("config::option_tests::peer_option_unreadable_source_refuses_without_losing_credentials", |_| {
+        let id = "peer-option-read";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-option-prs".to_vec();
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let native = fs::read(&path).unwrap_err();
+        let result = PeerConfig::set_option(id, "alias", "selected".into());
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let preserved = fs::read(&path).unwrap() == original;
+        println!("OPTION_COMMIT_PEER_OPTION=observed kind=read errno={} reported={} file_preserved={preserved}", native.raw_os_error().unwrap(), result.is_err());
+        assert_eq!(native.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(preserved && result.is_err());
+        PeerConfig::set_option(id, "alias", "selected".into()).unwrap();
+        let stored = PeerConfig::load_for_write(id).unwrap();
+        assert_eq!(stored.options.get("alias").map(String::as_str), Some("selected"));
+        assert_eq!(stored.options.get("unrelated").map(String::as_str), Some("preserved"));
+        assert_eq!(stored.password_prs, b"fixture-option-prs");
+    });
+}
+
+#[test]
+fn peer_option_preserves_other_state_and_avoids_idempotent_or_missing_removal_writes() {
+    in_private_process("config::option_tests::peer_option_preserves_other_state_and_avoids_idempotent_or_missing_removal_writes", |_| {
+        let id = "peer-option-selected";
+        let sibling = "peer-option-sibling";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-option-prs".to_vec();
+        peer.ui_flutter.insert("canvas".into(), "preserved".into());
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.store(id).unwrap();
+        peer.store(sibling).unwrap();
+        let sibling_bytes = fs::read(PeerConfig::path(sibling)).unwrap();
+        let mut expected = PeerConfig::load_for_write(id).unwrap();
+        expected.options.insert("alias".into(), "selected".into());
+        PeerConfig::set_option(id, "alias", "selected".into()).unwrap();
+        assert_eq!(PeerConfig::load_for_write(id).unwrap(), expected);
+        assert_eq!(fs::read(PeerConfig::path(sibling)).unwrap(), sibling_bytes);
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        PeerConfig::set_option(id, "alias", "selected".into()).unwrap();
+        let unchanged_inode = std::os::unix::fs::MetadataExt::ino(&before)
+            == std::os::unix::fs::MetadataExt::ino(&fs::metadata(&path).unwrap());
+        let missing = "peer-option-missing";
+        PeerConfig::set_option(missing, "alias", String::new()).unwrap();
+        let absent = !PeerConfig::path(missing).exists();
+        println!("OPTION_COMMIT_PEER_OPTION=observed kind=idempotent unchanged_inode={unchanged_inode} missing_removal_absent={absent} credential_and_unrelated_preserved=true sibling_preserved=true");
+        assert_eq!(fs::read(&path).unwrap(), original);
+        assert!(unchanged_inode && absent);
+    });
+}
+
+#[test]
 fn peer_forget_write_failure_is_reported_and_retryable() {
     in_private_process("config::option_tests::peer_forget_write_failure_is_reported_and_retryable", |_| {
         let id = "peer-forget-write";

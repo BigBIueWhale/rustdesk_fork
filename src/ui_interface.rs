@@ -248,13 +248,7 @@ pub fn set_peer_flutter_option(id: String, name: String, value: String) {
 
 #[inline]
 pub fn set_peer_option(id: String, name: String, value: String) {
-    let mut c = PeerConfig::load(&id);
-    if value.is_empty() {
-        c.options.remove(&name);
-    } else {
-        c.options.insert(name, value);
-    }
-    hbb_common::allow_err!(c.store(&id));
+    hbb_common::allow_err!(PeerConfig::set_option(&id, &name, value));
 }
 
 #[inline]

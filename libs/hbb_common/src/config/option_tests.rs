@@ -1,6 +1,126 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+#[cfg(target_os = "linux")]
+fn config_parent_acl(directory: &Path, mask: u16) -> Vec<u8> {
+    use std::os::unix::io::AsRawFd;
+    // Linux UAPI posix_acl_xattr: version, then little-endian tag/permissions/id entries.
+    let mut acl = 2u32.to_le_bytes().to_vec();
+    for (tag, permissions, id) in [
+        (1u16, 7u16, u32::MAX), (2, 7, 1001), (4, 0, u32::MAX),
+        (16, mask, u32::MAX), (32, 0, u32::MAX),
+    ] {
+        acl.extend_from_slice(&tag.to_le_bytes());
+        acl.extend_from_slice(&permissions.to_le_bytes());
+        acl.extend_from_slice(&id.to_le_bytes());
+    }
+    let directory = fs::File::open(directory).unwrap();
+    let name = b"system.posix_acl_access\0";
+    assert_eq!(unsafe { crate::libc::fsetxattr(directory.as_raw_fd(), name.as_ptr().cast(), acl.as_ptr().cast(), acl.len(), 0) }, 0, "{}", io::Error::last_os_error());
+    let mut observed = vec![0; acl.len()];
+    assert_eq!(unsafe { crate::libc::fgetxattr(directory.as_raw_fd(), name.as_ptr().cast(), observed.as_mut_ptr().cast(), observed.len()) }, acl.len() as isize);
+    assert_eq!(observed, acl);
+    acl
+}
+
+#[cfg(target_os = "linux")]
+fn exercise_config_parent_refusal(modes: &[u32], acl: bool) {
+    use std::{cell::Cell, os::unix::fs::MetadataExt};
+    let path = Config2::file();
+    let parent = path.parent().unwrap();
+    fs::create_dir_all(parent).unwrap();
+    let mut all_refused = true;
+    for mode in modes {
+        for present in [false, true] {
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            if path.exists() { fs::remove_file(&path).unwrap(); }
+            if present {
+                fs::write(&path, b"original configuration").unwrap();
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+            }
+            if acl { config_parent_acl(parent, 7); }
+            else { fs::set_permissions(parent, fs::Permissions::from_mode(*mode)).unwrap(); }
+            let before = fs::metadata(&path).ok();
+            let directory = fs::metadata(parent).unwrap();
+            assert_eq!(directory.mode() & 0o7777, *mode);
+            let names = || {
+                let mut names = fs::read_dir(parent).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+                names.sort(); names
+            };
+            let original_names = names();
+            let mut refused = true;
+            let mut preserved = true;
+            for _ in 0..2 {
+                let entered = Cell::new(false);
+                let result = store_config_bytes_transaction_unix(
+                    &path, b"replacement configuration", ConfigStoreFault::None,
+                    &|_| panic!("directory refusal must precede publication"),
+                    &|_, _, _| { entered.set(true); Ok(()) },
+                );
+                refused &= result.is_err() && !entered.get();
+                preserved &= match &before {
+                    Some(before) => fs::metadata(&path).map(|after| after.ino() == before.ino() && after.mode() == before.mode()).unwrap_or(false)
+                        && fs::read(&path).map(|bytes| bytes == b"original configuration").unwrap_or(false),
+                    None => !path.exists(),
+                };
+                let after = fs::metadata(parent).unwrap();
+                preserved &= after.ino() == directory.ino() && after.mode() == directory.mode() && names() == original_names;
+            }
+            println!("OPTION_COMMIT_CONFIG_PARENT=observed acl={acl} mode={mode:o} present={present} refused={refused} preserved={preserved}");
+            all_refused &= refused && preserved;
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+            store_config_bytes_transaction(&path, b"legitimate retry", ConfigStoreFault::None).unwrap();
+            assert_eq!(fs::read(&path).unwrap(), b"legitimate retry");
+            assert_eq!(fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
+        }
+    }
+    assert!(all_refused);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn config_parent_writable_modes_refuse_without_mutation() {
+    in_private_process("config::option_tests::config_parent_writable_modes_refuse_without_mutation", |_| {
+        exercise_config_parent_refusal(&[0o730, 0o703, 0o770, 0o777, 0o1777, 0o2770], false);
+    });
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn config_parent_acl_write_mask_refuses_without_mutation() {
+    in_private_process("config::option_tests::config_parent_acl_write_mask_refuses_without_mutation", |_| {
+        exercise_config_parent_refusal(&[0o770], true);
+    });
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn config_parent_safe_modes_and_masked_acl_remain_functional() {
+    use std::os::unix::{fs::MetadataExt, io::AsRawFd};
+    in_private_process("config::option_tests::config_parent_safe_modes_and_masked_acl_remain_functional", |_| {
+        let path = Config2::file();
+        let parent = path.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        for mode in [0o700, 0o750, 0o755, 0o2750] {
+            fs::set_permissions(parent, fs::Permissions::from_mode(mode)).unwrap();
+            store_config_bytes_transaction(&path, b"healthy configuration", ConfigStoreFault::None).unwrap();
+            assert_eq!(fs::read(&path).unwrap(), b"healthy configuration");
+            assert_eq!(fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
+            assert_eq!(fs::metadata(parent).unwrap().mode() & 0o7777, mode);
+        }
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        let acl = config_parent_acl(parent, 5);
+        assert_eq!(fs::metadata(parent).unwrap().mode() & 0o777, 0o750);
+        store_config_bytes_transaction(&path, b"masked ACL configuration", ConfigStoreFault::None).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"masked ACL configuration");
+        let directory = fs::File::open(parent).unwrap();
+        let mut observed = vec![0; acl.len()];
+        assert_eq!(unsafe { crate::libc::fgetxattr(directory.as_raw_fd(), b"system.posix_acl_access\0".as_ptr().cast(), observed.as_mut_ptr().cast(), observed.len()) }, acl.len() as isize);
+        assert_eq!(observed, acl);
+        println!("OPTION_COMMIT_CONFIG_PARENT_CONTROL=pass modes=4 masked_named_user_acl=preserved file_mode=600");
+    });
+}
+
 fn exercise_config_temp_ownership(kind: &str) {
     use std::{cell::RefCell, os::unix::{ffi::OsStrExt, fs::MetadataExt}};
     let path = Config2::file();

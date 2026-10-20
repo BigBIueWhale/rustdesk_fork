@@ -2138,8 +2138,62 @@ fn ordinary_option_source_healthy_missing_sparse_and_concurrent_controls() {
         assert_eq!(stored.options.len(), 9);
         assert!((0..8).all(|i| stored.options.get(&format!("ordinary-source-worker-{i}")) == Some(&i.to_string())));
         assert_eq!(*CONFIG2.read().unwrap(), stored);
-        assert!(PINNED_SETTINGS.iter().all(|(key, value)| Config::get_option(key) == *value));
+        assert!(keys::PINNED_SETTINGS.iter().all(|(key, value)| Config::get_option(key) == *value));
         println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind=controls missing_noops_absent=true first_save=true empty_removal=true sparse_fields_default=true concurrent_writers=8 keys_preserved=true policy_pinned=true cleanup=joined");
+    });
+}
+
+#[test]
+fn ordinary_option_source_fifo_refuses_without_waiting_or_replacement() {
+    const TEST: &str = "config::option_tests::ordinary_option_source_fifo_refuses_without_waiting_or_replacement";
+    const CHILD: &str = "RUSTDESK_ORDINARY_OPTION_FIFO_CHILD";
+    in_private_process(TEST, |_| {
+        use std::os::unix::fs::{FileTypeExt, MetadataExt};
+        let file = Config2::file();
+        if std::env::var_os(CHILD).is_some() {
+            println!("ORDINARY_OPTION_FIFO_BEGIN=entered");
+            std::io::stdout().flush().unwrap();
+            let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+            let before = fds();
+            for _ in 0..100 {
+                assert!(read_config_view::<Config2>(&file).is_err());
+            }
+            assert_eq!(Config2::load(), Config2::default());
+            assert!(Config::set_option("audio-input".into(), "fifo-request".into()).is_err());
+            assert_eq!(*CONFIG2.read().unwrap(), Config2::default());
+            let after = fds();
+            assert_eq!(after, before);
+            println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind=fifo_reader iterations=100 refused=true initial_default=true mutation_refused=true fds_before={before} fds_after={after}");
+            return;
+        }
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let name = std::ffi::CString::new(std::os::unix::ffi::OsStrExt::as_bytes(file.as_os_str())).unwrap();
+        assert_eq!(unsafe { crate::libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        let before = fs::metadata(&file).unwrap();
+        assert!(before.file_type().is_fifo());
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([TEST, "--exact", "--color", "never", "--test-threads=1", "--nocapture"])
+            .env(CHILD, "1")
+            .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+            .spawn().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let timed_out = loop {
+            if child.try_wait().unwrap().is_some() { break false; }
+            if Instant::now() >= deadline {
+                child.kill().unwrap();
+                break true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let output = child.wait_with_output().unwrap();
+        assert!(output.stdout.len() + output.stderr.len() <= 16384);
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let entered = stdout.lines().any(|line| line == "ORDINARY_OPTION_FIFO_BEGIN=entered");
+        for line in stdout.lines().filter(|line| line.starts_with("OPTION_COMMIT_")) { println!("{line}"); }
+        let after = fs::metadata(&file).unwrap();
+        let preserved = after.file_type().is_fifo() && (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode());
+        println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind=fifo_parent child_entered={entered} timed_out={timed_out} child_success={} fifo_preserved={preserved} cleanup=joined", output.status.success());
+        assert!(entered && !timed_out && output.status.success() && preserved);
     });
 }
 

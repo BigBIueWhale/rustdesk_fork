@@ -1035,6 +1035,8 @@ run_debian_package_tests() {
     local receipt='DEBIAN_POLKIT_DEPENDENCY=pass cases=7 generator=production artifacts=actual-deb policy=standalone-depends receiver=unexecuted'
     local -a sources=("$generator" "$checker" "$ENTRY_PREFLIGHT")
     local action=--polkit-dependency-self-test
+    [ "$MODE" != debian-polkit-tests ] \
+        || sources+=("$VERIFY_REPO/scripts/debian-package-cli-baseline.py")
     if [ "$MODE" = debian-elf-role-tests ]; then
         action=--elf-role-self-test
         receipt='DEBIAN_ELF_ROLES=pass cases=9 packages=2 gate=elf-partition old-pie=accepted current-pie=refused native-dlopen=refused shared-call=pass runners=types-metadata entry=valid-exit0-invalid-SIGSEGV product=unexecuted cleanup=joined'
@@ -1058,7 +1060,7 @@ run_debian_package_tests() {
         || fail 'Debian polkit-test diagnostics exceeded their bound'
     [ "$status" -eq 0 ] \
         || { tail -n 60 "$output" >&2; fail "Debian polkit tests failed with status $status"; }
-    local expected_lines=4
+    local expected_lines=5
     [ "$MODE" != debian-elf-role-tests ] || expected_lines=2
     [ "$(grep -Fxc "$receipt" "$output")" -eq 1 ] \
         && [ "$(wc -l <"$output")" -eq "$expected_lines" ] \
@@ -1072,6 +1074,8 @@ run_debian_package_tests() {
         [ "$(grep -Fxc 'DEBIAN_DESKTOP_RESOURCES=pass cases=7 generator=production artifacts=actual-deb retained=exact-inventory retired=absent reintroduction=refused product=unexecuted' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^DEBIAN_DESKTOP_RESOURCES_ARTIFACT=sha256 [0-9a-f]{64}$' "$output")" -eq 1 ] \
             || fail 'Debian desktop-resource fixture results differ'
+        [ "$(grep -Fxc 'DEBIAN_PACKAGE_CLI=pass cases=4 inputs=archives producer=unexecuted empty=refused unit=bound invalid-elf=refused historical-source-gate=blocks-artifact' "$output")" -eq 1 ] \
+            || fail 'Debian package CLI fixture results differ'
     fi
     [ "$(sha256sum "${sources[@]}")" = "$source_before" ] \
         || fail 'Debian polkit-test source changed during execution'

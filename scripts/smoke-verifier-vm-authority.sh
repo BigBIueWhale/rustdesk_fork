@@ -4131,6 +4131,20 @@ elif [ "$MODE" = android-owner-tests ]; then
 elif { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; }; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("repo/build.py=$DEBIAN_CONTROL_SOURCE")
+    if [ "$MODE" = debian-polkit-tests ]; then
+        debian_cli_baseline=$VM_TRANSIENT/debian-package-cli-baseline.py
+        (
+            set -o noclobber
+            git_closed -C "$REPO_ROOT" show \
+                94de3ac8de47763c7a99f941c366261e512e5c64:scripts/verify-debian-package-authority.py \
+                >"$debian_cli_baseline"
+        ) || fail 'cannot export the historical Debian package CLI baseline'
+        [ "$(/usr/bin/sha256sum "$debian_cli_baseline" | /usr/bin/awk '{print $1}')" = \
+            430e16b6c0a74d431d12be633a9794408843e17399912cb10c892545cf4ee230 ] \
+            || fail 'historical Debian package CLI baseline digest differs'
+        /usr/bin/chmod 400 "$debian_cli_baseline"
+        lifecycle_payload_grafts+=("repo/scripts/debian-package-cli-baseline.py=$debian_cli_baseline")
+    fi
     if [ "$MODE" = debian-elf-role-tests ]; then
         debian_elf_baseline=$VM_TRANSIENT/debian-elf-role-baseline.py
         (

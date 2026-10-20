@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import ast
 import copy
 import ctypes
 import gzip
@@ -886,774 +885,6 @@ def validate_deb(deb, expected_systemd_unit=None, expected_polkit_policy=None):
     validate_md5sums(data_tar, data_members, control_tar, control_members, str(deb))
 
 
-def ast_reference_name(value):
-    parts = []
-    while isinstance(value, ast.Attribute):
-        parts.append(value.attr)
-        value = value.value
-    if isinstance(value, ast.Name):
-        parts.append(value.id)
-        return ".".join(reversed(parts))
-    return ""
-
-
-def ast_call_name(call):
-    return ast_reference_name(call.func)
-
-
-def ast_string(node):
-    if sys.version_info >= (3, 8):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return node.value
-    elif isinstance(node, ast.Str):
-        return node.s
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        left = ast_string(node.left)
-        right = ast_string(node.right)
-        if left is not None and right is not None:
-            return left + right
-    if isinstance(node, ast.FormattedValue):
-        value = ast_string(node.value)
-        format_spec = "" if node.format_spec is None else ast_string(node.format_spec)
-        if value is None or format_spec is None:
-            return None
-        if node.conversion == ord("r"):
-            value = repr(value)
-        elif node.conversion == ord("a"):
-            value = ascii(value)
-        elif node.conversion not in (-1, ord("s")):
-            return None
-        try:
-            return format(value, format_spec)
-        except (ValueError, TypeError):
-            return None
-    if isinstance(node, ast.JoinedStr):
-        values = [ast_string(value) for value in node.values]
-        if all(value is not None for value in values):
-            return "".join(values)
-    if (isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "join"
-            and len(node.args) == 1
-            and not node.keywords
-            and isinstance(node.args[0], (ast.List, ast.Tuple))):
-        separator = ast_string(node.func.value)
-        values = [ast_string(value) for value in node.args[0].elts]
-        if separator is not None and all(value is not None for value in values):
-            return separator.join(values)
-    return None
-
-
-def ast_is_true(node):
-    if sys.version_info >= (3, 8):
-        return isinstance(node, ast.Constant) and node.value is True
-    return isinstance(node, ast.NameConstant) and node.value is True
-
-
-def ast_is_integer(node, expected):
-    if sys.version_info >= (3, 8):
-        return isinstance(node, ast.Constant) and type(node.value) is int and node.value == expected
-    return isinstance(node, ast.Num) and type(node.n) is int and node.n == expected
-
-
-def named_calls(tree, name):
-    return [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and ast_call_name(node) == name
-    ]
-
-
-def direct_call_statement(statement, name, arguments):
-    if (not isinstance(statement, ast.Expr)
-            or not isinstance(statement.value, ast.Call)
-            or ast_call_name(statement.value) != name
-            or statement.value.keywords
-            or len(statement.value.args) != len(arguments)):
-        return False
-    return all(
-        isinstance(actual, ast.Name) and actual.id == expected[1]
-        if expected[0] == "name"
-        else ast_string(actual) == expected[1]
-        for actual, expected in zip(statement.value.args, arguments)
-    )
-
-
-def single_name_fstring(node, prefix, variable, suffix):
-    if not isinstance(node, ast.JoinedStr) or len(node.values) != 3:
-        return False
-    first, middle, last = node.values
-    return (
-        ast_string(first) == prefix
-        and isinstance(middle, ast.FormattedValue)
-        and middle.conversion == -1
-        and middle.format_spec is None
-        and isinstance(middle.value, ast.Name)
-        and middle.value.id == variable
-        and ast_string(last) == suffix
-    )
-
-
-def validate_build_py(repo):
-    path = repo / "build.py"
-    text = path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(text, filename=str(path))
-    except SyntaxError as err:
-        raise ValidationError(f"build.py cannot be parsed: {err}") from err
-    parents = {
-        child: parent
-        for parent in ast.walk(tree)
-        for child in ast.iter_child_nodes(parent)
-    }
-    package_authority_names = (
-        "system2",
-        "ffi_bindgen_function_refactor",
-        "build_debian_archive",
-        "stage_debian_control_files",
-        "finalize_debian_package_tree",
-        "build_flutter_deb",
-    )
-    process_authority_names = ("os", "sys", "subprocess")
-    expected_imports = (
-        ("import", None, 0, (("os", None),)),
-        ("import", None, 0, (("pathlib", None),)),
-        ("import", None, 0, (("platform", None),)),
-        ("import", None, 0, (("zipfile", None),)),
-        ("import", None, 0, (("urllib.request", None),)),
-        ("import", None, 0, (("shutil", None),)),
-        ("import", None, 0, (("hashlib", None),)),
-        ("import", None, 0, (("argparse", None),)),
-        ("import", None, 0, (("re", None),)),
-        ("import", None, 0, (("subprocess", None),)),
-        ("import", None, 0, (("stat", None),)),
-        ("import", None, 0, (("sys", None),)),
-        ("from", "pathlib", 0, (("Path", None),)),
-    )
-    import_nodes = [
-        node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))
-    ]
-    actual_imports = []
-    for node in tree.body:
-        if isinstance(node, ast.Import):
-            actual_imports.append((
-                "import", None, 0,
-                tuple((item.name, item.asname) for item in node.names),
-            ))
-        elif isinstance(node, ast.ImportFrom):
-            actual_imports.append((
-                "from", node.module, node.level,
-                tuple((item.name, item.asname) for item in node.names),
-            ))
-    if (tuple(actual_imports) != expected_imports
-            or len(import_nodes) != len(actual_imports)
-            or any(not isinstance(parents.get(node), ast.Module) for node in import_nodes)):
-        raise ValidationError("build.py import inventory differs from the exact build authority")
-    if any(
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        and node.decorator_list
-        for node in ast.walk(tree)
-    ):
-        raise ValidationError("build.py authority must not use decorators")
-    cargo = (repo / "Cargo.toml").read_text(encoding="utf-8")
-    cmake = (repo / "flutter/linux/CMakeLists.txt").read_text(encoding="utf-8")
-    build_debian = (repo / "scripts/build-debian.sh").read_text(encoding="utf-8")
-    if re.search(r"(?m)^\s*rpath\s*=\s*true\s*$", cargo):
-        raise ValidationError("Cargo.toml release profile must not enable Rust rpath")
-    if not re.search(r"(?m)^\s*rpath\s*=\s*false\s*$", cargo):
-        raise ValidationError("Cargo.toml release profile must pin rpath = false")
-    if 'os.environ["CARGO_PROFILE_RELEASE_RPATH"] = "false"' not in text:
-        raise ValidationError("build.py must force release Cargo rpath off")
-    if "export CARGO_PROFILE_RELEASE_RPATH=false" not in build_debian:
-        raise ValidationError("build-debian.sh must force release Cargo rpath off inside the package build")
-    if "BUILD_WITH_INSTALL_RPATH TRUE" not in cmake or 'INSTALL_RPATH "$ORIGIN"' not in cmake:
-        raise ValidationError("flutter/linux/CMakeLists.txt must make plugin RUNPATH bundle-relative")
-
-    required_definitions = {
-        "system2",
-        "ffi_bindgen_function_refactor",
-        "build_debian_archive",
-        "stage_debian_control_files",
-        "finalize_debian_package_tree",
-        "build_flutter_deb",
-    }
-    authority_definitions = {}
-    for name in required_definitions:
-        definitions = [
-            node for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
-        ]
-        if (len(definitions) != 1
-                or not isinstance(definitions[0], ast.FunctionDef)
-                or not isinstance(parents.get(definitions[0]), ast.Module)):
-            raise ValidationError(f"build.py must define one synchronous top-level {name} authority")
-        authority_definitions[name] = definitions[0]
-
-    system_defs = [
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "system2"
-    ]
-    if len(system_defs) != 1:
-        raise ValidationError("build.py must define one exact shell wrapper")
-    system_arguments = system_defs[0].args
-    if ([argument.arg for argument in system_arguments.args] != ["cmd"]
-            or getattr(system_arguments, "posonlyargs", [])
-            or system_arguments.kwonlyargs
-            or system_arguments.vararg is not None
-            or system_arguments.kwarg is not None
-            or system_arguments.defaults
-            or system_arguments.kw_defaults
-            or len(system_defs[0].body) != 2):
-        raise ValidationError("build.py shell wrapper signature or body is not exact")
-    system_assignment, system_failure = system_defs[0].body
-    if (not isinstance(system_assignment, ast.Assign)
-            or len(system_assignment.targets) != 1
-            or not isinstance(system_assignment.targets[0], ast.Name)
-            or system_assignment.targets[0].id != "exit_code"
-            or not isinstance(system_assignment.value, ast.Call)
-            or ast_call_name(system_assignment.value) != "os.system"
-            or system_assignment.value.keywords
-            or len(system_assignment.value.args) != 1
-            or not isinstance(system_assignment.value.args[0], ast.Name)
-            or system_assignment.value.args[0].id != "cmd"):
-        raise ValidationError("build.py shell wrapper process call is not exact")
-    if (not isinstance(system_failure, ast.If)
-            or not isinstance(system_failure.test, ast.Compare)
-            or not isinstance(system_failure.test.left, ast.Name)
-            or system_failure.test.left.id != "exit_code"
-            or len(system_failure.test.ops) != 1
-            or not isinstance(system_failure.test.ops[0], ast.NotEq)
-            or len(system_failure.test.comparators) != 1
-            or not ast_is_integer(system_failure.test.comparators[0], 0)
-            or len(system_failure.body) != 2
-            or system_failure.orelse
-            or not isinstance(system_failure.body[0], ast.Expr)
-            or not isinstance(system_failure.body[0].value, ast.Call)
-            or ast_call_name(system_failure.body[0].value) != "sys.stderr.write"
-            or len(system_failure.body[0].value.args) != 1
-            or system_failure.body[0].value.keywords
-            or not isinstance(system_failure.body[1], ast.Expr)
-            or not isinstance(system_failure.body[1].value, ast.Call)
-            or ast_call_name(system_failure.body[1].value) != "sys.exit"
-            or len(system_failure.body[1].value.args) != 1
-            or system_failure.body[1].value.keywords
-            or not isinstance(system_failure.body[1].value.args[0], ast.UnaryOp)
-            or not isinstance(system_failure.body[1].value.args[0].op, ast.USub)
-            or not ast_is_integer(system_failure.body[1].value.args[0].operand, 1)):
-        raise ValidationError("build.py shell wrapper failure handling is not exact")
-
-    ffi_defs = [
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "ffi_bindgen_function_refactor"
-    ]
-    if (len(ffi_defs) != 1
-            or ffi_defs[0].args.args
-            or getattr(ffi_defs[0].args, "posonlyargs", [])
-            or ffi_defs[0].args.kwonlyargs
-            or ffi_defs[0].args.vararg is not None
-            or ffi_defs[0].args.kwarg is not None
-            or ffi_defs[0].args.defaults
-            or ffi_defs[0].args.kw_defaults
-            or len(ffi_defs[0].body) != 1
-            or not direct_call_statement(
-                ffi_defs[0].body[0],
-                "system2",
-                ((
-                    "string",
-                    'sed -i "s/ffi.NativeFunction<ffi.Bool Function(DartPort/'
-                    'ffi.NativeFunction<ffi.Uint8 Function(DartPort/g" '
-                    "flutter/lib/generated_bridge.dart",
-                ),),
-            )):
-        raise ValidationError("build.py FFI refactor helper is not exact")
-
-    archive_defs = [
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "build_debian_archive"
-    ]
-    if len(archive_defs) != 1 or len(archive_defs[0].body) != 1:
-        raise ValidationError("build.py must define one single-operation Debian archive boundary")
-    archive_arguments = archive_defs[0].args
-    if ([argument.arg for argument in archive_arguments.args] != ["staging", "destination"]
-            or getattr(archive_arguments, "posonlyargs", [])
-            or archive_arguments.kwonlyargs
-            or archive_arguments.vararg is not None
-            or archive_arguments.kwarg is not None
-            or archive_arguments.defaults
-            or archive_arguments.kw_defaults):
-        raise ValidationError("build.py Debian archive boundary must accept only staging and destination")
-    statement = archive_defs[0].body[0]
-    if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
-        raise ValidationError("build.py Debian archive boundary must contain one checked process call")
-    archive_run = statement.value
-    if ast_call_name(archive_run) != "subprocess.run" or len(archive_run.args) != 1:
-        raise ValidationError("build.py Debian archive boundary must use subprocess.run with one argv")
-    argv = archive_run.args[0]
-    if not isinstance(argv, (ast.List, ast.Tuple)) or len(argv.elts) != 5:
-        raise ValidationError("build.py Debian archive boundary has an unexpected argv shape")
-    if [ast_string(item) for item in argv.elts[:3]] != [
-        "dpkg-deb", "--root-owner-group", "-b"
-    ]:
-        raise ValidationError("build.py Debian archive boundary does not pin dpkg-deb ownership normalization")
-    for item, argument in zip(argv.elts[3:], ("staging", "destination")):
-        if (not isinstance(item, ast.Call)
-                or ast_call_name(item) != "str"
-                or len(item.args) != 1
-                or not isinstance(item.args[0], ast.Name)
-                or item.args[0].id != argument):
-            raise ValidationError("build.py Debian archive boundary does not bind its explicit paths")
-    check_keywords = [keyword for keyword in archive_run.keywords if keyword.arg == "check"]
-    if (len(check_keywords) != 1
-            or not ast_is_true(check_keywords[0].value)
-            or len(archive_run.keywords) != 1):
-        raise ValidationError("build.py Debian archive boundary must use check=True and no other process options")
-
-    subprocess_runs = named_calls(tree, "subprocess.run")
-    if len(subprocess_runs) != 2 or archive_run not in subprocess_runs:
-        raise ValidationError("build.py must contain only the Debian archiver and PE canonicalizer process launches")
-    canonicalizer_run = next(call for call in subprocess_runs if call is not archive_run)
-    if (len(canonicalizer_run.args) != 1
-            or len(canonicalizer_run.keywords) != 1
-            or canonicalizer_run.keywords[0].arg != "check"
-            or not ast_is_true(canonicalizer_run.keywords[0].value)):
-        raise ValidationError("build.py PE canonicalizer process launch has an unexpected shape")
-    canonicalizer_argv = canonicalizer_run.args[0]
-    if not isinstance(canonicalizer_argv, (ast.List, ast.Tuple)) or len(canonicalizer_argv.elts) != 5:
-        raise ValidationError("build.py PE canonicalizer argv has an unexpected shape")
-    executable = canonicalizer_argv.elts[0]
-    if (not isinstance(executable, ast.Attribute)
-            or executable.attr != "executable"
-            or not isinstance(executable.value, ast.Name)
-            or executable.value.id != "sys"
-            or [ast_string(item) for item in canonicalizer_argv.elts[1:3]]
-            != ["scripts/canonicalize-pe.py", "--output"]):
-        raise ValidationError("build.py PE canonicalizer executable is not exact")
-    for item, argument in zip(canonicalizer_argv.elts[3:], ("pe", "canonicalizer_input")):
-        if (not isinstance(item, ast.Call)
-                or ast_call_name(item) != "str"
-                or len(item.args) != 1
-                or item.keywords
-                or not isinstance(item.args[0], ast.Name)
-                or item.args[0].id != argument):
-            raise ValidationError("build.py PE canonicalizer paths are not exact")
-    forbidden_process_members = (
-        "Popen",
-        "Process",
-        "ProcessPoolExecutor",
-        "_exit",
-        "call",
-        "check_call",
-        "check_output",
-        "create_subprocess_exec",
-        "create_subprocess_shell",
-        "execl",
-        "execle",
-        "execlp",
-        "execlpe",
-        "execv",
-        "execve",
-        "execvp",
-        "execvpe",
-        "fork",
-        "forkpty",
-        "getoutput",
-        "getstatusoutput",
-        "popen",
-        "posix_spawn",
-        "posix_spawnp",
-        "spawn",
-        "spawnl",
-        "spawnle",
-        "spawnlp",
-        "spawnlpe",
-        "spawnv",
-        "spawnve",
-        "spawnvp",
-        "spawnvpe",
-        "startfile",
-        "system",
-        "vfork",
-    )
-    forbidden_dynamic_calls = (
-        "globals",
-        "locals",
-        "vars",
-        "getattr",
-        "setattr",
-        "delattr",
-        "eval",
-        "exec",
-        "compile",
-        "__import__",
-    )
-    if any(named_calls(tree, name) for name in forbidden_dynamic_calls):
-        raise ValidationError("build.py retains a dynamic namespace or evaluation API")
-    if len(named_calls(tree, "os.system")) != 1:
-        raise ValidationError("build.py must confine shell execution to its sole system2 wrapper")
-    direct_call_functions = {
-        node.func for node in ast.walk(tree) if isinstance(node, ast.Call)
-    }
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute):
-            reference = ast_reference_name(node)
-            reference_parts = reference.split(".") if reference is not None else ()
-            if (reference not in ("os.system", "subprocess.run")
-                    and (node.attr in forbidden_process_members
-                         or "subprocess" in reference_parts)):
-                raise ValidationError("build.py retains an unsupported process-launch authority")
-        if (isinstance(node, ast.Attribute)
-                and ast_reference_name(node) in ("subprocess.run", "os.system")
-                and node not in direct_call_functions):
-            raise ValidationError("build.py process callable references must be direct calls")
-        if (isinstance(node, ast.Name)
-                and isinstance(node.ctx, ast.Load)
-                and node.id in package_authority_names
-                and node not in direct_call_functions):
-            raise ValidationError("build.py package authority callable references must be direct calls")
-        if (isinstance(node, ast.Name)
-                and isinstance(node.ctx, (ast.Store, ast.Del))
-                and node.id in process_authority_names + package_authority_names):
-            raise ValidationError("build.py must not rebind package or process authority names")
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id == "subprocess":
-            parent = parents.get(node)
-            if (not isinstance(parent, ast.Attribute)
-                    or parent.value is not node
-                    or ast_reference_name(parent) != "subprocess.run"
-                    or parent not in direct_call_functions):
-                raise ValidationError("build.py subprocess module references must be exact direct run calls")
-        if (isinstance(node, ast.Name)
-                and isinstance(node.ctx, ast.Load)
-                and node.id in forbidden_dynamic_calls + ("__builtins__",)):
-            raise ValidationError("build.py dynamic namespace APIs must not be referenced")
-        if (isinstance(node, ast.Attribute)
-                and (ast_reference_name(node) in ("sys.modules", "sys._getframe")
-                     or node.attr in (
-                         "__dict__",
-                         "__getattr__",
-                         "__getattribute__",
-                         "__globals__",
-                         "__code__",
-                         "__delattr__",
-                         "__setattr__",
-                         "f_globals",
-                         "f_locals",
-                     ))):
-            raise ValidationError("build.py must not reach a module namespace dynamically")
-        if (isinstance(node, ast.arg)
-                and node.arg in process_authority_names + package_authority_names):
-            raise ValidationError("build.py must not shadow package authority names in parameters")
-        if (isinstance(node, ast.ExceptHandler)
-                and node.name in process_authority_names + package_authority_names):
-            raise ValidationError("build.py must not shadow package authority names in exception handlers")
-        if (isinstance(node, ast.ClassDef)
-                and node.name in process_authority_names + package_authority_names):
-            raise ValidationError("build.py must not shadow a package authority name with a class")
-        if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and node.name in process_authority_names):
-            raise ValidationError("build.py must not shadow a process authority module with a function")
-    dpkg_mentions = [
-        node for node in ast.walk(tree)
-        if ast_string(node) is not None and "dpkg-deb" in ast_string(node)
-    ]
-    if len(dpkg_mentions) != 1 or dpkg_mentions[0] is not argv.elts[0]:
-        raise ValidationError("build.py must contain one executable dpkg-deb authority")
-
-    stage_calls = named_calls(tree, "stage_debian_control_files")
-    if (len(stage_calls) != 1
-            or len(stage_calls[0].args) != 3
-            or not isinstance(stage_calls[0].args[0], ast.Name)
-            or stage_calls[0].args[0].id != "version"
-            or [ast_string(item) for item in stage_calls[0].args[1:]] != ["../res/DEBIAN", "tmpdeb/DEBIAN"]):
-        raise ValidationError("build.py must stage the exact Debian control inventory once")
-    finalizer_calls = named_calls(tree, "finalize_debian_package_tree")
-    if (len(finalizer_calls) != 1
-            or len(finalizer_calls[0].args) != 1
-            or ast_string(finalizer_calls[0].args[0]) != "tmpdeb"):
-        raise ValidationError("build.py must canonicalize the sole Debian package tree once")
-    archive_calls = named_calls(tree, "build_debian_archive")
-    if (len(archive_calls) != 1
-            or [ast_string(item) for item in archive_calls[0].args] != ["tmpdeb", "rustdesk.deb"]):
-        raise ValidationError("build.py must invoke the sole Debian archive boundary once")
-
-    flutter_defs = [
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "build_flutter_deb"
-    ]
-    if len(flutter_defs) != 1:
-        raise ValidationError("build.py must define one Flutter Debian constructor")
-    flutter_arguments = flutter_defs[0].args
-    if ([argument.arg for argument in flutter_arguments.args] != ["version", "features"]
-            or getattr(flutter_arguments, "posonlyargs", [])
-            or flutter_arguments.kwonlyargs
-            or flutter_arguments.vararg is not None
-            or flutter_arguments.kwarg is not None
-            or flutter_arguments.defaults
-            or flutter_arguments.kw_defaults):
-        raise ValidationError("build.py Flutter Debian constructor must accept only version and features")
-    flutter_calls = sorted(
-        (node for node in ast.walk(flutter_defs[0]) if isinstance(node, ast.Call)),
-        key=lambda node: (node.lineno, node.col_offset),
-    )
-    if (stage_calls[0] not in flutter_calls
-            or finalizer_calls[0] not in flutter_calls
-            or archive_calls[0] not in flutter_calls):
-        raise ValidationError("build.py Debian staging, finalization, and archive calls must share the Flutter constructor")
-    flutter_body = flutter_defs[0].body
-    if any(isinstance(node, (ast.Return, ast.Raise)) for node in ast.walk(flutter_defs[0])):
-        raise ValidationError("build.py Flutter Debian constructor must not contain explicit terminating control flow")
-    if any(
-        ast_call_name(node) in ("exit", "quit", "sys.exit", "os._exit")
-        for node in ast.walk(flutter_defs[0])
-        if isinstance(node, ast.Call)
-    ):
-        raise ValidationError("build.py Flutter Debian constructor must not call a process-termination API")
-    direct_call_positions = {
-        statement.value: index
-        for index, statement in enumerate(flutter_body)
-        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call)
-    }
-    if any(call not in direct_call_positions for call in (stage_calls[0], finalizer_calls[0], archive_calls[0])):
-        raise ValidationError(
-            "build.py must stage, finalize, and archive as direct Flutter constructor operations"
-        )
-    package_start = direct_call_positions[stage_calls[0]]
-    package_prefix = flutter_body[:package_start]
-    if len(package_prefix) != 24:
-        raise ValidationError("build.py Flutter Debian constructor pre-package inventory differs")
-    cargo_block = package_prefix[0]
-    if (not isinstance(cargo_block, ast.If)
-            or not isinstance(cargo_block.test, ast.UnaryOp)
-            or not isinstance(cargo_block.test.op, ast.Not)
-            or not isinstance(cargo_block.test.operand, ast.Name)
-            or cargo_block.test.operand.id != "skip_cargo"
-            or len(cargo_block.body) != 2
-            or cargo_block.orelse):
-        raise ValidationError("build.py Flutter Debian constructor Cargo block is not exact")
-    cargo_statement = cargo_block.body[0]
-    if (not isinstance(cargo_statement, ast.Expr)
-            or not isinstance(cargo_statement.value, ast.Call)
-            or ast_call_name(cargo_statement.value) != "system2"
-            or cargo_statement.value.keywords
-            or len(cargo_statement.value.args) != 1
-            or not single_name_fstring(
-                cargo_statement.value.args[0],
-                "cargo build --locked --features ",
-                "features",
-                " --lib --release",
-            )
-            or not direct_call_statement(
-                cargo_block.body[1], "ffi_bindgen_function_refactor", ()
-            )):
-        raise ValidationError("build.py Flutter Debian constructor Cargo operations are not exact")
-    if not direct_call_statement(package_prefix[1], "os.chdir", (("string", "flutter"),)):
-        raise ValidationError("build.py Flutter Debian constructor must enter the exact Flutter directory")
-    static_package_commands = (
-        "/bin/rm -rf build/linux",
-        "flutter build linux --release",
-        "/bin/rm -rf tmpdeb",
-        "mkdir -p tmpdeb/usr/share/rustdesk",
-        "mkdir -p tmpdeb/etc/init.d/",
-        "mkdir -p tmpdeb/usr/bin/",
-        "mkdir -p tmpdeb/usr/lib/systemd/system/",
-        "mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/",
-        "mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/",
-        "mkdir -p tmpdeb/usr/share/applications/",
-        "mkdir -p tmpdeb/usr/share/polkit-1/actions",
-    )
-    for statement, command in zip(package_prefix[2:13], static_package_commands):
-        if not direct_call_statement(statement, "system2", (("string", command),)):
-            raise ValidationError("build.py Flutter Debian constructor setup operations are not exact")
-    bundle_copy = package_prefix[13]
-    if (not isinstance(bundle_copy, ast.Expr)
-            or not isinstance(bundle_copy.value, ast.Call)
-            or ast_call_name(bundle_copy.value) != "system2"
-            or bundle_copy.value.keywords
-            or len(bundle_copy.value.args) != 1
-            or not single_name_fstring(
-                bundle_copy.value.args[0],
-                "cp -r ",
-                "flutter_build_dir",
-                "/* tmpdeb/usr/share/rustdesk/",
-            )):
-        raise ValidationError("build.py Flutter Debian bundle copy is not exact")
-    resource_copy_commands = (
-        "cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service",
-        "cp -r ../res/service-managers/. tmpdeb/usr/share/rustdesk/files/",
-        "cp ../res/rustdesk.init tmpdeb/etc/init.d/rustdesk",
-        "cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png",
-        "cp ../res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/rustdesk.svg",
-        "cp ../res/rustdesk.desktop tmpdeb/usr/share/applications/rustdesk.desktop",
-        "cp ../res/rustdesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop",
-        "cp ../res/com.carriez.RustDesk.policy tmpdeb/usr/share/polkit-1/actions/",
-    )
-    for statement, command in zip(package_prefix[14:22], resource_copy_commands):
-        if not direct_call_statement(statement, "system2", (("string", command),)):
-            raise ValidationError("build.py Flutter Debian resource copies are not exact")
-    if not direct_call_statement(
-        package_prefix[22],
-        "shutil.copyfile",
-        (
-            ("string", "tmpdeb/usr/share/rustdesk/rustdesk"),
-            ("string", "tmpdeb/usr/share/rustdesk/rustdesk-service-child"),
-        ),
-    ):
-        raise ValidationError("build.py Flutter Debian service-child copy is not exact")
-    if not direct_call_statement(
-        package_prefix[23],
-        "os.symlink",
-        (
-            ("string", "../share/rustdesk/rustdesk"),
-            ("string", "tmpdeb/usr/bin/rustdesk"),
-        ),
-    ):
-        raise ValidationError("build.py Flutter Debian command symlink is not exact")
-    if [
-        direct_call_positions[stage_calls[0]],
-        direct_call_positions[finalizer_calls[0]],
-        direct_call_positions[archive_calls[0]],
-    ] != [package_start, package_start + 1, package_start + 2]:
-        raise ValidationError(
-            "build.py must stage, finalize, and archive as contiguous direct operations"
-        )
-    package_tail = flutter_body[package_start + 3:]
-    if (len(package_tail) != 3
-            or any(not isinstance(item, ast.Expr) or not isinstance(item.value, ast.Call) for item in package_tail)):
-        raise ValidationError("build.py Debian archive boundary must have one exact publication tail")
-    cleanup_call, rename_call, chdir_call = [item.value for item in package_tail]
-    if (ast_call_name(cleanup_call) != "system2"
-            or len(cleanup_call.args) != 1
-            or cleanup_call.keywords
-            or ast_string(cleanup_call.args[0]) != "/bin/rm -rf tmpdeb/"):
-        raise ValidationError("build.py must remove the finalized staging tree immediately after archiving")
-    if (ast_call_name(rename_call) != "os.rename"
-            or len(rename_call.args) != 2
-            or rename_call.keywords
-            or ast_string(rename_call.args[0]) != "rustdesk.deb"):
-        raise ValidationError("build.py Debian archive publication rename is not exact")
-    rename_destination = rename_call.args[1]
-    if (not isinstance(rename_destination, ast.BinOp)
-            or not isinstance(rename_destination.op, ast.Mod)
-            or ast_string(rename_destination.left) != "../rustdesk-%s.deb"
-            or not isinstance(rename_destination.right, ast.Name)
-            or rename_destination.right.id != "version"):
-        raise ValidationError("build.py Debian archive publication destination is not version-bound")
-    if (ast_call_name(chdir_call) != "os.chdir"
-            or len(chdir_call.args) != 1
-            or chdir_call.keywords
-            or ast_string(chdir_call.args[0]) != ".."):
-        raise ValidationError("build.py Debian constructor must end by returning to the repository root")
-    clean_lines = [
-        node.lineno for node in flutter_calls
-        if ast_call_name(node) == "system2"
-        and len(node.args) == 1
-        and ast_string(node.args[0]) == "/bin/rm -rf build/linux"
-    ]
-    build_lines = [
-        node.lineno for node in flutter_calls
-        if ast_call_name(node) == "system2"
-        and len(node.args) == 1
-        and ast_string(node.args[0]) == "flutter build linux --release"
-    ]
-    if len(clean_lines) != 1 or len(build_lines) != 1 or clean_lines[0] >= build_lines[0]:
-        raise ValidationError("build.py must remove the Linux Flutter output before rebuilding it")
-
-    system2_owners = {}
-    for call in named_calls(tree, "system2"):
-        owner = parents.get(call)
-        while owner is not None and not isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            owner = parents.get(owner)
-        owner_name = owner.name if owner is not None else "<module>"
-        system2_owners[owner_name] = system2_owners.get(owner_name, 0) + 1
-    if system2_owners != {
-        "ffi_bindgen_function_refactor": 1,
-        "build_flutter_deb": 22,
-        "build_flutter_dmg": 4,
-        "build_flutter_windows": 2,
-    }:
-        raise ValidationError("build.py shell execution ownership inventory differs")
-
-    module = load_build_module(repo)
-    for name, definition in authority_definitions.items():
-        function = vars(module).get(name)
-        if (not isinstance(function, types.FunctionType)
-                or function.__name__ != name
-                or function.__code__.co_firstlineno != definition.lineno):
-            raise ValidationError(f"loaded build.py {name} authority differs from its checked definition")
-    if {f"./{name}" for name in module.DEBIAN_CONFFILES} != set(CONFFILE_PATHS):
-        raise ValidationError("build.py and artifact verifier conffile inventories differ")
-    if {f"./{name}" for name in module.DEBIAN_FLUTTER_LIBRARIES} != FLUTTER_LIBRARIES:
-        raise ValidationError("build.py and artifact verifier Flutter library inventories differ")
-    if {f"./{name}" for name in module.DEBIAN_DATA_REQUIRED_DIRECTORIES} | {"."} != DATA_REQUIRED_DIRECTORIES:
-        raise ValidationError("build.py and artifact verifier directory inventories differ")
-    if {f"./{name}" for name in module.DEBIAN_DATA_REQUIRED_FILES} != DATA_REQUIRED_FILES:
-        raise ValidationError("build.py and artifact verifier file inventories differ")
-    if {
-        f"./{name}": mode for name, mode in module.DEBIAN_DATA_MODES.items()
-    } != {
-        name: 0o711 if name == SERVICE_CHILD_BINARY else 0o755
-        for name in DATA_EXECUTABLES
-    }:
-        raise ValidationError("build.py and artifact verifier executable mode inventories differ")
-    if {
-        f"./{name}": target
-        for name, target in module.DEBIAN_DATA_REQUIRED_SYMLINKS.items()
-    } != DATA_REQUIRED_SYMLINKS:
-        raise ValidationError("build.py and artifact verifier symbolic-link inventories differ")
-    if f"./{module.DEBIAN_VARIABLE_DATA_ROOT}" != DATA_VARIABLE_ROOT:
-        raise ValidationError("build.py and artifact verifier variable data roots differ")
-
-    option_strings = {
-        option
-        for action in module.make_parser()._actions
-        for option in action.option_strings
-    }
-    if "--package" in option_strings or hasattr(module, "build_deb_from_folder"):
-        raise ValidationError("build.py retains an unsupported alternate package API")
-    forbidden_literals = ("cargo --locked bundle", "cp -a DEBIAN", "dpkg-deb -R")
-    strings = [ast_string(node) for node in ast.walk(tree)]
-    for token in forbidden_literals:
-        if any(value is not None and token in value for value in strings):
-            raise ValidationError(f"build.py retains an unsupported Debian package operation: {token}")
-
-    scripts = [f"res/DEBIAN/{name}" for name in ("preinst", "postinst", "prerm", "postrm")]
-    scripts.extend((
-        "res/rustdesk.init",
-        "res/service-managers/openrc/rustdesk",
-        "res/service-managers/runit/run",
-        "res/service-managers/manual/rustdesk-service",
-    ))
-    try:
-        index = subprocess.check_output(
-            ["git", "-C", str(repo), "ls-files", "-s", "--", *scripts],
-            universal_newlines=True,
-        ).splitlines()
-    except (OSError, subprocess.CalledProcessError) as err:
-        raise ValidationError(f"cannot inspect Debian maintainer-script Git modes: {err}") from err
-    if len(index) != len(scripts) or any(not line.startswith("100755 ") for line in index):
-        raise ValidationError(
-            "all Debian lifecycle scripts and service-manager templates must be tracked as executable regular files"
-        )
-
-    lifecycle_validation = subprocess.run(
-        [
-            sys.executable,
-            str(repo / "scripts/verify-debian-maintainer-scripts.py"),
-            "--scripts-dir", str(repo / "res/DEBIAN"),
-            "--init-script", str(repo / "res/rustdesk.init"),
-            "--openrc-script", str(repo / "res/service-managers/openrc/rustdesk"),
-            "--runit-run", str(repo / "res/service-managers/runit/run"),
-            "--manual-run", str(repo / "res/service-managers/manual/rustdesk-service"),
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-    )
-    if lifecycle_validation.returncode != 0:
-        detail = lifecycle_validation.stderr.strip() or lifecycle_validation.stdout.strip()
-        raise ValidationError(
-            f"Debian maintainer-script lifecycle authority differs: {detail}"
-        )
-
-
 def write_file(path, contents, mode):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(contents, encoding="utf-8")
@@ -2031,16 +1262,6 @@ def expect_operation_failure(operation, expected):
     raise ValidationError("production Debian staging accepted an invalid tree")
 
 
-def expect_source_validation_failure(operation, expected):
-    try:
-        operation()
-    except ValidationError as err:
-        if expected in str(err):
-            return
-        raise ValidationError(f"source validation failed for {err!s}, expected {expected!r}") from err
-    raise ValidationError("source validator accepted an invalid Debian constructor")
-
-
 def expect_runpath_failure(dynamic_entries, string_table, expected, name="./usr/share/rustdesk/lib/librustdesk.so"):
     try:
         actual, present = dynamic_runpath(dynamic_entries, string_table, name, "synthetic-runpath")
@@ -2050,408 +1271,6 @@ def expect_runpath_failure(dynamic_entries, string_table, expected, name="./usr/
             return
         raise ValidationError(f"RUNPATH parser failed for {err!s}, expected {expected!r}") from err
     raise ValidationError("RUNPATH parser accepted an invalid dynamic-tag inventory")
-
-
-def replace_once(text, old, new):
-    if text.count(old) != 1:
-        raise ValidationError(f"source mutation anchor is not unique: {old!r}")
-    return text.replace(old, new, 1)
-
-
-def run_source_gate_mutations(repo, tmp):
-    fixture = tmp / "source-gate"
-    paths = (
-        "build.py",
-        "Cargo.toml",
-        "flutter/linux/CMakeLists.txt",
-        "scripts/build-debian.sh",
-        "scripts/verify-debian-maintainer-scripts.py",
-        "res/DEBIAN/preinst",
-        "res/DEBIAN/postinst",
-        "res/DEBIAN/prerm",
-        "res/DEBIAN/postrm",
-        "res/rustdesk.init",
-        "res/service-managers/openrc/rustdesk",
-        "res/service-managers/runit/run",
-        "res/service-managers/manual/rustdesk-service",
-    )
-    for name in paths:
-        destination = fixture / name
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(repo / name, destination)
-    try:
-        subprocess.check_call(
-            ["git", "init", "-q", str(fixture)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        subprocess.check_call(
-            [
-                "git", "-C", str(fixture), "add", "--",
-                "res/DEBIAN/preinst", "res/DEBIAN/postinst",
-                "res/DEBIAN/prerm", "res/DEBIAN/postrm",
-                "res/rustdesk.init",
-                "res/service-managers/openrc/rustdesk",
-                "res/service-managers/runit/run",
-                "res/service-managers/manual/rustdesk-service",
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.CalledProcessError) as err:
-        raise ValidationError(f"cannot construct source-gate mutation fixture: {err}") from err
-
-    build_path = fixture / "build.py"
-    baseline = build_path.read_text(encoding="utf-8")
-    mutations = (
-        (
-            replace_once(
-                baseline,
-                "def build_flutter_deb(version, features):",
-                "def replace_debian_constructor(function):\n"
-                "    return lambda version, features: None\n\n"
-                "@replace_debian_constructor\n"
-                "def build_flutter_deb(version, features):",
-            ),
-            "authority must not use decorators",
-        ),
-        (
-            "from os import spawnv\n" + baseline,
-            "import inventory differs",
-        ),
-        (
-            baseline + "\n\ndef alternate_spawn_archive():\n"
-            "    os.spawnv(os.P_WAIT, b'/usr/bin/' + b'dpkg-deb', [b'dpkg-deb', b'-b', b'tmpdeb'])\n",
-            "unsupported process-launch authority",
-        ),
-        (
-            baseline + "\n\ndef alternate_exec_archive():\n"
-            "    os.execve(b'/usr/bin/dpkg-deb', [b'dpkg-deb', b'-b', b'tmpdeb'], {})\n",
-            "unsupported process-launch authority",
-        ),
-        (
-            baseline + "\n\ndef reexported_subprocess_archive():\n"
-            "    platform.subprocess.run([b'/usr/bin/dpkg-deb', b'-b', b'tmpdeb'])\n",
-            "unsupported process-launch authority",
-        ),
-        (
-            baseline + "\n\ndef alternate_debian_archive(staging, destination):\n"
-            "    subprocess.run(['dpkg-deb', '-b', str(staging), str(destination)], check=True)\n",
-            "only the Debian archiver and PE canonicalizer process launches",
-        ),
-        (
-            baseline + "\n\ndef concatenated_debian_archive(staging, destination):\n"
-            "    subprocess.run(['dpkg' + '-deb', '-b', str(staging), str(destination)], check=True)\n",
-            "only the Debian archiver and PE canonicalizer process launches",
-        ),
-        (
-            baseline + "\n\ndef aliased_debian_archive(staging, destination):\n"
-            "    launch = subprocess.run\n"
-            "    executable = ''.join(('dpkg', '-deb'))\n"
-            "    launch([executable, '-b', str(staging), str(destination)], check=True)\n",
-            "process callable references must be direct calls",
-        ),
-        (
-            baseline + "\n\ndef alternate_shell_debian_archive():\n"
-            "    system2('dpkg-deb -b tmpdeb alternate.deb')\n",
-            "one executable dpkg-deb authority",
-        ),
-        (
-            baseline + "\n\ndef alternate_fstring_debian_archive():\n"
-            "    system2(f'dpkg-deb -b tmpdeb alternate.deb')\n",
-            "one executable dpkg-deb authority",
-        ),
-        (
-            baseline + "\n\ndef alternate_interpolated_archive():\n"
-            "    system2(f\"{'dpkg'}-deb -b tmpdeb alternate.deb\")\n",
-            "one executable dpkg-deb authority",
-        ),
-        (
-            baseline + "\n\ndef alternate_joined_debian_archive():\n"
-            "    system2(''.join(('dpkg', '-deb -b tmpdeb alternate.deb')))\n",
-            "one executable dpkg-deb authority",
-        ),
-        (
-            baseline + "\n\ndef alternate_percent_archive():\n"
-            "    system2('%s-deb -b tmpdeb alternate.deb' % 'dpkg')\n",
-            "shell execution ownership inventory differs",
-        ),
-        (
-            replace_once(
-                baseline,
-                "    system2('flutter build linux --release')",
-                "    system2('%s-deb -b tmpdeb alternate.deb' % 'dpkg')",
-            ),
-            "setup operations are not exact",
-        ),
-        (
-            replace_once(
-                baseline,
-                "    exit_code = os.system(cmd)",
-                "    cmd = 'true'\n    exit_code = os.system(cmd)",
-            ),
-            "shell wrapper signature or body is not exact",
-        ),
-        (
-            replace_once(
-                baseline,
-                '        \'sed -i "s/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g" flutter/lib/generated_bridge.dart\')',
-                "        'true')",
-            ),
-            "FFI refactor helper is not exact",
-        ),
-        (
-            replace_once(
-                baseline,
-                '    finalize_debian_package_tree("tmpdeb")\n'
-                '    build_debian_archive("tmpdeb", "rustdesk.deb")',
-                '    finalize_debian_package_tree("tmpdeb")\n'
-                '    system2("touch tmpdeb/usr/share/rustdesk/data/flutter_assets/post-finalizer")\n'
-                '    build_debian_archive("tmpdeb", "rustdesk.deb")',
-            ),
-            "stage, finalize, and archive as contiguous direct operations",
-        ),
-        (
-            replace_once(
-                baseline,
-                '    stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")',
-                '    return\n'
-                '    stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")',
-            ),
-            "must not contain explicit terminating control flow",
-        ),
-        (
-            replace_once(
-                baseline,
-                '    stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")',
-                '    build_debian_archive = system2\n'
-                '    stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")',
-            ),
-            "must not rebind package or process authority names",
-        ),
-        (
-            replace_once(
-                baseline,
-                '    stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")',
-                '    globals().__setitem__("finalize_debian_package_tree", lambda *args: None)\n'
-                '    stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")',
-            ),
-            "dynamic namespace or evaluation API",
-        ),
-        (
-            replace_once(
-                baseline,
-                '    stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")',
-                '    sys.modules[__name__].finalize_debian_package_tree = lambda *args: None\n'
-                '    stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")',
-            ),
-            "must not reach a module namespace dynamically",
-        ),
-        (
-            baseline + "\n\ndef finalize_debian_package_tree(root):\n    return None\n",
-            "must define one synchronous top-level finalize_debian_package_tree authority",
-        ),
-        (
-            "from pathlib import Path as finalize_debian_package_tree\n" + baseline,
-            "import inventory differs",
-        ),
-        (
-            "from builtins import globals as namespace\n" + baseline,
-            "import inventory differs",
-        ),
-        (
-            baseline + "\n\nclass finalize_debian_package_tree:\n    pass\n",
-            "must not shadow a package authority name with a class",
-        ),
-        (
-            baseline + "\n\ndef os():\n    return None\n",
-            "must not shadow a process authority module with a function",
-        ),
-        (
-            replace_once(
-                baseline,
-                "def build_flutter_deb(version, features):",
-                "def build_flutter_deb(version, finalize_debian_package_tree):",
-            ),
-            "must not shadow package authority names in parameters",
-        ),
-        (
-            replace_once(
-                baseline,
-                '    finalize_debian_package_tree("tmpdeb")\n'
-                '    build_debian_archive("tmpdeb", "rustdesk.deb")',
-                '    build_debian_archive("tmpdeb", "rustdesk.deb")\n'
-                '    finalize_debian_package_tree("tmpdeb")',
-            ),
-            "stage, finalize, and archive as contiguous direct operations",
-        ),
-        (
-            replace_once(
-                baseline,
-                '    build_debian_archive("tmpdeb", "rustdesk.deb")',
-                '    system2("true")',
-            ),
-            "invoke the sole Debian archive boundary once",
-        ),
-        (
-            replace_once(
-                baseline,
-                "    return parser\n\n\n# Downloading third party resources",
-                '    parser.add_argument("--package")\n'
-                "    return parser\n\n\n# Downloading third party resources",
-            ),
-            "unsupported alternate package API",
-        ),
-        (
-            replace_once(baseline, "    system2('/bin/rm -rf build/linux')\n", ""),
-            "pre-package inventory differs",
-        ),
-        (
-            replace_once(
-                baseline,
-                "    system2('mkdir -p tmpdeb/usr/lib/systemd/system/')",
-                "    system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')",
-            ),
-            "setup operations are not exact",
-        ),
-        (
-            replace_once(
-                baseline,
-                "        'cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service')",
-                "        'cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/')",
-            ),
-            "resource copies are not exact",
-        ),
-        (
-            replace_once(
-                baseline,
-                "    os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')",
-                "    os.symlink('/usr/share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')",
-            ),
-            "command symlink is not exact",
-        ),
-        (
-            replace_once(
-                baseline,
-                "    os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')",
-                "    os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/remote-control')",
-            ),
-            "command symlink is not exact",
-        ),
-        (
-            replace_once(
-                baseline,
-                '    "usr/share/rustdesk/lib/libwindow_size_plugin.so",\n',
-                "",
-            ),
-            "Flutter library inventories differ",
-        ),
-        (
-            replace_once(
-                baseline,
-                "usr/share/rustdesk/lib/libwindow_size_plugin.so",
-                "usr/share/rustdesk/lib/libunexpected_plugin.so",
-            ),
-            "Flutter library inventories differ",
-        ),
-        (
-            replace_once(
-                baseline,
-                'DEBIAN_DATA_MODES["usr/share/rustdesk/rustdesk-service-child"] = 0o711',
-                'DEBIAN_DATA_MODES["usr/share/rustdesk/rustdesk-service-child"] = 0o755',
-            ),
-            "executable mode inventories differ",
-        ),
-    )
-    for mutated, expected in mutations:
-        build_path.write_text(mutated, encoding="utf-8")
-        expect_source_validation_failure(lambda: validate_build_py(fixture), expected)
-    build_path.write_text(baseline, encoding="utf-8")
-
-    for script, anchor, injected, expected in (
-        (
-            "postinst",
-            "\tupdate-rc.d \"$service\" defaults >/dev/null\n",
-            "\tupdate-rc.d \"$service\" defaults >/dev/null\n"
-            "\trm -f /etc/systemd/system/rustdesk.service\n",
-            "systemd unit paths must be package-owned",
-        ),
-        (
-            "prerm",
-            "            update-rc.d \"$service\" remove >/dev/null\n",
-            "            update-rc.d \"$service\" remove >/dev/null\n"
-            "        rm -f /usr/lib/systemd/system/rustdesk.service\n",
-            "systemd unit paths must be package-owned",
-        ),
-        (
-            "postrm",
-            "        rm -rf -- /root/.config/RustDesk /root/.config/rustdesk\n",
-            "        rm -rf -- /root/.config/RustDesk /root/.config/rustdesk\n"
-            "        rm -f /etc/systemd/system/rustdesk.service\n",
-            "systemd unit paths must be package-owned",
-        ),
-        (
-            "postrm",
-            "            /bin/systemctl --system daemon-reload >/dev/null\n",
-            "",
-            "must reload systemd exactly once after package-file removal",
-        ),
-    ):
-        script_path = fixture / f"res/DEBIAN/{script}"
-        original = script_path.read_text(encoding="utf-8")
-        script_path.write_text(replace_once(original, anchor, injected), encoding="utf-8")
-        expect_source_validation_failure(lambda: validate_build_py(fixture), expected)
-        script_path.write_text(original, encoding="utf-8")
-
-    for script, anchor, injected in (
-        (
-            "preinst",
-            "        sleep 1\n",
-            "        sleep 1\n        rm -f /usr/bin/libsciter-gtk.so\n",
-        ),
-        (
-            "preinst",
-            "        sleep 1\n",
-            "        sleep 1\n        chmod 0777 /usr/bin\n",
-        ),
-        (
-            "postinst",
-            "\tupdate-rc.d \"$service\" defaults >/dev/null\n",
-            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n"
-            "\tupdate-rc.d \"$service\" defaults >/dev/null\n",
-        ),
-        (
-            "prerm",
-            "            update-rc.d \"$service\" remove >/dev/null\n",
-            "            update-rc.d \"$service\" remove >/dev/null\n"
-            "        rm -f /usr/bin/rustdesk\n",
-        ),
-    ):
-        script_path = fixture / f"res/DEBIAN/{script}"
-        original = script_path.read_text(encoding="utf-8")
-        script_path.write_text(replace_once(original, anchor, injected), encoding="utf-8")
-        expect_source_validation_failure(
-            lambda: validate_build_py(fixture),
-            "package-owned /usr/bin paths must not be mutated",
-        )
-        script_path.write_text(original, encoding="utf-8")
-
-    generated_plugins = fixture / "flutter/linux/flutter/generated_plugins.cmake"
-    if generated_plugins.exists():
-        raise ValidationError("source-gate fixture unexpectedly contains generated Flutter plugin metadata")
-    validate_build_py(fixture)
-    generated_plugins.parent.mkdir(parents=True, exist_ok=True)
-    generated_plugins.write_text("adversarial generated state\n", encoding="utf-8")
-    validate_build_py(fixture)
-    generated_plugins.write_text(
-        "list(APPEND FLUTTER_PLUGIN_LIST\n"
-        "  unexpected\n"
-        ")\n"
-        "list(APPEND FLUTTER_FFI_PLUGIN_LIST\n"
-        ")\n",
-        encoding="utf-8",
-    )
-    validate_build_py(fixture)
 
 
 def load_build_module(repo):
@@ -2683,7 +1502,12 @@ def run_desktop_resource_self_test(repo):
     with tempfile.TemporaryDirectory(prefix="rustdesk-package-resources.") as scratch:
         scratch = Path(scratch)
         staging = scratch / "tree"
-        make_synthetic_tree(staging, b"package-inventory fixture\n")
+        policy = (f'<policyconfig><action id="{POLKIT_ACTION_ID}"><defaults>'
+                  '<allow_any>auth_admin</allow_any>'
+                  '<allow_inactive>auth_admin</allow_inactive>'
+                  '<allow_active>auth_admin</allow_active>'
+                  '</defaults></action></policyconfig>\n').encode("ascii")
+        make_synthetic_tree(staging, policy)
         source_scripts = scratch / "scripts"
         source_scripts.mkdir(mode=0o700)
         for name in build_module.DEBIAN_MAINTAINER_SCRIPTS:
@@ -2721,6 +1545,46 @@ def run_desktop_resource_self_test(repo):
         validate_md5sums(data, members, control, controls, str(produced))
         if conffiles != b"/etc/init.d/rustdesk\n":
             raise ValidationError("retained init-script conffile differs")
+
+        admission_repo = scratch / "admission-source"
+        write_file(admission_repo / POLKIT_POLICY_SOURCE, policy.decode("ascii"), 0o644)
+        unit = staging / "usr/lib/systemd/system/rustdesk.service"
+        write_file(admission_repo / "res/rustdesk.service", unit.read_text(), 0o644)
+        shutil.copyfile(repo / "build.py", admission_repo / "build.py")
+        write_file(admission_repo / "Cargo.toml", "[profile.release]\nrpath = false\n", 0o644)
+        write_file(admission_repo / "flutter/linux/CMakeLists.txt",
+                   'BUILD_WITH_INSTALL_RPATH TRUE\nINSTALL_RPATH "$ORIGIN"\n', 0o644)
+        write_file(admission_repo / "scripts/build-debian.sh",
+                   "export CARGO_PROFILE_RELEASE_RPATH=false\n", 0o644)
+        baseline = Path(__file__).with_name("debian-package-cli-baseline.py")
+        result = subprocess.run(
+            [sys.executable, "-B", "-I", "-S", str(baseline), "--repo", str(admission_repo),
+             "--deb", str(produced)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+        if (result.returncode != 1
+                or b"must contain only the Debian archiver and PE canonicalizer process launches" not in result.stdout
+                or b"Traceback" in result.stdout):
+            raise ValidationError(f"historical source-gate observation differs: {result.stdout[:8192]!r}")
+        write_file(admission_repo / "build.py",
+                   'raise RuntimeError("producer executed during archive admission")\n', 0o644)
+        command = [sys.executable, "-B", "-I", "-S", str(Path(__file__).resolve()),
+                   "--repo", str(admission_repo)]
+        cases = (
+            ((), 2, b"provide --deb or select a self-test"),
+            (("--deb", str(produced)), 1, b"required runtime object is not ELF"),
+        )
+        for arguments, expected_status, expected_error in cases:
+            result = subprocess.run(command + list(arguments),
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            if (result.returncode != expected_status or result.stdout.count(expected_error) != 1
+                    or b"producer executed" in result.stdout or b"Traceback" in result.stdout):
+                raise ValidationError(f"package CLI result differs: {result.returncode} {result.stdout[:8192]!r}")
+        write_file(admission_repo / "res/rustdesk.service", "unexpected unit\n", 0o644)
+        result = subprocess.run(command + ["--deb", str(produced)],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if (result.returncode != 1 or b"bytes differ from res/rustdesk.service" not in result.stdout
+                or b"producer executed" in result.stdout or b"Traceback" in result.stdout):
+            raise ValidationError(f"package CLI failed to bind unit bytes: {result.stdout[:8192]!r}")
 
         for index, name in enumerate(retired):
             restored = scratch / f"restored-{index}"
@@ -2760,6 +1624,7 @@ def run_desktop_resource_self_test(repo):
                 raise ValidationError(f"archive accepted retired conffile {name}")
         print("DEBIAN_DESKTOP_RESOURCES=pass cases=7 generator=production artifacts=actual-deb retained=exact-inventory retired=absent reintroduction=refused product=unexecuted")
         print("DEBIAN_DESKTOP_RESOURCES_ARTIFACT=sha256 " + digest)
+        print("DEBIAN_PACKAGE_CLI=pass cases=4 inputs=archives producer=unexecuted empty=refused unit=bound invalid-elf=refused historical-source-gate=blocks-artifact")
 
 
 def run_production_finalizer_self_test(repo, tmp, polkit_policy):
@@ -2994,7 +1859,6 @@ def run_self_test(repo, polkit_policy):
             b"\0",
             "unexpected RUNPATH",
         )
-        run_source_gate_mutations(repo, tmp)
         run_production_finalizer_self_test(repo, tmp, polkit_policy)
 
         good_tree = tmp / "good-tree"
@@ -3834,6 +2698,9 @@ def main():
     parser.add_argument("--elf-role-self-test", action="store_true", help="test ELF roles in Debian archives against the native loader")
     args = parser.parse_args()
 
+    if not (args.deb or args.self_test or args.polkit_dependency_self_test or args.elf_role_self_test):
+        parser.error("provide --deb or select a self-test")
+
     try:
         repo = Path(args.repo).resolve()
         if args.elf_role_self_test:
@@ -3846,11 +2713,10 @@ def main():
                 raise ValidationError("polkit dependency tests cannot be combined with other modes")
             run_polkit_dependency_self_test(repo)
             return
-        validate_build_py(repo)
         polkit_policy = load_polkit_policy(repo)
         if args.self_test:
             run_self_test(repo, polkit_policy)
-        expected_systemd_unit = (repo / "res/rustdesk.service").read_bytes()
+        expected_systemd_unit = (repo / "res/rustdesk.service").read_bytes() if args.deb else None
         for deb in args.deb:
             validate_deb(
                 Path(deb).resolve(),
@@ -3860,9 +2726,10 @@ def main():
     except ValidationError as err:
         fail(str(err))
 
-    print(
-        "ok  Debian package tree is root-owned, exact-mode, exact-command-symlink-only, polkit-policy-bound, and source-gated"
-    )
+    if args.self_test:
+        print("ok  Debian package archive and production-finalizer self-tests passed")
+    for deb in args.deb:
+        print(f"ok  Debian package archive verified: {deb}")
 
 
 if __name__ == "__main__":

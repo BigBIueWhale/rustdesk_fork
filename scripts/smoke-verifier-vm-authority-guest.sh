@@ -3296,6 +3296,10 @@ run_focused_rust_tests() {
                 config::tests::test_load_path_present_but_corrupt_is_preserved_not_overwritten
                 config::tests::test_load_path_present_but_unreadable_is_transient_not_stale
                 config::option_tests::core_load_links_are_transient_without_recovery
+                config::option_tests::config_read_shared_write_modes_refuse_without_recovery
+                config::option_tests::config_read_foreign_owner_refuses_and_retires_handles
+                config::option_tests::peer_read_shared_write_acl_refuses_mutation_and_retries
+                config::option_tests::config_read_owned_readonly_and_masked_acl_controls
                 config::option_tests::core_load_fifo_refuses_and_retires_handles
                 config::option_tests::core_load_regular_data_and_read_failures_keep_status
                 config::option_tests::core_recovery_fifo_refuses_and_retires_handles

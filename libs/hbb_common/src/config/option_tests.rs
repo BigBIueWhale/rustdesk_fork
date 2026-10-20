@@ -192,6 +192,144 @@ fn config_store_path_controls_round_trip() {
 }
 
 #[test]
+fn config_read_shared_write_modes_refuse_without_recovery() {
+    use std::os::unix::fs::MetadataExt;
+    in_private_process("config::option_tests::config_read_shared_write_modes_refuse_without_recovery", |root| {
+        let mut all_refused = true;
+        for mode in [0o602, 0o620, 0o622, 0o646, 0o664, 0o666] {
+            for corrupt in [false, true] {
+                let base = root.join(format!("{mode:o}-{corrupt}"));
+                fs::create_dir(&base).unwrap();
+                let path = base.join("record.toml");
+                let bytes = if corrupt { b"= = invalid TOML [[[".as_slice() } else { b"[options]\nk = 'kept'\n".as_slice() };
+                fs::write(&path, bytes).unwrap();
+                fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
+                let before = fs::metadata(&path).unwrap();
+                let mut refused = true;
+                for _ in 0..2 {
+                    let loaded: ConfigLoad<Config2> = load_path_with_status(path.clone());
+                    refused &= loaded.status == ConfigLoadStatus::TransientError && loaded.value == Config2::default();
+                }
+                let preserved = fs::metadata(&path).map(|after| {
+                    (after.dev(), after.ino(), after.mode()) == (before.dev(), before.ino(), before.mode())
+                }).unwrap_or(false) && fs::read(&path).map(|actual| actual == bytes).unwrap_or(false)
+                    && fs::read_dir(&base).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>() == vec![path.file_name().unwrap()];
+                println!("OPTION_COMMIT_READ_AUTHORITY=observed kind=mode mode={mode:o} corrupt={corrupt} refused={refused} preserved={preserved}");
+                if refused && preserved {
+                    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+                    let retry: ConfigLoad<Config2> = load_path_with_status(path.clone());
+                    if corrupt {
+                        assert_eq!(retry.status, ConfigLoadStatus::Corrupt);
+                        let archive = fs::read_dir(&base).unwrap().next().unwrap().unwrap().path();
+                        let after = fs::metadata(&archive).unwrap();
+                        assert!(!path.exists());
+                        assert_eq!(fs::read(archive).unwrap(), bytes);
+                        assert_eq!((after.dev(), after.ino()), (before.dev(), before.ino()));
+                        assert_eq!(after.mode() & 0o777, 0o600);
+                    } else {
+                        assert_eq!(retry.status, ConfigLoadStatus::Loaded);
+                        assert_eq!(retry.value.options.get("k").map(String::as_str), Some("kept"));
+                        assert_eq!(fs::read(&path).unwrap(), bytes);
+                        assert_eq!(fs::metadata(&path).unwrap().ino(), before.ino());
+                    }
+                    println!("OPTION_COMMIT_READ_AUTHORITY=observed kind=retry mode={mode:o} corrupt={corrupt} recovered=true");
+                }
+                all_refused &= refused && preserved;
+            }
+        }
+        assert!(all_refused);
+    });
+}
+
+#[test]
+fn config_read_foreign_owner_refuses_and_retires_handles() {
+    use std::os::unix::fs::MetadataExt;
+    in_private_process("config::option_tests::config_read_foreign_owner_refuses_and_retires_handles", |_| {
+        // Public, immutable builder-image fixture; no host file or service is involved.
+        let path = Path::new("/etc/passwd");
+        let original = fs::read(path).unwrap();
+        let before = fs::metadata(path).unwrap();
+        assert!(before.is_file() && before.nlink() == 1 && before.uid() == 0);
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut refused = true;
+        for _ in 0..16 { refused &= read_config_record(path).is_err(); }
+        let after = fs::metadata(path).unwrap();
+        let preserved = (before.dev(), before.ino(), before.uid(), before.mode()) == (after.dev(), after.ino(), after.uid(), after.mode())
+            && fs::read(path).unwrap() == original;
+        let after_fds = fds();
+        println!("OPTION_COMMIT_READ_AUTHORITY=observed kind=owner source_uid=0 reader_uid={} iterations=16 refused={refused} preserved={preserved} fds_before={before_fds} fds_after={after_fds}", unsafe { crate::libc::geteuid() });
+        assert!(refused && preserved);
+        assert_eq!(before_fds, after_fds);
+    });
+}
+
+#[test]
+fn peer_read_shared_write_acl_refuses_mutation_and_retries() {
+    use std::os::unix::{fs::MetadataExt, io::AsRawFd};
+    in_private_process("config::option_tests::peer_read_shared_write_acl_refuses_mutation_and_retries", |_| {
+        let id = "read-authority-acl";
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-read-authority-prs".to_vec();
+        peer.options.insert("unrelated".into(), "preserved".into());
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let acl = config_parent_acl(&path, 7);
+        let original = fs::read(&path).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        assert_ne!(before.mode() & 0o020, 0);
+        let view_refused = PeerConfig::read_option(id, "unrelated").is_err();
+        let write_refused = PeerConfig::set_option(id, "alias", "selected".into()).is_err();
+        let after = fs::metadata(&path).unwrap();
+        let file = fs::File::open(&path).unwrap();
+        let mut observed = vec![0; acl.len()];
+        let acl_preserved = unsafe { crate::libc::fgetxattr(file.as_raw_fd(), b"system.posix_acl_access\0".as_ptr().cast(), observed.as_mut_ptr().cast(), observed.len()) } == acl.len() as isize && observed == acl;
+        let preserved = (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode())
+            && fs::read(&path).unwrap() == original && acl_preserved;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        PeerConfig::set_option(id, "alias", "selected".into()).unwrap();
+        let loaded = PeerConfig::load_for_write(id).unwrap();
+        let retried = loaded.options.get("alias").map(String::as_str) == Some("selected")
+            && loaded.options.get("unrelated").map(String::as_str) == Some("preserved") && loaded.password_prs == peer.password_prs;
+        println!("OPTION_COMMIT_READ_AUTHORITY=observed kind=acl view_refused={view_refused} write_refused={write_refused} preserved={preserved} retried={retried}");
+        assert!(view_refused && write_refused && preserved && retried);
+    });
+}
+
+#[test]
+fn config_read_owned_readonly_and_masked_acl_controls() {
+    use std::os::unix::{fs::MetadataExt, io::AsRawFd};
+    in_private_process("config::option_tests::config_read_owned_readonly_and_masked_acl_controls", |root| {
+        for mode in [0o400, 0o600, 0o640, 0o644] {
+            let path = root.join(format!("{mode:o}.toml"));
+            let bytes = b"[options]\nk = 'kept'\n";
+            fs::write(&path, bytes).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
+            let before = fs::metadata(&path).unwrap();
+            let loaded: ConfigLoad<Config2> = load_path_with_status(path.clone());
+            let view: Config2 = read_config_view(&path).unwrap();
+            let after = fs::metadata(&path).unwrap();
+            assert_eq!(loaded.status, ConfigLoadStatus::Loaded);
+            assert_eq!(view, loaded.value);
+            assert_eq!(view.options.get("k").map(String::as_str), Some("kept"));
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+            assert_eq!((before.dev(), before.ino(), before.mode()), (after.dev(), after.ino(), after.mode()));
+        }
+        let path = root.join("masked.toml");
+        fs::write(&path, b"answer = 7\n").unwrap();
+        let acl = config_parent_acl(&path, 5);
+        assert_eq!(fs::metadata(&path).unwrap().mode() & 0o022, 0);
+        let loaded: HashMap<String, u32> = read_config_view(&path).unwrap();
+        assert_eq!(loaded.get("answer"), Some(&7));
+        let file = fs::File::open(&path).unwrap();
+        let mut observed = vec![0; acl.len()];
+        assert_eq!(unsafe { crate::libc::fgetxattr(file.as_raw_fd(), b"system.posix_acl_access\0".as_ptr().cast(), observed.as_mut_ptr().cast(), observed.len()) }, acl.len() as isize);
+        assert_eq!(observed, acl);
+        println!("OPTION_COMMIT_READ_AUTHORITY=observed kind=controls safe_modes=4 masked_acl_preserved=true");
+    });
+}
+
+#[test]
 fn core_load_links_are_transient_without_recovery() {
     use std::os::unix::fs::{symlink, MetadataExt};
     in_private_process("config::option_tests::core_load_links_are_transient_without_recovery", |root| {

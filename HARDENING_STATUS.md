@@ -13599,6 +13599,20 @@ A/B observations and joined bounded-RAM cleanup. Nonroot component evidence only
 compilation/behavior, installed/root and caller/UI/peer result delivery, concurrent namespace and
 source-name races, full R-S0/R-F5 and release acceptance remain OPEN.
 
+**Linux existing-parent search authority (`68eda7a9`).** Existing-path walks use no-follow
+`O_PATH` handles for intermediate Linux/Android directories, including a relative starting directory.
+The final parent stays readable/syncable; create-missing walks retain their existing creation barriers.
+This restores unlink, Rename and directory removal beneath search-only ancestors without chmod or
+link-following fallback. Linux baseline `47c96353` fails the new regression with 36 controls passing
+before the shard stops. The byte-identical tests pass in the complete 100-case/16-group shard after
+correction: 64 permitted absolute/relative mutation scenarios, unchanged file identity/data after
+Rename, descriptor counts 4→4 in each child, and refusal without mutation for denied search,
+unreadable final parent and intermediate symlink. Final-parent fsync, authorized retry and nested
+creation controls pass. `search-parent-68eda7a9.json` binds exact A/B sources/artifacts and joined
+bounded-RAM cleanup. This is nonroot Linux component evidence. Android/other-Unix native behavior,
+installed/root principals, caller/UI/peer outcomes, concurrent namespace/source-name races and full
+R-S0/R-F5/release acceptance remain OPEN. The parked receive-acquisition race is not exercised.
+
 Exact Android/iOS/Windows/Linux/macOS and applicable web artifacts must still exercise native
 create/rename/delete, hostile namespace replacement, reordered results, dispatch failure,
 close/reconnect/persistence, job/dialog/wakelock finality, task-swipe/reopen/Force-Stop, desktop

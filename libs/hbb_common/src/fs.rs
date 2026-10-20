@@ -1388,19 +1388,27 @@ fn unix_open_directory_at_no_follow(
 }
 
 #[cfg(unix)]
-fn unix_require_edge_absent_after_removal(
+fn unix_finish_removal(
     parent_fd: crate::libc::c_int,
     name: &std::ffi::CStr,
     context: &str,
 ) -> std::io::Result<()> {
     match unix_fstatat_no_follow(parent_fd, name) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error),
-        Ok(_) => Err(std::io::Error::new(
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+        Ok(_) => return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
             format!("{context} was replaced while removal was completing"),
         )),
     }
+    if unsafe { crate::libc::fsync(parent_fd) } != 0 {
+        let error = std::io::Error::last_os_error();
+        return Err(std::io::Error::new(
+            error.kind(),
+            format!("{context} is absent, but parent-directory durability is uncertain: {error}"),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -1419,7 +1427,7 @@ fn unix_remove_symlink_at(
     if unsafe { crate::libc::unlinkat(parent_fd, name.as_ptr(), 0) } != 0 {
         return Err(std::io::Error::last_os_error());
     }
-    unix_require_edge_absent_after_removal(parent_fd, name, "empty-directory symlink leaf")
+    unix_finish_removal(parent_fd, name, "empty-directory symlink leaf")
 }
 
 #[cfg(unix)]
@@ -1480,7 +1488,7 @@ fn unix_remove_directory_handle(
     if unsafe { crate::libc::unlinkat(parent_fd, name.as_ptr(), crate::libc::AT_REMOVEDIR) } != 0 {
         return Err(std::io::Error::last_os_error());
     }
-    unix_require_edge_absent_after_removal(parent_fd, name, "empty-directory target")
+    unix_finish_removal(parent_fd, name, "empty-directory target")
 }
 
 #[cfg(unix)]
@@ -1530,7 +1538,7 @@ fn unix_remove_file_no_follow(path: &Path) -> std::io::Result<()> {
     if unsafe { crate::libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), 0) } != 0 {
         return Err(std::io::Error::last_os_error());
     }
-    unix_require_edge_absent_after_removal(parent.as_raw_fd(), &name, "file-removal target")
+    unix_finish_removal(parent.as_raw_fd(), &name, "file-removal target")
 }
 
 #[cfg(unix)]

@@ -15,7 +15,7 @@ use hbb_common::fs;
 use hbb_common::ResultType;
 use hbb_common::{
     allow_err, bail,
-    config::{Config, LocalConfig, PeerConfig},
+    config::{Config, LocalConfig, PeerConfig, MAX_OWNED_PORT_FORWARD_MAPPINGS},
     get_version_number, log,
     message_proto::*,
     rendezvous_proto::ConnType,
@@ -57,7 +57,6 @@ use crate::port_forward::{
     ensure_port_forward_owner_reaper, join_port_forward_supervisor_off_runtime,
     port_forward_control, reap_port_forward_supervisor, PortForwardControl,
     PortForwardControlReceiver, PortForwardMappingPermit, RdpLaunchRequest,
-    MAX_OWNED_PORT_FORWARD_MAPPINGS,
 };
 use crate::{client::Data, client::Interface};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -824,13 +823,7 @@ impl<T: InvokeUiSession> Session<T> {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub fn remove_port_forward(&self, port: i32) -> ResultType<()> {
-        let mut config = self.load_config();
-        config.port_forwards = config
-            .port_forwards
-            .drain(..)
-            .filter(|x| x.0 != port)
-            .collect();
-        self.save_config(config);
+        self.lc.write().unwrap().remove_port_forward(port)?;
         self.send(Data::RemovePortForward(port));
         Ok(())
     }
@@ -842,19 +835,11 @@ impl<T: InvokeUiSession> Session<T> {
         remote_host: String,
         remote_port: i32,
     ) -> ResultType<()> {
-        let mut config = self.load_config();
-        if config.port_forwards.iter().any(|x| x.0 == port) {
-            return Ok(());
-        }
-        if config.port_forwards.len() >= MAX_OWNED_PORT_FORWARD_MAPPINGS {
-            return Err(hbb_common::anyhow::anyhow!(
-                "Port-forward mapping limit ({MAX_OWNED_PORT_FORWARD_MAPPINGS}) reached"
-            ));
-        }
         let pf = (port, remote_host, remote_port);
-        config.port_forwards.push(pf.clone());
-        self.save_config(config);
-        self.send(Data::AddPortForward(pf));
+        let added = self.lc.write().unwrap().add_port_forward(&pf)?;
+        if added {
+            self.send(Data::AddPortForward(pf));
+        }
         Ok(())
     }
 

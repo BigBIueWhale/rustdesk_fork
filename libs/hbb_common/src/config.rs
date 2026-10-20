@@ -46,6 +46,7 @@ use crate::{
 pub const CONNECT_TIMEOUT: u64 = 18_000;
 pub const READ_TIMEOUT: u64 = 18_000;
 pub const COMPRESS_LEVEL: i32 = 3;
+pub const MAX_OWNED_PORT_FORWARD_MAPPINGS: usize = 32;
 
 #[cfg(target_os = "macos")]
 lazy_static::lazy_static! {
@@ -3478,6 +3479,35 @@ impl PeerConfig {
         }
         config.transfer = transfer.clone();
         config.store(id)
+    }
+
+    pub fn add_port_forward(
+        id: &str,
+        mapping: &(i32, String, i32),
+    ) -> crate::ResultType<(Vec<(i32, String, i32)>, bool)> {
+        let mut config = Self::load(id);
+        if config.port_forwards.iter().any(|entry| entry.0 == mapping.0) {
+            return Ok((config.port_forwards, false));
+        }
+        if config.port_forwards.len() >= MAX_OWNED_PORT_FORWARD_MAPPINGS {
+            return Err(anyhow!(
+                "Port-forward mapping limit ({MAX_OWNED_PORT_FORWARD_MAPPINGS}) reached"
+            ));
+        }
+        config.port_forwards.push(mapping.clone());
+        if let Err(err) = config.store(id) {
+            log::error!("Failed to save port-forward mappings: {err}");
+        }
+        Ok((config.port_forwards, true))
+    }
+
+    pub fn remove_port_forward(id: &str, port: i32) -> crate::ResultType<Vec<(i32, String, i32)>> {
+        let mut config = Self::load(id);
+        config.port_forwards.retain(|entry| entry.0 != port);
+        if let Err(err) = config.store(id) {
+            log::error!("Failed to save port-forward mappings: {err}");
+        }
+        Ok(config.port_forwards)
     }
 
     pub fn ui_info_json(id: &str) -> crate::ResultType<String> {

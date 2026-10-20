@@ -1558,6 +1558,19 @@ impl LoginConfigHandler {
         Ok(())
     }
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub fn add_port_forward(&mut self, mapping: &(i32, String, i32)) -> ResultType<bool> {
+        let (mappings, added) = PeerConfig::add_port_forward(&self.id, mapping)?;
+        self.config.port_forwards = mappings;
+        Ok(added)
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub fn remove_port_forward(&mut self, port: i32) -> ResultType<()> {
+        self.config.port_forwards = PeerConfig::remove_port_forward(&self.id, port)?;
+        Ok(())
+    }
+
     /// Set an option for handler's [`PeerConfig`].
     ///
     /// # Arguments

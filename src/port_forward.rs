@@ -7,7 +7,7 @@ use std::process::Command;
 use hbb_common::{
     anyhow::anyhow,
     bail,
-    config::READ_TIMEOUT,
+    config::{MAX_OWNED_PORT_FORWARD_MAPPINGS, READ_TIMEOUT},
     futures::{SinkExt, StreamExt},
     log,
     message_proto::*,
@@ -27,7 +27,6 @@ use hbb_common::{
 
 const MAX_PORT_FORWARD_CONNECTIONS_PER_MAPPING: usize = 32;
 const MAX_PORT_FORWARD_CONNECTIONS_PROCESS: usize = 128;
-pub(crate) const MAX_OWNED_PORT_FORWARD_MAPPINGS: usize = 32;
 const PORT_FORWARD_OWNER_REAPER_CAPACITY: usize = MAX_OWNED_PORT_FORWARD_MAPPINGS;
 
 enum PortForwardOwnerJoinRequest {

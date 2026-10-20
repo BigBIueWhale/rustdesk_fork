@@ -2133,14 +2133,14 @@ fn read_config_view<T: serde::de::DeserializeOwned + Default>(
         .map_err(|_| anyhow!("Failed to read configuration view"))
 }
 
-pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug>(
+pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default>(
     file: PathBuf,
 ) -> T {
     load_path_with_status(file).into_value()
 }
 
 fn load_path_with_status<
-    T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug,
+    T: serde::Serialize + serde::de::DeserializeOwned + Default,
 >(
     file: PathBuf,
 ) -> ConfigLoad<T> {
@@ -2793,15 +2793,10 @@ fn store_config_bytes_transaction(path: &Path, data: &[u8], fault: ConfigStoreFa
 }
 
 impl Config {
-    fn load_<T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug>(
+    fn load_<T: serde::Serialize + serde::de::DeserializeOwned + Default>(
         suffix: &str,
     ) -> T {
-        let file = Self::file_(suffix);
-        let cfg = load_path(file);
-        if suffix.is_empty() {
-            log::trace!("{:?}", cfg);
-        }
-        cfg
+        load_path(Self::file_(suffix))
     }
 
     fn load() -> Config {

@@ -25,5 +25,5 @@ timeout --signal=TERM --kill-after=5s 25s \
     --exact --color never --test-threads=1
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
 [ "$(cat /etc/machine-id)" = 727573746465736b2d76696577657231 ]
-printf 'VIEWER_CREDENTIAL_ARTIFACT=pass sha256=%s executable=%s tests=11 unchanged=before-after execution_seconds=%s\n' \
+printf 'VIEWER_CREDENTIAL_ARTIFACT=pass sha256=%s executable=%s tests=10 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"

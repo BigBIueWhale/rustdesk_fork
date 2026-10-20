@@ -2254,7 +2254,6 @@ impl LoginConfigHandler {
         };
         let mut config = self.load_config();
         config.info = serde;
-        config.password.clear();
         if self.remember {
             if !self.password_prs.is_empty() {
                 config.password_prs = self.password_prs.clone();
@@ -4725,11 +4724,9 @@ mod tests {
         let mut h = handler(id);
         h.remember = false;
         let stored = PeerConfig::load(id);
-        assert!(stored.password.is_empty());
         assert_eq!(stored.password_prs, config.password_prs);
         h.handle_peer_info(&PeerInfo::new());
         let saved = PeerConfig::load(id);
-        assert!(saved.password.is_empty());
         assert!(saved.password_prs.is_empty(), "forget must retire the actual CPace credential");
     }
 
@@ -4742,28 +4739,7 @@ mod tests {
         h.password_prs = b"new-derived-prs".to_vec();
         h.handle_peer_info(&PeerInfo::new());
         let saved = PeerConfig::load(id);
-        assert!(saved.password.is_empty());
         assert_eq!(saved.password_prs, b"new-derived-prs");
-    }
-
-    #[test]
-    fn r_s11hj_viewer_metadata_retires_legacy_hash() {
-        isolate();
-        assert!(!hbb_common::at_rest_storage_key().unwrap().is_empty());
-        let id = "r-s11hj-viewer-legacy";
-        let mut config = PeerConfig::default();
-        config.password = b"retired-legacy-hash".to_vec();
-        config.password_prs = b"stored-prs".to_vec();
-        config.store(id).unwrap();
-
-        let mut h = handler(id);
-        let stored = PeerConfig::load(id);
-        assert_eq!(stored.password, config.password);
-        assert_eq!(stored.password_prs, config.password_prs);
-        h.handle_peer_info(&PeerInfo::new());
-        let saved = PeerConfig::load(id);
-        assert!(saved.password.is_empty(), "peer metadata must not republish a legacy credential");
-        assert_eq!(saved.password_prs, b"stored-prs");
     }
 
     #[test]
@@ -4828,7 +4804,6 @@ mod tests {
         assert!(!h.remember);
         h.handle_peer_info(&PeerInfo::new());
         let saved = PeerConfig::load(id);
-        assert!(saved.password.is_empty());
         assert!(saved.password_prs.is_empty());
     }
 

@@ -1087,16 +1087,8 @@ pub struct Resolution {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct PeerConfig {
-    #[serde(default, deserialize_with = "deserialize_vec_u8")]
-    pub password: Vec<u8>,
-    // R-S16 (viewer twin): the remote box's DERIVED CPace PRS — the base64 Argon2id
-    // hash from `derive_cpace_prs`, a memory-hard salted hash, NEVER the plaintext —
-    // encrypted at rest exactly like `password`. The viewer feeds it to the CPace
-    // INITIATOR verbatim (never re-derived); it is the identical shared secret both
-    // ends derive from the password, distinct from the fast SHA-256 h1 that `password`
-    // caches. Empty until derived from the user-entered password at connect time; the
-    // initiator fails closed (R-S9) on an empty PRS. Old peer configs without this
-    // field deserialize to empty (`#[serde(default)]`).
+    // R-S9: the viewer's derived Argon2id CPace PRS, encrypted at rest.
+    // Feed it to CPace without re-derivation; empty means no remembered credential.
     #[serde(default, deserialize_with = "deserialize_vec_u8")]
     pub password_prs: Vec<u8>,
     #[serde(default, deserialize_with = "deserialize_size")]
@@ -1252,7 +1244,6 @@ impl PermanentPasswordPrsRead {
 impl Default for PeerConfig {
     fn default() -> Self {
         Self {
-            password: Default::default(),
             password_prs: Default::default(), // R-S16 viewer twin
             size: Default::default(),
             size_ft: Default::default(),
@@ -3342,6 +3333,39 @@ fn remove_retired_rdp_credential_options(options: &mut HashMap<String, String>) 
     options.len() != original_len
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct PeerConfigFile {
+    #[serde(flatten)]
+    config: PeerConfig,
+    #[serde(
+        rename = "password",
+        default,
+        deserialize_with = "discard_retired_peer_password",
+        skip_serializing
+    )]
+    retired_password_present: bool,
+}
+
+fn discard_retired_peer_password<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    let _: de::IgnoredAny = de::Deserialize::deserialize(deserializer)?;
+    Ok(true)
+}
+
+struct PeerConfigLoad {
+    value: PeerConfig,
+    status: ConfigLoadStatus,
+    retired_password_present: bool,
+}
+
+impl PeerConfigLoad {
+    fn into_value(self) -> PeerConfig {
+        self.value
+    }
+}
+
 impl PeerConfig {
     pub fn load(id: &str) -> PeerConfig {
         Self::load_with_status(id).into_value()
@@ -3351,7 +3375,7 @@ impl PeerConfig {
         Ok(Self::load_for_write_with_status(id)?.into_value())
     }
 
-    fn load_for_write_with_status(id: &str) -> crate::ResultType<ConfigLoad<PeerConfig>> {
+    fn load_for_write_with_status(id: &str) -> crate::ResultType<PeerConfigLoad> {
         let loaded = Self::load_with_status(id);
         if matches!(loaded.status, ConfigLoadStatus::Loaded | ConfigLoadStatus::NotFound) {
             Ok(loaded)
@@ -3360,31 +3384,31 @@ impl PeerConfig {
         }
     }
 
-    fn load_with_status(id: &str) -> ConfigLoad<PeerConfig> {
+    fn load_with_status(id: &str) -> PeerConfigLoad {
         Self::load_path_with_status(Self::path(id))
     }
 
-    fn load_path_with_status(path: PathBuf) -> ConfigLoad<PeerConfig> {
+    fn load_path_with_status(path: PathBuf) -> PeerConfigLoad {
         let _lock = CONFIG.read().unwrap();
-        let loaded: ConfigLoad<PeerConfig> = load_path_with_status(path.clone());
-        let mut config = loaded.value;
+        let loaded: ConfigLoad<PeerConfigFile> = load_path_with_status(path.clone());
+        let mut config = loaded.value.config;
+        let mut retired_password_present = loaded.value.retired_password_present;
         let status = loaded.status;
-        let mut store = false;
-        let (password, _, store2) = decrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION);
-        config.password = password;
-        store = store || store2;
-        // R-S16 (viewer twin): the DERIVED Argon2id CPace PRS, encrypted at rest like `password`.
-        let (password_prs, _, store2) =
+        let (password_prs, _, mut store) =
             decrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION);
         config.password_prs = password_prs;
-        store = store || store2;
         store = remove_retired_rdp_credential_options(&mut config.options) || store;
         if store {
-            if let Err(err) = Self::store_path(&path, &config) {
-                log::error!("Failed to migrate peer settings: {err}");
+            match Self::store_path(&path, &config) {
+                Ok(()) => retired_password_present = false,
+                Err(err) => log::error!("Failed to migrate peer settings: {err}"),
             }
         }
-        ConfigLoad::new(config, status)
+        PeerConfigLoad {
+            value: config,
+            status,
+            retired_password_present,
+        }
     }
 
     pub fn store(&self, id: &str) -> crate::ResultType<()> {
@@ -3393,15 +3417,11 @@ impl PeerConfig {
     }
 
     fn store_path(path: &Path, config: &PeerConfig) -> crate::ResultType<()> {
-        let has_password = !config.password.is_empty();
         let has_prs = !config.password_prs.is_empty();
         let mut config = config.clone();
-        config.password =
-            encrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
-        // R-S16 (viewer twin): the DERIVED Argon2id CPace PRS, encrypted at rest like `password`.
         config.password_prs =
             encrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
-        if (has_password && config.password.is_empty()) || (has_prs && config.password_prs.is_empty()) {
+        if has_prs && config.password_prs.is_empty() {
             return Err(anyhow!("Failed to encrypt peer credentials"));
         }
         remove_retired_rdp_credential_options(&mut config.options);
@@ -3428,11 +3448,11 @@ impl PeerConfig {
     }
 
     pub fn forget_password(id: &str) -> crate::ResultType<()> {
-        let mut config = Self::load_for_write(id)?;
-        if config.password.is_empty() && config.password_prs.is_empty() {
+        let loaded = Self::load_for_write_with_status(id)?;
+        let mut config = loaded.value;
+        if config.password_prs.is_empty() && !loaded.retired_password_present {
             return Ok(());
         }
-        config.password.clear();
         config.password_prs.clear();
         config.store(id)
     }
@@ -3599,7 +3619,7 @@ impl PeerConfig {
         all: &Vec<(String, SystemTime, PathBuf)>,
         from: usize,
         to: Option<usize>,
-        mut load: impl FnMut(PathBuf) -> ConfigLoad<PeerConfig>,
+        mut load: impl FnMut(PathBuf) -> PeerConfigLoad,
     ) -> (Vec<(String, SystemTime, PeerConfig)>, usize) {
         if from >= all.len() {
             return (vec![], 0);

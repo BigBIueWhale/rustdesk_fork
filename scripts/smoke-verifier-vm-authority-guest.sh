@@ -4058,7 +4058,6 @@ run_focused_rust_tests() {
                 client::tests::r_s11hj_viewer_reconnect_preserves_remembered_prs
                 client::tests::r_s11hj_viewer_forget_retires_prs_without_legacy_hash
                 client::tests::r_s11hj_viewer_remember_persists_fresh_prs
-                client::tests::r_s11hj_viewer_metadata_retires_legacy_hash
                 client::tests::r_s11hj_viewer_token_contains_only_session_correlation
                 client::tests::r_s11hj_viewer_token_refuses_retired_account_payload
                 client::tests::r_s11hj_viewer_token_requires_one_nonzero_session_id
@@ -6338,8 +6337,8 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             grep -E '^test (client::tests::r_(s11hj_viewer_|p14).*|flutter::viewer_credential_bridge_tests::.*) \.\.\. ok$|^VIEWER_CREDENTIAL_(ARTIFACT|BUILD)=' "$output"
-            [ "$tests_passed" -eq 11 ] || fail 'viewer credential total differs'
-            printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=11 target=linux-x86_64 scope=production-peer-credentials-and-exported-session-factory rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 10 ] || fail 'viewer credential total differs'
+            printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=10 target=linux-x86_64 scope=production-peer-credentials-and-exported-session-factory rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = recording-output ]; then
             [ "$tests_passed" -eq 35 ] || fail 'recording output total differs'

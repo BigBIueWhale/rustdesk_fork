@@ -208,12 +208,7 @@ pub fn set_kb_layout_type(kb_layout_type: String) -> hbb_common::ResultType<()> 
 
 #[inline]
 pub fn peer_has_password(id: String) -> bool {
-    // R-S16 (viewer twin): under the R-T15c collapse the remembered credential is the derived
-    // CPace PRS (`password_prs`), not the dead legacy salted-hash `password` — so a peer "has a
-    // saved password" if EITHER is set, else the forget affordance would never surface for a
-    // PRS-remembered peer.
-    let c = PeerConfig::load(&id);
-    !c.password.is_empty() || !c.password_prs.is_empty()
+    !PeerConfig::load(&id).password_prs.is_empty()
 }
 
 #[inline]

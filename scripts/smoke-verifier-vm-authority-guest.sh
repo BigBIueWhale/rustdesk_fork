@@ -3170,6 +3170,11 @@ run_focused_rust_tests() {
                 config::tests::config_transaction_rejects_symlink_parent_and_replaces_final_link_itself
                 config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options
                 config::option_tests::failed_write_preserves_memory_and_allows_the_same_retry
+                config::option_tests::ordinary_option_source_invalid_records_refuse_repeated_changes
+                config::option_tests::ordinary_option_source_denial_preserves_state_and_allows_retry
+                config::option_tests::ordinary_option_source_fresh_state_controls_change_and_idempotence
+                config::option_tests::ordinary_option_source_initial_reads_preserve_invalid_files
+                config::option_tests::ordinary_option_source_healthy_missing_sparse_and_concurrent_controls
                 config::option_tests::failed_pinned_entry_purge_remains_retryable
                 config::option_tests::results_distinguish_failed_saves_from_durable_and_idempotent_success
                 config::option_tests::favorite_failure_preserves_state_and_retries_the_exact_membership_change

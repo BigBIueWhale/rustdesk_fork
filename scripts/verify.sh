@@ -1346,6 +1346,7 @@ echo "== (3b-iii-a1b) credential-bearing peer config uses one durable transactio
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_option_read_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::default_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::local_source_ --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::ordinary_option_source_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_load_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_transfer_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::option_tests::peer_retired_password_ --color never

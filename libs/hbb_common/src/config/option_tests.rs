@@ -1942,6 +1942,207 @@ fn failed_write_preserves_memory_and_allows_the_same_retry() {
     });
 }
 
+fn ordinary_option_source_seed(tag: &str) -> Config2 {
+    Config2 { options: [("audio-input".into(), tag.into()), ("unrelated".into(), format!("keep-{tag}")), ("enable-keyboard".into(), "N".into())].into() }
+}
+
+fn ordinary_option_source_actions() -> [(&'static str, &'static str, &'static str); 3] {
+    [("replacement", "audio-input", "requested-source"), ("removal", "audio-input", ""), ("purge", "enable-keyboard", "N")]
+}
+
+fn ordinary_option_source_expected(mut source: Config2, action: &str) -> Config2 {
+    match action {
+        "replacement" => { source.options.insert("audio-input".into(), "requested-source".into()); }
+        "removal" => { source.options.remove("audio-input"); }
+        "purge" => { source.options.remove("enable-keyboard"); }
+        _ => panic!("unknown ordinary option action"),
+    }
+    source
+}
+
+#[test]
+fn ordinary_option_source_invalid_records_refuse_repeated_changes() {
+    in_private_process("config::option_tests::ordinary_option_source_invalid_records_refuse_repeated_changes", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let confirmed = ordinary_option_source_seed("confirmed");
+        let file = Config2::file();
+        store_path(file.clone(), &confirmed).unwrap();
+        *CONFIG2.write().unwrap() = confirmed.clone();
+        let parent = file.parent().unwrap();
+        let names = || {
+            let mut names = fs::read_dir(parent).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+            names.sort(); names
+        };
+        let mut all_preserved = true;
+        for (kind, bytes) in [
+            ("syntax", b"[options]\nprivate-option-source = [\n".as_slice()),
+            ("utf8", b"\xffprivate-option-source".as_slice()),
+            ("integer", b"options = 7\n".as_slice()), ("boolean", b"options = false\n".as_slice()),
+            ("string", b"options = 'private-option-source'\n".as_slice()), ("array", b"options = []\n".as_slice()),
+            ("entry", b"[options]\nunrelated = 'preserved'\ninvalid = 7\n".as_slice()),
+        ] {
+            for (action, key, value) in ordinary_option_source_actions() {
+                *CONFIG2.write().unwrap() = confirmed.clone();
+                fs::write(&file, bytes).unwrap();
+                let before = fs::metadata(&file).unwrap();
+                let original_names = names();
+                let first = Config::set_option(key.into(), value.into());
+                let second = Config::set_option(key.into(), value.into());
+                let fixed_errors = [&first, &second].iter().all(|r| r.as_ref().err().map(|e| e.to_string()).as_deref() == Some("Failed to read options"));
+                let preserved = fs::read(&file).unwrap() == bytes && names() == original_names;
+                let after = fs::metadata(&file).unwrap();
+                let same_file = (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode());
+                let cache_preserved = *CONFIG2.read().unwrap() == confirmed;
+                println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind={kind} action={action} first_refused={} repeated_refused={} fixed_errors={fixed_errors} file_preserved={preserved} same_file={same_file} cache_preserved={cache_preserved}", first.is_err(), second.is_err());
+                all_preserved &= first.is_err() && second.is_err() && fixed_errors && preserved && same_file && cache_preserved;
+            }
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn ordinary_option_source_denial_preserves_state_and_allows_retry() {
+    in_private_process("config::option_tests::ordinary_option_source_denial_preserves_state_and_allows_retry", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let confirmed = ordinary_option_source_seed("confirmed");
+        let file = Config2::file();
+        let mut all_preserved = true;
+        for (action, key, value) in ordinary_option_source_actions() {
+            store_path(file.clone(), &confirmed).unwrap();
+            *CONFIG2.write().unwrap() = confirmed.clone();
+            let bytes = fs::read(&file).unwrap();
+            let before = fs::metadata(&file).unwrap();
+            fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
+            let native = fs::read(&file).unwrap_err();
+            let result = Config::set_option(key.into(), value.into());
+            fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+            let preserved = fs::read(&file).unwrap() == bytes;
+            let after = fs::metadata(&file).unwrap();
+            let same_file = (before.dev(), before.ino()) == (after.dev(), after.ino());
+            let cache_preserved = *CONFIG2.read().unwrap() == confirmed;
+            assert_eq!(native.kind(), io::ErrorKind::PermissionDenied);
+            store_path(file.clone(), &confirmed).unwrap();
+            *CONFIG2.write().unwrap() = confirmed.clone();
+            Config::set_option(key.into(), value.into()).unwrap();
+            let expected = ordinary_option_source_expected(confirmed.clone(), action);
+            let retry_durable = Config2::load() == expected && *CONFIG2.read().unwrap() == expected;
+            println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind=denial action={action} errno={} refused={} file_preserved={preserved} same_file={same_file} cache_preserved={cache_preserved} retry_durable={retry_durable}", native.raw_os_error().unwrap(), result.is_err());
+            all_preserved &= result.is_err() && preserved && same_file && cache_preserved && retry_durable;
+        }
+        fs::remove_file(&file).unwrap();
+        fs::create_dir(&file).unwrap();
+        let child = file.join("preserved");
+        fs::write(&child, b"unchanged option source").unwrap();
+        let result = Config::set_option("audio-input".into(), "directory-request".into());
+        let directory_preserved = file.is_dir() && fs::read(child).unwrap() == b"unchanged option source";
+        println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind=directory refused={} children_preserved={directory_preserved}", result.is_err());
+        assert!(all_preserved && result.is_err() && directory_preserved);
+    });
+}
+
+#[test]
+fn ordinary_option_source_fresh_state_controls_change_and_idempotence() {
+    in_private_process("config::option_tests::ordinary_option_source_fresh_state_controls_change_and_idempotence", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let cached = ordinary_option_source_seed("cached");
+        let external = ordinary_option_source_seed("external");
+        let file = Config2::file();
+        let parent = file.parent().unwrap();
+        let mut all_current = true;
+        for phase in ["external", "durable_match", "cache_match"] {
+            for (action, key, value) in ordinary_option_source_actions() {
+                let expected = ordinary_option_source_expected(external.clone(), action);
+                let source = if phase == "durable_match" { &expected } else { &external };
+                store_path(file.clone(), source).unwrap();
+                *CONFIG2.write().unwrap() = if phase == "cache_match" { ordinary_option_source_expected(cached.clone(), action) } else { cached.clone() };
+                let before = fs::metadata(&file).unwrap();
+                let bytes = fs::read(&file).unwrap();
+                if phase == "durable_match" { fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap(); }
+                let result = Config::set_option(key.into(), value.into());
+                fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+                let durable_current = Config2::load() == expected;
+                let cache_current = *CONFIG2.read().unwrap() == expected;
+                let unchanged_if_satisfied = phase != "durable_match" || (fs::read(&file).unwrap() == bytes && fs::metadata(&file).unwrap().ino() == before.ino());
+                let policy_pinned = Config::get_option("enable-keyboard") == "Y";
+                println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind={phase} action={action} accepted={} durable_current={durable_current} cache_current={cache_current} unchanged_if_satisfied={unchanged_if_satisfied} policy_pinned={policy_pinned}", result.is_ok());
+                all_current &= result.is_ok() && durable_current && cache_current && unchanged_if_satisfied && policy_pinned;
+            }
+        }
+        for (action, key, value) in ordinary_option_source_actions().iter().skip(1) {
+            if file.exists() { fs::remove_file(&file).unwrap(); }
+            *CONFIG2.write().unwrap() = cached.clone();
+            let result = Config::set_option((*key).into(), (*value).into());
+            let absent = !file.exists();
+            let cache_current = *CONFIG2.read().unwrap() == Config2::default();
+            println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind=missing action={action} accepted={} absent={absent} cache_current={cache_current}", result.is_ok());
+            all_current &= result.is_ok() && absent && cache_current;
+        }
+        assert!(all_current);
+    });
+}
+
+#[test]
+fn ordinary_option_source_initial_reads_preserve_invalid_files() {
+    in_private_process("config::option_tests::ordinary_option_source_initial_reads_preserve_invalid_files", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let file = Config2::file();
+        let parent = file.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        let names = || {
+            let mut names = fs::read_dir(parent).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+            names.sort(); names
+        };
+        let mut all_preserved = true;
+        for (kind, bytes) in [("syntax", b"[options]\nprivate-option-source = [\n".as_slice()), ("utf8", b"\xffprivate-option-source".as_slice()), ("shape", b"options = 7\n".as_slice())] {
+            fs::write(&file, bytes).unwrap();
+            let before = fs::metadata(&file).unwrap();
+            let original_names = names();
+            let loaded = Config2::load();
+            let preserved = fs::read(&file).map(|b| b == bytes).unwrap_or(false) && names() == original_names;
+            let same_file = fs::metadata(&file).map(|s| (s.dev(), s.ino(), s.mode()) == (before.dev(), before.ino(), before.mode())).unwrap_or(false);
+            println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind=initial_{kind} file_preserved={preserved} same_file={same_file}");
+            all_preserved &= loaded == Config2::default() && preserved && same_file;
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn ordinary_option_source_healthy_missing_sparse_and_concurrent_controls() {
+    in_private_process("config::option_tests::ordinary_option_source_healthy_missing_sparse_and_concurrent_controls", |_| {
+        let file = Config2::file();
+        assert_eq!(Config2::load(), Config2::default());
+        assert!(!file.exists());
+        Config::set_option("audio-input".into(), String::new()).unwrap();
+        Config::set_option("enable-keyboard".into(), "N".into()).unwrap();
+        assert!(!file.exists());
+        Config::set_option("audio-input".into(), "first-source".into()).unwrap();
+        assert_eq!(Config2::load().options, HashMap::from([("audio-input".into(), "first-source".into())]));
+        Config::set_option("audio-input".into(), String::new()).unwrap();
+        assert!(Config2::load().options.is_empty());
+        fs::write(&file, "").unwrap();
+        assert_eq!(Config2::load(), Config2::default());
+        Config::set_option("audio-input".into(), "confirmed-source".into()).unwrap();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let writers: Vec<_> = (0..8).map(|i| {
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                Config::set_option(format!("ordinary-source-worker-{i}"), i.to_string()).unwrap();
+            })
+        }).collect();
+        for writer in writers { writer.join().unwrap(); }
+        let stored = Config2::load();
+        assert_eq!(stored.options.get("audio-input").map(String::as_str), Some("confirmed-source"));
+        assert_eq!(stored.options.len(), 9);
+        assert!((0..8).all(|i| stored.options.get(&format!("ordinary-source-worker-{i}")) == Some(&i.to_string())));
+        assert_eq!(*CONFIG2.read().unwrap(), stored);
+        assert!(PINNED_SETTINGS.iter().all(|(key, value)| Config::get_option(key) == *value));
+        println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind=controls missing_noops_absent=true first_save=true empty_removal=true sparse_fields_default=true concurrent_writers=8 keys_preserved=true policy_pinned=true cleanup=joined");
+    });
+}
+
 #[test]
 fn failed_pinned_entry_purge_remains_retryable() {
     in_private_process("config::option_tests::failed_pinned_entry_purge_remains_retryable", |_| {

@@ -1,15 +1,52 @@
 #[cfg(target_os = "linux")]
 mod linux {
     use hbb_common::fs::{self as product, JobType, TransferJob};
+    use hbb_common::socket_surface::{read_process_socket_surface, check_surface, SurfaceCheck};
     use std::{
         collections::BTreeSet,
         fs::{self, DirBuilder, File},
+        net::TcpListener,
+        os::fd::{FromRawFd, OwnedFd},
         os::unix::{fs::{symlink, DirBuilderExt, MetadataExt}, io::AsRawFd},
         path::{Path, PathBuf},
         process::{Command, Stdio},
         sync::{Arc, Barrier},
         time::{Duration, Instant},
     };
+
+    fn socket_observation(mode: &str, operation: &str, port: u16, udp: usize,
+                          report: bool) -> bool {
+        let surface = read_process_socket_surface();
+        let policy = check_surface(port);
+        let measured = matches!(&surface, Ok(value) if value.tcp4_listen_ports == [port]
+            && value.tcp6_listen_ports.is_empty() && value.udp_sockets == udp);
+        let policy_matches = if udp == 0 {
+            policy == SurfaceCheck::Ok
+        } else {
+            matches!(&policy, SurfaceCheck::Violation(why) if why.contains("found 1 UDP"))
+        };
+        let good = measured && policy_matches;
+        if report {
+            println!("SOCKET_DESCRIPTOR_LIFETIME=case mode={mode} operation={operation} ok={good} surface={surface:?} policy={policy:?}");
+        }
+        good
+    }
+
+    fn socket_observations(mode: &str, report: bool) -> bool {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind the worker's loopback listener");
+        let port = listener.local_addr().expect("read the exact listener port").port();
+        let mut good = socket_observation(mode, "clean", port, 0, report);
+        let descriptor = unsafe { libc::socket(libc::AF_INET,
+            libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, libc::IPPROTO_UDP) };
+        assert!(descriptor >= 0, "create the worker's unbound UDP socket: {}",
+            std::io::Error::last_os_error());
+        // SAFETY: socket returned a fresh descriptor exclusively owned by this fixture.
+        let udp = unsafe { OwnedFd::from_raw_fd(descriptor) };
+        good &= socket_observation(mode, "unbound-udp", port, 1, report);
+        drop(udp);
+        good &= socket_observation(mode, "udp-retired", port, 0, report);
+        good
+    }
 
     async fn observations(root: &Path, mode: &str, report: bool) -> bool {
         let listing = product::read_dir(root, true).map(|value| {
@@ -34,7 +71,7 @@ mod linux {
             }
             good &= result;
         }
-        good
+        good & socket_observations(mode, report)
     }
 
     fn worker(root: PathBuf, mode: String, ready: Arc<Barrier>) -> ! {
@@ -118,13 +155,16 @@ mod linux {
             let cases = stdout.lines().filter(|line| line.starts_with("FILE_METADATA_DESCRIPTOR_LIFETIME=case ")).count();
             let kernel = stdout.lines().filter(|line| line.starts_with("FILE_METADATA_DESCRIPTOR_LIFETIME=kernel ")).count();
             let resources = stdout.lines().filter(|line| line.starts_with("FILE_METADATA_DESCRIPTOR_LIFETIME=resources ")).count();
+            let sockets = stdout.lines().filter(|line| line.starts_with("SOCKET_DESCRIPTOR_LIFETIME=case ")).count();
             println!("FILE_METADATA_DESCRIPTOR_LIFETIME=child mode={mode} success={} timed_out={timed_out} cleanup=joined", output.status.success());
-            good &= output.status.success() && !timed_out && cases == 3 && kernel == 1 && resources == 1;
+            good &= output.status.success() && !timed_out && cases == 3 && kernel == 1 && resources == 1
+                && sockets == 3;
         }
         fs::remove_dir_all(&root).expect("retire the private fixture after both child joins");
         assert!(!root.exists());
         if !good { std::process::exit(1); }
         println!("FILE_METADATA_DESCRIPTOR_LIFETIME=pass modes=2 cases=6 children=joined fixture=retired");
+        println!("SOCKET_DESCRIPTOR_LIFETIME=pass modes=2 cases=6 children=joined fixture=retired");
     }
 }
 

@@ -5379,6 +5379,7 @@ mod tests {
         use std::os::unix::{fs::MetadataExt, io::AsRawFd};
 
         let root = TestTempDir::new("rename-source-finality");
+        std::fs::create_dir_all(&root.path).unwrap();
         let identity = |path: &Path| std::fs::symlink_metadata(path)
             .map(|m| (m.dev(), m.ino(), m.mode())).ok();
         let fds = || std::fs::read_dir("/proc/self/fd").unwrap().count();
@@ -5387,7 +5388,7 @@ mod tests {
         for round in 0..2 {
             for linked in [false, true] {
                 for replaced in [false, true] {
-                    let base = root.join(format!("{round}-{linked}-{replaced}"));
+                    let base = root.join(&format!("{round}-{linked}-{replaced}"));
                     std::fs::create_dir(&base).unwrap();
                     let source = base.join("source");
                     let target = base.join("target");

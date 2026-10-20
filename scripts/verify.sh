@@ -1368,7 +1368,7 @@ grep -q 'O_NOFOLLOW' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4
 grep -q '0o600 as crate::libc::mode_t' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-owner-mode-missing"
 grep -q 'crate::libc::fchmod(fd, 0o600 as crate::libc::mode_t)' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-fd-mode-proof-missing"
 grep -q 'metadata.uid() != unsafe { crate::libc::geteuid() }' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-owner-proof-missing"
-grep -q 'metadata.mode() & 0o777 != 0o600' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-mode-proof-missing"
+grep -q 'metadata.mode() & 0o7777 != 0o600' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-mode-proof-missing"
 grep -q 'metadata.nlink() != 1' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-link-count-proof-missing"
 grep -q 'sync_temp_file(&temp)' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-file-sync-missing"
 grep -q 'crate::libc::renameat' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-atomic-replace-missing"
@@ -4718,7 +4718,7 @@ unix_config_transaction=$(awk '/fn store_config_bytes_transaction_unix\(/,/^}/' 
 grep -q 'crate::libc::O_NOFOLLOW' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-nofollow-missing"
 grep -q '0o600 as crate::libc::mode_t' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-owner-mode-missing"
 grep -q 'metadata.uid() != unsafe { crate::libc::geteuid() }' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-owner-proof-missing"
-grep -q 'metadata.mode() & 0o777 != 0o600' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-mode-proof-missing"
+grep -q 'metadata.mode() & 0o7777 != 0o600' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-mode-proof-missing"
 grep -q 'sync_temp_file(&temp)' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-file-sync-missing"
 grep -q 'parent.sync_all()' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-directory-sync-missing"
 grep -q 'store_path_writes_owner_only_permissions' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-mode-test-missing"
@@ -13562,7 +13562,7 @@ if ! grep -q 'store_config_bytes_transaction(&path, serialized.as_bytes(), Confi
   || ! grep -q '0o600 as crate::libc::mode_t' <<<"$unix_config_transaction" \
   || ! grep -q 'crate::libc::fchmod(fd, 0o600 as crate::libc::mode_t)' <<<"$unix_config_transaction" \
   || ! grep -q 'metadata.uid() != unsafe { crate::libc::geteuid() }' <<<"$unix_config_transaction" \
-  || ! grep -q 'metadata.mode() & 0o777 != 0o600' <<<"$unix_config_transaction" \
+  || ! grep -q 'metadata.mode() & 0o7777 != 0o600' <<<"$unix_config_transaction" \
   || ! grep -q 'metadata.nlink() != 1' <<<"$unix_config_transaction"; then
   echo "  FAIL secrets-at-rest: config store_path is not routed through the owner-only verified transaction"; rc=1
 else

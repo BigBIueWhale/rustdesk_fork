@@ -1974,6 +1974,26 @@ impl<T> ConfigLoad<T> {
     }
 }
 
+#[cfg(unix)]
+fn checked_config_file_name(path: &Path) -> crate::ResultType<&std::ffi::OsStr> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let bytes = path.as_os_str().as_bytes();
+    if bytes.len() >= crate::libc::PATH_MAX as usize {
+        return Err(io::Error::from_raw_os_error(crate::libc::ENAMETOOLONG).into());
+    }
+    if bytes.contains(&0) {
+        return Err(anyhow!("Configuration path contains a NUL byte"));
+    }
+    let name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("Configuration path has no file name"))?;
+    if bytes.rsplit(|byte| *byte == b'/').next() != Some(name.as_bytes()) {
+        return Err(anyhow!("Invalid configuration file path component"));
+    }
+    Ok(name)
+}
+
 #[cfg(target_os = "linux")]
 fn open_existing_config_parent(path: &Path) -> crate::ResultType<Option<fs::File>> {
     use std::{
@@ -2003,19 +2023,7 @@ fn open_existing_config_parent(path: &Path) -> crate::ResultType<Option<fs::File
         }
     }
 
-    let path_bytes = path.as_os_str().as_bytes();
-    if path_bytes.len() >= crate::libc::PATH_MAX as usize {
-        return Err(io::Error::from_raw_os_error(crate::libc::ENAMETOOLONG).into());
-    }
-    if path_bytes.contains(&0) {
-        return Err(anyhow!("Configuration path contains a NUL byte"));
-    }
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| anyhow!("Configuration path has no file name"))?;
-    if path_bytes.rsplit(|byte| *byte == b'/').next() != Some(file_name.as_bytes()) {
-        return Err(anyhow!("Invalid configuration file path component"));
-    }
+    checked_config_file_name(path)?;
     let path = path
         .parent()
         .ok_or_else(|| anyhow!("Configuration path has no parent directory"))?;
@@ -2538,6 +2546,7 @@ fn store_config_bytes_transaction_unix(
         Ok(())
     }
 
+    let final_name = component(checked_config_file_name(path)?, "config file")?;
     let parent = open_parent(path)?;
     #[cfg(target_os = "linux")]
     {
@@ -2554,11 +2563,6 @@ fn store_config_bytes_transaction_unix(
         }
     }
     let parent_fd = parent.as_raw_fd();
-    let final_name = component(
-        path.file_name()
-            .ok_or_else(|| anyhow!("Config path '{}' has no file name", path.display()))?,
-        "config file",
-    )?;
 
     for attempt in 0..128 {
         let temp_name = CString::new(config_temp_file_name(path, attempt)?)?;

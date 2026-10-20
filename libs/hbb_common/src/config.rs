@@ -2269,6 +2269,14 @@ fn read_config_record(path: &Path) -> io::Result<ConfigFileRead<'_>> {
                 "Configuration is not a single-link regular file",
             ));
         }
+        if metadata.uid() != unsafe { crate::libc::geteuid() }
+            || metadata.mode() & 0o022 != 0
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Configuration ownership or write permissions are unsafe",
+            ));
+        }
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
         Ok(ConfigFileRead {

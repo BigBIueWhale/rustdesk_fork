@@ -4815,6 +4815,106 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn file_metadata_create_stops_after_native_parent_sync_failure() {
+        use std::os::unix::fs::MetadataExt;
+        const ENV: &str = "RUSTDESK_CREATE_SYNC_CHILD";
+        const TEST: &str = "fs::tests::file_metadata_create_stops_after_native_parent_sync_failure";
+        let Some(mode) = std::env::var_os(ENV) else {
+            for mode in ["healthy", "fault"] {
+                let output = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                    .env(ENV, mode).output().unwrap();
+                assert!(output.stdout.len() + output.stderr.len() < 32_768);
+                assert!(output.status.success(), "native sync child {mode}: {}\n{}",
+                    String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let lines = stdout.lines().filter_map(|line| {
+                    line.find("FILE_METADATA_CREATE_SYNC=").map(|start| &line[start..])
+                }).collect::<Vec<_>>();
+                assert_eq!(lines.len(), 19);
+                for line in lines { println!("{line}"); }
+            }
+            return;
+        };
+        assert_ne!(unsafe { crate::libc::geteuid() }, 0);
+        assert_ne!(unsafe { crate::libc::getegid() }, 0);
+        assert!(mode == "healthy" || mode == "fault");
+        let fault = mode == "fault";
+        let root = TestTempDir::new("create-sync-native-error");
+        std::fs::create_dir_all(root.join("known")).unwrap();
+        let sentinel = root.join("sentinel");
+        std::fs::write(&sentinel, b"unchanged data").unwrap();
+        let identity = |path: &Path| {
+            let m = std::fs::symlink_metadata(path).unwrap();
+            (m.dev(), m.ino(), m.mode(), m.nlink())
+        };
+        let sentinel_before = identity(&sentinel);
+        let known_before = identity(&root.join("known"));
+        let probe = std::fs::File::open(&root.path).unwrap();
+        probe.sync_all().unwrap();
+        if fault {
+            // This filter exists only in the exact disposable child. It injects EIO at the
+            // native fsync syscall; neither the product helper nor its result is substituted.
+            let statement = |code, k| crate::libc::sock_filter { code: code as u16, jt: 0, jf: 0, k };
+            let jump = |code, k, jt, jf| crate::libc::sock_filter { code: code as u16, jt, jf, k };
+            let load = crate::libc::BPF_LD | crate::libc::BPF_W | crate::libc::BPF_ABS;
+            let equal = crate::libc::BPF_JMP | crate::libc::BPF_JEQ | crate::libc::BPF_K;
+            let bits = crate::libc::BPF_JMP | crate::libc::BPF_JSET | crate::libc::BPF_K;
+            let ret = crate::libc::BPF_RET | crate::libc::BPF_K;
+            let mut filter = [
+                statement(load, 4), // seccomp_data.arch
+                jump(equal, 0xc000003e, 1, 0), // AUDIT_ARCH_X86_64
+                statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+                statement(load, 0), // seccomp_data.nr
+                jump(bits, 0x40000000, 0, 1), // reject x32
+                statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+                jump(equal, crate::libc::SYS_fsync as u32, 0, 1),
+                statement(ret, crate::libc::SECCOMP_RET_ERRNO | crate::libc::EIO as u32),
+                statement(ret, crate::libc::SECCOMP_RET_ALLOW),
+            ];
+            let program = crate::libc::sock_fprog { len: filter.len() as u16, filter: filter.as_mut_ptr() };
+            assert_eq!(unsafe { crate::libc::prctl(crate::libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) }, 0);
+            assert_eq!(unsafe {
+                crate::libc::syscall(crate::libc::SYS_seccomp, crate::libc::SECCOMP_SET_MODE_FILTER,
+                    crate::libc::SECCOMP_FILTER_FLAG_TSYNC, &program)
+            }, 0, "install child filter: {}", std::io::Error::last_os_error());
+        }
+        let probe_result = probe.sync_all();
+        let probe_errno = probe_result.as_ref().err().and_then(std::io::Error::raw_os_error).unwrap_or(0);
+        assert_eq!(probe_errno, if fault { crate::libc::EIO } else { 0 });
+        assert_eq!(probe_result.is_ok(), !fault);
+        println!("FILE_METADATA_CREATE_SYNC=probe mode={} filter={fault} errno={probe_errno}", mode.to_str().unwrap());
+        drop(probe);
+        let fds = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        create_dir(root.join("known").to_str().unwrap()).unwrap();
+        assert_eq!(identity(&root.join("known")), known_before);
+        println!("FILE_METADATA_CREATE_SYNC=existing mode={} unchanged=true", mode.to_str().unwrap());
+        for round in 0..8 {
+            for kind in ["leaf", "deep"] {
+                let prefix = root.join(&format!("{kind}-{round}"));
+                let target = if kind == "deep" { prefix.join("child/deeper") } else { prefix.clone() };
+                let result = create_dir(target.to_str().unwrap());
+                let errno = result.as_ref().err().and_then(|e| e.downcast_ref::<std::io::Error>())
+                    .and_then(std::io::Error::raw_os_error).unwrap_or(0);
+                assert_eq!(errno, if fault { crate::libc::EIO } else { 0 });
+                assert_eq!(result.is_ok(), !fault);
+                assert!(prefix.is_dir(), "successful mkdir remains visible after its sync failure");
+                let descended = prefix.join("child").exists();
+                assert_eq!(descended, kind == "deep" && !fault);
+                if !fault { assert!(target.is_dir()); }
+                assert_eq!(identity(&sentinel), sentinel_before);
+                assert_eq!(std::fs::read(&sentinel).unwrap(), b"unchanged data");
+                println!("FILE_METADATA_CREATE_SYNC=observed mode={} round={round} kind={kind} errno={errno} prefix_visible=true descended={descended} success={} sentinel_preserved=true", mode.to_str().unwrap(), result.is_ok());
+            }
+        }
+        let after_fds = fds();
+        println!("FILE_METADATA_CREATE_SYNC=handles mode={} before={before_fds} after={after_fds}", mode.to_str().unwrap());
+        assert_eq!(before_fds, after_fds);
+    }
+
+    #[test]
     #[cfg(target_os = "linux")]
     fn file_metadata_create_traverses_search_only_ancestors() {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};

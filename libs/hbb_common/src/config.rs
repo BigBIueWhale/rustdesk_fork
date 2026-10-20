@@ -2042,15 +2042,13 @@ enum ConfigReadFailure {
     Unreadable,
 }
 
-fn read_config_file<T: serde::de::DeserializeOwned>(
-    path: &Path,
-) -> Result<Option<T>, ConfigReadFailure> {
+fn read_config_file_bytes(path: &Path) -> io::Result<Vec<u8>> {
     #[cfg(windows)]
     let bytes = if windows_machine_config::contains(path) {
         windows_machine_config::read(path)
     } else {
         windows_config_acl::verify_config_path_for_read(path)
-            .map_err(|_| ConfigReadFailure::Unreadable)?;
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
         fs::read(path)
     };
     #[cfg(unix)]
@@ -2112,7 +2110,13 @@ fn read_config_file<T: serde::de::DeserializeOwned>(
     })();
     #[cfg(not(any(unix, windows)))]
     let bytes = fs::read(path);
-    match bytes {
+    bytes
+}
+
+fn read_config_file<T: serde::de::DeserializeOwned>(
+    path: &Path,
+) -> Result<Option<T>, ConfigReadFailure> {
+    match read_config_file_bytes(path) {
         Ok(bytes) => {
             let text = std::str::from_utf8(&bytes)
                 .map_err(|_| ConfigReadFailure::Corrupt)?;
@@ -2133,14 +2137,14 @@ fn read_config_view<T: serde::de::DeserializeOwned + Default>(
         .map_err(|_| anyhow!("Failed to read configuration view"))
 }
 
-pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default>(
+pub fn load_path<T: serde::de::DeserializeOwned + Default>(
     file: PathBuf,
 ) -> T {
     load_path_with_status(file).into_value()
 }
 
 fn load_path_with_status<
-    T: serde::Serialize + serde::de::DeserializeOwned + Default,
+    T: serde::de::DeserializeOwned + Default,
 >(
     file: PathBuf,
 ) -> ConfigLoad<T> {
@@ -2180,11 +2184,6 @@ fn load_path_with_status<
             }
         };
     }
-    // A HIGH-blast-radius path: EVERY config load. Distinguish a genuine first run (no file)
-    // from a PRESENT-but-corrupt file, and never silently reset+overwrite the latter — a
-    // regenerated default stored back over it would discard the key_pair/permanent credential
-    // (F1). confy stores via an atomic rename, so a present file is never a partial
-    // application write; one that will not parse is a power-loss torn write or bit-rot.
     #[cfg(windows)]
     if let Err(err) = windows_config_acl::prepare_config_path_for_load(&file) {
         log::error!(
@@ -2194,41 +2193,39 @@ fn load_path_with_status<
         return ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError);
     }
 
-    match confy::load_path(&file) {
+    let bytes = match read_config_file_bytes(&file) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return ConfigLoad::new(T::default(), ConfigLoadStatus::NotFound);
+        }
+        Err(_) => {
+            log::error!(
+                "Config '{}' could not be read; leaving it untouched and starting from defaults",
+                file.display()
+            );
+            return ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError);
+        }
+    };
+    let text = match std::str::from_utf8(&bytes) {
+        Ok(text) => text,
+        Err(_) => {
+            log::error!(
+                "Config '{}' is not valid UTF-8; leaving it untouched and starting from defaults",
+                file.display()
+            );
+            return ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError);
+        }
+    };
+    match toml::from_str(text) {
         Ok(config) => ConfigLoad::new(config, ConfigLoadStatus::Loaded),
-        Err(err) => match &err {
-            // Genuine first run: `File::open` returned NotFound — no file exists yet.
-            confy::ConfyError::GeneralLoadError(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                ConfigLoad::new(T::default(), ConfigLoadStatus::NotFound)
-            }
-            // Read succeeded but the bytes will not parse: DEFINITE corruption (a valid
-            // stored config always parses). Preserve the exact bytes for recovery so no
-            // default+store can discard them, log loudly, and hand back a default so the
-            // process comes up fail-closed. The vacated path lets later validated config
-            // changes self-heal without touching the preserved corrupt bytes.
-            confy::ConfyError::BadTomlData(_) => {
-                log::error!(
-                    "Config '{}' is present but unparseable (corruption): {err} — preserving \
-                     it and starting from defaults (not overwriting)",
-                    file.display()
-                );
-                preserve_corrupt_config(&file);
-                ConfigLoad::new(T::default(), ConfigLoadStatus::Corrupt)
-            }
-            // Present but could not be read/opened THIS time (I/O or permission): this may be
-            // a transient fault over intact bytes, so DO NOT move or destroy the file. Return
-            // a default; the credential-bearing Config::load refuses to overwrite a present
-            // file it read as default (below), so the loss is never finalized and it recovers on
-            // the next successful load.
-            _ => {
-                log::error!(
-                    "Config '{}' is present but could not be read: {err} — leaving it \
-                     untouched and starting from defaults (not overwriting)",
-                    file.display()
-                );
-                ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError)
-            }
-        },
+        Err(_) => {
+            log::error!(
+                "Config '{}' is unparseable; preserving it and starting from defaults",
+                file.display()
+            );
+            preserve_corrupt_config(&file);
+            ConfigLoad::new(T::default(), ConfigLoadStatus::Corrupt)
+        }
     }
 }
 
@@ -2793,7 +2790,7 @@ fn store_config_bytes_transaction(path: &Path, data: &[u8], fault: ConfigStoreFa
 }
 
 impl Config {
-    fn load_<T: serde::Serialize + serde::de::DeserializeOwned + Default>(
+    fn load_<T: serde::de::DeserializeOwned + Default>(
         suffix: &str,
     ) -> T {
         load_path(Self::file_(suffix))
@@ -5032,7 +5029,7 @@ pub mod keys {
 }
 
 pub fn common_load<
-    T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug,
+    T: serde::de::DeserializeOwned + Default,
 >(
     suffix: &str,
 ) -> T {

@@ -1411,9 +1411,6 @@ fi
 if grep -q 'let mut config: PeerConfig = load_path(Self::path(id));' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d peer-config-direct-untyped-load-present"
 fi
-if grep -q 'confy::load_path(Self::path(id))' libs/hbb_common/src/config.rs; then
-  index_s11b4d="$index_s11b4d peer-config-direct-confy-load-present"
-fi
 grep -q 'fn harden_preserved_config_file(path: &Path) -> Result<()>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-hardener-missing"
 grep -q 'crate::libc::O_CLOEXEC | crate::libc::O_NOFOLLOW' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-no-nofollow-open"
 grep -q 'crate::libc::fchmod(file.as_raw_fd(), 0o600 as crate::libc::mode_t)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-no-fd-chmod"

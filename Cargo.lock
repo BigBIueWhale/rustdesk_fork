@@ -1250,17 +1250,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "confy"
-version = "0.4.0-2"
-source = "git+https://github.com/rustdesk-org/confy#83db9ec19a2f97e9718aef69e4fc5611bb382479"
-dependencies = [
- "directories-next",
- "serde 1.0.228",
- "thiserror 1.0.61",
- "toml 0.5.11",
-]
-
-[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3272,7 +3261,6 @@ dependencies = [
  "bytes",
  "chrono",
  "clap 4.5.53",
- "confy",
  "default_net",
  "directories-next",
  "dirs-next",

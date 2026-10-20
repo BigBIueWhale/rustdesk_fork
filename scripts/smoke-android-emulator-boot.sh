@@ -432,9 +432,22 @@ monotonic_millis() {
 }
 
 process_start_time() {
-    local pid=$1
-    [ -r "/proc/$pid/stat" ] || return 1
-    awk '{ print $22 }' "/proc/$pid/stat"
+    local pid record suffix
+    local -a fields
+    [ "$#" -eq 1 ] || return 1
+    pid=$1
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    record=$(<"/proc/$pid/stat") || return 1
+    [ "${#record}" -le 4096 ] || return 1
+    [[ "$record" == "$pid ("*") "* ]] || return 1
+    # comm is unescaped; only the final closing parenthesis starts the fixed fields.
+    suffix=${record##*) }
+    [[ "$suffix" != *$'\n'* && "$suffix" != *$'\r'* ]] || return 1
+    IFS=' ' read -r -a fields <<<"$suffix"
+    [ "${#fields[@]}" -ge 20 ] || return 1
+    [[ "${fields[0]}" =~ ^[RSDZTWtXxIKP]$ ]] \
+        && [[ "${fields[19]}" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "${fields[19]}"
 }
 
 EMULATOR_START=

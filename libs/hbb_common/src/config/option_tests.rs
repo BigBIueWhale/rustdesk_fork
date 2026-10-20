@@ -2,6 +2,68 @@ use super::*;
 use std::os::unix::fs::PermissionsExt;
 
 #[test]
+fn config_initial_load_keeps_credentials_out_of_trace_logs() {
+    use std::os::unix::fs::MetadataExt;
+
+    in_private_process("config::option_tests::config_initial_load_keeps_credentials_out_of_trace_logs", |_| {
+        struct CapturedLogs(Mutex<Vec<(log::Level, String)>>);
+        impl log::Log for CapturedLogs {
+            fn enabled(&self, _: &log::Metadata<'_>) -> bool { true }
+            fn log(&self, record: &log::Record<'_>) {
+                self.0.lock().unwrap().push((record.level(), record.args().to_string()));
+            }
+            fn flush(&self) {}
+        }
+        static LOGS: CapturedLogs = CapturedLogs(Mutex::new(Vec::new()));
+
+        let path = Config::file_("");
+        let original = Config {
+            id: "fixture-load-identity".into(),
+            enc_id: "fixture-load-encoded-identity".into(),
+            password: "fixture-load-password".into(),
+            password_prs: "fixture-load-prs".into(),
+            salt: "fixture-load-salt".into(),
+            key_pair: (vec![11, 12, 13], vec![21, 22, 23]),
+        };
+        store_path(path.clone(), &original).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        assert_eq!(log::STATIC_MAX_LEVEL, log::LevelFilter::Trace);
+        log::set_logger(&LOGS).unwrap();
+        log::set_max_level(log::LevelFilter::Trace);
+        log::trace!(target: "hbb_common::config", "config-load-capture-before");
+
+        for _ in 0..2 {
+            assert_eq!(Config::load_::<Config>(""), original);
+        }
+        let after = fs::metadata(&path).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!((after.ino(), after.mode()), (before.ino(), before.mode()));
+        let absent = Config::file_("_trace_absent");
+        assert_eq!(Config::load_::<Config>("_trace_absent"), Config::default());
+        assert!(!absent.exists());
+        let denied = Config::file_("_trace_directory");
+        fs::create_dir(&denied).unwrap();
+        assert_eq!(Config::load_::<Config>("_trace_directory"), Config::default());
+        assert!(denied.is_dir());
+        log::trace!(target: "hbb_common::config", "config-load-capture-after");
+
+        let logs = LOGS.0.lock().unwrap();
+        assert!(logs.len() <= 32);
+        let controls = ["config-load-capture-before", "config-load-capture-after"]
+            .iter().all(|control| logs.iter().any(|(_, message)| message == control));
+        let error_visible = logs.iter().any(|(level, _)| *level == log::Level::Error);
+        let exposed_fields = [
+            &original.id, &original.enc_id, &original.password,
+            &original.password_prs, &original.salt,
+        ].iter().filter(|field| logs.iter().any(|(_, message)| message.contains(field.as_str()))).count();
+        println!("OPTION_COMMIT_CONFIG_LOAD_LOG=observed trace_controls={controls} error_visible={error_visible} exposed_fields={exposed_fields} healthy_reads=2 source_preserved=true missing_no_create=true directory_preserved=true");
+        assert!(controls && error_visible);
+        assert_eq!(exposed_fields, 0, "configuration fields reached the log sink");
+    });
+}
+
+#[test]
 fn linux_config_read_links_are_errors_without_source_changes() {
     use std::os::unix::fs::{symlink, MetadataExt};
     in_private_process("config::option_tests::linux_config_read_links_are_errors_without_source_changes", |root| {

@@ -143,6 +143,11 @@ PY
     copy { print; if ($0 == "}") copy = 0 }
     END { if (found != 1 || copy) exit 1 }
 ' "$SCRIPT_DIR/verify-vm-entry-preflight.sh" >"$workspace/process-start.sh"
+/usr/bin/awk '
+    /^process_start_time\(\) \{$/ { found++; copy = 1 }
+    copy { print; if ($0 == "}") copy = 0 }
+    END { if (found != 1 || copy) exit 1 }
+' "$SCRIPT_DIR/smoke-android-emulator-boot.sh" >"$workspace/smoke-android-emulator-boot.process.sh"
 for entry in smoke-verifier-vm-authority online-fetch-vm; do
     /usr/bin/awk '
         /^(process_stat_fields|process_start_time|is_live_process_generation|is_exact_virtiofsd_process|is_owned_virtiofsd_generation|is_exact_process|is_virtiofsd_generation)\(\) \{$/ { found++; copy = 1 }
@@ -205,9 +210,11 @@ def legacy(field, value):
                           capture_output=True, timeout=5).stdout
 
 try:
-    for entry in ('verify-vm-entry-preflight', 'smoke-verifier-vm-authority', 'online-fetch-vm'):
-        has_generation_checks = entry != 'verify-vm-entry-preflight'
-        source = str(Path(sys.argv[1]) / (entry + '.process.sh' if has_generation_checks else 'process-start.sh'))
+    for entry in ('verify-vm-entry-preflight', 'smoke-verifier-vm-authority',
+                  'online-fetch-vm', 'smoke-android-emulator-boot'):
+        has_generation_checks = entry in ('smoke-verifier-vm-authority', 'online-fetch-vm')
+        source = str(Path(sys.argv[1]) / (entry + '.process.sh'
+                     if entry != 'verify-vm-entry-preflight' else 'process-start.sh'))
         generation_actions = ('live', 'role', 'owned') if has_generation_checks else ()
         rename(b'rd-kernel-proof')
         baseline = legacy('22', pid)

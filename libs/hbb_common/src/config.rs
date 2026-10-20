@@ -1379,7 +1379,7 @@ fn preserve_corrupt_config_at(file: &Path, ts: u128) -> Result<()> {
         .unwrap_or("config");
     let mut backup = file.to_path_buf();
     backup.set_file_name(format!("{name}.corrupt.{ts}"));
-    fs::rename(file, &backup).map_err(|err| anyhow!(
+    move_config_to_vacant_recovery(file, &backup).map_err(|err| anyhow!(
         "Could not move corrupt config '{}' to '{}': {err}", file.display(), backup.display()
     ))?;
     harden_preserved_config_file(&backup).map_err(|err| anyhow!(
@@ -1390,6 +1390,46 @@ fn preserve_corrupt_config_at(file: &Path, ts: u128) -> Result<()> {
         file.display(), backup.display()
     );
     Ok(())
+}
+
+fn move_config_to_vacant_recovery(file: &Path, backup: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::{ffi::CString, os::unix::ffi::OsStrExt};
+
+        let source = CString::new(file.as_os_str().as_bytes())?;
+        let target = CString::new(backup.as_os_str().as_bytes())?;
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        let result = unsafe {
+            crate::libc::syscall(
+                crate::libc::SYS_renameat2,
+                crate::libc::AT_FDCWD, source.as_ptr(),
+                crate::libc::AT_FDCWD, target.as_ptr(),
+                crate::libc::RENAME_NOREPLACE,
+            )
+        };
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        let result = unsafe {
+            crate::libc::renameatx_np(
+                crate::libc::AT_FDCWD, source.as_ptr(),
+                crate::libc::AT_FDCWD, target.as_ptr(),
+                crate::libc::RENAME_EXCL,
+            )
+        };
+        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios"))]
+        {
+            if result != 0 { return Err(io::Error::last_os_error().into()); }
+            return Ok(());
+        }
+    }
+    #[cfg(windows)]
+    {
+        let name = backup.file_name().and_then(|name| name.to_str())
+            .ok_or_else(|| anyhow!("Invalid recovery file name"))?;
+        return crate::fs::rename_entry_no_replace(file, name);
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios", windows)))]
+    Err(io::Error::new(io::ErrorKind::Unsupported, "exclusive config recovery is unavailable").into())
 }
 
 #[cfg(unix)]
@@ -2234,6 +2274,7 @@ fn load_path_with_status<
             );
             if let Err(err) = preserve_corrupt_config(&file) {
                 log::error!("Could not preserve corrupt config '{}': {err}", file.display());
+                return ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError);
             }
             ConfigLoad::new(T::default(), ConfigLoadStatus::Corrupt)
         }

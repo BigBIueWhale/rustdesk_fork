@@ -315,12 +315,15 @@ fn core_recovery_vacant_backup_preserves_native_names_and_handles() {
         let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
         let before_fds = fds();
         for (index, name) in [std::ffi::OsString::from("record.toml"), std::ffi::OsString::from("данные.toml"), std::ffi::OsString::from_vec(b"record-\xff.toml".to_vec())].iter().enumerate() {
-            let base = root.join(index.to_string());
+            let ancestor = root.join(index.to_string());
+            fs::create_dir(&ancestor).unwrap();
+            let base = ancestor.join("readable-parent");
             fs::create_dir(&base).unwrap();
             let path = base.join(name);
             fs::write(&path, b"original corrupt bytes").unwrap();
             fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
             let before = fs::metadata(&path).unwrap();
+            fs::set_permissions(&ancestor, fs::Permissions::from_mode(0o111)).unwrap();
             preserve_corrupt_config_at(&path, 17).unwrap();
             let backup = fs::read_dir(&base).unwrap().next().unwrap().unwrap().path();
             let after = fs::metadata(&backup).unwrap();
@@ -328,7 +331,8 @@ fn core_recovery_vacant_backup_preserves_native_names_and_handles() {
             assert_eq!((before.dev(), before.ino()), (after.dev(), after.ino()));
             assert_eq!(fs::read(&backup).unwrap(), b"original corrupt bytes");
             assert_eq!(after.mode() & 0o777, 0o600);
-            println!("OPTION_COMMIT_RECOVERY_PUBLICATION=observed kind=control index={index} identity_preserved=true mode=600");
+            fs::set_permissions(&ancestor, fs::Permissions::from_mode(0o700)).unwrap();
+            println!("OPTION_COMMIT_RECOVERY_PUBLICATION=observed kind=control index={index} identity_preserved=true mode=600 search_only_ancestor=true");
         }
         let after_fds = fds();
         println!("OPTION_COMMIT_RECOVERY_PUBLICATION=observed kind=handles before={before_fds} after={after_fds}");

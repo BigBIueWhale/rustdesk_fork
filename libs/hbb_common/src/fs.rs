@@ -4638,9 +4638,16 @@ pub fn rename_file(path: &str, new_name: &str) -> ResultType<()> {
     #[cfg(unix)]
     unix_rename_entry(&path, new_name)?;
     #[cfg(windows)]
-    nt_nofollow::rename(&path, new_name)?;
+    rename_entry_no_replace(&path, new_name)?;
     #[cfg(not(any(unix, windows)))]
     bail!("secure rename is unsupported on this platform");
+    Ok(())
+}
+
+#[cfg(windows)]
+pub(crate) fn rename_entry_no_replace(path: &Path, new_name: &str) -> ResultType<()> {
+    validate_single_file_name(new_name)?;
+    nt_nofollow::rename(path, new_name)?;
     Ok(())
 }
 

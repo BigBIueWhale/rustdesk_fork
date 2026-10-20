@@ -1,6 +1,109 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+fn config_store_test_path_length(root: &Path, length: usize) -> PathBuf {
+    use std::os::unix::ffi::OsStrExt;
+    let mut path = root.join("uncreated");
+    while path.as_os_str().as_bytes().len() + 100 < length {
+        path.push("d".repeat(80));
+    }
+    let remaining = length - path.as_os_str().as_bytes().len() - 1;
+    assert!((1..=100).contains(&remaining));
+    path.push("f".repeat(remaining));
+    assert_eq!(path.as_os_str().as_bytes().len(), length);
+    path
+}
+
+#[test]
+fn config_store_invalid_paths_preserve_namespace() {
+    in_private_process("config::option_tests::config_store_invalid_paths_preserve_namespace", |root| {
+        use std::os::unix::fs::MetadataExt;
+        let mut all_preserved = true;
+        for (index, suffix) in ["/", "//", "/.", "/./"].iter().enumerate() {
+            for present in [false, true] {
+                let base = root.join(format!("suffix-{index}-{present}"));
+                fs::create_dir(&base).unwrap();
+                let file = base.join("record.toml");
+                let bytes = b"marker = 'confirmed'\n";
+                let original = if present {
+                    fs::write(&file, bytes).unwrap();
+                    fs::set_permissions(&file, fs::Permissions::from_mode(0o640)).unwrap();
+                    Some(fs::metadata(&file).unwrap())
+                } else { None };
+                let mut spelling = file.clone().into_os_string();
+                spelling.push(suffix);
+                let result = store_path(PathBuf::from(spelling), HashMap::from([("marker", "requested")]));
+                let entries = fs::read_dir(&base).unwrap().map(|entry| entry.unwrap().file_name()).collect::<Vec<_>>();
+                let preserved = match original {
+                    Some(before) => fs::metadata(&file).map(|after| {
+                        after.is_file() && (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode())
+                    }).unwrap_or(false) && fs::read(&file).map(|data| data == bytes).unwrap_or(false)
+                        && entries == vec![file.file_name().unwrap()],
+                    None => entries.is_empty(),
+                };
+                println!("OPTION_COMMIT_STORE_PATH=observed kind=suffix index={index} present={present} refused={} preserved={preserved}", result.is_err());
+                all_preserved &= result.is_err() && preserved;
+            }
+        }
+        for (index, selected) in ["missing/record\0.toml", "missing/../record.toml", "missing/\0parent/record.toml"].iter().enumerate() {
+            let base = root.join(format!("invalid-{index}"));
+            fs::create_dir(&base).unwrap();
+            let result = store_path(base.join(selected), HashMap::from([("marker", "requested")]));
+            let preserved = fs::read_dir(&base).unwrap().next().is_none();
+            println!("OPTION_COMMIT_STORE_PATH=observed kind=invalid index={index} refused={} preserved={preserved}", result.is_err());
+            all_preserved &= result.is_err() && preserved;
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn config_store_overlong_paths_refuse_before_creation() {
+    in_private_process("config::option_tests::config_store_overlong_paths_refuse_before_creation", |root| {
+        let mut all_refused = true;
+        for length in [crate::libc::PATH_MAX as usize, crate::libc::PATH_MAX as usize + 1] {
+            let base = root.join(format!("length-{length}"));
+            fs::create_dir(&base).unwrap();
+            let path = config_store_test_path_length(&base, length);
+            let result = store_path(path.clone(), HashMap::from([("marker", "requested")]));
+            let reader_refused = read_config_view::<HashMap<String, String>>(&path).is_err();
+            let preserved = fs::read_dir(&base).unwrap().next().is_none();
+            println!("OPTION_COMMIT_STORE_PATH=observed kind=length bytes={length} refused={} reader_refused={reader_refused} preserved={preserved}", result.is_err());
+            all_refused &= result.is_err() && reader_refused && preserved;
+        }
+        assert!(all_refused);
+    });
+}
+
+#[test]
+fn config_store_path_controls_round_trip() {
+    in_private_process("config::option_tests::config_store_path_controls_round_trip", |root| {
+        use std::os::unix::{ffi::{OsStrExt, OsStringExt}, fs::MetadataExt};
+        let previous = std::env::current_dir().unwrap();
+        std::env::set_current_dir(root).unwrap();
+        let mut paths = vec![
+            PathBuf::from("relative/record.toml"), PathBuf::from("./dotparent/record.toml"),
+            PathBuf::from("..."), PathBuf::from("space/данные.toml"), PathBuf::from("back\\slash.toml"),
+            PathBuf::from("repeated//middle/./record.toml"),
+            PathBuf::from(std::ffi::OsString::from_vec(b"nonutf8-\xff.toml".to_vec())),
+            root.join("absolute/record.toml"),
+        ];
+        let boundary = config_store_test_path_length(root, crate::libc::PATH_MAX as usize - 1);
+        assert_eq!(boundary.as_os_str().as_bytes().len(), crate::libc::PATH_MAX as usize - 1);
+        paths.push(boundary);
+        for (index, path) in paths.iter().enumerate() {
+            for value in ["first", "replacement"] {
+                let expected = HashMap::from([("marker".to_owned(), value.to_owned())]);
+                store_path(path.clone(), &expected).unwrap();
+                assert_eq!(read_config_view::<HashMap<String, String>>(path).unwrap(), expected);
+                assert_eq!(fs::metadata(path).unwrap().mode() & 0o777, 0o600);
+            }
+            println!("OPTION_COMMIT_STORE_PATH=observed kind=control index={index} first_and_replacement=true readback=true mode=600");
+        }
+        std::env::set_current_dir(previous).unwrap();
+    });
+}
+
 #[test]
 fn core_load_links_are_transient_without_recovery() {
     use std::os::unix::fs::{symlink, MetadataExt};

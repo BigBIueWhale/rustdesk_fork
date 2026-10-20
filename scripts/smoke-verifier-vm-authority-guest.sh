@@ -3292,6 +3292,9 @@ run_focused_rust_tests() {
                 config::option_tests::core_recovery_fifo_refuses_and_retires_handles
                 config::option_tests::core_recovery_terminal_refuses_without_controlling_tty
                 config::option_tests::core_recovery_regular_and_nonregular_preserve_files
+                config::option_tests::config_store_invalid_paths_preserve_namespace
+                config::option_tests::config_store_overlong_paths_refuse_before_creation
+                config::option_tests::config_store_path_controls_round_trip
                 config::option_tests::failed_write_preserves_memory_and_allows_the_same_retry
                 config::option_tests::ordinary_option_source_invalid_records_refuse_repeated_changes
                 config::option_tests::ordinary_option_source_denial_preserves_state_and_allows_retry

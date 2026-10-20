@@ -237,6 +237,89 @@ fn core_load_links_are_transient_without_recovery() {
 }
 
 #[test]
+fn core_load_hard_links_refuse_without_recovery_mutation() {
+    use std::os::unix::fs::MetadataExt;
+    in_private_process("config::option_tests::core_load_hard_links_refuse_without_recovery_mutation", |root| {
+        let mut all_preserved = true;
+        for corrupt in [false, true] {
+            for aliases in [1, 2] {
+                let base = root.join(format!("links-{corrupt}-{aliases}"));
+                fs::create_dir(&base).unwrap();
+                let path = base.join("selected.toml");
+                let bytes: &[u8] = if corrupt { b"= = invalid TOML [[[" } else { b"[options]\nmarker = 'retained'\n" };
+                fs::write(&path, bytes).unwrap();
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+                let links = (0..aliases).map(|i| base.join(format!("alias-{i}"))).collect::<Vec<_>>();
+                for link in &links { fs::hard_link(&path, link).unwrap(); }
+                let identity = |p: &Path| fs::metadata(p).map(|m| (m.dev(), m.ino(), m.mode(), m.nlink())).ok();
+                let before = identity(&path);
+                let names = || {
+                    let mut names = fs::read_dir(&base).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+                    names.sort(); names
+                };
+                let original_names = names();
+                let loaded: ConfigLoad<Config2> = load_path_with_status(path.clone());
+                let refused = loaded.status == ConfigLoadStatus::TransientError && loaded.value == Config2::default();
+                let preserved = identity(&path) == before && names() == original_names
+                    && std::iter::once(&path).chain(links.iter()).all(|p| identity(p) == before && fs::read(p).map(|b| b == bytes).unwrap_or(false));
+                println!("OPTION_COMMIT_CORE_RECOVERY_LINK=observed kind=load corrupt={corrupt} links={} refused={refused} preserved={preserved}", aliases + 1);
+                all_preserved &= refused && preserved;
+                if refused && preserved {
+                    for link in &links { fs::remove_file(link).unwrap(); }
+                    let restored: ConfigLoad<Config2> = load_path_with_status(path.clone());
+                    if corrupt {
+                        assert_eq!(restored.status, ConfigLoadStatus::Corrupt);
+                        assert!(!path.exists());
+                        let backup = fs::read_dir(&base).unwrap().next().unwrap().unwrap().path();
+                        assert_eq!(fs::read(&backup).unwrap(), bytes);
+                        assert_eq!(fs::metadata(&backup).unwrap().mode() & 0o777, 0o600);
+                    } else {
+                        assert_eq!(restored.status, ConfigLoadStatus::Loaded);
+                        assert_eq!(restored.value.options.get("marker").map(String::as_str), Some("retained"));
+                        assert_eq!(fs::metadata(&path).unwrap().mode() & 0o777, 0o640);
+                    }
+                    println!("OPTION_COMMIT_CORE_RECOVERY_LINK=observed kind=load_control corrupt={corrupt} links=1 functional=true");
+                }
+            }
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn core_recovery_hard_links_refuse_before_permission_mutation() {
+    use std::os::unix::fs::MetadataExt;
+    in_private_process("config::option_tests::core_recovery_hard_links_refuse_before_permission_mutation", |root| {
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut all_preserved = true;
+        for aliases in [1, 2] {
+            let base = root.join(format!("hardener-{aliases}"));
+            fs::create_dir(&base).unwrap();
+            let path = base.join("recovery.toml");
+            fs::write(&path, b"preserved recovery bytes").unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+            let links = (0..aliases).map(|i| base.join(format!("alias-{i}"))).collect::<Vec<_>>();
+            for link in &links { fs::hard_link(&path, link).unwrap(); }
+            let identity = |p: &Path| fs::metadata(p).map(|m| (m.dev(), m.ino(), m.mode(), m.nlink())).ok();
+            let before = identity(&path);
+            let refused = (0..16).map(|_| harden_preserved_config_file(&path).is_err()).fold(true, |all, refused| all && refused);
+            let preserved = std::iter::once(&path).chain(links.iter()).all(|p| identity(p) == before && fs::read(p).unwrap() == b"preserved recovery bytes");
+            println!("OPTION_COMMIT_CORE_RECOVERY_LINK=observed kind=hardener links={} iterations=16 refused={refused} preserved={preserved}", aliases + 1);
+            all_preserved &= refused && preserved;
+            for link in &links { fs::remove_file(link).unwrap(); }
+            harden_preserved_config_file(&path).unwrap();
+            assert_eq!(fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
+            println!("OPTION_COMMIT_CORE_RECOVERY_LINK=observed kind=hardener_control links=1 functional=true");
+        }
+        let after_fds = fds();
+        println!("OPTION_COMMIT_CORE_RECOVERY_LINK=observed kind=handles before={before_fds} after={after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(all_preserved);
+    });
+}
+
+#[test]
 fn core_recovery_fifo_refuses_and_retires_handles() {
     const TEST: &str = "config::option_tests::core_recovery_fifo_refuses_and_retires_handles";
     const CHILD: &str = "RUSTDESK_CORE_RECOVERY_FIFO_CHILD";

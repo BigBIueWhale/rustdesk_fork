@@ -4815,7 +4815,7 @@ run_focused_rust_tests() {
                             printf "SOCKET_POLICY_ARTIFACT=pass sha256=%s executable=%s tests=7 unchanged=before-after\n" \
                                 "$policy_sha" "$policy_executable"
                         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
-                            for group in config::tests::config_transaction_ config::option_tests::; do
+                            for group in config::tests::config_transaction_ config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options config::option_tests::; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
@@ -5526,7 +5526,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=15; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=4; fi
-        if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=2; fi
+        if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=3; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
@@ -6162,7 +6162,7 @@ PY
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=|^test socket_surface::tests::[a-z0-9_]+ [.][.][.] ok$|^SOCKET_SURFACE_IO=' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'
-            grep -E '^test config::(tests::config_transaction_[[:alnum:]_]+|option_tests::[[:alnum:]_]+) [.][.][.] ok$|^OPTION_COMMIT_' "$output"
+            grep -E '^test config::(tests::(config_transaction_[[:alnum:]_]+|peer_load_removes_and_rewrites_legacy_rdp_credential_options)|option_tests::[[:alnum:]_]+) [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq 35 ] || fail 'writer retirement test total differs'
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests)::[[:alnum:]_]+ [.][.][.] ok$|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME)=' "$output"

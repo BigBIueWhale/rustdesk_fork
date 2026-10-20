@@ -5627,7 +5627,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=15; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=4; fi
-        if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=4; fi
+        if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=5; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \

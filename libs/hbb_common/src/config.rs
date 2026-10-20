@@ -1364,31 +1364,37 @@ fn keep_encrypted_storage_if_plaintext_unchanged(plain: &str, stored: &str) -> S
 // fresh default overwrite it. Rename it aside to a timestamped `<name>.corrupt.<nanos>`
 // sibling, harden the recovery file, then let callers create a fresh config at the vacated
 // path. Repeated corruption events never clobber an earlier backup.
-impl ConfigFileRead {
-    fn preserve_corrupt(self, file: &Path) -> Result<()> {
+impl ConfigFileRead<'_> {
+    fn preserve_corrupt(self) -> Result<()> {
         let ts = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        self.preserve_corrupt_at_with(file, ts, |_| Ok(()))
+        self.preserve_corrupt_at_with(ts, |_| Ok(()))
     }
 
     fn preserve_corrupt_at_with(
-        self, file: &Path, ts: u128, before_harden: impl FnOnce(&Path) -> Result<()>,
+        self, ts: u128, before_harden: impl FnOnce(&Path) -> Result<()>,
     ) -> Result<()> {
+        let file = self.path;
         let name = file
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("config");
         let mut backup = file.to_path_buf();
         backup.set_file_name(format!("{name}.corrupt.{ts}"));
-        move_config_to_vacant_recovery(file, &backup).map_err(|err| anyhow!(
-            "Could not move corrupt config '{}' to '{}': {err}", file.display(), backup.display()
-        ))?;
-        before_harden(&backup)?;
-        harden_preserved_config_file(&backup).map_err(|err| anyhow!(
-            "Config was moved to '{}', but recovery-file hardening failed: {err}", backup.display()
-        ))?;
+        #[cfg(target_os = "linux")]
+        self.source.preserve(&backup, before_harden)?;
+        #[cfg(not(target_os = "linux"))]
+        {
+            move_config_to_vacant_recovery(file, &backup).map_err(|err| anyhow!(
+                "Could not move corrupt config '{}' to '{}': {err}", file.display(), backup.display()
+            ))?;
+            before_harden(&backup)?;
+            harden_preserved_config_file(&backup).map_err(|err| anyhow!(
+                "Config was moved to '{}', but recovery-file hardening failed: {err}", backup.display()
+            ))?;
+        }
         log::error!(
             "Preserved corrupt config '{}' as '{}' for recovery (original not overwritten)",
             file.display(), backup.display()
@@ -1399,9 +1405,10 @@ impl ConfigFileRead {
 
 #[cfg(test)]
 fn preserve_corrupt_config_at(file: &Path, ts: u128) -> Result<()> {
-    read_config_record(file)?.preserve_corrupt_at_with(file, ts, |_| Ok(()))
+    read_config_record(file)?.preserve_corrupt_at_with(ts, |_| Ok(()))
 }
 
+#[cfg(not(target_os = "linux"))]
 fn move_config_to_vacant_recovery(file: &Path, backup: &Path) -> Result<()> {
     #[cfg(unix)]
     {
@@ -1409,7 +1416,7 @@ fn move_config_to_vacant_recovery(file: &Path, backup: &Path) -> Result<()> {
 
         let source = CString::new(file.as_os_str().as_bytes())?;
         let target = CString::new(backup.as_os_str().as_bytes())?;
-        #[cfg(any(target_os = "linux", target_os = "android"))]
+        #[cfg(target_os = "android")]
         let result = unsafe {
             crate::libc::syscall(
                 crate::libc::SYS_renameat2,
@@ -1426,7 +1433,7 @@ fn move_config_to_vacant_recovery(file: &Path, backup: &Path) -> Result<()> {
                 crate::libc::RENAME_EXCL,
             )
         };
-        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios"))]
+        #[cfg(any(target_os = "android", target_os = "macos", target_os = "ios"))]
         {
             if result != 0 { return Err(io::Error::last_os_error().into()); }
             return Ok(());
@@ -1438,16 +1445,13 @@ fn move_config_to_vacant_recovery(file: &Path, backup: &Path) -> Result<()> {
             .ok_or_else(|| anyhow!("Invalid recovery file name"))?;
         return crate::fs::rename_entry_no_replace(file, name);
     }
-    #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios", windows)))]
+    #[cfg(not(any(target_os = "android", target_os = "macos", target_os = "ios", windows)))]
     Err(io::Error::new(io::ErrorKind::Unsupported, "exclusive config recovery is unavailable").into())
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, any(not(target_os = "linux"), test)))]
 fn harden_preserved_config_file(path: &Path) -> Result<()> {
-    use std::os::unix::{
-        fs::{MetadataExt, OpenOptionsExt},
-        io::AsRawFd,
-    };
+    use std::os::unix::fs::OpenOptionsExt;
 
     let file = fs::OpenOptions::new()
         .read(true)
@@ -1464,15 +1468,24 @@ fn harden_preserved_config_file(path: &Path) -> Result<()> {
                 path.display()
             )
         })?;
+    harden_open_recovery_file(&file, path)
+}
+
+#[cfg(unix)]
+fn harden_open_recovery_file(file: &fs::File, path: &Path) -> Result<()> {
+    use std::os::unix::{fs::MetadataExt, io::AsRawFd};
+
     let metadata = file.metadata().map_err(|err| {
         anyhow!(
             "Failed to inspect preserved config '{}': {err}",
             path.display()
         )
     })?;
-    if !metadata.file_type().is_file() || metadata.nlink() != 1 {
+    if !metadata.file_type().is_file() || metadata.nlink() != 1
+        || metadata.uid() != unsafe { crate::libc::geteuid() }
+    {
         return Err(anyhow!(
-            "Preserved config '{}' is not a single-link regular file",
+            "Preserved config '{}' is not an owned single-link regular file",
             path.display()
         ));
     }
@@ -1483,19 +1496,20 @@ fn harden_preserved_config_file(path: &Path) -> Result<()> {
             io::Error::last_os_error()
         ));
     }
-    let mode = file
+    let metadata = file
         .metadata()
         .map_err(|err| {
             anyhow!(
                 "Failed to re-check preserved config '{}': {err}",
                 path.display()
             )
-        })?
-        .mode()
-        & 0o777;
-    if mode != 0o600 {
+        })?;
+    let mode = metadata.mode() & 0o777;
+    if mode != 0o600 || metadata.nlink() != 1
+        || metadata.uid() != unsafe { crate::libc::geteuid() }
+    {
         return Err(anyhow!(
-            "Preserved config '{}' mode is {:o}, expected 600",
+            "Preserved config '{}' ownership/link/mode verification failed (mode {:o}, expected 600)",
             path.display(),
             mode
         ));
@@ -2098,11 +2112,78 @@ enum ConfigReadFailure {
     Unreadable,
 }
 
-struct ConfigFileRead {
+struct ConfigFileRead<'a> {
+    path: &'a Path,
     bytes: Vec<u8>,
+    #[cfg(target_os = "linux")]
+    source: LinuxConfigReadSource,
 }
 
-fn read_config_record(path: &Path) -> io::Result<ConfigFileRead> {
+#[cfg(target_os = "linux")]
+struct LinuxConfigReadSource {
+    file: fs::File,
+    parent: fs::File,
+    name: std::ffi::CString,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxConfigReadSource {
+    fn named_metadata(&self, name: &std::ffi::CStr) -> io::Result<crate::libc::stat> {
+        use std::os::unix::io::AsRawFd;
+
+        let mut metadata = std::mem::MaybeUninit::uninit();
+        let result = unsafe { crate::libc::fstatat(
+            self.parent.as_raw_fd(), name.as_ptr(), metadata.as_mut_ptr(),
+            crate::libc::AT_SYMLINK_NOFOLLOW,
+        ) };
+        if result != 0 { return Err(io::Error::last_os_error()); }
+        Ok(unsafe { metadata.assume_init() })
+    }
+
+    fn require_named_source(&self, name: &std::ffi::CStr) -> Result<()> {
+        use std::os::unix::fs::MetadataExt;
+
+        let source = self.file.metadata()?;
+        let named = self.named_metadata(name)?;
+        if !source.is_file() || source.nlink() != 1
+            || source.uid() != unsafe { crate::libc::geteuid() }
+            || named.st_mode & crate::libc::S_IFMT != crate::libc::S_IFREG
+            || named.st_nlink != 1
+            || named.st_dev as u64 != source.dev() || named.st_ino as u64 != source.ino()
+        {
+            return Err(anyhow!("Configuration recovery entry no longer names its owned read source"));
+        }
+        Ok(())
+    }
+
+    fn preserve(self, backup: &Path, before_harden: impl FnOnce(&Path) -> Result<()>) -> Result<()> {
+        use std::os::unix::{ffi::OsStrExt, io::AsRawFd};
+
+        let name = backup.file_name().ok_or_else(|| anyhow!("Recovery path has no file name"))?;
+        let name = std::ffi::CString::new(name.as_bytes())?;
+        self.require_named_source(&self.name)?;
+        let result = unsafe { crate::libc::syscall(
+            crate::libc::SYS_renameat2,
+            self.parent.as_raw_fd(), self.name.as_ptr(),
+            self.parent.as_raw_fd(), name.as_ptr(), crate::libc::RENAME_NOREPLACE,
+        ) };
+        if result != 0 { return Err(io::Error::last_os_error().into()); }
+        let finality = (|| -> Result<()> {
+            before_harden(backup)?;
+            self.require_named_source(&name)?;
+            harden_open_recovery_file(&self.file, backup)?;
+            self.require_named_source(&name)?;
+            match self.named_metadata(&self.name) {
+                Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(anyhow!("Old-name absence is uncertain: {error}")),
+                Ok(_) => Err(anyhow!("The old source name is present again")),
+            }
+        })();
+        finality.map_err(|error| anyhow!("Recovery rename completed, but hardening/finality is uncertain: {error}"))
+    }
+}
+
+fn read_config_record(path: &Path) -> io::Result<ConfigFileRead<'_>> {
     #[cfg(windows)]
     let bytes = if windows_machine_config::contains(path) {
         windows_machine_config::read(path)
@@ -2112,11 +2193,11 @@ fn read_config_record(path: &Path) -> io::Result<ConfigFileRead> {
         fs::read(path)
     };
     #[cfg(unix)]
-    let bytes = (|| -> io::Result<Vec<u8>> {
+    let record = (|| -> io::Result<ConfigFileRead<'_>> {
         use std::os::unix::fs::MetadataExt;
 
         #[cfg(target_os = "linux")]
-        let mut file = {
+        let (mut file, parent, name) = {
             use std::{
                 ffi::CString,
                 os::unix::{
@@ -2150,7 +2231,7 @@ fn read_config_record(path: &Path) -> io::Result<ConfigFileRead> {
             if fd < 0 {
                 return Err(io::Error::last_os_error());
             }
-            unsafe { fs::File::from_raw_fd(fd) }
+            (unsafe { fs::File::from_raw_fd(fd) }, parent, name)
         };
         #[cfg(not(target_os = "linux"))]
         let mut file = {
@@ -2169,11 +2250,17 @@ fn read_config_record(path: &Path) -> io::Result<ConfigFileRead> {
         }
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
-        Ok(bytes)
+        Ok(ConfigFileRead {
+            path, bytes,
+            #[cfg(target_os = "linux")]
+            source: LinuxConfigReadSource { file, parent, name },
+        })
     })();
     #[cfg(not(any(unix, windows)))]
     let bytes = fs::read(path);
-    bytes.map(|bytes| ConfigFileRead { bytes })
+    #[cfg(not(unix))]
+    let record = bytes.map(|bytes| ConfigFileRead { path, bytes });
+    record
 }
 
 fn read_config_file<T: serde::de::DeserializeOwned>(
@@ -2293,7 +2380,7 @@ fn load_path_with_status_after_read<T: serde::de::DeserializeOwned + Default>(
                 "Config '{}' is unparseable; preserving it and starting from defaults",
                 file.display()
             );
-            if let Err(err) = record.preserve_corrupt(&file) {
+            if let Err(err) = record.preserve_corrupt() {
                 log::error!("Could not preserve corrupt config '{}': {err}", file.display());
                 return ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError);
             }

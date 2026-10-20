@@ -327,7 +327,7 @@ fn core_recovery_replaced_backup_is_never_permission_hardened() {
         let replacement = Cell::new(None);
         let entered = Cell::new(false);
         let record = read_config_record(&path).unwrap();
-        let result = record.preserve_corrupt_at_with(&path, 17, |named| {
+        let result = record.preserve_corrupt_at_with(17, |named| {
             entered.set(true);
             fs::rename(named, &saved)?;
             fs::write(named, b"replacement recovery bytes")?;

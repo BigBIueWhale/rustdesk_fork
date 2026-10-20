@@ -13497,8 +13497,8 @@ Only successful sink finality may complete the separate display job; deletion hi
 only the exact deleted subtree rather than unrelated substring matches. Directory links enter
 the leaf-unlink command path and cannot trigger recursive target enumeration. Native
 create-directory no longer uses `create_dir_all` on a re-resolved path: it validates the complete
-path before mutation, then creates and no-follow-opens every component through the retained Unix
-descriptor or Windows NT-handle walk. Native rename rejects anything other than one nonempty
+path before mutation, then no-follow-opens existing components and creates missing directories
+through the retained Unix descriptor or Windows NT-handle walk. Native rename rejects anything other than one nonempty
 normal basename and stays relative to the retained no-follow source parent. Windows opens the
 exact source with DELETE authority, renames that handle with parent-relative
 `FileRenameInformation` with replacement disabled, and re-proves that the destination names the same volume/file identity.
@@ -13613,6 +13613,23 @@ creation controls pass. `search-parent-68eda7a9.json` binds exact A/B sources/ar
 bounded-RAM cleanup. This is nonroot Linux component evidence. Android/other-Unix native behavior,
 installed/root principals, caller/UI/peer outcomes, concurrent namespace/source-name races and full
 R-S0/R-F5/release acceptance remain OPEN. The parked receive-acquisition race is not exercised.
+
+**Unix directory-creation traversal (`d9e6da78`).** The shared parent walk opens existing
+components before attempting creation. Linux/Android intermediates retain search-only `O_PATH`
+authority. A missing child requires a readable/syncable handle opened as `.` relative to the retained
+parent before `mkdirat`; a newly published entry is synchronized before descent. A concurrent
+`EEXIST` still requires the same no-follow directory admission. The final returned handle stays
+readable/syncable; permission/type/link errors have no creation fallback. At preparation `ca5794b0`,
+native Linux allows all 32 absolute/relative scenarios while both RustDesk attempts in each fail;
+38 controls pass before the shard stops. The identical tests pass in the complete 102-case/16-group
+shard after correction: 64 first/repeat calls preserve directory identity, native modes and
+search-only ancestor permissions, with child descriptors 4→4. Twenty-four read/write/search denial
+attempts leave no new prefix, link/file/traversal selectors refuse, and explicit permission repair
+allows retry with a syncable final handle and stable descriptors. `mkdir-search-d9e6da78.json` binds
+exact A/B sources/artifacts and joined bounded-RAM cleanup. Nonroot Linux component evidence only.
+Native Android/other Unix, installed/root and caller/UI/peer outcomes, concurrent namespace/EEXIST
+schedules, injected sync failure/crash durability, complete R-S0/R-F5 and release acceptance remain
+OPEN. The parked receive-acquisition race is not exercised.
 
 Exact Android/iOS/Windows/Linux/macOS and applicable web artifacts must still exercise native
 create/rename/delete, hostile namespace replacement, reordered results, dispatch failure,

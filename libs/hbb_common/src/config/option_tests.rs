@@ -110,6 +110,122 @@ fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
 }
 
 #[test]
+fn peer_listing_omits_empty_records_without_deleting_them() {
+    in_private_process("config::option_tests::peer_listing_omits_empty_records_without_deleting_them", |_| {
+        let id = "peer-listing-empty";
+        PeerConfig::default().store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        let all = vec![(id.into(), SystemTime::UNIX_EPOCH, path.clone())];
+        let (peers, next) = PeerConfig::batch_peers(&all, 0, None);
+        let preserved = fs::read(&path).ok().as_deref() == Some(original.as_slice());
+        println!("OPTION_COMMIT_PEER_LISTING=observed kind=empty omitted={} next={next} file_preserved={preserved}", peers.is_empty());
+        assert!(peers.is_empty() && next == 1 && preserved);
+    });
+}
+
+#[test]
+fn peer_listing_empty_snapshot_cannot_delete_a_replacement_record() {
+    in_private_process("config::option_tests::peer_listing_empty_snapshot_cannot_delete_a_replacement_record", |_| {
+        let id = "peer-listing-replacement";
+        PeerConfig::default().store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let all = vec![(id.into(), SystemTime::UNIX_EPOCH, path.clone())];
+        let mut replacement = PeerConfig::default();
+        replacement.password_prs = b"fixture-replacement-prs".to_vec();
+        replacement.info.platform = "Linux".into();
+        replacement.options.insert("alias".into(), "replacement".into());
+        let mut written = Vec::new();
+        let mut reads = 0;
+        let (peers, next) = PeerConfig::batch_peers_with_loader(&all, 0, None, |actual| {
+            assert_eq!(actual, path);
+            let loaded = PeerConfig::load_path_with_status(actual);
+            assert_eq!(loaded.status, ConfigLoadStatus::Loaded);
+            assert_eq!(loaded.value, PeerConfig::default());
+            replacement.store(id).unwrap();
+            written = fs::read(&path).unwrap();
+            reads += 1;
+            loaded
+        });
+        let preserved = fs::read(&path).ok().as_deref() == Some(written.as_slice());
+        println!("OPTION_COMMIT_PEER_LISTING=observed kind=replacement real_reads={reads} replacement_committed={} snapshot_omitted={} next={next} replacement_preserved={preserved}", !written.is_empty(), peers.is_empty());
+        assert!(reads == 1 && !written.is_empty() && peers.is_empty() && next == 1 && preserved);
+        let stored = PeerConfig::load_for_write(id).unwrap();
+        assert_eq!(stored.password_prs, b"fixture-replacement-prs");
+        assert_eq!(stored.options.get("alias").map(String::as_str), Some("replacement"));
+        assert_eq!(stored.info.platform, "Linux");
+    });
+}
+
+#[test]
+fn peer_listing_preserves_visible_and_incomplete_records_and_batch_boundaries() {
+    in_private_process("config::option_tests::peer_listing_preserves_visible_and_incomplete_records_and_batch_boundaries", |_| {
+        let visible_id = "peer-listing-visible";
+        let incomplete_id = "peer-listing-incomplete";
+        let mut visible = PeerConfig::default();
+        visible.info.platform = "Linux".into();
+        visible.options.insert("alias".into(), "visible".into());
+        visible.store(visible_id).unwrap();
+        let mut incomplete = PeerConfig::default();
+        incomplete.password_prs = b"fixture-incomplete-prs".to_vec();
+        incomplete.store(incomplete_id).unwrap();
+        let visible_path = PeerConfig::path(visible_id);
+        let incomplete_path = PeerConfig::path(incomplete_id);
+        let visible_bytes = fs::read(&visible_path).unwrap();
+        let incomplete_bytes = fs::read(&incomplete_path).unwrap();
+        let all = vec![
+            (visible_id.into(), SystemTime::UNIX_EPOCH, visible_path.clone()),
+            (incomplete_id.into(), SystemTime::UNIX_EPOCH, incomplete_path.clone()),
+        ];
+        let (peers, next) = PeerConfig::batch_peers(&all, 0, Some(1));
+        assert_eq!(next, 1);
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].0, visible_id);
+        assert_eq!(peers[0].1, SystemTime::UNIX_EPOCH);
+        assert_eq!(peers[0].2.info.platform, "Linux");
+        assert_eq!(peers[0].2.options.get("alias").map(String::as_str), Some("visible"));
+        let (peers, next) = PeerConfig::batch_peers(&all, 1, None);
+        assert!(peers.is_empty() && next == 2);
+        let (peers, next) = PeerConfig::batch_peers(&all, 2, None);
+        assert!(peers.is_empty() && next == 0);
+        let (peers, next) = PeerConfig::batch_peers(&all, 1, Some(0));
+        assert!(peers.is_empty() && next == 1);
+        assert_eq!(fs::read(visible_path).unwrap(), visible_bytes);
+        assert_eq!(fs::read(incomplete_path).unwrap(), incomplete_bytes);
+    });
+}
+
+#[test]
+fn peer_listing_reads_the_enumerated_alias_and_preserves_read_denial() {
+    in_private_process("config::option_tests::peer_listing_reads_the_enumerated_alias_and_preserves_read_denial", |root| {
+        let id = "peer-listing-alias";
+        PeerConfig::default().store(id).unwrap();
+        let canonical = PeerConfig::path(id);
+        let canonical_bytes = fs::read(&canonical).unwrap();
+        let alias = root.join("alternate").join("alias.toml");
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-alias-prs".to_vec();
+        peer.info.platform = "Linux".into();
+        peer.options.insert("alias".into(), "enumerated".into());
+        PeerConfig::store_path(&alias, &peer).unwrap();
+        let alias_bytes = fs::read(&alias).unwrap();
+        let all = vec![(id.into(), SystemTime::UNIX_EPOCH, alias.clone())];
+        let (peers, next) = PeerConfig::batch_peers(&all, 0, None);
+        assert_eq!(next, 1);
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].2.password_prs, b"fixture-alias-prs");
+        assert_eq!(peers[0].2.options.get("alias").map(String::as_str), Some("enumerated"));
+        fs::set_permissions(&alias, fs::Permissions::from_mode(0o000)).unwrap();
+        assert_eq!(fs::read(&alias).unwrap_err().kind(), std::io::ErrorKind::PermissionDenied);
+        let (peers, next) = PeerConfig::batch_peers(&all, 0, None);
+        fs::set_permissions(&alias, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(peers.is_empty() && next == 1);
+        assert_eq!(fs::read(alias).unwrap(), alias_bytes);
+        assert_eq!(fs::read(canonical).unwrap(), canonical_bytes);
+    });
+}
+
+#[test]
 fn peer_option_write_failure_preserves_settings_and_retries_set_and_remove() {
     in_private_process("config::option_tests::peer_option_write_failure_preserves_settings_and_retries_set_and_remove", |_| {
         let id = "peer-option-write";

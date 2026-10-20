@@ -3591,6 +3591,15 @@ impl PeerConfig {
         from: usize,
         to: Option<usize>,
     ) -> (Vec<(String, SystemTime, PeerConfig)>, usize) {
+        Self::batch_peers_with_loader(all, from, to, Self::load_path_with_status)
+    }
+
+    fn batch_peers_with_loader(
+        all: &Vec<(String, SystemTime, PathBuf)>,
+        from: usize,
+        to: Option<usize>,
+        mut load: impl FnMut(PathBuf) -> ConfigLoad<PeerConfig>,
+    ) -> (Vec<(String, SystemTime, PeerConfig)>, usize) {
         if from >= all.len() {
             return (vec![], 0);
         }
@@ -3608,7 +3617,7 @@ impl PeerConfig {
         let peers: Vec<_> = all[from..to]
             .iter()
             .filter_map(|(id, t, p)| {
-                let loaded = PeerConfig::load_path_with_status(p.clone());
+                let loaded = load(p.clone());
                 let status = loaded.status;
                 let c = loaded.value;
                 if c.info.platform.is_empty() {

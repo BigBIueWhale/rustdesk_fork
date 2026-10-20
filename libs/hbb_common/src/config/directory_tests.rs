@@ -1,6 +1,9 @@
 use super::*;
 use std::{os::unix::fs::MetadataExt, sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering}};
 
+#[path = "directory_crash_tests.rs"]
+mod crash_tests;
+
 std::arch::global_asm!(
     ".global rustdesk_config_test_fsync",
     ".type rustdesk_config_test_fsync,@function",

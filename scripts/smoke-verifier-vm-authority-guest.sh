@@ -3292,6 +3292,7 @@ run_focused_rust_tests() {
             source_fingerprints+=(
                 libs/hbb_common/src/config/option_tests.rs
                 libs/hbb_common/src/config/directory_tests.rs
+                libs/hbb_common/src/config/directory_crash_tests.rs
                 libs/hbb_common/src/config/linux_directory.rs
             )
             required_tests=(
@@ -3413,6 +3414,9 @@ run_focused_rust_tests() {
                 config::option_tests::directory_tests::directory_preselection_sync_error_retires_only_private_tree
                 config::option_tests::directory_tests::directory_postrename_sync_error_recovers_selected_identity
                 config::option_tests::directory_tests::directory_normal_publication_and_repeated_save_remain_functional
+                config::option_tests::directory_tests::crash_tests::directory_created_before_identity_record_recovers_after_process_exit
+                config::option_tests::directory_tests::crash_tests::directory_unrecorded_stage_changes_refuse_and_preserve
+                config::option_tests::directory_tests::crash_tests::directory_unrecorded_stage_recovery_sync_error_is_retryable
                 config::option_tests::directory_tests::directory_moved_unselected_tree_refuses_without_adoption
                 config::option_tests::directory_tests::directory_replaced_selected_tree_refuses_without_mutation
                 config::option_tests::directory_tests::directory_torn_selection_retires_private_identity_and_retries

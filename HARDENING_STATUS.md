@@ -156,6 +156,7 @@ obligation mapping, exact comparisons and any counts for their named historical 
 | Appendix C #180–#203 | Eighteen implementation-history findings become enduring failure classes. Four existing timeless findings and every required-disposition cell remain unchanged. | `appendix-finding-roles-8aa901f1.json` |
 | Appendix C #212–#232 (selected) | Thirteen historical listener, installer, package, helper and build-authority findings become timeless boundaries. Six disposition summaries replace progress tense and FIX markers with obligations; mechanisms, acceptance duties and requirement references remain. All other specification bytes, IDs, anchors and links are unchanged. Native and exact-artifact acceptance remains OPEN. | `execution-authority-document-role-333795e3.json` |
 | Controlled-host launch and local administration | R-X9–R-X11 now agree with R-S11b/R-S11c/R-S11f/R-S11i/R-S11x: exact service-owned launch, direct Linux credential drop, protected macOS LaunchAgent/helper roles, no generic elevation or runtime service-disable actuator, and functional typed administrator operations. Installed/native acceptance remains OPEN. | `launch-authority-document-role-bc6f0c09.json` |
+| Capture and input backend contracts | R-X12/R-X13/R-X12a and Appendix C #192 state enduring X11/XTEST, alternate-source/endpoint absence, macOS backend and iOS viewer-only limits. Inherited dual-backend/uinput repair narration and the obsolete sole-cross-user-socket claim are removed; supported injection, session/display authorization, consent and native/artifact acceptance remain required. Product and verifier sources are unchanged; native/release acceptance remains OPEN. | `capture-input-contract-role-ed085c5d.json` |
 | Other Appendix C dispositions | Vulnerability classes and required dispositions | `appendix-disposition-classification-a22e5d80-v2.json` |
 | Writer contract | R-T3/R-T18; R-S11gx and Appendix C #359 reference the same contract | `writer-contract-doc-role-deb907f8.json` |
 | Transport lifecycle and authentication | R-T9/R-T10/R-T11/R-T12/R-T13/R-T15; listener exclusivity agrees with R-T17 | `transport-lifecycle-document-role.json` |
@@ -11737,19 +11738,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   **⤷ NOTE: this bullet sampled ~5 items; it is SUPERSEDED by the `## Incomplete`
   section immediately below (2026-07-03 full sweep = ~80 sites, incl. 7 user-visible
   defects + 1 live race this earlier note missed).**
-- **R-X12a — orphaned Wayland capture source files deleted — CLOSED/GATED 2026-07-21.** The June 22 R-X12
-  change removed the root and common `mod wayland` declarations, the Cargo feature, every active consumer, and
-  the seven-file `libs/scrap/src/wayland/` implementation, but two upstream-imported alternate module files
-  remained uncompiled at `libs/scrap/src/wayland.rs` and `libs/scrap/src/common/wayland.rs`. Rust's module
-  contract confirms an external source file enters a crate only through a module item, so neither file was
-  reachable; Cargo likewise had no feature capable of selecting them. This was therefore source-coherence and
-  future-reactivation debt, not a runtime Wayland/PipeWire capture path, listener, credential exposure,
-  privilege escalation, exploitation incident, host mutation, or evidence of compromise. Both files are now
-  deleted. The R-X12 gate rejects the old directory and both exact file paths (including dangling symlinks), and
-  the independent workspace validator interprets the Cargo/module/path boundary and rejects deliberate feature,
-  module, path, gate, requirement, disposition, or ledger mutations. The live X11 capture implementation and the
-  separately compiled platform/session compatibility code are unchanged; exact packaged-artifact proof remains
-  R-B2/R-B10.
+- **R-X12a — alternate capture source paths absent.** The Wayland capture feature/module
+  declarations, old directory and two unsupported module files are absent. The R-X12
+  gate rejects those paths, including symlinks, and feature/module restoration. The
+  removed uncompiled files were source/reactivation debt; their deletion supplies no
+  native capture or packaged-artifact evidence. Separately compiled platform/session
+  compatibility remains supported. Exact-artifact/native acceptance stays OPEN under
+  R-B2/R-B10; implementation history remains in Git at `d8ae44eb`.
 - **R-X9 — portable-packer Quick Support residue excised — CLOSED/GATED 2026-07-21.** The June 24 R-X9
   change deleted the Windows application's portable controlled-side service, its Quick Support receiver and
   elevation machinery, `set_quick_support`, the `--quick_support` argument arm, and the application's executable-

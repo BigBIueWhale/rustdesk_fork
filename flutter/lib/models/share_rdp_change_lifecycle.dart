@@ -1,4 +1,5 @@
-typedef ShareRdpChangeError = void Function(Object error, StackTrace stackTrace);
+typedef ShareRdpChangeError = void Function(
+    Object error, StackTrace stackTrace);
 
 /// Owns one settings-page request to change the service-owned Windows RDP
 /// sharing policy.

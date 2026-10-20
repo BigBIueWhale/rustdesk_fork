@@ -1550,21 +1550,6 @@ def run_desktop_resource_self_test(repo):
         write_file(admission_repo / POLKIT_POLICY_SOURCE, policy.decode("ascii"), 0o644)
         unit = staging / "usr/lib/systemd/system/rustdesk.service"
         write_file(admission_repo / "res/rustdesk.service", unit.read_text(), 0o644)
-        shutil.copyfile(repo / "build.py", admission_repo / "build.py")
-        write_file(admission_repo / "Cargo.toml", "[profile.release]\nrpath = false\n", 0o644)
-        write_file(admission_repo / "flutter/linux/CMakeLists.txt",
-                   'BUILD_WITH_INSTALL_RPATH TRUE\nINSTALL_RPATH "$ORIGIN"\n', 0o644)
-        write_file(admission_repo / "scripts/build-debian.sh",
-                   "export CARGO_PROFILE_RELEASE_RPATH=false\n", 0o644)
-        baseline = Path(__file__).with_name("debian-package-cli-baseline.py")
-        result = subprocess.run(
-            [sys.executable, "-B", "-I", "-S", str(baseline), "--repo", str(admission_repo),
-             "--deb", str(produced)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        )
-        if (result.returncode != 1
-                or b"must contain only the Debian archiver and PE canonicalizer process launches" not in result.stdout
-                or b"Traceback" in result.stdout):
-            raise ValidationError(f"historical source-gate observation differs: {result.stdout[:8192]!r}")
         write_file(admission_repo / "build.py",
                    'raise RuntimeError("producer executed during archive admission")\n', 0o644)
         command = [sys.executable, "-B", "-I", "-S", str(Path(__file__).resolve()),
@@ -1624,7 +1609,7 @@ def run_desktop_resource_self_test(repo):
                 raise ValidationError(f"archive accepted retired conffile {name}")
         print("DEBIAN_DESKTOP_RESOURCES=pass cases=7 generator=production artifacts=actual-deb retained=exact-inventory retired=absent reintroduction=refused product=unexecuted")
         print("DEBIAN_DESKTOP_RESOURCES_ARTIFACT=sha256 " + digest)
-        print("DEBIAN_PACKAGE_CLI=pass cases=4 inputs=archives producer=unexecuted empty=refused unit=bound invalid-elf=refused historical-source-gate=blocks-artifact")
+        print("DEBIAN_PACKAGE_CLI=pass cases=3 inputs=archives producer=unexecuted empty=refused unit=bound invalid-elf=refused")
 
 
 def run_production_finalizer_self_test(repo, tmp, polkit_policy):

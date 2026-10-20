@@ -13628,8 +13628,22 @@ attempts leave no new prefix, link/file/traversal selectors refuse, and explicit
 allows retry with a syncable final handle and stable descriptors. `mkdir-search-d9e6da78.json` binds
 exact A/B sources/artifacts and joined bounded-RAM cleanup. Nonroot Linux component evidence only.
 Native Android/other Unix, installed/root and caller/UI/peer outcomes, concurrent namespace/EEXIST
-schedules, injected sync failure/crash durability, complete R-S0/R-F5 and release acceptance remain
+schedules, remaining sync-error and crash-durability coverage, complete R-S0/R-F5 and release acceptance remain
 OPEN. The parked receive-acquisition race is not exercised.
+
+**Directory-creation sync-error finality (`44f661e0`).** A Linux x86_64 regression runs the
+unchanged production walk in separate healthy and faulted exact-artifact children. A directory
+sync probe confirms the child-only seccomp `EIO` injection before product calls. Sixteen injected
+failures return the native error after the first new entry is visible, preserve that prefix and
+existing sentinel identity/data, and create no deeper descendants. Sixteen healthy cases complete;
+both already-existing-directory controls preserve identity, and descriptors remain 4→4 in each
+child. The complete 103-case/16-group shard passes. `mkdir-sync-error-44f661e0.json` binds source,
+artifact, all 38 observations, production-byte equality and joined bounded-RAM cleanup. Only a
+new test and required guest entry are added; existing tests and parked helpers are byte-identical.
+The kernel returns `EIO` without executing `fsync`; this observes error propagation and stopping,
+not a failing storage device or crash persistence. Retry after an uncertain visible creation,
+other sync/mkdir failures, concurrent namespace schedules, installed/root/caller/UI outcomes,
+other platforms, full durability/R-S0/R-F5 and release acceptance remain OPEN.
 
 Exact Android/iOS/Windows/Linux/macOS and applicable web artifacts must still exercise native
 create/rename/delete, hostile namespace replacement, reordered results, dispatch failure,

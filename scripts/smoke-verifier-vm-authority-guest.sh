@@ -3289,6 +3289,9 @@ run_focused_rust_tests() {
                 config::option_tests::core_load_links_are_transient_without_recovery
                 config::option_tests::core_load_fifo_refuses_and_retires_handles
                 config::option_tests::core_load_regular_data_and_read_failures_keep_status
+                config::option_tests::core_recovery_fifo_refuses_and_retires_handles
+                config::option_tests::core_recovery_terminal_refuses_without_controlling_tty
+                config::option_tests::core_recovery_regular_and_nonregular_preserve_files
                 config::option_tests::failed_write_preserves_memory_and_allows_the_same_retry
                 config::option_tests::ordinary_option_source_invalid_records_refuse_repeated_changes
                 config::option_tests::ordinary_option_source_denial_preserves_state_and_allows_retry

@@ -47,6 +47,124 @@ fn core_load_links_are_transient_without_recovery() {
 }
 
 #[test]
+fn core_recovery_fifo_refuses_and_retires_handles() {
+    const TEST: &str = "config::option_tests::core_recovery_fifo_refuses_and_retires_handles";
+    const CHILD: &str = "RUSTDESK_CORE_RECOVERY_FIFO_CHILD";
+    in_private_process(TEST, |root| {
+        use std::os::unix::fs::{FileTypeExt, MetadataExt};
+        let path = root.join("recovery-fifo");
+        if std::env::var_os(CHILD).is_some() {
+            println!("CORE_RECOVERY_FIFO_BEGIN=entered");
+            std::io::stdout().flush().unwrap();
+            let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+            let before = fds();
+            for _ in 0..100 {
+                assert!(harden_preserved_config_file(&path).is_err());
+            }
+            let after = fds();
+            println!("OPTION_COMMIT_CORE_RECOVERY_FIFO=observed iterations=100 refused=true fds_before={before} fds_after={after}");
+            assert_eq!(after, before);
+            return;
+        }
+        let name = std::ffi::CString::new(std::os::unix::ffi::OsStrExt::as_bytes(path.as_os_str())).unwrap();
+        assert_eq!(unsafe { crate::libc::mkfifo(name.as_ptr(), 0o640) }, 0);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([TEST, "--exact", "--color", "never", "--test-threads=1", "--nocapture"])
+            .env(CHILD, "1")
+            .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+            .spawn().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let timed_out = loop {
+            if child.try_wait().unwrap().is_some() { break false; }
+            if Instant::now() >= deadline { child.kill().unwrap(); break true; }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let output = child.wait_with_output().unwrap();
+        assert!(output.stdout.len() + output.stderr.len() <= 16384);
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let entered = stdout.lines().any(|line| line.contains("CORE_RECOVERY_FIFO_BEGIN=entered"));
+        for line in stdout.lines().filter(|line| line.starts_with("OPTION_COMMIT_")) { println!("{line}"); }
+        let after = fs::metadata(&path).unwrap();
+        let preserved = after.file_type().is_fifo() && (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode());
+        println!("OPTION_COMMIT_CORE_RECOVERY_FIFO=observed child_entered={entered} timed_out={timed_out} child_success={} fifo_preserved={preserved} cleanup=joined", output.status.success());
+        assert!(entered && !timed_out && output.status.success() && preserved);
+    });
+}
+
+#[test]
+fn core_recovery_terminal_refuses_without_controlling_tty() {
+    in_private_process("config::option_tests::core_recovery_terminal_refuses_without_controlling_tty", |_| {
+        use std::os::unix::{ffi::OsStrExt, fs::{MetadataExt, OpenOptionsExt}, io::{AsRawFd, FromRawFd}};
+        assert!(unsafe { crate::libc::setsid() } > 0);
+        let previous_hup = unsafe { crate::libc::signal(crate::libc::SIGHUP, crate::libc::SIG_IGN) };
+        assert_ne!(previous_hup, crate::libc::SIG_ERR);
+        let fd = unsafe { crate::libc::posix_openpt(crate::libc::O_RDWR | crate::libc::O_NOCTTY | crate::libc::O_CLOEXEC) };
+        assert!(fd >= 0);
+        let master = unsafe { fs::File::from_raw_fd(fd) };
+        assert_eq!(unsafe { crate::libc::grantpt(master.as_raw_fd()) }, 0);
+        assert_eq!(unsafe { crate::libc::unlockpt(master.as_raw_fd()) }, 0);
+        let mut name = [0 as crate::libc::c_char; 256];
+        assert_eq!(unsafe { crate::libc::ptsname_r(master.as_raw_fd(), name.as_mut_ptr(), name.len()) }, 0);
+        let bytes = unsafe { std::ffi::CStr::from_ptr(name.as_ptr()) }.to_bytes();
+        let path = Path::new(std::ffi::OsStr::from_bytes(bytes));
+        let has_terminal = || fs::OpenOptions::new().read(true)
+            .custom_flags(crate::libc::O_NOCTTY | crate::libc::O_NONBLOCK | crate::libc::O_CLOEXEC)
+            .open("/dev/tty").is_ok();
+        let before = has_terminal();
+        let metadata = fs::metadata(path).unwrap();
+        let refused = harden_preserved_config_file(path).is_err();
+        let after = has_terminal();
+        let preserved = metadata.mode() == fs::metadata(path).unwrap().mode();
+        drop(master);
+        assert_ne!(unsafe { crate::libc::signal(crate::libc::SIGHUP, previous_hup) }, crate::libc::SIG_ERR);
+        println!("OPTION_COMMIT_CORE_RECOVERY_TTY=observed refused={refused} terminal_before={before} terminal_after={after} device_mode_preserved={preserved}");
+        assert!(refused && !before && !after && preserved);
+    });
+}
+
+#[test]
+fn core_recovery_regular_and_nonregular_preserve_files() {
+    in_private_process("config::option_tests::core_recovery_regular_and_nonregular_preserve_files", |root| {
+        use std::os::unix::fs::{symlink, MetadataExt};
+        let file = root.join("regular-recovery");
+        let bytes = b"invalid configuration \xff preserved verbatim";
+        fs::write(&file, bytes).unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
+        let before = fs::metadata(&file).unwrap();
+        for _ in 0..2 { harden_preserved_config_file(&file).unwrap(); }
+        let after = fs::metadata(&file).unwrap();
+        assert_eq!((after.dev(), after.ino()), (before.dev(), before.ino()));
+        assert_eq!(after.mode() & 0o777, 0o600);
+        assert_eq!(fs::read(&file).unwrap(), bytes);
+        let directory = root.join("recovery-directory");
+        fs::create_dir(&directory).unwrap();
+        let directory_mode = fs::metadata(&directory).unwrap().mode();
+        let socket = root.join("recovery-socket");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let socket_before = fs::metadata(&socket).unwrap();
+        let target = root.join("recovery-link-target");
+        fs::write(&target, b"unrelated").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
+        let link = root.join("recovery-link");
+        symlink(&target, &link).unwrap();
+        let missing = root.join("absent-recovery");
+        for path in [&directory, &socket, &link, &missing] {
+            assert!(harden_preserved_config_file(path).is_err());
+        }
+        assert_eq!(fs::metadata(&directory).unwrap().mode(), directory_mode);
+        let socket_after = fs::metadata(&socket).unwrap();
+        assert_eq!((socket_before.dev(), socket_before.ino(), socket_before.mode()), (socket_after.dev(), socket_after.ino(), socket_after.mode()));
+        assert_eq!(fs::read(&target).unwrap(), b"unrelated");
+        assert_eq!(fs::metadata(&target).unwrap().mode() & 0o777, 0o644);
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert!(!missing.exists());
+        println!("OPTION_COMMIT_CORE_RECOVERY_FILES=observed regular_bytes_identity_preserved=true regular_mode=600 directory_socket_link_missing_refused=true targets_preserved=true");
+    });
+}
+
+#[test]
 fn core_load_fifo_refuses_and_retires_handles() {
     const TEST: &str = "config::option_tests::core_load_fifo_refuses_and_retires_handles";
     const CHILD: &str = "RUSTDESK_CORE_CONFIG_FIFO_CHILD";

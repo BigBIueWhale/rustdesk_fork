@@ -2685,6 +2685,92 @@ def run_polkit_dependency_self_test(repo):
                     raise ValidationError(f"accepted invalid dependency metadata: {name}")
         print("DEBIAN_POLKIT_DEPENDENCY=pass cases=7 generator=production artifacts=actual-deb policy=standalone-depends receiver=unexecuted")
         print("DEBIAN_POLKIT_ARTIFACTS=sha256 " + " ".join(artifacts))
+    run_desktop_resource_self_test(repo)
+
+
+def run_desktop_resource_self_test(repo):
+    build_module = load_build_module(repo)
+    retired = ("etc/rustdesk/startwm.sh", "etc/rustdesk/xorg.conf")
+    with tempfile.TemporaryDirectory(prefix="rustdesk-package-resources.") as scratch:
+        scratch = Path(scratch)
+        staging = scratch / "tree"
+        make_synthetic_tree(staging, b"package-inventory fixture\n")
+        source_scripts = scratch / "scripts"
+        source_scripts.mkdir(mode=0o700)
+        for name in build_module.DEBIAN_MAINTAINER_SCRIPTS:
+            shutil.copyfile(staging / "DEBIAN" / name, source_scripts / name)
+        shutil.rmtree(staging / "DEBIAN")
+        build_module.stage_debian_control_files("1.0", source_scripts, staging / "DEBIAN")
+        build_module.finalize_debian_package_tree(staging)
+        produced = scratch / "resources.deb"
+        archive = subprocess.run(
+            [sys.executable, "-B", "-I", "-S", "-c",
+             "import runpy,sys; module=runpy.run_path(sys.argv[1]); "
+             "module['build_debian_archive'](sys.argv[2], sys.argv[3])",
+             str(repo / "build.py"), str(staging), str(produced)],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+        if archive.returncode:
+            raise ValidationError(f"production archive builder failed: {archive.stdout[:8192]!r}")
+        digest = hashlib.sha256(produced.read_bytes()).hexdigest()
+        data = tar_stream_from_deb(produced, "--fsys-tarfile")
+        members = tar_members_from_stream(data, str(produced))
+        control = tar_stream_from_deb(produced, "--ctrl-tarfile")
+        controls = tar_members_from_stream(control, str(produced))
+        conffiles = archive_member_bytes(control, controls["./conffiles"], str(produced))
+        if ("./etc/rustdesk" in members
+                or any("./" + name in members or ("/" + name).encode() in conffiles
+                       for name in retired)):
+            raise ValidationError(f"obsolete desktop resources remain in package sha256={digest}")
+        validate_data_members(members, str(produced))
+        validate_control_members(controls, str(produced))
+        for path, (kind, mode) in DATA_REQUIRED.items():
+            require_member(members, path, kind, mode, str(produced))
+        for path, target in DATA_REQUIRED_SYMLINKS.items():
+            require_symlink(members, path, target, str(produced))
+        validate_conffiles(control, controls, str(produced))
+        validate_md5sums(data, members, control, controls, str(produced))
+        if conffiles != b"/etc/init.d/rustdesk\n":
+            raise ValidationError("retained init-script conffile differs")
+
+        for index, name in enumerate(retired):
+            restored = scratch / f"restored-{index}"
+            shutil.copytree(staging, restored, symlinks=True)
+            (restored / "DEBIAN/md5sums").unlink()
+            write_file(restored / name, "retired resource\n", 0o644)
+            expect_operation_failure(
+                lambda: build_module.finalize_debian_package_tree(restored),
+                "data inventory differs",
+            )
+            restored_deb = scratch / f"restored-{index}.deb"
+            write_modified_deb(produced, restored_deb, data_additions=(
+                directory_tar_member("./etc/rustdesk"),
+                regular_tar_member("./" + name, b"retired resource\n"),
+            ))
+            restored_data = tar_stream_from_deb(restored_deb, "--fsys-tarfile")
+            try:
+                validate_data_members(tar_members_from_stream(restored_data, str(restored_deb)),
+                                      str(restored_deb))
+            except ValidationError as err:
+                if "unexpected" not in str(err):
+                    raise
+            else:
+                raise ValidationError(f"archive accepted retired resource {name}")
+            restored_conffile = scratch / f"conffile-{index}.deb"
+            write_modified_deb(produced, restored_conffile, control_transform=replace_tar_member(
+                "./conffiles", contents=conffiles + ("/" + name + "\n").encode("ascii"),
+            ))
+            stream = tar_stream_from_deb(restored_conffile, "--ctrl-tarfile")
+            try:
+                validate_conffiles(stream, tar_members_from_stream(stream, str(restored_conffile)),
+                                   str(restored_conffile))
+            except ValidationError as err:
+                if "exact configuration inventory" not in str(err):
+                    raise
+            else:
+                raise ValidationError(f"archive accepted retired conffile {name}")
+        print("DEBIAN_DESKTOP_RESOURCES=pass cases=7 generator=production artifacts=actual-deb retained=exact-inventory retired=absent reintroduction=refused product=unexecuted")
+        print("DEBIAN_DESKTOP_RESOURCES_ARTIFACT=sha256 " + digest)
 
 
 def run_production_finalizer_self_test(repo, tmp, polkit_policy):

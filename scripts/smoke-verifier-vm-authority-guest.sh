@@ -1058,8 +1058,10 @@ run_debian_package_tests() {
         || fail 'Debian polkit-test diagnostics exceeded their bound'
     [ "$status" -eq 0 ] \
         || { tail -n 60 "$output" >&2; fail "Debian polkit tests failed with status $status"; }
+    local expected_lines=4
+    [ "$MODE" != debian-elf-role-tests ] || expected_lines=2
     [ "$(grep -Fxc "$receipt" "$output")" -eq 1 ] \
-        && [ "$(wc -l <"$output")" -eq 2 ] \
+        && [ "$(wc -l <"$output")" -eq "$expected_lines" ] \
         || fail 'Debian polkit-test result is missing, duplicated or unexpected'
     if [ "$MODE" = debian-elf-role-tests ]; then
         [ "$(grep -c '^DEBIAN_ELF_ROLE_ARTIFACTS={' "$output")" -eq 1 ] \
@@ -1067,6 +1069,9 @@ run_debian_package_tests() {
     else
         [ "$(grep -Ec '^DEBIAN_POLKIT_ARTIFACTS=sha256 ([0-9a-f]{64} ){6}[0-9a-f]{64}$' "$output")" -eq 1 ] \
             || fail 'Debian polkit fixture artifact digests differ'
+        [ "$(grep -Fxc 'DEBIAN_DESKTOP_RESOURCES=pass cases=7 generator=production artifacts=actual-deb retained=exact-inventory retired=absent reintroduction=refused product=unexecuted' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^DEBIAN_DESKTOP_RESOURCES_ARTIFACT=sha256 [0-9a-f]{64}$' "$output")" -eq 1 ] \
+            || fail 'Debian desktop-resource fixture results differ'
     fi
     [ "$(sha256sum "${sources[@]}")" = "$source_before" ] \
         || fail 'Debian polkit-test source changed during execution'

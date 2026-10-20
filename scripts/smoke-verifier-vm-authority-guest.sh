@@ -3162,7 +3162,6 @@ run_focused_rust_tests() {
         if [ "$RUST_TEST_PROFILE" = config-options ]; then
             source_fingerprints+=(
                 libs/hbb_common/src/config/option_tests.rs
-                scripts/fixtures/default-options-before-transaction.rs
             )
             required_tests=(
                 config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal

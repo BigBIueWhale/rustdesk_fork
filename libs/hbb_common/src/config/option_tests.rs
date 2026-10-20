@@ -1,88 +1,6 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
-#[path = "../../../../scripts/fixtures/default-options-before-transaction.rs"]
-mod before_defaults;
-
-mod before {
-    use super::*;
-
-    trait HistoricalLocalStore {
-        fn store(&self);
-    }
-
-    impl HistoricalLocalStore for LocalConfig {
-        fn store(&self) {
-            Config::store_(self, "_local");
-        }
-    }
-
-    pub fn set_remote_id(remote_id: &str) {
-        let mut config = LOCAL_CONFIG.write().unwrap();
-        if remote_id == config.remote_id {
-            return;
-        }
-        config.remote_id = remote_id.into();
-        config.store();
-    }
-
-    pub fn set_flutter_option(k: String, v: String) {
-        let mut config = LOCAL_CONFIG.write().unwrap();
-        let v2 = if v.is_empty() { None } else { Some(&v) };
-        if v2 != config.ui_flutter.get(&k) {
-            if v2.is_none() {
-                config.ui_flutter.remove(&k);
-            } else {
-                config.ui_flutter.insert(k, v);
-            }
-            config.store();
-        }
-    }
-
-    pub fn set_option(k: String, v: String) {
-        if !is_option_can_save(&OVERWRITE_LOCAL_SETTINGS, &k, &DEFAULT_LOCAL_SETTINGS, &v) {
-            let mut config = LOCAL_CONFIG.write().unwrap();
-            if config.options.remove(&k).is_some() {
-                config.store();
-            }
-            return;
-        }
-        let mut config = LOCAL_CONFIG.write().unwrap();
-        // The custom client will explictly set "default" as the default language.
-        let is_custom_client_default_lang = k == keys::OPTION_LANGUAGE && v == "default";
-        if is_custom_client_default_lang {
-            config.options.insert(k, "".to_owned());
-            config.store();
-            return;
-        }
-        let v2 = if v.is_empty() { None } else { Some(&v) };
-        if v2 != config.options.get(&k) {
-            if v2.is_none() {
-                config.options.remove(&k);
-            } else {
-                config.options.insert(k, v);
-            }
-            config.store();
-        }
-    }
-
-    // The complete set_fav body at bd03deb4, before persistence and membership ownership.
-    pub fn set_fav(fav: Vec<String>) {
-        let mut lock = LOCAL_CONFIG.write().unwrap();
-        if lock.fav == fav {
-            return;
-        }
-        lock.fav = fav;
-        lock.store();
-    }
-
-    pub fn set_kb_layout_type(kb_layout_type: String) {
-        let mut config = LOCAL_CONFIG.write().unwrap();
-        config.kb_layout_type = kb_layout_type;
-        config.store();
-    }
-}
-
 fn in_private_process(test: &str, run: impl FnOnce(&Path)) {
     const ROOT_ENV: &str = "RUSTDESK_OPTION_COMMIT_TEST_ROOT";
     if let Some(root) = std::env::var_os(ROOT_ENV) {
@@ -1830,15 +1748,8 @@ fn default_initial_denial_directory_and_missing_reads_preserve_sources() {
 #[test]
 fn default_single_key_writes_preserve_other_keys_and_concurrent_writers() {
     in_private_process("config::option_tests::default_single_key_writes_preserve_other_keys_and_concurrent_writers", |_| {
-        let mut left = UserDefaultConfig::load();
-        let mut right = UserDefaultConfig::load();
-        left.set("left".into(), "one".into());
-        right.set("right".into(), "two".into());
-        let old = UserDefaultConfig::load();
-        let old_lost_update = old.get("left").is_empty() && old.get("right") == "two";
-        println!("OPTION_COMMIT_DEFAULT_BEFORE=observed stale_snapshot_erased_other_key={old_lost_update}");
-        assert!(old_lost_update);
         assert_eq!(UserDefaultConfig::set_option("left".into(), "one".into()).unwrap(), "one");
+        assert_eq!(UserDefaultConfig::set_option("right".into(), "two".into()).unwrap(), "two");
         let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
         let writers: Vec<_> = (0..8).map(|i| {
             let barrier = barrier.clone();
@@ -1865,15 +1776,6 @@ fn default_write_failure_preserves_cache_file_and_identical_retry() {
         let file = Config::file_("_default");
         let parent = file.parent().unwrap();
         UserDefaultConfig::set_option(keys::OPTION_VIEW_STYLE.into(), "adaptive".into()).unwrap();
-        let mut historical = UserDefaultConfig::load();
-        let original = fs::read(&file).unwrap();
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
-        historical.set(keys::OPTION_VIEW_STYLE.into(), "original".into());
-        let old_snapshot_changed = historical.options.get(keys::OPTION_VIEW_STYLE).map(String::as_str) == Some("original");
-        let old_file_preserved = fs::read(&file).unwrap() == original;
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
-        println!("OPTION_COMMIT_DEFAULT_WRITE_BEFORE=observed returned_without_error=true snapshot_changed={old_snapshot_changed} file_preserved={old_file_preserved}");
-        assert!(old_snapshot_changed && old_file_preserved);
         for requested in ["original", ""] {
             UserDefaultConfig::set_option(keys::OPTION_VIEW_STYLE.into(), "adaptive".into()).unwrap();
             let original = fs::read(&file).unwrap();
@@ -1958,22 +1860,11 @@ fn last_peer_failure_preserves_state_and_retries_the_identical_value() {
     in_private_process("config::option_tests::last_peer_failure_preserves_state_and_retries_the_identical_value", |_| {
         LocalConfig::set_option("last-peer-test".into(), "preserved".into()).unwrap();
         LocalConfig::set_favorites(vec!["favorite-peer".into()], true).unwrap();
-        before::set_remote_id("127.0.0.1:24001");
         let file = Config::file_("_local");
         let parent = file.parent().unwrap();
-        let original = fs::read(&file).unwrap();
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
-        before::set_remote_id("127.0.0.1:24002");
-        let old_published = LocalConfig::get_remote_id() == "127.0.0.1:24002";
-        let old_file_preserved = fs::read(&file).unwrap() == original;
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
-        before::set_remote_id("127.0.0.1:24002");
-        let old_retry_skipped = fs::read(&file).unwrap() == original;
-        println!("OPTION_COMMIT_LAST_PEER_BEFORE=observed published_without_commit={old_published} file_preserved={old_file_preserved} retry_skipped={old_retry_skipped}");
-        assert!(old_published && old_file_preserved && old_retry_skipped);
 
         for requested in ["127.0.0.1:24002", ""] {
-            before::set_remote_id("127.0.0.1:24001");
+            LocalConfig::set_remote_id("127.0.0.1:24001").unwrap();
             let original = fs::read(&file).unwrap();
             fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
             let failed = LocalConfig::set_remote_id(requested).is_err();
@@ -2427,20 +2318,9 @@ fn local_source_missing_noops_do_not_create_and_first_saves_work() {
 fn favorite_failure_preserves_state_and_retries_the_exact_membership_change() {
     in_private_process("config::option_tests::favorite_failure_preserves_state_and_retries_the_exact_membership_change", |_| {
         LocalConfig::set_flutter_option("favorite-test".into(), "preserved".into()).unwrap();
-        before::set_fav(vec!["original".into()]);
+        LocalConfig::set_favorites(vec!["original".into()], true).unwrap();
         let file = Config::file_("_local");
         let parent = file.parent().unwrap();
-        let original = fs::read(&file).unwrap();
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
-        before::set_fav(vec!["original".into(), "second".into()]);
-        let old_published = LocalConfig::get_fav() == ["original", "second"];
-        let old_file_preserved = fs::read(&file).unwrap() == original;
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
-        before::set_fav(vec!["original".into(), "second".into()]);
-        let old_retry_skipped = fs::read(&file).unwrap() == original;
-        println!("OPTION_COMMIT_FAVORITES_BEFORE=observed published_without_commit={old_published} file_preserved={old_file_preserved} retry_skipped={old_retry_skipped}");
-        assert!(old_published && old_file_preserved && old_retry_skipped);
-        before::set_fav(vec!["original".into()]);
 
         for favorite in [true, false] {
             let memory = LocalConfig::get_fav();
@@ -2509,17 +2389,8 @@ fn concurrent_favorite_membership_changes_preserve_every_admitted_id() {
 #[test]
 fn keyboard_layout_failure_preserves_mapping_and_allows_retry() {
     in_private_process("config::option_tests::keyboard_layout_failure_preserves_mapping_and_allows_retry", |_| {
-        before::set_kb_layout_type("ISO".into());
         let file = Config::file_("_local");
         let parent = file.parent().unwrap();
-        let original = fs::read(&file).unwrap();
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
-        before::set_kb_layout_type("Not ISO".into());
-        let old_published = LocalConfig::get_kb_layout_type() == "Not ISO";
-        let old_file_preserved = fs::read(&file).unwrap() == original;
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
-        println!("OPTION_COMMIT_KEYBOARD_BEFORE=observed published_without_commit={old_published} file_preserved={old_file_preserved}");
-        assert!(old_published && old_file_preserved);
 
         LocalConfig::set_kb_layout_type("ISO".into()).unwrap();
         LocalConfig::set_favorites(vec!["original".into()], true).unwrap();
@@ -2551,19 +2422,8 @@ fn flutter_option_failure_preserves_state_and_retries_without_crossing_namespace
         LocalConfig::set_option(key.into(), "general-preserved".into()).unwrap();
         LocalConfig::set_favorites(vec!["preserved".into()], true).unwrap();
         LocalConfig::set_kb_layout_type("ISO".into()).unwrap();
-        before::set_flutter_option(key.into(), "ui-original".into());
         let file = Config::file_("_local");
         let parent = file.parent().unwrap();
-        let original = fs::read(&file).unwrap();
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
-        before::set_flutter_option(key.into(), "ui-replacement".into());
-        let published = LocalConfig::get_flutter_option(key) == "ui-replacement";
-        let file_preserved = fs::read(&file).unwrap() == original;
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
-        before::set_flutter_option(key.into(), "ui-replacement".into());
-        let retry_skipped = fs::read(&file).unwrap() == original;
-        println!("OPTION_COMMIT_UI_STATE_BEFORE=observed published_without_commit={published} file_preserved={file_preserved} retry_skipped={retry_skipped}");
-        assert!(published && file_preserved && retry_skipped);
 
         for value in ["ui-replacement", ""] {
             LocalConfig::set_flutter_option(key.into(), "ui-original".into()).unwrap();
@@ -2595,18 +2455,8 @@ fn flutter_option_failure_preserves_state_and_retries_without_crossing_namespace
 fn local_option_failure_preserves_state_and_retries_replacement_and_removal() {
     in_private_process("config::option_tests::local_option_failure_preserves_state_and_retries_replacement_and_removal", |_| {
         let key = "local-option-commit-test";
-        before::set_option(key.into(), "original".into());
         let file = Config::file_("_local");
         let parent = file.parent().unwrap();
-        let original = fs::read(&file).unwrap();
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
-        before::set_option(key.into(), "replacement".into());
-        let published = LocalConfig::get_option(key) == "replacement";
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
-        before::set_option(key.into(), "replacement".into());
-        let retry_skipped = fs::read(&file).unwrap() == original;
-        println!("OPTION_COMMIT_LOCAL_BEFORE=observed published_without_commit={published} retry_skipped={retry_skipped}");
-        assert!(published && retry_skipped);
         LocalConfig::set_favorites(vec!["preserved".into()], true).unwrap();
         for value in ["replacement", ""] {
             LocalConfig::set_option(key.into(), "original".into()).unwrap();

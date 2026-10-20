@@ -71,7 +71,239 @@ PeerTabModel _selectedModel(FFI owner) {
   return model;
 }
 
+class _PeerRenameCall {
+  _PeerRenameCall(this.name);
+  final String name;
+  final result = Completer<bool>();
+  bool? currentAtCompletion;
+}
+
+class _PeerRenameHarness {
+  final manager = OverlayDialogManager(translateText: (text) => text);
+  final calls = <_PeerRenameCall>[];
+  final openings = <Future<void>>[];
+  final submissions = <Future<Object?>>[];
+
+  Future<void> mount(WidgetTester tester) async {
+    final overlay = BlockableOverlayState();
+    manager.setOverlayState(overlay);
+    await tester.pumpWidget(MaterialApp(
+      home: BlockableOverlay(state: overlay, underlying: const SizedBox.expand()),
+    ));
+    await open(tester, 'original');
+  }
+
+  Future<void> open(WidgetTester tester, String name) async {
+    openings.add(renameDialog(oldName: name, onSubmit: (name, isCurrent) async {
+      final call = _PeerRenameCall(name);
+      calls.add(call);
+      final saved = await call.result.future;
+      call.currentAtCompletion = isCurrent();
+      return saved;
+    }, dialogManager: manager, translateText: (text) => text));
+    await tester.pumpAndSettle();
+  }
+
+  Future<Object?> submit(Function() callback) {
+    final observed = Future<void>.sync(() => callback()).then<Object?>(
+        (_) => null, onError: (Object error, StackTrace _) => error);
+    submissions.add(observed);
+    return observed;
+  }
+
+  Future<void> drain(WidgetTester tester) async {
+    manager.dismissAll();
+    for (final call in calls) {
+      if (!call.result.isCompleted) call.result.complete(false);
+    }
+    await Future.wait(submissions);
+    await Future.wait(openings);
+    await tester.pumpWidget(const SizedBox.shrink());
+  }
+}
+
 void main() {
+  test('peer option workflow waits for write and refresh with exact arguments',
+      () async {
+    final write = Completer<void>();
+    final refresh = Completer<void>();
+    final events = <String>[];
+    bool? result;
+    final pending = mainSetPeerOption('peer', 'alias', 'selected',
+        writeOption: (id, key, value) {
+      events.add('$id:$key:$value');
+      return write.future;
+    }, reloadPeers: () {
+      events.add('refresh');
+      return refresh.future;
+    }, showFailure: () => fail('successful option save reported failure'))
+        .then((value) => result = value);
+    expect(events, ['peer:alias:selected']);
+    expect(result, isNull);
+    write.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(events, ['peer:alias:selected', 'refresh']);
+    expect(result, isNull);
+    refresh.complete();
+    await pending;
+    expect(result, isTrue);
+  });
+
+  test('peer option workflow reports write or refresh failure and retries',
+      () async {
+    for (final kind in ['sync', 'async', 'refresh']) {
+      var calls = 0;
+      var refreshes = 0;
+      var failures = 0;
+      Future<void> write(String id, String key, String value) {
+        expect([id, key, value], ['peer', 'alias', 'selected']);
+        if (++calls == 1) {
+          if (kind == 'sync') throw StateError('write refused');
+          if (kind == 'async') return Future.error(StateError('write refused'));
+        }
+        return Future.value();
+      }
+      Future<void> reload() async {
+        if (++refreshes == 1 && kind == 'refresh') {
+          throw StateError('refresh refused');
+        }
+      }
+      expect(await mainSetPeerOption('peer', 'alias', 'selected',
+          writeOption: write, reloadPeers: reload,
+          showFailure: () => failures++), isFalse);
+      expect(await mainSetPeerOption('peer', 'alias', 'selected',
+          writeOption: write, reloadPeers: reload,
+          showFailure: () => failures++), isTrue);
+      expect(calls, 2);
+      expect(failures, 1);
+      expect(refreshes, kind == 'refresh' ? 2 : 1);
+    }
+  });
+
+  testWidgets('peer rename owns one pending save until success', (tester) async {
+    final harness = _PeerRenameHarness();
+    await harness.mount(tester);
+    try {
+      await tester.enterText(find.byType(TextField), ' renamed ');
+      final submit = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      final first = harness.submit(submit);
+      final duplicate = harness.submit(submit);
+      await tester.pump();
+      expect(harness.calls, hasLength(1));
+      expect(harness.calls.single.name, 'renamed');
+      expect(find.byType(CustomAlertDialog), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
+      harness.calls.single.result.complete(true);
+      expect(await first, isNull);
+      expect(await duplicate, isNull);
+      await tester.pumpAndSettle();
+      expect(find.byType(CustomAlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await harness.drain(tester);
+    }
+  });
+
+  testWidgets('retired peer rename callbacks cannot save a replacement',
+      (tester) async {
+    final harness = _PeerRenameHarness();
+    await harness.mount(tester);
+    try {
+      final submit = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      await harness.open(tester, 'replacement');
+      expect(await harness.submit(submit), isNull);
+      expect(harness.calls, isEmpty);
+      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          'replacement');
+      expect(tester.takeException(), isNull);
+    } finally {
+      await harness.drain(tester);
+    }
+  });
+
+  testWidgets('peer rename failure stays visible and permits a changed retry',
+      (tester) async {
+    final harness = _PeerRenameHarness();
+    await harness.mount(tester);
+    try {
+      final submit = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      final first = harness.submit(submit);
+      await tester.pump();
+      harness.calls.single.result.complete(false);
+      expect(await first, isNull);
+      await tester.pumpAndSettle();
+      expect(find.byType(CustomAlertDialog), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      await tester.enterText(find.byType(TextField), 'retry');
+      final retry = harness.submit(submit);
+      await tester.pump();
+      expect(harness.calls, hasLength(2));
+      expect(harness.calls.last.name, 'retry');
+      harness.calls.last.result.complete(true);
+      expect(await retry, isNull);
+      await tester.pumpAndSettle();
+      expect(find.byType(CustomAlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await harness.drain(tester);
+    }
+  });
+
+  testWidgets('admitted peer rename drains without closing its replacement',
+      (tester) async {
+    final harness = _PeerRenameHarness();
+    await harness.mount(tester);
+    try {
+      final submit = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      final pending = harness.submit(submit);
+      await tester.pump();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      await harness.open(tester, 'replacement');
+      harness.calls.single.result.complete(true);
+      expect(await pending, isNull);
+      await tester.pumpAndSettle();
+      expect(harness.calls.single.currentAtCompletion, isFalse);
+      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          'replacement');
+      expect(tester.takeException(), isNull);
+    } finally {
+      await harness.drain(tester);
+    }
+  });
+
+  testWidgets('peer rename disposes its editor while admitted failure drains',
+      (tester) async {
+    final harness = _PeerRenameHarness();
+    await harness.mount(tester);
+    try {
+      final controller =
+          tester.widget<TextField>(find.byType(TextField)).controller!;
+      final submit = tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit!;
+      final pending = harness.submit(submit);
+      await tester.pump();
+      harness.manager.dismissAll();
+      await tester.pumpAndSettle();
+      expect(() => controller.addListener(() {}), throwsFlutterError);
+      harness.calls.single.result.complete(false);
+      expect(await pending, isNull);
+      expect(await harness.submit(submit), isNull);
+      expect(harness.calls, hasLength(1));
+      expect(harness.calls.single.currentAtCompletion, isFalse);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await harness.drain(tester);
+    }
+  });
+
   test('peer credential removal waits for the exact submitted operation', () async {
     final dispatch = Completer<void>();
     final ids = <String>[];

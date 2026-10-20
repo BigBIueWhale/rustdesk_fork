@@ -1213,26 +1213,18 @@ class RustdeskImpl {
       required String key,
       required String value,
       dynamic hint}) {
-    mainSetPeerOptionSync(id: id, key: key, value: value, hint: hint);
+    _setPeerOption(id: id, key: key, value: value);
     return Future.value();
   }
 
-  bool mainSetPeerOptionSync(
+  void _setPeerOption(
       {required String id,
       required String key,
-      required String value,
-      dynamic hint}) {
+      required String value}) {
     js.context.callMethod('setByName', [
       'option:peer',
       jsonEncode({'id': id, 'name': key, 'value': value})
     ]);
-    return true;
-  }
-
-  Future<void> mainSetPeerAlias(
-      {required String id, required String alias, dynamic hint}) {
-    mainSetPeerOptionSync(id: id, key: 'alias', value: alias, hint: hint);
-    return Future.value();
   }
 
   Future<void> mainForgetPassword({required String id, dynamic hint}) {

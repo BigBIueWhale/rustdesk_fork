@@ -608,8 +608,7 @@ abstract class BasePeerCard extends StatelessWidget {
       text: translate(label),
       getter: () async => mainGetPeerBoolOptionSync(id, key),
       setter: (bool v) async {
-        await bind.mainSetPeerOption(
-            id: id, key: key, value: bool2option(key, v));
+        if (!await mainSetPeerOption(id, key, bool2option(key, v))) return;
         showToast(translate('Successful'));
       },
       padding: menuPadding,
@@ -640,12 +639,12 @@ abstract class BasePeerCard extends StatelessWidget {
         String oldName = await _getAlias(id);
         renameDialog(
             oldName: oldName,
-            onSubmit: (String newName) async {
-              if (newName != oldName) {
-                await bind.mainSetPeerAlias(id: id, alias: newName);
-                showToast(translate('Successful'));
-                _update();
-              }
+            onSubmit: (String newName, bool Function() isCurrent) async {
+              if (newName == oldName) return true;
+              if (!await mainSetPeerOption(id, 'alias', newName,
+                  reloadPeers: _update)) return false;
+              if (isCurrent()) showToast(translate('Successful'));
+              return true;
             });
       },
       padding: menuPadding,
@@ -780,7 +779,7 @@ abstract class BasePeerCard extends StatelessWidget {
       await bind.mainGetPeerOption(id: id, key: 'alias');
 
   @protected
-  void _update();
+  Future<void> _update();
 }
 
 class RecentPeerCard extends BasePeerCard {
@@ -834,7 +833,7 @@ class RecentPeerCard extends BasePeerCard {
 
   @protected
   @override
-  void _update() => bind.mainLoadRecentPeers();
+  Future<void> _update() => bind.mainLoadRecentPeers();
 }
 
 class FavoritePeerCard extends BasePeerCard {
@@ -883,19 +882,26 @@ class FavoritePeerCard extends BasePeerCard {
 
   @protected
   @override
-  void _update() => bind.mainLoadFavPeers();
+  Future<void> _update() => bind.mainLoadFavPeers();
 }
 
 void _rdpDialog(String id) async {
   final port = await bind.mainGetPeerOption(id: id, key: 'rdp_port');
   final portController = TextEditingController(text: port);
+  var submitting = false;
 
   gFFI.dialogManager.show((setState, close, context) {
     submit() async {
+      if (!close.isCurrent || submitting) return;
       String port = portController.text.trim();
-      await bind.mainSetPeerOption(id: id, key: 'rdp_port', value: port);
-      showToast(translate('Successful'));
-      close();
+      setState(() => submitting = true);
+      try {
+        if (!await mainSetPeerOption(id, 'rdp_port', port)) return;
+        if (close.isCurrent) showToast(translate('Successful'));
+        close();
+      } finally {
+        if (close.isCurrent) setState(() => submitting = false);
+      }
     }
 
     return CustomAlertDialog(
@@ -917,6 +923,7 @@ void _rdpDialog(String id) async {
                     : SizedBox.shrink(),
                 Expanded(
                   child: TextField(
+                    enabled: !submitting,
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(RegExp(
                           r'^([0-9]|[1-9]\d|[1-9]\d{2}|[1-9]\d{3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])$'))
@@ -935,7 +942,7 @@ void _rdpDialog(String id) async {
       ),
       actions: [
         dialogButton("Cancel", onPressed: close, isOutline: true),
-        dialogButton("OK", onPressed: submit),
+        dialogButton("OK", onPressed: submitting ? null : submit),
       ],
       onSubmit: submit,
       onCancel: close,

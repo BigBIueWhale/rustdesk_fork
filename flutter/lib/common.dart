@@ -1730,6 +1730,27 @@ Future<bool> mainRemovePeers(List<String> ids,
   return successful;
 }
 
+Future<bool> mainSetPeerOption(String id, String key, String value,
+    {Future<void> Function(String id, String key, String value)? writeOption,
+    Future<void> Function()? reloadPeers,
+    VoidCallback? showFailure}) async {
+  final write = writeOption ??
+      (id, key, value) => bind.mainSetPeerOption(id: id, key: key, value: value);
+  try {
+    await write(id, key, value);
+    if (reloadPeers != null) await reloadPeers();
+    return true;
+  } catch (error) {
+    debugPrint('Failed to save peer option: $error');
+    if (showFailure != null) {
+      showFailure();
+    } else {
+      showToast(translate('Failed'));
+    }
+    return false;
+  }
+}
+
 Future<bool> mainForgetPassword(String id,
     {Future<void> Function(String id)? forgetPassword,
     VoidCallback? showFailure}) async {

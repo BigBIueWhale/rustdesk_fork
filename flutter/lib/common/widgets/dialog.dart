@@ -493,75 +493,110 @@ Future<void> deleteConfirmDialog(
   );
 }
 
-void renameDialog(
+Future<void> renameDialog(
     {required String oldName,
-    FormFieldValidator<String>? validator,
-    required ValueChanged<String> onSubmit,
-    Function? onCancel}) async {
-  RxBool isInProgress = false.obs;
-  var controller = TextEditingController(text: oldName);
-  final formKey = GlobalKey<FormState>();
-  gFFI.dialogManager.show((setState, close, context) {
-    submit() async {
-      String text = controller.text.trim();
-      if (validator != null && formKey.currentState?.validate() == false) {
-        return;
-      }
-      isInProgress.value = true;
-      onSubmit(text);
-      close();
-      isInProgress.value = false;
-    }
+    required Future<bool> Function(String name, bool Function() isCurrent) onSubmit,
+    OverlayDialogManager? dialogManager,
+    String Function(String)? translateText}) async {
+  await (dialogManager ?? gFFI.dialogManager).show<void>(
+    (_, close, __) => PeerRenameDialog(
+      oldName: oldName,
+      onSubmit: onSubmit,
+      close: close,
+      translateText: translateText ?? translate,
+    ),
+  );
+}
 
-    cancel() {
-      onCancel?.call();
-      close();
-    }
+class PeerRenameDialog extends StatefulWidget {
+  const PeerRenameDialog({
+    required this.oldName,
+    required this.onSubmit,
+    required this.close,
+    required this.translateText,
+  });
 
+  final String oldName;
+  final Future<bool> Function(String name, bool Function() isCurrent) onSubmit;
+  final DialogClose close;
+  final String Function(String) translateText;
+
+  @override
+  State<PeerRenameDialog> createState() => _PeerRenameDialogState();
+}
+
+class _PeerRenameDialogState extends State<PeerRenameDialog> {
+  late final TextEditingController _controller;
+  var _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.oldName);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  bool _isCurrent() => mounted && widget.close.isCurrent;
+
+  Future<void> _submit() async {
+    if (!_isCurrent() || _submitting) return;
+    final text = _controller.text.trim();
+    final save = widget.onSubmit;
+    final close = widget.close;
+    setState(() => _submitting = true);
+    try {
+      if (await save(text, _isCurrent)) close();
+    } finally {
+      if (_isCurrent()) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return CustomAlertDialog(
       title: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.edit_rounded, color: MyTheme.accent),
-          Text(translate('Rename')).paddingOnly(left: 10),
+          Text(widget.translateText('Rename')).paddingOnly(left: 10),
         ],
       ),
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            child: Form(
-              key: formKey,
-              child: TextFormField(
-                controller: controller,
-                autofocus: true,
-                decoration: InputDecoration(labelText: translate('Name')),
-                validator: validator,
-              ),
-            ),
+          TextField(
+            controller: _controller,
+            enabled: !_submitting,
+            autofocus: true,
+            decoration: InputDecoration(labelText: widget.translateText('Name')),
           ),
-          // NOT use Offstage to wrap LinearProgressIndicator
-          Obx(() =>
-              isInProgress.value ? const LinearProgressIndicator() : Offstage())
+          if (_submitting) const LinearProgressIndicator(),
         ],
       ),
       actions: [
         dialogButton(
           "Cancel",
           icon: Icon(Icons.close_rounded),
-          onPressed: cancel,
+          onPressed: widget.close,
           isOutline: true,
+          translateText: widget.translateText,
         ),
         dialogButton(
           "OK",
           icon: Icon(Icons.done_rounded),
-          onPressed: submit,
+          onPressed: _submitting ? null : _submit,
+          translateText: widget.translateText,
         ),
       ],
-      onSubmit: submit,
-      onCancel: cancel,
+      onSubmit: _submit,
+      onCancel: widget.close,
     );
-  });
+  }
 }
 
 // This dialog should not be dismissed, otherwise it will be black screen, have not reproduced this.

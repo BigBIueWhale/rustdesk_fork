@@ -600,6 +600,13 @@ FILE_COMMAND_TESTS = {
 }
 FILE_NAVIGATION_SUITES = {
     "peer_removal_test.dart": {
+        "peer option workflow waits for write and refresh with exact arguments",
+        "peer option workflow reports write or refresh failure and retries",
+        "peer rename owns one pending save until success",
+        "retired peer rename callbacks cannot save a replacement",
+        "peer rename failure stays visible and permits a changed retry",
+        "admitted peer rename drains without closing its replacement",
+        "peer rename disposes its editor while admitted failure drains",
         "peer credential removal waits for the exact submitted operation",
         "peer credential removal reports failure and retries the same peer",
         "peer credential removal preserves a synchronous bridge failure",

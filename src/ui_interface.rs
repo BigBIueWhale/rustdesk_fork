@@ -247,8 +247,8 @@ pub fn set_peer_flutter_option(id: String, name: String, value: String) {
 }
 
 #[inline]
-pub fn set_peer_option(id: String, name: String, value: String) {
-    hbb_common::allow_err!(PeerConfig::set_option(&id, &name, value));
+pub fn set_peer_option(id: String, name: String, value: String) -> hbb_common::ResultType<()> {
+    PeerConfig::set_option(&id, &name, value)
 }
 
 #[inline]

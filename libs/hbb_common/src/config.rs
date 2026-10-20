@@ -3413,14 +3413,17 @@ impl PeerConfig {
     }
 
     pub fn set_option(id: &str, name: &str, value: String) -> crate::ResultType<()> {
-        let mut config = Self::load(id);
+        let mut config = Self::load_for_write(id)?;
+        let requested = if value.is_empty() { None } else { Some(&value) };
+        if config.options.get(name) == requested {
+            return Ok(());
+        }
         if value.is_empty() {
             config.options.remove(name);
         } else {
             config.options.insert(name.to_owned(), value);
         }
-        crate::allow_err!(config.store(id));
-        Ok(())
+        config.store(id)
     }
 
     pub fn forget_password(id: &str) -> crate::ResultType<()> {

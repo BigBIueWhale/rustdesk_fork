@@ -1337,17 +1337,8 @@ pub fn main_set_peer_flutter_option_sync(id: String, k: String, v: String) -> Sy
     SyncReturn(())
 }
 
-pub fn main_set_peer_option(id: String, key: String, value: String) {
+pub fn main_set_peer_option(id: String, key: String, value: String) -> Result<()> {
     set_peer_option(id, key, value)
-}
-
-pub fn main_set_peer_option_sync(id: String, key: String, value: String) -> SyncReturn<bool> {
-    set_peer_option(id, key, value);
-    SyncReturn(true)
-}
-
-pub fn main_set_peer_alias(id: String, alias: String) {
-    set_peer_option(id, "alias".to_owned(), alias)
 }
 
 pub fn main_forget_password(id: String) -> Result<()> {

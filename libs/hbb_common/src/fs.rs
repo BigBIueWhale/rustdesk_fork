@@ -1515,6 +1515,17 @@ fn unix_rename_admitted_entry(
     target_name: &std::ffi::CStr,
     admitted: &crate::libc::stat,
 ) -> std::io::Result<()> {
+    unix_rename_admitted_entry_with(parent, source_name, target_name, admitted, || Ok(()))
+}
+
+#[cfg(unix)]
+fn unix_rename_admitted_entry_with(
+    parent: &std::fs::File,
+    source_name: &std::ffi::CStr,
+    target_name: &std::ffi::CStr,
+    admitted: &crate::libc::stat,
+    before_rename: impl FnOnce() -> std::io::Result<()>,
+) -> std::io::Result<()> {
     use std::os::unix::io::AsRawFd;
 
     if source_name == target_name {
@@ -1527,6 +1538,7 @@ fn unix_rename_admitted_entry(
 
     let current = unix_fstatat_no_follow(parent.as_raw_fd(), source_name)?;
     unix_require_same_object(admitted, &current, "rename source")?;
+    before_rename()?;
     // POSIX renameat is parent-descriptor-relative and never follows the destination leaf. As with
     // unlinkat, no portable interface binds the source name atomically to a previously opened
     // inode, so a writer already able to mutate this exact parent retains a final name-exchange
@@ -4719,6 +4731,144 @@ pub fn serialize_transfer_job(job: &TransferJob, done: bool, cancel: bool, error
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn file_metadata_rename_existing_targets_are_preserved() {
+        use std::os::unix::fs::{symlink, MetadataExt};
+        let root = TestTempDir::new("rename-existing-targets");
+        std::fs::create_dir_all(&root.path).unwrap();
+        let mut all_preserved = true;
+        for kind in ["file", "directory", "nonempty_directory", "symlink", "dangling", "hardlink", "source_symlink"] {
+            let base = root.join(kind);
+            std::fs::create_dir(&base).unwrap();
+            let source = base.join("source");
+            let target = base.join("target");
+            let outside = base.join("outside");
+            std::fs::write(&outside, b"outside").unwrap();
+            if kind == "directory" || kind == "nonempty_directory" {
+                std::fs::create_dir(&source).unwrap();
+                std::fs::write(source.join("child"), b"source-child").unwrap();
+                std::fs::create_dir(&target).unwrap();
+                if kind == "nonempty_directory" { std::fs::write(target.join("child"), b"target-child").unwrap(); }
+            } else {
+                if kind == "source_symlink" { symlink(&outside, &source).unwrap(); }
+                else { std::fs::write(&source, b"source").unwrap(); }
+                match kind {
+                    "symlink" => symlink(&outside, &target).unwrap(),
+                    "dangling" => symlink(base.join("missing"), &target).unwrap(),
+                    "hardlink" => std::fs::hard_link(&source, &target).unwrap(),
+                    _ => std::fs::write(&target, b"target").unwrap(),
+                }
+            }
+            let identity = |path: &Path| std::fs::symlink_metadata(path).map(|m| (m.dev(), m.ino(), m.mode(), m.nlink())).ok();
+            let before_source = identity(&source);
+            let before_target = identity(&target);
+            let result = rename_file(&get_string(&source), "target");
+            let refused = result.as_ref().err().and_then(|e| e.downcast_ref::<std::io::Error>())
+                .map(|e| e.kind() == std::io::ErrorKind::AlreadyExists).unwrap_or(false);
+            let preserved = identity(&source) == before_source && identity(&target) == before_target
+                && std::fs::read(&outside).unwrap() == b"outside"
+                && match kind {
+                    "directory" => std::fs::read(source.join("child")).map(|v| v == b"source-child").unwrap_or(false)
+                        && std::fs::read_dir(&target).map(|mut v| v.next().is_none()).unwrap_or(false),
+                    "nonempty_directory" => std::fs::read(source.join("child")).map(|v| v == b"source-child").unwrap_or(false)
+                        && std::fs::read(target.join("child")).map(|v| v == b"target-child").unwrap_or(false),
+                    "symlink" => std::fs::read_link(&target).ok().as_ref() == Some(&outside),
+                    "dangling" => std::fs::read_link(&target).ok().as_ref() == Some(&base.join("missing")),
+                    "hardlink" => std::fs::read(&source).map(|v| v == b"source").unwrap_or(false)
+                        && std::fs::read(&target).map(|v| v == b"source").unwrap_or(false),
+                    "source_symlink" => std::fs::read_link(&source).ok().as_ref() == Some(&outside)
+                        && std::fs::read(&target).map(|v| v == b"target").unwrap_or(false),
+                    _ => std::fs::read(&source).map(|v| v == b"source").unwrap_or(false)
+                        && std::fs::read(&target).map(|v| v == b"target").unwrap_or(false),
+                };
+            println!("FILE_METADATA_RENAME=observed kind={kind} refused={refused} preserved={preserved}");
+            all_preserved &= refused && preserved;
+        }
+        assert!(all_preserved);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn file_metadata_rename_late_collision_is_atomic() {
+        use std::{cell::Cell, os::unix::{fs::{symlink, MetadataExt}, io::AsRawFd}};
+        let root = TestTempDir::new("rename-late-targets");
+        std::fs::create_dir_all(&root.path).unwrap();
+        let mut all_preserved = true;
+        for kind in ["file", "directory", "symlink", "hardlink"] {
+            let base = root.join(kind);
+            std::fs::create_dir(&base).unwrap();
+            let source = base.join("source");
+            let target = base.join("target");
+            if kind == "directory" { std::fs::create_dir(&source).unwrap(); }
+            else { std::fs::write(&source, b"source").unwrap(); }
+            let parent = open_parent_dir_no_follow(&base, false).unwrap();
+            let source_name = cstring_file_name(&source).unwrap();
+            let target_name = cstring_file_name(&target).unwrap();
+            let admitted = unix_fstatat_no_follow(parent.as_raw_fd(), &source_name).unwrap();
+            let identity = |path: &Path| std::fs::symlink_metadata(path).map(|m| (m.dev(), m.ino(), m.mode())).ok();
+            let original = identity(&source);
+            assert!(std::fs::symlink_metadata(&target).is_err());
+            let created = Cell::new(None);
+            let entered = Cell::new(false);
+            let result = unix_rename_admitted_entry_with(&parent, &source_name, &target_name, &admitted, || {
+                entered.set(true);
+                match kind {
+                    "directory" => std::fs::create_dir(&target)?,
+                    "symlink" => symlink(base.join("absent"), &target)?,
+                    "hardlink" => std::fs::hard_link(&source, &target)?,
+                    _ => std::fs::write(&target, b"late-target")?,
+                }
+                created.set(identity(&target));
+                Ok(())
+            });
+            let refused = result.as_ref().err().and_then(|e| e.raw_os_error()) == Some(crate::libc::EEXIST);
+            let preserved = entered.get() && created.get().is_some() && identity(&source) == original
+                && identity(&target) == created.get();
+            println!("FILE_METADATA_RENAME=observed kind=late_{kind} entered={} refused={refused} preserved={preserved}", entered.get());
+            all_preserved &= refused && preserved;
+        }
+        assert!(all_preserved);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn file_metadata_rename_vacant_names_and_noops_preserve_entries() {
+        use std::os::unix::fs::{symlink, MetadataExt};
+        let root = TestTempDir::new("rename-vacant-controls");
+        std::fs::create_dir_all(&root.path).unwrap();
+        let fds = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        for kind in ["file", "directory", "symlink"] {
+            let base = root.join(kind);
+            std::fs::create_dir(&base).unwrap();
+            let source = base.join("source");
+            let target = base.join("RENAMED-É");
+            let outside = base.join("outside");
+            std::fs::write(&outside, b"outside").unwrap();
+            match kind {
+                "directory" => std::fs::create_dir(&source).unwrap(),
+                "symlink" => symlink(&outside, &source).unwrap(),
+                _ => std::fs::write(&source, b"source").unwrap(),
+            }
+            let before = std::fs::symlink_metadata(&source).unwrap();
+            for _ in 0..16 {
+                rename_file(&get_string(&source), "source").unwrap();
+                rename_file(&get_string(&source), "RENAMED-É").unwrap();
+                let after = std::fs::symlink_metadata(&target).unwrap();
+                assert_eq!((before.dev(), before.ino(), before.mode()), (after.dev(), after.ino(), after.mode()));
+                assert!(std::fs::symlink_metadata(&source).is_err());
+                rename_file(&get_string(&target), "source").unwrap();
+                assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
+            }
+            assert_eq!(std::fs::read_dir(&base).unwrap().count(), 2);
+            println!("FILE_METADATA_RENAME=observed kind=control_{kind} cycles=16 identity_preserved=true");
+        }
+        let after_fds = fds();
+        println!("FILE_METADATA_RENAME=observed kind=handles before={before_fds} after={after_fds}");
+        assert_eq!(before_fds, after_fds);
+    }
     use crate::compress::try_decompress;
     use crate::protobuf::Message as _;
 
@@ -11752,7 +11902,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn rename_file_replaces_a_symlink_leaf_without_touching_its_target() {
+    fn rename_file_moves_a_source_symlink_without_touching_its_target() {
         use std::os::unix::fs::symlink;
 
         let tmp_root = TestTempDir::new("rustdesk_rename_symlink_leaf");
@@ -11760,17 +11910,15 @@ mod tests {
         let target = tmp_root.join("target.txt");
         let outside = tmp_root.join("outside.txt");
         std::fs::create_dir_all(&tmp_root.path).expect("create rename directory");
-        std::fs::write(&source, b"renamed-content").expect("create rename source");
         std::fs::write(&outside, b"DO-NOT-TOUCH").expect("create outside target");
-        symlink(&outside, &target).expect("create destination symlink");
+        symlink(&outside, &source).expect("create source symlink");
 
         rename_file(&get_string(&source), "target.txt")
-            .expect("rename must replace the destination link leaf");
+            .expect("rename must move the source link leaf to a vacant name");
 
-        assert_eq!(
-            std::fs::read(&target).expect("read renamed target"),
-            b"renamed-content"
-        );
+        assert!(std::fs::symlink_metadata(&source).is_err());
+        assert!(std::fs::symlink_metadata(&target).unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read_link(&target).unwrap(), outside);
         assert_eq!(
             std::fs::read(&outside).expect("read outside target"),
             b"DO-NOT-TOUCH"

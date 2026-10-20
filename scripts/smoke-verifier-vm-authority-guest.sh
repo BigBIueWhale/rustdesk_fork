@@ -3206,6 +3206,15 @@ run_focused_rust_tests() {
                 fs::tests::directory_entry_link_cycle_preserves_the_link_entry
                 fs::tests::directory_entry_link_nondirectory_target_preserves_the_link_entry
                 fs::tests::file_metadata_digest_matching_subseconds_keep_overwrite_hint
+                fs::tests::file_metadata_rename_existing_targets_are_preserved
+                fs::tests::file_metadata_rename_late_collision_is_atomic
+                fs::tests::file_metadata_rename_vacant_names_and_noops_preserve_entries
+                fs::tests::rename_file_rejects_invalid_new_name
+                fs::tests::rename_file_accepts_valid_new_name
+                fs::tests::rename_file_moves_a_source_symlink_without_touching_its_target
+                fs::tests::rename_file_refuses_a_symlink_parent_without_mutating_its_target
+                fs::tests::rename_admitted_entry_refuses_a_replaced_source_name
+                fs::tests::rename_admitted_entry_stays_with_its_retained_parent_after_path_swap
                 fs::tests::file_metadata_digest_different_subseconds_use_wire_precision
                 fs::tests::file_metadata_digest_epoch_fraction_keeps_zero_seconds
                 fs::tests::file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct
@@ -5000,6 +5009,7 @@ run_focused_rust_tests() {
                         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
                             for group in socket_surface::tests:: \
                                 fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file \
+                                fs::tests::rename_ \
                                 fs::tests::file_metadata_ fs::atomic_write::unix::tests:: \
                                 fs::tests::directory_entry_ fs::tests::directory_enumeration_ \
                                 fs::tests::recursive_enumeration_ fs::tests::empty_directory_enumeration_ \
@@ -5702,8 +5712,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                     if (++cases <= 64) print
                 }
                 /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
-                /^test fs::(tests::(file_metadata_[[:alnum:]_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[[:alnum:]_]+) \.\.\. (ok|FAILED)$/ { if (++metadata_cases <= 13) print }
-                /^FILE_METADATA_/ { if (++metadata_observations <= 16) print }
+                /^test fs::(tests::(file_metadata_[[:alnum:]_]+|rename_[[:alnum:]_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[[:alnum:]_]+) \.\.\. (ok|FAILED)$/ { if (++metadata_cases <= 64) print }
+                /^FILE_METADATA_/ { if (++metadata_observations <= 96) print }
                 /^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|RETIREMENT_ARTIFACT_STOP)=/ { if (++writer_observations <= 32) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
@@ -5746,7 +5756,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
-        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=15; fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=16; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=4; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=5; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi

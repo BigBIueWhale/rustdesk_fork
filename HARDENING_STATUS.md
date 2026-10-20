@@ -4999,6 +4999,7 @@ Execution uses the no-NIC bounded-RAM VM and one nonroot, capability-free, no-ne
 container with read-only root/source, three source-file mounts and one private scratch
 mount; exact container/image, scratch and VM retirement are required before acceptance.
 Source/fixture/harness evidence is in `debian-package-integration-3e385d30.json`.
+The obsolete source-checker replay and its generated VM payload are removed; it only demonstrated a retired checker rejecting the supported native-XDO build. Appendix C #108 now includes the fixed in-tree native-XDO builder under the existing private-source and confined nonroot compiler contract. The retained native package checks pass seven dependency cases, seven resource cases and three actual CLI refusal cases, including producer non-execution and unit-byte binding. Archive validators and product sources are unchanged. `debian-cli-retirement-8157e142.json` binds the exact source, run and joined cleanup; installed and release acceptance remain OPEN.
 These are compiled packaging fixtures, not the final RustDesk product. Current release
 packages, installed service/settings/upgrade behavior and independent reproduction remain OPEN.
 

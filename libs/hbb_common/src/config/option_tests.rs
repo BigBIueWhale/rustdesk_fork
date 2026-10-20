@@ -237,6 +237,106 @@ fn core_load_links_are_transient_without_recovery() {
 }
 
 #[test]
+fn core_recovery_collision_preserves_source_and_prior_backup() {
+    use std::os::unix::fs::{symlink, MetadataExt};
+    in_private_process("config::option_tests::core_recovery_collision_preserves_source_and_prior_backup", |root| {
+        let mut all_preserved = true;
+        for kind in ["file", "symlink", "dangling", "hardlink", "directory"] {
+            let base = root.join(kind);
+            fs::create_dir(&base).unwrap();
+            let source = base.join("selected.toml");
+            let backup = base.join("selected.toml.corrupt.0");
+            let outside = base.join("outside");
+            fs::write(&source, b"= = current corrupt bytes [[[").unwrap();
+            fs::set_permissions(&source, fs::Permissions::from_mode(0o640)).unwrap();
+            fs::write(&outside, b"outside sentinel").unwrap();
+            match kind {
+                "symlink" => symlink(&outside, &backup).unwrap(),
+                "dangling" => symlink(base.join("absent"), &backup).unwrap(),
+                "hardlink" => fs::hard_link(&source, &backup).unwrap(),
+                "directory" => fs::create_dir(&backup).unwrap(),
+                _ => fs::write(&backup, b"prior recovery bytes").unwrap(),
+            }
+            let identity = |p: &Path| fs::symlink_metadata(p).map(|m| (m.dev(), m.ino(), m.mode(), m.nlink())).ok();
+            let before_source = identity(&source);
+            let before_backup = identity(&backup);
+            let refused = preserve_corrupt_config_at(&source, 0).is_err();
+            let preserved = identity(&source) == before_source && identity(&backup) == before_backup
+                && fs::read(&source).map(|b| b == b"= = current corrupt bytes [[[").unwrap_or(false)
+                && fs::read(&outside).unwrap() == b"outside sentinel"
+                && match kind {
+                    "file" => fs::read(&backup).map(|b| b == b"prior recovery bytes").unwrap_or(false),
+                    "symlink" => fs::read_link(&backup).ok().as_ref() == Some(&outside),
+                    "dangling" => fs::read_link(&backup).ok().as_ref() == Some(&base.join("absent")),
+                    "directory" => fs::read_dir(&backup).unwrap().next().is_none(),
+                    _ => true,
+                };
+            println!("OPTION_COMMIT_RECOVERY_PUBLICATION=observed kind={kind} refused={refused} preserved={preserved}");
+            all_preserved &= refused && preserved;
+        }
+        assert!(all_preserved);
+    });
+}
+
+#[test]
+fn core_recovery_failure_is_transient_and_the_same_load_retries() {
+    use std::os::unix::fs::MetadataExt;
+    in_private_process("config::option_tests::core_recovery_failure_is_transient_and_the_same_load_retries", |root| {
+        let base = root.join("denied");
+        fs::create_dir(&base).unwrap();
+        let path = base.join("selected.toml");
+        let bytes = b"= = corrupt recovery source [[[";
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o500)).unwrap();
+        let mut refused = true;
+        for _ in 0..2 {
+            let loaded: ConfigLoad<Config2> = load_path_with_status(path.clone());
+            refused &= loaded.status == ConfigLoadStatus::TransientError && loaded.value == Config2::default();
+        }
+        let after = fs::metadata(&path).unwrap();
+        let preserved = (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode())
+            && fs::read(&path).unwrap() == bytes && fs::read_dir(&base).unwrap().count() == 1;
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o700)).unwrap();
+        let retried: ConfigLoad<Config2> = load_path_with_status(path.clone());
+        let backup = fs::read_dir(&base).unwrap().next().unwrap().unwrap().path();
+        let recovered = retried.status == ConfigLoadStatus::Corrupt && !path.exists()
+            && fs::read(&backup).unwrap() == bytes && fs::metadata(&backup).unwrap().mode() & 0o777 == 0o600;
+        println!("OPTION_COMMIT_RECOVERY_PUBLICATION=observed kind=denial refused={refused} preserved={preserved} retry_recovered={recovered}");
+        assert!(refused && preserved && recovered);
+    });
+}
+
+#[test]
+fn core_recovery_vacant_backup_preserves_native_names_and_handles() {
+    use std::os::unix::{ffi::OsStringExt, fs::MetadataExt};
+    in_private_process("config::option_tests::core_recovery_vacant_backup_preserves_native_names_and_handles", |root| {
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        for (index, name) in [std::ffi::OsString::from("record.toml"), std::ffi::OsString::from("данные.toml"), std::ffi::OsString::from_vec(b"record-\xff.toml".to_vec())].iter().enumerate() {
+            let base = root.join(index.to_string());
+            fs::create_dir(&base).unwrap();
+            let path = base.join(name);
+            fs::write(&path, b"original corrupt bytes").unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+            let before = fs::metadata(&path).unwrap();
+            preserve_corrupt_config_at(&path, 17).unwrap();
+            let backup = fs::read_dir(&base).unwrap().next().unwrap().unwrap().path();
+            let after = fs::metadata(&backup).unwrap();
+            assert!(!path.exists());
+            assert_eq!((before.dev(), before.ino()), (after.dev(), after.ino()));
+            assert_eq!(fs::read(&backup).unwrap(), b"original corrupt bytes");
+            assert_eq!(after.mode() & 0o777, 0o600);
+            println!("OPTION_COMMIT_RECOVERY_PUBLICATION=observed kind=control index={index} identity_preserved=true mode=600");
+        }
+        let after_fds = fds();
+        println!("OPTION_COMMIT_RECOVERY_PUBLICATION=observed kind=handles before={before_fds} after={after_fds}");
+        assert_eq!(before_fds, after_fds);
+    });
+}
+
+#[test]
 fn core_load_hard_links_refuse_without_recovery_mutation() {
     use std::os::unix::fs::MetadataExt;
     in_private_process("config::option_tests::core_load_hard_links_refuse_without_recovery_mutation", |root| {

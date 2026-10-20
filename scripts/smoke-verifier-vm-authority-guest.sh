@@ -3303,6 +3303,9 @@ run_focused_rust_tests() {
                 config::option_tests::core_recovery_regular_and_nonregular_preserve_files
                 config::option_tests::core_load_hard_links_refuse_without_recovery_mutation
                 config::option_tests::core_recovery_hard_links_refuse_before_permission_mutation
+                config::option_tests::core_recovery_collision_preserves_source_and_prior_backup
+                config::option_tests::core_recovery_failure_is_transient_and_the_same_load_retries
+                config::option_tests::core_recovery_vacant_backup_preserves_native_names_and_handles
                 config::option_tests::config_store_invalid_paths_preserve_namespace
                 config::option_tests::config_store_overlong_paths_refuse_before_creation
                 config::option_tests::config_store_path_controls_round_trip

@@ -1364,39 +1364,32 @@ fn keep_encrypted_storage_if_plaintext_unchanged(plain: &str, stored: &str) -> S
 // fresh default overwrite it. Rename it aside to a timestamped `<name>.corrupt.<nanos>`
 // sibling, harden the recovery file, then let callers create a fresh config at the vacated
 // path. Repeated corruption events never clobber an earlier backup.
-fn preserve_corrupt_config(file: &Path) {
+fn preserve_corrupt_config(file: &Path) -> Result<()> {
     let ts = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
+    preserve_corrupt_config_at(file, ts)
+}
+
+fn preserve_corrupt_config_at(file: &Path, ts: u128) -> Result<()> {
     let name = file
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("config");
     let mut backup = file.to_path_buf();
     backup.set_file_name(format!("{name}.corrupt.{ts}"));
-    match fs::rename(file, &backup) {
-        Ok(()) => {
-            if let Err(err) = harden_preserved_config_file(&backup) {
-                log::error!(
-                    "Preserved corrupt config '{}' as '{}', but failed to harden recovery file: {err}",
-                    file.display(),
-                    backup.display()
-                );
-                return;
-            }
-            log::error!(
-                "Preserved corrupt config '{}' as '{}' for recovery (original not overwritten)",
-                file.display(),
-                backup.display()
-            );
-        }
-        Err(e) => log::error!(
-            "Could not preserve corrupt config '{}' ({e}); leaving it in place — \
-             Config::load refuses to overwrite a present config it read as default",
-            file.display()
-        ),
-    }
+    fs::rename(file, &backup).map_err(|err| anyhow!(
+        "Could not move corrupt config '{}' to '{}': {err}", file.display(), backup.display()
+    ))?;
+    harden_preserved_config_file(&backup).map_err(|err| anyhow!(
+        "Config was moved to '{}', but recovery-file hardening failed: {err}", backup.display()
+    ))?;
+    log::error!(
+        "Preserved corrupt config '{}' as '{}' for recovery (original not overwritten)",
+        file.display(), backup.display()
+    );
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -2239,7 +2232,9 @@ fn load_path_with_status<
                 "Config '{}' is unparseable; preserving it and starting from defaults",
                 file.display()
             );
-            preserve_corrupt_config(&file);
+            if let Err(err) = preserve_corrupt_config(&file) {
+                log::error!("Could not preserve corrupt config '{}': {err}", file.display());
+            }
             ConfigLoad::new(T::default(), ConfigLoadStatus::Corrupt)
         }
     }

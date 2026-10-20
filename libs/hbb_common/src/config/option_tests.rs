@@ -2188,7 +2188,7 @@ fn ordinary_option_source_fifo_refuses_without_waiting_or_replacement() {
         let output = child.wait_with_output().unwrap();
         assert!(output.stdout.len() + output.stderr.len() <= 16384);
         let stdout = String::from_utf8(output.stdout).unwrap();
-        let entered = stdout.lines().any(|line| line == "ORDINARY_OPTION_FIFO_BEGIN=entered");
+        let entered = stdout.lines().any(|line| line.contains("ORDINARY_OPTION_FIFO_BEGIN=entered"));
         for line in stdout.lines().filter(|line| line.starts_with("OPTION_COMMIT_")) { println!("{line}"); }
         let after = fs::metadata(&file).unwrap();
         let preserved = after.file_type().is_fifo() && (before.dev(), before.ino(), before.mode()) == (after.dev(), after.ino(), after.mode());

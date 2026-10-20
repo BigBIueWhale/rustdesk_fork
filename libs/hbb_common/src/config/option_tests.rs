@@ -1280,3 +1280,34 @@ fn local_system_language_is_explicit_durable_and_retryable() {
         assert!(failed && memory && durable && explicit && default_restored);
     });
 }
+
+#[test]
+fn peer_retired_password_shapes_preserve_live_state_and_allow_explicit_cleanup() {
+    in_private_process("config::option_tests::peer_retired_password_shapes_preserve_live_state_and_allow_explicit_cleanup", |_| {
+        for (index, retired) in ["[]", "\"discard-me\"", "\"\"", "true", "42", "{ obsolete = [1, 2] }"].iter().enumerate() {
+            for remembered in [false, true] {
+                let id = format!("peer-retired-shape-{index}-{remembered}");
+                let mut peer = PeerConfig::default();
+                peer.info.platform = "Linux".into();
+                peer.options.insert("alias".into(), "preserved".into());
+                if remembered { peer.password_prs = b"fixture-current-peer-prs".to_vec(); }
+                peer.store(&id).unwrap();
+                let mut expected = PeerConfig::load_for_write(&id).unwrap();
+                let path = PeerConfig::path(&id);
+                let original = fs::read_to_string(&path).unwrap();
+                let document: toml::Value = toml::from_str(&original).unwrap();
+                assert!(document.get("password").is_none());
+                fs::write(&path, format!("password = {retired}\n{original}")).unwrap();
+                let old_bytes = fs::read(&path).unwrap();
+                assert_eq!(PeerConfig::load_for_write(&id).unwrap(), expected);
+                assert_eq!(fs::read(&path).unwrap(), old_bytes);
+                PeerConfig::forget_password(&id).unwrap();
+                expected.password_prs.clear();
+                assert_eq!(PeerConfig::load_for_write(&id).unwrap(), expected);
+                let document: toml::Value = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+                assert!(document.get("password").is_none());
+            }
+        }
+        println!("OPTION_COMMIT_PEER_RETIRED=observed kind=shapes formats=6 prs_states=2 live_state_preserved=true old_field_purged=true");
+    });
+}

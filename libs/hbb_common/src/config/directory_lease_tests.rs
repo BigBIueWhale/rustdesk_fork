@@ -33,7 +33,12 @@ fn directory_lease_metadata_admission_precedes_io() {
                         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
                     }
                     "directory" => fs::create_dir(&path).unwrap(),
-                    "socket" => socket_owner = Some(std::os::unix::net::UnixListener::bind(&path).unwrap()),
+                    "socket" => {
+                        let parent = File::open(&base).unwrap();
+                        let alias = format!("/proc/self/fd/{}/{name}", parent.as_raw_fd());
+                        assert!(alias.len() < 108);
+                        socket_owner = Some(std::os::unix::net::UnixListener::bind(alias).unwrap());
+                    }
                     "symlink" => symlink(safe.join(&name), &path).unwrap(),
                     _ => {
                         fs::write(&path, b"retained lease fixture").unwrap();

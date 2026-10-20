@@ -3187,6 +3187,11 @@ run_focused_rust_tests() {
                 config::option_tests::default_write_failure_preserves_cache_file_and_identical_retry
                 config::option_tests::default_purge_is_retryable_and_returns_effective_normalized_values
                 config::option_tests::default_unreadable_source_refuses_mutation_without_losing_existing_values
+                config::option_tests::default_initial_read_preserves_corrupt_files
+                config::option_tests::default_refresh_preserves_corrupt_source_and_confirmed_values
+                config::option_tests::default_corrupt_source_refuses_repeated_writes_without_recovery
+                config::option_tests::default_missing_peer_inheritance_does_not_recover_defaults
+                config::option_tests::default_initial_denial_directory_and_missing_reads_preserve_sources
                 config::option_tests::peer_store_reports_failure_preserves_the_file_and_refuses_unreadable_source
                 config::option_tests::peer_removal_permission_failure_is_reported_and_retryable
                 config::option_tests::peer_removal_directory_failure_preserves_its_contents

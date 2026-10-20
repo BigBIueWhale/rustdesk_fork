@@ -1548,6 +1548,131 @@ fn peer_store_reports_failure_preserves_the_file_and_refuses_unreadable_source()
 }
 
 #[test]
+fn default_initial_read_preserves_corrupt_files() {
+    in_private_process("config::option_tests::default_initial_read_preserves_corrupt_files", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let file = Config::file_("_default");
+        let parent = file.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        for (kind, source) in [("syntax", b"[options]\nprivate-default-source = [\n".as_slice()), ("utf8", b"\xffprivate-default-source".as_slice())] {
+            fs::write(&file, source).unwrap();
+            fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+            let before = fs::metadata(&file).unwrap();
+            let names = || {
+                let mut names = fs::read_dir(parent).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
+                names.sort(); names
+            };
+            let original_names = names();
+            let loaded = UserDefaultConfig::load();
+            let preserved = fs::read(&file).map(|bytes| bytes == source).unwrap_or(false);
+            let same_file = fs::metadata(&file).map(|s| (s.dev(), s.ino(), s.mode()) == (before.dev(), before.ino(), before.mode())).unwrap_or(false);
+            println!("OPTION_COMMIT_DEFAULT_READONLY=observed kind=initial_{kind} file_preserved={preserved} same_file={same_file}");
+            assert!(preserved && same_file && names() == original_names);
+            assert_eq!(loaded.get(keys::OPTION_CUSTOM_FPS), "30");
+        }
+    });
+}
+
+#[test]
+fn default_refresh_preserves_corrupt_source_and_confirmed_values() {
+    in_private_process("config::option_tests::default_refresh_preserves_corrupt_source_and_confirmed_values", |_| {
+        UserDefaultConfig::set_option("confirmed".into(), "original".into()).unwrap();
+        let file = Config::file_("_default");
+        for (kind, source) in [("syntax", b"[options]\nprivate-default-source = [\n".as_slice()), ("utf8", b"\xffprivate-default-source".as_slice())] {
+            fs::write(&file, source).unwrap();
+            for round in 0..2 {
+                USER_DEFAULT_CONFIG.write().unwrap().1 = Instant::now() - Duration::from_secs(2);
+                let value = UserDefaultConfig::get_option("confirmed");
+                let preserved = fs::read(&file).map(|bytes| bytes == source).unwrap_or(false);
+                println!("OPTION_COMMIT_DEFAULT_READONLY=observed kind=refresh_{kind} round={round} file_preserved={preserved} confirmed_retained={}", value == "original");
+                assert!(preserved && value == "original");
+            }
+        }
+        let healthy = b"[options]\nconfirmed = 'external'\nunrelated = 'preserved'\n";
+        fs::write(&file, healthy).unwrap();
+        USER_DEFAULT_CONFIG.write().unwrap().1 = Instant::now() - Duration::from_secs(2);
+        assert_eq!(UserDefaultConfig::get_option("confirmed"), "external");
+        assert_eq!(UserDefaultConfig::get_option("unrelated"), "preserved");
+        assert_eq!(fs::read(file).unwrap(), healthy);
+    });
+}
+
+#[test]
+fn default_corrupt_source_refuses_repeated_writes_without_recovery() {
+    in_private_process("config::option_tests::default_corrupt_source_refuses_repeated_writes_without_recovery", |_| {
+        UserDefaultConfig::set_option("confirmed".into(), "original".into()).unwrap();
+        UserDefaultConfig::set_option("unrelated".into(), "preserved".into()).unwrap();
+        let file = Config::file_("_default");
+        let healthy = fs::read(&file).unwrap();
+        let corrupt = b"[options]\nprivate-default-source = [\n";
+        fs::write(&file, corrupt).unwrap();
+        let first = UserDefaultConfig::set_option("confirmed".into(), "requested".into());
+        let second = UserDefaultConfig::set_option("confirmed".into(), "requested".into());
+        let preserved = fs::read(&file).map(|bytes| bytes == corrupt).unwrap_or(false);
+        let cache_preserved = USER_DEFAULT_CONFIG.read().unwrap().0.get("confirmed") == "original";
+        println!("OPTION_COMMIT_DEFAULT_READONLY=observed kind=write first_refused={} repeated_refused={} file_preserved={preserved} cache_preserved={cache_preserved}", first.is_err(), second.is_err());
+        assert!(first.is_err() && second.is_err() && preserved && cache_preserved);
+        assert!(!first.unwrap_err().to_string().contains("private-default-source"));
+        fs::write(&file, healthy).unwrap();
+        assert_eq!(UserDefaultConfig::set_option("confirmed".into(), "requested".into()).unwrap(), "requested");
+        let stored = UserDefaultConfig::load();
+        assert_eq!(stored.get("confirmed"), "requested");
+        assert_eq!(stored.get("unrelated"), "preserved");
+    });
+}
+
+#[test]
+fn default_missing_peer_inheritance_does_not_recover_defaults() {
+    in_private_process("config::option_tests::default_missing_peer_inheritance_does_not_recover_defaults", |_| {
+        let file = Config::file_("_default");
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let source = b"[options]\nprivate-default-source = [\n";
+        fs::write(&file, source).unwrap();
+        let id = "peer-defaults-display-only";
+        let path = PeerConfig::path(id);
+        assert!(!path.exists());
+        let value = PeerConfig::read_option(id, keys::OPTION_CUSTOM_FPS).unwrap();
+        let preserved = fs::read(&file).map(|bytes| bytes == source).unwrap_or(false);
+        println!("OPTION_COMMIT_DEFAULT_READONLY=observed kind=missing_peer inherited={} defaults_preserved={preserved} peer_absent={}", value == "30", !path.exists());
+        assert!(preserved && value == "30" && !path.exists());
+    });
+}
+
+#[test]
+fn default_initial_denial_directory_and_missing_reads_preserve_sources() {
+    in_private_process("config::option_tests::default_initial_denial_directory_and_missing_reads_preserve_sources", |_| {
+        let file = Config::file_("_default");
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let source = b"[options]\ncustom-fps = '25'\n";
+        fs::write(&file, source).unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
+        let native = fs::read(&file).unwrap_err();
+        let initial = UserDefaultConfig::get_option(keys::OPTION_CUSTOM_FPS);
+        let unchanged_mode = fs::metadata(&file).unwrap().permissions().mode() & 0o777 == 0;
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(native.kind(), io::ErrorKind::PermissionDenied);
+        assert!(initial == "30" && unchanged_mode && fs::read(&file).unwrap() == source);
+        USER_DEFAULT_CONFIG.write().unwrap().1 = Instant::now() - Duration::from_secs(2);
+        assert_eq!(UserDefaultConfig::get_option(keys::OPTION_CUSTOM_FPS), "25");
+        fs::remove_file(&file).unwrap();
+        fs::create_dir(&file).unwrap();
+        let child = file.join("preserved");
+        fs::write(&child, source).unwrap();
+        for _ in 0..2 {
+            USER_DEFAULT_CONFIG.write().unwrap().1 = Instant::now() - Duration::from_secs(2);
+            assert_eq!(UserDefaultConfig::get_option(keys::OPTION_CUSTOM_FPS), "25");
+            assert_eq!(fs::read(&child).unwrap(), source);
+        }
+        fs::remove_file(child).unwrap();
+        fs::remove_dir(&file).unwrap();
+        USER_DEFAULT_CONFIG.write().unwrap().1 = Instant::now() - Duration::from_secs(2);
+        assert_eq!(UserDefaultConfig::get_option(keys::OPTION_CUSTOM_FPS), "30");
+        assert!(!file.exists());
+        println!("OPTION_COMMIT_DEFAULT_READONLY=observed kind=controls denied_errno={} mode_unchanged={unchanged_mode} retry=true directory_preserved=true missing_not_created=true", native.raw_os_error().unwrap());
+    });
+}
+
+#[test]
 fn default_single_key_writes_preserve_other_keys_and_concurrent_writers() {
     in_private_process("config::option_tests::default_single_key_writes_preserve_other_keys_and_concurrent_writers", |_| {
         let mut left = UserDefaultConfig::load();

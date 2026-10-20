@@ -14564,10 +14564,10 @@ cold R-B2/R-B10, independent reproduction, and external review.
 
 ### R-S11ir/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership
 
-**State.** The bounded client-owner source design is implemented. Four Windows-target Rust owner
-regressions and three pure-Dart UI-latch regressions are authored and wired into their target lanes,
-but have not executed at the current commit. Fresh generated-bridge, native Windows, installed,
-resource-soak, artifact, independent-reproduction, and external-review evidence remains open.
+**State.** The bounded client-owner source design is implemented. Four pure-Dart UI-latch
+regressions pass in the isolated Linux Flutter lane. The four Windows-target Rust owner regressions
+remain authored but unexecuted; fresh generated-bridge, native Windows, installed, resource-soak,
+artifact, independent-reproduction, and external-review evidence remains open.
 
 **Boundary and current implementation.** One lazy process-lifetime
 `WindowsShareRdpClientOwner` owns one named OS thread, one fallibly built current-thread Tokio
@@ -14577,26 +14577,34 @@ and joins the terminal thread generation. The sole runner executes requests seri
 per-request spawn. Each service exchange retains separate one-second connect/send/receive bounds;
 the bridge waits at most eight seconds for the exact result without cancelling or detaching admitted
 work. Errors remain `Result<()>` through the shared and Flutter FFI surfaces. Dart uses one
-synchronous mounted-lifetime latch, disables duplicate row/checkbox actions, surfaces errors, and
-refreshes service-owned state only after latch release. The private worker-construction seam cannot
-select a service operation or escape this module; production still supplies only the fixed typed
+synchronous mounted-lifetime latch, refuses admission after unmount, disables duplicate row/checkbox
+actions, surfaces errors, and refreshes service-owned state only after latch release. The private
+worker-construction seam cannot select a service operation or escape this module; production still supplies only the fixed typed
 RDP-sharing transaction and the fixed eight-second result deadline.
 
-**Evidence.** The `ipc::test::windows_share_rdp_client_tests::r_s11ir_` family drives reported
+**Evidence.** The authored `ipc::test::windows_share_rdp_client_tests::r_s11ir_` family covers reported
 startup failure and panic, capacity-one waiting admission, serial exact success/error results,
 normal/closed/disconnected/panicked worker joins, caller-deadline uncertainty, the dropped completion,
-and subsequent work on the same serial owner. `share_rdp_change_lifecycle_test.dart` drives
-synchronous duplicate refusal, error-before-latch-release ordering, and absence of late UI callbacks
-after unmount. `build-windows.ps1` requires exactly four named Rust regressions and executes them;
-`dart-verify.sh` formats, analyzes, and executes the Dart owner. The global shell gate retains only
-exact former-helper absence, cross-layer result propagation, and real-lane wiring, while
-Apple-specific checks no longer require Windows-only documentation prose. None of these new tests
-has compiled or run at this commit because the authorized isolated Windows and Flutter environments
-are unavailable.
+and subsequent work on the same serial owner. `build-windows.ps1` requires exactly four named Rust
+regressions; its Windows execution remains missing. The focused
+`--flutter-model-tests --share-rdp` VM lane executes the actual
+`ShareRdpChangeLifecycle` and exact four-test inventory without Rust/FRB generation.
+At unchanged-product baseline `418c8b51`, the unmounted-admission regression fails while the three
+existing cases pass. With only the admission condition changed at `e61c962f`, all four pass:
+unmounted admission refusal, synchronous duplicate refusal, error-before-latch-release ordering,
+and no late UI callback after admitted work settles. The Flutter 3.24.5 lane also checks formatting,
+source equality and three result-parser controls, using a no-NIC VM and guest-only nonroot,
+networkless, capability-free container. Supervisor time is 104 seconds; owned joins and RAM/private
+root retirement pass with no added host endpoint. Source, raw results, input identities, an earlier
+formatter-only rejection and cleanup are retained in
+`.harness-state/verifier-vm/share-rdp-lifecycle-e61c962f.json`.
+`dart-verify.sh` retains its format/analyze/test invocation; the global gate retains the former-helper
+absence, cross-layer result propagation and lane wiring. The focused result establishes the Dart
+helper behavior, not rendered settings-page integration, a fresh bridge or Windows service effects.
 
-**Open evidence.** Execute the focused Dart lane and exact-current Rust/Flutter build on native
-Windows, then exercise allow, refusal, queue-full, timeout uncertainty, startup failure, worker panic,
-concurrent taps, process exit, and real SCM completion in an installed artifact. Measure threads,
+**Open evidence.** Execute the exact-current Rust owner tests and Rust/Flutter build on native
+Windows, then exercise the rendered settings page, allow, refusal, queue-full, timeout uncertainty,
+startup failure, worker panic, concurrent taps, process exit, and real SCM completion in an installed artifact. Measure threads,
 handles, CPU, memory, and latency under soak; bind signed artifacts; complete cold R-B2/R-B10,
 independent reproduction, and external review.
 

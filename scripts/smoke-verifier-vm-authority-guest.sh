@@ -3222,6 +3222,7 @@ run_focused_rust_tests() {
                 config::option_tests::peer_load_missing_does_not_initialize_controlled_config
                 config::option_tests::peer_load_corrupt_does_not_initialize_controlled_config
                 config::option_tests::peer_load_utf8_is_corrupt_without_recovery
+                config::option_tests::peer_load_malformed_prs_refuses_without_defaulting_or_mutation
                 config::option_tests::peer_load_status_controls_preserve_missing_denied_and_directory
                 config::option_tests::peer_option_read_preserves_credentials_and_file_identity
                 config::option_tests::peer_option_read_corrupt_records_refuse_without_recovery

@@ -1036,6 +1036,33 @@ fn peer_load_utf8_is_corrupt_without_recovery() {
 }
 
 #[test]
+fn peer_load_malformed_prs_refuses_without_defaulting_or_mutation() {
+    in_private_process("config::option_tests::peer_load_malformed_prs_refuses_without_defaulting_or_mutation", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let id = "peer-load-malformed-prs";
+        let path = PeerConfig::path(id);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut all_refused = true;
+        for (index, value) in ["'private-invalid-prs'", "42", "{private = 'invalid-prs'}", "[256]", "[-1]", "['invalid-prs']"].iter().enumerate() {
+            let source = format!("password_prs = {value}\n[options]\nalias = 'preserved'\n");
+            fs::write(&path, &source).unwrap();
+            let before = fs::metadata(&path).unwrap();
+            let loaded = PeerConfig::load_with_status(id);
+            let checked = PeerConfig::load_for_write(id);
+            let first = PeerConfig::set_option(id, "alias", "requested".into());
+            let repeated = PeerConfig::set_option(id, "alias", "requested".into());
+            let corrupt = loaded.status == ConfigLoadStatus::Corrupt;
+            let preserved = fs::read(&path).unwrap() == source.as_bytes();
+            let same_file = fs::metadata(&path).unwrap().ino() == before.ino();
+            println!("OPTION_COMMIT_PEER_LOAD=observed kind=prs_shape case={index} corrupt={corrupt} checked_refused={} write_refused={} repeated_refused={} file_preserved={preserved} same_file={same_file}", checked.is_err(), first.is_err(), repeated.is_err());
+            all_refused &= corrupt && checked.is_err() && first.is_err() && repeated.is_err() && preserved && same_file;
+            assert!(loaded.value.password_prs.is_empty());
+        }
+        assert!(all_refused);
+    });
+}
+
+#[test]
 fn peer_load_status_controls_preserve_missing_denied_and_directory() {
     in_private_process("config::option_tests::peer_load_status_controls_preserve_missing_denied_and_directory", |_| {
         let id = "peer-load-status-controls";

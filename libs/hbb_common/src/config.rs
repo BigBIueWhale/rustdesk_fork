@@ -3356,9 +3356,13 @@ impl PeerConfig {
     }
 
     pub fn load_for_write(id: &str) -> crate::ResultType<PeerConfig> {
+        Ok(Self::load_for_write_with_status(id)?.into_value())
+    }
+
+    fn load_for_write_with_status(id: &str) -> crate::ResultType<ConfigLoad<PeerConfig>> {
         let loaded = Self::load_with_status(id);
         if matches!(loaded.status, ConfigLoadStatus::Loaded | ConfigLoadStatus::NotFound) {
-            Ok(loaded.value)
+            Ok(loaded)
         } else {
             Err(anyhow!("Failed to read peer settings"))
         }
@@ -3413,9 +3417,14 @@ impl PeerConfig {
     }
 
     pub fn set_option(id: &str, name: &str, value: String) -> crate::ResultType<()> {
-        let mut config = Self::load_for_write(id)?;
+        let loaded = Self::load_for_write_with_status(id)?;
+        let missing = matches!(loaded.status, ConfigLoadStatus::NotFound);
+        if missing && value.is_empty() {
+            return Ok(());
+        }
+        let mut config = loaded.value;
         let requested = if value.is_empty() { None } else { Some(&value) };
-        if config.options.get(name) == requested {
+        if !missing && config.options.get(name) == requested {
             return Ok(());
         }
         if value.is_empty() {

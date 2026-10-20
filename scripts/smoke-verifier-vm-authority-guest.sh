@@ -3200,6 +3200,7 @@ run_focused_rust_tests() {
                 config::option_tests::peer_option_write_failure_preserves_settings_and_retries_set_and_remove
                 config::option_tests::peer_option_unreadable_source_refuses_without_losing_credentials
                 config::option_tests::peer_option_preserves_other_state_and_avoids_idempotent_or_missing_removal_writes
+                config::option_tests::peer_option_explicit_inherited_default_persists_and_missing_removal_is_absent
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then

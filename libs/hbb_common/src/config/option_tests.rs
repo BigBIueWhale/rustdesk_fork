@@ -195,6 +195,26 @@ fn peer_option_preserves_other_state_and_avoids_idempotent_or_missing_removal_wr
 }
 
 #[test]
+fn peer_option_explicit_inherited_default_persists_and_missing_removal_is_absent() {
+    in_private_process("config::option_tests::peer_option_explicit_inherited_default_persists_and_missing_removal_is_absent", |_| {
+        let key = keys::OPTION_CUSTOM_FPS;
+        assert_eq!(UserDefaultConfig::set_option(key.into(), "25".into()).unwrap(), "25");
+        let id = "peer-option-explicit-default";
+        assert!(!PeerConfig::path(id).exists());
+        assert_eq!(PeerConfig::load_for_write(id).unwrap().options.get(key).map(String::as_str), Some("25"));
+        PeerConfig::set_option(id, key, "25".into()).unwrap();
+        let explicit_file = PeerConfig::path(id).exists();
+        assert_eq!(UserDefaultConfig::set_option(key.into(), "26".into()).unwrap(), "26");
+        let retained = PeerConfig::load_for_write(id).unwrap().options.get(key).map(String::as_str) == Some("25");
+        let missing = "peer-option-default-removal";
+        PeerConfig::set_option(missing, key, String::new()).unwrap();
+        let removal_absent = !PeerConfig::path(missing).exists();
+        println!("OPTION_COMMIT_PEER_OPTION=observed kind=inherited_default explicit_file={explicit_file} retained_after_default_change={retained} missing_removal_absent={removal_absent}");
+        assert!(explicit_file && retained && removal_absent);
+    });
+}
+
+#[test]
 fn peer_forget_write_failure_is_reported_and_retryable() {
     in_private_process("config::option_tests::peer_forget_write_failure_is_reported_and_retryable", |_| {
         let id = "peer-forget-write";

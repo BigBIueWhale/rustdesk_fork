@@ -1427,9 +1427,9 @@ fn harden_preserved_config_file(path: &Path) -> Result<()> {
             path.display()
         )
     })?;
-    if !metadata.file_type().is_file() {
+    if !metadata.file_type().is_file() || metadata.nlink() != 1 {
         return Err(anyhow!(
-            "Preserved config '{}' is not a regular file",
+            "Preserved config '{}' is not a single-link regular file",
             path.display()
         ));
     }
@@ -2066,6 +2066,8 @@ fn read_config_file_bytes(path: &Path) -> io::Result<Vec<u8>> {
     };
     #[cfg(unix)]
     let bytes = (|| -> io::Result<Vec<u8>> {
+        use std::os::unix::fs::MetadataExt;
+
         #[cfg(target_os = "linux")]
         let mut file = {
             use std::{
@@ -2111,10 +2113,11 @@ fn read_config_file_bytes(path: &Path) -> io::Result<Vec<u8>> {
                 .custom_flags(crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
                 .open(path)?
         };
-        if !file.metadata()?.is_file() {
+        let metadata = file.metadata()?;
+        if !metadata.is_file() || metadata.nlink() != 1 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Configuration is not a regular file",
+                "Configuration is not a single-link regular file",
             ));
         }
         let mut bytes = Vec::new();

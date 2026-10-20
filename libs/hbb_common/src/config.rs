@@ -3447,15 +3447,16 @@ struct PeerUiHostInfo {
     hostname: String,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Default, Deserialize)]
 struct PeerConfigFile {
+    #[serde(default)]
+    password_prs: Vec<u8>,
     #[serde(flatten)]
     config: PeerConfig,
     #[serde(
         rename = "password",
         default,
-        deserialize_with = "discard_retired_peer_password",
-        skip_serializing
+        deserialize_with = "discard_retired_peer_password"
     )]
     retired_password_present: bool,
 }
@@ -3516,6 +3517,7 @@ impl PeerConfig {
             }
         };
         let mut config = loaded.value.config;
+        config.password_prs = loaded.value.password_prs;
         let mut retired_password_present = loaded.value.retired_password_present;
         let status = loaded.status;
         if status != ConfigLoadStatus::Loaded {

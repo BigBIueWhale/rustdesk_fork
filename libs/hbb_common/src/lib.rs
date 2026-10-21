@@ -302,26 +302,38 @@ pub fn is_valid_custom_id(id: &str) -> bool {
 }
 
 // Support 1.1.10-1, the number after - is a patch version.
+// An unrepresentable version is unknown (0), independent of overflow-check settings.
 pub fn get_version_number(v: &str) -> i64 {
     let mut versions = v.split('-');
 
-    let mut n = 0;
+    let mut n = 0i64;
 
     // The first part is the version number.
-    // 1.1.10 -> 1001100, 1.2.3 -> 1001030, multiple the last number by 10
+    // 1.1.10 -> 1001100, 1.2.3 -> 1002030, multiply the last number by 10
     // to leave space for patch version.
     if let Some(v) = versions.next() {
         let mut last = 0;
         for x in v.split('.') {
             last = x.parse::<i64>().unwrap_or(0);
-            n = n * 1000 + last;
+            let Some(next) = n.checked_mul(1000).and_then(|n| n.checked_add(last)) else {
+                return 0;
+            };
+            n = next;
         }
-        n -= last;
-        n += last * 10;
+        let Some(base) = n.checked_sub(last) else {
+            return 0;
+        };
+        let Some(next) = last.checked_mul(10).and_then(|last| base.checked_add(last)) else {
+            return 0;
+        };
+        n = next;
     }
 
     if let Some(v) = versions.next() {
-        n += v.parse::<i64>().unwrap_or(0);
+        let Some(next) = n.checked_add(v.parse::<i64>().unwrap_or(0)) else {
+            return 0;
+        };
+        n = next;
     }
 
     // Ignore the rest

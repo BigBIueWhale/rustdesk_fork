@@ -97,7 +97,7 @@ def main():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"file-block source changed: {name}")
             print(f"FILE_BLOCK_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"FILE_BLOCK_ARTIFACT=pass sha256={artifact_sha} tests=6 unchanged=before-after", flush=True)
+        print(f"FILE_BLOCK_ARTIFACT=pass sha256={artifact_sha} tests=7 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

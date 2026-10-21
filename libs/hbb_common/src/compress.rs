@@ -35,22 +35,16 @@ pub(crate) fn with_busy_compressor_for_test<T>(action: impl FnOnce() -> T) -> T 
     })
 }
 
-/// The post-key decompressed-output ceiling (R-S7, the twin of the pre-auth
-/// frame cap). zstd's ratio is unbounded, so a small compressed file-block,
-/// clipboard, or cursor payload from a *keyed* peer can amplify to an unbounded
-/// allocation/disk-write (a zstd bomb) on either role. This cap (64 MiB) sits
-/// well above any realistic single decompressed payload — the 128 KiB file
-/// block (`fs.rs`), a clipboard image, a cursor — yet bounds the amplification.
+/// The default decoded-output ceiling and the shared decoder's independent
+/// history-window ceiling (R-S7). File blocks use their own stricter decoder.
 const MAX_DECOMPRESSED: usize = 64 * 1024 * 1024;
 
-/// Decompress, bounding the output to [`MAX_DECOMPRESSED`] (R-S7 post-key twin).
-/// The inherited `zstd::decode_all` reads to EOF with NO output limit; this
-/// streams through a capped reader instead. Decode and limit failures remain
-/// explicit so a receive path cannot mistake malformed or over-limit input for
-/// a successfully transferred empty block.
+/// Decompress with the caller's output limit and a [`MAX_DECOMPRESSED`] history
+/// limit. Decode and limit failures remain explicit receive errors.
 pub fn try_decompress_with_limit(data: &[u8], max_decompressed: usize) -> io::Result<Vec<u8>> {
     use io::Read;
-    let decoder = zstd::stream::read::Decoder::new(data)?;
+    let mut decoder = zstd::stream::read::Decoder::new(data)?;
+    decoder.window_log_max(MAX_DECOMPRESSED.ilog2())?;
     let max_decompressed = u64::try_from(max_decompressed)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "decompression limit overflow"))?;
     let read_limit = max_decompressed.checked_add(1).ok_or_else(|| {

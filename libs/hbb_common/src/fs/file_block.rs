@@ -82,7 +82,11 @@ mod tests {
         assert_eq!(decode(&allowed, true).expect("exact window boundary").as_ref(), b"abc");
         for window_log in [18, 23, 27] {
             let refused = raw_frame(window_log);
-            assert_eq!(try_decompress_with_limit(&refused, SIZE).expect("previous decoder control"), b"abc");
+            if window_log <= 26 {
+                assert_eq!(try_decompress_with_limit(&refused, SIZE).expect("shared decoder control"), b"abc");
+            } else {
+                assert!(try_decompress_with_limit(&refused, SIZE).is_err());
+            }
             assert!(decode(&refused, true).is_err(), "refuse excessive window {window_log}");
             let mut concatenated = allowed.clone();
             concatenated.extend(refused);

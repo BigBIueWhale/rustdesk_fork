@@ -1623,7 +1623,7 @@ fresh presentation, bounded resources, and final ownership without requiring rec
 
 **Video QoS — Linux controller accepted; end-to-end latency OPEN.**
 
-Current product evidence reaches `62b0c186`: all nineteen controller tests pass in
+Current product evidence reaches `a439ebae`: all nineteen controller tests pass in
 the focused Linux lane. The controller and test sources are imported directly;
 shared configuration/protocol types and Quality are production definitions.
 This is controller evidence with controlled elapsed/RTT inputs, not packet,
@@ -1642,7 +1642,8 @@ The current behavior is:
 - Each live viewer owns its learned rate and requested limits. The shared stream
   honors the minimum live estimate/request, pending congestion and startup cap.
   A shared restriction cannot lower another viewer's estimate or justify a higher
-  capacity probe; fresh unrestricted feedback permits normal adaptation.
+  capacity probe. Feedback below that viewer's learned sending rate clears both
+  increase streaks; fresh unrestricted feedback rebuilds them for normal adaptation.
 - Viewer admission/replacement and accepted custom/automatic limit changes
   recalculate shared FPS before returning. Unknown/out-of-range limit requests
   remain inert. Removal recalculates from surviving owners; final removal resets
@@ -1671,10 +1672,11 @@ current full-parent or platform execution.
 | Viewer admission — `ec11154e` | Preparation `cc23f88f` reproduces four wrong rates among ten new/replacement scenarios while eighteen earlier tests pass; the same nineteen-case module passes after correction, with fresh owners and preserved survivor limits/pending state. | `video-rate-admission-ec11154e.json` |
 | Immediate requested limits — `439ebb21` | Preparation `0a666fa0` exposes 30 FPS after both stored 5-FPS requests: eighteen pass/one fails. The identical nineteen-case module passes both immediate 5-FPS assertions and preserves the other viewer's 30-FPS estimate. The successful log filter omits the new numeric prefix; positive evidence is the executed named assertions, not retained numeric observation lines. | `video-rate-limit-439ebb21.json` |
 | Rapid-probe delay boundary — `62b0c186` | Preparation `669cd873` reproduces 36 FPS instead of 31 at exactly 50-ms excess delay: eighteen pass/one fails. The identical nineteen-case module passes after correction, with retained numeric observations at 49/50/51 ms: 36/31/31 FPS and rapid counts 2/1/1. The ordinary stable probe and existing viewer/quality controls remain covered. | `video-qos-rapid-boundary-62b0c186.json` |
+| Probe streaks under shared restrictions — `a439ebae` | Preparation `ecc5c97b` reproduces an early increase in eight cases: custom 5-FPS or pending 2-FPS caps with 1/2/4/5 restricted replies retain both streaks and produce 30/36/36 or 36/36/36 FPS after release; eighteen tests pass/one fails. The identical nineteen-case module passes with both restricted counters zero and fresh rates 30/30/36 in all eight cases. Learned estimates, immediate caps, three delay-boundary controls and quality/owner behavior remain covered. | `video-qos-probe-streak-a439ebae.json` |
 | Focused/full-parent lanes — `6915dfb9` | Both source-bound eighteen-case lanes pass at that source: focused 145 seconds versus full parent 304 seconds. A first focused transaction was rejected for a missing offline canary despite passing tests; the admitted runner checks the canary before compilation. This is not current full-parent acceptance. | `video-qos-controller-6915dfb9.json` |
 
 **Verification tiers.** `--video-qos-controller-tests` is the ordinary focused lane;
-the latest accepted nineteen-case transaction took 136 seconds, including 67
+the latest accepted nineteen-case transaction took 134 seconds, including 66
 compilation seconds. `--video-qos-tests` retains complete-parent integration for
 relevant milestones. Its older eighteen-case pass does not validate the current
 whole application. The shared Rust 1.75 compiler admits only its closed target tuples and

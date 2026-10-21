@@ -1316,6 +1316,35 @@ fn config_initial_load_keeps_credentials_out_of_trace_logs() {
         fs::create_dir(&denied).unwrap();
         assert_eq!(Config::load_::<Config>("_trace_directory"), Config::default());
         assert!(denied.is_dir());
+
+        let invalid = Config::file_("_trace_invalid_utf8");
+        let invalid_bytes = [bytes.as_slice(), b"\xff"].concat();
+        assert!(std::str::from_utf8(&invalid_bytes).is_err());
+        fs::write(&invalid, &invalid_bytes).unwrap();
+        fs::set_permissions(&invalid, fs::Permissions::from_mode(0o600)).unwrap();
+        let invalid_before = fs::metadata(&invalid).unwrap();
+        assert_eq!(Config::load_::<Config>("_trace_invalid_utf8"), Config::default());
+        let invalid_after = fs::metadata(&invalid).unwrap();
+        assert_eq!(fs::read(&invalid).unwrap(), invalid_bytes);
+        assert_eq!((invalid_before.ino(), invalid_before.mode()), (invalid_after.ino(), invalid_after.mode()));
+
+        let corrupt = Config::file_("_trace_corrupt");
+        let corrupt_bytes = format!("password = '{}\n", original.password).into_bytes();
+        assert!(toml::from_str::<Config>(std::str::from_utf8(&corrupt_bytes).unwrap()).is_err());
+        fs::write(&corrupt, &corrupt_bytes).unwrap();
+        fs::set_permissions(&corrupt, fs::Permissions::from_mode(0o600)).unwrap();
+        let corrupt_before = fs::metadata(&corrupt).unwrap();
+        let parent = corrupt.parent().unwrap();
+        let names_before = fs::read_dir(parent).unwrap().map(|entry| entry.unwrap().path())
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(Config::load_::<Config>("_trace_corrupt"), Config::default());
+        assert!(!corrupt.exists());
+        let backups = fs::read_dir(parent).unwrap().map(|entry| entry.unwrap().path())
+            .filter(|entry| !names_before.contains(entry)).collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        let backup = fs::metadata(&backups[0]).unwrap();
+        assert_eq!(fs::read(&backups[0]).unwrap(), corrupt_bytes);
+        assert_eq!((corrupt_before.ino(), corrupt_before.mode()), (backup.ino(), backup.mode()));
         log::trace!(target: "hbb_common::config", "config-load-capture-after");
 
         let logs = LOGS.0.lock().unwrap();
@@ -1323,12 +1352,16 @@ fn config_initial_load_keeps_credentials_out_of_trace_logs() {
         let controls = ["config-load-capture-before", "config-load-capture-after"]
             .iter().all(|control| logs.iter().any(|(_, message)| message == control));
         let error_visible = logs.iter().any(|(level, _)| *level == log::Level::Error);
+        let parse_errors_visible = [&invalid, &corrupt].iter().all(|path| {
+            let name = path.to_string_lossy();
+            logs.iter().any(|(level, message)| *level == log::Level::Error && message.contains(name.as_ref()))
+        });
         let exposed_fields = [
             &original.id, &original.enc_id, &original.password,
             &original.password_prs, &original.salt,
         ].iter().filter(|field| logs.iter().any(|(_, message)| message.contains(field.as_str()))).count();
-        println!("OPTION_COMMIT_CONFIG_LOAD_LOG=observed trace_controls={controls} error_visible={error_visible} exposed_fields={exposed_fields} healthy_reads=2 source_preserved=true missing_no_create=true directory_preserved=true");
-        assert!(controls && error_visible);
+        println!("OPTION_COMMIT_CONFIG_LOAD_LOG=observed trace_controls={controls} error_visible={error_visible} parse_errors_visible={parse_errors_visible} exposed_fields={exposed_fields} healthy_reads=2 source_preserved=true missing_no_create=true directory_preserved=true invalid_utf8_preserved=true corrupt_backup_preserved=true");
+        assert!(controls && error_visible && parse_errors_visible);
         assert_eq!(exposed_fields, 0, "configuration fields reached the log sink");
     });
 }

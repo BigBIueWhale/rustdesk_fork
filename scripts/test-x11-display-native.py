@@ -1878,6 +1878,17 @@ def main():
                            check=True, timeout=15)
             subprocess.run([str(binaries["corrected"]), "capture-24"], env=environment,
                            check=True, timeout=15)
+            mapping = subprocess.run([str(binaries["corrected"]), "capture-mapping"], env=environment,
+                                     capture_output=True, text=True, timeout=15)
+            mapping_receipt = ("X11_SHM_MAPPING_NATIVE=pass callers=direct,public repeats=8 readonly_cases=16 "
+                               "writable_calibrations=2 offsets=first,last readonly_copy=EFAULT "
+                               "control_copy=accepted alias=same-segment pixels=red,blue mapping=retained "
+                               "descriptors=retired segments=retired")
+            require(mapping.returncode == 0 and not mapping.stderr and len(mapping.stdout) <= 4096
+                    and mapping.stdout.splitlines() == [mapping_receipt,
+                        "X11_DISPLAY_COMPONENT=pass scenario=capture-mapping replies=exact errors=explicit cleanup=joined"],
+                    f"native capture-mapping protection differs: {mapping}")
+            print(mapping_receipt, flush=True)
             rejection = subprocess.run([str(binaries["corrected"]), "capture-reject"], env=environment,
                                        capture_output=True, text=True, timeout=15)
             rejection_receipt = ("X11_CAPTURE_REJECTION_NATIVE=pass server_error=BadDrawable repeats=16 "

@@ -5490,6 +5490,9 @@ elif [ "$MODE" = x11-display-tests ]; then
         'X11_CAPTURE_CONSTRUCTION_NATIVE=pass faults=local-attach,removal-pending cause=kernel-invalid-argument callers=direct,public repeats=16 cases=64 rejected_segments=retired xcb_detach=checked survivor=fresh retry=valid pixels=red,blue allocations=retired' \
         'production X11 constructor failure cleanup and independent live capture'
     require_exact_fixed_receipt \
+        'X11_SHM_MAPPING_NATIVE=pass callers=direct,public repeats=8 readonly_cases=16 writable_calibrations=2 offsets=first,last readonly_copy=EFAULT control_copy=accepted alias=same-segment pixels=red,blue mapping=retained descriptors=retired segments=retired' \
+        'production capture mapping rejects native kernel writes with writable same-segment calibration'
+    require_exact_fixed_receipt \
         'X11_CAPTURE_MISSING_NATIVE=pass cause=xcb-discard connection=healthy callers=direct,public repeats=16 cases=32 requests=4 replies=3 missing=1 completion=get-input-focus protocol_errors=0 comparison_on_rejection=none same_capture=recovered pixels=red,blue allocations=retired segments=retired' \
         'production X11 missing-reply failure and same-capture recovery'
     require_exact_fixed_receipt \

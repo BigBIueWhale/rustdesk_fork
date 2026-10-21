@@ -245,6 +245,7 @@ struct State {
     construction_fault: Option<ConstructionFault>,
     construction_segment: Option<i32>,
     construction_errno: Option<i32>,
+    writable_capture_mapping: bool,
     detach_queries: usize,
     detach_checks: usize,
     detach_errors: usize,
@@ -275,6 +276,7 @@ pub mod libc {
         #[link_name = "shmctl"]
         fn system_shmctl(id: c_int, cmd: c_int, status: *mut c_void) -> c_int;
         fn __errno_location() -> *mut c_int;
+        pub fn read(fd: c_int, buffer: *mut c_void, count: usize) -> isize;
     }
     pub unsafe fn shmget(key: c_int, size: usize, flags: c_int) -> c_int {
         let id = system_shmget(key, size, flags);
@@ -313,6 +315,10 @@ pub mod libc {
         let reject = take_construction_fault(id, super::ConstructionFault::LocalAttach);
         // Only the selected real segment's address changes. Without SHM_RND,
         // address 1 is unaligned; the kernel supplies the actual failure/errno.
+        // Calibration changes the real attachment, never the kernel's copy result.
+        let flags = if super::STATE.with(|state| state.borrow().writable_capture_mapping) {
+            flags & !SHM_RDONLY
+        } else { flags };
         let result = system_shmat(id, if reject { 1usize as *const c_void } else { addr }, flags);
         if reject {
             assert_eq!(result as isize, -1, "unaligned local attachment succeeded");
@@ -931,6 +937,7 @@ fn finish_case(reject: usize) {
         assert!(state.construction_fault.is_none(), "construction fault was not exercised");
         state.construction_segment = None;
         state.construction_errno = None;
+        state.writable_capture_mapping = false;
         state.detach_queries = 0;
         state.detach_checks = 0;
         state.detach_errors = 0;
@@ -993,6 +1000,108 @@ fn probe_segment(id: i32) -> io::Result<()> {
     let mapping = unsafe { libc::shmat(id, std::ptr::null(), libc::SHM_RDONLY) };
     if mapping as isize == -1 { return Err(io::Error::last_os_error()); }
     if unsafe { libc::shmdt(mapping) } == -1 { return Err(io::Error::last_os_error()); }
+    Ok(())
+}
+
+#[cfg(corrected)]
+fn copy_byte_to_mapping(address: *mut u8, byte: u8) -> io::Result<usize> {
+    use std::{io::Write, os::fd::AsRawFd, os::unix::net::UnixStream, time::Duration};
+
+    let (source, mut writer) = UnixStream::pair()?;
+    source.set_read_timeout(Some(Duration::from_millis(500)))?;
+    writer.write_all(&[byte])?;
+    // No Rust slice is made from the destination: this asks the kernel to copy
+    // one ready byte to the actual mapping and preserves its real errno.
+    let result = unsafe { libc::read(source.as_raw_fd(), address.cast(), 1) };
+    if result < 0 { Err(io::Error::last_os_error()) } else { Ok(result as usize) }
+}
+
+#[cfg(corrected)]
+fn exercise_capture_mapping(server: &x11::Server, root: u32, writable: bool,
+    mut frame: impl FnMut() -> io::Result<(*const u8, usize)>) -> io::Result<i32> {
+    struct WritableAlias(*mut libc::c_void);
+    impl Drop for WritableAlias {
+        fn drop(&mut self) { assert_eq!(unsafe { libc::shmdt(self.0) }, 0); }
+    }
+
+    let (address, size) = frame()?;
+    assert!(size >= 3);
+    assert_eq!(unsafe { std::slice::from_raw_parts(address, 3) }, [0, 0, 255]);
+    let segment = STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!(state.segments.len(), 1);
+        state.segments[0]
+    });
+    check_capture_segment_state(segment, size, 2)?;
+    let raw = unsafe { libc::shmat(segment, std::ptr::null(), 0) };
+    assert_ne!(raw as isize, -1, "writable same-segment control attachment failed");
+    let alias = WritableAlias(raw);
+    check_capture_segment_state(segment, size, 3)?;
+    for offset in [0, size - 1] {
+        let destination = unsafe { address.add(offset) };
+        let control = unsafe { alias.0.cast::<u8>().add(offset) };
+        let original = unsafe { std::ptr::read_volatile(destination) };
+        assert_eq!(unsafe { std::ptr::read_volatile(control) }, original);
+        let result = copy_byte_to_mapping(destination as *mut u8, original ^ 255);
+        if writable {
+            assert_eq!(result?, 1, "writable calibration did not copy its byte");
+            assert_eq!(unsafe { std::ptr::read_volatile(destination) }, original ^ 255);
+        } else {
+            let error = result.expect_err("production mapping accepted a kernel write");
+            assert_eq!(error.raw_os_error(), Some(14), "readonly mapping did not return EFAULT");
+            assert_eq!(unsafe { std::ptr::read_volatile(destination) }, original);
+        }
+        assert_eq!(copy_byte_to_mapping(control, original ^ 85)?, 1);
+        assert_eq!(unsafe { std::ptr::read_volatile(destination) }, original ^ 85,
+                   "control alias does not address the production segment");
+        assert_eq!(copy_byte_to_mapping(control, original)?, 1);
+        assert_eq!(unsafe { std::ptr::read_volatile(destination) }, original);
+    }
+    drop(alias);
+    check_capture_segment_state(segment, size, 2)?;
+    draw_red(server, root, 0x000000ff)?;
+    let (fresh, fresh_size) = frame()?;
+    assert_eq!((fresh, fresh_size), (address, size), "capture mapping changed");
+    assert_eq!(unsafe { std::slice::from_raw_parts(fresh, 3) }, [255, 0, 0],
+               "X server could not update the retained mapping");
+    Ok(segment)
+}
+
+#[cfg(corrected)]
+fn capture_mapping_cases(server: &Rc<x11::Server>) -> io::Result<()> {
+    use crate::common::TraitCapturer;
+    let descriptors = std::fs::read_dir("/proc/thread-self/fd")?.count();
+    for (writable, repeats) in [(true, 1), (false, 8)] {
+        for _ in 0..repeats {
+            for public in [false, true] {
+                finish_case(0);
+                STATE.with(|state| state.borrow_mut().writable_capture_mapping = writable);
+                let display = x11::Server::displays(Rc::clone(server))
+                    .next().expect("first real X screen")?;
+                assert_eq!(display.pixfmt(), Pixfmt::BGRA);
+                let root = display.root();
+                draw_red(server, root, 0x00ff0000)?;
+                let segment = if public {
+                    let mut capture = common::Capturer::new(common::Display::primary()?)?;
+                    exercise_capture_mapping(server, root, writable, || {
+                        let Frame::PixelBuffer(buffer) = capture.frame(std::time::Duration::ZERO)?;
+                        Ok((buffer.data().as_ptr(), buffer.data().len()))
+                    })?
+                } else {
+                    let mut capture = x11::Capturer::new(display)?;
+                    exercise_capture_mapping(server, root, writable, || {
+                        let data = capture.frame()?;
+                        Ok((data.as_ptr(), data.len()))
+                    })?
+                };
+                let absent = probe_segment(segment).expect_err("capture segment survived drop");
+                assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)));
+                finish_case(0);
+                assert_eq!(std::fs::read_dir("/proc/thread-self/fd")?.count(), descriptors);
+            }
+        }
+    }
+    println!("X11_SHM_MAPPING_NATIVE=pass callers=direct,public repeats=8 readonly_cases=16 writable_calibrations=2 offsets=first,last readonly_copy=EFAULT control_copy=accepted alias=same-segment pixels=red,blue mapping=retained descriptors=retired segments=retired");
     Ok(())
 }
 
@@ -1470,6 +1579,11 @@ fn main() -> io::Result<()> {
     }
     #[cfg(corrected)]
     {
+        if scenario == "capture-mapping" {
+            capture_mapping_cases(&server)?;
+            println!("X11_DISPLAY_COMPONENT=pass scenario=capture-mapping replies=exact errors=explicit cleanup=joined");
+            return Ok(());
+        }
         let fault = match scenario.as_str() {
             "bounds-atom-length" => Some((1, 0)),
             "bounds-atom-padding" => Some((2, 0)),

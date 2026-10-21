@@ -3617,6 +3617,7 @@ run_focused_rust_tests() {
                 tcp::writer_lifetime_tests::tcp_fatal_receive_returns_after_writer_retirement
                 tcp::writer_lifetime_tests::tcp_fatal_drain_returns_after_writer_retirement
                 tcp::writer_lifetime_tests::tcp_cancelled_retirement_keeps_writer_owned_until_retry
+                tcp::exclusive_listener_tests::second_exclusive_listener_bind_is_refused
             )
         fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
@@ -5324,7 +5325,7 @@ run_focused_rust_tests() {
                             done
                         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
                             for group in tcp::writer_receipt_tests:: tcp::eof_tests:: \
-                                bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4 socket_client::tests::; do
+                                bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4 socket_client::tests:: tcp::exclusive_listener_tests::; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
@@ -5991,7 +5992,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'Shared-library failure artifact metadata could not be read\n' >&2
             awk '
-                /^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests)::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ {
+                /^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests)|bytes_codec::tests)::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ {
                     if (++cases <= 64) print
                 }
                 /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
@@ -6040,7 +6041,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=16; fi
-        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=7; fi
+        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=8; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=7; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
@@ -6098,7 +6099,7 @@ PY
             [ "$(grep -Fxc 'test test::test_try_into_v4 ... ok' "$output")" -eq 1 ] \
                 || fail 'direct address normalization test differs'
             for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
-                bytes_codec::tests:12 tcp::writer_lifetime_tests:6; do
+                bytes_codec::tests:12 tcp::writer_lifetime_tests:6 tcp::exclusive_listener_tests:1; do
                 count=${group##*:}; group=${group%:*}
                 [ "$(grep -Ec "^test ${group}::[[:alnum:]_]+ [.][.][.] ok$" "$output")" -eq "$count" ] \
                     || fail "writer retirement test group differs: $group"
@@ -6702,8 +6703,8 @@ PY
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'
             grep -E '^test (config|password_security)::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
-            [ "$tests_passed" -eq 40 ] || fail 'writer retirement test total differs'
-            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=' "$output"
+            [ "$tests_passed" -eq 41 ] || fail 'writer retirement test total differs'
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq 7 ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_WINDOW' "$output"

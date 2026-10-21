@@ -4264,11 +4264,6 @@ run_focused_rust_tests() {
                 src/server/audio_service.rs libs/hbb_common/src/lib.rs
                 scripts/test-audio-buffer.rs scripts/run-audio-buffer-tests.py
             )
-            if [ -f "$source_root/libs/hbb_common/src/mem.rs" ]; then
-                source_fingerprints+=(libs/hbb_common/src/mem.rs)
-            else
-                source_fingerprints+=(src/server/audio_service/pcm.rs)
-            fi
             required_tests=(
                 capture_pcm_allocation_layout_matches_its_owner
                 capture_pcm_preserves_bits_at_every_byte_alignment
@@ -4860,6 +4855,13 @@ run_focused_rust_tests() {
         fi
         python3 -I -S "$source_root/scripts/prepare-trusted-executable-fixture.py" create
         bridge_mounts+=(--mount "type=bind,source=$ROOT/trusted-executable-fixture,target=/trusted-executable-fixture,bind-recursive=disabled")
+    fi
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
+        if [ -f "$source_root/libs/hbb_common/src/mem.rs" ]; then
+            source_fingerprints+=(libs/hbb_common/src/mem.rs)
+        else
+            source_fingerprints+=(src/server/audio_service/pcm.rs)
+        fi
     fi
     source_before="$source_archive_sha:$(
         cd "$source_root"

@@ -13137,6 +13137,28 @@ all eight endpoint snapshots have zero delta, and both VMs/RAM workspaces retire
 An earlier fixture-lock admission failure ran no compilation or product behavior.
 Evidence: `.harness-state/verifier-vm/cpal-output-failure-1969d79d.json`.
 
+**PCM frame alignment (`4bc6afdf`).** Backlog trimming now retains the active
+output channel count and discards complete interleaved frames. The former
+stereo-only even-sample rounding could shift channel positions on multichannel
+device output. A channel-layout change also retires queued PCM, statistics and
+clock when total sample capacity stays equal; an unchanged format preserves them.
+Callback, mailbox, output-attempt ownership, capacity and trim interval are unchanged.
+With identical production-module regressions and Python runner, unchanged product
+at `af6f6699` fails exactly two new cases while 32 controls pass: 44.1 kHz with
+three channels drops 95918 samples, splitting a frame; 48 kHz stereo to 96 kHz
+mono retains four old samples and its observation window. Corrected `4bc6afdf`
+passes all 34 cases through `--audio-mailbox-tests` in 87 outer seconds:
+16 production-buffer, 17 production-mailbox and the extracted-error-callback case.
+Actual queued/output samples preserve channel order across 44.1/48 kHz and one
+through eight channels. The equal-capacity format case observes empty old state
+and exact new PCM. The current CPAL setup method compiles against the root-locked
+dependency; no sound device opens. Source snapshots match through both runs,
+all eight endpoint snapshots have zero delta, and exact joins retire both RAM
+workspaces. Standalone `--audio-buffer-tests` now expects eighteen cases but was
+not rerun. Physical playback, complete non-Linux parent builds, actual callback
+cadence, long-session latency, installed/R-S0/R-F5 and release acceptance remain OPEN.
+Evidence: `.harness-state/verifier-vm/audio-frame-alignment-4bc6afdf.json`.
+
 `AudioHandler::fail_audio` now makes decoder construction/decode, output setup and
 Linux PulseAudio write failure terminal for that owner. It latches failure, releases
 the decoder and native output, and preserves the first-format identity. Further

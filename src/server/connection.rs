@@ -5556,6 +5556,27 @@ mod control_egress_tests {
             ))
         ));
         assert!(receiver.blocking_recv().is_none());
+
+        let (sender, mut receiver) = control_egress_channel();
+        let mut retained = Vec::new();
+        for _ in 0..256 {
+            let message = control();
+            retained.push(Arc::downgrade(&message));
+            sender.send(message).unwrap();
+        }
+        let failure = ControlEgressFailure::MessageCapacity {
+            queued: 257,
+            limit: 256,
+        };
+        assert_eq!(sender.send(control()), Err(ControlEgressAdmissionError::Failed(failure)));
+        assert!(retained.iter().all(|message| message.upgrade().is_none()));
+        assert!(matches!(
+            receiver.take_next(),
+            Ok(Some(ControlEgressItem::Failed(actual))) if actual == failure
+        ));
+        assert!(receiver.take_next().is_err());
+        assert_eq!(sender.send(control()), Err(ControlEgressAdmissionError::ReceiverGone));
+        println!("CONTROL_EGRESS_DEFAULT=observed accepted=256 refused=1 retained=0 terminal_once=true");
     }
 
     #[test]
@@ -5668,7 +5689,7 @@ mod control_egress_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn r_s11gw_async_receiver_waits_without_polling_and_closes() {
         let (sender, mut receiver) = control_egress_channel();
         assert!(time::timeout(Duration::from_millis(20), receiver.recv())
@@ -5687,6 +5708,127 @@ mod control_egress_tests {
             .await
             .unwrap()
             .is_none());
+
+        for overflow in [false, true] {
+            let (sender, mut receiver) = control_egress_channel();
+            let stale = overflow.then(|| sender.clone());
+            let barrier = Arc::new(tokio::sync::Barrier::new(9));
+            let mut producers = tokio::task::JoinSet::new();
+            let per_producer = if overflow { 64 } else { 16 };
+            for producer in 0..8 {
+                let sender = sender.clone();
+                let barrier = Arc::clone(&barrier);
+                producers.spawn(async move {
+                    barrier.wait().await;
+                    let mut accepted = 0;
+                    let mut refused = 0;
+                    let mut unexpected = 0;
+                    let mut retained = Vec::new();
+                    for sequence in 0..per_producer {
+                        let mut response = ScreenshotResponse::new();
+                        response.sid = format!("{producer}:{sequence}");
+                        let mut message = Message::new();
+                        message.set_screenshot_response(response);
+                        let message = Arc::new(message);
+                        retained.push(Arc::downgrade(&message));
+                        match sender.send(message) {
+                            Ok(()) => accepted += 1,
+                            Err(ControlEgressAdmissionError::Failed(
+                                ControlEgressFailure::MessageCapacity { queued: 257, limit: 256 },
+                            )) => refused += 1,
+                            Err(_) => unexpected += 1,
+                        }
+                    }
+                    (accepted, refused, unexpected, retained)
+                });
+            }
+            drop(sender);
+            let mut delivered = Vec::new();
+            let mut terminal = None;
+            let mut outcomes = Vec::new();
+            let completed = time::timeout(Duration::from_secs(2), async {
+                barrier.wait().await;
+                if !overflow {
+                    while let Some(item) = receiver.recv().await {
+                        match item {
+                            ControlEgressItem::Message(message) => delivered.push(message),
+                            ControlEgressItem::Failed(failure) => {
+                                terminal = Some(failure);
+                                break;
+                            }
+                        }
+                    }
+                }
+                while let Some(outcome) = producers.join_next().await {
+                    outcomes.push(outcome);
+                }
+            })
+            .await;
+            // Keep exact task ownership on timeout and join before any assertion.
+            producers.abort_all();
+            while let Some(outcome) = producers.join_next().await {
+                outcomes.push(outcome);
+            }
+            assert!(completed.is_ok(), "competing producers and receiver must finish");
+            assert_eq!(outcomes.len(), 8);
+            let (mut accepted, mut refused, mut unexpected) = (0, 0, 0);
+            let mut retained = Vec::new();
+            for outcome in outcomes {
+                let (ok, full, other, owners) = outcome.unwrap();
+                accepted += ok;
+                refused += full;
+                unexpected += other;
+                retained.extend(owners);
+            }
+            assert_eq!(unexpected, 0);
+            if overflow {
+                let failure = ControlEgressFailure::MessageCapacity {
+                    queued: 257,
+                    limit: 256,
+                };
+                assert_eq!((accepted, refused), (256, 256));
+                assert_eq!(
+                    stale.as_ref().unwrap().send(control()),
+                    Err(ControlEgressAdmissionError::Failed(failure))
+                );
+                match receiver.take_next() {
+                    Ok(Some(ControlEgressItem::Failed(failure))) => terminal = Some(failure),
+                    _ => panic!("saturation must publish one terminal outcome"),
+                }
+                assert_eq!(terminal, Some(failure));
+                assert!(receiver.take_next().is_err());
+                assert_eq!(
+                    stale.as_ref().unwrap().send(control()),
+                    Err(ControlEgressAdmissionError::ReceiverGone)
+                );
+            } else {
+                assert_eq!((accepted, refused), (128, 0));
+                assert!(terminal.is_none());
+                assert_eq!(delivered.len(), 128);
+                let mut next = [0; 8];
+                for message in &delivered {
+                    let Some(message::Union::ScreenshotResponse(response)) = &message.union else {
+                        panic!("producer response changed class");
+                    };
+                    let (producer, sequence) = response.sid.split_once(':').unwrap();
+                    let producer: usize = producer.parse().unwrap();
+                    let sequence: usize = sequence.parse().unwrap();
+                    assert!(producer < next.len());
+                    assert_eq!(sequence, next[producer]);
+                    next[producer] += 1;
+                }
+                assert_eq!(next, [16; 8]);
+            }
+            let delivered_count = delivered.len();
+            drop(delivered);
+            drop(receiver);
+            assert!(retained.iter().all(|message| message.upgrade().is_none()));
+            println!(
+                "CONTROL_EGRESS_CONCURRENCY=observed mode={} producers=8 offered={} accepted={accepted} refused={refused} delivered={delivered_count} retained=0 workers=joined",
+                if overflow { "overflow" } else { "drain" },
+                per_producer * 8,
+            );
+        }
     }
 }
 

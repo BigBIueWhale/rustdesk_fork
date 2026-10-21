@@ -3720,12 +3720,10 @@ run_focused_rust_tests() {
             scripts/test-linux-service-uid-policy.rs
             scripts/verify-linux-service-password-ipc.py
             scripts/run-trusted-executable-tests.py scripts/test-trusted-executable.rs
+            scripts/prepare-trusted-executable-fixture.py scripts/fixtures/trusted-executable-before.rs
             src/platform/linux.rs libs/hbb_common/src/platform/linux.rs
             src/server/terminal_service.rs
         )
-        if [ -f "$source_root/libs/hbb_common/src/platform/trusted_executable.rs" ]; then
-            source_fingerprints+=(libs/hbb_common/src/platform/trusted_executable.rs)
-        fi
         required_tests=(
             uid_policy::tests::test_service_peer_uid_policy
             uid_policy::tests::r_s11e60_linux_service_root_skips_both_uid_lookups
@@ -3734,6 +3732,9 @@ run_focused_rust_tests() {
             trusted_executable_tests::normal_system_images_and_aliases_remain_executable
             trusted_executable_tests::malformed_missing_directory_and_nonexecutable_paths_refuse
             trusted_executable_tests::user_owned_ancestry_cannot_select_a_root_owned_image
+            trusted_executable_tests::writable_canonical_ancestors_refuse_before_path_replacement
+            trusted_executable_tests::hidden_symlink_targets_cannot_choose_authority_images
+            trusted_executable_tests::trusted_link_semantics_and_kernel_write_refusal_preserve_functionality
         )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -4749,6 +4750,13 @@ run_focused_rust_tests() {
               | awk '{ print $1 }')" = \
       "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
         || fail 'focused-test source archive differs from its guest bootstrap'
+    if [ "$MODE" = linux-service-uid-tests ]; then
+        if [ -f "$source_root/libs/hbb_common/src/platform/trusted_executable.rs" ]; then
+            source_fingerprints+=(libs/hbb_common/src/platform/trusted_executable.rs)
+        fi
+        python3 -I -S "$source_root/scripts/prepare-trusted-executable-fixture.py" create
+        bridge_mounts+=(--mount "type=bind,source=$ROOT/trusted-executable-fixture,target=/trusted-executable-fixture,bind-recursive=disabled")
+    fi
     source_before="$source_archive_sha:$(
         cd "$source_root"
         sha256sum "${source_fingerprints[@]}"
@@ -5748,6 +5756,16 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         "$CONTAINER_ID")"
     [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
         || fail "focused Rust-test container namespace/device/port authority differs: $namespace_inspect"
+    if [ "$MODE" = linux-service-uid-tests ]; then
+        inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+            '{{range .Mounts}}{{if eq .Type "bind"}}{{printf "bind|%s|%s|%t\n" .Source .Destination .RW}}{{else}}{{if ne .Type "tmpfs"}}{{printf "unexpected|%s\n" .Type}}{{end}}{{end}}{{end}}' \
+            "$CONTAINER_ID" | LC_ALL=C sort)"
+        [ "$inspect" = "$(printf '%s\n' \
+            "bind|$source_root|/source|false" "bind|$target_root|/cargo-target|true" \
+            "bind|$ROOT/trusted-executable-fixture|/trusted-executable-fixture|true" | LC_ALL=C sort)" ] \
+            || fail 'executable namespace fixture mount envelope differs'
+        printf 'TRUSTED_EXECUTABLE_MOUNTS=pass binds=3 source=readonly fixture=private-rw user=1000:1000\n'
+    fi
     if [ "$MODE" = android-rust-lifecycle-tests ] \
        && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
         inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
@@ -6433,6 +6451,9 @@ PY
         || fail 'focused Rust-test container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
+    if [ "$MODE" = linux-service-uid-tests ]; then
+        python3 -I -S "$source_root/scripts/prepare-trusted-executable-fixture.py" retire
+    fi
     if [ "$MODE" = hbb-common-fs ] && [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         local native_test_executable native_output=$ROOT/logind-native.out
         native_test_executable=${hbb_artifact_receipts[0]#*executable=}

@@ -52,6 +52,16 @@ def main():
     repo = Path(sys.argv[1]).resolve(strict=True)
     inputs = {}
     generated = "extern crate self as hbb_common;\n"
+    historical = "scripts/fixtures/trusted-executable-before.rs"
+    inputs[historical] = (repo / historical).read_bytes()
+    before = inputs[historical].decode("utf-8")
+    fragment = "".join(function(before, name) for name in REGIONS[0][3])
+    fragment += function(before, REGIONS[0][2])
+    if digest(fragment.encode()) != "e360862fdace60bb6323769dd149244e4fcd1c702ad5f713d7caf2b2b06cc285":
+        raise ValueError("historical selector differs from exact b3f8206a production")
+    generated += f'#[path = "{repo / historical}"] mod before;\n'
+    print(f"TRUSTED_EXECUTABLE_HISTORICAL=source commit=b3f8206a path={historical} "
+          f"fragment_sha256={digest(fragment.encode())}", flush=True)
     policy = repo / "libs/hbb_common/src/platform/trusted_executable.rs"
     if policy.exists():
         inputs[str(policy.relative_to(repo))] = policy.read_bytes()
@@ -78,7 +88,7 @@ def main():
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=7", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=10", flush=True)
     result = subprocess.run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
     if len(result.stdout) > 65536:

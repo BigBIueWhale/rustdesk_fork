@@ -5944,7 +5944,7 @@ elif [ "$MODE" = linux-systemd-notification-tests ]; then
 elif [ "$MODE" = linux-service-uid-tests ]; then
     mapfile -t uid_policy_artifacts < <(
         /usr/bin/grep -Eo \
-            "LINUX_SERVICE_UID_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=7 artifact_sha256=[0-9a-f]{64}" \
+            "LINUX_SERVICE_UID_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=10 artifact_sha256=[0-9a-f]{64}" \
             "$SERIAL_LOG" || true
     )
     [ "${#uid_policy_artifacts[@]}" -eq 1 ] \

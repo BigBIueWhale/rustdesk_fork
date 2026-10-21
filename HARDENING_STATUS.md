@@ -12142,31 +12142,26 @@ PERFORMANCE, AND RELEASE EVIDENCE OPEN.**
 
 ### R-S11gw/R-S11e-235 — bounded controlled-side service-to-connection egress (2026-08-16)
 
-**SOURCE IMPLEMENTED; FIVE EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED; SOURCE/MUTATION
-THEATER DELETED; EXACT CURRENT NATIVE, PERFORMANCE, ARTIFACT, AND EXTERNAL EVIDENCE OPEN.**
-Platforms: shared Android, iOS, Windows, Linux, and macOS controlled-side transport. Surface:
-synchronous service producers -> exact connection-owned `ControlEgressState` -> connection loop ->
-keyed writer.
+**Source implemented; five executable Rust regressions retained in the shared gate.
+Exact-current native, installed, performance, artifact and external acceptance remain OPEN.**
 
-The inherited defect was real. Audio and video already had semantic bounded mailboxes, but every
-other synchronous service message entered an unbounded Tokio channel. This included 33 ms cursor
-positions, exact cursor-shape, clipboard and topology messages, stop-service intent, and potentially
-large screenshot responses. A busy connection loop or back-pressured writer could retain arbitrary
-count and bytes and later deliver stale positions. Reconnect destroyed the old queue; that is a
-cleanup-mediated recovery mechanism, not evidence that an unidentified deployed artifact exercised
-it or that it caused a reported display delay.
+Each controlled connection owns one short-mutex `ControlEgressState` and a one-slot
+wake before the keyed writer. Admission bounds retention to 256 messages and two
+maximum session packets plus checked entry accounting; each protobuf fits the
+post-secretbox payload ceiling. Only a FIFO-tail `CursorPosition` may be replaced.
+Every other message is an exact ordering barrier and remains FIFO. Audio/video
+frames, audio formats and display-switch generation state use their media mailboxes
+and are refused here.
 
-The current design gives each exact controlled connection one short-mutex state owner and a one-slot
-wake. It admits at most 256 messages and two maximum session packets plus checked entry accounting;
-each protobuf must fit the keyed-session payload ceiling. Only the FIFO-tail `CursorPosition` may be
-replaced. Every exact message is an ordering barrier, and all other messages remain FIFO. Audio and
-video classes are refused from this control mailbox. Wrong class, oversize, count or byte exhaustion,
-or accounting failure clears retained work, stores one typed terminal cause, wakes the receiver, and
-terminates the exact connection. Receiver retirement closes admission and releases retained state
-even while stale producer clones exist. This adds no retry, reconnect, timer, task, runtime, listener,
-dependency, privilege transition, service restart, or Android persistent-service change.
+Wrong class, oversize, count/byte exhaustion or accounting failure clears retained
+work, latches one typed terminal cause, wakes the receiver and terminates the exact
+connection. Receiver retirement closes admission and releases retained messages
+despite stale sender clones. This introduces no alternate queue, timer, retry,
+reconnect, worker, runtime, listener, dependency, privilege transition, service restart
+or change to Android's persistent service. R-S11gw and Appendix C #358 own the
+normative contract.
 
-Five executable Rust regressions remain in `src/server/connection.rs`:
+The five regressions in `src/server/connection.rs` remain:
 
 - `r_s11gw_cursor_positions_replace_only_the_trailing_cursor`
 - `r_s11gw_count_saturation_is_terminal_and_releases_exact_messages`
@@ -12174,40 +12169,23 @@ Five executable Rust regressions remain in `src/server/connection.rs`:
 - `r_s11gw_media_bypass_and_receiver_retirement_are_visible`
 - `r_s11gw_async_receiver_waits_without_polling_and_closes`
 
-The shared gate retains the direct command
-`cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never`. Its actual execution,
-not its presence in a shell script, is the relevant regression evidence.
+The shared gate retains
+`cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never`.
+Wiring and historical parser/source-mutation receipts do not establish execution.
+This ledger cleanup changes no product, tests or gates and adds no behavioral verdict.
+Classification and the superseded inspection report are retained in
+`control-egress-ledger-8aeba95f.json`; Git history and the audit preserve provenance.
 
-The deleted `scripts/verify-controlled-control-egress.py` was a 518-line source parser with 51
-textual mutations. It never invoked Cargo or Tokio, drove a producer, blocked a connection loop,
-created socket backpressure, or observed ordering, freshness, latency, memory, task, or handle
-finality. Its duplicate workspace validator, mutation catalog, dispatch, source-map entry, and
-adjacency fixtures were removed; shared and Apple invocations were removed, and the two surviving
-neighbor fixtures now name only surviving dispatches. R-S11gw and Appendix C #358 now say explicitly
-that source matching, source mutation, script wiring, and workspace parsing are not behavioral proof.
-No product source changed in this cleanup slice.
-
-In immutable local inspection image
-`sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`, mounted read-only as
-numeric UID/GID 1000 with no network or ports, all capabilities dropped, no-new-privileges, and
-bounded resources, all 124 Python scripts parsed, requirements HTML and the affected shell gates
-parsed, the reduced independent workspace baseline passed, both changed neighboring adjacency
-mutations were present and rejected, native-codec synchronization and the status-size gate passed,
-and host `git diff --check` passed. One initial targeted mutation exposed that the shortened CM
-fixture matched an earlier quoted occurrence rather than the real dispatch; it was anchored to the
-actual three-call sequence and then rejected. Exact pre/post host listener bytes matched at SHA-256
-`e5c30f61cd0c6495b4719f10dc914ddb2feab91f06f611097f032292f97fa2a4`. The exact pinned devcheck
-image `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` is absent and the
-inspection image has no Cargo. No image was pulled or built, no host Rust command ran, and no Rust,
-native, or product behavior is claimed.
-
-Remaining STOP-SHIP evidence includes exact-current native execution on every supported target;
-real synchronous cursor, clipboard, topology, stop-service, input-response, and screenshot producers
-through mailbox and connection-loop backpressure; refusal, disconnect, replacement, FIFO, freshness,
-latency, and retained-resource observation; physical Android task-swipe/reopen/Force-Stop and Windows
-focus/minimize reproduction; Linux/macOS/iOS and cross-version behavior; sustained reconnect/focus/
-resource/performance soak; cold R-B2/R-B10 equality and installed behavior; independent reproduction;
-R-V3 external review; causation; and complete connection-flow correctness and performance.
+**Remaining acceptance:** real synchronous cursor, clipboard, topology, stop-service,
+input-response and screenshot producers through mailbox/connection-loop backpressure,
+refusal, disconnect and replacement; FIFO, freshness, latency, retained payload,
+task and handle finality. Exact-current Android task-swipe/reopen/Force-Stop, Windows
+focus/minimize, Linux/macOS/iOS and cross-version behavior, capture-through-compositor
+timestamps and explicit latency budgets, sustained reconnect/focus/resource/performance
+soak, cold R-B2/R-B10 equality, installed artifacts, independent reproduction,
+R-V3 external review, reported-delay causation and complete connection-flow correctness
+and performance remain OPEN. The global release/authority matrices and all user parks
+remain authoritative.
 
 ### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership (2026-08-17)
 

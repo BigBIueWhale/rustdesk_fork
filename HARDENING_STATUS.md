@@ -13053,6 +13053,27 @@ the corrected export retains all names. One intervening RAM-admission refusal st
 no VM and used no disk fallback. Neither source-bound artifact has a cross-run byte
 equality claim. CPAL parent/target compilation, native callback cadence,
 backend memory/locking, playback, installed/device performance and teardown remain OPEN.
+
+CPAL output attempts now own separate readiness, failure and PCM state. A pending
+attempt's failure refuses activation while preserving the existing configuration
+fallback. Retired callbacks cannot ready or close the selected attempt. An active
+failure closes the existing mailbox, releases queued payloads and wakes its decoder
+without another packet; that worker owns stream destruction. The logging-only
+error path and handler-wide readiness flag are removed. Linux production playback
+and its parked cancellation work are unchanged.
+Exact `1969d79d` passed 32 tests through `--audio-mailbox-tests` in 87 outer seconds:
+17 production-mailbox, 14 production-buffer and one extracted-error-callback test.
+Native Linux threads distinguish the old callback, which leaves an idle owner
+blocked until explicit cleanup, from the current callback, which wakes it. Tests
+also cover failed setup/replacement, late callbacks, payload retirement and 64
+joined readiness/failure races. The exact current setup method compiles against
+root-locked CPAL; no audio device is opened. The worker's drop witness is a fixture,
+not a native stream. Complete non-Linux parent builds, device/backend failure,
+playback/recovery and teardown remain OPEN. Sources stayed equal before/live/after;
+all eight endpoint snapshots have zero delta, and both VMs/RAM workspaces retired.
+An earlier fixture-lock admission failure ran no compilation or product behavior.
+Evidence: `.harness-state/verifier-vm/cpal-output-failure-1969d79d.json`.
+
 `AudioHandler::fail_audio` now makes decoder construction/decode, output setup and
 Linux PulseAudio write failure terminal for that owner. It latches failure, releases
 the decoder and native output, and preserves the first-format identity. Further
@@ -13084,7 +13105,7 @@ acceptance. Exact identities, outcomes, controls and limits are retained in
 This accepts Linux playback-error resource finality and that parent test build.
 Stalled synchronous PulseAudio construction/write/drain and worker shutdown during
 such a stall remain OPEN, along with whole-app/installed/device playback, continuous
-backend health, CPAL callback-error handling and native non-Linux execution.
+backend health, native CPAL callback-error handling and native non-Linux execution.
 No new installed-service or LPE closure follows from these component tests.
 The user has parked cancellation work. Uncompiled and unexecuted mainloop/mailbox
 and native-test changes are preserved in stash `fe211f322d1f9ff258a6d72784e9304bbd9c9231`

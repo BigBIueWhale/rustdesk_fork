@@ -58,8 +58,6 @@ db-urls = ["https://github.com/RustSec/advisory-db"]
 yanked = "warn"
 ignore = [
   # ── code-vulns that the R-B5a 1.75 pin or "no upstream fix" blocks ──
-  { id = "RUSTSEC-2025-0022", reason = "openssl 0.10.68 Md::fetch/Cipher::fetch UAF. The fix (>=0.10.72) drags openssl-sys 0.9.117, which requires rustc 1.80 and breaks the R-B5a 1.75 pin. UNREACHABLE: RustDesk never calls the explicit-fetch provider API. Revisit only if the toolchain pin moves (R-R3)." },
-  { id = "RUSTSEC-2025-0004", reason = "openssl 0.10.68 ssl::select_next_proto UAF — same openssl-sys 1.80 MSRV wall as 2025-0022 (fix needs >=0.10.70). ALPN-negotiation path. Accepted on the 1.75 build; revisit with the toolchain bump." },
   { id = "RUSTSEC-2020-0071", reason = "time 0.1.45 potential segfault (localtime_r). Pulled ONLY on macOS (the chrono oldtime path); the controlled box is Linux and R-R2 drops the macOS target, so it leaves the graph there. The v4-only Linux build never compiles it." },
   { id = "RUSTSEC-2024-0013", reason = "libgit2-sys 0.14.2 memory-corruption. Build/dev-time transitive only (git2 tooling), NOT in the controlled runtime binary; the fix is a major bump (>=0.16.2) cascading git2. Tracked for the build-tooling bump." },
   { id = "RUSTSEC-2026-0194", reason = "quick-xml <0.41 duplicate-attribute O(n^2) DoS. The 0.30 Windows notification dependency only escapes locally constructed toast XML; the macOS-only plist 0.31 path uses plain Reader without attribute iteration; and Wayland scanner 0.37 is a build-time proc macro over pinned local protocol XML. The 0.41 fix needs Rust 1.79 plus parent-major updates, beyond the product Rust 1.75 pin." },

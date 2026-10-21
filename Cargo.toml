@@ -246,9 +246,6 @@ gtk = "0.18"
 termios = "0.3"
 winit = "0.30"
 
-[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
-openssl = { version = "0.10", features = ["vendored"] }
-
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.13"
 jni = "0.21"

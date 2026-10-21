@@ -17,7 +17,7 @@
 //!
 //! The crate is deliberately protobuf-agnostic and free of any native/OpenSSL
 //! dependency, so it builds and KAT-tests as pure Rust, independent of the
-//! OpenSSL-linked workspace crates. The on-wire `Cpace` protobuf message and the
+//! native workspace crates. The on-wire `Cpace` protobuf message and the
 //! `create_tcp_connection` choke-point integration map this crate's plain
 //! [`Step1`]–[`Step4`] byte structs to/from the wire (R-P14).
 

@@ -4769,28 +4769,34 @@ impl UserDefaultConfig {
         }
     }
 
-    pub fn set_option(key: String, value: String) -> crate::ResultType<String> {
+    fn update<R>(mutate: impl FnOnce(&mut Self) -> R) -> crate::ResultType<R> {
         let mut cache = USER_DEFAULT_CONFIG.write().unwrap();
         let file = Config::file_("_default");
         let loaded = read_config_view::<Self>(&file)
             .map_err(|_| anyhow!("Failed to read default settings"))?;
         let mut candidate = loaded.clone();
-        if !is_option_can_save(
-            &OVERWRITE_DISPLAY_SETTINGS,
-            &key,
-            &DEFAULT_DISPLAY_SETTINGS,
-            &value,
-        ) || value.is_empty() {
-            candidate.options.remove(&key);
-        } else {
-            candidate.options.insert(key.clone(), value);
-        }
-        let effective = candidate.get(&key);
+        let result = mutate(&mut candidate);
         if candidate.options != loaded.options {
             store_path(file, &candidate)?;
         }
         *cache = (candidate, Instant::now());
-        Ok(effective)
+        Ok(result)
+    }
+
+    pub fn set_option(key: String, value: String) -> crate::ResultType<String> {
+        Self::update(|candidate| {
+            if !is_option_can_save(
+                &OVERWRITE_DISPLAY_SETTINGS,
+                &key,
+                &DEFAULT_DISPLAY_SETTINGS,
+                &value,
+            ) || value.is_empty() {
+                candidate.options.remove(&key);
+            } else {
+                candidate.options.insert(key.clone(), value);
+            }
+            candidate.get(&key)
+        })
     }
 
     #[inline]

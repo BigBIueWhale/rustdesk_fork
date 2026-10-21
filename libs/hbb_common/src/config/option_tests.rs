@@ -4659,6 +4659,39 @@ fn favorite_membership_preserves_order_and_avoids_idempotent_writes() {
         assert_eq!(fs::read(&file).unwrap(), durable);
         fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
         println!("OPTION_COMMIT_FAVORITES_MEMBERSHIP=observed order=preserved duplicates=absent idempotent=without-write");
+        LocalConfig::set_favorites(LocalConfig::get_fav(), false).unwrap();
+        LocalConfig::set_option("favorite-batch-unrelated".into(), "preserved".into()).unwrap();
+        let peer_id = |index| format!("batch-peer-{index:05}");
+        LocalConfig::set_favorites((0..4000).map(peer_id).collect(), true).unwrap();
+        let selected: Vec<_> = (2000..6000).rev()
+            .flat_map(|index| [peer_id(index), peer_id(index)]).collect();
+        let cpu_now = || {
+            let mut time = std::mem::MaybeUninit::<crate::libc::timespec>::uninit();
+            assert_eq!(unsafe {
+                crate::libc::clock_gettime(crate::libc::CLOCK_THREAD_CPUTIME_ID, time.as_mut_ptr())
+            }, 0);
+            let time = unsafe { time.assume_init() };
+            Duration::new(time.tv_sec.try_into().unwrap(), time.tv_nsec.try_into().unwrap())
+        };
+        for favorite in [true, false] {
+            let existing = LocalConfig::get_fav().len();
+            let cpu_started = cpu_now();
+            let started = Instant::now();
+            LocalConfig::set_favorites(selected.clone(), favorite).unwrap();
+            let wall_us = started.elapsed().as_micros();
+            let cpu_us = (cpu_now() - cpu_started).as_micros();
+            let expected: Vec<_> = if favorite {
+                (0..4000).chain((4000..6000).rev()).map(peer_id).collect()
+            } else {
+                (0..2000).map(peer_id).collect()
+            };
+            let stored: LocalConfig = read_config_view(&file).unwrap();
+            let correct = LocalConfig::get_fav() == expected && stored.fav == expected;
+            let unrelated = stored.options.get("favorite-batch-unrelated").map(String::as_str)
+                == Some("preserved");
+            println!("OPTION_COMMIT_FAVORITES_BATCH=observed favorite={favorite} existing={existing} selected={} final={} wall_us={wall_us} cpu_us={cpu_us} correct={correct} unrelated={unrelated}", selected.len(), stored.fav.len());
+            assert!(correct && unrelated);
+        }
     });
 }
 

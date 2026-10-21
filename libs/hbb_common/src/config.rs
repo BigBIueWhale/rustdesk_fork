@@ -4038,15 +4038,19 @@ impl PeerConfig {
         mapping: &(i32, String, i32),
     ) -> crate::ResultType<(Vec<(i32, String, i32)>, bool)> {
         let mut config = Self::load_for_write(id)?;
-        if config.port_forwards.iter().any(|entry| entry.0 == mapping.0) {
-            return Ok((config.port_forwards, false));
+        if let Some(entry) = config.port_forwards.iter_mut().find(|entry| entry.0 == mapping.0) {
+            if *entry == *mapping {
+                return Ok((config.port_forwards, false));
+            }
+            *entry = mapping.clone();
+        } else {
+            if config.port_forwards.len() >= MAX_OWNED_PORT_FORWARD_MAPPINGS {
+                return Err(anyhow!(
+                    "Port-forward mapping limit ({MAX_OWNED_PORT_FORWARD_MAPPINGS}) reached"
+                ));
+            }
+            config.port_forwards.push(mapping.clone());
         }
-        if config.port_forwards.len() >= MAX_OWNED_PORT_FORWARD_MAPPINGS {
-            return Err(anyhow!(
-                "Port-forward mapping limit ({MAX_OWNED_PORT_FORWARD_MAPPINGS}) reached"
-            ));
-        }
-        config.port_forwards.push(mapping.clone());
         config.store(id)?;
         Ok((config.port_forwards, true))
     }

@@ -3550,6 +3550,7 @@ run_focused_rust_tests() {
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             required_tests=(
                 test::test_get_version_number
+                test::test_try_into_v4
                 tcp::writer_receipt_tests::protobuf_send_refuses_before_encoding
                 tcp::writer_receipt_tests::protobuf_receipt_refuses_before_encoding
                 tcp::writer_receipt_tests::protobuf_refuses_failed_writer_before_encoding_and_sealing
@@ -5266,7 +5267,7 @@ run_focused_rust_tests() {
                             done
                         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
                             for group in tcp::writer_receipt_tests:: tcp::eof_tests:: \
-                                bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number; do
+                                bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
@@ -5982,7 +5983,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=16; fi
-        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=5; fi
+        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=6; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=6; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
@@ -6036,6 +6037,8 @@ PY
             local group count
             [ "$(grep -Fxc 'test test::test_get_version_number ... ok' "$output")" -eq 1 ] \
                 || fail 'peer version number test differs'
+            [ "$(grep -Fxc 'test test::test_try_into_v4 ... ok' "$output")" -eq 1 ] \
+                || fail 'direct address normalization test differs'
             for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
                 bytes_codec::tests:12 tcp::writer_lifetime_tests:6; do
                 count=${group##*:}; group=${group%:*}
@@ -6641,8 +6644,8 @@ PY
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'
             grep -E '^test config::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
-            [ "$tests_passed" -eq 36 ] || fail 'writer retirement test total differs'
-            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::test_get_version_number [.][.][.] ok$|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME)=' "$output"
+            [ "$tests_passed" -eq 37 ] || fail 'writer retirement test total differs'
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME)=' "$output"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             [ "$tests_passed" -eq 2 ] || fail 'send digest test total differs'
             grep -E '^test fs::tests::send_digest_.* \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=' "$output"

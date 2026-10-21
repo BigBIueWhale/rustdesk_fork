@@ -8,7 +8,7 @@ pub use protobuf;
 pub use protos::message as message_proto;
 pub use protos::rendezvous as rendezvous_proto;
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     time::{self, SystemTime, UNIX_EPOCH},
 };
 pub use tokio;
@@ -190,11 +190,6 @@ pub fn timeout<T: std::future::Future>(ms: u64, future: T) -> tokio::time::Timeo
 
 pub type ResultType<F, E = anyhow::Error> = anyhow::Result<F, E>;
 
-/// Certain router and firewalls scan the packet and if they
-/// find an IP address belonging to their pool that they use to do the NAT mapping/translation, so here we mangle the ip address
-
-pub struct AddrMangle();
-
 #[inline]
 pub fn try_into_v4(addr: SocketAddr) -> SocketAddr {
     match addr {
@@ -207,98 +202,6 @@ pub fn try_into_v4(addr: SocketAddr) -> SocketAddr {
         }
         _ => addr,
     }
-}
-
-impl AddrMangle {
-    pub fn encode(addr: SocketAddr) -> Vec<u8> {
-        // not work with [:1]:<port>
-        let addr = try_into_v4(addr);
-        match addr {
-            SocketAddr::V4(addr_v4) => {
-                let tm = (SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or(std::time::Duration::ZERO)
-                    .as_micros() as u32) as u128;
-                let ip = u32::from_le_bytes(addr_v4.ip().octets()) as u128;
-                let port = addr.port() as u128;
-                let v = ((ip + tm) << 49) | (tm << 17) | (port + (tm & 0xFFFF));
-                let bytes = v.to_le_bytes();
-                let mut n_padding = 0;
-                for i in bytes.iter().rev() {
-                    if i == &0u8 {
-                        n_padding += 1;
-                    } else {
-                        break;
-                    }
-                }
-                bytes[..(16 - n_padding)].to_vec()
-            }
-            SocketAddr::V6(addr_v6) => {
-                let mut x = addr_v6.ip().octets().to_vec();
-                let port: [u8; 2] = addr_v6.port().to_le_bytes();
-                x.push(port[0]);
-                x.push(port[1]);
-                x
-            }
-        }
-    }
-
-    pub fn decode(bytes: &[u8]) -> SocketAddr {
-        use std::convert::TryInto;
-
-        if bytes.len() > 16 {
-            if bytes.len() != 18 {
-                return Config::get_any_listen_addr(false);
-            }
-            let tmp: [u8; 2] = bytes[16..].try_into().unwrap_or_default();
-            let port = u16::from_le_bytes(tmp);
-            let tmp: [u8; 16] = bytes[..16].try_into().unwrap_or_default();
-            let ip = std::net::Ipv6Addr::from(tmp);
-            return SocketAddr::new(IpAddr::V6(ip), port);
-        }
-        let mut padded = [0u8; 16];
-        padded[..bytes.len()].copy_from_slice(bytes);
-        let number = u128::from_le_bytes(padded);
-        let tm = (number >> 17) & (u32::max_value() as u128);
-        let ip = (((number >> 49) - tm) as u32).to_le_bytes();
-        let port = (number & 0xFFFFFF) - (tm & 0xFFFF);
-        SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]),
-            port as u16,
-        ))
-    }
-}
-
-pub fn get_version_from_url(url: &str) -> String {
-    let n = url.chars().count();
-    let a = url.chars().rev().position(|x| x == '-');
-    if let Some(a) = a {
-        let b = url.chars().rev().position(|x| x == '.');
-        if let Some(b) = b {
-            if a > b {
-                if url
-                    .chars()
-                    .skip(n - b)
-                    .collect::<String>()
-                    .parse::<i32>()
-                    .is_ok()
-                {
-                    return url.chars().skip(n - a).collect();
-                } else {
-                    return url.chars().skip(n - a).take(a - b - 1).collect();
-                }
-            } else {
-                return url.chars().skip(n - a).collect();
-            }
-        }
-    }
-    "".to_owned()
-}
-
-pub fn is_valid_custom_id(id: &str) -> bool {
-    regex::Regex::new(r"^[a-zA-Z][\w-]{5,15}$")
-        .unwrap()
-        .is_match(id)
 }
 
 // Support 1.1.10-1, the number after - is a patch version.
@@ -633,18 +536,6 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_mangle() {
-        let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 16, 32), 21116));
-        assert_eq!(addr, AddrMangle::decode(&AddrMangle::encode(addr)));
-
-        let addr = "[2001:db8::1]:8080".parse::<SocketAddr>().unwrap();
-        assert_eq!(addr, AddrMangle::decode(&AddrMangle::encode(addr)));
-
-        let addr = "[2001:db8:ff::1111]:80".parse::<SocketAddr>().unwrap();
-        assert_eq!(addr, AddrMangle::decode(&AddrMangle::encode(addr)));
-    }
-
-    #[test]
     fn test_allow_err() {
         allow_err!(Err("test err") as Result<(), &str>);
         allow_err!(
@@ -743,19 +634,19 @@ mod test {
     }
 
     #[test]
-    fn test_mangle2() {
-        let addr = "[::ffff:127.0.0.1]:8080".parse().unwrap();
-        let addr_v4 = "127.0.0.1:8080".parse().unwrap();
-        assert_eq!(AddrMangle::decode(&AddrMangle::encode(addr)), addr_v4);
-        assert_eq!(
-            AddrMangle::decode(&AddrMangle::encode("[::127.0.0.1]:8080".parse().unwrap())),
-            addr_v4
-        );
-        assert_eq!(AddrMangle::decode(&AddrMangle::encode(addr_v4)), addr_v4);
-        let addr_v6 = "[ef::fe]:8080".parse().unwrap();
-        assert_eq!(AddrMangle::decode(&AddrMangle::encode(addr_v6)), addr_v6);
-        let addr_v6 = "[::1]:8080".parse().unwrap();
-        assert_eq!(AddrMangle::decode(&AddrMangle::encode(addr_v6)), addr_v6);
+    fn test_try_into_v4() {
+        for (input, expected) in [
+            ("[::ffff:127.0.0.1]:8080", "127.0.0.1:8080"),
+            ("[::127.0.0.1]:8080", "127.0.0.1:8080"),
+            ("127.0.0.1:8080", "127.0.0.1:8080"),
+            ("[ef::fe]:8080", "[ef::fe]:8080"),
+            ("[::1]:8080", "[::1]:8080"),
+        ] {
+            let input: SocketAddr = input.parse().unwrap();
+            let expected: SocketAddr = expected.parse().unwrap();
+            assert_eq!(try_into_v4(input), expected);
+        }
+        println!("DIRECT_ADDRESS_NORMALIZATION=observed cases=5 correct=true");
     }
 
     #[test]

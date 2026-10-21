@@ -18,6 +18,9 @@ use hbb_common::anyhow::anyhow;
 use magnum_opus::{Application::*, Channels::*, Encoder};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[cfg(any(target_os = "linux", target_os = "android"))]
+mod pcm;
+
 pub const NAME: &'static str = "audio";
 pub const AUDIO_DATA_SIZE_U8: usize = 960 * 4; // 10ms in 48000 stereo
 static RESTARTING: AtomicBool = AtomicBool::new(false);
@@ -356,18 +359,6 @@ pub fn restart() {
 mod pa_impl {
     use super::*;
 
-    // SAFETY: constrains of hbb_common::mem::aligned_u8_vec must be held
-    unsafe fn align_to_32(data: Vec<u8>) -> Vec<u8> {
-        if (data.as_ptr() as usize & 3) == 0 {
-            return data;
-        }
-
-        let mut buf = vec![];
-        buf = unsafe { hbb_common::mem::aligned_u8_vec(data.len(), 4) };
-        buf.extend_from_slice(data.as_ref());
-        buf
-    }
-
     #[tokio::main(flavor = "current_thread")]
     pub async fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
         hbb_common::sleep(0.1).await; // one moment to wait for _pa ipc
@@ -396,6 +387,7 @@ mod pa_impl {
         let zero_audio_frame: Vec<f32> = vec![0.; AUDIO_DATA_SIZE_U8 / 4];
         #[cfg(target_os = "android")]
         let mut android_data = vec![];
+        let mut samples = Vec::new();
         while sp.ok() && !RESTARTING.load(Ordering::SeqCst) {
             sp.snapshot(|sps| {
                 sps.send(create_format_msg(crate::platform::PA_SAMPLE_RATE, 2));
@@ -415,22 +407,13 @@ mod pa_impl {
                     continue;
                 }
 
-                let data = unsafe { align_to_32(data.into()) };
-                let data = unsafe {
-                    std::slice::from_raw_parts::<f32>(data.as_ptr() as _, data.len() / 4)
-                };
+                let data = pcm::decode(&data, &mut samples)?;
                 send_f32_with(data, &mut encoder, |msg| sp.send_to_ids(msg, &recipients));
             }
 
             #[cfg(target_os = "android")]
             if scrap::android::ffi::get_audio_raw(&mut android_data, &mut vec![]).is_some() {
-                let data = unsafe {
-                    android_data = align_to_32(android_data);
-                    std::slice::from_raw_parts::<f32>(
-                        android_data.as_ptr() as _,
-                        android_data.len() / 4,
-                    )
-                };
+                let data = pcm::decode(&android_data, &mut samples)?;
                 send_f32(data, &mut encoder, &sp);
             } else {
                 hbb_common::sleep(0.1).await;

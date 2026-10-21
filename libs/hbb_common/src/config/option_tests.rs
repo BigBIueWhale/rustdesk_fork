@@ -2774,6 +2774,175 @@ fn peer_listing_omits_empty_records_without_deleting_them() {
     });
 }
 
+fn peer_test_long_address(length: usize) -> String {
+    let host_length = if length == 260 { 253 } else { length - 6 };
+    let mut remaining = host_length;
+    let mut labels = Vec::new();
+    while remaining > 63 {
+        labels.push("a".repeat(63));
+        remaining -= 64;
+    }
+    labels.push("b".repeat(remaining));
+    let trailing_dot = if length == 260 { "." } else { "" };
+    let id = format!("{}{trailing_dot}:65535", labels.join("."));
+    assert_eq!(id.len(), length);
+    assert!(crate::is_direct_address(&id));
+    id
+}
+
+fn peer_test_record_snapshot(path: &Path) -> (Vec<u8>, u64, u64, u32, u64) {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = fs::metadata(path).unwrap();
+    (fs::read(path).unwrap(), metadata.dev(), metadata.ino(), metadata.mode(), metadata.nlink())
+}
+
+#[test]
+fn peer_listing_long_addresses_preserve_settings_workflows() {
+    const TEST: &str = "config::option_tests::peer_listing_long_addresses_preserve_settings_workflows";
+    in_private_process(TEST, |_| {
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for length in [180, 181, 259, 260] {
+            let id = peer_test_long_address(length);
+            let mut peer = PeerConfig::default();
+            peer.password_prs = b"long-address-fixture-prs".to_vec();
+            peer.info.hostname = "long-address-host".into();
+            peer.info.platform = "Linux".into();
+            peer.options.insert("alias".into(), "original".into());
+            peer.ui_flutter.insert("canvas".into(), "kept".into());
+            if let Err(error) = peer.store(&id) {
+                println!("OPTION_COMMIT_LONG_PEER={}", serde_json::json!({
+                    "length": length, "saved": false,
+                    "errno": error.downcast_ref::<io::Error>().and_then(io::Error::raw_os_error),
+                }));
+                passed = false;
+                continue;
+            }
+            let path = PeerConfig::path(&id);
+            assert!(path.file_name().unwrap().to_str().unwrap().len() <= 255);
+            assert_eq!(PeerConfig::load_for_write(&id).unwrap(), peer);
+            let before = peer_test_record_snapshot(&path);
+            assert_eq!(PeerConfig::read_option(&id, "alias").unwrap(), "original");
+            assert!(PeerConfig::credential_status(&id).unwrap().has_saved_prs);
+            let ui: serde_json::Value = serde_json::from_str(&PeerConfig::ui_info_json(&id).unwrap()).unwrap();
+            assert_eq!(ui["info"]["hostname"], "long-address-host");
+            let listed = PeerConfig::get_vec_id_modified_time_path(&Some(vec![id.clone()]));
+            assert_eq!(listed.len(), 1);
+            assert_eq!((&listed[0].0, &listed[0].2), (&id, &path));
+            let projected = PeerConfig::peers(Some(vec![id.clone()]));
+            assert_eq!(projected.len(), 1);
+            assert_eq!(projected[0].0, id);
+            assert_eq!(projected[0].2.alias, "original");
+            assert_eq!(peer_test_record_snapshot(&path), before);
+            PeerConfig::set_option(&id, "alias", "changed".into()).unwrap();
+            peer.options.insert("alias".into(), "changed".into());
+            let transfer = TransferSerde { read_jobs: vec!["checkpoint".into()], ..Default::default() };
+            PeerConfig::set_transfer(&id, &transfer).unwrap();
+            peer.transfer = transfer;
+            let mapping = (34000, "127.0.0.1".into(), 22);
+            assert!(PeerConfig::add_port_forward(&id, &mapping).unwrap().1);
+            peer.port_forwards.push(mapping);
+            assert_eq!(PeerConfig::load_for_write(&id).unwrap(), peer);
+            PeerConfig::forget_password(&id).unwrap();
+            peer.password_prs.clear();
+            assert_eq!(PeerConfig::load_for_write(&id).unwrap(), peer);
+            assert!(!PeerConfig::credential_status(&id).unwrap().has_saved_prs);
+            let raw: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert_eq!(raw.get("peer_id").and_then(toml::Value::as_str), if length > 180 { Some(id.as_str()) } else { None });
+            let name_bytes = path.file_name().unwrap().to_str().unwrap().len();
+            PeerConfig::remove(&id).unwrap();
+            PeerConfig::remove(&id).unwrap();
+            assert!(!path.exists());
+            assert!(PeerConfig::peers(Some(vec![id.clone()])).is_empty());
+            println!("OPTION_COMMIT_LONG_PEER={}", serde_json::json!({
+                "length": length, "saved": true, "name_bytes": name_bytes,
+                "views_preserved": true, "mutations": "option-transfer-port-forget",
+                "identity_retained": true, "removed": true,
+            }));
+        }
+        let after_fds = fds();
+        println!("OPTION_COMMIT_LONG_PEER_FDS=before:{before_fds} after:{after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(passed, "every supported direct-address length must persist and retain all workflows");
+    });
+}
+
+#[test]
+fn peer_listing_compact_identity_refuses_mismatched_records() {
+    const TEST: &str = "config::option_tests::peer_listing_compact_identity_refuses_mismatched_records";
+    in_private_process(TEST, |_| {
+        use crate::sha2::{Digest, Sha256};
+        let id = peer_test_long_address(260);
+        let parent = Config::path(PEERS);
+        fs::create_dir_all(&parent).unwrap();
+        let path = parent.join(format!("base64_sha256_{:x}.toml", Sha256::digest(id.as_bytes())));
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"compact-identity-unwrapped-prs".to_vec();
+        peer.info.platform = "Linux".into();
+        peer.options.insert("alias".into(), "retained".into());
+        let payload = toml::to_string(&peer).unwrap();
+        let healthy = format!("{}{}", toml::to_string(&HashMap::from([("peer_id", &id)])).unwrap(), payload);
+        let other_id = peer_test_long_address(259);
+        let short_id = path.file_stem().unwrap().to_str().unwrap();
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for (kind, header) in [
+            ("missing", String::new()),
+            ("wrong-type", "peer_id = 42\n".into()),
+            ("empty", "peer_id = ''\n".into()),
+            ("wrong-address", toml::to_string(&HashMap::from([("peer_id", other_id.as_str())])).unwrap()),
+            ("short-alias", toml::to_string(&HashMap::from([("peer_id", short_id)])).unwrap()),
+        ] {
+            fs::write(&path, format!("{header}{payload}")).unwrap();
+            let before = peer_test_record_snapshot(&path);
+            let mut refused = true;
+            for _ in 0..2 {
+                refused &= PeerConfig::load_for_write(&id).is_err();
+                refused &= PeerConfig::read_option(&id, "alias").is_err();
+                refused &= PeerConfig::credential_status(&id).is_err();
+                refused &= PeerConfig::ui_info_json(&id).is_err();
+                refused &= PeerConfig::set_option(&id, "alias", "replacement".into()).is_err();
+                refused &= PeerConfig::set_transfer(&id, &TransferSerde::default()).is_err();
+                refused &= PeerConfig::add_port_forward(&id, &(34000, "127.0.0.1".into(), 22)).is_err();
+                refused &= PeerConfig::remove_port_forward(&id, 34000).is_err();
+                refused &= PeerConfig::forget_password(&id).is_err();
+                refused &= PeerConfig::peers(Some(vec![id.clone()])).is_empty();
+            }
+            let preserved = peer_test_record_snapshot(&path) == before;
+            let removed = PeerConfig::remove(&id).is_ok() && !path.exists();
+            println!("OPTION_COMMIT_COMPACT_PEER={}", serde_json::json!({
+                "kind": kind, "refused": refused, "preserved": preserved, "explicit_removal": removed,
+            }));
+            passed &= refused && preserved && removed;
+            if path.exists() { fs::remove_file(&path).unwrap(); }
+        }
+        fs::write(&path, &healthy).unwrap();
+        let loaded = PeerConfig::load_for_write(&id);
+        let recovered = loaded.as_ref().is_ok_and(|loaded| *loaded == peer);
+        let mut identity_retained = false;
+        if recovered {
+            let migrated: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            identity_retained = migrated.get("peer_id").and_then(toml::Value::as_str) == Some(id.as_str());
+            assert_ne!(fs::read(&path).unwrap(), healthy.as_bytes());
+            let before = peer_test_record_snapshot(&path);
+            assert_eq!(PeerConfig::read_option(&id, "alias").unwrap(), "retained");
+            let listed = PeerConfig::peers(Some(vec![id.clone()]));
+            assert_eq!(listed.len(), 1);
+            assert_eq!(listed[0].0, id);
+            assert_eq!(peer_test_record_snapshot(&path), before);
+        }
+        let after_fds = fds();
+        println!("OPTION_COMMIT_COMPACT_PEER={}", serde_json::json!({
+            "kind": "healthy-migration", "loaded": recovered, "identity_retained": identity_retained,
+            "fds_before": before_fds, "fds_after": after_fds,
+        }));
+        assert_eq!(before_fds, after_fds);
+        assert!(passed && recovered && identity_retained);
+    });
+}
+
 #[test]
 fn peer_listing_empty_snapshot_cannot_delete_a_replacement_record() {
     in_private_process("config::option_tests::peer_listing_empty_snapshot_cannot_delete_a_replacement_record", |_| {

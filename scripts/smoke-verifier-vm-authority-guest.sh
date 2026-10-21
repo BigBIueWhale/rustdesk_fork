@@ -3578,6 +3578,8 @@ run_focused_rust_tests() {
                 config::option_tests::peer_listing_corrupt_records_stay_in_place
                 config::option_tests::peer_listing_does_not_load_controlled_credentials
                 config::option_tests::peer_listing_returns_only_metadata_and_alias
+                config::option_tests::peer_listing_long_addresses_preserve_settings_workflows
+                config::option_tests::peer_listing_compact_identity_refuses_mismatched_records
                 config::option_tests::peer_credential_status_read_does_not_migrate_the_record
                 config::option_tests::peer_credential_status_corruption_refuses_without_recovery
                 config::option_tests::peer_credential_status_read_denial_is_reported_and_retryable

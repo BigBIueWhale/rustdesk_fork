@@ -616,7 +616,33 @@ def enigo_layout(environment, binary, observer, probe, before_provider):
           flush=True)
 
 
-def thread_contexts(root, environment, checksum, library, provider, position_only=False):
+def context_focus(binary, environment, scenario="focus-state"):
+    result = subprocess.run([str(binary), scenario], env=environment,
+                            capture_output=True, text=True, timeout=5)
+    match = re.fullmatch(r"X11_CONTEXT_FOCUS=observed focus=(\d+) revert=(\d+)\n", result.stdout)
+    require(result.returncode == 0 and not result.stderr and match is not None,
+            f"independent native focus observation differs: {result}")
+    return int(match[1]), int(match[2])
+
+
+def concurrent_contexts(binary, environment):
+    try:
+        result = subprocess.run([str(binary), "concurrent-contexts"], env=environment,
+                                capture_output=True, text=True, timeout=5)
+    except subprocess.TimeoutExpired as error:
+        print(f"X11_CONTEXT_TIMEOUT stdout={error.stdout!r} stderr={error.stderr!r}", flush=True)
+        raise
+    receipt = ("X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module "
+               "native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 "
+               "unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired "
+               "live_resources=observed descriptors=retired threads=joined scope=private-product-provider")
+    require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
+            and result.stdout.splitlines() == [receipt],
+            f"native concurrent thread-context result differs: {result}")
+    print(receipt, flush=True)
+
+
+def thread_contexts(root, environment, checksum, library, provider, position_only=False, concurrency_only=False):
     owner = root / "src/platform/linux/native_context.rs"
     fixture = root / "scripts/test-x11-thread-context.rs"
     binary = Path("/build/thread-contexts")
@@ -667,6 +693,26 @@ def thread_contexts(root, environment, checksum, library, provider, position_onl
           f"provider_sha256={provider_digest} "
           f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()} "
           "scope=production-owner whole_app=unexecuted loader=direct-native-test", flush=True)
+    if concurrency_only:
+        before = context_focus(binary, environment)
+        concurrent_contexts(binary, environment)
+        input_state_queries(root, environment)
+        after = context_focus(binary, environment)
+        print(f"X11_CONTEXT_PRELUDE before={before} after={after} preserved={before == after}", flush=True)
+        concurrent_contexts(binary, environment)
+        require(after == before, "input-state fixture did not preserve focus")
+        selected = context_focus(binary, environment, "focus-root")
+        require(selected != before, "nondefault root focus control did not change focus")
+        concurrent_contexts(binary, environment)
+        input_state_queries(root, environment)
+        require(context_focus(binary, environment) == selected, "nondefault focus was not preserved")
+        concurrent_contexts(binary, environment)
+        require(context_focus(binary, environment, "focus-pointer") == before,
+                "controlled focus was not restored")
+        print("X11_CONTEXT_SEQUENCE=pass phases=4 workers=8 queries=4096 preludes=2 "
+              "focus=independent-reference input_focus=preserved nondefault_focus=accepted "
+              "final_focus=restored children=joined", flush=True)
+        return
     result = subprocess.run([str(binary), "cursor-position"], env=environment,
                             capture_output=True, text=True, timeout=15)
     receipt = ("XDO_CURSOR_POSITION_NATIVE=pass selectors=3 contexts=12 moves=96 roots=0,1 "
@@ -713,16 +759,7 @@ def thread_contexts(root, environment, checksum, library, provider, position_onl
           "peer=closed children=joined scope=platform-constructors", flush=True)
     startup_retry(root, binary, environment)
     authenticated_contexts(binary, environment)
-    result = subprocess.run([str(binary), "concurrent-contexts"], env=environment,
-                            capture_output=True, text=True, timeout=5)
-    receipt = ("X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module "
-               "native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 "
-               "unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired "
-               "live_resources=observed descriptors=retired threads=joined scope=private-product-provider")
-    require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
-            and result.stdout.splitlines() == [receipt],
-            f"native concurrent thread-context result differs: {result}")
-    print(receipt, flush=True)
+    concurrent_contexts(binary, environment)
     result = subprocess.run([str(binary), "cursor-snapshots"], env=environment,
                             capture_output=True, text=True, timeout=5)
     receipt = ("X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape "
@@ -1678,9 +1715,10 @@ def capture_mapping(binary, environment):
     print(receipt, flush=True)
 
 
-def capture_mapping_main():
+def component_main(component):
     require(os.getuid() == 4000 and os.getgid() == 4000 and Path("/.dockerenv").is_file(),
-            "capture-mapping shard requires the isolated nonroot container")
+            "component shard requires the isolated nonroot container")
+    require(component in ("capture-mapping", "contexts"), "unknown X11 component")
     root = Path("/work")
     environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C",
                    "HOME": "/tmp", "DISPLAY": ":98", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
@@ -1689,18 +1727,28 @@ def capture_mapping_main():
     version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
                              check=True, capture_output=True, text=True, timeout=5)
     require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
-    binary = build_display_fixture(root, environment, "corrected")
-    require(not Path("/tmp/.X11-unix/X98").exists(), "capture-mapping display already exists")
-    with open("/tmp/capture-mapping-xvfb.log", "xb") as log:
-        server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "640x480x24",
+    if component == "contexts":
+        checksum, logging = logging_library(root, environment)
+        providers, _ = native_xdo(root, environment, historical_destructor=False)
+    else:
+        binary = build_display_fixture(root, environment, "corrected")
+    require(not Path("/tmp/.X11-unix/X98").exists(), "component display already exists")
+    screens = ["-screen", "0", "640x480x24"]
+    if component == "contexts":
+        screens += ["-screen", "1", "800x600x24"]
+    with open("/tmp/x11-component-xvfb.log", "xb") as log:
+        server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", *screens,
                                    "-nolisten", "tcp", "-ac", "-noreset"],
                                   env=environment, stdout=log, stderr=subprocess.STDOUT)
         try:
             deadline = time.monotonic() + 5
             while not Path("/tmp/.X11-unix/X98").is_socket():
-                require(server.poll() is None and time.monotonic() < deadline, "mapping Xvfb not ready")
+                require(server.poll() is None and time.monotonic() < deadline, "component Xvfb not ready")
                 time.sleep(0.01)
-            capture_mapping(binary, environment)
+            if component == "contexts":
+                thread_contexts(root, environment, checksum, logging, providers["corrected"], concurrency_only=True)
+            else:
+                capture_mapping(binary, environment)
         finally:
             if server.poll() is None:
                 server.terminate()
@@ -1710,15 +1758,23 @@ def capture_mapping_main():
                 server.kill()
                 server.wait(timeout=5)
         require(server.returncode == 0 and not Path("/tmp/.X11-unix/X98").exists()
-                and not Path("/tmp/.X98-lock").exists(), "mapping server/socket/lock retirement differs")
-    binary.unlink()
+                and not Path("/tmp/.X98-lock").exists(), "component server/socket/lock retirement differs")
+    if component == "contexts":
+        logging.unlink()
+        Path("/build/thread-contexts").unlink()
+    else:
+        binary.unlink()
     for name in ("tcp", "tcp6"):
         require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
-                "capture-mapping shard retained TCP")
+                "component shard retained TCP")
     for name in ("udp", "udp6"):
-        require(len(Path("/proc/net", name).read_text().splitlines()) == 1, "capture-mapping shard retained UDP")
-    print("X11_CAPTURE_MAPPING_SHARD=pass source=production-capture-and-public-wrapper "
-          "kernel=actual server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false", flush=True)
+        require(len(Path("/proc/net", name).read_text().splitlines()) == 1, "component shard retained UDP")
+    if component == "contexts":
+        print("X11_CONTEXTS_SHARD=pass source=production-context-and-input-query "
+              "server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false", flush=True)
+    else:
+        print("X11_CAPTURE_MAPPING_SHARD=pass source=production-capture-and-public-wrapper "
+              "kernel=actual server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false", flush=True)
 
 
 def key_input_main():
@@ -2055,10 +2111,10 @@ def main():
 
 if __name__ == "__main__":
     require(sys.argv in ([sys.argv[0]], [sys.argv[0], "--key-input"], [sys.argv[0], "--focus"],
-                        [sys.argv[0], "--capture-mapping"]),
+                        [sys.argv[0], "--capture-mapping"], [sys.argv[0], "--contexts"]),
             "unknown native shard")
-    if sys.argv[1:] == ["--capture-mapping"]:
-        capture_mapping_main()
+    if sys.argv[1:] in (["--capture-mapping"], ["--contexts"]):
+        component_main(sys.argv[1][2:])
     elif sys.argv[1:] == ["--focus"]:
         focus_main()
     elif len(sys.argv) == 2:

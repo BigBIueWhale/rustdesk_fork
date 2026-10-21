@@ -33,6 +33,7 @@ X11_CLIPBOARD_ONLY=0
 X11_KEY_INPUT_ONLY=0
 X11_FOCUS_ONLY=0
 X11_CAPTURE_MAPPING_ONLY=0
+X11_CONTEXTS_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
 LIFECYCLE_ARTIFACT=
@@ -394,6 +395,7 @@ case "$#:${1:-}" in
             --key-input) X11_KEY_INPUT_ONLY=1 ;;
             --focus) X11_FOCUS_ONLY=1 ;;
             --capture-mapping) X11_CAPTURE_MAPPING_ONLY=1 ;;
+            --contexts) X11_CONTEXTS_ONLY=1 ;;
             *) echo 'unknown X11 shard' >&2; exit 2 ;;
         esac
         ;;
@@ -4552,6 +4554,8 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         guest_invocation+=' --focus'
     elif [ "$X11_CAPTURE_MAPPING_ONLY" -eq 1 ]; then
         guest_invocation+=' --capture-mapping'
+    elif [ "$X11_CONTEXTS_ONLY" -eq 1 ]; then
+        guest_invocation+=' --contexts'
     fi
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
@@ -5384,6 +5388,17 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_FOCUS_ONLY" -eq 1 ]; then
         'X11_FOCUS_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
         'focus guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'focus guest completion'
+elif [ "$MODE" = x11-display-tests ] && [ "$X11_CONTEXTS_ONLY" -eq 1 ]; then
+    require_exact_fixed_receipt \
+        'X11_CONTEXT_SEQUENCE=pass phases=4 workers=8 queries=4096 preludes=2 focus=independent-reference input_focus=preserved nondefault_focus=accepted final_focus=restored children=joined' \
+        'native context concurrency across input-state and nondefault-focus phases'
+    require_exact_fixed_receipt \
+        'X11_CONTEXTS_SHARD=pass source=production-context-and-input-query server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false' \
+        'focused native context result and owned server cleanup'
+    require_exact_fixed_receipt \
+        'X11_CONTEXTS_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
+        'native context guest finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'native context completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_CAPTURE_MAPPING_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
         'X11_SHM_MAPPING_NATIVE=pass callers=direct,public repeats=8 readonly_cases=16 writable_calibrations=2 offsets=first,last readonly_copy=EFAULT control_copy=accepted alias=same-segment pixels=red,blue mapping=retained descriptors=retired segments=retired' \
@@ -7856,6 +7871,9 @@ elif [ "$MODE" = x11-display-tests ]; then
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
     elif [ "$X11_CAPTURE_MAPPING_ONLY" -eq 1 ]; then
         printf 'X11_CAPTURE_MAPPING_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-capture-mapping-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+    elif [ "$X11_CONTEXTS_ONLY" -eq 1 ]; then
+        printf 'X11_CONTEXTS_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-native-context-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
     else
         printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-native-owner-and-capture-components full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \

@@ -39,6 +39,7 @@ extern "C" {
                      root_x: *mut c_int, root_y: *mut c_int, x: *mut c_int, y: *mut c_int,
                      mask: *mut c_uint) -> c_int;
     fn XGetInputFocus(display: *mut c_void, focus: *mut c_ulong, revert: *mut c_int) -> c_int;
+    fn XSetInputFocus(display: *mut c_void, focus: c_ulong, revert: c_int, time: c_ulong) -> c_int;
 }
 #[link(name = "xdo")]
 extern "C" {
@@ -231,6 +232,28 @@ fn authentication(credential: &str) {
     println!("X11_AUTH_CHILD credential={credential} result={} components=xlib,xdo native_opens=2 contexts={} queries={} callbacks=paired descriptors=retired threads=retired",
              if admitted { "admitted" } else { "refused" }, if admitted { 2 } else { 0 },
              if admitted { "server-real" } else { "unavailable" });
+}
+
+fn fixture_focus(scenario: &str) -> (c_ulong, c_int) {
+    let observer = unsafe {
+        NativeContext::from_raw(__real_XOpenDisplay(b"unix/:98.0\0".as_ptr().cast()), |display| {
+            assert_eq!(__real_XCloseDisplay(display), 0);
+        }).expect("independent focus observer unavailable")
+    };
+    let display = observer.as_ptr();
+    let target = match scenario {
+        "focus-root" => Some(unsafe { XDefaultRootWindow(display) }),
+        "focus-pointer" => Some(1),
+        "focus-state" => None,
+        _ => panic!("unknown fixture focus operation"),
+    };
+    if let Some(target) = target {
+        unsafe { XSetInputFocus(display, target, 0, 0); XSync(display, 0); }
+    }
+    let (mut focus, mut revert) = (0, -1);
+    assert_eq!(unsafe { XGetInputFocus(display, &mut focus, &mut revert) }, 1);
+    if let Some(target) = target { assert_eq!(focus, target); }
+    (focus, revert)
 }
 
 fn concurrent_contexts() {
@@ -537,6 +560,11 @@ fn main() {
     assert!(unsafe { !_Xglobal_lock.is_null() && _XInitDisplayLock_fn.is_some() },
             "pinned Xlib threading is not initialized at fixture main entry");
     if let Some(scenario) = std::env::args().nth(1) {
+        if matches!(scenario.as_str(), "focus-state" | "focus-root" | "focus-pointer") {
+            let (focus, revert) = fixture_focus(&scenario);
+            println!("X11_CONTEXT_FOCUS=observed focus={focus} revert={revert}");
+            return;
+        }
         if scenario == "cursor-position" {
             cursor_position();
             return;

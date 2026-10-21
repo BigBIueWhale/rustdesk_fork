@@ -752,5 +752,37 @@ mod test {
         assert_eq!(get_version_number("1.1.10-1"), 1001101);
         assert_eq!(get_version_number("1.1.11-1"), 1001111);
         assert_eq!(get_version_number("1.2.3"), 1002030);
+
+        for (input, expected) in [
+            ("", 0),
+            ("0", 0),
+            ("0.0.0", 0),
+            ("not-a-version", 0),
+            ("18446744073709551615", 0),
+            ("922337203685477580", 9_223_372_036_854_775_800),
+            ("9223372036854775.80", 9_223_372_036_854_775_800),
+            ("0-9223372036854775807", i64::MAX),
+            ("1.2.3-9223372036853773777", i64::MAX),
+            ("1.2.3-1-extra", 1_002_031),
+        ] {
+            assert_eq!(get_version_number(input), expected, "{input}");
+        }
+
+        let mut mismatches = 0;
+        for (case, input) in [
+            ("last_scale", "922337203685477581"),
+            ("prefix_multiply", "9223372036854775807.0"),
+            ("prefix_add", "9223372036854775.808"),
+            ("last_add", "9223372036854775.800"),
+            ("patch_add", "1.2.3-9223372036854775807"),
+            ("patch_boundary", "1.2.3-9223372036853773778"),
+            ("many_components", "1.2.3.4.5.6.7.8.9.10.11"),
+        ] {
+            let actual = std::panic::catch_unwind(|| get_version_number(input)).ok();
+            mismatches += usize::from(actual != Some(0));
+            println!("VERSION_NUMBER_OVERFLOW=observed case={case} actual={actual:?} expected=0");
+        }
+        println!("VERSION_NUMBER_RANGE=observed cases=7 mismatches={mismatches} controls=14");
+        assert_eq!(mismatches, 0, "unrepresentable versions must return unknown");
     }
 }

@@ -7958,7 +7958,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
-        printf 'WRITER_RETIREMENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=35 artifact_sha256=%s scope=transport-writer-retirement network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'WRITER_RETIREMENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=36 artifact_sha256=%s scope=transport-writer-retirement-and-version-numbers network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     else

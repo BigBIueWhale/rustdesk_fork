@@ -3266,12 +3266,12 @@ Verification and acquisition use the shared ordinary-user, identity-checked priv
 existing `/dev/shm` for overlays, input/seed media, source archives and tool temporary files. Admission
 reserves scratch, guest RAM, 6 GiB host headroom and 1 GiB overhead before VM reservation;
 insufficient resources refuse without disk scratch. The standard profile reserves 16 GiB scratch
-with an 8 GiB overlay ceiling. The ordinary filesystem-test profile alone uses 6 GiB scratch and
+with an 8 GiB overlay ceiling. The ordinary filesystem-test profile uses 6 GiB scratch and
 a 4 GiB overlay ceiling with its unchanged 6 GiB guest, for a 19 GiB admission floor. Its prepared
 inputs must occupy at most 2 GiB before launch, reserving the full overlay ceiling independently
 of monitor polling. Its VM deadline is 300 seconds; the complete existing filesystem workload,
 5 GiB container, source/input authority and all outcome checks remain. The named Linux execution
-at `432cd6d1` below passed with this profile. The credential-dialog workload alone now uses
+at `432cd6d1` below passed with this profile. The credential-dialog profile uses
 7 GiB scratch/6 GiB overlay with its unchanged 4 GiB guest, for 18 GiB admission and
 at most 1 GiB prepared inputs. Its earlier accepted run peaked at 6,292,570,112 bytes of
 scratch and 6,133,387,264 bytes of overlay.
@@ -3279,14 +3279,31 @@ Exact source `bca72101` now passes its 54 tests and three parser controls in 292
 with 6,375,006,208 bytes of scratch and 6,215,176,192 bytes of overlay. The earlier partial
 formatter/compiler failures remain retained; current acceptance is the named warm-boot dialog
 transaction only. Its 120-second test/300-second VM budgets, bridge generation and complete
-outcome checks remain. Logind, FUSE and every other
-profile retain standard storage. Other file ceilings remain 5 GiB input ISO, 256 MiB source and
+outcome checks remain. Other lanes retain their selected storage profiles.
+Other file ceilings remain 5 GiB input ISO, 256 MiB source and
 8 MiB seed. QEMU initializes shared RAM while paused; its direct supervisor
 installs and reads back the overlay ceiling before private-QMP `cont`, retaining the unreaped child
 through `prlimit` to exclude PID reuse. The pidfd-bound monitor aborts only the owned harness on
 scratch/headroom exhaustion. Canonical markers, bounded diagnostics and intentional artifacts keep
 their ownership; exact joins precede retirement, and uncertainty retains the marker and blocks reuse.
 Every helper entry refuses root.
+
+**File-block component profile (`efee13e6`).** The existing `--file-block-tests` lane
+selects 2 GiB guest RAM, 6 GiB RAM scratch and a 4 GiB hard file ceiling, retaining
+6 GiB host headroom and 1 GiB overhead: 15 GiB admission. Its former standard
+profile refused before boot at 25,600 MiB required versus 23,031 MiB available;
+no VM or test case ran. All other profile mappings and limits are unchanged.
+The isolated production compressor/file-block decoder passes all six existing tests
+in 85 VM seconds, including exact raw/compressed boundaries, concatenated output,
+history-window limits and malformed/truncated refusal. RAM scratch peaks at
+3,379,392,512 bytes and overlay allocation at 3,214,872,576; waited QEMU block writes
+are 4,096 bytes. All four endpoint records have zero changes and exact RAM/runtime
+roots retire. `file-block-profile-efee13e6.json` binds source, generated-fixture
+dependency agreement, six input hashes, the stable artifact, outcomes and cleanup.
+This component imports the actual two modules and compression-level constant;
+it does not execute complete filesystem/receive-path, installed or release behavior.
+The unused ZIP dependency and its exclusive tree remain unchanged and OPEN for a
+subsequent dependency slice; this run supplies its relevant compression baseline.
 
 At source `3156926f`, actual filesystem admission passed, standard admission refused at
 19,745 MiB available, and a filesystem profile with a 4 GiB guest refused. Before launch,

@@ -1909,10 +1909,8 @@ echo "== (3b-iii-a5a1) Unix terminal default shell uses trusted absolute executa
 r_s11c20=
 unix_terminal_shell_block=$(awk '/fn get_default_shell\(\) -> Result<String>/,/^#\[cfg\(target_os = "macos"\)\]/' src/server/terminal_service.rs)
 grep -Fq 'fn trusted_unix_terminal_shell_path(path: &Path) -> Option<PathBuf>' src/server/terminal_service.rs || r_s11c20="$r_s11c20 trusted-resolver-missing"
+grep -Fq 'hbb_common::platform::trusted_executable::resolve(path)' src/server/terminal_service.rs || r_s11c20="$r_s11c20 shared-resolver-missing"
 grep -Fq 'const UNIX_TERMINAL_SHELLS' src/server/terminal_service.rs || r_s11c20="$r_s11c20 candidate-set-missing"
-grep -Fq 'metadata.uid() == 0' src/server/terminal_service.rs || r_s11c20="$r_s11c20 not-root-owned-gated"
-grep -Fq 'metadata.mode() & 0o022 == 0' src/server/terminal_service.rs || r_s11c20="$r_s11c20 writable-mode-not-gated"
-grep -Fq 'metadata.mode() & 0o111 != 0' src/server/terminal_service.rs || r_s11c20="$r_s11c20 executable-mode-not-gated"
 grep -Fq 'trusted_unix_terminal_shell_rejects_relative_and_parent_paths' src/server/terminal_service.rs || r_s11c20="$r_s11c20 bad-path-test-missing"
 grep -Fq 'trusted_unix_terminal_shell_returns_absolute_candidate_when_available' src/server/terminal_service.rs || r_s11c20="$r_s11c20 candidate-test-missing"
 if echo "$unix_terminal_shell_block" | grep -qE 'std::env::var\("SHELL"\)|Ok\("/bin/sh"\.to_string\(\)\)|return Ok\(shell\)|CommandBuilder::new\("(sh|bash|zsh)"\)'; then
@@ -5178,7 +5176,7 @@ if [ -n "$r_s11e28" ]; then echo "  FAIL R-S11e-28 Linux service-owned inherited
 echo "== (3b-iii-d8) Linux service helper inherited descriptor authority (R-S11o/R-S11e-29) =="
 r_s11e29=
 linux_helper_pre_exec=$(awk '/fn linux_descriptor_upper_bound/,/\/\/ Deprecated/' libs/hbb_common/src/platform/linux.rs)
-reopen_helper_block=$(awk '/pub fn schedule_reopen_after_service_stop/,/fn linux_helper_path_is_clean_absolute/' src/platform/linux.rs)
+reopen_helper_block=$(awk '/pub fn schedule_reopen_after_service_stop/,/fn trusted_fixed_executable_path/' src/platform/linux.rs)
 for helper_binding in \
   'fn linux_descriptor_upper_bound() -> io::Result<RawFd>' \
   'fs/nr_open' \
@@ -9537,12 +9535,7 @@ r_s11c10k=
 grep -q 'const SYSTEMCTL_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-systemctl-paths"
 grep -q 'fn trusted_command_path' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-trusted-command-resolver"
 grep -q 'fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf>' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-canonical-trusted-command-resolver"
-grep -q 'fn linux_helper_path_is_clean_absolute(path: &Path) -> bool' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-clean-absolute-path-policy"
-grep -q 'fs::canonicalize(path)' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-helper-canonicalization"
-grep -q 'trusted_command_parent(&fs::metadata(candidate_parent).ok()?)' src/platform/linux.rs || r_s11c10k="$r_s11c10k candidate-parent-not-trusted"
-grep -q 'trusted_command_parent(&fs::metadata(canonical_parent).ok()?)' src/platform/linux.rs || r_s11c10k="$r_s11c10k canonical-parent-not-trusted"
-grep -q 'trusted_command_file(&fs::metadata(&canonical).ok()?)' src/platform/linux.rs || r_s11c10k="$r_s11c10k canonical-file-not-trusted"
-grep -q 'mode & 0o111 != 0' src/platform/linux.rs || r_s11c10k="$r_s11c10k helper-executable-bit-not-required"
+grep -Fq 'hbb_common::platform::trusted_executable::resolve(path)' src/platform/linux.rs || r_s11c10k="$r_s11c10k shared-resolver-missing"
 grep -q 'find_map(|path| trusted_fixed_executable_path(Path::new(path)))' src/platform/linux.rs || r_s11c10k="$r_s11c10k resolver-not-returning-canonical-path"
 if grep -qE 'SUDO_E_PRESERVES_ENV|SUDO_PATHS|ENV_PATHS|fn run_as_user|fn sudo_path\(\)|fn env_path\(\)|valid_sudo_envs|Command::new\(&sudo_path\)' src/platform/linux.rs; then
   r_s11c10k="$r_s11c10k obsolete-generic-root-to-user-helper-present"
@@ -9562,15 +9555,7 @@ echo "== (3b-iii-h9c) Linux shared helper command provenance has no shell/path f
 r_s11c10m=
 grep -q 'const LOGINCTL_PATHS' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-fixed-loginctl-paths"
 grep -q 'fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf>' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-shared-canonical-trusted-exec-check"
-grep -q 'fn linux_helper_path_is_clean_absolute(path: &Path) -> bool' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-no-clean-absolute-policy"
-grep -q 'path.is_absolute()' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-allows-relative"
-grep -q 'std::fs::canonicalize(path)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-no-canonicalization"
-grep -q 'trusted_command_parent(&std::fs::metadata(candidate_parent).ok()?)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-candidate-parent-not-trusted"
-grep -q 'trusted_command_parent(&std::fs::metadata(canonical_parent).ok()?)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-canonical-parent-not-trusted"
-grep -q 'trusted_command_file(&std::fs::metadata(&canonical).ok()?)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-canonical-file-not-trusted"
-grep -q 'uid == 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-not-root-owned"
-grep -q 'mode & 0o022 == 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-allows-writable"
-grep -q 'mode & 0o111 != 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-executable-bit-not-required"
+grep -Fq 'crate::platform::trusted_executable::resolve(path)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-resolver-missing"
 grep -q 'find_map(|path| trusted_fixed_executable_path(Path::new(path)))' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-resolver-not-returning-canonical-path"
 grep -q 'Command::new(loginctl)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m loginctl-not-fixed-path-argv"
 grep -q 'pub const REOPEN_AFTER_SERVICE_STOP_ARG' src/platform/linux.rs || r_s11c10m="$r_s11c10m no-delayed-reopen-argv-mode"

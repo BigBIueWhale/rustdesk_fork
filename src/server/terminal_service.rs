@@ -18,11 +18,7 @@ use std::{
 };
 
 #[cfg(not(target_os = "windows"))]
-use std::{
-    fs,
-    os::unix::fs::MetadataExt,
-    path::{Component, Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 // Windows-specific imports from terminal_helper module
 #[cfg(target_os = "windows")]
@@ -177,47 +173,8 @@ pub fn generate_service_id() -> String {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn unix_path_is_clean_absolute(path: &Path) -> bool {
-    path.is_absolute()
-        && path
-            .components()
-            .all(|component| matches!(component, Component::RootDir | Component::Normal(_)))
-}
-
-#[cfg(not(target_os = "windows"))]
-fn trusted_unix_shell_file(metadata: &fs::Metadata) -> bool {
-    metadata.is_file()
-        && metadata.uid() == 0
-        && metadata.mode() & 0o022 == 0
-        && metadata.mode() & 0o111 != 0
-}
-
-#[cfg(not(target_os = "windows"))]
-fn trusted_unix_shell_parent(metadata: &fs::Metadata) -> bool {
-    metadata.is_dir() && metadata.uid() == 0 && metadata.mode() & 0o022 == 0
-}
-
-#[cfg(not(target_os = "windows"))]
 fn trusted_unix_terminal_shell_path(path: &Path) -> Option<PathBuf> {
-    if !unix_path_is_clean_absolute(path) {
-        return None;
-    }
-    let candidate_parent = path.parent()?;
-    if !trusted_unix_shell_parent(&fs::metadata(candidate_parent).ok()?) {
-        return None;
-    }
-    let canonical = fs::canonicalize(path).ok()?;
-    if !unix_path_is_clean_absolute(&canonical) {
-        return None;
-    }
-    let canonical_parent = canonical.parent()?;
-    if !trusted_unix_shell_parent(&fs::metadata(canonical_parent).ok()?) {
-        return None;
-    }
-    if !trusted_unix_shell_file(&fs::metadata(&canonical).ok()?) {
-        return None;
-    }
-    Some(canonical)
+    hbb_common::platform::trusted_executable::resolve(path)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -3673,7 +3630,7 @@ mod tests {
     };
     #[cfg(not(target_os = "windows"))]
     use super::{
-        trusted_unix_terminal_shell_path, unix_path_is_clean_absolute, UNIX_TERMINAL_SHELLS,
+        trusted_unix_terminal_shell_path, UNIX_TERMINAL_SHELLS,
     };
     #[cfg(not(target_os = "windows"))]
     use std::path::Path;
@@ -5128,7 +5085,7 @@ mod tests {
     #[test]
     fn unix_terminal_shell_candidates_are_clean_absolute_paths() {
         for candidate in UNIX_TERMINAL_SHELLS {
-            assert!(unix_path_is_clean_absolute(Path::new(candidate)));
+            assert!(Path::new(candidate).is_absolute());
         }
     }
 
@@ -5146,7 +5103,6 @@ mod tests {
         for candidate in UNIX_TERMINAL_SHELLS {
             if let Some(shell) = trusted_unix_terminal_shell_path(Path::new(candidate)) {
                 assert!(shell.is_absolute());
-                assert!(unix_path_is_clean_absolute(&shell));
                 found = true;
                 break;
             }

@@ -2,6 +2,8 @@
 pub mod linux;
 #[cfg(unix)]
 pub mod x11_display;
+#[cfg(unix)]
+pub mod trusted_executable;
 
 #[cfg(target_os = "macos")]
 pub mod macos;

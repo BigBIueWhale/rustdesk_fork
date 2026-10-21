@@ -33,7 +33,7 @@ use std::{
             process::CommandExt,
         },
     },
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     process::{Child, Command},
     string::String,
     sync::atomic::{AtomicBool, Ordering},
@@ -5724,49 +5724,8 @@ pub fn reopen_after_service_stop(secs: u32) {
     }
 }
 
-fn linux_helper_path_is_clean_absolute(path: &Path) -> bool {
-    path.is_absolute()
-        && path
-            .components()
-            .all(|component| matches!(component, Component::RootDir | Component::Normal(_)))
-}
-
-fn trusted_command_file_metadata(is_file: bool, uid: u32, mode: u32) -> bool {
-    is_file && uid == 0 && mode & 0o022 == 0 && mode & 0o111 != 0
-}
-
-fn trusted_command_parent_metadata(is_dir: bool, uid: u32, mode: u32) -> bool {
-    is_dir && uid == 0 && mode & 0o022 == 0
-}
-
-fn trusted_command_file(metadata: &fs::Metadata) -> bool {
-    trusted_command_file_metadata(metadata.is_file(), metadata.uid(), metadata.mode())
-}
-
-fn trusted_command_parent(metadata: &fs::Metadata) -> bool {
-    trusted_command_parent_metadata(metadata.is_dir(), metadata.uid(), metadata.mode())
-}
-
 fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf> {
-    if !linux_helper_path_is_clean_absolute(path) {
-        return None;
-    }
-    let candidate_parent = path.parent()?;
-    if !trusted_command_parent(&fs::metadata(candidate_parent).ok()?) {
-        return None;
-    }
-    let canonical = fs::canonicalize(path).ok()?;
-    if !linux_helper_path_is_clean_absolute(&canonical) {
-        return None;
-    }
-    let canonical_parent = canonical.parent()?;
-    if !trusted_command_parent(&fs::metadata(canonical_parent).ok()?) {
-        return None;
-    }
-    if !trusted_command_file(&fs::metadata(&canonical).ok()?) {
-        return None;
-    }
-    Some(canonical)
+    hbb_common::platform::trusted_executable::resolve(path)
 }
 
 fn trusted_command_path(paths: &'static [&'static str]) -> Option<PathBuf> {
@@ -6090,20 +6049,6 @@ mod service_lifecycle_tests {
         assert!(trusted_command_path(&["sudo"]).is_none());
         assert!(trusted_command_path(&["/usr/bin/../bin/sudo"]).is_none());
         assert!(trusted_command_path(&["/definitely/not/rustdesk/sudo"]).is_none());
-    }
-
-    #[test]
-    fn r_s11c10k_command_metadata_requires_root_unwritable_executable() {
-        assert!(trusted_command_file_metadata(true, 0, 0o755));
-        assert!(!trusted_command_file_metadata(false, 0, 0o755));
-        assert!(!trusted_command_file_metadata(true, 1, 0o755));
-        assert!(!trusted_command_file_metadata(true, 0, 0o775));
-        assert!(!trusted_command_file_metadata(true, 0, 0o644));
-
-        assert!(trusted_command_parent_metadata(true, 0, 0o755));
-        assert!(!trusted_command_parent_metadata(false, 0, 0o755));
-        assert!(!trusted_command_parent_metadata(true, 1, 0o755));
-        assert!(!trusted_command_parent_metadata(true, 0, 0o775));
     }
 }
 

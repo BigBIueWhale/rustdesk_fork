@@ -1037,6 +1037,31 @@ that failure. Concurrent native-context assertions remain required.
 No Android/Windows delay causation, deployed symptom or privilege-escalation
 closure follows from these component receipts.
 
+**Native context/focus fixture interaction — corrected; component acceptance only.**
+The five-second timeout observed at `0587af76` is reproduced at `b93053da`:
+fresh concurrency passes, then the real input-state fixture changes focus from
+`(PointerRoot, RevertToNone)` to `(root-window 2551, RevertToNone)`. Workers assert
+the fresh-server constant and panic, stranding the barriers. The driver now retains
+child timeout output, exposing those exact assertions. The input fixture saves and
+restores the prior focus before destroying its window and checks the final state.
+Concurrent queries compare against an independent server snapshot taken only after
+all eight workers construct their sixteen product contexts, preserving simultaneous
+first construction. The observer is separately owned and closed before query release.
+
+At `f1c49cf5`, `--x11-display-tests --contexts` passes in 100 outer seconds:
+four phases complete 4,096 native query calls across fresh focus, two actual input-state
+preludes and deliberately selected nondefault root focus. Each phase retains sixteen
+unique product contexts, checks live resources, then pairs callbacks and joins workers
+with descriptors/tasks restored. Both input-state executions retain all 92 refusal
+and 92 recovery cases; prior focus is preserved and the final control restores
+PointerRoot. The product context modules and private XDO provider are unchanged.
+`x11-context-focus-f1c49cf5.json` under `.harness-state/verifier-vm/` binds the A/B
+sources, actual binary/provider, native observations and joined bounded-RAM cleanup.
+The intermediate pass that sampled focus before construction is superseded for
+first-construction coverage. The complete default X11 profile is not rerun here.
+The older distro-provider allocator abort, full application/installed behavior,
+authentication/startup integration and R-S0/R-F5/release acceptance remain OPEN.
+
 **OPEN work:**
 
 - Integrated keyboard caller acceptance. Required state is source-preflighted
@@ -8603,8 +8628,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   selected addresses, not wrong-principal or installed/full-application acceptance.
   `x11-capture-mapping-a9d3d52d.json` under `.harness-state/verifier-vm/` binds source, binary,
   observations and joined RAM/container/VM retirement with zero host endpoint delta.
-  The initial broader run at `0587af76` stops at the existing five-second concurrent-context deadline
-  before capture-fixture compilation; that failure remains OPEN and supplies no mapping result.
+  The initial broader run at `0587af76` stops at the five-second concurrent-context deadline
+  before capture-fixture compilation and supplies no mapping result. The Keyboard state and Linux Enigo
+  XDO section records its reproduced focus-fixture cause and correction; full-profile acceptance stays OPEN.
 
   **Retained full-profile receipt.** Candidate `c33f70079dad32c8dcc6f3d93dd30b6991b0cffa`, tree
   `55caf4a06d083258976073e7df1da63f43d5fef0`, passed

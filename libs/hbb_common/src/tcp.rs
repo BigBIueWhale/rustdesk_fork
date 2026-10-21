@@ -1157,7 +1157,7 @@ mod eof_tests {
 #[cfg(test)]
 mod writer_lifetime_tests {
     use super::*;
-    use std::{sync::atomic::AtomicUsize, time::Duration};
+    use std::{sync::atomic::{AtomicBool, AtomicUsize}, time::Duration};
     use tokio::io::AsyncWriteExt;
 
     #[derive(Default)]
@@ -1166,6 +1166,8 @@ mod writer_lifetime_tests {
         pending_ptr: AtomicUsize,
         pending_len: AtomicUsize,
         failures: AtomicUsize,
+        fail_writes: AtomicBool,
+        reads_after_failure: AtomicUsize,
     }
 
     struct ObservedTcp {
@@ -1179,6 +1181,9 @@ mod writer_lifetime_tests {
             cx: &mut Context<'_>,
             buf: &mut ReadBuf<'_>,
         ) -> Poll<io::Result<()>> {
+            if self.observation.failures.load(Ordering::Relaxed) != 0 {
+                self.observation.reads_after_failure.fetch_add(1, Ordering::Relaxed);
+            }
             Pin::new(&mut self.io).poll_read(cx, buf)
         }
     }
@@ -1189,6 +1194,13 @@ mod writer_lifetime_tests {
             cx: &mut Context<'_>,
             buf: &[u8],
         ) -> Poll<io::Result<usize>> {
+            if self.observation.fail_writes.load(Ordering::Relaxed) {
+                self.observation.failures.fetch_add(1, Ordering::Relaxed);
+                return Poll::Ready(Err(Error::new(
+                    ErrorKind::ConnectionReset,
+                    "injected TCP write failure",
+                )));
+            }
             let result = Pin::new(&mut self.io).poll_write(cx, buf);
             match &result {
                 Poll::Pending => {
@@ -1329,6 +1341,97 @@ mod writer_lifetime_tests {
     #[tokio::test]
     async fn tcp_failed_writer_retires_encoded_storage() {
         assert_encoded_storage_retires(true).await;
+        let mut all_terminal = true;
+        for pending in [false, true] {
+            all_terminal &= assert_failed_writer_terminates_read(pending).await;
+        }
+        assert!(all_terminal, "a failed writer must terminate its retained read owner");
+    }
+
+    async fn assert_failed_writer_terminates_read(pending: bool) -> bool {
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (outgoing, (mut peer, _)) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::try_join!(tokio::net::TcpStream::connect(addr), listener.accept())
+        }).await.unwrap().unwrap();
+        drop(listener);
+        let observation = Arc::new(WriteObservation::default());
+        let io = ObservedTcp { io: outgoing, observation: Arc::clone(&observation) };
+        let mut stream = FramedStream::from(io, addr);
+        stream.set_max_packet_length(1_024);
+        stream.set_session_keys(DirectionalKeys { send: [0x19; 32], recv: [0x2a; 32] });
+        let admission = match &stream.state {
+            StreamState::Keyed(keyed) => keyed.writer_admission.clone(),
+            _ => panic!("stream must be keyed"),
+        };
+        let (mut seal, _) = split_session_keys(&DirectionalKeys {
+            send: [0x2a; 32], recv: [0x19; 32],
+        });
+        let mut wire = BytesMut::new();
+        BytesCodec::new().encode(seal.seal(b"healthy").into(), &mut wire).unwrap();
+        peer.write_all(&wire).await.unwrap();
+        let healthy = tokio::time::timeout(Duration::from_secs(2), stream.next())
+            .await.unwrap().unwrap().unwrap();
+        assert_eq!(&healthy[..], b"healthy");
+        assert_eq!(stream.recv_counter(), 1);
+        if !pending {
+            wire.clear();
+            BytesCodec::new().encode(seal.seal(b"after failure").into(), &mut wire).unwrap();
+            peer.write_all(&wire).await.unwrap();
+        }
+        observation.fail_writes.store(true, Ordering::Relaxed);
+        let mut receipt = Some(stream.send_with_receipt(&crate::message_proto::Message::new())
+            .await.unwrap());
+        if !pending {
+            let error = tokio::time::timeout(Duration::from_secs(2), receipt.take().unwrap())
+                .await.unwrap().unwrap().unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::ConnectionReset);
+            assert!(matches!(&stream.state,
+                StreamState::Keyed(keyed) if keyed.writer_tx.is_closed()));
+        }
+        let result = {
+            let mut read = Box::pin(stream.next());
+            if pending {
+                assert!(matches!(futures::poll!(read.as_mut()), Poll::Pending));
+                assert_eq!(observation.failures.load(Ordering::Relaxed), 0);
+            }
+            tokio::time::timeout(Duration::from_millis(250), read).await
+        };
+        if let Some(receipt) = receipt {
+            let error = tokio::time::timeout(Duration::from_secs(2), receipt)
+                .await.unwrap().unwrap().unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::ConnectionReset);
+        }
+        assert_eq!(observation.failures.load(Ordering::Relaxed), 1);
+        let terminal_error = matches!(&result,
+            Ok(Some(Err(error))) if error.kind() == ErrorKind::BrokenPipe);
+        let yielded = matches!(&result, Ok(Some(Ok(_))));
+        let timed_out = result.is_err();
+        let poisoned = stream.poison;
+        let counter = stream.recv_counter();
+        let reads_after_failure = observation.reads_after_failure.load(Ordering::Relaxed);
+        let joined_at_return = matches!(&stream.state,
+            StreamState::Keyed(keyed) if keyed.writer.is_none());
+        if let Some(result) = join_test_writer(&mut stream, false).await {
+            result.unwrap();
+        }
+        assert_eq!(admission.frames.available_permits(), WRITER_CHANNEL_CAP);
+        assert_eq!(admission.ciphertext_bytes.available_permits(), 2_048);
+        println!(
+            "WRITER_FAILURE_READ=observed case={} healthy_control=true injected_write_failures=1 terminal_error={} yielded={} timed_out={} poisoned={} recv_counter={} reads_after_failure={} joined_at_return={}",
+            if pending { "pending" } else { "peer-frame" }, terminal_error, yielded,
+            timed_out, poisoned, counter, reads_after_failure, joined_at_return,
+        );
+        let passed = terminal_error && !yielded && !timed_out && poisoned
+            && counter == 1 && reads_after_failure == 0 && joined_at_return;
+        if passed {
+            assert!(stream.next().await.is_none());
+            assert!(stream.send_bytes(Bytes::new()).await.is_err());
+            assert!(stream.flush_writer().await.is_err());
+            assert!(admission.frames.is_closed() && admission.ciphertext_bytes.is_closed());
+        }
+        drop((stream, peer));
+        passed
     }
 
     #[tokio::test]

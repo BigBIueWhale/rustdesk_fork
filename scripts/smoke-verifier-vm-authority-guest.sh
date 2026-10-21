@@ -5997,7 +5997,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
                 /^test fs::(tests::(file_metadata_[[:alnum:]_]+|rename_[[:alnum:]_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[[:alnum:]_]+) \.\.\. (ok|FAILED)$/ { if (++metadata_cases <= 64) print }
                 /^FILE_METADATA_/ { if (++metadata_observations <= 96) print }
-                /^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|RETIREMENT_ARTIFACT_STOP)=/ { if (++writer_observations <= 32) print }
+                /^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ|RETIREMENT_ARTIFACT_STOP)=/ { if (++writer_observations <= 32) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'File-peer probe failure artifact metadata could not be read\n' >&2
@@ -6703,7 +6703,7 @@ PY
             grep -E '^test (config|password_security)::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq 40 ] || fail 'writer retirement test total differs'
-            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME)=' "$output"
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq 7 ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_WINDOW' "$output"

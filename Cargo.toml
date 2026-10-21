@@ -182,8 +182,6 @@ windows-service = "0.6"
 # R-X9 (slices 2-4): `impersonate_system` (SYSTEM token-theft for run_as_system) and
 # `shared_memory` (portable-service capture shmem) removed with the portable run-mode —
 # both were used only by the excised src/server/portable_service.rs.
-tauri-winrt-notification = "0.1"
-runas = "1.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
@@ -192,8 +190,6 @@ dispatch = "0.2"
 core-foundation = "0.9"
 core-graphics = "0.22"
 include_dir = "0.7"
-fruitbasket = "0.10"
-objc_id = "0.1"
 security-framework = "2.10"
 # If we use piet "0.7" here, we must also update core-graphics to "0.24".
 piet = "0.6"
@@ -222,7 +218,6 @@ libxdo-sys = "0.11"
 psimple = { package = "libpulse-simple-binding", version = "2.27" }
 pulse = { package = "libpulse-binding", version = "2.27" }
 rust-pulsectl = { git = "https://github.com/rustdesk-org/pulsectl" }
-async-process = "1.7"
 # R-X12/R-X13: evdev (raw /dev/input device reading) is dropped -- zero evdev:: usage remains after the
 # Wayland/uinput input excision (X11 capture + XTEST/enigo injection is the sole input path); the
 # third-party git dep was dead weight.
@@ -242,7 +237,6 @@ percent-encoding = {version = "2.3", optional = true}
 once_cell = {version = "1.18", optional = true}
 nix = { version = "0.29", features = ["term", "process"]}
 gtk = "0.18"
-termios = "0.3"
 winit = "0.30"
 
 [target.'cfg(target_os = "android")'.dependencies]

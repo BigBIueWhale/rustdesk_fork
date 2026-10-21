@@ -1187,6 +1187,15 @@ mod writer_lifetime_tests {
         observation: Arc<WriteObservation>,
     }
 
+    #[derive(Default)]
+    struct ReadWake(AtomicUsize);
+
+    impl std::task::Wake for ReadWake {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
     impl AsyncRead for ObservedTcp {
         fn poll_read(
             mut self: Pin<&mut Self>,
@@ -1401,13 +1410,27 @@ mod writer_lifetime_tests {
             assert!(matches!(&stream.state,
                 StreamState::Keyed(keyed) if keyed.writer_tx.is_closed()));
         }
+        let mut pending_woken = false;
         let result = {
             let mut read = Box::pin(stream.next());
             if pending {
-                assert!(matches!(futures::poll!(read.as_mut()), Poll::Pending));
+                let wake = Arc::new(ReadWake::default());
+                let waker = std::task::Waker::from(Arc::clone(&wake));
+                {
+                    let mut context = Context::from_waker(&waker);
+                    assert!(std::future::Future::poll(read.as_mut(), &mut context).is_pending());
+                }
                 assert_eq!(observation.failures.load(Ordering::Relaxed), 0);
+                assert_eq!(wake.0.load(Ordering::Relaxed), 0);
+                let error = tokio::time::timeout(Duration::from_secs(2), receipt.take().unwrap())
+                    .await.unwrap().unwrap().unwrap_err();
+                assert_eq!(error.kind(), ErrorKind::ConnectionReset);
+                pending_woken = wake.0.load(Ordering::Relaxed) != 0;
+                // Observe the registered wake before a timer or another read poll can mask it.
+                tokio::time::timeout(Duration::ZERO, read).await
+            } else {
+                tokio::time::timeout(Duration::from_millis(250), read).await
             }
-            tokio::time::timeout(Duration::from_millis(250), read).await
         };
         if let Some(receipt) = receipt {
             let error = tokio::time::timeout(Duration::from_secs(2), receipt)
@@ -1430,12 +1453,13 @@ mod writer_lifetime_tests {
         assert_eq!(admission.frames.available_permits(), WRITER_CHANNEL_CAP);
         assert_eq!(admission.ciphertext_bytes.available_permits(), 2_048);
         println!(
-            "WRITER_FAILURE_READ=observed case={} healthy_control=true injected_write_failures=1 terminal_error={} yielded={} timed_out={} poisoned={} recv_counter={} reads_after_failure={} joined_at_return={}",
+            "WRITER_FAILURE_READ=observed case={} healthy_control=true injected_write_failures=1 terminal_error={} yielded={} timed_out={} poisoned={} recv_counter={} reads_after_failure={} joined_at_return={} pending_woken={}",
             if pending { "pending" } else { "peer-frame" }, terminal_error, yielded,
-            timed_out, poisoned, counter, reads_after_failure, joined_at_return,
+            timed_out, poisoned, counter, reads_after_failure, joined_at_return, pending_woken,
         );
         let passed = terminal_error && !yielded && !timed_out && poisoned
-            && counter == 1 && reads_after_failure == 0 && joined_at_return;
+            && counter == 1 && reads_after_failure == 0 && joined_at_return
+            && (!pending || pending_woken);
         if passed {
             assert!(stream.next().await.is_none());
             assert!(stream.send_bytes(Bytes::new()).await.is_err());

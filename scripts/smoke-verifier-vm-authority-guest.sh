@@ -6006,7 +6006,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 /^(CPACE_WIRE|TCP_TRANSPORT)_ARTIFACT/ { if (++artifacts <= 8) print }
                 /^test [[:alnum:]_:]+ \.\.\. (ok|FAILED)$/ { if (++cases <= 64) print }
                 /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
-                /^WRITER_BUFFER_LIFETIME=/ { if (++observations <= 8) print }
+                /^WRITER_(BUFFER_LIFETIME|FAILURE_READ)=/ { if (++observations <= 8) print }
                 /^test .*tcp.rs - tcp::FramedStream / { if (++doccases <= 8) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
         fi
@@ -6761,7 +6761,7 @@ PY
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "$tests_passed" -eq 59 ] \
             || fail "CPace recovery test count differs: $tests_passed"
-        grep -E '^test [a-z0-9_:]+ \.\.\. ok$|^(CPACE_WIRE|TCP_TRANSPORT)_ARTIFACT(_START)?=|^CPACE_PENDING_READ_CANCEL=|^WRITER_(BUFFER_LIFETIME|FATAL_RETURN|RETIRE_CANCEL)=' "$output"
+        grep -E '^test [a-z0-9_:]+ \.\.\. ok$|^(CPACE_WIRE|TCP_TRANSPORT)_ARTIFACT(_START)?=|^CPACE_PENDING_READ_CANCEL=|^WRITER_(BUFFER_LIFETIME|FATAL_RETURN|RETIRE_CANCEL|FAILURE_READ)=' "$output"
         grep -E '^test .*tcp.rs - tcp::FramedStream |^TCP_FRAMING_API=' "$output"
         printf 'CPACE_RECOVERY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

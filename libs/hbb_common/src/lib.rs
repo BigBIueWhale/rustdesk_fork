@@ -58,7 +58,6 @@ pub mod stream;
 pub use rustls_platform_verifier;
 pub use stream::Stream;
 pub use whoami;
-pub mod verifier;
 pub use libloading;
 #[cfg(target_os = "linux")]
 pub use users;

@@ -3143,8 +3143,6 @@ dependencies = [
  "protobuf-codegen",
  "rand 0.8.6",
  "regex",
- "rustls-native-certs",
- "rustls-pki-types",
  "rustls-platform-verifier",
  "serde 1.0.228",
  "serde_derive",
@@ -3156,12 +3154,10 @@ dependencies = [
  "sysinfo",
  "thiserror 1.0.61",
  "tokio",
- "tokio-rustls",
  "tokio-util",
  "toml 0.7.8",
  "uuid",
  "uzers",
- "webpki-roots",
  "whoami",
  "winapi",
  "x11",
@@ -6981,17 +6977,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-rustls"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c7bc40d0e5a97695bb96e27995cd3a08538541b0a846f65bba7a359f36700d4"
-dependencies = [
- "rustls",
- "rustls-pki-types",
- "tokio",
-]
-
-[[package]]
 name = "tokio-util"
 version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7733,15 +7718,6 @@ name = "webpki-root-certs"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05d651ec480de84b762e7be71e6efa7461699c19d9e2c272c8d93455f567786e"
-dependencies = [
- "rustls-pki-types",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2878ef029c47c6e8cf779119f20fcf52bde7ad42a731b2a304bc221df17571e"
 dependencies = [
  "rustls-pki-types",
 ]

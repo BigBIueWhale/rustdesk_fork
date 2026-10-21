@@ -13,6 +13,9 @@ import tempfile
 import time
 from types import SimpleNamespace
 
+AT_FDCWD = -100
+RENAME_NOREPLACE = 1
+
 
 def publish(path, value):
     fd, temporary = tempfile.mkstemp(prefix=f'.{path.name}.', dir=path.parent)
@@ -23,7 +26,8 @@ def publish(path, value):
         rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
                            ctypes.c_char_p, ctypes.c_uint]
         rename.restype = ctypes.c_int
-        if rename(-100, os.fsencode(temporary), -100, os.fsencode(path), 1) != 0:
+        if rename(AT_FDCWD, os.fsencode(temporary), AT_FDCWD, os.fsencode(path),
+                  RENAME_NOREPLACE) != 0:
             error = ctypes.get_errno()
             raise OSError(error, os.strerror(error), str(path))
     finally:

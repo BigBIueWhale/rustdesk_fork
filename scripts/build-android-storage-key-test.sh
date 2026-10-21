@@ -48,8 +48,10 @@ readonly JAVA_SOURCE=$SOURCE/scripts/AndroidStorageKeyInstrumentation.java
 readonly ANDROID_JAR=$ONLINE/android-sdk/platforms/android-${ANDROID_COMPILE_SDK}/android.jar
 source_before=$(sha256sum "$KOTLIN_SOURCE" "$JAVA_SOURCE" "$SOURCE/scripts/build-android-storage-key-test.sh" "$ANDROID_JAR" "$stdlib")
 # The sealed SDK is noexec. Copy only the authenticated build-tools into private RAM.
-cp -a "$ONLINE/android-sdk/build-tools/$ANDROID_BUILD_TOOLS" "$WORK/tools"
-chmod -R u+w "$WORK/tools"
+mkdir -m 0700 "$WORK/tools" "$WORK/tools/lib" "$WORK/tools/lib64"
+for relative in aapt2 d8 apksigner zipalign lib/d8.jar lib/apksigner.jar lib64/libc++.so lib64/libc++.so.1; do
+    cp -p "$ONLINE/android-sdk/build-tools/$ANDROID_BUILD_TOOLS/$relative" "$WORK/tools/$relative"
+done
 timeout --signal=TERM --kill-after=5s 90s java -Xms32m -Xmx512m \
     -Djava.io.tmpdir="$WORK" -cp "$compiler:$stdlib:$script_runtime:$reflect:$daemon:$trove:$coroutines:$annotations" \
     org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect -jvm-target 1.8 \

@@ -8065,7 +8065,7 @@ PY
             "$source_root/scripts/AndroidStorageKeyInstrumentation.java" \
             "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt")" ] || fail 'storage-key source changed'
         [ "$probe_apk_sha256" = "$(sha256sum "$probe_root/storage-key-probe.apk" | cut -d ' ' -f 1)" ] || fail 'storage-key APK changed'
-        grep '^ANDROID_STORAGE_KEY_' "$output"
+        grep 'ANDROID_STORAGE_KEY_' "$output"
         rm -rf -- "$probe_root"
     fi
     mapfile -t renderer_lines < <(grep -E \

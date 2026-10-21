@@ -5761,11 +5761,12 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = linux-service-uid-tests ]; then
         inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
             '{{range .Mounts}}{{if eq .Type "bind"}}{{printf "bind|%s|%s|%t\n" .Source .Destination .RW}}{{else}}{{if ne .Type "tmpfs"}}{{printf "unexpected|%s\n" .Type}}{{end}}{{end}}{{end}}' \
-            "$CONTAINER_ID" | LC_ALL=C sort)"
+            "$CONTAINER_ID")"
+        inspect="$(printf '%s\n' "$inspect" | LC_ALL=C sort)"
         [ "$inspect" = "$(printf '%s\n' \
             "bind|$source_root|/source|false" "bind|$target_root|/cargo-target|true" \
             "bind|$ROOT/trusted-executable-fixture|/trusted-executable-fixture|true" | LC_ALL=C sort)" ] \
-            || fail 'executable namespace fixture mount envelope differs'
+            || fail "executable namespace fixture mount envelope differs: $inspect"
         printf 'TRUSTED_EXECUTABLE_MOUNTS=pass binds=3 source=readonly fixture=private-rw user=1000:1000\n'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] \

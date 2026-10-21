@@ -42,7 +42,25 @@ def worker(helper, base, scenario):
     run = base / 'run'
     target = run / ('blocked/diagnostic' if scenario == 'permission' else 'transient')
     original = Path.rglob
+    original_walk = os.walk
     samples = 0
+    allocation_fault = False
+
+    def enumerate_workspace(path, *args, **kwargs):
+        nonlocal allocation_fault
+        for directory, children, files in original_walk(path, *args, **kwargs):
+            if (Path(directory) == workspace and not allocation_fault
+                    and scenario in ('workspace-permission', 'workspace-retired')):
+                # Change the actual child directory after native enumeration,
+                # before os.walk tries to enter it. No error or stat is faked.
+                blocked = workspace / 'blocked'
+                if scenario == 'workspace-permission':
+                    blocked.chmod(0)
+                else:
+                    blocked.rmdir()
+                allocation_fault = True
+                publish(base / 'fault', {'scenario': scenario})
+            yield directory, children, files
 
     def enumerate_entries(path, pattern):
         nonlocal samples
@@ -54,7 +72,8 @@ def worker(helper, base, scenario):
         if samples == 2:
             publish(base / 'second-sample', {'observed': True})
         for entry in entries:
-            if samples == 1 and entry == target and scenario != 'headroom':
+            if (samples == 1 and entry == target
+                    and scenario in ('socket', 'regular', 'permission')):
                 # Schedule the real removal/access change after enumeration and
                 # before production lstat. No stat result or exception is faked.
                 if scenario == 'permission':
@@ -71,6 +90,7 @@ def worker(helper, base, scenario):
         -1 if scenario == 'headroom' else 64 * 1024 ** 2)
     workspace = base / 'workspace'
     identity = workspace.stat()
+    os.walk = enumerate_workspace
     try:
         subject.watch(SimpleNamespace(
             memory_mib=2048, storage_profile='ledger-token-count',
@@ -79,6 +99,7 @@ def worker(helper, base, scenario):
             stop=str(run / 'stop'), receipt=str(base / 'receipt')))
     finally:
         Path.rglob = original
+        os.walk = original_walk
 
 
 def wait_for(path, child):
@@ -234,6 +255,14 @@ def run_case(helper, scenario):
         run = base / 'run'
         run.mkdir(mode=0o700)
         (base / 'workspace').mkdir(mode=0o700)
+        hidden_allocation = 0
+        if scenario in ('workspace-permission', 'workspace-retired'):
+            blocked = base / 'workspace/blocked'
+            blocked.mkdir(mode=0o700)
+            if scenario == 'workspace-permission':
+                (blocked / 'payload').write_bytes(b'x' * 4096)
+                hidden_allocation = (blocked / 'payload').stat().st_blocks * 512
+                assert hidden_allocation > 0
         keep = run / 'keep'
         keep.write_bytes(b'x' * 4096)
         minimum_allocation = keep.stat().st_blocks * 512
@@ -252,7 +281,7 @@ def run_case(helper, scenario):
                  str(base), scenario], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             ready = wait_for(base / 'ready', child)
             second_sample = False
-            if scenario in ('socket', 'regular'):
+            if scenario in ('socket', 'regular', 'workspace-permission', 'workspace-retired'):
                 second_sample = wait_for(base / 'second-sample', child)
                 if second_sample:
                     # This tests receipt consumption, not a QEMU launch/wait.
@@ -263,22 +292,24 @@ def run_case(helper, scenario):
             assert len(output) + len(error) <= 8192, 'watch diagnostics exceed their bound'
             receipt = json.loads((base / 'receipt').read_bytes())
             fault = (base / 'fault').exists()
-            if scenario in ('socket', 'regular'):
+            if scenario in ('socket', 'regular', 'workspace-retired'):
                 passed = (ready and fault and second_sample and child.returncode == 0
                           and not terms and receipt['reason'] == 'completed'
                           and receipt['qemu_io'] == fixture
                           and receipt['qemu_io_source'] == 'supervisor-waited-child-rusage'
                           and receipt['durable_run_peak_allocated_bytes'] >= minimum_allocation)
             else:
-                expected = 'PermissionError:' if scenario == 'permission' else 'memory-headroom'
+                permission = scenario in ('permission', 'workspace-permission')
+                expected = 'PermissionError:' if permission else 'memory-headroom'
                 passed = (ready and child.returncode != 0 and terms == [signal.SIGTERM]
                           and receipt['reason'].startswith(expected)
                           and receipt['qemu_io'] is None
-                          and (fault if scenario == 'permission' else not fault))
+                          and (fault if permission else not fault))
             return {'case': scenario, 'passed': passed, 'monitor_exit': child.returncode,
                     'signals': terms, 'fault_triggered': fault,
                     'second_sample': second_sample, 'reason': receipt['reason'],
                     'samples': receipt['samples'], 'receipt': receipt,
+                    'hidden_allocated_bytes': hidden_allocation,
                     'stderr': error.decode(errors='replace')[-2048:],
                     'filesystem': 'native', 'schedule': 'controlled',
                     'memory_observer': 'fixed', 'qemu_receipt': 'fixture-only',
@@ -295,6 +326,8 @@ def run_case(helper, scenario):
                 endpoint.close()
             if (run / 'blocked').exists():
                 os.chmod(run / 'blocked', 0o700)
+            if (base / 'workspace/blocked').exists():
+                os.chmod(base / 'workspace/blocked', 0o700)
             signal.signal(signal.SIGTERM, previous)
 
 
@@ -313,12 +346,13 @@ def main():
     if len(sys.argv) != 2:
         raise SystemExit('expected one production storage helper')
     results = [run_case(sys.argv[1], case)
-               for case in ('socket', 'regular', 'permission', 'headroom')]
+               for case in ('socket', 'regular', 'permission', 'headroom',
+                            'workspace-permission', 'workspace-retired')]
     for result in results:
         print('VM_TRANSIENT_WATCH_CASE=' + json.dumps(result, sort_keys=True), flush=True)
     if not all(result['passed'] for result in results):
         raise SystemExit('production storage watch regression failed')
-    print('VM_TRANSIENT_WATCH=pass cases=4 disappeared=2 refusals=2 filesystem=native '
+    print('VM_TRANSIENT_WATCH=pass cases=6 disappeared=3 refusals=3 filesystem=native '
           'schedule=controlled memory=fixed qemu=not-started children=joined')
     results = [run_supervisor_case(sys.argv[1], case)
                for case in ('normal', 'graceful', 'stubborn')]

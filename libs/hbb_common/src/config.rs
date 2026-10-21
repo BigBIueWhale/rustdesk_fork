@@ -4632,13 +4632,14 @@ impl LocalConfig {
     pub fn set_favorites(ids: Vec<String>, favorite: bool) -> crate::ResultType<()> {
         Self::update(|candidate| {
             if favorite {
-                for id in &ids {
-                    if !candidate.fav.contains(id) {
-                        candidate.fav.push(id.clone());
-                    }
-                }
+                let additions = {
+                    let mut known: HashSet<_> = candidate.fav.iter().collect();
+                    ids.iter().filter(|id| known.insert(*id)).cloned().collect::<Vec<_>>()
+                };
+                candidate.fav.extend(additions);
             } else {
-                candidate.fav.retain(|id| !ids.contains(id));
+                let selected: HashSet<_> = ids.iter().collect();
+                candidate.fav.retain(|id| !selected.contains(id));
             }
         })
     }

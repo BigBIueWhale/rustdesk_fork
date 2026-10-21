@@ -12775,11 +12775,16 @@ Counts refer to their named historical sources, not fresh current-tree execution
 
 `--audio-mailbox-tests` imports the real mailbox and buffer, production proto/build
 script and exact extracted setup/error callback, with root-locked dependencies.
-Its named latest 34-case run took 87 outer seconds; CPAL setup typechecking is not
-a complete non-Linux parent build or physical stream execution.
+All 34 cases passed at `15ed3f4d` in 106 outer seconds under the dedicated
+`audio-mailbox` RAM profile. CPAL setup typechecking is not a complete non-Linux
+parent build or physical stream execution. `audio-mailbox-profile-15ed3f4d.json`
+binds the source/artifact, sixteen channel-format observations, old/current
+callback wake/retirement controls, storage limits and joined cleanup. The unchanged
+export filter retains 33 module-test names and both callback observations;
+the guest checks all 34 names before export, including the callback fixture.
 `--audio-buffer-tests` passed all eighteen cases at `87dbc335` in 73 outer seconds:
 sixteen production-buffer cases and two real conversion/allocation fixtures.
-Its dedicated profile retains the 2 GiB guest and admits 6 GiB RAM scratch,
+Both audio profiles retain the 2 GiB guest and admit 6 GiB RAM scratch,
 6 GiB host headroom and 1 GiB overhead, with a 4 GiB hard file ceiling and no disk
 fallback. This replaces the generic 16 GiB scratch reservation that refused a
 25 GiB admission before any case ran; measured scratch stayed below 3.2 GiB.

@@ -7635,70 +7635,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Classification and the final whole-ledger count are retained in
   `.harness-state/verifier-vm/linux-service-ledger-role-b52c85cd.json`.
 
-- **R-S11cf/R-S11e-98 — Debian builder private-source and container authority — SOURCE IMPLEMENTED;
-  EXACT SOURCE COMMIT `547da491d182b98c31184a509e192977bcd7cb18` CONFINED
-  SEMANTIC/MUTATION/WORKSPACE AND AUTHORITY-RUNTIME PROBES PASSED 2026-07-23;
-  EXACT COLD DEBIAN ARTIFACT EXECUTION REMAINS R-B2/R-S11c-27.** Platform: the Linux Docker build host used by the
-  direct and release-child Debian artifact builders. Endpoint/action: the sole offline compiler-container launch
-  in `scripts/build-debian.sh`. Boundary: the exact committed source, verified offline input closure, and
-  invoking-user output path ↔ compiler/build-script/native-dependency execution and Docker daemon authority.
-
-  The inherited direct path mounted the real developer checkout read-write at `/src`. The container already used
-  the invoking numeric UID/GID, removed its network namespace, published no port, and received no Docker socket or
-  host namespace, but it retained the default writable root filesystem, default capability set, privilege-gain
-  semantics, implicit image-pull behavior, unbounded process/memory/CPU/scratch resources, and one fixed
-  daemon-global name. A faulty or compromised build dependency could therefore alter or delete worktree files,
-  leave ambiguous generated state, exhaust host resources, or use broader container authority than compilation
-  requires. This is build-host and supply-chain authority debt. It is not evidence that a root container ran, a
-  container escaped, a public listener was exposed, a host RustDesk process/service/configuration/firewall was
-  changed, or any machine was exploited or compromised.
-
-  Direct mode now records one full clean commit and gives each A/B pass a distinct current-user mode-0700
-  `git clone --no-hardlinks --no-checkout --reject-shallow`. Each clone is detached at that exact commit, has its
-  remote removed, owns its private `.git`, and rejects shallow, graft, alternate, replacement-ref, sparse, and
-  index-masking state; `git fsck --full --strict` verifies its object database before use. Release-child mode
-  accepts only the already-private detached R-B2 source snapshot and requires `DOUBLE_BUILD=0`, leaving
-  independent pass ownership with the outer release transaction. The real direct-build checkout is never a
-  compiler mount.
-
-  The sole compiler launch addresses `/usr/bin/docker` and the already-proven immutable image ID with
-  `--pull=never`, `--network=none`, a read-only root, the invoking numeric UID:GID, all capabilities dropped,
-  no-new-privileges, 1,024 PIDs, 16 GiB memory with no swap expansion, four CPUs, and a 12-GiB executable
-  `nosuid,nodev` `/tmp` tmpfs. Its only host inputs are the private writable build tree and the complete verified
-  private online snapshot read-only. An empty 1-MiB read-only/no-exec/nosuid/nodev tmpfs hides `/src/.git`, so
-  compiler code receives no private Git object, config, or index inode. There is no fixed name, port,
-  host namespace, Docker socket, image build/pull fallback, privilege mode, or added capability. After either
-  failed or successful compilation, the host re-proves the source root device/inode, exact commit, private Git
-  authority, canonical index flags, unchanged index, and every tracked worktree byte before selecting an artifact.
-  Generated ignored/untracked state dies with the current-user-owned private workspace.
-
-  `scripts/verify-debian-builder-authority.py` binds the exact source branch, private-clone construction, Git
-  authority/postconditions, direct A/B separation, release-child outer ownership, complete Docker launch inventory,
-  forbidden ambient authority, R-S11cf, Appendix C #225, this ledger identity, shared-gate wiring, and workspace
-  ownership through deliberate mutations.
-
-  Exact-source verification at `547da491d182b98c31184a509e192977bcd7cb18` is confined and does not compile
-  RustDesk. The focused verifier passes on the pinned
-  Python 3.6 Debian-builder image and rejects all 32 deliberate source/requirement/ledger weakenings. The independent
-  workspace meta-verifier passes normally and rejects its complete in-memory source-mutation matrix while binding
-  the new verifier, shared gate, normative requirement, Appendix row, and ledger. A neutral runtime probe used the
-  exact Debian builder image and production launch flags against a disposable private fixture; it observed
-  UID/GID 1000, zero effective capabilities, `NoNewPrivs: 1`, a writable private source, empty/read-only hidden
-  `.git`, read-only online input, and read-only container root, while the underlying private Git canary remained
-  unchanged.
-  A separate direct-source probe reproduced the exact non-hardlinked detached clone, remote removal, private
-  mode-0700 root, full strict fsck, clean tracked/index postconditions, and private generated-output allowance.
-  Debian package-authority synthetic mutations and the source polkit validator pass. Dependency inventory
-  normal/self-test, native-codec normal/self-test, Bash and Python syntax, synchronized requirements SHA-256
-  `d588b090ad2a843e682363b84f8991ea014a0f48b3dc98fee91584be641554be`, and `git diff --check` pass.
-  Every executable verifier ran as numeric UID/GID 1000 in an already-present immutable image with
-  `--pull=never`, no network, a read-only root and source, all capabilities dropped, no-new-privileges, bounded
-  resources, no port, and no Docker socket.
-
-  Source-gate and authority-probe success do not claim a compiled `.deb`, installed-service behavior, the final
-  Debian lifecycle marker, or the complete cold R-B2 transaction; those remain R-B2/R-S11c-27. No host RustDesk
-  process/service/configuration/listener, firewall/network state, native device, or installed package was used,
-  inspected, or changed.
+- **R-S11cf/R-S11e-98 — Debian private compiler source — SOURCE IMPLEMENTED;
+  CERTIFIED WORKLOAD AND RELEASE/INSTALLED ACCEPTANCE OPEN.** Direct A/B passes
+  use distinct exact-commit non-hardlinked detached clones; release children use
+  R-B2's independent snapshot with `DOUBLE_BUILD=0`. `.git` is hidden, online
+  inputs are read-only, and source identity/index/tracked bytes are rechecked
+  after compiler failure and success. R-S11dk/R-S11dh/R-S11e-129 below owns the
+  current VM-only authority evidence and missing toolchain/input/result transport.
+  Its minimal-fixture profile test establishes no compiled `.deb`, cold A==B
+  R-B2/R-B10, final installed R-S11c-27/R-S11dl lifecycle, independent reproduction
+  or R-V3 external review; all remain OPEN.
 - **R-S11cg/R-S11e-99 — Android signing-identity generation authority — SOURCE
   CONTRACT RETAINED; CURRENT ONE-TIME EXECUTION AND RELEASE/DEVICE EVIDENCE OPEN.**
   `scripts/gen-android-keystore.sh` creates the permanent Android identity only at two distinct

@@ -1621,202 +1621,82 @@ performant across every supported viewer and controlled platform. Focus, visibil
 display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,
 fresh presentation, bounded resources, and final ownership without requiring reconnect as a recovery mechanism.
 
-**Video QoS delay window and averaging — Linux controller A/B accepted; full latency OPEN.**
-Product `ccacf295` enforces the declared two-completed-sample history and sums its
-`u32` measurements in `u64` before division. The resulting mean remains in the
-measurement domain. RTT learning, pending-probe handling, congestion thresholds,
-viewer ownership and transport behavior are unchanged; no task, queue, runtime,
-dependency or privilege transition is added.
+**Video QoS — Linux controller accepted; end-to-end latency OPEN.**
 
-At test baseline `3314ce8c`, all fourteen existing cases pass and the three new cases
-fail. After a 2,020-ms spike and two fresh 20-ms replies, the controller still retains
-three samples, reports 666 ms of excess delay and stays at 1 FPS. The two large-value
-cases panic on checked addition before averaging. The byte-identical complete
-seventeen-case test module passes at the corrected source. It observes the exact
-4,294,967,294-ms mean without overflow, preserves the maximum pending-probe value,
-and retires the spike after two fresh replies with zero excess and 10 FPS in the
-same viewer/custom-limit owner. This is the initial rate increase; it is not a claim
-of full healthy FPS or presentation-latency recovery within two replies.
+Current product evidence reaches `439ebb21`: all nineteen controller tests pass in
+the focused Linux lane. The controller and test sources are imported directly;
+shared configuration/protocol types and Quality are production definitions.
+This is controller evidence with controlled elapsed/RTT inputs, not packet,
+encoder, renderer or installed-service acceptance.
 
-The candidate integration takes 295 outer seconds, including 229 compilation seconds;
-its native summary reports 0.01 seconds. Both exact source-bound artifacts remain
-unchanged through execution. Before/during/after source freezes match, all eight
-complete endpoint comparisons show no delta, and both QEMU/RAM owners are joined.
-The failed baseline's exact 35-node private diagnostics tree is inventoried and
-removed after terminal through the owned-tree helper. Pinned inputs, sources,
-observations, artifacts and cleanup are retained in
-`.harness-state/verifier-vm/video-qos-delay-ccacf295.json`.
+The current behavior is:
 
-These are actual Linux Rust controller calls with controlled measurement inputs.
-Real packet impairment, capture/encode/decode/presentation, input-visible latency,
-long-session drift, native other-platform and installed acceptance remain OPEN under
-R-F5. The service/credential authority source and all fifteen action obligations
-are unchanged and OPEN.
+- Completed delay history retains two samples and sums `u32` measurements in
+  `u64`. Excess delay is the saturating difference between the larger of the
+  completed average and pending age and the learned RTT; equality yields zero.
+- One pending elapsed value is separate from completed RTT/history. Timer polls
+  cannot manufacture measurements. A reply retires pending state before adding
+  its completed sample; a new probe can clear the cap without another frame.
+  Pending congestion still reduces rate and bitrate. Feedback time comes from
+  the server's retained monotonic probe timer, not the peer's timestamp.
+- Each live viewer owns its learned rate and requested limits. The shared stream
+  honors the minimum live estimate/request, pending congestion and startup cap.
+  A shared restriction cannot lower another viewer's estimate or justify a higher
+  capacity probe; fresh unrestricted feedback permits normal adaptation.
+- Viewer admission/replacement and accepted custom/automatic limit changes
+  recalculate shared FPS before returning. Unknown/out-of-range limit requests
+  remain inert. Removal recalculates from surviving owners; final removal resets
+  the controller. New/replacement viewers retain fresh state and the startup cap.
+- One quality choice per live viewer follows request-admission order; unknown
+  viewers cannot publish. Disconnect/replacement retires that owner's choice.
+  A changed selected target restores the surviving ratio, or Balanced when none
+  remains; unchanged targets preserve the adapted ratio.
 
-**Video quality ownership and retirement — Linux controller accepted; presentation OPEN.**
-One current choice per live viewer follows request-admission order; unknown viewers cannot
-publish. Disconnect and same-ID replacement retire that viewer's choice. When this changes
-the selected quality, `571963f9` immediately restores the surviving choice's bitrate ratio,
-or Balanced when none remains. Unchanged targets preserve their adapted ratio, including
-retirement/replacement of an older, equally configured or unconfigured viewer. The former
-choice-only cleanup left the departed viewer's active ratio behind. Quality decoding,
-delay/RTT, FPS, congestion thresholds and encoder scheduling are unchanged.
+**Retained evidence.** The named capsules are under
+`.harness-state/verifier-vm/`. They retain source/provenance and, for executed runs,
+native results/artifacts, endpoint observations and joined cleanup. Source-only
+references are marked. Counts describe historical named runs, not additional
+current full-parent or platform execution.
 
-At unchanged-product preparation `e6f49781`, strengthened disconnect/replacement cases
-fail while sixteen controller tests pass. Their same bodies pass all eighteen cases at
-`571963f9`, including 24 Best/Balanced/Low/custom unchanged-target lifecycle controls
-after an actual congestion adjustment. Same-tick request order, unknown-viewer refusal,
-custom/default choices and prior congestion/recovery controls pass. Both complete Linux
-parent library artifacts compile on Rust 1.75.0 and remain unchanged through execution.
-`video-quality-retirement-571963f9.json` binds source, A/B outcomes, timings, artifacts,
-listener comparisons and joined bounded-RAM cleanup. The existing storage/isolation
-profile is unchanged. The focused controller build below supplies the shorter ordinary
-iteration lane; the complete parent build remains the integration tier.
+| Correction | Native evidence and limits | Retained capsules |
+| --- | --- | --- |
+| Pending probes — `7c537a6c` | Baseline `50570c81` has two failures/two controls passing; the same four cases pass after correction. Covers nonmanufactured RTT history, reply retirement, waiting rate/quality reduction, unknown users, three same-owner outage/recovery input cycles and final retirement. A rejected fingerprint ran no application test. | `video-qos-probe-baseline-50570c81.json`; `video-qos-probe-accepted-7c537a6c.json` |
+| Per-viewer rate ownership — `6c9eeaf3` | Baseline `4d99946f` has three failures/four controls passing; eight cases pass after correction, retaining the seven baseline bodies and adding restricted-rate nonincrease followed by unrestricted adaptation to 120 FPS. Custom/automatic limits, pending owners, survivor state and reset are covered. | `video-qos-peer-baseline-4d99946f.json`; `video-qos-peer-accepted-6c9eeaf3.json` |
+| RTT subtraction — `8a05385e` | Eleven complete-parent cases pass: 150/250/1000-ms baselines give zero excess, 30 FPS and target quality; three outage cycles restore the same 20-FPS owner; 1,250-ms excess still reduces rate. Baseline source `8789a96d` did not execute, so this is no empirical A/B. Existing warmup/window/threshold policy remains. | `video-qos-rtt-8a05385e.json`; source/refusal provenance `video-qos-baseline-source-8789a96d.json` |
+| Two-sample window and averaging — `ccacf295` | Baseline `3314ce8c` has three failures/fourteen passing; the identical seventeen-case module passes after correction. Two fresh replies retire a spike to zero excess and an initial 10 FPS, not full healthy/presentation recovery. Full-range mean 4,294,967,294 and maximum pending age are preserved without overflow. | `video-qos-delay-ccacf295.json` |
+| Quality order and retirement — `571963f9` | Preparation `e6f49781` has two failures/sixteen passing; the identical eighteen-case module passes with 24 unchanged-target lifecycle controls after congestion adjustment. Same-tick order, unknown-viewer refusal and custom/default choices remain covered. Earlier fourteen-case native ordering evidence is retained; its ordering baseline did not execute. | `video-quality-retirement-571963f9.json`; `video-qos-quality-native-7e7410be.json`; source/refusal provenance `video-qos-quality-source-1dbe0b8d.json` |
+| Viewer admission — `ec11154e` | Preparation `cc23f88f` reproduces four wrong rates among ten new/replacement scenarios while eighteen earlier tests pass; the same nineteen-case module passes after correction, with fresh owners and preserved survivor limits/pending state. | `video-rate-admission-ec11154e.json` |
+| Immediate requested limits — `439ebb21` | Preparation `0a666fa0` exposes 30 FPS after both stored 5-FPS requests: eighteen pass/one fails. The identical nineteen-case module passes both immediate 5-FPS assertions and preserves the other viewer's 30-FPS estimate. The successful log filter omits the new numeric prefix; positive evidence is the executed named assertions, not retained numeric observation lines. | `video-rate-limit-439ebb21.json` |
+| Focused/full-parent lanes — `6915dfb9` | Both source-bound eighteen-case lanes pass at that source: focused 145 seconds versus full parent 304 seconds. A first focused transaction was rejected for a missing offline canary despite passing tests; the admitted runner checks the canary before compilation. This is not current full-parent acceptance. | `video-qos-controller-6915dfb9.json` |
 
-Earlier ordering source/refusal and fourteen-case native evidence remain in
-`video-qos-quality-source-1dbe0b8d.json` and `video-qos-quality-native-7e7410be.json`;
-their historical ordering baseline did not execute. This correction executes controller
-lifecycle/ratio calls with controlled measurements. It supplies no capture/encoder,
-rendered settings, actual presentation, real packet impairment/recovery, input-visible
-latency, multi-hour, other-platform or installed evidence. Those R-F5 and release
-acceptance obligations remain OPEN.
+**Verification tiers.** `--video-qos-controller-tests` is the ordinary focused lane;
+the latest accepted nineteen-case transaction took 142 seconds, including 70
+compilation seconds. `--video-qos-tests` retains complete-parent integration for
+relevant milestones. Its older eighteen-case pass does not validate the current
+whole application. The shared Rust 1.75 compiler admits only its closed target tuples and
+checks completed Cargo manifest/source/target/profile and owned artifact identity;
+executable hashes are stable through execution. Quality's 683-byte definitions
+and public `scrap::codec` exports are retained; the test package adds no third-party
+dependency or controller copy. Both lanes use the admitted zero-NIC bounded-RAM
+VM and guest-only UID1000/capless/read-only-root container. The shared profile
+admits 6 GiB guest RAM, 7 GiB RAM scratch, 6 GiB host headroom and 1 GiB overhead
+(20 GiB total), with a 6 GiB hard file ceiling and no disk fallback. Rejected
+setup is not behavioral evidence.
 
-**Video rate at viewer admission — Linux controller A/B accepted; presentation OPEN.**
-`ec11154e` derives the shared FPS immediately after publishing a new or replacement
-viewer's fresh state and startup time, through the existing rate calculation. The old
-path retained the previous shared rate until later feedback or a display update. The
-existing startup limit, remaining viewers' requested limits and pending-probe caps are
-preserved; no estimator, threshold, timer, task, queue, protocol or authority changes.
-
-At unchanged-product preparation `cc23f88f`, the new ten-scenario test reproduces four
-wrong rates: healthy admissions/replacements retain 30 rather than 15 FPS, and replacing
-a limited or pending viewer retains its old 5 or 2 FPS. Eighteen earlier tests pass.
-The byte-identical nineteen-test module passes after correction, including fresh owner
-state, all ten admission/replacement rates, retained other-viewer state, and the 24 prior
-quality-continuity controls. The focused candidate takes 136 outer seconds; both exact
-source-bound Linux artifacts remain unchanged through execution. All eight endpoint
-comparisons show no delta, both QEMU/RAM owners are joined, and the failed baseline's
-exact 35-node diagnostics tree is inventoried and retired. `video-rate-admission-ec11154e.json`
-binds source, artifacts, A/B observations and cleanup. Both existing driver tiers select
-the nineteen cases; the full parent is not rerun for this local controller correction.
-Actual encoder scheduling, presentation, impaired peers, input-visible latency, long
-sessions, native other-platform and installed R-S0/R-F5 acceptance remain OPEN.
-
-**Viewer FPS limit updates — Linux controller A/B accepted; presentation OPEN.**
-`439ebb21` recalculates the shared rate before an accepted live-viewer custom or
-automatic FPS setter returns. Existing valid-range/live-owner admission, learned
-estimates, requested-limit selection, pending congestion and startup caps remain.
-At preparation `0a666fa0`, both stored 5-FPS requests still expose 30 FPS before
-another update; the augmented existing case fails while eighteen others pass.
-The identical nineteen-test module passes after correction, including both immediate
-5-FPS assertions, the stored request and other viewer's retained 30-FPS estimate,
-prior feedback/retirement checks, ten admission cases and 24 quality-continuity cases.
-Candidate compilation takes 70 seconds and the focused VM transaction 142 seconds.
-The successful guest log filter omits the new diagnostic prefix: positive evidence
-is the executed named test's assertions, not retained numeric observation lines.
-`video-rate-limit-439ebb21.json` binds source, both stable native artifacts, baseline
-observations, assertion evidence, endpoint comparisons and joined bounded-RAM cleanup.
-No runner, protocol, dependency or authority surface changes. Actual encoder scheduling,
-full settings/UI/peer behavior, presentation latency, impairment/soak, native other-platform
-and installed R-S0/R-F5/release acceptance remain OPEN.
-
-**Focused VideoQoS verification — Linux controller accepted; full integration retained.**
-At `6915dfb9`, `--video-qos-controller-tests` compiled the actual controller and its eighteen
-tests through `video_qos_it`, using real hbb_common configuration/generated protocol
-types and the production Quality module. The 683-byte quality definitions move unchanged;
-their existing `scrap::codec` exports remain. The controller and its test module are
-byte-identical. The root lock adds one local test package and changes no third-party record.
-The same guest-only compiler admits only the closed parent/controller target tuples and
-checks Cargo's completed manifest, source, target, profile and owned artifact identity.
-
-Both source-bound lanes passed all eighteen cases, including the 24 unchanged
-quality-target lifecycle controls. The focused transaction takes 145 outer seconds with
-69 compilation seconds; retained `--video-qos-tests` takes 304 outer seconds on the same
-commit. Both use the unchanged bounded-RAM, zero-NIC, UID1000/capless/read-only-root profile
-and join VM/scratch cleanup with zero endpoint changes. The first focused run passes its
-tests but the transaction correctly rejects a missing offline canary; the corrected runner
-executes and checks that canary before compilation. `video-qos-controller-6915dfb9.json`
-retains source/type/test identity, both accepted artifacts, rejected setup and cleanup,
-timings and scope. The focused lane omits capture/rendering dependencies; full-parent
-integration remains required at relevant milestones. Neither lane establishes actual
-presentation, network-impairment recovery, long-session freshness, native other-platform
-or installed privilege-boundary acceptance; those R-F5/R-S0 obligations remain OPEN.
-
-**Video QoS probe timing — Linux controller A/B ACCEPTED; full connection latency OPEN.**
-`VideoQoS` retains one pending elapsed value separately from completed probe measurements.
-Repeated timer observations no longer insert extra RTT/history samples. A reply clears its
-pending value before recording the completed measurement and recalculating the sending rate.
-Pending elapsed time still contributes its current lower bound to congestion control, including
-frame-rate and bitrate reduction; a new probe can clear the pending cap without waiting for
-another frame. Existing user limits, sample-window policy and connection ownership remain.
-At behavior-preserving state extraction `50570c81`, two actual controller regressions failed:
-polls changed completed RTT history and a received reply retained pending state. Both controls
-passed. The identical four-test module at `7c537a6c` passed in 296 VM seconds after
-compiling the complete Linux parent library, including rate/quality reduction while waiting,
-no new state for unknown users, three outage/recovery input cycles, retained user identity/custom FPS cap,
-and final user retirement. Inputs are controlled elapsed/RTT values, not real impaired packets.
-Artifact `0e3de08603f896b25e6c3956e8b8f9bb920c9e9025ffe9626652a7fef107cc54` is unchanged before/after.
-`.harness-state/verifier-vm/video-qos-probe-baseline-50570c81.json` and
-`video-qos-probe-accepted-7c537a6c.json` bind sources, native results, setup failure,
-unchanged controls/endpoints, existing 20 GiB admission and joined RAM/VM/private-root cleanup.
-The earlier bad fingerprint ran no application test and is not behavioral evidence.
-This corrects controller bookkeeping. Capture-to-actual-presentation age, real-peer random/burst
-loss, bandwidth/jitter/outage recovery, mobile/desktop combinations, input-to-visible response,
-numeric latency/recovery budgets and multi-hour drift/resource acceptance remain OPEN under R-F5.
-The receive-acquisition race and all other user-parked work remain OPEN/PARKED.
-
-**Video QoS baseline subtraction — Linux controller ACCEPTED; full latency OPEN.**
-Product `8a05385e` makes `UserDelay::avg_delay` use saturating subtraction of the learned RTT from the
-maximum of completed-delay average and pending-probe age. Equality produces zero
-excess delay; the previous strict-greater branch reintroduced the full baseline
-RTT at equality and could keep the FPS/quality controller in its congestion branch.
-The existing warmup, estimator/window, thresholds, pending-probe ownership, shared
-rate constraints and viewer limits are unchanged. Connection feedback remains
-derived from the server's retained monotonic probe timer, not the peer's timestamp.
-
-The complete Linux parent library at `8a05385e` passes all eleven controller
-cases in the existing `--video-qos-tests` lane on Rust 1.75: constant
-150/250/1000-ms RTT baselines yield zero excess, 30 FPS and target quality; three
-pending-outage/recovery cycles restore the same viewer's 20-FPS limit and target
-quality without reopening; 1,250 ms of excess delay still reduces the rate.
-All eight earlier pending-probe/shared-viewer controls pass. The run takes 339
-outer seconds, including 243 reported build seconds; the test phase is below the
-driver's one-second reporting resolution. These are controlled elapsed/RTT inputs
-to production methods, not actual packets, pixels or a timed recovery deadline.
-
-The executable digest stays identical before/after execution. All eleven names,
-seven new observations, exact source/recipe/artifact bindings, complete endpoint
-records and joined bounded RAM/private-root retirement are retained in
-`.harness-state/verifier-vm/video-qos-rtt-8a05385e.json`.
-Earlier source/refusal provenance remains in
-`video-qos-baseline-source-8789a96d.json`. The byte-identical eleven-case module and
-recipe are preserved at old-product `8789a96d`, but that source did not execute.
-The harness requires one checked-out pushed master; this current-source pass is
-not an empirical A/B comparison. Admission, limits and source authority are unchanged.
-Native Windows/Apple/mobile, real impaired peers, presented-frame and
-input-visible latency, numeric recovery/resource bounds and multi-hour R-F5
-acceptance remain OPEN. Installed authority, broader release work and every
-explicit user park stay OPEN.
-
-**Per-viewer video QoS rate ownership — Linux controller ACCEPTED; full latency OPEN.**
-Each viewer's completed feedback updates its own retained FPS estimate, bounded by that
-viewer's requested limit. The shared stream still honors the minimum live estimate/requested limit, pending
-congestion and startup cap. A shared restriction cannot lower another viewer's estimate or
-justify probing a higher rate; new unrestricted feedback still permits normal adaptation.
-Removing a viewer immediately recalculates the rate from remaining live owners.
-At test-only baseline `4d99946f`, three controller cases failed and the four earlier probe
-controls passed. Source `6c9eeaf3` passed all eight cases in 317 VM seconds on the
-complete Linux parent library: all seven baseline cases remain byte-identical; the extra
-control covers restricted-rate nonincrease followed by unrestricted adaptation to 120 FPS.
-Custom/automatic limits, pending congestion, remaining owner identity/limits and final reset
-are exercised with controlled elapsed/RTT inputs. No real socket impairment or pixels ran.
-Artifact `358d9a4a028296784403cc59831edcf1436c638a8135e236aed705d6b2cced15` is stable before/after. Source,
-raw results, limits, endpoint observations and joined RAM/VM/private-root retirement are in
-`.harness-state/verifier-vm/video-qos-peer-baseline-4d99946f.json` and
-`video-qos-peer-accepted-6c9eeaf3.json`. The existing bounded parent profile is unchanged.
-This is controller recovery evidence. R-F5 real-peer presented-frame/input-visible latency,
-network impairment, numeric budgets, all supported roles and multi-hour acceptance remain OPEN.
-All user-parked work remains OPEN/PARKED.
+**Shared R-F5 acceptance remains OPEN.** Execute exact current peer artifacts through
+capture, encode, transport, decode and actual presentation; measure frame age and
+input-to-visible response with clock uncertainty, healthy/recovered envelopes,
+numeric recovery deadlines, tail/worst-case latency, drift tolerance and resource
+bounds. Cover random/burst loss, bandwidth/delay/jitter changes and complete
+outage/recovery on every supported desktop/mobile role combination, plus multi-hour
+sessions and an unimpaired control. Controller sample counts are not wall-clock
+recovery deadlines or evidence of pixels. Full settings/UI/peer behavior, current
+full-parent and native other-platform execution, installed R-S0 functionality and
+local-privilege-escalation acceptance for all fifteen service/credential actions,
+cold release artifacts, independent reproduction and external review remain OPEN.
+Every separately user-parked task, including receive-acquisition work, remains
+OPEN/PARKED. The adjacent full-peer replay entry retains its separate partial
+evidence and resource/context limitations.
 
 **Linux full-peer replay — resource/context corrections verified; complete replay OPEN.**
 Replay now has its own 10 GiB guest, 7 GiB RAM scratch and 6 GiB hard overlay/file ceiling,

@@ -78,6 +78,11 @@ def wait_for(path, child):
 def qmp_child(base, scenario):
     base = Path(base)
 
+    def stall():
+        publish(base / 'running', {'pid': os.getpid()})
+        while True:
+            signal.pause()
+
     def term(signum, frame):
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         publish(base / 'term', {'signal': signum})
@@ -90,10 +95,14 @@ def qmp_child(base, scenario):
         channel.listen(1)
         connection, _ = channel.accept()
         with connection, connection.makefile('rb') as incoming:
+            if scenario == 'startup-greeting':
+                stall()
             connection.sendall(b'{"QMP": {}}\n')
             for name in ('qmp_capabilities', 'query-status', 'cont'):
                 request = json.loads(incoming.readline(4096))
                 assert request == {'execute': name, 'id': name}
+                if scenario == 'startup-response':
+                    stall()
                 result = {'status': 'prelaunch'} if name == 'query-status' else {}
                 connection.sendall(json.dumps({'return': result, 'id': name}).encode() + b'\n')
     publish(base / 'running', {'pid': os.getpid()})
@@ -163,14 +172,18 @@ def run_supervisor_case(helper, scenario):
             elapsed = time.monotonic() - began
             assert len(output) + len(error) <= 8192, 'supervisor diagnostics exceed their bound'
             receipt = json.loads((base / 'run/storage.qemu-io').read_bytes())
-            limit = json.loads((base / 'run/storage.limit').read_bytes())
-            expected = -signal.SIGKILL if scenario == 'stubborn' else 0
+            startup = scenario.startswith('startup-')
+            limit = (json.loads((base / 'run/storage.limit').read_bytes())
+                     if (base / 'run/storage.limit').exists() else None)
+            limit_valid = (limit is None if startup else limit is not None
+                           and limit['qemu_pid'] == child_pid
+                           and limit['hard_file_limit_bytes'] == 1024 ** 3
+                           and limit['limit_installed_before_guest_execution'] is True)
+            expected = -signal.SIGKILL if startup or scenario == 'stubborn' else 0
             passed = (not forced and receipt['qemu_pid'] == child_pid
                       and receipt['returncode'] == expected
                       and not Path(f'/proc/{child_pid}').exists()
-                      and limit['qemu_pid'] == child_pid
-                      and limit['hard_file_limit_bytes'] == 1024 ** 3
-                      and limit['limit_installed_before_guest_execution'] is True
+                      and limit_valid
                       and (supervisor.returncode == 0 if scenario == 'normal'
                            else supervisor.returncode in (0, 1)))
             return {'case': scenario, 'passed': passed,
@@ -299,6 +312,14 @@ def main():
         raise SystemExit('production storage supervisor cancellation regression failed')
     print('VM_TRANSIENT_SUPERVISOR=pass cases=3 normal=joined graceful=joined stubborn=killed-joined '
           'signals=pidfd qmp=fixture qemu=not-started')
+    results = [run_supervisor_case(sys.argv[1], case)
+               for case in ('startup-greeting', 'startup-response')]
+    for result in results:
+        print('VM_TRANSIENT_STARTUP_CASE=' + json.dumps(result, sort_keys=True), flush=True)
+    if not all(result['passed'] for result in results):
+        raise SystemExit('production storage supervisor startup cancellation regression failed')
+    print('VM_TRANSIENT_STARTUP=pass cases=2 greeting=killed-joined response=killed-joined '
+          'admission=not-reached qmp=fixture qemu=not-started')
 
 
 if __name__ == '__main__':

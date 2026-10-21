@@ -986,7 +986,7 @@ os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
     watch_sources_before="$(sha256sum "$storage_helper" "$watch_test")"
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
-        /usr/bin/timeout --signal=TERM --kill-after=2s 15s \
+        /usr/bin/timeout --signal=TERM --kill-after=2s 30s \
         /usr/bin/prlimit --as=268435456 --cpu=5 --nofile=64 \
         /usr/bin/python3 -B -I -S "$watch_test" "$storage_helper" \
         >"$watch_output" 2>&1 || watch_status=$?

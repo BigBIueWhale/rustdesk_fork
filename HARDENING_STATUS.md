@@ -6237,132 +6237,31 @@ independent-reproduction/external-review obligations remain OPEN.
 
 ### Open / STOP-SHIP evidence
 
-**CM/file finality — headless Linux replay passed; broader native and release evidence OPEN.**
-Current source makes CM filesystem work post-login and connection/generation scoped, and
-makes each receive destination an exact-owner claim with a nonblocking lease, exclusive
-sidecars, fallible cleanup, and size-checked publication. Direct-send errors are terminal;
-the production viewer owns its download and error-to-next-session progression. The
-receive/commit state model and its platform limits are detailed under R-S11c-4d below.
-`src/server/connection.rs` retains a digest-refused write in `Cancelling` until the
-exact CM cleanup acknowledgement; it sends one bounded peer error including a cleanup
-failure instead of dropping the authority and reporting the digest error early.
+**CM/file finality — historical Linux component/replay evidence; current installed/native and release acceptance OPEN.**
 
-Exact source `dc33187b` (tree `704db592`) passed the no-NIC, guest-only Docker
-`--cm-file-replay` in 326 seconds. Its keyed Linux peers exercised pre-login refusal,
-directory/create, exact and short writes, multi-file blocks, peer error, cancel, abrupt
-owner loss and fresh reconnect, fixed-sidecar collision, cancellation cleanup failure,
-digest-refusal cleanup failure, direct-read error followed by a confirmed exact read,
-and two *simultaneously live* connections contending for the same destination. The
-contender was refused without changing the first owner's staged bytes, digest, or
-lock inode; the first owner then committed. A second authenticated connection with the
-same viewer identity remained live during that commit and served a fresh CM directory
-request afterward, showing no cross-retirement in this headless Linux overlap case. The
-digest-refusal case reported both causes, and the guest independently preserved the
-replacement and displaced staging bytes. One exact Rust cancellation-outcome unit test
-also passed inside the same guest, including oversized-error fallback assertions that
-retain the fact of cleanup failure within the 4 KiB peer-error bound.
-The production Linux `Session` in that replay downloaded exact bytes, refused a
-symlink destination without changing its sentinel, and completed a fresh same-peer
-connection after that local refusal. The 400,052-byte raw serial is
-`.harness-state/verifier-vm/cm-file-replay-run.fBVKgJsCyx.serial.log`, SHA-256
-`05845692e792780f89121a30179b903edaf593b5972c2510f04177eb39254db6`.
-The outer audit found no harness-added host listener (it recorded two pre-existing-process
-drifts), joined guest Docker/QEMU/virtiofsd, and left no `run.*` overlay.
+Current source makes CM filesystem work post-login and connection/generation scoped.
+Each receive destination has an exact-owner claim, nonblocking lease, exclusive sidecars,
+fallible cleanup and size-checked publication. Direct-send errors are terminal; the
+production viewer owns its download and error-to-next-session progression. The receive/
+commit model and platform limits are detailed under R-S11c-4d below. A digest-refused
+write remains in `Cancelling` until the exact CM cleanup acknowledgement, and the
+bounded peer error retains a cleanup failure instead of reporting the digest error early.
 
-Earlier focused source `e05a2e91` passed 64 Linux filesystem tests and four config
-tests; its serial `hbb-common-fs-run.8dsa1iW9yk.serial.log` is retained. An older
-55-test Rust-app guest pass was rejected by its outer receipt count and is **not**
-an accepted whole-transaction pass. A separate exact-source Linux-target focused
-transaction at `2aed490c` (tree `de46c223`) passed 56 tests and its outer receipt
-in 693 seconds. Its production `start_listen` test filled the two-slot Android CM
-command queue with authorized `CreateDir` requests, published independent terminal
-intent before polling the consumer, and observed neither disk mutation nor stale
-egress while the exact registry owner retired. Raw serial
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.TcR2oyfPqG.serial.log`
-is 69,038 bytes, SHA-256
-`47f76e9189986e2d5a020d34c69035b6738dad7c39f2df7b37caa26c0a1ba0ef`.
-The outer audit found no harness-added host listener, one pre-existing-process
-drift, and joined guest-only Docker/QEMU/virtiofsd with no retained `run.*` root.
-That transaction tested queued terminal priority only. Android `start_listen` now transfers an
-already selected filesystem command, its transfer jobs, and its exact registry owner into one
-capacity-limited child task; a fixed process-lifetime drain owns its join handle if the listener
-is cancelled; the process-lifetime drain also retains its own thread handle. Same-ID successor
-admission waits for the prior operation and owner/UI retirement, with a finite refusal if it does
-not drain. Exact pushed source `ac56d23b` (tree `1b0d0d46`)
-passed the 56-test Linux-target transaction in 692 seconds. The expanded production-path test
-held a real `CreateDir` worker before its filesystem effect, cancelled the listener, observed the
-old registry generation still present and same-ID replacement refused, then released the worker
-and observed the directory effect, old-owner retirement, and successor admission. Raw serial
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.rE2hueKpbN.serial.log` is 69,065
-bytes, SHA-256 `4de4224b452f03ec2cc6b24299c357bef777aaa762e0c47a625dbabb80120a3f`.
-The outer audit reported no harness-added host listener or pre-existing-process drift, joined
-guest-only Docker/QEMU/virtiofsd, and no retained `run.*` root or overlay. The preceding compile
-attempt failed only because a test registry initializer lacked the new field; its disposable disk
-was removed after joined teardown and its raw serial remains retained. An Android-target compile
-attempt at earlier source `913e774e` stopped *before compilation* because the full pinned online closure
-then lacked `flutter-windows-3.24.5.zip`; its raw serial is
-`.harness-state/verifier-vm/android-rust-target-check-run.2nhx1Esi14.serial.log`, SHA-256
-`82a62ac7a89a038177bab1a1c5b3ed82df4fba050c8dd29bece22ceb6d4a4787`.
-No partial-cache or Android-only fallback was introduced. This is one Linux execution of the
-Android in-process consumer under `cfg(test)`, not Android-target compilation, an installed APK,
-a network peer, or a terminal arriving during every file-operation type. Desktop selected-command
-cancellation has separate Linux-target evidence below; native desktop/platform and sustained
-latency/resource evidence remain open.
+The historical keyed Linux replay at `dc33187b` exercised CM/direct-send and production
+viewer effects, including simultaneous destination contention, preservation of the first
+owner's staged bytes/digest/lock, its subsequent commit, and a fresh CM reply from a
+separate live same-peer connection. It also observed exact bytes, symlink-destination
+refusal without sentinel changes, and a fresh connection after local failure. The matrix
+below records this evidence and the separate Linux-target selected-command, child-loss,
+read-tick and terminal-priority cases. Android-consumer execution under `cfg(test)` on
+Linux does not establish Android Service/JNI, framework or installed APK behavior.
+Some retained serials contain summaries and receipts rather than full container output;
+a rejected test-count result and a pre-compilation input-closure refusal are not accepted
+product execution. No historical source or pass establishes current-artifact behavior.
 
-Desktop `IpcTaskRunner` now transfers each selected `AuthorizedFS` command, its read/write jobs,
-and its exact registry owner into the same bounded file-operation drain used by Android. Abrupt
-runner cancellation cannot retire that owner or admit a same-ID successor before the selected
-operation finishes; unexpected child-task loss is process-fatal before unfinished-owner retirement,
-and idle-runner cancellation also retires its owner. Exact pushed source `bff9cc8f` (tree
-`bdeb678c`) passed 57 Linux-target tests in 699 seconds, including a real
-paused-before-effect `CreateDir`, runner cancellation, in-flight successor refusal, completed
-filesystem effect, exact owner retirement, and idle successor cancellation. Raw serial
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.53ljLLSlcF.serial.log` is 70,307
-bytes, SHA-256 `f5f02740a1587be899a9806486a51c6bf045e8257777581a587a518589201b47`.
-The zero-NIC outer audit found no harness-added host listener or pre-existing-process drift and
-joined guest Docker/QEMU/virtiofsd; no `run.*` root or overlay remains. This does not
-execute native Windows/macOS IPC, an installed desktop package, an authenticated network peer,
-read-job timer cancellation, or sustained saturation and resource behavior. Exact pushed
-`182d4db0` (tree `f949df16`) then passed 58 Linux-target tests in 701 seconds. Its new
-subprocess case aborts the exact selected desktop CM child while a real `CreateDir` worker is
-paused before its filesystem effect, and requires SIGABRT before the test UI's owner-retirement
-callback; the directory remains absent. The guest gate required that exact test to pass. Retained
-VM serial `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.e9TYUvbOse.serial.log`
-is 69,675 bytes, SHA-256 `803a06306a81b8c17a2fc7df5bf90a2e13136544f8eed7ae5cb8015e07d47706`;
-it records the 58-test summaries and receipt, not the full bounded container test output. The
-outer audit found no harness-added host listener or pre-existing-process drift, joined guest
-Docker/QEMU/virtiofsd, and left no `run.*` root or overlay. This executes the forced-child-loss
-case only in a Linux test process, not installed Android, Windows, or macOS behavior.
-
-Exact pushed `deb90cbb` (tree `56838eea`) moves desktop CM read-job timer ticks through the
-same capacity-32 selected-operation owner and cancellation drain as `AuthorizedFS`. Previously
-the tick checked its registry owner once, then awaited file initialization/read and could publish
-after a newer same-ID source generation replaced it; cancellation dropped the runner's owner
-without retaining that selected read tick. The new Linux-target regression starts a real
-`ReadFile` job from a temporary file, pauses the selected tick immediately before its block read,
-aborts the runner, requires the old owner and in-flight generation to remain visible and same-ID
-admission to refuse, then releases the tick and observes exact owner retirement and successor
-admission. The zero-NIC VM accepted 59 focused tests in 713 seconds, with no harness-added host
-listener or pre-existing-process drift and joined Docker/QEMU/virtiofsd cleanup. Retained serial
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.fEckwCrnZu.serial.log` is 68,952
-bytes, SHA-256 `afeccfb3f6c91e061b896fd890dd1f84faa9f35553b1dd416e4f70a6aa2e441f`;
-it contains summaries and the receipt, not the full bounded container test output. No `run.*`
-directory or overlay remains. This is not native Windows/macOS installed behavior, a measured
-read-throughput/resource soak, or proof of every file operation's terminal race.
-
-Exact pushed `3e4a590d` (tree `f16e24ef`) extends the existing Android CM
-terminal-priority regression: with a real `CreateDir` worker paused before its disk
-effect, terminal intent arrives while a second authorized directory command is queued.
-The test requires the selected owner and in-flight marker to remain live, same-ID
-successor admission to refuse, the selected effect and exact response to complete,
-and the queued effect never to start before one terminal retirement. The zero-NIC
-Linux-target VM accepted 59 tests in 707 seconds; its archived serial is
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.YXY3t7nLiT.serial.log`
-(69,010 bytes, SHA-256 `90b4840ba04301d3576f6f18dda79e90b43afd81ace0d4767f817c5ba7af5438`).
-The serial retains summaries and the receipt, not the full container test output.
-The outer listener/process audit passed and joined cleanup left no `run.*` or
-overlay. This proves only the Linux-target in-process selected-`CreateDir` overlap,
-not Android framework, APK, installed desktop, or other file-operation types.
+Exact old narration, accepted/rejected run provenance and eight rehashed raw-artifact
+identities are retained in `.harness-state/verifier-vm/cm-file-ledger-01113d0e.json`
+and Git `01113d0e`. The complete open-evidence matrix below remains authoritative.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |

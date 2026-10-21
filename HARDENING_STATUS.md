@@ -1990,7 +1990,7 @@ timings, hashes, and confinement narration remain in Git history.
 | R-S11e-157 Windows custom-action ignore-surface excision | The three inert `CustomActions` ignore rules left after deletion of the authored MSI custom-action project are absent; active package-output ignores remain. |
 | R-S11e-158 current olefile fixed-archive gate authority | Olefile is checked as its exact closed fixed-archive manifest entry, including name, URL, size, digest, and admitted redirect host, rather than through the deleted standalone fetch call. |
 | R-S11e-159 scoped Linux protected-service permit mutation authority | The focused negative fixture targets the exact password-sensitive transaction call, not an ambiguous argument fragment shared by another protected transaction. |
-| R-S11e-160 current mobile at-rest and signed-artifact gate authority | The shared gate delegates legacy-decrypt policy to its semantic verifier and requires the exact signing/verify-only mobile-key checker mounts and invocations. |
+| R-S11e-160 current mobile at-rest and signed-artifact gate authority | The shared gate retains the Rust legacy-decrypt policy regression and exact signing/verify-only mobile-key checker mounts and invocations. The obsolete migration-wording checker is deleted; target-native OS-key acceptance remains separate. |
 | R-S11e-161 current Linux service-child executable-object gate authority | The gate inspects the dedicated executable-object helper: the running image and byte-identical installed fallback are opened close-on-exec, and the installed path is also no-follow, before credential-changing launch. |
 | R-S11e-162 current outgoing screenshot and controlled-audio owner-gate authority | Screenshot checks reject only the retired process-global cache/setter path, while media checks select the exact owning constructor, controlled-audio owner, connection fields, and read-before-install order. |
 | R-S11e-163 current R-S19 controlled screenshot and Android capture-type gate authority | The shared edge gate follows the bounded connection/channel-owned screenshot registry and the typed, authorized Remote-only Android desktop-capture owner set; the deleted `isViewCamera` Boolean is not authority. |
@@ -7328,13 +7328,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
   alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
 - **R-S11bh/R-S11e-74 — mobile legacy at-rest migration requires live OS-key authority — SOURCE
-  CLOSED; TARGET-NATIVE FAILURE INJECTION AND CURRENT PACKAGE EVIDENCE OPEN.** Android/iOS authorize the
+  IMPLEMENTED; TARGET-NATIVE FAILURE INJECTION AND CURRENT PACKAGE EVIDENCE OPEN.** Android/iOS authorize the
   decrypt-only config-keypair migration path only after a live OS-protected key was installed and failed to
   open an older payload. Missing or rejected OS-key state fails before legacy-key access, plaintext release,
   rewrap marking, or replacement storage; a genuine migration rewraps under the live key. Desktop read-only
-  recovery remains separate. The focused source invariant and Rust policy regression cover this topology,
-  but exact Android KeyStore/iOS Keychain failure and recovery, durable reload, current packages, and device
-  behavior remain open in the mobile and release matrices.
+  recovery remains separate. The 168-line literal/count/order checker and its shared invocation are
+  deleted: it required the retired peer-password field and unchecked migration writer, rejecting the
+  current PRS-only checked loader. It never executed storage-key bootstrap, decryption or migration.
+  The Rust policy regression, crypto recovery tests, platform source guards and signed-artifact checks
+  remain unchanged; the shared success text now names its source/policy scope. Shell parsing and
+  reference/diff review supply no new Rust/mobile execution. Exact Android KeyStore/iOS Keychain failure
+  and recovery, durable reload, current packages and device behavior remain OPEN.
 - **R-S11bi/R-S11e-75 — macOS launchd lifecycle is domain-qualified and postcondition-checked — SOURCE
   IMPLEMENTED; NATIVE APPLE AND EXACT SIGNED-ARTIFACT EVIDENCE OPEN.** The privileged scripts address the
   exact `system/<label>` LaunchDaemon, and the Rust path derives the current graphical user's exact

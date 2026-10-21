@@ -1263,8 +1263,6 @@ grep -qF 'rustdesk_set_mobile_at_rest_storage_key' flutter/ios/Runner/AppDelegat
 awk '/installMobileAtRestStorageKey\(\)/{seen=1} /GeneratedPluginRegistrant.register/{if (!seen) exit 1; found=1} END{exit found ? 0 : 1}' \
   flutter/ios/Runner/AppDelegate.swift \
   || mobile_at_rest_bad="$mobile_at_rest_bad ios-key-not-installed-before-plugin-init"
-/usr/bin/python3 -I -S scripts/verify-mobile-at-rest-fail-closed.py --repo . \
-  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-unavailable-os-key-not-fail-closed"
 "${RUN[@]}" cargo test -p hbb_common --lib \
   password_security::tests::test_mobile_legacy_keypair_fallback_requires_os_storage_key \
   --color never \
@@ -1278,7 +1276,7 @@ fi
 if [ -n "$mobile_at_rest_bad" ]; then
   echo "  FAIL Appendix C #14 mobile at-rest storage key boundary:$mobile_at_rest_bad"; rc=1
 else
-  echo "  ok  mobile at-rest encryption uses an injected OS-protected storage key; get_uuid is separated; legacy config-keypair ciphertext is decrypt-only and rewrapped"
+  echo "  ok  mobile at-rest source/policy gate; target-native KeyStore/Keychain acceptance remains separate"
 fi
 
 echo "== (3b-iii-a1a0) compiled Linux installed-executable path regression (R-S11bn/R-S11e-80) =="

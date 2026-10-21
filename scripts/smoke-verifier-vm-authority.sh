@@ -5220,7 +5220,7 @@ elif [ "$MODE" = ledger-token-count ]; then
         'VM storage root refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_WAIT_REFUSAL=pass principal=4000 sigchld=ignored qemu=not-started' \
         'VM storage child-wait refusal'
-    require_exact_fixed_receipt 'VM_TRANSIENT_WATCH=pass cases=4 disappeared=2 refusals=2 filesystem=native schedule=controlled memory=fixed qemu=not-started children=joined' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_WATCH=pass cases=6 disappeared=3 refusals=3 filesystem=native schedule=controlled memory=fixed qemu=not-started children=joined' \
         'VM storage monitor filesystem lifetime and refusal cases'
     require_exact_fixed_receipt 'VM_TRANSIENT_SUPERVISOR=pass cases=3 normal=joined graceful=joined stubborn=killed-joined signals=pidfd qmp=fixture qemu=not-started' \
         'VM storage supervisor native child cancellation and joins'

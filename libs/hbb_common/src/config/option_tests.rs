@@ -3801,6 +3801,47 @@ fn default_write_failure_preserves_cache_file_and_identical_retry() {
 }
 
 #[test]
+fn default_integer_readback_matches_peer_inheritance() {
+    in_private_process("config::option_tests::default_integer_readback_matches_peer_inheritance", |_| {
+        UserDefaultConfig::set_option("integer-unrelated".into(), "preserved".into()).unwrap();
+        let mut outcomes = Vec::new();
+        for (key, cases) in [
+            (keys::OPTION_CUSTOM_IMAGE_QUALITY, [
+                ("25.9", 25), ("50.999999999", 50), ("2.5e1", 25), ("25.0", 25),
+                ("10.0", 10), ("4095.0", 4095), ("9.9", 50), ("4095.1", 50),
+                ("NaN", 50), ("inf", 50), ("-inf", 50), ("invalid", 50),
+            ]),
+            (keys::OPTION_CUSTOM_FPS, [
+                ("25.9", 25), ("29.999999999999996", 29), ("2.5e1", 25), ("25.0", 25),
+                ("5.0", 5), ("120.0", 120), ("4.9", 30), ("120.1", 30),
+                ("NaN", 30), ("inf", 30), ("-inf", 30), ("invalid", 30),
+            ]),
+        ] {
+            for (input, expected) in cases {
+                let effective = UserDefaultConfig::set_option(key.into(), input.into()).unwrap();
+                let stored = UserDefaultConfig::load();
+                let confirmed = effective == expected.to_string()
+                    && UserDefaultConfig::get_option(key) == effective && stored.get(key) == effective;
+                let peer = PeerConfig::default();
+                let inherited = if key == keys::OPTION_CUSTOM_FPS {
+                    peer.options[key].clone()
+                } else {
+                    assert_eq!(peer.custom_image_quality.len(), 1);
+                    peer.custom_image_quality[0].to_string()
+                };
+                let consumer_matches = inherited.parse::<i32>().ok() == Some(expected);
+                let unrelated = stored.get("integer-unrelated") == "preserved";
+                println!("OPTION_COMMIT_DEFAULT_INTEGER=observed key={key} input={input} expected={expected} effective={effective} inherited={inherited} confirmed={confirmed} consumer_matches={consumer_matches} unrelated={unrelated}");
+                outcomes.push(confirmed && consumer_matches && unrelated);
+            }
+        }
+        assert_eq!(outcomes.len(), 24);
+        assert!(outcomes.into_iter().all(|ok| ok),
+            "effective integer defaults must agree with fresh peer configuration consumers");
+    });
+}
+
+#[test]
 fn default_purge_is_retryable_and_returns_effective_normalized_values() {
     in_private_process("config::option_tests::default_purge_is_retryable_and_returns_effective_normalized_values", |_| {
         let file = Config::file_("_default");

@@ -741,6 +741,50 @@ mod tests {
     }
 
     #[test]
+    fn opening_a_viewer_recalculates_rate_from_current_owners() {
+        let mut outcomes = Vec::new();
+        for replacement in [false, true] {
+            for (prior, limited, pending, new_fps, replacement_fps) in [
+                ("healthy", None, None, INIT_FPS, INIT_FPS),
+                ("limited-owner", Some(7), None, 5, INIT_FPS),
+                ("pending-owner", None, Some(7), MIN_FPS + 1, INIT_FPS),
+                ("limited-other", Some(8), None, 5, 5),
+                ("pending-other", None, Some(8), MIN_FPS + 1, MIN_FPS + 1),
+            ] {
+                let mut qos = healthy_pair();
+                if let Some(id) = limited {
+                    qos.user_custom_fps(id, 5);
+                    qos.user_network_delay(id, 20);
+                }
+                if let Some(id) = pending {
+                    qos.user_delay_response_elapsed(id, 4000);
+                }
+                let other = qos.users[&8].clone();
+                let id = if replacement { 7 } else { 9 };
+                qos.on_connection_open(id);
+                let user = &qos.users[&id];
+                let fresh_owner = user.custom_fps.is_none() && user.auto_adjust_fps.is_none()
+                    && user.delay.fps.is_none() && user.delay.pending_delay.is_none()
+                    && user.delay.delay_history.is_empty() && user.delay.rtt_calculator.samples.is_empty();
+                let current = &qos.users[&8];
+                let other_preserved = current.custom_fps == other.custom_fps
+                    && current.delay.fps == other.delay.fps
+                    && current.delay.pending_delay == other.delay.pending_delay
+                    && current.delay.delay_history == other.delay.delay_history
+                    && current.delay.rtt_calculator.samples == other.delay.rtt_calculator.samples;
+                let expected = if replacement { replacement_fps } else { new_fps };
+                let actual = qos.fps();
+                println!("VIDEO_QOS_RATE_ADMISSION=observed replacement={replacement} prior={prior} expected_fps={expected} actual_fps={actual} fresh_owner={fresh_owner} other_preserved={other_preserved}");
+                outcomes.push(actual == expected && fresh_owner && other_preserved
+                    && qos.users.len() == if replacement { 2 } else { 3 });
+            }
+        }
+        assert_eq!(outcomes.len(), 10);
+        assert!(outcomes.into_iter().all(|ok| ok),
+            "admission must immediately derive the shared rate from the fresh and retained owners");
+    }
+
+    #[test]
     fn peer_fps_limits_do_not_reduce_other_peers_estimates() {
         for automatic in [false, true] {
             let mut qos = healthy_pair();

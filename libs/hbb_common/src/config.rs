@@ -4134,13 +4134,29 @@ impl PeerConfig {
             let Some(parent) = Self::open_removal_parent(&path)? else {
                 return Ok(());
             };
-            unlink(&|| {
+            let result = unlink(&|| {
                 if unsafe { crate::libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), 0) } == 0 {
                     Ok(())
                 } else {
                     Err(io::Error::last_os_error())
                 }
-            })
+            });
+            if result.is_ok()
+                || result.as_ref().err().is_some_and(|error| error.kind() == io::ErrorKind::NotFound)
+            {
+                let mut metadata = std::mem::MaybeUninit::<crate::libc::stat>::uninit();
+                if unsafe { crate::libc::fstatat(
+                    parent.as_raw_fd(), name.as_ptr(), metadata.as_mut_ptr(),
+                    crate::libc::AT_SYMLINK_NOFOLLOW,
+                ) } == 0 {
+                    return Err(anyhow!("Peer removal completion is uncertain: the selected name is present"));
+                }
+                let error = io::Error::last_os_error();
+                if error.kind() != io::ErrorKind::NotFound {
+                    return Err(anyhow!("Failed to verify peer removal completion: {error}"));
+                }
+            }
+            result
         };
         #[cfg(not(target_os = "linux"))]
         let result = unlink(&|| fs::remove_file(&path));

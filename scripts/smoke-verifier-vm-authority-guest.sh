@@ -4261,9 +4261,19 @@ run_focused_rust_tests() {
             tmpfs_size=64m
             source_fingerprints=(
                 Cargo.lock src/client.rs src/client/audio_buffer.rs
+                src/server/audio_service.rs libs/hbb_common/src/lib.rs
                 scripts/test-audio-buffer.rs scripts/run-audio-buffer-tests.py
             )
+            if [ -f "$source_root/libs/hbb_common/src/mem.rs" ]; then
+                source_fingerprints+=(libs/hbb_common/src/mem.rs)
+            else
+                source_fingerprints+=(src/server/audio_service/pcm.rs)
+            fi
             required_tests=(
+                capture_pcm_allocation_layout_matches_its_owner
+                capture_pcm_preserves_bits_at_every_byte_alignment
+                capture_pcm_refuses_partial_samples_before_output_changes
+                capture_pcm_reuses_warmed_storage_without_allocating
                 audio_buffer::tests::output_fill_consumes_fifo_and_pads_a_short_quantum
                 audio_buffer::tests::empty_output_fill_is_all_silence
                 audio_buffer::tests::output_fill_preserves_next_quantum_order
@@ -5924,7 +5934,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
         printf 'FUSE_FD_PROFILE=fusermount-fd stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
-        printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=18 bridge=absent\n'
+        printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=22 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=34 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
@@ -6224,7 +6234,7 @@ PY
             || fail 'FUSE fd baseline case count differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-buffer summary count differs'
-        [ "$(grep -Ec '^AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=18 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=22 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'AUDIO_BUFFER_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'audio-buffer artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then

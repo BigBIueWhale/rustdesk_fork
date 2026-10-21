@@ -15,6 +15,7 @@ import tomllib
 
 PACKAGE = "rustdesk-audio-buffer"
 INPUTS = ("Cargo.lock", "src/client.rs", "src/client/audio_buffer.rs",
+          "src/server/audio_service.rs", "libs/hbb_common/src/lib.rs",
           "scripts/test-audio-buffer.rs", "scripts/run-audio-buffer-tests.py")
 
 
@@ -39,6 +40,11 @@ def main():
     repo = Path(sys.argv[1]).resolve(strict=True)
     config = ["--config", str(Path(sys.argv[2]).resolve(strict=True))]
     inputs = {name: (repo / name).read_bytes() for name in INPUTS}
+    before = (repo / "libs/hbb_common/src/mem.rs").exists()
+    capture_source = ("libs/hbb_common/src/mem.rs" if before
+                      else "src/server/audio_service/pcm.rs")
+    inputs[capture_source] = (repo / capture_source).read_bytes()
+    features = ["--features", "capture-pcm-before"] if before else []
     root_lock = tomllib.loads(inputs["Cargo.lock"].decode("utf-8"))
     records = {(p["name"], p["version"]): p for p in root_lock["package"] if "source" in p}
     with socket.socket() as canary:
@@ -55,6 +61,7 @@ def main():
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
             '[dependencies]\nringbuf = "=0.3.3"\nlog = "=0.4.22"\ndasp_sample = "=0.11.0"\n'
+            '[features]\ncapture-pcm-before = []\n'
             '[[test]]\nname = "audio_buffer"\n'
             f'path = "{repo}/scripts/test-audio-buffer.rs"\n')
         run(["cargo", "generate-lockfile", "--offline", *config], fixture, timeout=30)
@@ -70,7 +77,7 @@ def main():
         print(f"AUDIO_BUFFER_DEPENDENCIES=pass lock_sha256={digest(lock_bytes)} "
               f"records_sha256={digest(json.dumps(dependencies, sort_keys=True).encode())}", flush=True)
         output = run(["cargo", "test", "--offline", "--locked", "--test", "audio_buffer",
-                      "--no-run", "--jobs", "1", "--message-format=json", *config], fixture)
+                      "--no-run", "--jobs", "1", "--message-format=json", *features, *config], fixture)
         messages = [json.loads(line) for line in output.splitlines() if line.startswith(b"{")]
         artifacts = [Path(m["executable"]) for m in messages
                      if m.get("reason") == "compiler-artifact" and m.get("executable")
@@ -79,14 +86,21 @@ def main():
             raise ValueError("audio-buffer executable is absent or ambiguous")
         artifact = artifacts[0]
         artifact_sha = digest(artifact.read_bytes())
-        run([str(artifact), "--test-threads=1", "--color", "never"], fixture, timeout=30)
+        print(f"AUDIO_BUFFER_ARTIFACT_START=observed sha256={artifact_sha}", flush=True)
+        try:
+            run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, timeout=30)
+        except ValueError:
+            if digest(artifact.read_bytes()) != artifact_sha:
+                raise ValueError("failed audio-buffer artifact changed")
+            print(f"AUDIO_BUFFER_ARTIFACT_STOP=observed sha256={artifact_sha} unchanged=before-after", flush=True)
+            raise
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("audio-buffer artifact or dependencies changed")
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"audio-buffer source changed: {name}")
             print(f"AUDIO_BUFFER_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"AUDIO_BUFFER_ARTIFACT=pass sha256={artifact_sha} tests=18 unchanged=before-after", flush=True)
+        print(f"AUDIO_BUFFER_ARTIFACT=pass sha256={artifact_sha} tests=22 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

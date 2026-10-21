@@ -13199,330 +13199,147 @@ external review, and the global connection-flow correctness/performance obligati
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 
-**Current disposition: SOURCE IMPLEMENTED; focused Linux startup/rendering and authenticated CLI/finality passed;
-complete helper and target-native finality evidence OPEN.** `src/whiteboard/event_lifecycle.rs`
-owns the proxy and terminal latch. `src/whiteboard/server.rs` installs the terminal guard
-before runtime/startup work, serializes proxy installation and termination, and delivers
-one Exit in either publication order without resetting the latch on proxy retirement.
-`WhiteboardIpcWorker` retains one one-shot stop sender and a fallibly constructed named
-thread. Linux joins on application-construction failure and event-loop return; the shared
-Windows/macOS owner joins whenever its event loop returns. Spawn/join failure is visible.
-Handler-only termination, unbounded exit channels, detached threads, and direct platform
-proxy mutation are absent from this source topology.
+**Source implemented; historical Linux helper/display subsets accepted. Current
+complete-helper, installed and target-native acceptance remains OPEN.** Contracts
+remain in R-S11hn–R-S11hp, R-S11c-8/R-S11dz and Appendix C #374–#376.
 
-**Linux parent-process lifetime corrected; focused native acceptance passed:**
-the shared production/fixture launch constructor no longer arms creating-thread
-`PR_SET_PDEATHSIG`. Before listener creation, the existing IPC worker opens an
-owned parent pidfd, checks actual parent before/after open, registers readable
-readiness and retains it through admission/proof/commands. Actual process exit
-or observation failure cancels that owned transport and reaches the terminal guard;
-unsupported/refused pidfd support fails whiteboard closed, without a polling task
-or another runtime. This feature needs Linux process-descriptor support and does
-not change ordinary no-record service startup. Baseline `937c2c0f` reproduced
-SIGKILL after creator-thread join while the server process remained alive.
-The eight-case CLI/X11 subset below passed. Unavailable/denied-support and watch-failure
-injection, broader native/installed/resource acceptance remain OPEN.
+`src/whiteboard/event_lifecycle.rs` owns proxy publication and a terminal latch.
+`server.rs` installs its finalizer before fallible startup; either publication order
+delivers one Exit, and proxy retirement preserves terminal state. The retained named
+IPC worker has one stop edge and visible spawn/join failures. Linux joins on
+application-construction failure and loop return; Windows/macOS join when their
+event-loop API returns.
 
-Exact kernel-parent admission now closes the listener before launch proof. Proof failure
-and listener accept error retire the generation through its terminal guard instead of
-returning to accept. Unauthorized peers remain refused before proof without retiring
-the permitted parent's listener.
+Linux observes the actual launch parent through a retained pidfd across listener,
+proof and commands, checking parent identity around descriptor acquisition. Creator
+thread retirement does not kill the helper. Unsupported/refused descriptor support
+or observation failure fails whiteboard closed; ordinary no-record service startup
+does not acquire this requirement. The kernel-owned abstract listener has no
+filesystem socket/PID entry or unlink fallback. Its UID/token name grants reachability,
+not authority: kernel/process/parent admission, mutual launch proof and the pre-proof
+frame ceiling remain. Admission closes the listener before proof; unauthorized peers
+do not retire the permitted parent's listener, while proof/accept failure is terminal.
 
-**Accepted Linux CLI subset:** `--android-rust-lifecycle-tests --whiteboard-helper-lifetime`
-passed at source `ddd1010a46f9fd950b4a922a1e00e097d03df0d8`, tree
-`536b1f8fd5ab2d4c140546a4feec1aa458f144e9`, in 251s / 170s build.
-One same-image probe dispatched the real `core_main --whiteboard` helper under an
-exact `--server` parent. Eight cases passed: creator-thread retirement, empty-state
-Shutdown, bad/stalled proof, proof EOF, authenticated EOF, native window-close
-with an owner still registered, and actual parent-process exit before proof.
-A same-image server-role wrong parent carrying the public fixture token received
-pre-proof EOF before permitted-parent mutual proof/Shutdown. Proof-failure cases
-refused another connection before the owner proof reply while the admitted stream lived.
-Each case required a unique PID-bound X11 window before proceeding. After real CLI
-return, the helper remained alive behind an acknowledgment barrier: its named worker
-was absent, retained streams returned true EOF, and the observer required immediate
-BadWindow, connection refusal and address reuse before permitting normal exit/reap.
-Creator-thread and window-close cases sent production tokenized Bind/Cursor commands,
-read back two owners' green/blue pixels, sent exact-token Close for one and observed
-only its pixels clear.
-The creator thread was already joined while its live parent completed mutual proof
-and drawing; that case closed the remaining owner and sent Shutdown. Window-close
-requested WM_DELETE_WINDOW with the other owner and authenticated stream retained.
-The parent-exit case proved a bound listener and observer pre-proof EOF before
-allowing normal parent exit, then observed helper CLI return while the observer's
-retained helper pidfd still reported it alive. After retirement observation, the subreaper
-permitted normal helper exit and reaped that exact adopted child.
-Artifact SHA-256 `dbe088dd3310a7f677f4804437b3bd68315c37e1f6e315f7e0ed385eea1e369c`
-was unchanged before/after. Pinned zero-NIC/nonroot network-none/source-RO execution,
-full host endpoint invariance and Xvfb/container/VM joined cleanup passed. Serial
-`android-rust-lifecycle-tests-run.0PH1gZJsoM.serial.log` SHA-256
-`7977ef47ae661b8d74d39006c63a63682adcbc98c861180c2099056caf1d3292`.
-This nonrelease probe excludes installed authority, real Remote producer admission,
-cross-UID/platform coverage, compositor/animation and sustained resource/soak acceptance.
+Linux softbuffer contexts/surfaces retain Winit's `OwnedDisplayHandle`; surfaces
+retire before windows and before the event loop's final X11 synchronization.
+Debian/runtime fixtures retain `libxkbcommon-x11-0` and fixture `libxcb-xkb1`.
 
-Linux rendering now retains Winit's `OwnedDisplayHandle` in its softbuffer context
-and surfaces. The borrowed-display `transmute` to `'static`, optional context and
-exit-time context reset are removed; surfaces retire before their window owner.
-Production `exiting` retires all surfaces/windows before Winit's final X11 server
-synchronization; late app-drop destruction previously missed that flush. Debian
-Depends declares the existing `libxkbcommon-x11-0` runtime requirement; the pinned
-X11 fixture includes it and `libxcb-xkb1`. No privilege escalation was reproduced.
+**Retained Linux evidence.** Commands below use
+`scripts/smoke-verifier-vm-authority.sh --android-rust-lifecycle-tests` with the named
+selector. These are historical exact-source runs, not current whole-app acceptance.
+`whiteboard-ledger-1b652fc1.json` binds all seven serial receipts, full source/tree/
+artifact identities, previous detailed text and classifications.
 
-**Accepted Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
-passed at the same `ddd1010a` source/tree above with the probe feature disabled:
-six tests in four processes, zero failed/ignored, 267s VM / 197s build.
-With launch variables absent, separate native cases
-spawned/joined the real worker before proxy publication or retained it from the
-running loop after proxy publication through loop return. Both delivered one Exit
-through production user-event/idle-exit, with no fixture-originated loop exit.
-Production constructors/draws created X11 windows, read back two owners' pixels,
-cleared one owner and immediately received BadWindow after loop return while the
-application/context remained alive. Executable SHA-256
-`1935bf8f5e82717ccfb7ff3fa45407c502b57871555c5fbf82046fed58f49c8c`
-was unchanged across four processes. Zero-NIC/nonroot network-none execution,
-source/input preservation, Xvfb/container/VM joined cleanup and the full host
-endpoint audit passed. Serial
-`android-rust-lifecycle-tests-run.KvPPksudjq.serial.log` SHA-256
-`62d1d37ec42a53a3219dc10ab95b4da9fc20723cb99772a40215704b4e999407`.
-That renderer/listener subset excludes CLI/proof, other failure/cancellation,
-compositor/occlusion/animation, soak, other platforms and installed acceptance.
+| Source / selector | Accepted observations and limits |
+| --- | --- |
+| `ddd1010a` / `--whiteboard-helper-lifetime` (`0PH1gZJsoM`) | Eight real `core_main --whiteboard` cases under an exact `--server` parent: creator-thread retirement, empty-state Shutdown, bad/stalled proof, proof EOF, authenticated EOF, native window-close with a registered owner, and pre-proof parent exit. Same-image/server-role/copied-token wrong parent receives pre-proof EOF. Two-owner green/blue pixel readback and exact-owner Close pass. Helper CLI return is held behind an acknowledgment barrier while worker absence, true stream EOF, BadWindow, listener refusal/reuse and then exact helper exit/reap are observed. |
+| `ddd1010a` / `--whiteboard-display-lifetime` (`KvPPksudjq`) | Six tests in four processes: three lifecycle-state cases, one listener case and two real X11 cases. Both proxy orders deliver one production Exit; two-owner pixels/exact-owner clearing and destroyed windows are observed before loop return with application/context retained. Thirty-two extra abstract-listener generations leave no socket/PID files or FD growth. Probe disabled; this subset excludes CLI/proof. |
 
-**Linux listener lifetime corrected; focused native checks passed:** Linux uses one
-kernel-owned abstract Unix address
-derived from the same UID/token-scoped name. `LinuxWhiteboardListener` owns its socket;
-the ordinary filesystem factory rejects whiteboard, and connecting uses only that
-abstract address. No socket/PID file, stale-path scrub, unlink or filesystem fallback
-exists on this route. Kernel peer/process/parent admission, mutual launch proof and
-the pre-proof frame ceiling remain required; abstract names and their UID component
-are not authority, and filesystem permissions do not restrict abstract reachability.
-The accepted fixture observed a real connection, wrong-parent EOF before proof while
-the listener remained bound, exact worker join, refusal and immediate address reuse.
-All 32 additional factory generations retired with no socket/PID entries or FD growth
-after each cycle. No fixture unlink or process death supplied cleanup. This bounded
-factory/worker observation does not prove a complete helper or soak. macOS pathname retirement,
-native allowed/forbidden principal coverage, remaining stream/overlay cancellation branches,
-complete helper and sustained resource/soak acceptance remain OPEN.
+The CLI artifact `dbe088dd…` and display artifact `1935bf8f…` are individually
+stable before/after their runs. Pinned zero-NIC/nonroot network-none/read-only
+execution, host endpoint invariance and joined Xvfb/container/VM cleanup passed.
+The three state cases are distinct from actual worker/listener/X11 observations.
+Earlier creating-thread-death failure and superseded standalone receipts remain
+in the retained history; deleted source-wording checks supply no behavioral evidence.
 
-**Lifecycle state evidence:** the ddd1010a root-crate executable passed three production
-module tests: termination before proxy publication, exact installed-proxy take with
-repeated-finalization refusal, and proxy retirement preserving the terminal latch.
-These state tests are distinct from its real worker/listener and two native X11 cases.
-Superseded standalone-module receipts remain in Git at `8d2af913`/`8d794d41` and the audit.
-
-`scripts/verify-whiteboard-ipc-lifecycle.py` and its calls are deleted: source wording
-did not execute lifecycle behavior. Shared state tests and full-root Rust commands
-remain supplementary to required native runs.
-
-**Still required:** remaining full-root suites and isolated Windows/macOS/Linux
-helper runs covering launch-identity refusal, listener construction/end/error, remaining proof and
-transport failures, remaining cancellation/authenticated-close branches, both proxy-publication
-orders, every returning event-loop path, and permitted spawn/join failure injection.
-Observe one terminal outcome, no surviving helper/thread/listener/handle, and bounded
-resources through startup, failure, replacement, and owner loss. Installed artifacts,
-sustained performance/resource bounds, cold R-B2/R-B10 equality, independent reproduction,
-and external review remain open under the global matrices. This overlay is separate from
-the Android/Windows remote-display freshness defect; these receipts establish no causation
-or fix for that defect.
+**Still required:** current full-root/helper suites and Windows/macOS/Linux allowed/
+forbidden principals, launch identity, listener construction/end/error, remaining proof/
+transport/cancellation/authenticated-close branches, both proxy orders, every returning
+loop path and permitted spawn/join fault injection. Cover pidfd denial/unavailability/
+watch failure and macOS pathname retirement. Observe one terminal result and exact
+helper/thread/listener/handle cleanup with bounded startup/failure/replacement resources.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Disposition: native IPC unwind exposed lost cleanup; surviving controlled-server ownership
-passed the corrected Linux profile and default nine-test shard. Other full-root failures,
-installed/platform and resource acceptance remain OPEN.**
+**Source implemented; historical Linux native ownership and nine-test state/handle
+shards accepted. Current full-root, installed/platform and resource acceptance OPEN.**
+`src/whiteboard/client.rs::WhiteboardClientState` owns registrations, exact sender,
+launch/task handles, helper and checked Idle/Starting/Running/Stopping generation.
+Duplicate demand shares one task; sender and initial registrations publish together.
+The guard retires admission but cannot discard its own handle or start a successor.
+Committed idle stop admits at most one still-demanded successor after retirement;
+startup/transport/sender/task/helper failure alone never self-retries. Nonblocking
+caps remain 64 commands/16 registrations; only cursor saturation is lossy. Required
+command refusal or a closed sender retires its sender/phase; the hot path uses fixed storage.
 
-**Current source:** `src/whiteboard/client.rs` locks registrations, sender, retained launch/task
-handles, helper and Idle/Starting/Running/Stopping in one `WhiteboardClientState`. Checked
-generation reservation prevents wraparound. Duplicate Starting/Running demand shares one task;
-sender and initial registrations publish atomically. The worker guard installs first and retires
-admission; stale finalizers cannot clear another generation. Returned errors and unwind task
-panics are diagnosed. Release uses `panic = 'abort'`; these development probes do not prove
-release-panic cleanup.
+`DesktopIpcWorker` retains `WhiteboardClientRoot` on the outer runtime; its
+Arc-bound `WhiteboardClientController` is an admission lease whose loss closes
+demand without losing reap/join ownership. One retained blocking launch job owns a
+created helper even if handoff is refused. Unix requires exact-child reap; Windows
+retains its creation-time kill-on-close job/process through exit and zero-job proof.
+The root drives retirement through IPC completion/listener drain and joins whiteboard
+before shutdown. The three-second deadline starts cancellation/termination; uncertainty
+retains handles/Stopping and refuses replacement. Stale controller/finalizer identities
+cannot close a later owner. No detached cleanup or new runtime supplies a fallback.
 
-Idle stop proves empty locked demand. Demand crossing committed stop, including refused Bind,
-latches at most one successor while demand remains. Startup/transport/sender/task/helper failure
-and retained registrations never self-retry. Nonblocking caps are 64 commands/16 registrations;
-only cursor overflow is lossy. Required-command refusal retires sender/phase. The two-command
-hot path uses fixed storage and a borrowed sender. Token/parent proof, parent-death binding and
-deadline writes remain; split globals, detached workers, nested runtimes, `CHILD_PROCESS` and
-tray launching are absent.
-
-The controlled-server lifecycle retains `WhiteboardClientRoot` in `DesktopIpcWorker` and polls
-it on its existing outer runtime while awaiting IPC completion and public-listener drain.
-IPC readiness transfers a `WhiteboardClientController` admission lease. One Arc identity
-binds the controller/terminal signal to that root; stale controllers cannot close a later owner.
-Controller Drop closes registration/clears demand/cancels; the outer owner retains reap/join.
-Registration reserves;
-one retained `spawn_blocking` job creates/publishes under the admission/generation lock.
-Refused handoff retains and retires the helper before returning a process-free status.
-Unix `Child::try_wait` reaps; Windows retains its creation-time kill-on-close job/process
-through process exit and zero-job accounting. The command task cannot discard its own handle,
-release its generation or start a successor. Root shutdown closes registration/cancels before
-listener drain and joins whiteboard before final shutdown. The 3s deadline initiates cancellation
-or exact termination; uncertainty retains handles/Stopping and refuses replacement.
-Controller shutdown awaits the root's completion signal. Native join first drains whiteboard
-on the outer runtime; no resource migration, new runtime, detached cleanup or failure fallback.
-Unexpected outer-root loss retains uncertainty/refuses replacement; release-abort cleanup
-and started-blocking-work runtime destruction remain OPEN.
-
-**Native IPC-unwind baseline FAIL:** source `8c22bea8154d814b393556b080bf925550f8a3f9`,
-tree `e66589ae67a2d30b8b779f575aa45a8e80be1b94`, same command below, status1.
-After Running/two-owner pixels and exact IPC TID absence with parent alive, helper20349 was
-dead/unreaped and the command task finished/unjoined. Serial `nbCZOtOGwn`,93345bytes, SHA-256
-`8cf3f243eef286b3ce22fc68dbd8f3af7cd7008e98724d2c42187c3dc66360f1`;
-archive `failed-whiteboard-ipc-panic-8c22bea8-nbCZOtOGwn` retains source/diagnostics.
-Failure-tail truncation lost the baseline artifact digest; no artifact-identical A/B claim.
-The added tenth case passed production helper reap/task join and exact failed-thread join
-after native unwind; probe-only injection cannot enter default builds. Prior nine-case
-acceptance remains in `3f673d986f4d42c3086182927b53bc7fe399d36b:HARDENING_STATUS.md`.
-
-**Latest accepted native Linux profile:** source `6c928880c867c4d255f48fbccea9dc724754b5ab`,
-tree `9ecd4d40a78f683c2825549b4609c4843e8d9c24`. Command:
-`env -i PATH=/usr/bin:/bin LC_ALL=C bash --noprofile --norc scripts/smoke-verifier-vm-authority.sh --android-rust-lifecycle-tests --whiteboard-helper-lifetime`.
-The profile passed 8 receiver/10 global cases in 242s/build154s on pinned Rust1.75/vendor/devcheck.
-It drives production registration/cursor APIs and the real core CLI/helper, not Remote/PAKE
-or installed privileged admission. The fixture receives the readiness controller and uses
-the production outer resource-driver API; its fault body requests controller shutdown and reads state.
-
-| Global case | Observed boundary in this profile |
+| Source / selector | Accepted observations and limits |
 | --- | --- |
-| shutdown | Two-owner pixels/exact-owner clear; external command join and generation retained through production normal helper reap. |
-| replacement | Demand during committed stop; one successor starts only after old production reap and renders/cleans up. |
-| withdrawal | Withdrawn successor demand leaves 500ms Idle; a later explicit request creates the second rendered/reaped generation. |
-| helper-close | Quiet native window close joins the task; retained registrations leave 500ms Idle without retry before explicit same-ID demand. |
-| root-shutdown | Active controller `stop_and_join`; registration refused during/after drain; return requires production reap. |
-| parent-loss | Authenticated parent pidfd SIGKILL/status -9 with helper still alive; joined-worker CLI return/window removal/endpoint refusal before barrier release; exact adopted helper waitpid status 0/reap. EOF/pidfd readiness may race: no unique-branch attribution. |
-| helper-crash | Exact helper20310 pidfd SIGKILL with parent alive; production failed-exit reap/task join, independent dead pidfd/proc absence, X11 BadWindow/endpoint refusal/rebind. Retained registrations remain Idle for 500ms; explicit duplicate same-ID requests create helper20313, which renders/clears/normally reaps. |
-| launch-owner-loss | Real helper20323 paused before handoff; controller Drop closes admission/refuses replacement. Existing creation job terminates/reaps and is externally joined before FINISHED; independent dead pidfd/proc absence, X11 BadWindow/endpoint refusal/rebind while parent and IPC thread stay alive. Native IPC thread then joins before normal parent exit. |
-| owner-loss | Running helper20334/two-owner pixels; controller Drop closes admission/refuses replacement. Production deadline termination, exact failed-exit reap and external command join precede independent `helper_dead=true helper_reaped=true task_joined=true` observation while parent and IPC thread stay alive. Native IPC thread then joins before normal parent exit. |
-| ipc-worker-panic | Running helper20344/two-owner pixels; actual IPC unwind/TID absence with parent alive. Outer production owner joins command/reaps failed helper before X11 BadWindow/endpoint refusal-rebind and exact failed native-thread join; replacement remains refused. |
+| `6c928880` / `--whiteboard-helper-lifetime` (`Vmi3rpV1Tn`) | Eight receiver cases above plus ten global cases: shutdown, replacement, withdrawal, helper-close, root-shutdown, parent-loss, helper-crash, launch-owner-loss, owner-loss and actual IPC-worker unwind. Production registration/cursor and real core CLI/helper paths run; Remote/PAKE and installed privileged admission do not. |
+| `6c928880` / `--whiteboard-client` (`sWOTMwB4Yb`) | Nine tests: seven demand/successor/withdrawal/failure/retry/stale-finalizer/64–65 saturation/closed-sender/generation-exhaustion state/channel cases and two actual Tokio-handle cases for external cancellation join and retention of started blocking work. Probe disabled; no OS helper. |
 
-Receiver cases are creator-thread, shutdown, bad-proof, proof-timeout, proof-close,
-stream-close, window-close and pre-proof parent-exit. Same-image/copied-token wrong-parent
-admission is refused before proof. Native observations include two-owner draw/exact-owner
-clear, authenticated window closure, creating-thread retirement with a live helper, CLI return
-after worker join/window removal/endpoint refusal, and normal helper reap. Forced observer
-cleanup cannot pass.
+The native profile observes two-owner drawing/exact-owner clearing, generation
+retention through production reap/task join, replacement only after old retirement,
+and 500-ms no-self-retry intervals before explicit later demand. Helper crash and
+controller loss before handoff or while Running retire the exact helper while its
+parent remains alive and replacement is refused. Actual IPC unwind removes its TID;
+the surviving outer owner reaps the helper/joins the command and failed native thread.
+Independent native-root checks cover ten readiness/identity observations, eight normal
+joins and one failed-thread join. Deliberate parent SIGKILL has kernel-exit semantics;
+pidfd/EOF readiness can race, so no unique-branch attribution is claimed. Window
+BadWindow and endpoint refusal/reuse are required; observer cleanup cannot pass.
 
-One artifact stayed identical before/after:
-`e17863b2355e337d0cc1233643986c023274d043f9ea8dfec6e72af37d4880c0`.
-Serial `android-rust-lifecycle-tests-run.Vmi3rpV1Tn.serial.log`,93747bytes, SHA-256
-`738b4f1f2a2c3c6183bdcd3a3f233224b69d25141f865febb952fd1de2d722aa`.
-Guest/host unique receipts, source/input/offline-canary checks, UID/GID1000 network-none
-container in a zero-NIC VM, readonly source/root, dropped caps/NNP, unchanged before/during/
-after host endpoints and joined cleanup passed. This is development-example native evidence;
-release, installed service and complete controlled-server finalization remain unproved.
+Native artifact `e17863b2…` and state artifact `0222ebac…` remain individually
+stable through execution; isolated source/input/offline-canary, endpoint and joined
+cleanup observations pass. Baselines `af6326f8` (`ygwwUldm9J`, published owner loss)
+and `8c22bea8` (`nbCZOtOGwn`, actual IPC unwind) instead observe a dead/unreaped
+helper and finished/unjoined command. The latter's truncated failure tail loses its
+artifact digest; no artifact-identical A/B is claimed. Intermediate compiler/observer
+rejections and earlier premature-Idle, quiet-EOF and cancelled-launch-result failures
+are retained in the capsule/Git/audit, not counted as current acceptance.
 
-**Latest executable state/handle shard:** same source `6c928880c867c4d255f48fbccea9dc724754b5ab`,
-`--android-rust-lifecycle-tests --whiteboard-client`: 9 passed, 0 failed/ignored, 598 filtered,
-0.00s; VM216s/build150s. Probe disabled; no OS helper. Seven state/channel cases cover duplicate
-demand, successor/withdrawal, failure without self-retry/later explicit retry, stale finalization,
-64/65 cursor-only loss/required-command retirement, closed sender and generation exhaustion.
-Two real Tokio-handle cases cover external join after cancellation and retention of started
-blocking work through abort. Artifact
-`0222ebac6bac27233050d0f6c494d0bfba5e715b4dc1ceccda09e3304da59472`;
-serial `android-rust-lifecycle-tests-run.sWOTMwB4Yb.serial.log`,68743bytes, SHA-256
-`99fab100904c2a7ed24f97c123d576459acb9ad8849b1df878ed4d65fa055134`.
-The source-bound outer run passed with no added host endpoint and joined cleanup.
-
-**Retained published-helper baseline: native regression FAIL.** Source
-`af6326f8238a37f577cafdcd7da4efe390ae8ef0`, tree
-`87b25c5703814597fd5d65c2c7cedb2a7b348bf8`. After Running/two-owner pixels, actual Drop
-refused admission/replacement and retained the parent, but helper20290 was dead/unreaped
-and its command task finished/unjoined. Independent observation reported
-`helper_dead=true helper_reaped=false task_joined=false`; exact harness status1.
-serial `android-rust-lifecycle-tests-run.ygwwUldm9J.serial.log`,92114bytes, SHA-256
-`069825f0535a04f369957b104f9d5f8c974fa5ee2cfd07cf5e9f0919e3958d82`.
-Retained archive `.harness-state/verifier-vm/failed-whiteboard-owner-af6326f8-ygwwUldm9J`
-preserves source/diagnostics; full receipt is in published
-`7cb6ed61baaa9711e21aa48db10e82f0291d3d2d:HARDENING_STATUS.md`
-and the external audit. This is a lifetime defect, not a demonstrated privilege escalation.
-
-**Native IPC-root observation:** probe-only instrumentation reports gettid from inside the
-actual worker; independent observation verifies its owned parent/Tgid and kernel start time,
-requires it alive through controller-loss retirement, then requires thread absence after exact
-join before normal parent exit. Ten readiness/identity, eight normal joins and one failed-thread
-join passed; parent SIGKILL has separate kernel-exit semantics. Guest/host require unique receipts;
-forced observer cleanup cannot pass. Other outer-root/platform failures and installed finalizer/
-admitted irreversible-transaction drain remain OPEN; no artifact-identical A/B claim.
-
-Intermediate Rust1.75 E0308 (`1f719799`) and unique-comm observer failure (`728018cf`) are
-preserved with exact source/serial receipts in the respective private diagnostic archives and
-`1bb67917bacbf64dfb967782c627ca07016ec33a:HARDENING_STATUS.md`, plus the external audit.
-Neither failed candidate is counted as complete native acceptance. The unique-name assumption
-is removed; the failed run did not establish which competing or renamed thread caused it.
-
-**Retained provenance:** full A/B failures, corrected runs, old artifacts and intermediate
-receipts are archived in the exact HO section of
-`git show 2b235618b9c8d5cd53e41b25cd072231edb4950c:HARDENING_STATUS.md`
-(section SHA-256 `3dfa21eb3156408ec1b9cb9eb8834d3645fa30a528c10f3b973f2ff06e0c651d`)
-and `/tmp/privilege_securiry_deep_audit.md`. The native regression causes were premature Idle
-before helper reap (baseline 7e437223, root-owned correction df9daec4), quiet EOF without task
-retirement (baseline d8408933, correction 4fe21ebe), and a cancelled launch result hiding a live
-child (baseline 5db5a7f7, correction ce2f07ac). Current scenarios retain those boundaries.
-The 526-line/42-mutation wording checker and shared/Apple calls are deleted; executable
-`r_s11ho_` remains. History is not additional current native acceptance.
-
-**Still required:** complete current full-root/task/helper suites and native Windows/macOS/Linux
-multi-connection, repeated-enable, every-phase demand, committed-stop stress/races, explicit
-later retry, sender/transport/helper failure, queue/registration saturation, abrupt owner
-loss, and cleanup runs. Observe one live generation, at most one demanded successor, and
-bounded task/thread/queue/CPU/memory/latency state. Installed artifacts, sustained soak,
-cross-version behavior, cold R-B2/R-B10 equality, independent reproduction, and external
-review remain open under the global matrices. Android task-swipe/reopen/Force-Stop,
-Windows focus/minimize/reconnect, capture-to-actual-present timing, and correctness and
-performance of the whole connection flow remain separate explicit user requests; this
-whiteboard source disposition does not close them.
+**Still required:** complete current task/helper/full-root suites and native Windows/
+macOS/Linux repeated-enable, multiple connections, every-phase demand, committed-stop
+stress/races, explicit retry, sender/transport/helper failure, queue/registration
+saturation, abrupt owner loss and cleanup. Observe one live generation, at most one
+demanded successor, bounded task/thread/queue/CPU/memory/latency and correct drain.
+Unexpected outer-root loss, started blocking work during runtime destruction,
+release `panic = 'abort'` cleanup and admitted irreversible-transaction finality
+remain OPEN; development unwind probes do not prove release-abort behavior.
 
 ### R-S11hp/R-S11e-253 — exact-owner whiteboard presentation and redraw lifecycle
 
-**Current disposition: SOURCE IMPLEMENTED; target-native presentation and resource evidence OPEN.**
-`src/ipc.rs` restricts the helper wire to Bind, typed Cursor, Close, and Shutdown;
-`src/whiteboard/server.rs` derives renderer-internal Clear only after exact-token Close.
-`src/server/connection.rs` admits cursor registration only for authenticated Remote
-connections and explicitly unregisters on refusal, disable, and retirement. The shared
-`WhiteboardPresentationState` caps ownership at 16 connections, one cursor and 64
-oldest-first ripples per owner, and Clear retires only that owner's state. Windows,
-macOS, and Linux renderers consume that owner and wait while idle, using one
-event-loop deadline only while ripples remain. macOS also retires exact-owner text
-layouts and redraws both old and new monitor surfaces on movement.
+**Source implemented; historical production presentation-state tests accepted.
+Target-native compositor/presentation and resource acceptance remains OPEN.**
+`src/ipc.rs` restricts wire commands to Bind, typed Cursor, Close and Shutdown;
+`server.rs` derives internal Clear only after exact-token Close. Authenticated Remote
+connections alone register, with explicit retirement on refusal/disable/close.
+`WhiteboardPresentationState` owns at most 16 connections, one cursor and 64
+oldest-first ripples per owner; Clear removes only that owner's state. All three
+desktop renderers use it and wait while idle, with one event-loop deadline only while
+ripples remain. macOS retires owner text layouts and redraws old/new monitor surfaces.
 
-Two executable Rust tests in `src/whiteboard/server.rs` exercise exact-owner Clear,
-retention of another owner, fixed owners 16/17 and ripples 64/65, independent
-per-owner ripple budgets, oldest-first eviction and refusal without retained state.
-The fixtures use literal required boundaries rather than production limit constants.
-Their shared `r_s11hp_` command and the real whiteboard protocol/token-authority
-tests remain. The source-bound
-`scripts/smoke-verifier-vm-authority.sh --android-rust-lifecycle-tests --whiteboard-presentation`
-shard passed both exact state tests from commit
-`2b2c256e8485f984c04f4b473fdd10deded9a1a7`, tree
-`5529f77b8e6b64d2ba2ab5455b6b4da62188c2c9`: 2 passed, 0 failed/ignored,
-598 filtered out. Rust 1.75.0 compiled the real Linux library-test binary in 174
-seconds; VM runtime was 266 seconds. Executed artifact SHA-256
-`2d3f574e66d7a784f9ae853c22d2e57f57d5c6fb1dec4a75d91ce0fb54c74239`
-was unchanged before/after execution. The zero-NIC VM and ordinary-user
-network-none container used read-only source/inputs and a private ephemeral target;
-offline canary, full host endpoint audit and joined cleanup passed. Retained serial
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.H1fOuVeUJZ.serial.log`
-has SHA-256 `b60100d2f78747d0244566813b16e1d3165e886d501afe742021df5c2c6a4068`.
-This establishes production presentation-state behavior, without native overlay,
-helper IPC, installed-principal or compositor/resource acceptance.
+At `2b2c256e`, `--whiteboard-presentation` (`H1fOuVeUJZ`) passes two production
+state tests: exact-owner Clear/survivor retention, owners 16/17 and ripples 64/65,
+independent budgets, oldest-first eviction and refusal without retained state.
+Literal fixture boundaries are independent of production limit constants. The real
+Linux root-library artifact `2d3f574e…` is stable before/after; pinned isolated
+execution, offline canary, host endpoint audit and joined cleanup pass. This executes
+neither an overlay nor helper IPC, installed-principal or compositor/resource behavior.
+Production tests/protocol/token-authority commands remain; deleted wording checkers
+and their in-memory replacements establish no native behavior.
 
-The 535-line
-`scripts/verify-whiteboard-presentation-lifecycle.py` and its shared/Apple calls are
-deleted: source substring/order/count checks and 42 in-memory text replacements
-did not execute those tests, an overlay, clearing frames or idle redraw behavior.
-The recorded confined checks had no Rust/native toolchain and establish no test
-or renderer execution; none ran for this deletion. Original review/source-check
-receipts remain in Git history at `78bbce8e4`. Native acceptance remains OPEN.
-
-**Still required:** exercise two concurrent owners, refusal/toggle/Close/abrupt retirement, boundary
-owners/ripples, occlusion, cross-monitor cleanup, actual compositor output,
-final clearing frames, idle/animation CPU/GPU and bounded memory/thread/handle
-state on installed Windows, macOS, and Linux artifacts. Exact release artifacts,
-sustained resource/latency measurements, independent reproduction, and external
-review remain open. This whiteboard overlay is separate from the Android/Windows
-remote-display freshness defect; its source correction is not evidence of a fix
-for that defect.
+**Still required:** installed Windows/macOS/Linux two-owner enable/refusal/toggle/
+Close/abrupt retirement, owner/ripple limits, animation expiry, occlusion/suppressed
+painting and idle-active-idle runs. Include macOS cross-monitor and no-current-monitor
+cleanup, actual compositor/final clearing frames, idle/animation CPU/GPU wake behavior,
+bounded memory/thread/handles, repeated replacement and surviving-owner isolation.
+For all three sections, sustained resource/performance/latency soaks, cross-version
+behavior, exact release/installed artifacts, cold R-B2/R-B10 equality, independent
+reproduction and external review remain OPEN. These lifetime/state receipts do not
+establish R-S0 immunity. Android task-swipe/reopen/Force-Stop, Windows focus/minimize/
+reconnect, actual presentation freshness and whole-connection correctness/performance
+remain separate OPEN obligations. All fifteen credential actions, R-S0/R-F5 and
+separately user-parked work remain OPEN/PARKED.
 
 ### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction
 

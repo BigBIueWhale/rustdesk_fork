@@ -2908,6 +2908,7 @@ fn peer_listing_compact_identity_refuses_mismatched_records() {
                 refused &= PeerConfig::add_port_forward(&id, &(34000, "127.0.0.1".into(), 22)).is_err();
                 refused &= PeerConfig::remove_port_forward(&id, 34000).is_err();
                 refused &= PeerConfig::forget_password(&id).is_err();
+                refused &= peer.store(&id).is_err();
                 refused &= PeerConfig::peers(Some(vec![id.clone()])).is_empty();
             }
             let preserved = peer_test_record_snapshot(&path) == before;
@@ -2932,6 +2933,26 @@ fn peer_listing_compact_identity_refuses_mismatched_records() {
             assert_eq!(listed.len(), 1);
             assert_eq!(listed[0].0, id);
             assert_eq!(peer_test_record_snapshot(&path), before);
+            let mut retired_only = peer.clone();
+            retired_only.password_prs.clear();
+            let retired = format!("{}password = [1, 2, 3]\n{}",
+                toml::to_string(&HashMap::from([("peer_id", &id)])).unwrap(),
+                toml::to_string(&retired_only).unwrap());
+            fs::write(&path, retired).unwrap();
+            let before = peer_test_record_snapshot(&path);
+            let status = PeerConfig::credential_status(&id).unwrap();
+            assert!(!status.has_saved_prs && status.can_forget);
+            assert_eq!(peer_test_record_snapshot(&path), before);
+            PeerConfig::forget_password(&id).unwrap();
+            assert_eq!(PeerConfig::load_for_write(&id).unwrap(), retired_only);
+            let raw: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(raw.get("password").is_none());
+            assert_eq!(raw.get("peer_id").and_then(toml::Value::as_str), Some(id.as_str()));
+            assert!(!PeerConfig::credential_status(&id).unwrap().can_forget);
+            println!("OPTION_COMMIT_COMPACT_PEER={}", serde_json::json!({
+                "kind": "retired-cleanup", "cleared": true, "identity_retained": true,
+                "status_view_preserved": true,
+            }));
         }
         let after_fds = fds();
         println!("OPTION_COMMIT_COMPACT_PEER={}", serde_json::json!({
@@ -3025,7 +3046,7 @@ fn peer_listing_reads_the_enumerated_alias_and_preserves_read_denial() {
         peer.password_prs = b"fixture-alias-prs".to_vec();
         peer.info.platform = "Linux".into();
         peer.options.insert("alias".into(), "enumerated".into());
-        PeerConfig::store_path(&alias, &peer).unwrap();
+        PeerConfig::store_path(&alias, &peer, None).unwrap();
         let alias_bytes = fs::read(&alias).unwrap();
         let all = vec![(id.into(), SystemTime::UNIX_EPOCH, alias.clone())];
         let (peers, next) = PeerConfig::batch_peers(&all, 0, None);

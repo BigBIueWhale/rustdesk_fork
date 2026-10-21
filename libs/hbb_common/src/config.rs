@@ -3804,6 +3804,8 @@ impl Config {
 }
 
 const PEERS: &str = "peers";
+const MAX_PEER_FILE_STEM_BYTES: usize = 250;
+const COMPACT_PEER_FILE_PREFIX: &str = "base64_sha256_";
 const RETIRED_RDP_CREDENTIAL_OPTIONS: [&str; 2] = ["rdp_username", "rdp_password"];
 
 fn remove_retired_rdp_credential_options(options: &mut HashMap<String, String>) -> bool {
@@ -3886,6 +3888,18 @@ struct PeerConfigFile {
     retired_password_present: bool,
 }
 
+#[derive(Default, Serialize, Deserialize)]
+struct PeerRecord<T> {
+    peer_id: String,
+    #[serde(flatten)]
+    value: T,
+}
+
+#[derive(Default, Deserialize)]
+struct PeerRecordId {
+    peer_id: String,
+}
+
 fn discard_retired_peer_password<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: de::Deserializer<'de>,
@@ -3929,20 +3943,21 @@ impl PeerConfig {
     }
 
     fn load_path_with_status(path: PathBuf) -> PeerConfigLoad {
-        let loaded: ConfigLoad<PeerConfigFile> = match read_config_file(&path) {
+        let loaded: ConfigLoad<PeerRecord<PeerConfigFile>> = match Self::read_file(&path) {
             Ok(Some(file)) => ConfigLoad::new(file, ConfigLoadStatus::Loaded),
-            Ok(None) => ConfigLoad::new(PeerConfigFile::default(), ConfigLoadStatus::NotFound),
+            Ok(None) => ConfigLoad::new(PeerRecord::default(), ConfigLoadStatus::NotFound),
             Err(failure) => {
                 log::error!("Failed to read peer settings");
                 let status = match failure {
                     ConfigReadFailure::Corrupt => ConfigLoadStatus::Corrupt,
                     ConfigReadFailure::Unreadable => ConfigLoadStatus::TransientError,
                 };
-                ConfigLoad::new(PeerConfigFile::default(), status)
+                ConfigLoad::new(PeerRecord::default(), status)
             }
         };
-        let mut config = loaded.value.config;
-        let mut retired_password_present = loaded.value.retired_password_present;
+        let record_id = loaded.value.peer_id;
+        let mut config = loaded.value.value.config;
+        let mut retired_password_present = loaded.value.value.retired_password_present;
         let status = loaded.status;
         if status != ConfigLoadStatus::Loaded {
             return PeerConfigLoad {
@@ -3957,7 +3972,7 @@ impl PeerConfig {
         config.password_prs = password_prs;
         store = remove_retired_rdp_credential_options(&mut config.options) || store;
         if store {
-            match Self::store_path(&path, &config) {
+            match Self::store_path(&path, &config, Some(&record_id)) {
                 Ok(()) => retired_password_present = false,
                 Err(err) => log::error!("Failed to migrate peer settings: {err}"),
             }
@@ -3971,10 +3986,24 @@ impl PeerConfig {
 
     pub fn store(&self, id: &str) -> crate::ResultType<()> {
         let _lock = CONFIG.read().unwrap();
-        Self::store_path(&Self::path(id), self)
+        Self::store_path(&Self::path(id), self, Some(id))
     }
 
-    fn store_path(path: &Path, config: &PeerConfig) -> crate::ResultType<()> {
+    fn store_path(path: &Path, config: &PeerConfig, record_id: Option<&str>) -> crate::ResultType<()> {
+        let record_id = if Self::is_compact_path(path) {
+            let id = record_id.ok_or_else(|| anyhow!("Missing peer record identity"))?;
+            if !Self::compact_id_matches(path, id) {
+                return Err(anyhow!("Peer record identity does not match its path"));
+            }
+            match read_config_file::<PeerRecordId>(path) {
+                Ok(Some(current)) if current.peer_id == id => {}
+                Ok(None) => {}
+                _ => return Err(anyhow!("Failed to verify existing peer record identity")),
+            }
+            Some(id)
+        } else {
+            None
+        };
         let has_prs = !config.password_prs.is_empty();
         let mut config = config.clone();
         config.password_prs =
@@ -3983,7 +4012,11 @@ impl PeerConfig {
             return Err(anyhow!("Failed to encrypt peer credentials"));
         }
         remove_retired_rdp_credential_options(&mut config.options);
-        store_path(path.to_path_buf(), config)
+        if let Some(id) = record_id {
+            store_path(path.to_path_buf(), PeerRecord { peer_id: id.to_owned(), value: config })
+        } else {
+            store_path(path.to_path_buf(), config)
+        }
     }
 
     pub fn set_option(id: &str, name: &str, value: String) -> crate::ResultType<()> {
@@ -4009,7 +4042,7 @@ impl PeerConfig {
         if RETIRED_RDP_CREDENTIAL_OPTIONS.contains(&name) {
             return Ok(String::new());
         }
-        let mut file: PeerOptionsFile = read_config_view(&Self::path(id))?;
+        let mut file: PeerOptionsFile = Self::read_view(&Self::path(id))?;
         Ok(file.options.remove(name).unwrap_or_default())
     }
 
@@ -4065,7 +4098,7 @@ impl PeerConfig {
     }
 
     pub fn credential_status(id: &str) -> crate::ResultType<PeerCredentialStatus> {
-        let file: PeerCredentialFile = read_config_view(&Self::path(id))?;
+        let file: PeerCredentialFile = Self::read_view(&Self::path(id))?;
         let has_saved_prs = !file.password_prs.is_empty();
         Ok(PeerCredentialStatus {
             has_saved_prs,
@@ -4074,7 +4107,7 @@ impl PeerConfig {
     }
 
     pub fn ui_info_json(id: &str) -> crate::ResultType<String> {
-        let info: PeerUiInfo = read_config_view(&Self::path(id))?;
+        let info: PeerUiInfo = Self::read_view(&Self::path(id))?;
         Ok(serde_json::to_string(&info)?)
     }
 
@@ -4136,14 +4169,69 @@ impl PeerConfig {
         Ok(Some(parent))
     }
 
-    fn path(id: &str) -> PathBuf {
-        let id_encoded = if id.chars().any(|c| matches!(c, '<' | '>' | ':' | '/' | '\\' | '|' | '?' | '*')) {
+    fn encoded_id(id: &str) -> String {
+        if id.chars().any(|c| matches!(c, '<' | '>' | ':' | '/' | '\\' | '|' | '?' | '*')) {
             "base64_".to_string() + base64::encode(id, base64::Variant::Original).as_str()
         } else {
             id.to_string()
-        };
+        }
+    }
+
+    fn path(id: &str) -> PathBuf {
+        let id_encoded = Self::encoded_id(id);
+        if id_encoded.len() > MAX_PEER_FILE_STEM_BYTES {
+            use crate::sha2::{Digest, Sha256};
+            return Config::path(PEERS).join(format!(
+                "{COMPACT_PEER_FILE_PREFIX}{:x}.toml", Sha256::digest(id.as_bytes()),
+            ));
+        }
         let path: PathBuf = [PEERS, id_encoded.as_str()].iter().collect();
         Config::with_extension(Config::path(path))
+    }
+
+    fn is_compact_path(path: &Path) -> bool {
+        path.file_stem().and_then(|name| name.to_str())
+            .and_then(|name| name.strip_prefix(COMPACT_PEER_FILE_PREFIX))
+            .is_some_and(|tag| tag.len() == 64
+                && tag.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)))
+            && path.extension().and_then(|ext| ext.to_str()) == Some("toml")
+    }
+
+    fn compact_id_matches(path: &Path, id: &str) -> bool {
+        crate::is_direct_address(id)
+            && Self::encoded_id(id).len() > MAX_PEER_FILE_STEM_BYTES
+            && Self::path(id) == path
+    }
+
+    fn read_file<T: serde::de::DeserializeOwned>(path: &Path)
+        -> Result<Option<PeerRecord<T>>, ConfigReadFailure>
+    {
+        if Self::is_compact_path(path) {
+            let record: Option<PeerRecord<T>> = read_config_file(path)?;
+            match record {
+                Some(record) if Self::compact_id_matches(path, &record.peer_id) => Ok(Some(record)),
+                Some(_) => Err(ConfigReadFailure::Corrupt),
+                None => Ok(None),
+            }
+        } else {
+            read_config_file(path).map(|value| value.map(|value| PeerRecord {
+                peer_id: String::new(), value,
+            }))
+        }
+    }
+
+    fn read_view<T: serde::de::DeserializeOwned + Default>(path: &Path) -> crate::ResultType<T> {
+        Self::read_file(path)
+            .map(|record| record.map(|record| record.value).unwrap_or_default())
+            .map_err(|_| anyhow!("Failed to read configuration view"))
+    }
+
+    fn read_compact_id(path: &Path) -> crate::ResultType<String> {
+        let record: PeerRecordId = read_config_view(path)?;
+        if !Self::compact_id_matches(path, &record.peer_id) {
+            return Err(anyhow!("Peer record identity does not match its path"));
+        }
+        Ok(record.peer_id)
     }
 
     // The number of peers to load in the first round when showing the peers card list in the main window.
@@ -4173,7 +4261,9 @@ impl PeerConfig {
                 })
                 .filter_map(|p| {
                     let id = p.file_stem()?.to_str()?;
-                    let id = if let Some(encoded) = id.strip_prefix("base64_").filter(|encoded| !encoded.is_empty()) {
+                    let id = if Self::is_compact_path(&p) {
+                        Self::read_compact_id(&p).ok()?
+                    } else if let Some(encoded) = id.strip_prefix("base64_").filter(|encoded| !encoded.is_empty()) {
                         String::from_utf8(base64::decode(encoded, base64::Variant::Original).ok()?).ok()?
                     } else {
                         id.to_owned()
@@ -4247,7 +4337,7 @@ impl PeerConfig {
     }
 
     fn load_list_info(path: PathBuf) -> crate::ResultType<PeerListInfo> {
-        let file: PeerListFile = read_config_view(&path)?;
+        let file: PeerListFile = Self::read_view(&path)?;
         Ok(PeerListInfo {
             info: file.info,
             alias: file.options.alias,
@@ -6384,7 +6474,7 @@ unrelated = "preserved"
             .options
             .insert("rdp_port".to_owned(), "3390".to_owned());
 
-        PeerConfig::store_path(&file, &config).unwrap();
+        PeerConfig::store_path(&file, &config, None).unwrap();
 
         let stored: PeerConfig = load_path(file);
         assert!(!stored.options.contains_key("rdp_username"));

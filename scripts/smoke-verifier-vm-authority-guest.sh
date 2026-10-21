@@ -3324,6 +3324,7 @@ run_focused_rust_tests() {
         if [ "$RUST_TEST_PROFILE" = config-options ]; then
             source_fingerprints+=(
                 libs/hbb_common/src/config/option_tests.rs
+                libs/hbb_common/src/config/local_transaction_tests.rs
                 libs/hbb_common/src/config/directory_tests.rs
                 libs/hbb_common/src/config/directory_crash_tests.rs
                 libs/hbb_common/src/config/directory_umask_tests.rs
@@ -3396,6 +3397,9 @@ run_focused_rust_tests() {
                 config::option_tests::local_source_denial_refuses_every_mutation_and_allows_retry
                 config::option_tests::local_source_corruption_refuses_repeated_mutations_without_recovery
                 config::option_tests::local_source_mutations_preserve_completed_external_changes
+                config::option_tests::local_transaction_tests::local_updates_preserve_another_process_completed_change
+                config::option_tests::local_transaction_tests::local_update_refuses_a_held_cross_process_lease_and_retries
+                config::option_tests::local_transaction_tests::local_update_lease_survives_owner_process_exit
                 config::option_tests::local_source_idempotence_uses_durable_values_and_refreshes_cache
                 config::option_tests::local_source_missing_noops_do_not_create_and_first_saves_work
                 config::option_tests::last_peer_failure_preserves_state_and_retries_the_identical_value

@@ -1,6 +1,9 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+#[path = "local_transaction_tests.rs"]
+mod local_transaction_tests;
+
 #[cfg(target_arch = "x86_64")]
 #[path = "directory_tests.rs"]
 mod directory_tests;

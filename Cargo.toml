@@ -110,7 +110,6 @@ url = { version = "2.3", features = ["serde"] }
 hex = "0.4"
 chrono = "0.4"
 fon = "0.6"
-zip = "0.6"
 shutdown_hooks = "0.1"
 # R-SV4(b)/R-D5/R-R3: `stunclient` removed — its only use was the dead NAT-type/IPv6 STUN
 # probes (test_nat_ipv4/test_ipv6 → stun.l.google.com/cloudflare/nextcloud), excised. A

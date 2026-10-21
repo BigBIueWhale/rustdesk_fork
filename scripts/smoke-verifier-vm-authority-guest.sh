@@ -148,7 +148,7 @@ case "$#:${8:-}" in
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
-            || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
+            || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --video-qos-controller || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
             || "${13}" = --fusermount-process || "${13}" = --file-block \
             || "${13}" = --clipboard-response || "${13}" = --cliprdr-read || "${13}" = --android-client-drain || "${13}" = --cm-read-tick ]] || exit 2
@@ -4514,15 +4514,22 @@ run_focused_rust_tests() {
                 flutter::keyboard_input_tests::replaced_connection_rejects_stale_jobs_and_keeps_cleanup_on_the_old_round
                 flutter::keyboard_input_tests::bounded_command_refusal_is_terminal_without_a_cleanup_retry
             )
-        elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
-            container_name=rustdesk-video-qos-tests
+        elif [[ "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = video-qos-controller ]]; then
+            container_name=rustdesk-$RUST_TEST_PROFILE-tests
             memory=5g
             memory_bytes=5368709120
             source_fingerprints=(
                 Cargo.lock Cargo.toml src/lib.rs src/server.rs
                 src/server/connection.rs src/server/video_qos.rs
+                libs/scrap/src/common/codec.rs libs/scrap/src/common/codec/quality.rs
                 scripts/run-video-qos-tests.sh scripts/linux-parent-test-build.sh
             )
+            if [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
+                source_fingerprints+=(
+                    libs/video_qos_it/Cargo.toml libs/video_qos_it/src/lib.rs
+                    libs/video_qos_it/src/server.rs scripts/run-video-qos-controller-tests.sh
+                )
+            fi
             required_tests=(
                 server::video_qos::tests::pending_probe_observation_preserves_completed_rtt_history
                 server::video_qos::tests::completed_probe_reply_retires_pending_congestion
@@ -5386,6 +5393,10 @@ run_focused_rust_tests() {
                             /bin/bash /source/scripts/run-option-ack-tests.sh
                             exit 0
                         fi
+                        if [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
+                            /bin/bash /source/scripts/run-video-qos-controller-tests.sh
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = video-qos ]; then
                             /bin/bash /source/scripts/run-video-qos-tests.sh
                             exit 0
@@ -5832,11 +5843,11 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = option-ack || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+        && [[ "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = video-qos-controller || "$RUST_TEST_PROFILE" = option-ack || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
-            | awk '/^(RECORDING_OUTPUT(_PARENT)?|VIEWER_VIDEO|VIDEO_QOS|OPTION_ACK|OPTION_WIRE|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() } /^test common::record::tests::/ { print "RECORDING_OUTPUT_PROGRESS=" $0; fflush() } /^RECORDING_OUTPUT_FAILURE=/ { print; fflush() }'; then
+            | awk '/^(RECORDING_OUTPUT(_PARENT)?|VIEWER_VIDEO|VIDEO_QOS(_CONTROLLER)?|OPTION_ACK|OPTION_WIRE|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() } /^test common::record::tests::/ { print "RECORDING_OUTPUT_PROGRESS=" $0; fflush() } /^RECORDING_OUTPUT_FAILURE=/ { print; fflush() }'; then
             parent_start_status=("${PIPESTATUS[@]}")
         else
             parent_start_status=("${PIPESTATUS[@]}")
@@ -6237,6 +6248,12 @@ PY
             [ "$(grep -Fxc "VOICE_INPUT_WIRE_DART_CASE=pass name=$case_name" "$output")" -eq 1 ] \
                 || fail "voice-call input bridge case differs: $case_name"
         done
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS controller summary count differs'
+        [ "$(grep -Ec '^VIDEO_QOS_CONTROLLER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/video_qos_it-[0-9a-f]{16} tests=18 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'VIDEO_QOS_CONTROLLER_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^test server::video_qos::tests::.* \.\.\. ok$' "$output")" -eq 18 ] \
+            || fail 'video QoS controller artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
         [ "$(grep -Ec '^VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=18 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -6756,6 +6773,12 @@ PY
             grep -E '^SCROLL_PREF_EXPORT_(BEFORE|NATIVE)=|^SCROLL_STYLE_WIRE_DART(_CASE)?=|^EDGE_THICKNESS_WIRE_DART(_CASE)?=' "$output"
             grep -E '^REVERSE_WHEEL_EXPORT_(BEFORE|NATIVE)=|^REVERSE_WHEEL_WIRE_DART(_CASE)?=' "$output"
             printf 'OPTION_ACK_VM=pass commit=%s tree=%s tests=14 target=linux-x86_64 scope=complete-parent-library-option-and-keyboard-outcomes rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
+            [ "$tests_passed" -eq 18 ] || fail 'video QoS controller total differs'
+            grep -E '^test server::video_qos::tests::.* \.\.\. ok$|^VIDEO_QOS_CONTROLLER_(BUILD=pass |ARTIFACT(_AFTER)?=)|^VIDEO_QOS_(BASE_RTT=|RECOVERY=|CONGESTION=|DELAY_(WINDOW|RANGE|RECOVERY)=|QUALITY_(ORDER|RETIRE|OWNER|CONTINUITY)=)' "$output"
+            printf 'VIDEO_QOS_CONTROLLER_VM=pass commit=%s tree=%s tests=18 target=linux-x86_64 scope=production-controller-and-shared-types rust=1.75.0 package=video_qos_it vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then

@@ -1,10 +1,11 @@
-# Shared guest-only compiler for the complete pinned Linux library test artifact.
+# Shared guest-only compiler for pinned Linux parent and controller library tests.
 # Callers retain test_executable and artifact_sha for exact behavioral execution.
 build_linux_parent_test() {
     [ "$#" -eq 2 ] || return 1
     local work=$1 receipt_prefix=$2
     [[ "$work:$receipt_prefix" = /tmp/pa-runtime:PA_RUNTIME \
         || "$work:$receipt_prefix" = /tmp/video-qos:VIDEO_QOS \
+        || "$work:$receipt_prefix" = /tmp/video-qos-controller:VIDEO_QOS_CONTROLLER \
         || "$work:$receipt_prefix" = /tmp/option-ack:OPTION_ACK \
         || "$work:$receipt_prefix" = /tmp/viewer-video:VIEWER_VIDEO \
         || "$work:$receipt_prefix" = /tmp/resolution-parent:RESOLUTION_PARENT \
@@ -21,15 +22,24 @@ build_linux_parent_test() {
         || { echo 'Linux parent compiler entry authority differs' >&2; return 1; }
     local build_budget=600
     if [[ "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = LOCAL_FILE_LISTING || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK ]]; then build_budget=240; fi
-    printf '%s_BUILD=started target=linux-libtest budget_seconds=%s\n' "$receipt_prefix" "$build_budget"
     local features=linux-pkg-config
     if [[ "$receipt_prefix" = OPTION_ACK || "$receipt_prefix" = FILE_RECEIVE_PARENT || "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = LOCAL_FILE_LISTING || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK ]]; then
         features=linux-pkg-config,flutter
     fi
+    local test_manifest=/source/Cargo.toml test_name=librustdesk test_source=/source/src/lib.rs
+    local -a test_arguments=(--lib --features "$features")
+    if [ "$receipt_prefix" = VIDEO_QOS_CONTROLLER ]; then
+        build_budget=180
+        test_manifest=/source/libs/video_qos_it/Cargo.toml
+        test_name=video_qos_it
+        test_source=/source/libs/video_qos_it/src/lib.rs
+        test_arguments=(--package video_qos_it --lib)
+    fi
+    printf '%s_BUILD=started target=linux-libtest budget_seconds=%s\n' "$receipt_prefix" "$build_budget"
     local build_started=$SECONDS
     local build_status=0
     timeout --signal=TERM --kill-after=5s "${build_budget}s" \
-        cargo test --offline --locked --lib --features "$features" --no-run \
+        cargo test --offline --locked "${test_arguments[@]}" --no-run \
         --message-format=json --color never >"$work/build.json" || build_status=$?
     if [ "$build_status" -ne 0 ]; then
         python3 -I -S - "$work/build.json" <<'PY'
@@ -61,7 +71,7 @@ PY
         cat /sys/fs/cgroup/memory.events >&2
         exit "$build_status"
     fi
-    test_executable="$(python3 -I -S - "$work/build.json" <<'PY'
+    test_executable="$(python3 -I -S - "$work/build.json" "$test_manifest" "$test_name" "$test_source" <<'PY'
 import json
 import os
 import re
@@ -80,9 +90,9 @@ for line in output.splitlines():
     if message.get('reason') == 'build-finished':
         finished.append(message.get('success'))
     if (message.get('reason') == 'compiler-artifact'
-            and message.get('manifest_path') == '/source/Cargo.toml'
-            and message.get('target', {}).get('name') == 'librustdesk'
-            and message.get('target', {}).get('src_path') == '/source/src/lib.rs'
+            and message.get('manifest_path') == sys.argv[2]
+            and message.get('target', {}).get('name') == sys.argv[3]
+            and message.get('target', {}).get('src_path') == sys.argv[4]
             and message.get('profile', {}).get('test') is True):
         if os.environ.get('CARGO_PROFILE_TEST_DEBUG') == '0':
             profile = message['profile']
@@ -93,7 +103,7 @@ for line in output.splitlines():
         artifacts.append(message.get('executable'))
 if finished != [True] or len(artifacts) != 1 or not isinstance(artifacts[0], str):
     sys.exit('Linux parent build lacks one exact completed library test artifact')
-if not re.fullmatch(r'/cargo-target/debug/deps/librustdesk-[0-9a-f]{16}', artifacts[0]):
+if not re.fullmatch(r'/cargo-target/debug/deps/' + re.escape(sys.argv[3]) + r'-[0-9a-f]{16}', artifacts[0]):
     sys.exit('Linux parent test artifact is outside its private target directory')
 print(artifacts[0])
 PY

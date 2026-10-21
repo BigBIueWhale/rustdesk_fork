@@ -1,0 +1,8 @@
+[package]
+name = "video_qos_it"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dev-dependencies]
+hbb_common = { path = "../hbb_common" }

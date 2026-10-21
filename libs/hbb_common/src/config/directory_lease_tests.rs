@@ -2,6 +2,110 @@ use super::*;
 use std::fs;
 use std::os::unix::fs::{symlink, FileTypeExt, OpenOptionsExt, PermissionsExt};
 
+fn held_lease_attempt(
+    action: impl FnOnce() -> Result<()> + Send + 'static,
+) -> (std::thread::JoinHandle<()>, std::sync::mpsc::Receiver<(bool, u128)>) {
+    let (ready, started) = std::sync::mpsc::channel();
+    let (finished, result) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        ready.send(()).unwrap();
+        let start = std::time::Instant::now();
+        let timed_out = action().err().and_then(|error| {
+            error.downcast_ref::<io::Error>().map(|error| error.kind())
+        }) == Some(io::ErrorKind::TimedOut);
+        finished.send((timed_out, start.elapsed().as_millis())).unwrap();
+    });
+    started.recv_timeout(std::time::Duration::from_secs(3)).unwrap();
+    (worker, result)
+}
+
+#[test]
+fn directory_lease_held_owner_bounds_admission_and_allows_retry() {
+    crate::config::option_tests::in_private_process(
+        "config::linux_directory::lease_tests::directory_lease_held_owner_bounds_admission_and_allows_retry",
+        |root| {
+            let handles = || fs::read_dir("/proc/self/fd").unwrap().count();
+            let before = handles();
+            let mut correct = true;
+            for create in [false, true] {
+                let base = root.join(format!("held-lease-{create}"));
+                fs::create_dir(&base).unwrap();
+                let parent = File::open(&base).unwrap();
+                let owner = Lease::open(&parent, b"next", true).unwrap().unwrap();
+                let path = base.join(std::ffi::OsStr::from_bytes(owner.name.to_bytes()));
+                let original = id(&owner.file).unwrap();
+                let canary = File::options().read(true).write(true).open(&path).unwrap();
+                assert_eq!(unsafe { libc::flock(canary.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) }, -1);
+                assert_eq!(io::Error::last_os_error().kind(), io::ErrorKind::WouldBlock);
+                drop(canary);
+                let worker_base = base.clone();
+                let (worker, result) = held_lease_attempt(move || {
+                    let parent = File::open(worker_base)?;
+                    Lease::open(&parent, b"next", create).map(|_| ())
+                });
+                let observed = result.recv_timeout(std::time::Duration::from_secs(3));
+                let bounded = observed.as_ref().map(|value| value.0).unwrap_or(false);
+                let preserved = id(&owner.file).unwrap() == original && fs::read(&path).unwrap().is_empty()
+                    && fs::read_dir(&base).unwrap().count() == 1;
+                drop(owner);
+                worker.join().unwrap();
+                let retried = Lease::open(&parent, b"next", create).unwrap().unwrap();
+                let retry_same = id(&retried.file).unwrap() == original;
+                println!("OPTION_COMMIT_LEASE_WAIT=observed kind=lease create={create} returned_while_held={} timed_out={bounded} elapsed_ms={} preserved={preserved} retry_same_inode={retry_same}", observed.is_ok(), observed.map(|value| value.1).unwrap_or(3000));
+                correct &= bounded && preserved && retry_same;
+            }
+            let after = handles();
+            println!("OPTION_COMMIT_LEASE_WAIT=handles kind=lease before={before} after={after}");
+            assert!(correct);
+            assert_eq!(before, after);
+        },
+    );
+}
+
+#[test]
+fn directory_lease_busy_save_preserves_first_and_replacement_outcomes() {
+    crate::config::option_tests::in_private_process(
+        "config::linux_directory::lease_tests::directory_lease_busy_save_preserves_first_and_replacement_outcomes",
+        |root| {
+            let handles = || fs::read_dir("/proc/self/fd").unwrap().count();
+            let before = handles();
+            let mut correct = true;
+            for existing in [false, true] {
+                let base = root.join(format!("held-store-{existing}"));
+                fs::create_dir(&base).unwrap();
+                let path = base.join("next/settings.toml");
+                if existing {
+                    crate::config::store_config_bytes_transaction(&path, b"original", crate::config::ConfigStoreFault::None).unwrap();
+                }
+                let original = fs::metadata(&path).ok().map(|m| (m.dev(), m.ino()));
+                let parent = File::open(&base).unwrap();
+                let owner = Lease::open(&parent, b"next", true).unwrap().unwrap();
+                let journal = base.join(std::ffi::OsStr::from_bytes(owner.name.to_bytes()));
+                let original_lease = id(&owner.file).unwrap();
+                let worker_path = path.clone();
+                let (worker, result) = held_lease_attempt(move || {
+                    crate::config::store_config_bytes_transaction(&worker_path, b"replacement", crate::config::ConfigStoreFault::None)
+                });
+                let observed = result.recv_timeout(std::time::Duration::from_secs(3));
+                let bounded = observed.as_ref().map(|value| value.0).unwrap_or(false);
+                let preserved = fs::metadata(&path).ok().map(|m| (m.dev(), m.ino())) == original
+                    && if existing { fs::read(&path).unwrap() == b"original" } else { !path.parent().unwrap().exists() };
+                let lease_preserved = id(&owner.file).unwrap() == original_lease && fs::read(&journal).unwrap().is_empty();
+                drop(owner);
+                worker.join().unwrap();
+                crate::config::store_config_bytes_transaction(&path, b"replacement", crate::config::ConfigStoreFault::None).unwrap();
+                let retry_saved = fs::read(&path).unwrap() == b"replacement";
+                println!("OPTION_COMMIT_LEASE_WAIT=observed kind=store existing={existing} returned_while_held={} timed_out={bounded} elapsed_ms={} preserved={preserved} lease_preserved={lease_preserved} retry_saved={retry_saved}", observed.is_ok(), observed.map(|value| value.1).unwrap_or(3000));
+                correct &= bounded && preserved && lease_preserved && retry_saved;
+            }
+            let after = handles();
+            println!("OPTION_COMMIT_LEASE_WAIT=handles kind=store before={before} after={after}");
+            assert!(correct);
+            assert_eq!(before, after);
+        },
+    );
+}
+
 #[test]
 fn directory_lease_metadata_admission_precedes_io() {
     crate::config::option_tests::in_private_process(

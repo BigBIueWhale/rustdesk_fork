@@ -3511,6 +3511,8 @@ run_focused_rust_tests() {
                 config::option_tests::peer_port_forward_idempotent_edits_avoid_writes
                 config::option_tests::peer_port_forward_missing_removal_does_not_create_record
                 config::linux_directory::lease_tests::directory_lease_metadata_admission_precedes_io
+                config::linux_directory::lease_tests::directory_lease_held_owner_bounds_admission_and_allows_retry
+                config::linux_directory::lease_tests::directory_lease_busy_save_preserves_first_and_replacement_outcomes
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then

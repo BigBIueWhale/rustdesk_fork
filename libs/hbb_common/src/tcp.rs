@@ -11,7 +11,7 @@ use protobuf::Message;
 use std::{
     convert::TryFrom,
     io::{self, Error, ErrorKind},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     ops::{Deref, DerefMut},
     pin::Pin,
     sync::{
@@ -903,20 +903,6 @@ impl Drop for FramedStream {
 
 const DEFAULT_BACKLOG: u32 = 128;
 
-pub async fn new_listener<T: ToSocketAddrs>(addr: T, reuse: bool) -> ResultType<TcpListener> {
-    if !reuse {
-        Ok(TcpListener::bind(addr).await?)
-    } else {
-        let addr = lookup_host(&addr)
-            .await?
-            .next()
-            .context("could not resolve to any address")?;
-        new_socket(addr, true)?
-            .listen(DEFAULT_BACKLOG)
-            .map_err(anyhow::Error::msg)
-    }
-}
-
 pub async fn new_exclusive_listener<T: ToSocketAddrs>(addr: T) -> ResultType<TcpListener> {
     let addr = lookup_host(&addr)
         .await?
@@ -925,46 +911,7 @@ pub async fn new_exclusive_listener<T: ToSocketAddrs>(addr: T) -> ResultType<Tcp
     Ok(new_listener_socket(addr)?.listen(DEFAULT_BACKLOG)?)
 }
 
-pub async fn listen_any(port: u16) -> ResultType<TcpListener> {
-    if let Ok(mut socket) = TcpSocket::new_v6() {
-        #[cfg(unix)]
-        {
-            // illumos has no support for SO_REUSEPORT
-            #[cfg(not(target_os = "illumos"))]
-            socket.set_reuseport(true).ok();
-            socket.set_reuseaddr(true).ok();
-            use std::os::unix::io::{FromRawFd, IntoRawFd};
-            let raw_fd = socket.into_raw_fd();
-            let sock2 = unsafe { socket2::Socket::from_raw_fd(raw_fd) };
-            sock2.set_only_v6(false).ok();
-            socket = unsafe { TcpSocket::from_raw_fd(sock2.into_raw_fd()) };
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::prelude::{FromRawSocket, IntoRawSocket};
-            let raw_socket = socket.into_raw_socket();
-            let sock2 = unsafe { socket2::Socket::from_raw_socket(raw_socket) };
-            sock2.set_only_v6(false).ok();
-            socket = unsafe { TcpSocket::from_raw_socket(sock2.into_raw_socket()) };
-        }
-        if socket
-            .bind(SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port))
-            .is_ok()
-        {
-            if let Ok(l) = socket.listen(DEFAULT_BACKLOG) {
-                return Ok(l);
-            }
-        }
-    }
-    Ok(new_socket(
-        SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port),
-        true,
-    )?
-    .listen(DEFAULT_BACKLOG)?)
-}
-
-/// R-D5: bind the direct listener **v4-only**. This is exactly the v4 body of
-/// `listen_any` (above) used unconditionally — `0.0.0.0:port`, no dual-stack v6
+/// R-D5: bind the direct listener **v4-only** to `0.0.0.0:port`, with no dual-stack
 /// face — so IPv6 unreachability is a *property of the binary*, not of a host
 /// sysctl or an `ip6tables` rule that can drift ("structural > config" applied
 /// to address families). The fork's only inbound listener (the lifted

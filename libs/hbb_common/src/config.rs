@@ -4764,11 +4764,13 @@ impl UserDefaultConfig {
             keys::OPTION_CODEC_PREFERENCE => {
                 self.get_string(key, "auto", vec!["vp8", "vp9", "h264", "h265"])
             }
-            keys::OPTION_CUSTOM_IMAGE_QUALITY => self.get_num_string(key, 50.0, 10.0, 0xFFF as f64),
-            keys::OPTION_CUSTOM_FPS => self.get_num_string(key, 30.0, 5.0, 120.0),
+            keys::OPTION_CUSTOM_IMAGE_QUALITY => {
+                (self.get_num(key, 50.0, 10.0, 0xFFF as f64) as i32).to_string()
+            }
+            keys::OPTION_CUSTOM_FPS => (self.get_num(key, 30.0, 5.0, 120.0) as i32).to_string(),
             keys::OPTION_ENABLE_FILE_COPY_PASTE => self.get_string(key, "Y", vec!["", "N"]),
-            keys::OPTION_EDGE_SCROLL_EDGE_THICKNESS => self.get_num_string(key, 100, 20, 150),
-            keys::OPTION_TRACKPAD_SPEED => self.get_num_string(key, 100, 10, 1000),
+            keys::OPTION_EDGE_SCROLL_EDGE_THICKNESS => self.get_num(key, 100, 20, 150).to_string(),
+            keys::OPTION_TRACKPAD_SPEED => self.get_num(key, 100, 10, 1000).to_string(),
             _ => self
                 .get_after(key)
                 .map(|v| v.to_string())
@@ -4814,20 +4816,20 @@ impl UserDefaultConfig {
     }
 
     #[inline]
-    fn get_num_string<T>(&self, key: &str, default: T, min: T, max: T) -> String
+    fn get_num<T>(&self, key: &str, default: T, min: T, max: T) -> T
     where
-        T: ToString + std::str::FromStr + std::cmp::PartialOrd + std::marker::Copy,
+        T: std::str::FromStr + std::cmp::PartialOrd + std::marker::Copy,
     {
         match self.get_after(key) {
             Some(option) => {
                 let v: T = option.parse().unwrap_or(default);
                 if v >= min && v <= max {
-                    v.to_string()
+                    v
                 } else {
-                    default.to_string()
+                    default
                 }
             }
-            None => default.to_string(),
+            None => default,
         }
     }
 

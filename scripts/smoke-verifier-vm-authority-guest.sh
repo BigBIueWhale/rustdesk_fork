@@ -150,7 +150,7 @@ case "$#:${8:-}" in
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
             || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --video-qos-controller || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
-            || "${13}" = --fusermount-process || "${13}" = --file-block \
+            || "${13}" = --fusermount-process || "${13}" = --file-block || "${13}" = --control-egress \
             || "${13}" = --clipboard-response || "${13}" = --cliprdr-read || "${13}" = --android-client-drain || "${13}" = --cm-read-tick ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
@@ -933,6 +933,7 @@ for profile, memory, scratch, overlay in (
         ('audio-buffer', 2048, 6, 4),
         ('audio-mailbox', 2048, 6, 4),
         ('file-block', 2048, 6, 4),
+        ('control-egress', 2048, 6, 4),
         ('xrandr-acquisition', 4096, 6, 4),
         ('authority-smoke', 2048, 4, 1),
         ('ledger-token-count', 2048, 4, 1)):
@@ -954,7 +955,8 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('linux-service-uid-tests', 2047), ('linux-service-uid-tests', 4096),
                         ('audio-buffer', 2047), ('audio-buffer', 4096),
                         ('audio-mailbox', 2047), ('audio-mailbox', 4096),
-                        ('file-block', 2047), ('file-block', 4096)):
+                        ('file-block', 2047), ('file-block', 4096),
+                        ('control-egress', 2047), ('control-egress', 4096)):
     try:
         limits(profile, memory)
     except ValueError:
@@ -963,7 +965,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=20 refusals=34 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=21 refusals=36 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -4079,6 +4081,24 @@ run_focused_rust_tests() {
                 bytes_codec::tests::decode_large_frame_header_caps_preallocation
                 bytes_codec::tests::decode_rejects_frame_over_max_packet_length_before_reserve
             )
+        elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
+            container_name=rustdesk-control-egress-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=64m
+            source_fingerprints=(
+                Cargo.lock src/server/connection.rs libs/hbb_common/src/cpace.rs
+                libs/hbb_common/build.rs libs/hbb_common/src/protos/mod.rs
+                libs/hbb_common/protos/message.proto libs/hbb_common/protos/rendezvous.proto
+                scripts/test-control-egress.rs scripts/run-control-egress-tests.py
+            )
+            required_tests=(
+                control_egress_tests::r_s11gw_cursor_positions_replace_only_the_trailing_cursor
+                control_egress_tests::r_s11gw_count_saturation_is_terminal_and_releases_exact_messages
+                control_egress_tests::r_s11gw_byte_and_wire_bounds_fail_the_exact_round_closed
+                control_egress_tests::r_s11gw_media_bypass_and_receiver_retirement_are_visible
+                control_egress_tests::r_s11gw_async_receiver_waits_without_polling_and_closes
+            )
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then
             container_name=rustdesk-file-block-tests
             memory=1g
@@ -5422,6 +5442,11 @@ run_focused_rust_tests() {
                                 /source /tmp/cargo-home/config.toml
                             exit 0
                         fi
+                        if [ "$RUST_TEST_PROFILE" = control-egress ]; then
+                            python3 -I -S /source/scripts/run-control-egress-tests.py \
+                                /source /tmp/cargo-home/config.toml
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = file-block ]; then
                             python3 -I -S /source/scripts/run-file-block-tests.py \
                                 /source /tmp/cargo-home/config.toml
@@ -5827,6 +5852,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'CLIPRDR_READ_PROFILE=cliprdr-read stage=container-start tests=12 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=29 bridge=absent windows=unexecuted\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=5 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=6 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6092,6 +6119,11 @@ PY
         [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=29 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CM_CLIPBOARD_RESPONSE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'CM clipboard response artifact receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=5 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'control-egress artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'file-block summary count differs'
         [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -6684,6 +6716,11 @@ PY
         elif [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
             grep -E '^test (clipboard_non_file|bytes_codec)::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'CM_CLIPBOARD_RESPONSE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-response-type-and-assembly windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
+            grep -E '^test control_egress_tests::.* \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT|BUILD|DEPENDENCIES|INPUT|SOURCE)=' "$output"
+            printf 'CONTROL_EGRESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-control-egress-and-generated-protobuf rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then

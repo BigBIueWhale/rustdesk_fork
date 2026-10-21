@@ -64,6 +64,8 @@ elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:audio-b
     readonly VM_STORAGE_PROFILE=audio-buffer
 elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:audio-mailbox ]; then
     readonly VM_STORAGE_PROFILE=audio-mailbox
+elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:control-egress ]; then
+    readonly VM_STORAGE_PROFILE=control-egress
 elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:file-block ]; then
     readonly VM_STORAGE_PROFILE=file-block
 else

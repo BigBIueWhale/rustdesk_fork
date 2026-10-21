@@ -735,7 +735,19 @@ impl FramedStream {
         // read implementation, require renewed native cancellation/buffer-lifetime evidence.
         let res = match &mut self.state {
             StreamState::Unkeyed(framed) => framed.next().await,
-            StreamState::Keyed(k) => k.read.next().await,
+            StreamState::Keyed(k) => {
+                let result = tokio::select! {
+                    biased;
+                    _ = k.writer_tx.closed() => None,
+                    result = k.read.next() => result,
+                };
+                // Closure is permanent and wins over a frame or EOF that became ready together.
+                if k.writer_tx.is_closed() {
+                    Some(Err(Error::new(ErrorKind::BrokenPipe, "TCP writer terminated")))
+                } else {
+                    result
+                }
+            }
             StreamState::Keying => unreachable!("next observed a mid-keying stream"),
         };
         if matches!(res, Some(Err(_))) {
@@ -827,8 +839,8 @@ const WRITER_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 
 /// R-T3/R-T8 (§20): the dedicated writer owns its framed output and is the SOLE sink consumer. It drains
 /// already-sealed frames in channel-FIFO order (so flush order == seal order == wire order) and
-/// writes each. A socket write error ends the task (the connection is dead); `send_bytes` then
-/// observes the closed channel on its next enqueue and poisons the stream (R-T2).
+/// writes each. A socket write error ends the task; the read owner and subsequent enqueues
+/// observe its closed channel and poison the stream (R-T2).
 async fn writer_task(
     sink: FramedWrite<WriteHalf<DynTcpStream>, BytesCodec>,
     writer_rx: mpsc::Receiver<WriterCommand>,

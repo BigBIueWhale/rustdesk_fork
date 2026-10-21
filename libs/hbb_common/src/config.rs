@@ -14,7 +14,6 @@ use std::sync::OnceLock;
 
 use anyhow::{anyhow, Result};
 use rand::Rng;
-use regex::Regex;
 use serde as de;
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
@@ -4138,21 +4137,12 @@ impl PeerConfig {
     }
 
     fn path(id: &str) -> PathBuf {
-        //If the id contains invalid chars, encode it
-        let forbidden_paths = Regex::new(r".*[<>:/\\|\?\*].*");
-        let path: PathBuf;
-        if let Ok(forbidden_paths) = forbidden_paths {
-            let id_encoded = if forbidden_paths.is_match(id) {
-                "base64_".to_string() + base64::encode(id, base64::Variant::Original).as_str()
-            } else {
-                id.to_string()
-            };
-            path = [PEERS, id_encoded.as_str()].iter().collect();
+        let id_encoded = if id.chars().any(|c| matches!(c, '<' | '>' | ':' | '/' | '\\' | '|' | '?' | '*')) {
+            "base64_".to_string() + base64::encode(id, base64::Variant::Original).as_str()
         } else {
-            log::warn!("Regex create failed: {:?}", forbidden_paths.err());
-            // fallback for failing to create this regex.
-            path = [PEERS, id.replace(":", "_").as_str()].iter().collect();
-        }
+            id.to_string()
+        };
+        let path: PathBuf = [PEERS, id_encoded.as_str()].iter().collect();
         Config::with_extension(Config::path(path))
     }
 
@@ -4181,21 +4171,17 @@ impl PeerConfig {
                     }
                     _ => None,
                 })
-                .map(|p| {
-                    let id = p
-                        .file_stem()
-                        .map(|p| p.to_str().unwrap_or(""))
-                        .unwrap_or("")
-                        .to_owned();
-
-                    let id_decoded_string = if id.starts_with("base64_") && id.len() != 7 {
-                        let id_decoded =
-                            base64::decode(&id[7..], base64::Variant::Original).unwrap_or_default();
-                        String::from_utf8_lossy(&id_decoded).as_ref().to_owned()
+                .filter_map(|p| {
+                    let id = p.file_stem()?.to_str()?;
+                    let id = if let Some(encoded) = id.strip_prefix("base64_").filter(|encoded| !encoded.is_empty()) {
+                        String::from_utf8(base64::decode(encoded, base64::Variant::Original).ok()?).ok()?
                     } else {
-                        id
+                        id.to_owned()
                     };
-                    (id_decoded_string, p)
+                    if Self::path(&id) != p {
+                        return None;
+                    }
+                    Some((id, p))
                 })
                 .filter(|(id, _)| {
                     let Some(filters) = id_filters else {

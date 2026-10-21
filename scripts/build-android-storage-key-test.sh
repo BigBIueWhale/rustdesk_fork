@@ -9,9 +9,9 @@ readonly OUTPUT=/artifact
 readonly WORK=/tmp/android-storage-key-build
 source "$SOURCE/scripts/pins.env"
 [ ! -e "$WORK" ] && [ ! -L "$WORK" ] && [ -d "$OUTPUT" ] && [ -z "$(ls -A "$OUTPUT")" ] || exit 1
-mkdir -m 0700 "$WORK" "$WORK/classes" "$WORK/dex"
+mkdir -m 0700 "$WORK" "$WORK/classes" "$WORK/dex" "$WORK/jars"
 export TMPDIR="$WORK"
-ulimit -f 16384
+ulimit -f 65536
 
 python3 -I -S "$SOURCE/scripts/online-android-sdk-output.py" check-complete \
     --online "$ONLINE" --cmdline-archive "$ONLINE/android-cmdline-tools.zip" \
@@ -33,7 +33,11 @@ resolve_jar() {
     [ "${#matches[@]}" -eq 1 ] || exit 1
     [ "$(stat -c '%u:%g:%a:%h:%s' "${matches[0]}")" = "1000:1000:400:1:$size" ] || exit 1
     [ "$(sha256sum "${matches[0]}" | cut -d ' ' -f 1)" = "$digest" ] || exit 1
-    printf '%s\n' "${matches[0]}"
+    # Kotlin's jar filesystem needs mmap; the sealed virtiofs input is noexec/no-DAX.
+    local staged="$WORK/jars/$artifact-$version.jar"
+    cp -p "${matches[0]}" "$staged"
+    [ "$(sha256sum "$staged" | cut -d ' ' -f 1)" = "$digest" ] || exit 1
+    printf '%s\n' "$staged"
 }
 compiler=$(resolve_jar org.jetbrains.kotlin kotlin-compiler-embeddable "$ANDROID_KOTLIN_VERSION" "$SIZE_ANDROID_KOTLIN_COMPILER_EMBEDDABLE" "$SHA256_ANDROID_KOTLIN_COMPILER_EMBEDDABLE")
 stdlib=$(resolve_jar org.jetbrains.kotlin kotlin-stdlib "$ANDROID_KOTLIN_STDLIB_VERSION" "$SIZE_ANDROID_KOTLIN_STDLIB" "$SHA256_ANDROID_KOTLIN_STDLIB")
@@ -45,7 +49,8 @@ coroutines=$(resolve_jar org.jetbrains.kotlinx kotlinx-coroutines-core-jvm "$AND
 annotations=$(resolve_jar org.jetbrains annotations "$ANDROID_KOTLIN_COMPILER_ANNOTATIONS_VERSION" "$SIZE_ANDROID_KOTLIN_COMPILER_ANNOTATIONS" "$SHA256_ANDROID_KOTLIN_COMPILER_ANNOTATIONS")
 readonly KOTLIN_SOURCE=$SOURCE/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt
 readonly JAVA_SOURCE=$SOURCE/scripts/AndroidStorageKeyInstrumentation.java
-readonly ANDROID_JAR=$ONLINE/android-sdk/platforms/android-${ANDROID_COMPILE_SDK}/android.jar
+readonly ANDROID_JAR=$WORK/android.jar
+cp -p "$ONLINE/android-sdk/platforms/android-${ANDROID_COMPILE_SDK}/android.jar" "$ANDROID_JAR"
 source_before=$(sha256sum "$KOTLIN_SOURCE" "$JAVA_SOURCE" "$SOURCE/scripts/build-android-storage-key-test.sh" "$ANDROID_JAR" "$stdlib")
 # The sealed SDK is noexec. Copy only the authenticated build-tools into private RAM.
 mkdir -m 0700 "$WORK/tools" "$WORK/tools/lib" "$WORK/tools/lib64"

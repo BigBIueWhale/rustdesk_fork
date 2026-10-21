@@ -7330,21 +7330,22 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 - **R-S11bh/R-S11e-74 — mobile at-rest key authority — ANDROID API34 KEY-ENVELOPE COMPONENT VERIFIED;
   FULL APPLICATION/DEVICE MIGRATION OPEN.** `5354a130` validates the stored Android envelope before key
   creation, requires its existing AES wrapping key, and preserves occupied or incompatible aliases.
-  First creation requires absent envelope/key state; only documented StrongBox unavailability with an
-  unoccupied alias permits ordinary AndroidKeyStore creation. The generic failure/deletion path is gone.
+  Wrapping-key creation requires absent envelope/key state. On StrongBox-capable API levels, fallback to
+  ordinary AndroidKeyStore requires documented StrongBox unavailability and an unoccupied alias;
+  older API levels use ordinary AndroidKeyStore directly. The generic failure/deletion path is gone.
   The complete production Kotlin object runs in a source-bound test APK against real API34 AndroidKeyStore
-  under application UID10141. At unchanged implementation `30578892`, both partial-envelope cases,
+  under application UID 10141. At unchanged implementation `30578892`, both partial-envelope cases,
   complete-envelope/missing-key and occupied-RSA-alias checks fail; denied-decrypt, corrupt-envelope and
   valid creation/warm-reload controls pass. The identical Java fixture passes all eight cases after the fix,
-  including 32 warm reloads and a second process's durable key-envelope reload (PIDs2187/2233).
-  `--android-emulator-boot --storage-key-tests` completes in133 outer seconds. The updated storage-object
+  including 32 warm reloads and a second process's durable key-envelope reload (PIDs 2187/2233).
+  `--android-emulator-boot --storage-key-tests` completes in 133 outer seconds. The updated storage-object
   DEX gate/parser controls also execute on compiled output; complete RustDesk bootstrap, JNI and release R8
   do not. The probe is uninstalled; exact emulator/ADB/container/QEMU joins and RAM/root retirement pass.
-  Its profile admits24GiB (10 guest,7 RAM scratch,6 headroom,1 overhead) with a6GiB overlay-file ceiling;
+  Its profile admits 24GiB (10 guest, 7 RAM scratch, 6 headroom, 1 overhead) with a 6GiB overlay-file ceiling;
   all host endpoint snapshots retain zero delta. Initial tool-copy, mmap and install-observation failures
   are rejected setup evidence. Retained capsules: `android-key-generation-5354a130.json` and
   `android-key-generation-setup-5354a130.json` under `.harness-state/verifier-vm/`.
-  The obsolete168-line migration wording checker remains deleted; Rust policy/crypto regressions and
+  The obsolete 168-line migration wording checker remains deleted; Rust policy/crypto regressions and
   signing/JNI bootstrap checks remain. Legacy plaintext/PRS refusal, authorized rewrap and credential
   reload through the complete app, unavailable/invalidated providers, other API levels, physical hardware,
   current signed packages, iOS Keychain and broader R-S0/R-F5 acceptance remain OPEN.

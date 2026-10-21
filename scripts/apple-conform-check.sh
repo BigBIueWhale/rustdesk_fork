@@ -4468,14 +4468,6 @@ else
   rc=1
 fi
 
-echo "== (2g-b1) R-S11bs Unix incumbent-listener identity =="
-if python3 scripts/verify-unix-listener-incumbent.py --repo . --self-test; then
-  note "ok  R-S11bs Unix singleton detection requires current-principal/current-executable incumbent identity"
-else
-  echo "  FAIL R-S11bs Unix singleton detection regained connect-only or ambiguous-cleanup authority"
-  rc=1
-fi
-
 if [ "$rc" = 0 ]; then
   echo "== (3) cross-compile coherence matrix (Rust 1.81, actual Apple features) =="
   echo "  targets: ${SELECTED_APPLE_TARGETS[*]}"

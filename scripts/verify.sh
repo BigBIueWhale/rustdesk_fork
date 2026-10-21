@@ -1271,14 +1271,6 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a000) Unix incumbent-listener identity (R-S11bs/R-S11e-85) =="
-if python3 scripts/verify-unix-listener-incumbent.py --repo . --self-test; then
-  echo "  ok  R-S11e-85 Unix singleton detection requires current-principal/current-executable incumbent identity"
-else
-  echo "  FAIL R-S11e-85 Unix singleton detection regained connect-only or ambiguous-cleanup authority"
-  rc=1
-fi
-
 echo "== (3b-iii-a1a01) Voice-call exact input ownership (R-S11bq/R-S11e-83) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e83_ --color never
 

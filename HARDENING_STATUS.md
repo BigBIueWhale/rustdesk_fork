@@ -7280,10 +7280,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   The historical confined Rust-1.75 locked/offline `r_s11e85_` policy regression recorded
   with `100ae3e5` passed 1/1. This checks the UID/executable conjunction, not live kernel
   credentials, process replacement, native endpoint cleanup or installed artifacts.
-  The Python source checker retains fallible identity/probe/constructor flow, special
-  endpoint proofs, liveness handling, regression and shared/Apple wiring, without
-  document-text inputs/mutations. Original receipts and limitations remain in that commit
-  and audit entry. Design references remain [Unix peer credentials](https://man7.org/linux/man-pages/man7/unix.7.html)
+  The 331-line Python checker and its shared/Apple invocations are deleted. Source
+  substring ordering, in-memory replacements and self-wiring checks did not execute
+  peer identity, liveness or endpoint cleanup. The Rust policy regression and production
+  authentication are unchanged; no new native endpoint result is claimed. Original
+  receipts remain in Git and the audit. Design references remain [Unix peer credentials](https://man7.org/linux/man-pages/man7/unix.7.html)
   and [executable-reference permissions](https://man7.org/linux/man-pages/man5/proc_pid_exe.5.html).
 
   **Still required:** exact-current installed Linux/macOS endpoint tests with genuine,

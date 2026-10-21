@@ -1128,20 +1128,14 @@ fi
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pk_fallback --color never
 r_s11b3f=
-get_uuid_body=$(awk '
-  /^pub fn get_uuid\(\) -> Vec<u8> \{/ { flag=1 }
-  flag {
-    print
-    depth += gsub(/\{/, "{")
-    depth -= gsub(/\}/, "}")
-    if (depth == 0) exit
-  }
-' libs/hbb_common/src/lib.rs)
-echo "$get_uuid_body" | grep -q 'machine_uuid()' || r_s11b3f="$r_s11b3f desktop-uuid-not-machine-uid"
-if echo "$get_uuid_body" | grep -q 'Config::get_key_pair'; then
-  r_s11b3f="$r_s11b3f desktop-uuid-mints-keypair"
+if grep -wEq 'get_uuid|mobile_device_id|log_machine_uuid_error|main_get_uuid|mainGetUuid|get_key_pair' \
+    libs/hbb_common/src/lib.rs libs/hbb_common/src/config.rs \
+    libs/hbb_common/src/password_security.rs src/ui_interface.rs src/flutter_ffi.rs \
+    flutter/lib/web/bridge.dart; then
+  r_s11b3f="$r_s11b3f retired-device-id-surface-present"
+else
+  [ "$?" -eq 1 ] || r_s11b3f="$r_s11b3f device-id-source-scan-failed"
 fi
-grep -B1 'pub fn get_key_pair' libs/hbb_common/src/config.rs | grep -q 'target_os = "android".*target_os = "ios"' || r_s11b3f="$r_s11b3f keypair-generator-not-mobile-cfg"
 if grep -q 'pub fn get_cached_pk' libs/hbb_common/src/config.rs; then
   r_s11b3f="$r_s11b3f cached-pk-api-present"
 fi
@@ -1155,7 +1149,7 @@ grep -A4 'fn secretbox_key_from_storage_key' libs/hbb_common/src/password_securi
 grep -A14 'pub fn encrypt_str_or_original' libs/hbb_common/src/password_security.rs | grep -q 'return String::default()' || r_s11b3f="$r_s11b3f string-encrypt-failure-not-fail-closed"
 grep -A18 'pub fn encrypt_vec_or_original' libs/hbb_common/src/password_security.rs | grep -q 'return Vec::new()' || r_s11b3f="$r_s11b3f vec-encrypt-failure-not-fail-closed"
 if [ -n "$r_s11b3f" ]; then echo "  FAIL R-S11b-3f desktop at-rest key/identity boundary:$r_s11b3f"; rc=1; else
-  echo "  ok  R-S11b-3f desktop at-rest wrapping uses a fallible machine-UID key, never get_uuid/keypair generation; legacy keypair decrypt remains read-only and mobile-only generation is cfg-isolated"; fi
+  echo "  ok  R-S11b-3f at-rest wrapping uses a fallible key; legacy keypair decrypt remains read-only and device-ID export/generation is absent"; fi
 
 echo "== (3b-iii-a1m) mobile at-rest wrapper uses OS-protected storage key (Appendix C #14 mobile) =="
 mobile_at_rest_bad=
@@ -1181,26 +1175,10 @@ echo "$mobile_at_rest_body" | grep -qF 'mobile_at_rest_storage_key()' \
 if echo "$mobile_at_rest_body" | grep -qF 'Config::get_key_pair'; then
   mobile_at_rest_bad="$mobile_at_rest_bad mobile-at-rest-still-primary-config-keypair"
 fi
-grep -qF 'fn mobile_device_id() -> Vec<u8>' libs/hbb_common/src/lib.rs \
-  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-device-id-seam-missing"
 grep -A16 '^unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key' src/flutter_ffi.rs | grep -qF 'len != hbb_common::MOBILE_AT_REST_STORAGE_KEY_LEN' \
   || mobile_at_rest_bad="$mobile_at_rest_bad mobile-c-setter-length-check-missing"
 if grep -qF 'pub unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key' src/flutter_ffi.rs; then
   mobile_at_rest_bad="$mobile_at_rest_bad mobile-c-setter-leaks-into-frb-api"
-fi
-get_uuid_body=$(awk '
-  /^pub fn get_uuid\(\) -> Vec<u8> \{/ { flag=1 }
-  flag {
-    print
-    depth += gsub(/\{/, "{")
-    depth -= gsub(/\}/, "}")
-    if (depth == 0) exit
-  }
-' libs/hbb_common/src/lib.rs)
-echo "$get_uuid_body" | grep -qF 'mobile_device_id()' \
-  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-uuid-not-separated-from-at-rest-key"
-if echo "$get_uuid_body" | grep -qF 'at_rest_storage_key()'; then
-  mobile_at_rest_bad="$mobile_at_rest_bad mobile-uuid-exposes-at-rest-key"
 fi
 grep -qF 'external fun setMobileAtRestStorageKey(key: ByteArray): Boolean' flutter/android/app/src/main/kotlin/ffi.kt \
   || mobile_at_rest_bad="$mobile_at_rest_bad android-jni-declaration-missing"

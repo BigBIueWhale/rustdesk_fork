@@ -597,11 +597,6 @@ pub fn peer_exists(id: &str) -> bool {
     PeerConfig::exists(id)
 }
 
-#[inline]
-pub fn get_uuid() -> String {
-    crate::encode64(hbb_common::get_uuid())
-}
-
 // R-SV5 / R-G4: the numeric-RustDesk-ID change flow (`change_id` + the `async_job_status`
 // progress mechanism it was the sole user of) is excised — the fork connects by direct address,
 // not by a mutable numeric ID (there is no rendezvous to register a new ID with), and the Sciter

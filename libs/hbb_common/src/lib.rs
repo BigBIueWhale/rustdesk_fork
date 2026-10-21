@@ -2,7 +2,6 @@ pub mod compress;
 pub mod platform;
 pub mod protos;
 pub use bytes;
-use config::Config;
 pub use futures;
 pub use protobuf;
 pub use protos::message as message_proto;
@@ -310,21 +309,6 @@ fn machine_uuid() -> ResultType<Vec<u8>> {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn log_machine_uuid_error(err: &anyhow::Error) {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    static LOG_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-    if LOG_COUNT
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
-            (count < 30).then_some(count + 1)
-        })
-        .is_ok()
-    {
-        log::error!("{err}");
-    }
-}
-
 #[cfg(any(target_os = "android", target_os = "ios"))]
 lazy_static::lazy_static! {
     static ref MOBILE_AT_REST_STORAGE_KEY: std::sync::RwLock<Option<Vec<u8>>> =
@@ -368,15 +352,6 @@ fn mobile_at_rest_storage_key() -> ResultType<Vec<u8>> {
         .ok_or_else(|| anyhow::anyhow!("mobile OS at-rest storage key is not initialized"))
 }
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
-fn mobile_device_id() -> Vec<u8> {
-    let key = Config::get_key_pair().1;
-    if key.is_empty() {
-        log::error!("mobile device id key is empty");
-    }
-    key
-}
-
 pub fn at_rest_storage_key() -> ResultType<Vec<u8>> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -385,23 +360,6 @@ pub fn at_rest_storage_key() -> ResultType<Vec<u8>> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         mobile_at_rest_storage_key()
-    }
-}
-
-pub fn get_uuid() -> Vec<u8> {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        match machine_uuid() {
-            Ok(uid) => uid,
-            Err(err) => {
-                log_machine_uuid_error(&err);
-                Vec::new()
-            }
-        }
-    }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        mobile_device_id()
     }
 }
 

@@ -19,8 +19,6 @@ use serde as de;
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
 use sodiumoxide::base64;
-#[cfg(any(target_os = "android", target_os = "ios"))]
-use sodiumoxide::crypto::sign;
 
 mod permanent_password;
 
@@ -3130,7 +3128,7 @@ impl Config {
             }
             // Otherwise it IS a well-formed `00` secretbox that merely failed to open — the
             // signature of a TRANSIENT machine-UUID read failure (macOS login window / Windows
-            // shutdown — get_uuid, lib.rs). PRESERVE it: a coincident store() must not wipe a
+            // shutdown — machine_uuid, lib.rs). PRESERVE it: a coincident store() must not wipe a
             // possibly-valid credential on a blip. It fails closed at the CPace boundary
             // (the typed PRS read is unavailable) until the UUID reads again.
             return Ok(());
@@ -3502,30 +3500,6 @@ impl Config {
         } else {
             SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0)
         }
-    }
-
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    pub fn get_key_pair() -> KeyPair {
-        // lock here to make sure no gen_keypair more than once
-        // no use of CONFIG directly here to ensure no recursive calling in Config::load because of password dec which calling this function
-        let mut lock = KEY_PAIR.lock().unwrap();
-        if let Some(p) = lock.as_ref() {
-            return p.clone();
-        }
-        let mut config = Config::load_::<Config>("");
-        if config.key_pair.0.is_empty() {
-            log::info!("Generated mobile device-id keypair");
-            let (pk, sk) = sign::gen_keypair();
-            let key_pair = (sk.0.to_vec(), pk.0.into());
-            config.key_pair = key_pair.clone();
-            std::thread::spawn(|| {
-                let mut config = CONFIG.write().unwrap();
-                config.key_pair = key_pair;
-                config.store();
-            });
-        }
-        *lock = Some(config.key_pair.clone());
-        config.key_pair
     }
 
     /// Get an existing legacy key pair without generating a new one.

@@ -1313,10 +1313,6 @@ pub fn main_clip_cursor(
 // with the `_serverId`/`fetchID` server-model machinery. The vestigial LOCAL id label survives via
 // `Config::get_id()` (there is nothing to display it, and it is not a rendezvous handle).
 
-pub fn main_get_uuid() -> String {
-    get_uuid()
-}
-
 pub fn main_get_peer_option(id: String, key: String) -> String {
     get_peer_option(id, key)
 }

@@ -10050,6 +10050,12 @@ run_flutter_model_tests() {
                         "$codegen_source/flutter/lib/generated_bridge.dart" \
                         "$codegen_source/flutter/lib/generated_bridge.freezed.dart"; do
                         [ -s "$generated" ] && [ ! -L "$generated" ]
+                        if grep -Eq "main_get_uuid|mainGetUuid" "$generated"; then
+                            echo "Retired device-ID getter remains in a generated bridge" >&2
+                            exit 1
+                        else
+                            [ "$?" -eq 1 ] || exit 1
+                        fi
                         if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
                             if grep -Eq "isSharedPassword|is_shared_password|shared_password" "$generated"; then
                                 echo "Retired password-source flag remains in a generated bridge" >&2
@@ -10059,6 +10065,11 @@ run_flutter_model_tests() {
                             fi
                         fi
                     done
+                    printf "FLUTTER_DEVICE_ID_EXPORT=absent generated=4 rust_sha256=%s io_sha256=%s dart_sha256=%s freezed_sha256=%s\n" \
+                        "$(sha256sum "$codegen_source/src/bridge_generated.rs" | cut -d " " -f 1)" \
+                        "$(sha256sum "$codegen_source/src/bridge_generated.io.rs" | cut -d " " -f 1)" \
+                        "$(sha256sum lib/generated_bridge.dart | cut -d " " -f 1)" \
+                        "$(sha256sum lib/generated_bridge.freezed.dart | cut -d " " -f 1)"
                     if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
                         printf "FLUTTER_FILE_NAVIGATION_GENERATED=pass mode=filtered-freezed seconds=%s rust_sha256=%s io_sha256=%s dart_sha256=%s freezed_sha256=%s\n" \
                             "$((SECONDS - file_navigation_codegen_started))" \
@@ -10356,6 +10367,11 @@ run_flutter_model_tests() {
         || { tail -c 6291456 "$output" >&2; fail "focused Flutter model tests exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || fail 'focused Flutter-test output exceeds its bound'
+    if [ "$bridge_required" -eq 1 ]; then
+        [ "$(grep -Ec '^FLUTTER_DEVICE_ID_EXPORT=absent generated=4 rust_sha256=[0-9a-f]{64} io_sha256=[0-9a-f]{64} dart_sha256=[0-9a-f]{64} freezed_sha256=[0-9a-f]{64}$' "$output")" -eq 1 ] \
+            || fail 'fresh device-ID export absence receipt differs'
+        grep -E '^FLUTTER_DEVICE_ID_EXPORT=' "$output"
+    fi
     tools_freshness_line="$(grep -Fx \
         "FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass version=$FLUTTER_VERSION lock=$SHA256_FLUTTER_TOOLS_LOCK implicit_pub=prevented" \
         "$output")" \

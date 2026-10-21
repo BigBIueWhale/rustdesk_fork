@@ -1184,10 +1184,6 @@ class RustdeskImpl {
         ]));
   }
 
-  Future<String> mainGetUuid({dynamic hint}) {
-    return Future(() => js.context.callMethod('getByName', ['uuid']));
-  }
-
   Future<String> mainGetPeerOption(
       {required String id, required String key, dynamic hint}) {
     return Future(() => mainGetPeerOptionSync(id: id, key: key, hint: hint));

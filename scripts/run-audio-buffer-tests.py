@@ -86,7 +86,7 @@ def main():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"audio-buffer source changed: {name}")
             print(f"AUDIO_BUFFER_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"AUDIO_BUFFER_ARTIFACT=pass sha256={artifact_sha} tests=16 unchanged=before-after", flush=True)
+        print(f"AUDIO_BUFFER_ARTIFACT=pass sha256={artifact_sha} tests=18 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

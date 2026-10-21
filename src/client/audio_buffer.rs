@@ -248,6 +248,64 @@ mod tests {
     }
 
     #[test]
+    fn trimming_preserves_complete_interleaved_frames() {
+        for sample_rate in [44100, 48000] {
+            for channels in 1..=8 {
+                let mut buffer = AudioBuffer::default();
+                buffer.resize(sample_rate, channels);
+                let capacity = buffer.samples.lock().unwrap().capacity();
+                let input: Vec<f32> = (0..capacity)
+                    .map(|index| (index % channels) as f32)
+                    .collect();
+                assert_eq!(buffer.append_pcm2(&input), capacity);
+                let start = Instant::now();
+                buffer.try_shrink(capacity, start);
+                buffer.try_shrink(capacity, start + SHRINK_INTERVAL);
+                let retained = queued(&buffer);
+                let dropped = capacity - retained;
+                println!(
+                    "AUDIO_FRAME_ALIGNMENT=observed rate={sample_rate} channels={channels} dropped={dropped} retained={retained}"
+                );
+                assert!(dropped > 0 && retained > 0);
+                assert_eq!(dropped % channels, 0, "trim split an interleaved frame");
+                assert_eq!(retained % channels, 0);
+                let mut output = vec![-1.; retained];
+                fill_output(&buffer.samples, &mut output, |sample| sample);
+                assert!(output
+                    .iter()
+                    .enumerate()
+                    .all(|(index, &sample)| sample == (index % channels) as f32));
+                assert_eq!(queued(&buffer), 0);
+            }
+        }
+        println!("AUDIO_FRAME_ALIGNMENT=pass formats=16 rates=44100,48000 channels=1-8");
+    }
+
+    #[test]
+    fn same_capacity_channel_change_retires_pcm() {
+        let mut buffer = AudioBuffer::default();
+        let capacity = buffer.samples.lock().unwrap().capacity();
+        assert_eq!(buffer.append_pcm2(&[1., 2., 3., 4.]), 4);
+        buffer.try_shrink(4, Instant::now());
+        buffer.resize(96000, 1);
+        assert_eq!(buffer.samples.lock().unwrap().capacity(), capacity);
+        println!(
+            "AUDIO_GEOMETRY_RESET=observed old_rate=48000 old_channels=2 rate=96000 channels=1 capacity={capacity} queued={} observations={} clock_armed={}",
+            queued(&buffer),
+            buffer.occupancy_samples.iter().sum::<usize>(),
+            buffer.last_shrink.is_some(),
+        );
+        assert_eq!(queued(&buffer), 0);
+        assert_eq!(buffer.last_shrink, None);
+        assert!(buffer.occupancy_samples.iter().all(|&count| count == 0));
+        assert_eq!(buffer.append_pcm2(&[9.]), 1);
+        let mut output = [-1.; 2];
+        fill_output(&buffer.samples, &mut output, |sample| sample);
+        assert_eq!(output, [9., 0.]);
+        println!("AUDIO_GEOMETRY_RESET=pass same_capacity=true old_pcm=retired statistics=retired clock=retired new_pcm=preserved");
+    }
+
+    #[test]
     fn bounded_append_preserves_the_newest_pcm() {
         let mut buffer = AudioBuffer::default();
         buffer.resize(4, 1);

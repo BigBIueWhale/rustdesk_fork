@@ -51,8 +51,8 @@ def storage_limits(profile, memory_mib):
     if profile == 'linux-parent-libtest':
         require(memory_mib == 6144, 'parent library storage profile requires its 6 GiB guest')
         return 7 * GIB, 6 * GIB
-    if profile == 'linux-flutter-replay':
-        require(memory_mib == 10240, 'Flutter replay requires its 10 GiB guest')
+    if profile in ('linux-flutter-replay', 'android-storage-key'):
+        require(memory_mib == 10240, f'{profile} requires its 10 GiB guest')
         return 7 * GIB, 6 * GIB
     if profile in ('linux-resolution-lifetime', 'fusermount-process'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
@@ -398,7 +398,8 @@ def main():
                                  'flutter-credential-dialog', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'x11-focus', 'linux-parent-libtest',
                                  'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
-                                 'linux-service-receiver', 'linux-flutter-replay', 'installer-package'),
+                                 'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
+                                 'android-storage-key'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

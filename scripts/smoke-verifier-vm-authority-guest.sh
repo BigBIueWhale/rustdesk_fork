@@ -17,6 +17,7 @@ HBB_LOGIND_NATIVE=0
 HBB_FUSE_READ_TESTS=0
 HBB_SEND_DIGEST_TESTS=0
 LEDGER_REQUIREMENTS_SHA256=
+ANDROID_STORAGE_TESTS=0
 LINUX_PA_PLAYBACK=0
 APPLE_CURSOR_ONLY=0
 APPLE_FILE_MODE_ONLY=0
@@ -177,6 +178,11 @@ case "$#:${8:-}" in
         ;;
     12:--android-emulator-boot)
         MODE=android-emulator-boot
+        ;;
+    13:--android-emulator-boot)
+        [ "${13}" = --storage-key-tests ] || exit 2
+        MODE=android-emulator-boot
+        ANDROID_STORAGE_TESTS=1
         ;;
     12:--android-emulator-app)
         MODE=android-emulator-app
@@ -916,6 +922,7 @@ for profile, memory, scratch, overlay in (
         ('x11-focus', 4096, 9, 8),
         ('linux-parent-libtest', 6144, 7, 6),
         ('linux-flutter-replay', 10240, 7, 6),
+        ('android-storage-key', 10240, 7, 6),
         ('linux-resolution-lifetime', 2048, 6, 4),
         ('fusermount-process', 2048, 6, 4),
         ('xrandr-acquisition', 4096, 6, 4),
@@ -930,6 +937,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('x11-focus', 4095), ('x11-focus', 8192),
                         ('linux-parent-libtest', 4096), ('linux-parent-libtest', 8192),
                         ('linux-flutter-replay', 10239), ('linux-flutter-replay', 24576),
+                        ('android-storage-key', 10239), ('android-storage-key', 16384),
                         ('linux-resolution-lifetime', 2047), ('linux-resolution-lifetime', 4096),
                         ('xrandr-acquisition', 2048), ('xrandr-acquisition', 8192),
                         ('linux-service-receiver', 4095), ('linux-service-receiver', 8192),
@@ -943,7 +951,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=15 refusals=24 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=16 refusals=26 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -7826,6 +7834,8 @@ run_android_emulator_boot() {
     local source_archive_sha source_before inputs_before input_mount_options
     local load_output inspect namespace_inspect device_inspect container_status=0
     local renderer_receipt result_line kvm_receipt
+    local memory_gib=12 memory_bytes=12884901888
+    local -a storage_probe_args=()
     local -a renderer_lines=() result_lines=()
 
     [[ "$ANDROID_EMULATOR_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -7931,6 +7941,62 @@ run_android_emulator_boot() {
     [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail "emulator runtime image receipt differs: $load_output"
 
+    if [ "$ANDROID_STORAGE_TESTS" -eq 1 ]; then
+        local builder_archive=$inputs/inputs/build-images/android-builder.docker.tar.gz
+        local probe_root=$ROOT/android-storage-key-probe
+        local build_output=$ROOT/android-storage-key-build.out
+        local probe_sources_before probe_apk_sha256
+        probe_sources_before="$(sha256sum \
+            "$source_root/scripts/build-android-storage-key-test.sh" \
+            "$source_root/scripts/AndroidStorageKeyInstrumentation.java" \
+            "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt")"
+        load_output="$(
+            setpriv --reuid=1000 --regid=1000 --clear-groups \
+                env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+                DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+                python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
+                    --archive "$builder_archive" --archive-sha "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" \
+                    --archive-size "$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" --role android-builder \
+                    --expected-id "$ANDROID_BUILDER_IMAGE_ID" \
+                    --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+                    --dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" \
+                    --recipe-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
+                    --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" \
+                    --bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID" \
+                    --bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+                    --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+                    --config-id "$ANDROID_BUILDER_CONFIG_ID" --manifest-id "$ANDROID_BUILDER_MANIFEST_ID"
+        )" || fail 'storage-key probe builder image admission failed'
+        [ "$load_output" = "loaded and verified android-builder $ANDROID_BUILDER_IMAGE_ID" ] || fail 'storage-key builder receipt differs'
+        install -d -o 1000 -g 1000 -m 0700 "$probe_root"
+        CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
+            --name rustdesk-android-storage-key-build --pull=never --network=none --read-only \
+            --user 1000:1000 --pids-limit=256 --memory=1g --memory-swap=1g --cpus=2 \
+            --ulimit nofile=4096:4096 --ulimit core=0:0 --cap-drop=ALL \
+            --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
+            --mount "type=bind,source=$source_root,target=/source,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$inputs/inputs,target=/online,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$probe_root,target=/artifact,bind-recursive=disabled" \
+            --tmpfs /tmp:rw,exec,nosuid,nodev,size=512m,mode=700,uid=1000,gid=1000 \
+            "$ANDROID_BUILDER_CONFIG_ID" /bin/bash --noprofile --norc /source/scripts/build-android-storage-key-test.sh)"
+        [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'storage-key build container identity differs'
+        "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" >"$build_output" 2>&1 \
+            || { tail -n 100 "$build_output" >&2; fail 'storage-key probe compilation failed'; }
+        [ "$(stat -c %s "$build_output")" -le 1048576 ] || fail 'storage-key build output exceeds bound'
+        [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] || fail 'storage-key builder did not retire'
+        "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+        CONTAINER_ID=
+        "$CLIENT" --host "unix://$SOCK" image rm "$ANDROID_BUILDER_CONFIG_ID" >/dev/null
+        [ "$(stat -c '%u:%g:%a:%h' "$probe_root/storage-key-probe.apk")" = 1000:1000:400:1 ] || fail 'storage-key probe APK authority differs'
+        probe_apk_sha256="$(sha256sum "$probe_root/storage-key-probe.apk" | cut -d ' ' -f 1)"
+        [ "$(grep -Ec "^ANDROID_STORAGE_KEY_BUILD=pass apk_sha256=$probe_apk_sha256 kotlin_sha256=[0-9a-f]{64} fixture_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} kotlin=2.0.21 target=api34 uid=1000 network=none$" "$build_output")" -eq 1 ] || fail 'storage-key build receipt differs'
+        grep '^ANDROID_STORAGE_KEY_BUILD=' "$build_output"
+        storage_probe_args=(--mount "type=bind,source=$probe_root,target=/storage-probe,readonly,bind-recursive=disabled"
+            --env ANDROID_STORAGE_KEY_PROBE=/storage-probe/storage-key-probe.apk)
+        memory_gib=8
+        memory_bytes=8589934592
+    fi
+
     CONTAINER_ID="$(
         "$CLIENT" --host "unix://$SOCK" create \
             --name rustdesk-android-emulator-boot \
@@ -7938,8 +8004,8 @@ run_android_emulator_boot() {
             --network=none \
             --read-only \
             --pids-limit=768 \
-            --memory=12g \
-            --memory-swap=12g \
+            --memory="${memory_gib}g" \
+            --memory-swap="${memory_gib}g" \
             --cpus=4 \
             --shm-size=1g \
             --ulimit nofile=8192:8192 \
@@ -7953,6 +8019,7 @@ run_android_emulator_boot() {
             --mount "type=bind,source=$emulator_archive,target=/inputs/emulator.zip,readonly" \
             --mount "type=bind,source=$system_archive,target=/inputs/system-image.zip,readonly" \
             --mount "type=bind,source=$adb,target=/inputs/adb,readonly" \
+            "${storage_probe_args[@]}" \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=10g,mode=700,uid=1000,gid=1000 \
             --workdir /source \
             "$DEV_CHECK_IMAGE_CONFIG_ID" \
@@ -7967,7 +8034,7 @@ run_android_emulator_boot() {
         '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{.HostConfig.ShmSize}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' \
         "$CONTAINER_ID")"
     [ "$inspect" = \
-      'none|true|1000:1000|12884901888|12884901888|4000000000|768|1073741824|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
+      "none|true|1000:1000|$memory_bytes|$memory_bytes|4000000000|768|1073741824|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]" ] \
         || fail "Android emulator boot container authority differs: $inspect"
     namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.PortBindings}}' \
@@ -7991,6 +8058,16 @@ PY
         || { tail -n 200 "$output" >&2; fail "Android emulator boot exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 262144 ] \
         || fail 'Android emulator boot output exceeds its bound'
+    if [ "$ANDROID_STORAGE_TESTS" -eq 1 ]; then
+        [ "$(grep -Fxc 'ANDROID_STORAGE_KEY_NATIVE=pass cases=8 processes=2 provider=AndroidKeyStore uid=application apk=source-bound cleanup=uninstalled' "$output")" -eq 1 ] || fail 'native storage-key receipt differs'
+        [ "$probe_sources_before" = "$(sha256sum \
+            "$source_root/scripts/build-android-storage-key-test.sh" \
+            "$source_root/scripts/AndroidStorageKeyInstrumentation.java" \
+            "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt")" ] || fail 'storage-key source changed'
+        [ "$probe_apk_sha256" = "$(sha256sum "$probe_root/storage-key-probe.apk" | cut -d ' ' -f 1)" ] || fail 'storage-key APK changed'
+        grep '^ANDROID_STORAGE_KEY_' "$output"
+        rm -rf -- "$probe_root"
+    fi
     mapfile -t renderer_lines < <(grep -E \
         '^ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=(present|absent) gles_sha256=[0-9a-f]{64}$' \
         "$output" || true)

@@ -50,6 +50,7 @@ ANDROID_RUNTIME_ARTIFACT_COMMIT=
 ANDROID_RUNTIME_APK_SHA256=
 ANDROID_TEST_APK_SHA256=
 ANDROID_RUNTIME_SCENARIO=
+ANDROID_STORAGE_TESTS=0
 ANDROID_RUNTIME_PEER_COMMIT=
 ANDROID_RUNTIME_PEER_MANIFEST_SHA256=
 case "$#:${1:-}" in
@@ -414,6 +415,12 @@ case "$#:${1:-}" in
             || { echo 'Android emulator boot input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-emulator-boot
         ;;
+    2:--android-emulator-boot)
+        [ "$2" = --storage-key-tests ] || exit 2
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] || exit 2
+        MODE=android-emulator-boot
+        ANDROID_STORAGE_TESTS=1
+        ;;
     1:--android-emulator-app)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -587,6 +594,7 @@ readonly MODE LIFECYCLE_ARTIFACT LIFECYCLE_ARTIFACT_SHA256 LIFECYCLE_COMMIT \
     ANDROID_RUNTIME_APK_SHA256 ANDROID_RUNTIME_SCENARIO \
     ANDROID_RUNTIME_PEER_COMMIT ANDROID_RUNTIME_PEER_MANIFEST_SHA256
 readonly BASE_READONLY_TEST
+readonly ANDROID_STORAGE_TESTS
 readonly INPUT_ROOT="${VERIFIER_VM_INPUT_ROOT:-$REPO_ROOT/.harness-state/verifier-vm}"
 readonly RUN_ROOT="${VERIFIER_VM_RUN_ROOT:-$INPUT_ROOT}"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
@@ -924,9 +932,14 @@ elif [ "$MODE" = cm-file-replay ]; then
     readonly OVERLAY_SIZE=40G
     readonly VM_MEMORY=16384
 elif [ "$MODE" = android-emulator-boot ]; then
-    readonly VM_TIMEOUT_SECONDS=7200
+    if [ "$ANDROID_STORAGE_TESTS" -eq 1 ]; then
+        readonly VM_TIMEOUT_SECONDS=600
+        readonly VM_MEMORY=10240
+    else
+        readonly VM_TIMEOUT_SECONDS=7200
+        readonly VM_MEMORY=16384
+    fi
     readonly OVERLAY_SIZE=32G
-    readonly VM_MEMORY=16384
 elif [ "$MODE" = android-emulator-app ]; then
     readonly VM_TIMEOUT_SECONDS=21600
     readonly OVERLAY_SIZE=64G
@@ -4592,6 +4605,9 @@ elif [ "$MODE" = cm-file-replay ]; then
     guest_invocation+=" --cm-file-replay /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-emulator-boot ]; then
     guest_invocation+=" --android-emulator-boot /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
+    if [ "$ANDROID_STORAGE_TESTS" -eq 1 ]; then
+        guest_invocation+=' --storage-key-tests'
+    fi
 elif [ "$MODE" = android-emulator-app ]; then
     guest_invocation+=" --android-emulator-app /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-emulator-runtime ]; then
@@ -5163,7 +5179,7 @@ elif [ "$MODE" = dependency-inventory ]; then
         'actual dependency inventory and index binding'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'dependency inventory guest completion'
 elif [ "$MODE" = ledger-token-count ]; then
-    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=15 refusals=24 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=16 refusals=26 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
         'VM storage profile limits and guest binding'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'
@@ -6880,6 +6896,11 @@ elif [ "$MODE" = cm-file-replay ]; then
         'CM file replay cloud-init completion marker'
 elif [ "$MODE" = android-emulator-boot ]; then
     require_android_renderer_receipt
+    if [ "$ANDROID_STORAGE_TESTS" -eq 1 ]; then
+        require_exact_fixed_receipt \
+            'ANDROID_STORAGE_KEY_NATIVE=pass cases=8 processes=2 provider=AndroidKeyStore uid=application apk=source-bound cleanup=uninstalled' \
+            'Android storage-key native behavior'
+    fi
     require_exact_fixed_receipt \
         "ANDROID_EMULATOR_BOOT_VM=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API abi=x86_64 acceleration=kvm-nested gpu=swiftshader runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'Android emulator boot VM receipt'

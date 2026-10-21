@@ -19,6 +19,7 @@ readonly RUNTIME_TEST_APK=${5:-}
 readonly APP_SCENARIO=${6:-launch}
 readonly RECENTS_GESTURE_JAR=${7:-}
 readonly INSTRUMENTATION_APK=${RUSTDESK_ANDROID_INSTRUMENTATION_APK:-}
+readonly STORAGE_KEY_PROBE=${ANDROID_STORAGE_KEY_PROBE:-}
 if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = controlled-cm ]; then
     readonly WORKLOAD=app-controlled-cm
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = peer-lifecycle ]; then
@@ -33,6 +34,14 @@ elif [ -z "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = launch ]; then
     readonly WORKLOAD=boot
 else
     fail 'the Android app scenario differs from launch, recents, lifecycle, peer-lifecycle, or controlled-cm'
+fi
+if [ -n "$STORAGE_KEY_PROBE" ]; then
+    [ "$WORKLOAD" = boot ] && [ "$STORAGE_KEY_PROBE" = /storage-probe/storage-key-probe.apk ] \
+        && [ -f "$STORAGE_KEY_PROBE" ] && [ ! -L "$STORAGE_KEY_PROBE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' "$STORAGE_KEY_PROBE")" = 1000:1000:400:1 ] \
+        && [ "$(stat -c %s "$STORAGE_KEY_PROBE")" -gt 0 ] \
+        && [ "$(stat -c %s "$STORAGE_KEY_PROBE")" -lt 4194304 ] \
+        || fail 'storage-key probe input authority differs'
 fi
 EMULATOR_GRPC_ARGS=()
 if [ "$WORKLOAD" = app-peer-lifecycle ]; then
@@ -4579,6 +4588,58 @@ fi
 if [ "$WORKLOAD" = boot ]; then
     capture_ui_hierarchy complete \
         || fail 'the booted Android framework UI is unavailable or has an ANR'
+fi
+
+if [ -n "$STORAGE_KEY_PROBE" ]; then
+    probe_sha256="$(sha256sum "$STORAGE_KEY_PROBE" | cut -d ' ' -f 1)"
+    probe_package=com.rustdesk.harness.storage
+    probe_runner=$probe_package/com.rustdesk.harness.storage.AndroidStorageKeyInstrumentation
+    [ -z "$(timeout 10s "$ADB" -s "$SERIAL" shell pm list packages "$probe_package")" ] \
+        || fail 'storage-key probe package already exists'
+    [ "$(timeout 30s "$ADB" -s "$SERIAL" install --no-streaming "$STORAGE_KEY_PROBE" | tr -d '\r')" = Success ] \
+        || fail 'storage-key probe installation failed'
+    timeout --signal=TERM --kill-after=2s 60s "$ADB" -s "$SERIAL" exec-out \
+        am instrument -w -r -e phase cases "$probe_runner" >"$WORK_ROOT/storage-key-cases.out" \
+        || fail 'storage-key cases command failed'
+    [ "$(stat -c %s "$WORK_ROOT/storage-key-cases.out")" -le 16384 ] || fail 'storage-key case output exceeds bound'
+    grep 'ANDROID_STORAGE_KEY_' "$WORK_ROOT/storage-key-cases.out"
+    if ! grep -qE '^INSTRUMENTATION_CODE: -1\r?$' "$WORK_ROOT/storage-key-cases.out"; then
+        timeout 20s "$ADB" -s "$SERIAL" uninstall "$probe_package" || fail 'failed-probe uninstall failed'
+        fail 'storage-key preservation or valid-creation case failed'
+    fi
+    timeout 10s "$ADB" -s "$SERIAL" shell am force-stop "$probe_package" \
+        || fail 'cannot retire the first storage-key probe process'
+    timeout --signal=TERM --kill-after=2s 30s "$ADB" -s "$SERIAL" exec-out \
+        am instrument -w -r -e phase reload "$probe_runner" >"$WORK_ROOT/storage-key-reload.out" \
+        || fail 'storage-key reload command failed'
+    [ "$(stat -c %s "$WORK_ROOT/storage-key-reload.out")" -le 16384 ] || fail 'storage-key reload output exceeds bound'
+    grep 'ANDROID_STORAGE_KEY_' "$WORK_ROOT/storage-key-reload.out"
+    python3 -I -S - "$WORK_ROOT/storage-key-cases.out" "$WORK_ROOT/storage-key-reload.out" <<'PY'
+import re,sys
+from pathlib import Path
+expected={
+ 'partial_ciphertext','partial_iv','envelope_missing_key','occupied_rsa_alias',
+ 'denied_decrypt_preserves_key','corrupt_envelope_preserves_authority','fresh_create_and_warm_reload'}
+identities=[]
+for p,phase,names in zip(sys.argv[1:],('cases','reload'),(expected,{'new_process_reload'})):
+ text=Path(p).read_text();assert len(text)<16384
+ assert text.count('INSTRUMENTATION_CODE: -1')==1
+ observed=re.findall(r'ANDROID_STORAGE_KEY_CASE=pass name=([a-z_]+)',text)
+ assert set(observed)==names and len(observed)==len(names)
+ assert 'ANDROID_STORAGE_KEY_CASE=fail' not in text and 'ANDROID_STORAGE_KEY_FATAL=' not in text
+ match=re.findall(r'ANDROID_STORAGE_KEY_PHASE='+phase+r' cases=([0-9]+) failures=0 uid=([0-9]+) pid=([0-9]+)',text)
+ assert len(match)==1 and int(match[0][0])==len(names) and int(match[0][1])>=10000
+ identities.append((int(match[0][1]),int(match[0][2])))
+assert identities[0][0]==identities[1][0] and identities[0][1]!=identities[1][1]
+PY
+    timeout 10s "$ADB" -s "$SERIAL" shell am force-stop "$probe_package" \
+        || fail 'cannot retire the second storage-key probe process'
+    [ "$(timeout 20s "$ADB" -s "$SERIAL" uninstall "$probe_package" | tr -d '\r')" = Success ] \
+        || fail 'storage-key probe uninstall failed'
+    [ -z "$(timeout 10s "$ADB" -s "$SERIAL" shell pm list packages "$probe_package")" ] \
+        || fail 'storage-key probe package remains installed'
+    [ "$probe_sha256" = "$(sha256sum "$STORAGE_KEY_PROBE" | cut -d ' ' -f 1)" ] || fail 'storage-key APK changed'
+    printf 'ANDROID_STORAGE_KEY_NATIVE=pass cases=8 processes=2 provider=AndroidKeyStore uid=application apk=source-bound cleanup=uninstalled\n'
 fi
 
 timeout --signal=TERM --kill-after=2s 20s \

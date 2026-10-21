@@ -193,6 +193,21 @@ obligation mapping, exact comparisons and any counts for their named historical 
 | Retired host identity | R-S17 remains reserved/retired under the password-only contract | `host-identity-document-role-1ba44a05.json` |
 | Dependency inventory and unused dependencies | `51ef7781` removes six zero-caller root platform declarations: `runas`, `tauri-winrt-notification`, `fruitbasket`, `objc_id`, `async-process` and `termios`. Nine exclusively orphaned packages leave the lockfile, reducing 853 records to 844. Twelve shared dependencies remain; clipboard's `objc_id`, zbus's `async-process`, serial's termios 0.2.2, the protected installer's Win32 elevation verb and all product source are preserved. Three now-unambiguous time/termios references retain the same dependency targets/order; every retained version/source/field remains. The offline locked workspace build passes nineteen controller tests; the isolated inventory matches, with only its Cargo count/digest expectations changed and 31 Git packages/22 Git source URLs retained. Removing time 0.1.45 retires `RUSTSEC-2020-0071` (39 exceptions become 38); the two quick-xml reasons drop the removed Windows notification consumer, retaining their other dispositions. No fresh advisory scan is claimed. Prior ZIP/file-block, Wake-on-LAN/interface/OpenSSL removal and inventory reconciliation remain in linked evidence. Authenticated retained inputs/build images are unchanged. Current full-parent/installed/native-role, Windows/macOS execution, direct-connection/capture, advisory/provenance, native artifact closure, cold and release acceptance remain OPEN. | `dependency-inventory-drift-dac06f59.json`; `dependency-inventory-accepted-9b1c643f.json`; `webm-writer-accepted-b3cc5328.json`; `wol-dependency-23983d0e.json`; `interface-dependencies-2c6b45b1.json`; `openssl-dependency-e360a3e1.json`; `zip-dependency-4e29e754.json`; `platform-dependencies-51ef7781.json` |
 
+**Retired unused TLS client builder (`c2fafa4d`).** The callerless 196-line
+`hbb_common::verifier` module and its compatibility API are deleted; Git history
+`5e37492f` removed its last proxy caller. Four direct dependency declarations and
+the exclusive `tokio-rustls`/`webpki-roots` records leave the graph (844 to 842).
+The exact pinned Cargo 1.75 offline resolver retains shared `ring` through
+`rustls-webpki` and removes only the inactive `rustls` log/ring edges. Every retained
+version/source/checksum is preserved. The normal offline locked build passes all
+nineteen unchanged production-controller tests; the isolated inventory matches
+with only its Cargo count/digest expectations changed. Android platform-verifier
+JNI/Gradle, shared dependencies, direct TCP/CPace and authenticated inputs remain.
+The temporary private-copy resolver diagnostic is removed. Evidence:
+`unused-tls-builder-e8ebc14d.json`. This removes dormant code, not a demonstrated
+live LPE. Full-parent/native Android and other-platform, installed, advisory/cold
+artifact and R-S0/R-F5/release acceptance remain OPEN; parked producers stay parked.
+
 | Maintained guide or package documentation | Current disposition and remaining limits |
 | --- | --- |
 | `docs/ANDROID-SERVER.md` | Distinct foreground-service, task and capture-grant lifetimes; actual screen-sharing control and separate listener/capture status; no ADB consent override or unsupported per-launch/privacy claims. Current APK/device/native acceptance remains OPEN. Classification: `android-operator-guide-source-c8807899.json`. |

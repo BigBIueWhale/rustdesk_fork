@@ -51,10 +51,10 @@ readonly KOTLIN_SOURCE=$SOURCE/flutter/android/app/src/main/kotlin/com/carriez/f
 readonly JAVA_SOURCE=$SOURCE/scripts/AndroidStorageKeyInstrumentation.java
 readonly ANDROID_JAR=$WORK/android.jar
 cp -p "$ONLINE/android-sdk/platforms/android-${ANDROID_COMPILE_SDK}/android.jar" "$ANDROID_JAR"
-source_before=$(sha256sum "$KOTLIN_SOURCE" "$JAVA_SOURCE" "$SOURCE/scripts/build-android-storage-key-test.sh" "$ANDROID_JAR" "$stdlib")
+source_before=$(sha256sum "$KOTLIN_SOURCE" "$JAVA_SOURCE" "$SOURCE/scripts/build-android-storage-key-test.sh" "$SOURCE/scripts/verify-android-mobile-key-artifact.py" "$ANDROID_JAR" "$stdlib")
 # The sealed SDK is noexec. Copy only the authenticated build-tools into private RAM.
 mkdir -m 0700 "$WORK/tools" "$WORK/tools/lib" "$WORK/tools/lib64"
-for relative in aapt2 d8 apksigner zipalign lib/d8.jar lib/apksigner.jar lib64/libc++.so lib64/libc++.so.1; do
+for relative in aapt2 d8 dexdump apksigner zipalign lib/d8.jar lib/apksigner.jar lib64/libc++.so lib64/libc++.so.1; do
     cp -p "$ONLINE/android-sdk/build-tools/$ANDROID_BUILD_TOOLS/$relative" "$WORK/tools/$relative"
 done
 timeout --signal=TERM --kill-after=5s 90s java -Xms32m -Xmx512m \
@@ -66,6 +66,14 @@ javac -encoding UTF-8 -source 8 -target 8 -classpath "$ANDROID_JAR:$stdlib:$WORK
 jar cf "$WORK/probe.jar" -C "$WORK/classes" .
 timeout --signal=TERM --kill-after=5s 90s "$WORK/tools/d8" --release --min-api 23 \
     --lib "$ANDROID_JAR" --output "$WORK/dex" "$WORK/probe.jar" "$stdlib"
+python3 -I -S - "$SOURCE/scripts/verify-android-mobile-key-artifact.py" "$WORK/tools/dexdump" "$WORK/dex/classes.dex" <<'PY'
+import runpy,sys
+checker=runpy.run_path(sys.argv[1])
+checker['self_test']()
+dump=checker['run_tool']([sys.argv[2],'-d',sys.argv[3]],64*1024**2)
+checker['validate_storage_key_dex']([('classes.dex',dump)])
+print('ANDROID_STORAGE_KEY_DEX=pass scope=production-key-object parser-controls=pass bootstrap=unexecuted')
+PY
 cat >"$WORK/AndroidManifest.xml" <<'XML'
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.rustdesk.harness.storage">
   <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="34" />
@@ -93,7 +101,7 @@ keytool -genkeypair -noprompt -alias probe -keyalg RSA -keysize 2048 -validity 2
 "$WORK/tools/apksigner" verify --verbose "$OUTPUT/storage-key-probe.apk"
 [ "$(stat -c %s "$OUTPUT/storage-key-probe.apk")" -lt 4194304 ] || exit 1
 chmod 0400 "$OUTPUT/storage-key-probe.apk"
-[ "$source_before" = "$(sha256sum "$KOTLIN_SOURCE" "$JAVA_SOURCE" "$SOURCE/scripts/build-android-storage-key-test.sh" "$ANDROID_JAR" "$stdlib")" ] || exit 1
+[ "$source_before" = "$(sha256sum "$KOTLIN_SOURCE" "$JAVA_SOURCE" "$SOURCE/scripts/build-android-storage-key-test.sh" "$SOURCE/scripts/verify-android-mobile-key-artifact.py" "$ANDROID_JAR" "$stdlib")" ] || exit 1
 printf 'ANDROID_STORAGE_KEY_BUILD=pass apk_sha256=%s kotlin_sha256=%s fixture_sha256=%s android_jar_sha256=%s kotlin=2.0.21 target=api34 uid=1000 network=none\n' \
     "$(sha256sum "$OUTPUT/storage-key-probe.apk" | cut -d ' ' -f 1)" \
     "$(sha256sum "$KOTLIN_SOURCE" | cut -d ' ' -f 1)" \

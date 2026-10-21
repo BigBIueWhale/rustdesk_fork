@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
 import android.util.Log
 import java.security.KeyStore
@@ -29,15 +30,28 @@ object MobileAtRestStorageKey {
         return try {
             val appContext = context.applicationContext
             val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val wrappingKey = getOrCreateWrappingKey()
             val storedCiphertext = prefs.getString(PREF_CIPHERTEXT, null)
             val storedIv = prefs.getString(PREF_IV, null)
-
-            if (storedCiphertext != null || storedIv != null) {
-                if (storedCiphertext == null || storedIv == null) {
-                    Log.e(TAG, "Refusing partial Android at-rest key envelope")
+            if ((storedCiphertext == null) != (storedIv == null)) {
+                Log.e(TAG, "Refusing partial Android at-rest key envelope")
+                return null
+            }
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            val existingKey = keyStore.getKey(WRAPPING_KEY_ALIAS, null)
+            val wrappingKey = when {
+                existingKey is SecretKey && existingKey.algorithm == KeyProperties.KEY_ALGORITHM_AES -> existingKey
+                existingKey != null || keyStore.containsAlias(WRAPPING_KEY_ALIAS) -> {
+                    Log.e(TAG, "Refusing incompatible Android at-rest wrapping key")
                     return null
                 }
+                storedCiphertext != null -> {
+                    Log.e(TAG, "Android at-rest wrapping key is unavailable for the stored envelope")
+                    return null
+                }
+                else -> createWrappingKey(keyStore)
+            }
+
+            if (storedCiphertext != null && storedIv != null) {
                 val plaintext = unwrapStorageKey(wrappingKey, storedCiphertext, storedIv)
                 if (plaintext == null || plaintext.size != STORAGE_KEY_BYTES) {
                     Log.e(TAG, "Refusing invalid Android at-rest key envelope")
@@ -76,18 +90,19 @@ object MobileAtRestStorageKey {
         }
     }
 
-    private fun getOrCreateWrappingKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (keyStore.getKey(WRAPPING_KEY_ALIAS, null) as? SecretKey)?.let { return it }
-
+    private fun createWrappingKey(keyStore: KeyStore): SecretKey {
+        check(!keyStore.containsAlias(WRAPPING_KEY_ALIAS)) { "Android wrapping-key alias is occupied" }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try {
                 return generateWrappingKey(strongBox = true)
             } catch (e: Exception) {
+                if (e !is StrongBoxUnavailableException || keyStore.containsAlias(WRAPPING_KEY_ALIAS)) {
+                    throw e
+                }
                 Log.i(TAG, "StrongBox AndroidKeyStore key unavailable; using ordinary AndroidKeyStore", e)
-                runCatching { keyStore.deleteEntry(WRAPPING_KEY_ALIAS) }
             }
         }
+        check(!keyStore.containsAlias(WRAPPING_KEY_ALIAS)) { "Android wrapping-key alias is occupied" }
         return generateWrappingKey(strongBox = false)
     }
 

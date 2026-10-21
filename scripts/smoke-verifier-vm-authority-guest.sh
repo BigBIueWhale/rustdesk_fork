@@ -7990,7 +7990,7 @@ run_android_emulator_boot() {
         [ "$(stat -c '%u:%g:%a:%h' "$probe_root/storage-key-probe.apk")" = 1000:1000:400:1 ] || fail 'storage-key probe APK authority differs'
         probe_apk_sha256="$(sha256sum "$probe_root/storage-key-probe.apk" | cut -d ' ' -f 1)"
         [ "$(grep -Ec "^ANDROID_STORAGE_KEY_BUILD=pass apk_sha256=$probe_apk_sha256 kotlin_sha256=[0-9a-f]{64} fixture_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} kotlin=2.0.21 target=api34 uid=1000 network=none$" "$build_output")" -eq 1 ] || fail 'storage-key build receipt differs'
-        grep '^ANDROID_STORAGE_KEY_BUILD=' "$build_output"
+        grep '^ANDROID_STORAGE_KEY_' "$build_output"
         storage_probe_args=(--mount "type=bind,source=$probe_root,target=/storage-probe,readonly,bind-recursive=disabled"
             --env ANDROID_STORAGE_KEY_PROBE=/storage-probe/storage-key-probe.apk)
         memory_gib=8

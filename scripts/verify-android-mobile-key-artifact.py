@@ -222,13 +222,6 @@ def require_references(where, text, needles):
 
 def validate_dex(dexdump_outputs):
     main = one_class_block(dexdump_outputs, MAIN_APPLICATION)
-    storage = one_class_block(dexdump_outputs, STORAGE_KEY_CLASS)
-    wrap_descriptor = one_method_descriptor_matching(
-        storage,
-        "wrapStorageKey",
-        WRAP_STORAGE_KEY_DESCRIPTOR_PATTERN,
-    )
-
     on_create = method_body(main, "onCreate", "()V")
     require_in_order(
         "MainApplication.onCreate",
@@ -243,6 +236,14 @@ def validate_dex(dexdump_outputs):
             "Lffi/FFI;.onAppStart:(Landroid/content/Context;)Z",
         ],
     )
+    validate_storage_key_dex(dexdump_outputs)
+
+
+def validate_storage_key_dex(dexdump_outputs):
+    storage = one_class_block(dexdump_outputs, STORAGE_KEY_CLASS)
+    wrap_descriptor = one_method_descriptor_matching(
+        storage, "wrapStorageKey", WRAP_STORAGE_KEY_DESCRIPTOR_PATTERN
+    )
 
     get_or_create = method_body(storage, "getOrCreate", "(Landroid/content/Context;)[B")
     require_references(
@@ -250,7 +251,10 @@ def validate_dex(dexdump_outputs):
         get_or_create,
         [
             "Landroid/content/Context;.getSharedPreferences:",
-            "getOrCreateWrappingKey:()Ljavax/crypto/SecretKey;",
+            "Ljava/security/KeyStore;.getInstance:",
+            "Ljava/security/KeyStore;.load:",
+            "Ljava/security/KeyStore;.getKey:",
+            "createWrappingKey:(Ljava/security/KeyStore;)Ljavax/crypto/SecretKey;",
             "Ljava/security/SecureRandom;.nextBytes:([B)V",
             f"wrapStorageKey:{wrap_descriptor}",
             "Landroid/content/SharedPreferences$Editor;.commit:()Z",
@@ -271,20 +275,20 @@ def validate_dex(dexdump_outputs):
             "MobileAtRestStorageKey.getOrCreate: stored and post-commit envelope reads are incomplete"
         )
 
-    get_wrapping_key = method_body(storage, "getOrCreateWrappingKey", "()Ljavax/crypto/SecretKey;")
+    create_wrapping_key = method_body(storage, "createWrappingKey", "(Ljava/security/KeyStore;)Ljavax/crypto/SecretKey;")
     require_references(
-        "MobileAtRestStorageKey.getOrCreateWrappingKey",
-        get_wrapping_key,
+        "MobileAtRestStorageKey.createWrappingKey",
+        create_wrapping_key,
         [
-            "Ljava/security/KeyStore;.getInstance:",
-            "Ljava/security/KeyStore;.load:",
-            "Ljava/security/KeyStore;.getKey:",
-            "Ljava/security/KeyStore;.deleteEntry:",
+            "Ljava/security/KeyStore;.containsAlias:",
+            "Landroid/security/keystore/StrongBoxUnavailableException;",
         ],
     )
-    if get_wrapping_key.count("generateWrappingKey:(Z)Ljavax/crypto/SecretKey;") != 2:
+    if body_invokes(storage, "Ljava/security/KeyStore;.deleteEntry:"):
+        raise ArtifactError("MobileAtRestStorageKey must not delete its wrapping-key alias")
+    if create_wrapping_key.count("generateWrappingKey:(Z)Ljavax/crypto/SecretKey;") != 2:
         raise ArtifactError(
-            "MobileAtRestStorageKey.getOrCreateWrappingKey: expected StrongBox attempt and ordinary AndroidKeyStore fallback"
+            "MobileAtRestStorageKey.createWrappingKey: expected StrongBox attempt and ordinary AndroidKeyStore fallback"
         )
 
     generate = method_body(storage, "generateWrappingKey", "(Z)Ljavax/crypto/SecretKey;")

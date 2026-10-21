@@ -158,6 +158,7 @@ obligation mapping, exact comparisons and any counts for their named historical 
 
 | Documentation scope | Current contract or disposition | Retained classification |
 | --- | --- | --- |
+| Release parent and mandatory Android release children | R-S11dm/R-S11dn retain VM admission, independent child provenance, descriptor-owned workspace, confined inputs/resources and native/release acceptance. Past repair/exploit-status narration is removed; mandatory child wiring is stated as a requirement. Their ledger entries retain source disposition, historical probe limits and all open full-transport/workload/cold/native obligations. Other specification bytes, IDs, anchors and links, product and verifier code are unchanged. | `release-authority-document-role-66342cfc.json` |
 | Debian payload, conffile and link contract | Appendix C #108 now agrees with R-X14 and R-S11bz: the only packaged conffile is the retained init script; retired session resources and their directory are excluded; the exact primary-command symlink is permitted while every other link is rejected. Historical construction narration and obsolete Python AST/source-mutation catalogue prescriptions are deleted. Constructor/helper authority follows R-S11cf's authenticated private source and confined immutable compiler; staging/finalization/archive order and package checks remain mandatory. Ownership/mode, source/finalization, archive, checksum, ELF and native acceptance obligations remain. Existing package code and tests are unchanged; installed obsolete-conffile upgrades and final-artifact acceptance remain OPEN. | `debian-package-contract-be7e64d9.json`; `debian-constructor-contract-1fa4ff27.json` |
 | Windows process and token findings | Appendix C #123/#124/#143–#145 state enduring impersonation, service-tree, launch, privacy-broker and UAC-state failure classes. Historical implementation and exploit-status narration is deleted. All five required-disposition cells, primary clauses, IDs, anchors and links remain unchanged. Product and verifier code are unchanged; installed/native and release acceptance remain OPEN. | `windows-process-findings-8bae303a.json` |
 | CPace transcript secrecy and stored PRS | R-S6/R-P1 state the existing offline-transcript prohibition, single CPace authentication, source-limiter accounting, fixed-salt Argon2id/NFC derivation and connect-equivalent storage boundary as standing requirements. Obsolete limiter-migration and host-key-salt history, unchanged-confidentiality and collision-free assurances, and the misleading augmented-PAKE rationale are deleted. Public/global salt and reusable precomputation limits remain explicit; R-S0/R-S9/R-S11b protections remain mandatory. The complete CI/AD/sid/port/vector tail, all other specification bytes, IDs, anchors and links are unchanged. Product, verifier and protocol bytes are unchanged; native/installed, independent and release acceptance remain OPEN. | `auth-contract-role-071843a8.json` |
@@ -10163,165 +10164,63 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   architectural invariant, and the duplicate workspace-verifier block was
   compressed to the current VM topology; neither is counted as runtime evidence.
 
-- **R-S11dm/R-S11e-131 — release-parent host-Docker removal, verifier-VM
-  admission, and descriptor-bound workspace lifecycle — SOURCE CORRECTED;
-  REAL CLEANUP, VM-ENTRY, AND RELEASE-WORKSPACE FIXTURES GREEN 2026-09-20; FULL COLD RELEASE,
-  NATIVE/DEVICE, INDEPENDENT, AND EXTERNAL EVIDENCE PENDING.**
-  Platform: ordinary-user Linux orchestration host and the authenticated
-  no-NIC Debian verifier VM. Endpoint/action: <code>scripts/build-release.sh</code>
-  production admission, builder content-ID handoff, private snapshot reset,
-  transaction cleanup, and release publication. Boundary: orchestration host ↔
-  admitted UID/GID 4000 verifier-VM transaction ↔ VM-only build children, plus
-  the exact current-principal release workspace.
+- **R-S11dm/R-S11e-131 — release-parent and workspace authority: source
+  implemented; full release transport and cold/native acceptance OPEN.**
+  `scripts/build-release.sh` admits only the numeric nonroot verifier-VM principal
+  before repository helpers. It closes inherited build/runtime state and has no
+  host Docker, daemon, image-provenance or container authority. The parent checks
+  only three pinned content-ID strings and passes the relevant ID through an empty
+  child environment; every build, verification, advisory and lifecycle child must
+  prove its own guest-only admission and image provenance.
 
-  The prior parent used the orchestration host's fixed rootful Docker socket for
-  three duplicate builder-image provenance checks and five invocations covering
-  mode normalization, descriptor capacity, cleanup-fixture construction, reset
-  fixture construction, and terminal removal. Later hardening made those
-  containers numeric-nonroot and capability-free, but this did not cure the
-  outer authority: a rootful daemon still interprets bind mounts against the
-  host, and a container running the same UID gave the descriptor helper no
-  permission unavailable to the caller. This was real release-verdict,
-  host-filesystem, cleanup, and local-privilege authority debt. It is not
-  evidence that the path was exploited, a container escaped, root was acquired,
-  a listener or port was exposed, or host RustDesk, Haggai, firewall, routing,
-  interface, service, configuration, or artifact state changed.
+  Workspace normalization, reset and removal use the commit-bound
+  `verify-private-tree-closure.py` through its retained descriptor. Exact root,
+  mount, bounded inventory, uniform current-principal ownership, inode edges and
+  complete internal-hardlink closure precede mutation. Foreign ownership, changed
+  identity, mount crossings, special objects, external links or incomplete cleanup
+  preserve state and report its path; no privilege or pathname fallback exists.
 
-  The release parent now refuses UID or primary GID zero and closes inherited
-  Docker/build state before repository shell or pins. Normal production and its
-  authority probe require the common verifier-VM preflight before those
-  repository helpers. A direct orchestration-host production invocation fails
-  before workspace creation because the authenticated VM marker, fixed guest
-  client/configuration/socket, daemon generation, Unix peer, and zero-NIC
-  topology are absent. There is no host-rootful, rootless-host, TCP/context,
-  Podman, privilege, or ambient fallback.
+  Historical isolated fixtures executed the actual release A/B target dispatch,
+  Debian-lifecycle wiring, manifest/publication/recovery, reset and descriptor-helper
+  cleanup paths. They covered inaccessible owner modes, internal/external hardlinks,
+  cleanup refusal, VM-root and UID/GID 4001 refusal, and UID/GID 4000 admission. The retained
+  release-parent and release-workspace-runtime receipts report joined cleanup and
+  unchanged host listeners. These were entry/workspace fixtures, with probe inputs;
+  they did not build or install RustDesk. Superseded checker catalogues and
+  intermediate setup failures remain in Git history.
 
-  All parent Docker configuration, socket checks, daemon requests, image
-  provenance, container launches, and fake Docker fixtures are deleted.
-  <code>assert_release_builder_image_ids</code> validates only the three exact
-  <code>sha256:</code> content-ID strings loaded from the commit-bound pins.
-  The parent passes the relevant string through its empty child environment;
-  each Android, Debian, Windows-helper, verification, advisory, and lifecycle
-  child retains its own guest-only admission and provenance proof. Parent state
-  cannot substitute for a child's image proof.
+  **OPEN:** complete source/online/image/signing/Windows-golden input transport and
+  bounded artifact return; exact current-commit cold R-B2/R-B10 A==B execution;
+  certified builders and nested Windows; installed/native/device, peer, lifecycle,
+  display/focus/reconnect latency, independent reproduction and R-V3 external review.
+  Direct host release remains unavailable; entry and cleanup receipts do not close
+  these obligations.
 
-  Workspace normalization and terminal removal now invoke the committed
-  <code>verify-private-tree-closure.py</code> bytes directly through the already
-  open, identity- and SHA-256-bound descriptor in isolated Python. The helper
-  retains the exact tree root, mount ID, bounded complete inventory, uniform
-  current-principal ownership, every inode edge, and internal hardlink closure
-  before changing a mode or unlinking an entry. The cleanup preflight creates
-  real current-owner mode-0000 files and a mode-0500 directory, then removes
-  them through the production helper and retires the exact empty fixture root.
-  Snapshot reset similarly proves external-hardlink refusal before normalizing
-  owner access and running Git cleanup. Foreign ownership, mount crossings,
-  special objects, external hardlinks, changed identities, or incomplete
-  cleanup remain preservation-first failures with the exact retained path.
+- **R-S11dn/R-S11e-132 — mandatory Android release-child authority: source
+  implemented; production-profile probes retained; full gate workloads OPEN.**
+  `scripts/test-android-gradle-cache.sh` and `scripts/android-rust-check.sh` are
+  mandatory `scripts/verify-release.sh` children. Both require numeric nonroot
+  verifier-VM admission before helpers or inputs and use only the fixed guest
+  client, permissioned Unix socket, root-owned empty configuration and pre/post
+  daemon-generation proof. Their confined resource/mount profiles and private source
+  comparisons remain; neither child writes the live checkout. The Gradle profiles for
+  descendant-mount refusal and semantic checks retain their distinct inputs and bounds.
+  Its `--inside` payload requires nonroot PID 1 inside its container.
 
-  Executable evidence is primary for this slice. The ordinary release
-  transaction fixture completed both A/B Debian, Android, and Windows target
-  paths, final Debian-lifecycle dispatch, manifest/publication/recovery
-  behavior, and terminal workspace removal in about twelve seconds with no
-  Docker executable or socket. The clean-commit reset fixture exercised the
-  actual inaccessible-mode, internal-hardlink, external-hardlink, normalization,
-  Git cleanup, and final exact-tree proof. The cleanup-missing fixture retained
-  the visible fail-closed result. The common real VM authority run refused the
-  release entry as VM root and UID/GID 4001, admitted UID/GID 4000, and emitted
-  <code>VERIFIER_VM_RELEASE_PARENT_ENTRY=pass ... parent_docker=absent
-  cleanup=descriptor-bound children=vm-only</code> while QEMU had
-  <code>-nic none</code>, Unix-only channels, unchanged host listeners, bounded
-  output, and joined residue-free teardown. This is entry and cleanup evidence,
-  not an artifact build.
+  The historical zero-NIC VM probe refused root and UID/GID 4001 and admitted UID/GID 4000.
+  It executed both real Gradle launch functions against a minimal immutable probe
+  image, observing resource limits, read-only root, loopback-only networking,
+  capabilities/no-new-privileges/seccomp/AppArmor and unchanged container inventory.
+  Output was bounded and exact VM/Docker/channel/run cleanup joined, with unchanged
+  host listeners. The probe did not access the projector or Gradle distribution:
+  `gradle=unexecuted`. The Rust authority probe likewise reported
+  `workload=unexecuted`; source checks are supplementary.
 
-  The former 950-line, 27-mutation checker tied to the retired host socket is
-  deleted. <code>scripts/verify-release-parent-authority.py</code> is a compact
-  architecture invariant with no mutation-catalog pretense. The separate
-  35,217-line <code>scripts/verify-verifier-workspace.py</code> global
-  source/document/mutation catalog is also deleted in full, along with its
-  ordinary-gate call, its software-codec scan exemption, and reciprocal
-  source/dispatch assertions in focused checkers. It did not execute the
-  release workspace and was not behavioral evidence. A bounded
-  <code>verify-release-workspace-runtime.sh</code> entry is instead wired into
-  the authenticated no-NIC VM authority run to execute the actual release,
-  reset, publisher, and descriptor-helper fixtures as UID/GID 4000 while
-  refusing VM root and UID/GID 4001. The first real run exposed absent Git; the
-  second, after exact pinned-package provisioning in the disposable guest,
-  exposed the finalizer's Linux-6.8-only filesystem-UUID ioctl on pinned Debian
-  12 Linux 6.1. After replacing that dependency with the kernel-defined ext4
-  `f_fsid` plus persistent parent-handle authority, the 67-second no-NIC run
-  emitted <code>VERIFIER_VM_RELEASE_WORKSPACE_RUNTIME=pass uid=4000 gid=4000
-  root=refused foreign=refused network=none release=actual reset=actual
-  publisher=actual closure=actual cleanup=joined</code> and the outer exact
-  unchanged-listener/joined-cleanup receipt. Old catalog passes are not carried
-  forward as a substitute.
-
-  Remaining STOP-SHIP work is explicit: the outer common VM does not yet carry
-  the complete release source/online/image/signing/Windows-golden input set or
-  return the full bounded artifact set. Therefore a direct host release fails
-  closed and a complete cold current-commit R-B2/R-B10 transaction has not run.
-  The present VM entry probe does not compile RustDesk, execute certified
-  builder images, launch the nested Windows guest, produce A==B artifacts,
-  install a package, exercise a peer, prove native/device lifecycle or
-  display/focus/reconnect latency, reproduce independently, or supply R-V3
-  external review. The broader Ralph goal remains active.
-- **R-S11dn/R-S11e-132 — mandatory Android release-gate source,
-  resource, cleanup, and Docker authority — BOTH OUTER AUTHORITIES MIGRATED;
-  BOTH GRADLE PRODUCTION PROFILES GREEN; ACTUAL GRADLE/RUST WORKLOADS OPEN.**
-  Platform/boundary: `scripts/test-android-gradle-cache.sh` outer mode and
-  `scripts/android-rust-check.sh`, required by `scripts/verify-release.sh`,
-  bridge release source/online inputs to Android-builder containers.
-
-  Their source staging and inner operation shapes remain intentionally strict:
-  numeric non-root, immutable image, no pull/network, read-only root, no
-  capabilities or privilege gain, bounded resources, recursively excluded
-  mounts, private Gradle fixtures, and an immutable reference plus disposable
-  writable Rust source candidate with before/after comparison. Neither child
-  writes the live checkout.
-
-  Both children now refuse UID/GID zero and fail through the common verifier-VM
-  admission before repository helpers, source, online inputs, fixtures, or
-  scratch. Their only Docker/provenance functions use the fixed guest client,
-  permissioned Unix channel, root-owned empty configuration, otherwise-empty
-  environment, explicit host/configuration arguments, and pre/post admission
-  replay. The former `local_docker` initialization, host daemon, configuration
-  cleanup, ambient provenance call, and fallback surface are deleted.
-
-  The Gradle child has two closed launch functions: the descendant-mount
-  rejection profile retains its exact read-only projector/init/seed/overlay
-  mounts and smaller bounds; the semantic profile retains its exact read-only
-  projector/init/mode-contract/test/Gradle-distribution mounts and larger
-  bounds. Both use immutable IDs, no pull or network, a read-only root,
-  numeric-nonroot execution, no capabilities or privilege gain, explicit
-  AppArmor, bounded PID/memory/no-swap/CPU/core/descriptor/file-size/tmpfs
-  resources, and nonrecursive mounts. `--inside` is a PID-1, nonroot container
-  payload and cannot become a host-side test mode. The Rust child retains its
-  immutable reference/disposable candidate, read-only operation/online inputs,
-  nonrecursive mounts, stable-source comparisons, and confined launch contract.
-
-  The real zero-NIC KVM smoke executed the Gradle entry under VM root, foreign
-  UID/GID 4001, and authorized UID/GID 4000. Root and foreign callers were
-  refused. The authorized caller used the real fixed Docker client/server and
-  executed both production profile launch functions against a minimal immutable
-  probe image. From inside each container it observed the exact PID, memory,
-  zero-swap, CPU and descriptor bounds plus PID 1, UID/GID 4000, read-only root,
-  loopback-only network namespace, zero effective capabilities, no-new-
-  privileges, filtered seccomp, and `docker-default` AppArmor state. The guest
-  container inventory was identical before and after. The outer transaction
-  retained bounded output, unchanged host listeners, and joined removal of
-  QEMU, Docker, channels, overlay, and private run state. The compact focused
-  source checker ran inside that same guest; the unused global-workspace source
-  loader for this child was deleted.
-
-  This is real daemon and production-profile evidence, not a Gradle result. The
-  probe deliberately accessed neither the projector inputs nor the pinned Gradle
-  distribution and reports `gradle=unexecuted`; the Android Rust authority-only
-  path likewise reports `workload=unexecuted`. The renewed 474,623,832-byte
-  Android-builder archive is now present and has passed its distinct guest-only load/runtime transaction, but
-  this authority-only profile still did not transport or execute the complete offline Gradle/Rust toolchain
-  closure. A workload-capable exact-input transport and actual Gradle and Rust executions therefore remain
-  STOP-SHIP. No Gradle build, Android Rust check,
-  APK, release transaction, installed/device behavior, independent reproduction,
-  or external review is claimed.
+  **OPEN:** workload-capable exact-input transport and actual complete offline
+  Gradle/Rust gate execution, cold artifacts, APK/installed/device behavior,
+  independent reproduction and external review. Separate Android-builder archive
+  validation, focused target compilation or APK receipts do not establish these
+  gate workloads. All separately parked work remains OPEN/PARKED.
 
 - **R-S11do/R-S11e-133 — Windows-helper verifier-VM, mount, resource, KVM, and cleanup authority —
   SOURCE IMPLEMENTED; ACTUAL SMALL-PROFILE GUEST-DOCKER BEHAVIOR GREEN; CERTIFIED HELPER/KVM/WINDOWS

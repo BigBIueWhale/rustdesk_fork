@@ -787,6 +787,7 @@ mod tests {
 
     #[test]
     fn peer_fps_limits_do_not_reduce_other_peers_estimates() {
+        let mut immediate = Vec::new();
         for automatic in [false, true] {
             let mut qos = healthy_pair();
             if automatic {
@@ -794,6 +795,11 @@ mod tests {
             } else {
                 qos.user_custom_fps(7, 5);
             }
+            let actual = qos.fps();
+            let requested = qos.users[&7].requested_fps();
+            let other_estimate = qos.users[&8].delay.fps;
+            println!("VIDEO_QOS_RATE_LIMIT=observed automatic={automatic} expected_fps=5 actual_fps={actual} requested_fps={requested} other_estimate={other_estimate:?}");
+            immediate.push(actual == 5 && requested == 5 && other_estimate == Some(FPS));
             for _ in 0..60 {
                 qos.user_network_delay(7, 20);
                 qos.user_network_delay(8, 20);
@@ -806,6 +812,8 @@ mod tests {
             qos.on_connection_close(7);
             assert_eq!(qos.fps(), FPS);
         }
+        assert!(immediate.into_iter().all(|ok| ok),
+            "an admitted viewer rate limit must take effect without another feedback or display update");
     }
 
     #[test]

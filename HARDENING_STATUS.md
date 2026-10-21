@@ -10610,41 +10610,34 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Native Windows/session-libvirt and installed service behavior, complete
   canonical/signing/golden inputs, cold artifacts, independent reproduction
   and external review remain OPEN.
-- **R-S11dr/R-S11e-136 — Windows golden exact libvirt-domain lifecycle — SOURCE
-  IMPLEMENTED; CURRENT NATIVE SESSION-LIBVIRT/WINDOWS-VM EVIDENCE OPEN.**
-  `scripts/provision-windows-vm.sh` validates its fixed name and kernel-random
-  version-4 UUID, proves both absent by complete enumeration before media creation
-  and again before launch, and never mutates a pre-existing name. It retains and
-  admits the exact `setsid --wait virt-install --uuid` PID/start/process-group/session
-  identity before observing domain creation. Guest reads and control select only
-  that UUID; errors and unexpected identity preserve ambiguity, while successful
-  marker/hash acceptance and every conclusive cleanup path retire the exact UUID
-  without deleting the golden disk. Control uses the private session URI, a fresh
-  no-stdin bounded control session, C locale, and no version-specific
-  `--no-pkttyagent`; VNC is explicitly loopback-only.
+- **R-S11dr/R-S11e-136 — Windows golden exact libvirt-domain lifecycle —
+  source topology retained; native session-libvirt/Windows acceptance OPEN.**
+  The provisioner selects a fixed name and kernel-random version-4 UUID, proves both
+  absent before creation, retains the launch client's PID/start/group/session identity,
+  and addresses later domain control by UUID. Ambiguous pre-commit ownership is preserved;
+  conclusive cleanup retains the golden disk. The current launch has no NIC and binds VNC
+  to loopback. Its XML admission checks disk identity, network absence, graphics and
+  passthrough, but runs after domain creation. Prelaunch endpoint confinement, including
+  character-device backends, and equivalent bounded-RAM Windows storage remain OPEN;
+  this launcher is not admitted for execution.
 
-  Review in this slice found that the golden path lacked the per-build launcher's
-  explicit pre-commit/committed domain state. It now preserves any UUID that appears
-  after creation intent but before exact launcher admission and UUID/name creation
-  proof, exact disk set, transaction-owned storage, single user-mode interface
-  without host forwarding, loopback-only VNC, and no host device; only that
-  complete proof commits destructive domain authority. This closes the
-  signal/error window in which an unadmitted launch could previously reach the
-  name-and-UUID cleanup branch.
+  The 471-line `verify-windows-golden-domain-authority.py` and its sole workspace
+  invocation are deleted. It inspected literal counts/order and required the superseded
+  user-mode NIC; it executed neither a parser nor libvirt and could not prove lifecycle
+  finality. R-S11dr's two old NIC clauses now require no interface or forwarding, matching
+  the binding isolation policy and current source. Other normative authority, ambiguity,
+  control, cleanup and native acceptance requirements are retained.
 
-  The retained focused checker is a fast source-topology guard only. Its in-memory
-  mutation catalog and the workspace verifier's duplicate golden-domain validator
-  were deleted because neither executed libvirt or observed a VM lifecycle. In the
-  confined utility image, the exact embedded XML parser accepted one confined-domain
-  fixture and rejected six wrong-disk/network/forwarding/VNC/passthrough/raw-QEMU
-  variants; Bash/AST, focused, and normal workspace checks also pass. This is parser
-  behavior and source integration, not libvirt or Windows execution.
-  Current native evidence still requires the real malformed/collision/control,
-  admission, ambiguity, client-result, marker/hash, signal/timeout/success teardown,
-  listener-finality, storage-preservation, and terminal-absence scenarios in a
-  disposable private session-libvirt/Windows VM environment. No exact current
-  golden reprovision or cold R-B2/R-B10 Windows artifact closes this item. Detailed
-  implementation history remains in Git at `f6771b03`.
+  The separate `verify-windows-helper-authority.py`, its invocation and executable
+  production-parser fixtures remain unchanged: seven no-NIC/NIC/passthrough/raw-QEMU XML
+  cases and fourteen completion-receipt inputs. These establish only their executed
+  parser layer; they are not newly rerun or upgraded into Windows lifecycle evidence here.
+  Real malformed/collision/admission/control/ambiguity/client-result/marker/hash,
+  signal/timeout/success teardown, listener finality, storage preservation and terminal
+  absence still require exact isolated native execution. Current golden reprovision,
+  cold R-B2/R-B10 Windows artifacts, independent reproduction and external review remain
+  OPEN. Superseded implementation history is retained in Git at `8747932e`.
+
 - **R-S11ds/R-S11e-137 — exact per-build libvirt UUID ownership — SOURCE
   IMPLEMENTED; CURRENT NATIVE SESSION-LIBVIRT/VM EVIDENCE OPEN.**
   `scripts/build-windows-vm.sh` proves the generated name and kernel-random

@@ -291,18 +291,6 @@ else
   echo "  ok  R-S11ch/R-S11do all Windows helpers refuse root before repository code and use one exact fixed local-Docker authority, immutable non-root/no-pull/networkless/read-only-root/capability-free/resource-bounded execution, recursively-disabled narrow binds, descriptor-safe cleanup, a pinned derived libguestfs kernel, and exact read/write-only KVM golden inspection"
 fi
 
-echo "== (0f2) Windows golden exact libvirt-domain ownership (R-S11dr/R-S11e-136) =="
-r_s11dr=
-if ! python3 scripts/verify-windows-golden-domain-authority.py --repo .; then
-  r_s11dr="$r_s11dr source-check-failed"
-fi
-if [ -n "$r_s11dr" ]; then
-  echo "  FAIL R-S11dr Windows golden domain authority:$r_s11dr"
-  rc=1
-else
-  echo "  ok  R-S11dr golden provisioning refuses pre-existing names, owns one explicit UUID plus exact client identity, uses bounded UUID-only control, and proves terminal domain retirement"
-fi
-
 echo "== (0f3) Windows per-build exact libvirt-domain ownership (R-S11ds/R-S11e-137) =="
 r_s11ds=
 if ! python3 scripts/verify-windows-harness.py --repo . --self-test; then

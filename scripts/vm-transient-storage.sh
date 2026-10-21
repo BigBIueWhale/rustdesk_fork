@@ -69,7 +69,21 @@ elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:control
 elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:file-block ]; then
     readonly VM_STORAGE_PROFILE=file-block
 else
-    readonly VM_STORAGE_PROFILE=standard
+    case "${MODE:-}" in
+        android-emulator-app|android-emulator-boot|android-emulator-runtime|\
+        android-execution-probe|android-owner-tests|android-peer-build|\
+        android-runtime-log-tests|android-rust-lifecycle-tests|android-rust-target-check|\
+        apple-conform|cm-file-replay|dart-audit|debian-elf-role-tests|\
+        debian-package-tests|debian-polkit-tests|debian-systemd-lifecycle|\
+        fixed-archive-tests|flutter-model-tests|flutter-peer-presentation|\
+        hbb-common-fs|host-network-tests|linux-flutter-artifact-tests|\
+        linux-flutter-engine-build|linux-flutter-engine-prepare|\
+        linux-pa-authority-tests|linux-service-receiver-tests|\
+        linux-systemd-notification-tests|rust-audit|transaction|x11-display-tests)
+            readonly VM_STORAGE_PROFILE=standard
+            ;;
+        *) fail 'VM workload has no admitted RAM storage profile' ;;
+    esac
 fi
 
 vm_storage_preflight() {

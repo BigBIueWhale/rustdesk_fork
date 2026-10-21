@@ -4666,6 +4666,7 @@ fn favorite_membership_preserves_order_and_avoids_idempotent_writes() {
         let selected: Vec<_> = (2000..6000).rev()
             .flat_map(|index| [peer_id(index), peer_id(index)]).collect();
         let cpu_now = || {
+            use std::convert::TryInto;
             let mut time = std::mem::MaybeUninit::<crate::libc::timespec>::uninit();
             assert_eq!(unsafe {
                 crate::libc::clock_gettime(crate::libc::CLOCK_THREAD_CPUTIME_ID, time.as_mut_ptr())

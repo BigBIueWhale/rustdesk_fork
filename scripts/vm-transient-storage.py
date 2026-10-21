@@ -146,9 +146,16 @@ def reserve(memory_mib, profile='standard'):
 
 
 def allocation(path):
+    def walk_error(error):
+        # Owned descendants can retire during sampling; the workspace must remain.
+        if (isinstance(error, FileNotFoundError) and error.filename is not None
+                and Path(error.filename) != Path(path)):
+            return
+        raise error
+
     total = 0
     entries = 0
-    for directory, children, files in os.walk(path, followlinks=False):
+    for directory, children, files in os.walk(path, followlinks=False, onerror=walk_error):
         for name in children + files:
             entries += 1
             require(entries <= 256, 'RAM scratch inventory exceeds its bound')

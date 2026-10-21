@@ -1669,8 +1669,8 @@ custom/default choices and prior congestion/recovery controls pass. Both complet
 parent library artifacts compile on Rust 1.75.0 and remain unchanged through execution.
 `video-quality-retirement-571963f9.json` binds source, A/B outcomes, timings, artifacts,
 listener comparisons and joined bounded-RAM cleanup. The existing storage/isolation
-profile is unchanged. These full-parent integration runs exceed the ordinary focused
-iteration target; a smaller source-bound controller build remains OPEN.
+profile is unchanged. The focused controller build below supplies the shorter ordinary
+iteration lane; the complete parent build remains the integration tier.
 
 Earlier ordering source/refusal and fourteen-case native evidence remain in
 `video-qos-quality-source-1dbe0b8d.json` and `video-qos-quality-native-7e7410be.json`;
@@ -1679,6 +1679,28 @@ lifecycle/ratio calls with controlled measurements. It supplies no capture/encod
 rendered settings, actual presentation, real packet impairment/recovery, input-visible
 latency, multi-hour, other-platform or installed evidence. Those R-F5 and release
 acceptance obligations remain OPEN.
+
+**Focused VideoQoS verification — Linux controller accepted; full integration retained.**
+`--video-qos-controller-tests` compiles the actual controller and its unchanged eighteen
+tests through `video_qos_it`, using real hbb_common configuration/generated protocol
+types and the production Quality module. The 683-byte quality definitions move unchanged;
+their existing `scrap::codec` exports remain. The controller and its test module are
+byte-identical. The root lock adds one local test package and changes no third-party record.
+The same guest-only compiler admits only the closed parent/controller target tuples and
+checks Cargo's completed manifest, source, target, profile and owned artifact identity.
+
+At `6915dfb9`, both source-bound lanes pass all eighteen cases, including the 24 unchanged
+quality-target lifecycle controls. The focused transaction takes 145 outer seconds with
+69 compilation seconds; retained `--video-qos-tests` takes 304 outer seconds on the same
+commit. Both use the unchanged bounded-RAM, zero-NIC, UID1000/capless/read-only-root profile
+and join VM/scratch cleanup with zero endpoint changes. The first focused run passes its
+tests but the transaction correctly rejects a missing offline canary; the corrected runner
+executes and checks that canary before compilation. `video-qos-controller-6915dfb9.json`
+retains source/type/test identity, both accepted artifacts, rejected setup and cleanup,
+timings and scope. The focused lane omits capture/rendering dependencies; full-parent
+integration remains required at relevant milestones. Neither lane establishes actual
+presentation, network-impairment recovery, long-session freshness, native other-platform
+or installed privilege-boundary acceptance; those R-F5/R-S0 obligations remain OPEN.
 
 **Video QoS probe timing — Linux controller A/B ACCEPTED; full connection latency OPEN.**
 `VideoQoS` retains one pending elapsed value separately from completed probe measurements.

@@ -2055,31 +2055,36 @@ fn peer_port_forward_write_failure_reports_error_and_retries_add_remove() {
     in_private_process("config::option_tests::peer_port_forward_write_failure_reports_error_and_retries_add_remove", |_| {
         let id = "peer-port-forward-write";
         let mapping = (8000, "localhost".into(), 80);
+        let replacement = (8000, "replacement".into(), 443);
         let mut peer = PeerConfig::default();
         peer.password_prs = b"fixture-port-forward-prs".to_vec();
         peer.options.insert("unrelated".into(), "preserved".into());
         peer.store(id).unwrap();
         let path = PeerConfig::path(id);
         let parent = path.parent().unwrap();
-        for removing in [false, true] {
+        for (operation, mapping) in [("add", &mapping), ("replace", &replacement), ("remove", &replacement)] {
+            let removing = operation == "remove";
             let original = fs::read(&path).unwrap();
             fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
             let result = if removing {
                 PeerConfig::remove_port_forward(id, mapping.0).map(|_| ())
             } else {
-                PeerConfig::add_port_forward(id, &mapping).map(|_| ())
+                PeerConfig::add_port_forward(id, mapping).map(|_| ())
             };
             let preserved = fs::read(&path).unwrap() == original;
             fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
-            println!("OPTION_COMMIT_PEER_PORT_FORWARD=observed kind=write removing={removing} reported={} file_preserved={preserved}", result.is_err());
+            println!("OPTION_COMMIT_PEER_PORT_FORWARD=observed kind=write operation={operation} reported={} file_preserved={preserved}", result.is_err());
             assert!(result.is_err() && preserved);
             if removing {
                 assert!(PeerConfig::remove_port_forward(id, mapping.0).unwrap().is_empty());
             } else {
-                assert_eq!(PeerConfig::add_port_forward(id, &mapping).unwrap(), (vec![mapping.clone()], true));
+                assert_eq!(PeerConfig::add_port_forward(id, mapping).unwrap(), (vec![mapping.clone()], true));
             }
             let stored = PeerConfig::load_for_write(id).unwrap();
             assert_eq!(stored.port_forwards.is_empty(), removing);
+            if !removing {
+                assert_eq!(stored.port_forwards, vec![mapping.clone()]);
+            }
             assert_eq!(stored.password_prs, peer.password_prs);
             assert_eq!(stored.options, peer.options);
         }
@@ -2138,8 +2143,15 @@ fn peer_port_forward_edits_preserve_other_fields_siblings_and_capacity() {
             assert_eq!(PeerConfig::load_for_write(id).unwrap(), expected);
         }
         let path = PeerConfig::path(id);
+        for replacement in [(8000, "replacement".into(), 80), (8000, "replacement".into(), 443), (8000, "localhost".into(), 80)] {
+            let result = PeerConfig::add_port_forward(id, &replacement).unwrap();
+            expected.port_forwards[0] = replacement;
+            println!("OPTION_COMMIT_PEER_PORT_FORWARD=observed kind=replace capacity={} changed={} mappings_match={}", expected.port_forwards.len(), result.1, result.0 == expected.port_forwards);
+            assert_eq!(result, (expected.port_forwards.clone(), true));
+            assert_eq!(PeerConfig::load_for_write(id).unwrap(), expected);
+        }
         let full = fs::read(&path).unwrap();
-        let duplicate = PeerConfig::add_port_forward(id, &(8000, "different".into(), 443)).unwrap();
+        let duplicate = PeerConfig::add_port_forward(id, &expected.port_forwards[0]).unwrap();
         assert_eq!(duplicate, (expected.port_forwards.clone(), false));
         assert!(PeerConfig::add_port_forward(id, &(9000, "localhost".into(), 80)).is_err());
         assert_eq!(fs::read(&path).unwrap(), full);

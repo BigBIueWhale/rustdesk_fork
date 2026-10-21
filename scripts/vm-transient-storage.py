@@ -281,7 +281,12 @@ def run_qemu(args):
                     'limit_installed_before_guest_execution': True,
                 })
                 execute('cont')
-        return child.wait()
+        exited = select.poll()
+        exited.register(child_identity, select.POLLIN)
+        while not cancelled:
+            if exited.poll(100):
+                return child.wait()
+        raise ValueError('QEMU run cancelled')
     finally:
         if child.returncode is None:
             try:
@@ -289,7 +294,7 @@ def run_qemu(args):
             except ProcessLookupError:
                 pass
             try:
-                child.wait(timeout=10)
+                child.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 try:
                     signal.pidfd_send_signal(child_identity, signal.SIGKILL)

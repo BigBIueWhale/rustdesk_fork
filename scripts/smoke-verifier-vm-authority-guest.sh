@@ -3576,9 +3576,13 @@ run_focused_rust_tests() {
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
+            source_fingerprints+=(libs/hbb_common/src/socket_client.rs)
             required_tests=(
                 test::test_get_version_number
                 test::test_try_into_v4
+                socket_client::tests::test_check_port
+                socket_client::tests::single_address_connect_owns_the_literal_socket
+                socket_client::tests::bind_collision_preserves_the_native_error
                 tcp::writer_receipt_tests::protobuf_send_refuses_before_encoding
                 tcp::writer_receipt_tests::protobuf_receipt_refuses_before_encoding
                 tcp::writer_receipt_tests::protobuf_refuses_failed_writer_before_encoding_and_sealing
@@ -5321,7 +5325,7 @@ run_focused_rust_tests() {
                             done
                         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
                             for group in tcp::writer_receipt_tests:: tcp::eof_tests:: \
-                                bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4; do
+                                bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4 socket_client::tests::; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
@@ -6037,7 +6041,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         expected_groups=9
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=16; fi
-        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=6; fi
+        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=7; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=7; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi

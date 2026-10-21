@@ -4292,7 +4292,6 @@ fn local_source_schema_failures_preserve_all_fields_and_refuse_mutations() {
             let mut entries = fs::read_dir(parent).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>();
             entries.sort(); entries
         };
-        let original_names = names();
         let mut all_preserved = true;
         for field in ["remote_id", "kb_layout_type", "fav", "options", "ui_flutter"] {
             let nested = match field {
@@ -4318,6 +4317,7 @@ fn local_source_schema_failures_preserve_all_fields_and_refuse_mutations() {
                     *LOCAL_CONFIG.write().unwrap() = confirmed.clone();
                     fs::write(&file, &bytes).unwrap();
                     let before = fs::metadata(&file).unwrap();
+                    let original_names = names();
                     let first = action();
                     let second = action();
                     refused &= first.is_err();

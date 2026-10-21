@@ -3469,335 +3469,93 @@ source-check correctness only; installed/native and release acceptance stays OPE
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**Policy/capture/coordinator/logind and installed CPace/races/admin/exit accepted;
-full installed/whole-app/release OPEN.**
+**Named historical component and installed-layout cases passed; exact-current installed,
+whole-app and release acceptance remain OPEN.** The results below apply to their recorded
+sources and artifacts. The receiver's production-source equality guard in
+`scripts/smoke-verifier-vm-authority.sh::linux_receiver_input_inventory` rejects a retained
+binary when its complete production source differs. An earlier pass cannot authorize a
+current run or establish current-master conformance. Fresh builds and fixtures that the
+user parked remain parked.
 
-Both endpoints use `src/ipc/uid_policy.rs`: root skips lookup; cache denies only; matches need fresh UID.
-Kernel role/process/ancestry/generation is separate. Lookup owns deadline/1MiB/trusted command;
-uncertainty denies. Named User/Name/Seat/State/Type allow empty seats/name whitespace;
-seatless TTY/unspecified denies. Pidfd/wait retains cancellation/unwind; absent pidfd/bad SIGCHLD denies.
-IPC joins permit-held proof before secrets. Polkit/replay/admission share deadline/worker and locked
-expiry/cancellation/shutdown checks. Async grants/wording gates deleted.
+Both endpoints use `src/ipc/uid_policy.rs`: root skips active-user lookup; a cached UID
+can deny but cannot grant, and a match requires a fresh lookup. Kernel process, role,
+ancestry and generation proof remains separate. The lookup owns its trusted command,
+deadline and 1 MiB output limit; uncertainty denies. Named User/Name/Seat/State/Type
+parsing permits empty seats and whitespace in names but rejects seatless TTY/unspecified
+sessions. Pidfd/wait ownership joins cancellation and unwind; absent pidfd or incompatible
+SIGCHLD disposition refuses. IPC joins permit-held proof before secrets. Polkit,
+identity replay and typed admission share their deadline/worker, with expiry,
+cancellation and shutdown rechecked under the admission lock. Async grant and wording
+checklists remain deleted. The complete contracts are in R-S11at, R-S11fi, R-S11hx
+and the fifteen credential-action rows above.
 
-**Debian:** `build.py`/artifact gate require standalone `polkitd`; release closure OPEN.
-`--maintenance-stage-polkit-runtime-candidate`, aa956518, outer0/59s:
-82 signed-snapshot packages/31,596,230B; pins: `scripts/pins.env`;
-receipt `online-fetch-receipts/run.63EwFoon0W.receipt`; raw/failures: audit.
-`--debian-polkit-tests`, f99f6cc0, seven metadata cases/outer0/13s;
-uid4000/caps-none/NNP/read-only/no-network/joined/no listener additions.
-Raw gX6siRyvuz.serial.log65,117B; hashes/failures: audit. Installation: fixture below.
+| Component checkpoint | Evidence and limit |
+| --- | --- |
+| Polkit runtime and Debian dependency | `aa956518` captured 82 signed-snapshot packages, 31,596,230 bytes, with pins in `scripts/pins.env` and receipt `online-fetch-receipts/run.63EwFoon0W.receipt`. `f99f6cc0` passed seven Debian metadata cases; this alone is not an installed receiver. Raw `gX6siRyvuz.serial.log` and exact receipts remain in the audit. Standalone `polkitd` is required; release closure is OPEN. |
+| UID policy and logind capture | `aa437333` passed four policy cases plus the guard; `3eabd727` passed eight capture cases within 116 tests/five groups, retaining the original four bodies. Unknown pre-existing loopback listener `127.0.0.1:9333` was left untouched; that diagnostic establishes no leak or bypass. Exact artifacts and raw receipts remain in the audit. |
+| Native logind | `68e596b3` passed 14 unit and seven real PAM/logind cases: empty/removed users, seatless unspecified/TTY, active X11, switching and closing sessions. PAM 1.5.2-6+deb12u2 and systemd 252.39-1~deb12u2; raw `8oLyS0S0lG`. This did not run an installed credential receiver. |
+| Coordinator and raw v2 | `e69129bc` passed seven coordinator/23 raw-module cases in five groups: actual AF_UNIX readiness before disclosure, canonical/fragmented/empty/max/auth bodies, malformed/truncated/expired input, wiping, half-close, replay, expiry and shutdown. Pre-write refusal is NotSent; a started write is uncertain. `linux-wire-v2-accepted-e69129bc.json` retains exact scope. Two wording-only tests were later deleted; the current seven coordinator/21 protocol cases are not thereby validated. |
+| Current coordinator execution gap | At `04c7e32e`, the 28-case attempt refused before QEMU: admission required 39,936 MiB with 23,531 MiB available. No case ran. `login-inventory-role.json` retains the refusal. Guest/scratch admission and the no-disk-fallback rule remain binding. |
 
-Logs: `.harness-state/verifier-vm/`; all hashes SHA256.
-**UID policy:** `--linux-service-uid-tests`, source aa437333;
-four policy cases plus guard, outer0/38s; artifact
-`b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
-Raw receipt: audit; providers/refusals: R-S11fi.
+All installed rows below are debug/headless seatless-X11 fixtures using the shipped
+policy/unit, supervised active-user child and actual pinned polkit/PAM/logind where
+authorization is exercised. They prove the named schedules only. Exact source/binary/
+manifest identities, observations, raw logs, failures, timing/resource measurements
+and cleanup remain in the immutable capsules; the superseded narratives remain in Git
+at `c7ffb339` and the audit.
 
-**Capture diagnostic (unknown 127.0.0.1:9333 untouched):** audit; no leak/bypass proof.
-**Capture:** source 3eabd727,
-`--hbb-common-fs`, 116 cases/five groups; eight capture cases 2.03s, original four unchanged;
-artifact `d6f419bbf26d9411e305ddfd18300bd662db2e69497177438f926ef498e17573`.
-Outer0/168s; raw receipt: audit.
+| Installed checkpoint | Observed behavior at the named artifact | Retained evidence |
+| --- | --- | --- |
+| Initial v2 / requester exit | Root Applied; UID4001/4002 and wrong images refused; real CPace used the durable credential across restart, credential races refused and errors drained. Requester exit reaped its helper in 18 ms. | `linux-receiver-requester-exit-accepted-bb5a78b2.json` |
+| Session closes during prompt | Requester/agent/Xvfb stayed live while administrator4003 completed PAM. Root's fresh session check refused with unchanged durable credential and helper reaped; old session/runtime retired, and fresh-generation CPace/admin Applied/no-agent refusal passed. Lingering-runtime recovery remains OPEN. | `linux-receiver-session-revocation-accepted-15ea97aa.json` |
+| Wrong administrator password / `924b5aed` | A diagnostic baseline proved PAM failure and root denial but repeated the prompt for one live CLI. Separate proof/body/status deadlines corrected finality: one failed challenge, reaped helper, CLI1 rejection while agent lived, unchanged credential/child/listener, then actual admin Applied and fresh denial. The accepted fixture passed 13 cases/11 CPace exchanges/two stale refusals with race controls. | `linux-receiver-admin-denial-accepted-924b5aed.json` |
+| Agent group loss / `12323c4d` | Only the exact owned agent group was terminated at the real prompt; requester and root pkcheck remained live, no password was sent, pkcheck/CLI refused and helper reaping completed in 10.5 ms. Durable state/generation/listener stayed unchanged; CPace, a new agent's real grant and fresh denial passed. | `linux-receiver-agent-exit-accepted-12323c4d.json` |
+| Pending authorization at shutdown / `02685194` | SIGTERM to the retained supervisor rejected the CLI in 22.7 ms before supervisor exit; helper/child/supervisor were reaped and listener/cgroup retired in 434 ms. Held D-Bus unit proof showed normal successful stop. Durable state survived a fresh generation, real grant and fresh denial. | `linux-receiver-supervisor-shutdown-accepted-02685194.json` |
+| Admitted mutation at shutdown / `cef74964` | A stopped exact child held convergence after durable root commit. Supervisor SIGTERM began drain while the requester stayed alive; resuming the child yielded CLI0 Done in 121 ms. Exact tree/listener/cgroup retired in 572 ms with successful unit stop; fresh CPace accepted the new password and refused the old one. | `linux-receiver-admitted-shutdown-accepted-cef74964.json` |
+| Terminal convergence failure / `734271a3` | The stopped child never resumed. At the real 600-second recovery limit, CLI1 reported uncertainty without Done; supervisor SIGABRT retained unresolved authority, systemd restarted exactly once, and the fresh generation used the committed credential while rejecting the old one. This 701-second run used the separate 780-second integration profile; it did not establish normal unit-stop drain for the older simple/control-group unit. | `linux-receiver-convergence-failure-accepted-734271a3.json` |
+| Normal systemd stop / product `68496b64`, artifact `ef3f51b7` | Notify/main/mixed retained the original 30-second kill backstop while extending admitted drain. At actual systemctl stop, a pending durable change and ptrace-held child kept all owners alive for 40.029 seconds. Detach yielded CLI0 Done in 191.5 ms, normal successful stop without restart and exact retirement. Fresh CPace/admin/denial controls passed: 17 cases/15 exchanges/four stale refusals. | `linux-receiver-unit-stop-accepted-ef3f51b7.json` |
+| Notification component / `a84a4b78` | Two real false-success regressions failed before correction; all five actual Unix-datagram cases passed afterward. The same endpoint retained repeated WouldBlock, recovered after queue drain, and received STOPPING/EXTEND; a closed/rebound peer was not adopted. Absent-manager construction retained its optional-success behavior, and the supervisor retained its first send error during drain. | `linux-notification-errors-accepted-a84a4b78.json` |
+| Installed notification loss / artifact `bf2ef7fd`, harness `e34bbb42` | SHUT_WR on the exact duplicated notification socket caused persistent EPIPE with a committed change and all 15 child threads held. Systemd killed the old tree after 30.047 seconds: timeout/SIGKILL, no automatic restart. CLI1 reported unknown near 600 seconds without Done. Manual start used the durable credential; old-password refusal, actual admin Applied and fresh denial passed. This is R-T9's external last resort, not a clean stop or confirmed mutation result. | `linux-receiver-notification-loss-accepted-e34bbb42.json` |
+| Pre-login network drain / `4b86a759` on `bf2ef7fd` | An incomplete CPace socket and a keyed pre-login socket both received receiver-originated EOF in 83.2 ms; the keyed peer decrypted CloseReason. Successful normal unit stop, exact process/listener/cgroup retirement, unchanged durable state and fresh CPace/admin/denial controls passed. The suspected join-order hang was not reproduced in this schedule. | `linux-receiver-network-drain-accepted-4b86a759.json` |
+| Stalled authorization / `b30f4811` | The exact pkcheck was stopped at the real prompt without a password. A concurrent root mutation Applied in 185 ms and fresh CPace used it while the helper stayed stopped. The service terminated/reaped that helper at 120.055 seconds, CLI1 explicitly refused while the agent lived, and the root credential/generation/listener remained intact. A fresh actual admin grant and denial passed: four CPace exchanges. Its source-bound debug build also passed the named file-type/source-replacement CPace/FileTransfer replays. | `linux-authorization-timeout-b30f4811.json`; `linux-service-build-b30f4811.json` |
 
-**Coordinator/raw v2:** `--linux-password-admission-tests`, source e69129bc;
-seven coordinator/23 raw-module cases, five groups, outer0/221s, artifact 72ad80c1.
-Four AF_UNIX cases cover pre-header readiness, bad/truncated/expired frames, fragments, empty/max/auth bodies.
-Early refusal=NotSent; started write=uncertain. Half-close/wiping/replay/expiry/shutdown pass.
-The current selection has seven coordinator and 21 protocol cases. Two source-text
-checklists are deleted: they matched password-module/Windows-facade wording rather
-than executing the advertised properties. Production, all remaining test bodies and
-the supplementary source validators are unchanged. No new test ran for this deletion;
-current target-native and installed acceptance remain OPEN.
-The current 28-case attempt at `04c7e32e` was refused before VM startup: standard
-RAM admission required 39,936 MiB, with 23,531 MiB available. No case executed;
-the guest, scratch limits and no-disk-fallback rule remain unchanged. The exact
-terminal refusal is retained in `login-inventory-role.json` and the audit journal.
+The capsules retain exact artifact authority: `924b5aed` binary `7941d43b`/manifest
+`63c87c00`; `ef3f51b7` binary `77b83bf0`/manifest `17b59862`;
+`bf2ef7fd` binary `51eb6e87`/manifest `9ed447c2`; `b30f4811` binary
+`837024e0…4389f2`/manifest `1ed9a264…38e440`. Earlier `dfac15c2`,
+`ef3f51b7` and `bf2ef7fd` capsules remain in their
+`.harness-state/retained-peer-artifact-<commit>/linux-x86_64-peer` directories.
+Those identities are historical evidence, not current-source authorization.
 
-**Native logind:** `--linux-logind-tests`, source 68e596b3, artifact e12dac15;
-14 unit/seven PAM/logind cases, outer0/131s; PAM defaults passed.
-Empty/removed, seatless unspecified/TTY, active X11, switch/closing X11 select expected UID/no-user.
-PAM 1.5.2-6+deb12u2/systemd 252.39-1~deb12u2; raw 8oLyS0S0lG. No installed receiver here.
+Native transactions used no-NIC VMs, guest-only authority and joined exact ownership;
+complete endpoint records distinguish unattributed host changes from harness additions.
+The older unit-stop build retained only an endpoint-delta count, which is not reconstructed.
+Notification-loss records retain the unaccepted unread-pipe observer and corrected bounded
+stderr drain; other failed/interleaved observations remain raw and unaccepted.
+Measured RAM/disk peaks and QEMU accounting remain in the capsules. The recorded bounded
+service build uses 8 GiB guest/6 GiB container/7 GiB RAM scratch/6 GiB overlay; the timeout
+replay uses 4 GiB guest/6 GiB scratch/5 GiB overlay. Both retain 6 GiB host headroom,
+monitoring, hard ceilings and joined retirement. These records do not admit another launcher.
 
-**Installed v2 accepted:** 924b5aed/peer924b5aed, binary7941d43b/manifest63c87c00;
-shipped unit/0711 child, 82-package polkit/PAM/logind/Xvfb; cases13/86s, isolated build264s;
-CPace11/probe eb9dd801, stale2, races2/control, admin/failure/fresh/requester-exit/session-close.
-Root Applied; UID4001/4002 and wrong images refuse. Restart preserves durable state;
-credential races refuse keyed authority and drain errors. Requester exit reaps helper18ms.
-Unit/cgroup/PAM/X11/Docker/VM joined; raw 1DRsUcLWNL; full observations in bundle.
+**Still OPEN:**
 
-**Session-closing prompt accepted:** requester/agent/Xvfb stay live; admin4003 PAM completes,
-then root's fresh check refuses (CLI1/durable unchanged/helper reaped). Old actor/session/child/user
-runtime retire; c2/new PID/start keeps supervisor/generation. Current-password CPace, new admin Applied
-and fresh no-agent denial pass. Principal guard unchanged; lingering-runtime recovery OPEN; failures retained.
-
-**Incorrect administrator password: exact installed Linux case accepted.** Unchanged peer3b failed
-CLI finality twice; diagnostic replay proved PAM failure/root `pkcheck` exit1/helper reap, then another
-prompt for the same live CLI. `src/ipc.rs` separates proof/body and status deadlines: Linux waits
-within the existing 600-second operation/recovery lifetime, and root starts a fresh one-second status
-send after authorization/commit. The same native fixture and five-second post-failure finality check
-passed on peer924b5aed: one failed challenge, exact root denial/helper reap while agent alive, CLI1
-explicit rejection, unchanged durable credential/child/listener, current-password CPace, subsequent
-actual administrator Applied/new-password CPace and fresh no-agent denial. Authorization/admission
-rules and macOS timing are unchanged. Raw `1DRsUcLWNL`98,664B; immutable bundle below binds full
-observations, freezes, artifacts, old failures and cleanup. This is debug/headless installed-layout
-seatless-X11 evidence; whole-app/release, cancellation/delay/contention/shutdown, other desktops/
-principals/session races and broader platform/resource/reproduction/review acceptance remain OPEN.
-
-Evidence: `linux-wire-v2-accepted-e69129bc.json`,
-`linux-receiver-requester-exit-accepted-bb5a78b2.json`,
-`linux-receiver-session-revocation-accepted-15ea97aa.json`,
-`linux-receiver-admin-denial-accepted-924b5aed.json`,
-`/tmp/privilege_securiry_deep_audit.md`. Rust1.75/zero-NIC/no-network,
-Build/source checks: uid1000/read-only/caps-none/NNP; installed root fixture is VM-only; no new host listeners.
-
-**Abrupt authentication-agent group loss: exact installed Linux case accepted.** Harness
-`12323c4d` reuses the unchanged `924b5aed` binary/probe capsule. At the actual packaged
-`pkttyagent` password prompt, the ordinary requester and exact root `pkcheck` remain alive;
-the fixture proves a distinct owned agent session/group before terminating that group.
-No administrator password is sent. The exact root service invocation records `pkcheck` exit1;
-the CLI exits1 with explicit service rejection, and pidfd exit plus process reaping complete
-in 10.5 ms. Durable credential, supervisor/child generation and listener remain unchanged.
-Current-password CPace, a newly registered agent's actual administrator grant, and fresh
-no-agent refusal pass afterward. The zero-NIC installed-layout transaction passes 14 cases/
-12 CPace exchanges in 82 seconds with unchanged host listeners and exact joined cleanup.
-RAM scratch peaks at 5,675,659,264 bytes; the disk run peaks at 147,456 bytes (144 KiB).
-Immutable `linux-receiver-agent-exit-accepted-12323c4d.json` under the verifier root
-(11,897 bytes; SHA-256 `0509310495ad759f2386820c77e59023605692cb933b374d39a0857b0cae5641`)
-binds source/artifact identities, root journal, process observations, raw log, storage and freezes.
-This is debug/headless seatless-X11 evidence for one abrupt group-loss schedule. Graphical
-dialog dismissal, other cancellation/delay/contention/shutdown schedules and wider acceptance
-remain OPEN; no product code changed.
-
-**Pending administrator request during supervisor shutdown: exact installed Linux case accepted.**
-Harness `02685194` reuses the unchanged `924b5aed` binary/probe. At the actual packaged
-`pkttyagent`/PAM password prompt, requester and agent remain outside the service cgroup;
-only the retained root supervisor pidfd receives SIGTERM, with no administrator password sent.
-The CLI reports explicit service rejection in 22.7 ms while the supervisor remains alive.
-Helper, child and supervisor pidfds exit and their kernel identities are reaped; cgroup
-and listener retire in 434 ms. A guest D-Bus unit reference preserves the actual exit result:
-inactive/dead/success, normal exit0; it closes before cgroup-absence proof. Root invocation/
-boot/PID-bound journal records graceful shutdown, child exit0 and final Exit. Durable
-credential remains unchanged. A fresh supervisor/generation/child uses it in actual CPace;
-fresh real administrator Applied and subsequent no-agent denial also pass.
-`src/platform/linux.rs:2418,2528` initiates shutdown and joins IPC before child retirement;
-`src/ipc.rs:4077,4304,6047` cancels and drains authorization/transactions and reaps the helper.
-The zero-NIC transaction passes 15 cases/13 CPace exchanges in 62 seconds, with no added
-host listener, unchanged source/index/audit/specification/ledger/instructions and exact joined
-cleanup. RAM scratch peaks at 5,608,632,320 bytes; disk diagnostics at 155,648 bytes (152 KiB).
-Immutable `.harness-state/verifier-vm/linux-receiver-supervisor-shutdown-accepted-02685194.json`
-(13,323 bytes; SHA-256 `c02a93918ec35feb8dd3264f05be844560d5523ba83d97d1675ce54aab36e1c3`)
-binds artifacts, observations, raw log, storage, freezes and the retained unaccepted first run.
-This is one unadmitted-request schedule in debug/headless seatless-X11 installed layout;
-standard unit-stop/admitted-commit/contention/delay/GUI cancellation and wider acceptance
-remain OPEN. No product code changed.
-
-**Admitted credential mutation during supervisor shutdown: exact installed Linux case accepted.**
-Harness `cef74964` reuses the unchanged `924b5aed` binary/probe capsule. The retained child
-receives pidfd SIGSTOP and has kernel state T; an actual exact-image root CLI request changes
-the durable credential while its reply remains pending. Only the retained supervisor receives
-pidfd SIGTERM. Its fresh root invocation/boot/PID-bound journal proves graceful shutdown began
-while the requester remains alive and child remains stopped, held for 54.3 ms. Exact child
-pidfd SIGCONT permits convergence; actual CLI0 `Done!` arrives 121 ms after SIGTERM. The accepted
-credential remains durable. Supervisor and child pidfds exit and their kernel identities are
-reaped; listener and cgroup retire in 572 ms. The held guest D-Bus unit reference proves
-inactive/dead/success and normal exit0 before release. Root journal records child exit0 and
-final Exit without errors. A fresh supervisor/child/generation uses the new password in actual
-mutual CPace and rejects the obsolete password; subsequent actual administrator Applied and
-fresh no-agent refusal pass. `src/ipc.rs:1635,6220,6248` closes admission while awaiting
-admitted persistence/convergence; unresolved authority aborts at `:1642` rather than dropping
-replay ownership. `src/platform/linux.rs:2528` joins IPC before retiring the child.
-The zero-NIC installed-layout transaction passes 16 cases/14 CPace exchanges/3 stale refusals
-in 85 seconds, with unchanged host listeners and source/index/audit/specification/ledger/
-instruction freezes, plus exact joined cleanup. RAM scratch peaks at 4,998,963,200 bytes;
-disk diagnostics at 167,936 bytes (164 KiB); observed QEMU block writes are 4,096 bytes.
-Immutable `.harness-state/verifier-vm/linux-receiver-admitted-shutdown-accepted-cef74964.json`
-(22,743 bytes; SHA-256 `3db13b7cc04a19caa8cc46c996bbb641796dcd80027abdd139250dd5da816b44`)
-binds the barrier, process/journal/unit observations, recovery, artifacts, raw log, storage and
-freezes. This is one admitted-write schedule in debug/headless seatless-X11 installed layout;
-standard unit-stop, other convergence-failure schedules, delay/contention/capacity/GUI cancellation and wider
-acceptance remain OPEN. No product code or artifact changed.
-
-**Terminal child-convergence failure during supervisor shutdown: exact installed Linux case accepted.**
-Integration harness `734271a3` reuses the sealed `924b5aed` binary/probe. The exact child
-receives pidfd SIGSTOP/kernel T; an actual root CLI changes the durable credential while
-remaining pending. Only the retained supervisor receives SIGTERM. Its boot/PID/UID/invocation-
-bound journal proves graceful shutdown began while that stopped-child barrier remains held.
-The fixture never resumes the child. After the real 600-second recovery window, CLI1 reports
-explicit uncertainty without `Done!`; the old supervisor fails by SIGABRT at 600.877 seconds.
-The held guest D-Bus unit reference proves old ExecMainPID, exit code2/status6/result signal,
-MainPID0 and auto-restart. The bounded old-invocation journal tail proves replica failure and
-unresolved-admission abort after the fresh monotonic barrier, with no normal Exit.
-Old supervisor/child pidfds exit and identities are reaped; the old listener disappears.
-Exactly one automatic restart reaches active/running/success with a fresh root/child/invocation/
-generation by 603.121 seconds; the durable value is retained. Actual mutual CPace accepts the
-new password and rejects the obsolete password. A fresh administrator PAM/polkit grant reaches
-Applied/new-password CPace; fresh no-agent denial passes. `src/ipc.rs:8307,8314` distinguishes
-the full recovery window from each one-second attempt; `:6363,1642` retains uncertainty and
-aborts unresolved authority rather than evicting replay ownership.
-
-The separate `--linux-service-convergence-failure-tests` profile passes four cases/three CPace
-exchanges/one stale refusal in 701 VM seconds, with complete host endpoint snapshots unchanged,
-all source/index/audit/specification/ledger/instruction freezes equal and exact joined cleanup.
-Its explicit integration budget is 780 seconds; the ordinary 300-second receiver profile and
-its prior acceptance remain unchanged. RAM scratch peaks at 4,995,383,296 bytes, overlay at
-3,761,246,208 bytes, private-run disk at 212,992 bytes (208 KiB); observed QEMU host block writes
-are 4,096 bytes. All RAM/shared/acquisition run markers retire. Immutable
-`.harness-state/verifier-vm/linux-receiver-convergence-failure-accepted-734271a3.json`
-(48,546 bytes; SHA-256 `1fe4c1399bf5c03496a2dbf3c91edd2624150c9bd8e1aff984b0fc1099aede78`)
-binds structured barrier/failure/recovery/authentication observations, artifacts, raw serial,
-storage and freezes. Interleaved serial records remain raw and are not reconstructed.
-Four failed observer/query attempts remain unaccepted in retained diagnostics and the audit;
-three also had unexplained host UDP additions, with no ownership inference or host changes.
-This is one debug/headless installed-layout seatless-X11 schedule at the named unchanged product,
-unit and artifact. It did not exercise standard unit-stop: that checkpoint's
-Type=simple/control-group/30-second stop budget did not establish the admitted 600-second drain. Other schedules,
-desktops, platform/whole-app/release/resource/reproduction/review acceptance remain OPEN.
-
-**Normal systemd stop: exact installed Linux schedule accepted; wider shutdown acceptance OPEN.**
-Product `68496b64` uses
-Type=notify/NotifyAccess=main/KillMode=mixed with the existing 30-second kill backstop.
-The root supervisor reports IPC readiness, closes admission, extends the stop timeout
-while joining owned IPC, then retires its child. Native artifact/harness `ef3f51b7`
-(binary `77b83bf0`, manifest `17b59862`) passes actual systemctl stop with an exact
-all-thread ptrace-held child and pending durable credential change. The supervisor,
-requester and child remain alive for 40.029 seconds; manager properties still show
-the same main PID, deactivating/stop-sigterm, notify/main/mixed, original 30-second
-timeout and no restart. After detach, CLI0 `Done!` arrives in 191.5 ms; supervisor
-and child pidfds exit and identities are reaped, listener/cgroup retire, durable
-credential remains, and the referenced unit reports inactive/dead/success, normal
-exit0. Total stop is 40.570 seconds. A fresh supervisor/child/generation proves
-retained-password mutual CPace and obsolete-password refusal; real administrator
-Applied and fresh unauthenticated denial also pass.
-
-The `ef3f51b7` build passes in 255 Cargo/367 VM seconds within its 600-second
-integration ceiling (8-GiB guest/6-GiB container/two jobs/no debug symbols/assertions
-retained). Its immutable seven-file capsule is reused for the 116-second installed
-fixture: 17 cases/15 CPace exchanges/four stale refusals, actual polkit/PAM/logind and
-shipped unit/0711 child. Build RAM scratch peaks at 6,240,382,976 bytes, disk
-diagnostics at 3,555,328; installed-test peaks are 4,564,721,664 RAM and 212,992 disk
-bytes. Both observe QEMU block writes of 4,096 bytes and exact joined RAM/owner
-retirement, with matching source/index/audit/ledger/specification/instruction freezes.
-The build's unattributed endpoint delta is retained only as a count and is not
-reconstructed. Subsequent observer `b5afbc7f` accepts durable complete per-phase
-retention for new offline verifier runs, alongside the proved socket restriction.
-Immutable `.harness-state/verifier-vm/linux-receiver-unit-stop-accepted-ef3f51b7.json`
-(20,192 bytes; SHA-256 `ce09e89cab609f901435e9a046897905371016bbb10804a8352e058423535128`)
-binds artifacts, actual manager/process/CLI/journal/recovery observations, full raw
-logs, storage and freezes. Earlier failed build evidence remains unaccepted in the
-audit and retained diagnostics. This is one debug/headless installed-layout seatless-X11
-schedule, not whole-app/release acceptance. Other notification failures, ordinary network
-drain, new-unit 600-second failure/recovery and other init systems remain OPEN.
-
-**Notification endpoint lifetime: component A/B and one installed channel-loss schedule accepted; wider failures OPEN.**
-Product `a84a4b78`, `src/platform/linux/systemd.rs:36`, retains the exact connected
-Unix datagram after a send error. Later attempts return their actual kernel result;
-only an absent manager at construction takes the optional-success path. Temporary
-backpressure can recover on the same endpoint, and a closed/rebound address is not
-adopted. The supervisor still retains its first notification error while draining.
-Tests-first `9c7ae5ff` produces three passes and two real false-success failures;
-the corrected exact module passes all five cases in 31 VM seconds. Actual kernel
-queue saturation, repeated WouldBlock, same-descriptor recovery and received
-STOPPING/EXTEND bytes pass, as do persistent closed-peer errors, replacement-peer
-silence, fresh-connection delivery, pathname messages and absent/invalid controls.
-The zero-NIC VM uses authenticated Rust 1.75 in a 512-MiB nonroot, capability-free,
-read-only container. RAM scratch peaks at 3,470,057,472 bytes, disk diagnostics/helper
-extraction at 3,297,280, observed QEMU writes at 4,096; exact joins/RAM retirement
-and frozen source/index/audit/ledger/spec/instruction comparisons pass. Four complete
-endpoint records retain two unattributed removals without owner inspection.
-Immutable `.harness-state/verifier-vm/linux-notification-errors-accepted-a84a4b78.json`
-(23,933 bytes; SHA-256 `f50d1853e73e415918bf8218d560a320c3713b077216788651076ea19fcec859`)
-binds both native runs, identical test bodies, module/artifact hashes, raw logs,
-storage and complete endpoint records. The `ef3f51b7` whole binary predates this
-correction; its intact capsule is retained at
-`.harness-state/retained-peer-artifact-ef3f51b7/linux-x86_64-peer`.
-
-Retained binary `bf2ef7fd` (`51eb6e87`, manifest `9ed447c2`) at
-`.harness-state/retained-peer-artifact-bf2ef7fd/linux-x86_64-peer` and harness `e34bbb42`
-pass a real installed notification-channel fault in 660 VM seconds. Guest root
-uses the retained supervisor pidfd to duplicate its sole connected notification
-socket and applies SHUT_WR to that same kernel object; actual EPIPE persists.
-With a pending durable credential change and all 15 child threads ptrace-held,
-systemd kills the exact old tree after 30.047 seconds and reports timeout/SIGKILL,
-without an automatic restart. The fixture reaps every traced death; supervisor and
-child pidfds exit, identities/listener/cgroup retire, and the durable credential remains.
-CLI1 returns explicit unknown after 599.960 seconds, with no Done. Manual start
-establishes a fresh supervisor/child/generation; retained-password mutual CPace,
-obsolete-password refusal, real polkit/PAM administrator Applied and fresh denial
-pass: four cases/three CPace exchanges/one stale refusal. This is the R-T9 external
-last resort, not a clean stop or completed-mutation result.
-
-The source-bound build passes in 352 VM seconds within its 600-second integration
-ceiling and is reused unchanged. Build/test RAM scratch peaks are 6,206,951,424 /
-4,544,503,808 bytes; retained run-disk peaks are 3,555,328 / 143,360 bytes, with
-observed QEMU block writes of 4,096 each. Exact joins/RAM retirement and frozen
-source/index/audit/ledger/spec/instructions pass. All ten complete build/failed-test/
-accepted-test endpoint observations are retained as unattributed. The first unread-pipe
-observer attempt stays unaccepted; corrected bounded capture drains 825,614 stderr bytes.
-Immutable `.harness-state/verifier-vm/linux-receiver-notification-loss-accepted-e34bbb42.json`
-(55,532 bytes; SHA-256 `89aa9fb0302bef0080ef545a76de930ec6e8976efc90a9e156dd1b04e1b549d6`)
-binds the capsule, five actual fault/barrier/timeout/client/recovery records, native
-receipts, full raw logs, storage, endpoint records and freezes. Interleaved first-run
-diagnostics remain raw without reconstruction. This is one debug/headless installed-layout
-seatless-X11 schedule. Manager crash/acknowledgement, installed temporary backpressure,
-startup failure, new-unit 600-second failure/recovery, ordinary network drain and broader
-shutdown/platform/whole-app/release/resource/reproduction/review remain OPEN.
-
-**Ordinary pre-login network shutdown: one installed Linux schedule accepted.**
-Harness `4b86a759` reuses the current `bf2ef7fd` binary (`51eb6e87`, manifest
-`9ed447c2`). Two concurrent exact-child kernel sockets remain open at actual unit
-stop: one incomplete CPace peer and one mutually keyed pre-login peer. Both reach
-receiver-originated EOF in **83.2 ms**; the keyed peer decrypts the shutdown
-CloseReason. Retained supervisor/child pidfds exit and kernel identities are reaped;
-normal exit0/success/no restart, absent listener/cgroup and unchanged durable
-credential are observed by 3.096 seconds, including the probe's three-second read
-wait. Fresh-generation CPace, real administrator Applied and fresh denial pass.
-The zero-NIC fixture passes four cases/three CPace exchanges in 57 VM seconds.
-Complete endpoint records have no delta; source/index/audit/ledger/specification/
-instruction freezes match before/during/after, and exact joins/RAM retirement pass.
-RAM scratch peaks at 4,549,697,536 bytes; retained run disk at 126,976 bytes and
-observed QEMU block writes at 4,096. Immutable
-`.harness-state/verifier-vm/linux-receiver-network-drain-accepted-4b86a759.json`
-(17,432 bytes; SHA-256 `d5b3076fe996757e67effe7b9b256693bb7a4fbb28f843473deae3f7b1c77048`)
-binds the exact capsule, native observation, raw serial, storage, endpoint records
-and freezes. This is debug/headless seatless-X11 installed-layout evidence for
-pre-login sockets. Remote/transfer/tunnel drain, writer backpressure, forced
-network deadline, native input/display cleanup and broader shutdown acceptance
-remain OPEN. No product code changed; the suspected join-order hang was not
-reproduced in this schedule.
-
-**Stalled authorization helper and concurrent root mutation: one current-source installed Linux case accepted.**
-Harness/artifact `b30f4811` passed the focused authorization-timeout transaction in 201 VM seconds.
-At an actual packaged administrator prompt, the observer stops only the retained root `pkcheck`
-pidfd and sends no administrator password. A concurrent actual root password change returns Applied
-in 185 ms, and a fresh peer confirms the new credential while that helper remains stopped.
-The service's own 120-second deadline terminates and reaps the helper at observed age 120.055 seconds;
-the CLI exits1 with explicit rejection while the agent remains alive. Exact invocation/boot/PID-bound
-root journal, pidfd exit and process reaping prove the outcome. The root value, supervisor/child
-generation and listener remain unchanged through timeout. A fresh real administrator grant, fresh
-no-agent refusal and four total mutual-CPace exchanges pass. No product correction was needed.
-`.harness-state/verifier-vm/linux-authorization-timeout-b30f4811.json` binds the native observation,
-complete raw serial, exact artifact, unchanged source/control/endpoints and joined cleanup.
-
-The required current-source Linux debug capsule built in 341 VM seconds and passed the existing
-file-type and source-replacement CPace/FileTransfer replays. The receiver's full production-source
-equality guard remains mandatory; it refused the older artifact before QEMU. The old `dfac15c2`
-capsule is preserved at `.harness-state/retained-peer-artifact-dfac15c2/linux-x86_64-peer`; the new
-canonical capsule is bound by manifest `1ed9a264…38e440` and binary `837024e0…4389f2`.
-The bounded service build keeps its 8 GiB guest/6 GiB container and tightens RAM scratch from 9 to
-7 GiB and overlay from 8 to 6 GiB; measured peaks are 6,245,519,360 and 6,084,431,872 bytes.
-The timeout replay uses a separate 4 GiB guest/6 GiB scratch/5 GiB overlay profile; scratch peaks at
-4,457,431,040 bytes. Both retain 6 GiB host headroom, monitoring, hard ceilings and joined RAM
-retirement. `.harness-state/verifier-vm/linux-service-build-b30f4811.json` retains build/artifact
-evidence. This is debug/headless installed-layout seatless-X11 evidence for one stopped-helper and
-parallel-root schedule, not current release/package, other desktops/platforms, general contention,
-sustained resource/latency, cold equality, independent reproduction or external-review acceptance.
-
-**Still OPEN:** other credential races, admin failure/cancel/delay; installed Linux
-both-endpoint root/cache/session changes, principal allow/deny,
-contention/cancellation/drain/responsiveness; native seat0/GDM/Wayland/Mir/Web, selection races,
-wait/SIGCHLD interop, abrupt-drop and lookup/transaction/descendant resources; whole-app/native
-Windows/macOS; current installed/release artifacts, cold R-B2/R-B10, independent reproduction/external
-review. Android/Windows display symptoms remain unexplained.
+- Exact-current installed receiver/artifact acceptance for both endpoints and all fifteen
+  credential actions; root/cached/fresh-active-user, principal/role/argv/ancestry/session
+  changes, identity races, real authorization effects and persistence/restart.
+- Remaining administrator failure, GUI cancellation/dismissal, delay, contention/capacity,
+  cancellation/drain/responsiveness, replay and convergence schedules. Historical named
+  passes do not complete the matrix.
+- Manager readiness/startup failure, crash/acknowledgement, installed temporary notification
+  backpressure, new-unit 600-second failure/recovery and other init systems.
+- Authenticated Remote/FileTransfer/tunnel network drain, writer backpressure, forced
+  network deadline, native input/display cleanup and broader shutdown behavior.
+- Seat0/GDM/Wayland/Mir/Web session selection, selection races, wait/SIGCHLD interoperability,
+  abrupt drop and lookup/transaction/descendant resources; sustained latency, CPU, memory
+  and descriptor/handle bounds; whole-app and native Windows/macOS.
+- Current release/package artifacts, complete inputs/signing, cold R-B2/R-B10 equality,
+  independent reproduction and R-V3 external review. R-S0 functionality with LPE immunity,
+  actual R-F5 recovery/long-session freshness and the older Android/Windows display
+  symptoms remain unresolved. All separately parked work remains OPEN/PARKED.
 
 ### Flutter result inventory — single model-count source
 

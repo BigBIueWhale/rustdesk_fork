@@ -924,6 +924,23 @@ mod tests {
         }
         assert_eq!(qos.fps(), MAX_FPS,
             "new feedback at the unrestricted rate must still allow adaptation");
+        let mut outcomes = Vec::new();
+        for (excess, expected_fps, expected_quick) in [(49, 36, 2), (50, 31, 1), (51, 31, 1)] {
+            let mut qos = healthy_controller();
+            qos.user_custom_fps(7, MAX_FPS);
+            let mut observed_excess = 0;
+            for delay in [20, 20, 20 + 2 * excess, 20, 20] {
+                qos.user_network_delay(7, delay);
+                observed_excess = observed_excess.max(qos.users[&7].delay.avg_delay());
+            }
+            let actual_fps = qos.fps();
+            let actual_quick = qos.users[&7].delay.quick_increase_fps_count;
+            println!("VIDEO_QOS_CONGESTION=observed kind=quick-boundary excess_ms={excess} observed_excess_ms={observed_excess} expected_fps={expected_fps} actual_fps={actual_fps} expected_quick={expected_quick} actual_quick={actual_quick}");
+            outcomes.push(observed_excess == excess && actual_fps == expected_fps
+                && actual_quick == expected_quick);
+        }
+        assert!(outcomes.into_iter().all(|ok| ok),
+            "only consecutive delay samples below 50 ms may trigger rapid FPS probing");
     }
 
     fn controller_with_baseline(round_trip: u32) -> VideoQoS {

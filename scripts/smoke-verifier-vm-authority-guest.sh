@@ -406,6 +406,25 @@ fail() {
     exit 1
 }
 
+process_start_time() {
+    local pid record suffix
+    local -a fields
+    [ "$#" -eq 1 ] || return 1
+    pid=$1
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    record=$(<"/proc/$pid/stat") || return 1
+    [ "${#record}" -le 4096 ] || return 1
+    [[ "$record" == "$pid ("*") "* ]] || return 1
+    # comm is unescaped; only the final closing parenthesis starts the fixed fields.
+    suffix=${record##*) }
+    [[ "$suffix" != *$'\n'* && "$suffix" != *$'\r'* ]] || return 1
+    IFS=' ' read -r -a fields <<<"$suffix"
+    [ "${#fields[@]}" -ge 20 ] || return 1
+    [[ "${fields[0]}" =~ ^[RSDZTWtXxIKP]$ ]] \
+        && [[ "${fields[19]}" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "${fields[19]}"
+}
+
 provision_git_runtime() {
     local mount_options
     case "$SIZE_VERIFIER_VM_GIT_PACKAGE" in
@@ -11287,7 +11306,7 @@ chmod 0444 "$PIDFILE"
     || fail 'Docker Unix socket authority differs'
 [ "$(readlink -f -- "/proc/$DAEMON_PID/exe")" = "$BIN/dockerd" ] \
     || fail 'Docker daemon executable identity differs before generation publication'
-daemon_start="$(awk '{ print $22 }' "/proc/$DAEMON_PID/stat")" \
+daemon_start="$(process_start_time "$DAEMON_PID")" \
     || fail 'Docker daemon start time cannot be read'
 [[ "$daemon_start" =~ ^[1-9][0-9]*$ ]] || fail 'Docker daemon start time is malformed'
 printf 'pid=%s start=%s daemon_sha256=%s client_sha256=%s\n' \

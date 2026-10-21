@@ -2722,6 +2722,26 @@ test duplication; broader installed, platform and release acceptance is unchange
 | Last-peer history | LocalConfig stores its private candidate before publication, preserving replacement/clear failure and identical retry. Unchanged history avoids a write. Exact registry/session admission precedes history, storage failure preserves the admitted session and duplicate refusal cannot advance history. Unused LocalConfig geometry APIs/storage are absent; old-format files retain live preferences and omit retired geometry on the next save. Active Flutter/per-peer geometry paths remain. | Config component and actual session-add/native bridge with storage denial and healthy retry: `last-peer-159cb6bf.json`. No network peer; full remembered-peer desktop/mobile interaction remains OPEN. |
 | Ordinary option storage and framed transaction (`9fbb652a`) | Config2 initial reads preserve failed sources. Under the existing cache write lock, a checked fresh record owns one-key mutation, durable idempotence, conditional storage and confirmed-cache publication; corrupt/unreadable records return fixed errors without replacement or cache change. Present options/map values decode strictly; missing fields retain defaults. Shared Unix reads open nonblocking/no-ctty and verify the retained descriptor is regular before reading. Receiver authority, policy pins, closed request fields, InternalFailure without an effective value, caller-cache preservation and mobile restart-after-persistence ordering remain. | Preparation `9b2deb8f` reproduces five failures with 104 controls passing; identical tests pass 109/109 after correction. Real EACCES, seven invalid formats across replacement/removal/purge, completed external edits, stale-cache matches, write-free durable matches, missing/sparse state, eight writers and all policy pins are exercised. FIFO entry/timeout/reap is observed before correction; after it, 100 refusals preserve the FIFO and descriptors (4 to 4), and the child completes. `ordinary-option-source-9fbb652a.json` binds sources, rejected checks, artifacts and joined bounded-RAM cleanup. Earlier `option-persistence-f895b8a0.json` and `main-ipc-framing-4278b228.json` retain storage/handler and framed transaction/permit evidence, including two unknown-field failures, ten invalid-request refusals, valid follow-up and failure/durable retry. No new parent/full-app/FFI or framed IPC run is claimed. Cross-process/namespace/ACL races, setting/audio effects, main-listener startup, installed endpoint trust/root/cross-UID/role/restart, other target OS and R-S0/R-F5/release acceptance remain OPEN. |
 
+**Integer quality/FPS defaults — Linux component accepted; full settings OPEN.**
+`10c83463` makes the private numeric reader return its validated number; quality and
+FPS format the bounded result as an integer, matching peer defaults and per-session
+requests. Decimal-form integers remain accepted. Range checks, invalid/non-finite
+fallbacks, precedence and the other integer settings keep their existing semantics.
+Previously a fractional quality acknowledgement differed from the inherited integer,
+and a fractional FPS string could reach the client's integer parser and fall back to 30.
+
+At unchanged-product preparation `5321e7b6`, one actual save/cache/reload/inheritance
+test observes four incorrect readbacks, including two non-integer inherited FPS strings;
+182 earlier cases pass before the final three controls are skipped. Its byte-identical
+24-case body passes at the correction: twelve quality and twelve FPS inputs cover
+fractions, decimal integers, scientific notation, boundaries, invalid text and non-finite
+values, with unrelated settings preserved. All 186 selected tests/six groups pass in
+166 outer seconds, retaining every prior test body. `display-default-integer-10c83463.json`
+binds sources, exact unchanged-through-execution artifacts, A/B outcomes, complete
+endpoint comparisons and joined bounded-RAM cleanup, including the failed baseline's
+manifested 35-node diagnostics retirement. Full native FFI/UI, client OptionMessage and
+remote encoder effects, other-platform/installed and R-S0/R-F5 acceptance remain OPEN.
+
 Historical comparisons cover named setter/export leaves or controlled rendered
 components, not an old installed whole application. The receipts retain exact sources,
 artifacts, cases, raw results, failed/unaccepted preparatory runs and joined bounded-RAM

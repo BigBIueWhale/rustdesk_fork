@@ -56,7 +56,7 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 10240, f'{profile} requires its 10 GiB guest')
         return 7 * GIB, 6 * GIB
     if profile in ('linux-resolution-lifetime', 'fusermount-process', 'linux-service-uid-tests',
-                   'audio-buffer'):
+                   'audio-buffer', 'audio-mailbox'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
         return 6 * GIB, 4 * GIB
     if profile == 'xrandr-acquisition':
@@ -416,7 +416,7 @@ def main():
                                  'flutter-credential-dialog', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'x11-focus', 'linux-parent-libtest',
                                  'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
-                                 'linux-service-uid-tests', 'audio-buffer',
+                                 'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
                                  'android-storage-key'),
                         default='standard')

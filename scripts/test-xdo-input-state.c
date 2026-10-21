@@ -126,6 +126,8 @@ static int query(xdo_t *x, xdo_input_state_t *out) {
 int main(void) {
   int descriptors = entries("/proc/self/fd"), tasks = entries("/proc/self/task");
   Display *d = XOpenDisplay("unix/:98.0"); assert(d && ScreenCount(d) == 2);
+  Window initial_focus; int initial_revert;
+  assert(XGetInputFocus(d, &initial_focus, &initial_revert));
   xdo_t *x = xdo_new_with_opened_display(d, "unix/:98.0", 0); assert(x);
   caps_atom = XInternAtom(d, "Caps Lock", True); num_atom = XInternAtom(d, "Num Lock", True);
   assert(caps_atom && num_atom);
@@ -166,7 +168,12 @@ int main(void) {
   int restored_width;
   KeySym *restored = XGetKeyboardMapping(d, x->keycode_low, x->keycode_high-x->keycode_low+1, &restored_width);
   assert(restored && restored_width == width && !memcmp(restored, map, (x->keycode_high-x->keycode_low+1)*width*sizeof(KeySym)));
-  XFree(restored); XFree(map); XDestroyWindow(d, w); xdo_free(x); XCloseDisplay(d);
+  XSetInputFocus(d, initial_focus, initial_revert, CurrentTime);
+  XDestroyWindow(d, w); XSync(d, False);
+  Window final_focus; int final_revert;
+  assert(XGetInputFocus(d, &final_focus, &final_revert)
+         && final_focus == initial_focus && final_revert == initial_revert);
+  XFree(restored); XFree(map); xdo_free(x); XCloseDisplay(d);
   assert(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks);
   assert(refused == 92 && recovered == 92 && replies == retirements && calls > 0);
   printf("XDO_INPUT_STATE_NATIVE=pass faults=23 repeats=4 refused=92 recovery=92 output=unpublished-on-error effects=none replies=retired pointer_screens=2 button_mask=preserved mapping=unchanged descriptors=retired tasks=retired sanitizer=address whole_app=false\n");

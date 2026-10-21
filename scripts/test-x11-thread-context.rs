@@ -259,6 +259,7 @@ fn fixture_focus(scenario: &str) -> (c_ulong, c_int) {
 fn concurrent_contexts() {
     const WORKERS: usize = 8;
     assert_eq!(std::env::var("DISPLAY").unwrap(), ":98");
+    let expected_focus = fixture_focus("focus-state");
     let baseline = descriptors();
     let tasks = std::fs::read_dir("/proc/self/task").unwrap().count();
     let phase = Arc::new(Barrier::new(WORKERS + 1));
@@ -278,7 +279,7 @@ fn concurrent_contexts() {
                                 XDisplayHeight(context.as_ptr(), 0)), (640, 480));
                     let (mut focus, mut revert) = (0, -1);
                     assert_eq!(XGetInputFocus(context.as_ptr(), &mut focus, &mut revert), 1);
-                    assert_eq!((focus, revert), (1, 0)); // Fresh Xvfb: PointerRoot, RevertToNone.
+                    assert_eq!((focus, revert), expected_focus);
                 }).unwrap().unwrap();
                 x11_context::with_xdo(|context| unsafe {
                     assert_eq!(context.as_ptr() as usize, xdo);

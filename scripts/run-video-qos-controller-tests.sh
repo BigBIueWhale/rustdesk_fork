@@ -8,6 +8,19 @@ umask 077
 readonly WORK=/tmp/video-qos-controller
 mkdir -m 0700 -- "$WORK"
 export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+python3 -I -S - <<'PY'
+import errno
+import socket
+with socket.socket() as canary:
+    try:
+        canary.connect(("192.0.2.1", 9))
+    except OSError as error:
+        if error.errno != errno.ENETUNREACH:
+            raise
+    else:
+        raise SystemExit("Video QoS controller offline canary connected")
+print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
+PY
 source /source/scripts/linux-parent-test-build.sh
 build_linux_parent_test "$WORK" VIDEO_QOS_CONTROLLER
 execution_started=$SECONDS

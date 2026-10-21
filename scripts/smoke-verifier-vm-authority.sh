@@ -1003,6 +1003,8 @@ VM_PID=
 VM_START=
 CAPTURE_PID=
 CAPTURE_START=
+LISTENER_BASELINE_RECORDED=0
+LISTENER_AFTER_RECORDED=0
 KERNEL_FD=
 INITRD_FD=
 ANDROID_ARTIFACT_INPUT_FD=
@@ -1493,7 +1495,7 @@ report_listener_delta() {
     esac
     LISTENER_OBSERVATION_NUMBER=$((LISTENER_OBSERVATION_NUMBER + 1))
     /usr/bin/python3 -I -S - "$RUN_ROOT" "$RUN" "$RUN_ID" "$MODE" \
-        "$LISTENER_OBSERVATION_NUMBER" "$phase" "$LISTENERS_BEFORE" "$snapshot" "$2" "$OUTER_SOURCE" <<'PY'
+        "$LISTENER_OBSERVATION_NUMBER" "$phase" "$LISTENERS_BEFORE" "$snapshot" "$2" "$OUTER_SOURCE" <<'PY' || return 1
 import base64, hashlib, json, os, re, stat, sys
 from pathlib import Path
 
@@ -1579,6 +1581,13 @@ PY
     if [ "$phase" = before ]; then return; fi
     printf 'VERIFIER_VM_HOST_ENDPOINT_DELTA=unattributed phase=%s added=%s\n' \
         "$phase" "$(/usr/bin/wc -l <"$2")"
+}
+
+capture_final_listeners() {
+    capture_listeners >"$LISTENERS_AFTER" || return 1
+    /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_AFTER" >"$NEW_AFTER" || return 1
+    report_listener_delta after "$NEW_AFTER" || return 1
+    LISTENER_AFTER_RECORDED=1
 }
 
 flutter_peer_input_inventory() {
@@ -2255,6 +2264,12 @@ cleanup() {
     retire_vm_storage "$cleanup_failed" || cleanup_failed=1
     if [ -n "$RUN" ] && [ -d "$RUN" ] && [ ! -L "$RUN" ] \
        && [ "$(/usr/bin/stat -c '%d:%i' -- "$RUN" 2>/dev/null)" = "$RUN_ID" ]; then
+        if [ "$LISTENER_BASELINE_RECORDED" -eq 1 ] && [ "$LISTENER_AFTER_RECORDED" -eq 0 ]; then
+            if ! capture_final_listeners; then
+                printf 'verifier-VM authority smoke: final listener observation failed; retaining diagnostics\n' >&2
+                cleanup_failed=1
+            fi
+        fi
         reconcile_socket "$RUN/serial.sock" || cleanup_failed=1
         reconcile_socket "$RUN/qmp.sock" || cleanup_failed=1
         for socket in "${VIRTIOFS_SOCKETS[@]}"; do
@@ -3915,6 +3930,7 @@ elif [ "$MODE" = rust-audit ]; then
 fi
 capture_listeners >"$LISTENERS_BEFORE"
 report_listener_delta before ''
+LISTENER_BASELINE_RECORDED=1
 vm_source_command /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" "$OVERLAY_SIZE"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private overlay metadata differs'
@@ -4965,9 +4981,7 @@ serial_sha=$(/usr/bin/sha256sum -- "$SERIAL_ARCHIVE" | /usr/bin/awk '{ print $1 
 if [ -r "/proc/$VM_PID/stat" ] && [ "$(process_start_time "$VM_PID" 2>/dev/null)" = "$VM_START" ]; then
     fail 'exact QEMU process remains after joined VM completion'
 fi
-capture_listeners >"$LISTENERS_AFTER"
-/usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_AFTER" >"$NEW_AFTER"
-report_listener_delta after "$NEW_AFTER"
+capture_final_listeners || fail 'final listener observation failed'
 [ "$(/usr/bin/grep -Ec 'VERIFIER_VM_CLOUD_INIT=fail status=[1-9][0-9]*' "$SERIAL_LOG")" -eq 0 ] \
     || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest workload reported failure'; }
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'

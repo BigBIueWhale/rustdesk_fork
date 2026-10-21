@@ -4183,6 +4183,8 @@ run_focused_rust_tests() {
                 audio_buffer::tests::backwards_clock_preserves_pcm_and_restarts_observation
                 audio_buffer::tests::ring_replacement_retires_old_statistics_and_clock
                 audio_buffer::tests::no_op_resize_preserves_the_current_window
+                audio_buffer::tests::trimming_preserves_complete_interleaved_frames
+                audio_buffer::tests::same_capacity_channel_change_retires_pcm
                 audio_buffer::tests::bounded_append_preserves_the_newest_pcm
                 audio_buffer::tests::parallel_native_workers_keep_distinct_clock_epochs
             )
@@ -4223,6 +4225,8 @@ run_focused_rust_tests() {
                 audio_buffer::tests::backwards_clock_preserves_pcm_and_restarts_observation
                 audio_buffer::tests::ring_replacement_retires_old_statistics_and_clock
                 audio_buffer::tests::no_op_resize_preserves_the_current_window
+                audio_buffer::tests::trimming_preserves_complete_interleaved_frames
+                audio_buffer::tests::same_capacity_channel_change_retires_pcm
                 audio_buffer::tests::bounded_append_preserves_the_newest_pcm
                 audio_buffer::tests::parallel_native_workers_keep_distinct_clock_epochs
                 audio_buffer::tests::output_fill_consumes_fifo_and_pads_a_short_quantum

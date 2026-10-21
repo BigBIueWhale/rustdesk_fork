@@ -11,6 +11,7 @@ const SHRINK_INTERVAL: Duration = Duration::from_secs(12);
 pub(super) struct AudioBuffer {
     pub(super) samples: Arc<Mutex<ringbuf::HeapRb<f32>>>,
     sample_rate_channels: usize,
+    channels: usize,
     occupancy_samples: [usize; 30],
     last_shrink: Option<Instant>,
 }
@@ -22,6 +23,7 @@ impl Default for AudioBuffer {
                 ringbuf::HeapRb::<f32>::new(48000 * 2 * AUDIO_BUFFER_MS / 1000),
             )),
             sample_rate_channels: 48000 * 2,
+            channels: 2,
             occupancy_samples: [0; 30],
             last_shrink: None,
         }
@@ -32,9 +34,10 @@ impl AudioBuffer {
     pub(super) fn resize(&mut self, sample_rate: usize, channels: usize) {
         let capacity = sample_rate * channels * AUDIO_BUFFER_MS / 1000;
         let old_capacity = self.samples.lock().unwrap().capacity();
-        if capacity != old_capacity {
+        if capacity != old_capacity || channels != self.channels {
             *self.samples.lock().unwrap() = ringbuf::HeapRb::<f32>::new(capacity);
             self.sample_rate_channels = sample_rate * channels;
+            self.channels = channels;
             self.occupancy_samples = [0; 30];
             self.last_shrink = None;
             log::info!("Audio buffer resized from {old_capacity} to {capacity}");
@@ -96,7 +99,7 @@ impl AudioBuffer {
         let mut lock = self.samples.lock().unwrap();
         let cap = lock.capacity();
         let having = lock.occupied_len();
-        let skip = (cap * max / (30 * N) + 1) & (!1);
+        let skip = (cap * max / (30 * N)).div_ceil(self.channels) * self.channels;
         if (having > skip * 3) && (skip > 0) {
             lock.skip(skip);
             log::info!("skip {skip}, based {max} {zero}");

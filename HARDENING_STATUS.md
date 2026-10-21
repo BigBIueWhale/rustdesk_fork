@@ -14576,28 +14576,35 @@ Flutter-enabled root libtest; normal application builds and broader caller/nativ
 transactions remain PENDING. No live memory-backend constructor or newly proven LPE was
 found; this removes an obsolete production abstraction rather than claiming an exploit.
 
-**Per-block resource admission — production codec component PASSED; integration OPEN.** Sending and
-receiving share the 128-KiB size from private `fs/file_block.rs`. Its `decode` admits raw
-bytes by borrowing and compressed bytes only through a 128-KiB zstd history-window limit
-and one fixed 128-KiB-plus-one-byte output buffer. Input/output excess, malformed/truncated
-content and larger advertised windows refuse before `TransferJob::write` opens a stream,
-changes files, writes bytes or publishes progress.
-The general decoder path is removed from file writes. `--file-block-tests` compiles the
-actual decoder and production compressor with root-locked zstd 0.13.1 and the extracted
-actual compression-level declaration. Six cases cover raw backing identity, production
-boundary round trips, total output across concatenated frames, three excessive window
-headers with the previous decoder as a positive control, frame-boundary window persistence,
-malformed/truncated input and the nearest existing generic-decoder case. Exact source
-`a9a4774a` passed all six named cases in 80 VM seconds; artifact SHA-256
-`85c7113e6ad54479a1f69fb2087211487f81188580d802df461a81dbaaa3a86f`
-remained unchanged before/after. The accepted zero-NIC, guest-only networkless/nonroot
-run retained all outcomes and source/dependency bindings, added no host endpoint and joined
-cleanup; `.harness-state/verifier-vm/file-block-accepted-a9a4774a.json` binds its receipts.
-These controls execute the prior output-only helper, not a historical whole-app A/B.
-The named current `--hbb-common-fs` library transaction above also passed the production
-filesystem/serialization cases after the earlier RAM refusal. Whole-application compilation,
-installed/native integration,
-whole-process allocation/resource measurements and other-platform acceptance remain OPEN.
+**Receive decompression budgets — Linux codec components PASSED; integration OPEN.**
+The shared post-key decoder sets a 64-MiB Zstd history-window ceiling before its first
+decoded read, independently of the caller's output bound. Default output remains capped
+at 64 MiB; tighter caller bounds and explicit errors remain. Clipboard, cursor and
+compressed terminal data share this primitive; no caller or parked terminal work changes.
+File transfers retain their separate production decoder unchanged: 128-KiB encoded,
+decoded and history limits, borrowed raw input and a fixed 128-KiB-plus-one-byte output
+buffer, before filesystem/progress effects.
+
+At unchanged-decoder preparation `6f76f44a`, the new regression accepts all three
+128-MiB-history cases with only 3/3/6 output bytes: default, tight caller bound and
+concatenation after an allowed frame. Six existing tests pass. The identical shared
+regression at `01f0b8ea` refuses all three with native history-limit errors; all seven
+selected library tests pass. Four positive controls retain the exact 64-MiB window and
+production-compressor round trips for empty, one-byte and 128-KiB input. The five file-block
+tests retain all three stricter window refusals; their generic-decoder control now expects
+the 128-MiB case to refuse too. The existing `--file-block-tests` component command at
+`d72f676f` also passes all seven tests in 76 VM seconds with exact source/dependency
+bindings and updated membership/count receipts. `--compression-tests` selects the actual
+library's same seven tests without a new resource profile; its corrected run takes
+143 VM seconds. `shared-decompression-window-0e2c9981.json` binds A/B sources, artifacts,
+outcomes and joined bounded-RAM cleanup. The earlier component/profile receipts remain
+`file-block-accepted-a9a4774a.json` and `file-block-profile-efee13e6.json`.
+
+These are Rust1.75/Linux codec observations, not whole-process allocation measurements,
+full receive/filesystem or application execution, native clipboard/cursor/terminal handoff,
+real peers or installed privilege acceptance. Other platforms, R-S0/R-F5, independent
+review and release acceptance remain OPEN.
+
 
 | Surface | Current behavior |
 | --- | --- |

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Ordinary-user RAM scratch admission and monitoring for owned QEMU runs."""
 import argparse
+import errno
 import fcntl
 import json
 import os
@@ -218,6 +219,7 @@ def run_qemu(args):
         child.wait()
         raise
     cancelled = False
+    qmp_channel = None
 
     def cancel(signum, frame):
         nonlocal cancelled
@@ -226,11 +228,18 @@ def run_qemu(args):
             signal.pidfd_send_signal(child_identity, signum)
         except ProcessLookupError:
             pass
+        if qmp_channel is not None and qmp_channel.fileno() >= 0:
+            try:
+                qmp_channel.shutdown(socket.SHUT_RDWR)
+            except OSError as error:
+                if error.errno != errno.ENOTCONN:
+                    raise
 
     handlers = {s: signal.signal(s, cancel) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
     try:
         deadline = time.monotonic() + 15
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
+            qmp_channel = channel
             channel.settimeout(10)
             while True:
                 require(not cancelled, 'QEMU startup cancelled')
@@ -247,13 +256,16 @@ def run_qemu(args):
                     time.sleep(0.05)
             with channel.makefile('rb') as incoming:
                 def receive():
+                    require(not cancelled, 'QEMU startup cancelled')
                     line = incoming.readline(65537)
+                    require(not cancelled, 'QEMU startup cancelled')
                     require(line.endswith(b'\n') and len(line) <= 65536, 'QMP frame differs')
                     value = json.loads(line)
                     require(isinstance(value, dict), 'QMP response is not an object')
                     return value
 
                 def execute(name):
+                    require(not cancelled, 'QEMU startup cancelled')
                     channel.sendall(json.dumps({'execute': name, 'id': name}).encode() + b'\n')
                     for _ in range(16):
                         value = receive()

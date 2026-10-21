@@ -2558,6 +2558,14 @@ preserves its source. `config-load-logging-544d4b36.json` binds source/artifacts
 observations and joined bounded-RAM cleanup. This removes one live whole-record
 disclosure when trace logging is enabled; default log levels were not evidence
 of secrecy. Storage/decryption/recovery and other diagnostics are unchanged.
+The extended capture case at `cb98c3eb` also exercises malformed TOML and invalid
+UTF-8; all 198 selected Linux library cases pass. Error-level messages name both
+submitted sources while trace controls remain visible, and none of the five
+fixture field values reaches the sink. Invalid UTF-8 retains its bytes/inode/mode;
+malformed TOML preserves the exact bytes/inode/mode in one new recovery backup.
+`config-error-log-secrecy-35108a73.json` binds this current error-path coverage and
+joined bounded-RAM cleanup. This extends verification of already-correct code;
+production loading, logging and recovery are byte-identical in this slice.
 Full app/installed logger sinks and permissions, previous log retention, native
 other-platform, R-S0/R-F5 and release acceptance remain OPEN.
 

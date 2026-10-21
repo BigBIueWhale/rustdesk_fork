@@ -12103,6 +12103,10 @@ A cancelled join retains its handle for the next poisoned entry to finish.
 Hard synchronous Drop only requests cancellation. Clean EOF retains its semantics.
 The read half preserves its exact receive codec and prefetched bytes independently;
 failed writer flushes are not retried by close.
+The keyed read owner also watches the existing writer channel's permanent closure,
+with priority over input and a closure recheck before returning a frame or EOF.
+Writer exit therefore enters the same poison-and-join path from a pending read;
+it no longer requires another send to discover the failure.
 
 The framing-only API has no raw-mode selector or unframed encode/decode branch.
 `send_raw` remains a framed byte-payload send through the engaged cipher.
@@ -12122,13 +12126,14 @@ four executable admission regressions:
 The focused `--cpace-recovery-tests` profile selects wire, writer, EOF, codec,
 lifetime and compiler cases. The broader `--hbb-common-fs` lane also selects the
 writer module; its historical filesystem failures below are not a transport pass
-for that entire lane. No product or behavioral test ran for this ledger cleanup.
+for that entire lane.
 
 Evidence filenames below are relative to `.harness-state/verifier-vm/`.
 Each row applies only to its named source and scenarios.
 
 | Source / scope | Accepted observation and limit | Retained evidence |
 | --- | --- | --- |
+| `5b4269fc` / `65596515`, failed-writer read ownership | At unchanged-product preparation `79bf46f2`, 34 controls pass and the extended lifetime test fails: a peer frame is decrypted/yielded after writer failure, and a pending read reaches its test deadline. The byte-identical cases pass in the corrected 40-case focused run. The later 59-case CPace integration also passes, with a strengthened oracle observing the pending read's registered wake before any timer or repoll; no post-failure read, receive-counter advance or frame yield occurs, and the writer is joined before error return. Three real partial-input cancellation stages retain nine socket bytes and authenticate the two expected frames. The new failures are explicitly injected at the write wrapper over real loopback TCP; this is Linux library evidence, with broader acceptance below still OPEN. | `writer-failure-read-03724490.json` |
 | `10ff6494`, Linux transport integration | 59 cases pass: 20 CPace wire, 13 writer-receipt, four EOF, twelve codec, six lifetime and four native compiler cases. Fatal send/read/drain observe joined writer, retired encoded-buffer ownership, returned permits and retired completion before return; cancelling retirement retains ownership and send/read/drain retries finish the join. The transport artifact matches the earlier 35-case `99fa6b07` component result. | `cpace-integration-59-10ff6494.json`; `writer-fatal-retirement-native-99fa6b07.json` |
 | `a9adf6dc`, real TCP output ownership | Both new lifetime cases fail at `56c8ed4f` while 49 controls pass; the unchanged candidate cases pass 51/51. Actual partial writes/backpressure, authenticated reverse traffic, peer reset and reader-side authentication failure exercise buffer-owner retirement while the stream remains retained. | `writer-buffer-ownership-a9adf6dc.json` |
 | `537dcb90`, channel-refusal component | Thirteen writer, four EOF and twelve codec cases pass. The two new tests fail at `9aea38ae`; corrected `4e92169b` reserves the channel before encoding/sealing. Actual sink failure and 512 queued drain commands cover both send APIs, zero encoding, unchanged next nonce, returned permits and exact join. The broader lane exits 1: 136 filesystem cases pass and three parked receive pre-I/O cases fail with `Owner died`. Later address/socket/probe stages do not run and no final whole-lane artifact receipt exists. An earlier candidate omitted writer outcomes and remains incomplete evidence. | `writer-channel-component-537dcb90.json` |

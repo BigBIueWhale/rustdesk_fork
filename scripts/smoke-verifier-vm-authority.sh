@@ -5201,6 +5201,8 @@ elif [ "$MODE" = ledger-token-count ]; then
         'VM storage child-wait refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_WATCH=pass cases=4 disappeared=2 refusals=2 filesystem=native schedule=controlled memory=fixed qemu=not-started children=joined' \
         'VM storage monitor filesystem lifetime and refusal cases'
+    require_exact_fixed_receipt 'VM_TRANSIENT_SUPERVISOR=pass cases=3 normal=joined graceful=joined stubborn=killed-joined signals=pidfd qmp=fixture qemu=not-started' \
+        'VM storage supervisor native child cancellation and joins'
     ledger_vm_receipt="LEDGER_TOKEN_COUNT_VM=pass uid=4000 gid=4000 caps=none nnp=yes input_sha256=$ledger_input_sha recipe_sha256=$ledger_recipe_sha source=readonly network=none docker=retired scratch=retired cleanup=joined"
     require_exact_fixed_receipt "$ledger_vm_receipt" 'actual ledger token count execution and finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'ledger token-count guest completion'

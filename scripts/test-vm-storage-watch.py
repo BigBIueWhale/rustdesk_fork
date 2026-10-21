@@ -75,6 +75,126 @@ def wait_for(path, child):
     return True
 
 
+def qmp_child(base, scenario):
+    base = Path(base)
+
+    def term(signum, frame):
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        publish(base / 'term', {'signal': signum})
+        if scenario == 'graceful':
+            raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, term)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
+        channel.bind(str(base / 'run/qmp.sock'))
+        channel.listen(1)
+        connection, _ = channel.accept()
+        with connection, connection.makefile('rb') as incoming:
+            connection.sendall(b'{"QMP": {}}\n')
+            for name in ('qmp_capabilities', 'query-status', 'cont'):
+                request = json.loads(incoming.readline(4096))
+                assert request == {'execute': name, 'id': name}
+                result = {'status': 'prelaunch'} if name == 'query-status' else {}
+                connection.sendall(json.dumps({'return': result, 'id': name}).encode() + b'\n')
+    publish(base / 'running', {'pid': os.getpid()})
+    if scenario == 'normal':
+        deadline = time.monotonic() + 10
+        while not (base / 'release').exists():
+            assert time.monotonic() < deadline, 'normal child was not released'
+            time.sleep(0.01)
+    else:
+        while True:
+            signal.pause()
+
+
+def supervisor_worker(helper, base, scenario):
+    spec = importlib.util.spec_from_file_location('storage_supervisor_subject', helper)
+    subject = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(subject)
+    original = subprocess.Popen
+
+    def launch(argv, **kwargs):
+        assert argv == ['/usr/bin/qemu-system-x86_64', '-S']
+        return original([sys.executable, '-B', '-I', '-S', __file__,
+                         '--qmp-child', base, scenario], **kwargs)
+
+    # Only executable selection is substituted. The production supervisor owns
+    # the real child, pidfd, signals, prlimit, QMP exchange, wait and receipt.
+    subject.subprocess.Popen = launch
+    try:
+        result = subject.run_qemu(SimpleNamespace(
+            memory_mib=2048, storage_profile='ledger-token-count',
+            run=str(Path(base) / 'run'), qmp=str(Path(base) / 'run/qmp.sock'),
+            qemu=['/usr/bin/qemu-system-x86_64']))
+        raise SystemExit(result if result >= 0 else 128 - result)
+    finally:
+        subject.subprocess.Popen = original
+
+
+def run_supervisor_case(helper, scenario):
+    child_identity = None
+    supervisor = None
+    with tempfile.TemporaryDirectory(prefix='storage-supervisor.', dir='/dev/shm') as name:
+        base = Path(name)
+        (base / 'run').mkdir(mode=0o700)
+        try:
+            supervisor = subprocess.Popen(
+                [sys.executable, '-B', '-I', '-S', __file__, '--supervise',
+                 helper, name, scenario], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                umask=0o077)
+            assert wait_for(base / 'running', supervisor), 'native child did not start'
+            child_pid = json.loads((base / 'running').read_bytes())['pid']
+            child_identity = os.pidfd_open(child_pid)
+            began = time.monotonic()
+            if scenario == 'normal':
+                publish(base / 'release', {'ready': True})
+            else:
+                supervisor.send_signal(signal.SIGTERM)
+                assert wait_for(base / 'term', supervisor), 'supervisor did not forward TERM'
+                if scenario == 'stubborn':
+                    supervisor.send_signal(signal.SIGTERM)
+            forced = False
+            try:
+                output, error = supervisor.communicate(timeout=7)
+            except subprocess.TimeoutExpired:
+                forced = True
+                signal.pidfd_send_signal(child_identity, signal.SIGKILL)
+                output, error = supervisor.communicate(timeout=3)
+            elapsed = time.monotonic() - began
+            assert len(output) + len(error) <= 8192, 'supervisor diagnostics exceed their bound'
+            receipt = json.loads((base / 'run/storage.qemu-io').read_bytes())
+            limit = json.loads((base / 'run/storage.limit').read_bytes())
+            expected = -signal.SIGKILL if scenario == 'stubborn' else 0
+            passed = (not forced and receipt['qemu_pid'] == child_pid
+                      and receipt['returncode'] == expected
+                      and not Path(f'/proc/{child_pid}').exists()
+                      and limit['qemu_pid'] == child_pid
+                      and limit['hard_file_limit_bytes'] == 1024 ** 3
+                      and limit['limit_installed_before_guest_execution'] is True
+                      and (supervisor.returncode == 0 if scenario == 'normal'
+                           else supervisor.returncode in (0, 1)))
+            return {'case': scenario, 'passed': passed,
+                    'supervisor_exit': supervisor.returncode,
+                    'elapsed_seconds': round(elapsed, 3), 'fixture_forced_cleanup': forced,
+                    'receipt': receipt, 'limit': limit, 'child': 'native-python-qmp-surrogate',
+                    'children': 'joined', 'qemu': 'not-started',
+                    'stderr': error.decode(errors='replace')[-2048:]}
+        finally:
+            if child_identity is not None:
+                try:
+                    signal.pidfd_send_signal(child_identity, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                os.close(child_identity)
+            if supervisor is not None and supervisor.poll() is None:
+                supervisor.terminate()
+                try:
+                    supervisor.communicate(timeout=3)
+                except subprocess.TimeoutExpired:
+                    supervisor.kill()
+                    supervisor.communicate(timeout=3)
+
+
 def run_case(helper, scenario):
     terms = []
     previous = signal.signal(signal.SIGTERM, lambda signum, frame: terms.append(signum))
@@ -155,6 +275,12 @@ def main():
     if len(sys.argv) == 5 and sys.argv[1] == '--worker':
         worker(*sys.argv[2:])
         return
+    if len(sys.argv) == 5 and sys.argv[1] == '--supervise':
+        supervisor_worker(*sys.argv[2:])
+        return
+    if len(sys.argv) == 4 and sys.argv[1] == '--qmp-child':
+        qmp_child(*sys.argv[2:])
+        return
     if len(sys.argv) != 2:
         raise SystemExit('expected one production storage helper')
     results = [run_case(sys.argv[1], case)
@@ -165,6 +291,14 @@ def main():
         raise SystemExit('production storage watch regression failed')
     print('VM_TRANSIENT_WATCH=pass cases=4 disappeared=2 refusals=2 filesystem=native '
           'schedule=controlled memory=fixed qemu=not-started children=joined')
+    results = [run_supervisor_case(sys.argv[1], case)
+               for case in ('normal', 'graceful', 'stubborn')]
+    for result in results:
+        print('VM_TRANSIENT_SUPERVISOR_CASE=' + json.dumps(result, sort_keys=True), flush=True)
+    if not all(result['passed'] for result in results):
+        raise SystemExit('production storage supervisor cancellation regression failed')
+    print('VM_TRANSIENT_SUPERVISOR=pass cases=3 normal=joined graceful=joined stubborn=killed-joined '
+          'signals=pidfd qmp=fixture qemu=not-started')
 
 
 if __name__ == '__main__':

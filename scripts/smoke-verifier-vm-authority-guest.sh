@@ -3719,12 +3719,21 @@ run_focused_rust_tests() {
             src/ipc/uid_policy.rs
             scripts/test-linux-service-uid-policy.rs
             scripts/verify-linux-service-password-ipc.py
+            scripts/run-trusted-executable-tests.py scripts/test-trusted-executable.rs
+            src/platform/linux.rs libs/hbb_common/src/platform/linux.rs
+            src/server/terminal_service.rs
         )
+        if [ -f "$source_root/libs/hbb_common/src/platform/trusted_executable.rs" ]; then
+            source_fingerprints+=(libs/hbb_common/src/platform/trusted_executable.rs)
+        fi
         required_tests=(
             uid_policy::tests::test_service_peer_uid_policy
             uid_policy::tests::r_s11e60_linux_service_root_skips_both_uid_lookups
             uid_policy::tests::r_s11e60_linux_service_cached_negative_skips_fresh_uid_lookup
             uid_policy::tests::r_s11e60_linux_service_cache_match_requires_fresh_uid_authority
+            trusted_executable_tests::normal_system_images_and_aliases_remain_executable
+            trusted_executable_tests::malformed_missing_directory_and_nonexecutable_paths_refuse
+            trusted_executable_tests::user_owned_ancestry_cannot_select_a_root_owned_image
         )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -5318,9 +5327,7 @@ run_focused_rust_tests() {
                         ;;
                     linux-service-uid-tests)
                         python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
-                        rustc --edition=2021 --test /source/scripts/test-linux-service-uid-policy.rs \
-                            -o /cargo-target/uid-policy-tests
-                        /cargo-target/uid-policy-tests --test-threads=1 --color never
+                        python3 -I -S /source/scripts/run-trusted-executable-tests.py /source
                         ;;
                     android-rust-lifecycle-tests)
                         if [ "$RUST_TEST_PROFILE" = cm-read-tick ]; then
@@ -6008,7 +6015,7 @@ PY
     elif [ "$MODE" = linux-service-uid-tests ]; then
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'Linux UID-policy summary count differs'; }
-        [ "$(grep -Ec '^test uid_policy::tests::.* \.\.\. ok$' "$output")" -eq "${#required_tests[@]}" ] \
+        [ "$(grep -Ec '^test (uid_policy::tests|trusted_executable_tests)::.* \.\.\. ok$' "$output")" -eq "${#required_tests[@]}" ] \
             || fail 'Linux UID-policy named test count differs'
         grep -Fxq 'verify-linux-service-password-ipc: source checks passed' "$output" \
             || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
@@ -6507,7 +6514,7 @@ PY
     elif [ "$MODE" = linux-systemd-notification-tests ]; then
         grep -E '^test systemd::tests::.* \.\.\. ok$' "$output"
     elif [ "$MODE" = linux-service-uid-tests ]; then
-        grep -E '^test uid_policy::tests::.* \.\.\. ok$|^verify-linux-service-password-ipc: source checks passed$' "$output"
+        grep -E '^test (uid_policy::tests|trusted_executable_tests)::.* \.\.\. ok$|^TRUSTED_EXECUTABLE_|^verify-linux-service-password-ipc: source checks passed$' "$output"
     fi
     if [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then printf '%s\n' "${result_lines[@]}"; fi
     if [ "$MODE" = hbb-common-fs ]; then
@@ -6608,7 +6615,7 @@ PY
     elif [ "$MODE" = linux-service-uid-tests ]; then
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Linux UID-policy test count differs: $tests_passed"
-        printf 'LINUX_SERVICE_UID_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s target=linux-x86_64 scope=production-uid-policy-and-source-wiring rust=1.75.0 edition=2021 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'LINUX_SERVICE_UID_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s target=linux-x86_64 scope=production-uid-policy-and-extracted-helper-selectors rust=1.75.0 edition=2021 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$uid_test_artifact_sha" "$image_index" "$image_config"
     else

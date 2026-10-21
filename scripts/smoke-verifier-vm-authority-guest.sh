@@ -118,6 +118,7 @@ case "$#:${8:-}" in
             --file-metadata) RUST_TEST_PROFILE=file-metadata ;;
             --writer-retirement) RUST_TEST_PROFILE=writer-retirement ;;
             --config-options) RUST_TEST_PROFILE=config-options ;;
+            --compression) RUST_TEST_PROFILE=compression ;;
             *) exit 2 ;;
         esac
         ;;
@@ -3559,6 +3560,21 @@ run_focused_rust_tests() {
                 config::linux_directory::lease_tests::directory_lease_busy_save_preserves_first_and_replacement_outcomes
             )
         fi
+        if [ "$RUST_TEST_PROFILE" = compression ]; then
+            source_fingerprints+=(
+                libs/hbb_common/src/compress.rs
+                libs/hbb_common/src/fs/file_block.rs
+            )
+            required_tests=(
+                fs::file_block::tests::raw_blocks_borrow_exact_input_and_refuse_excess
+                fs::file_block::tests::production_compressor_roundtrips_exact_block_boundaries
+                fs::file_block::tests::concatenated_frames_obey_one_total_output_limit
+                fs::file_block::tests::small_output_cannot_authorize_a_larger_history_window
+                fs::file_block::tests::malformed_and_truncated_frames_refuse
+                compress::tests::decompression_is_fallible_and_output_bounded
+                compress::tests::decompression_history_window_is_independent_of_output_limit
+            )
+        fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             required_tests=(
                 test::test_get_version_number
@@ -5277,6 +5293,19 @@ run_focused_rust_tests() {
                                     exit "$group_status"
                                 fi
                             done
+                        elif [ "$RUST_TEST_PROFILE" = compression ]; then
+                            for group in fs::file_block::tests:: compress::tests::; do
+                                group_status=0
+                                timeout --signal=TERM --kill-after=5s 20s \
+                                    "$test_executable" "$group" --color never --test-threads=1 --show-output \
+                                    || group_status=$?
+                                [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                                if [ "$group_status" -ne 0 ]; then
+                                    printf "COMPRESSION_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
+                                        "$artifact_sha" "$group_status"
+                                    exit "$group_status"
+                                fi
+                            done
                         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
                             for group in tcp::writer_receipt_tests:: tcp::eof_tests:: \
                                 bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4; do
@@ -5996,6 +6025,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=16; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=6; fi
+        if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=7; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
@@ -6658,6 +6688,9 @@ PY
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq 37 ] || fail 'writer retirement test total differs'
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME)=' "$output"
+        elif [ "$RUST_TEST_PROFILE" = compression ]; then
+            [ "$tests_passed" -eq 7 ] || fail 'decompression test total differs'
+            grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_WINDOW' "$output"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             [ "$tests_passed" -eq 2 ] || fail 'send digest test total differs'
             grep -E '^test fs::tests::send_digest_.* \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=' "$output"
@@ -6691,6 +6724,10 @@ PY
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             printf 'WRITER_RETIREMENT_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = compression ]; then
+            printf 'COMPRESSION_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then

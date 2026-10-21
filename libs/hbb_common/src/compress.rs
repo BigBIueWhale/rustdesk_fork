@@ -85,6 +85,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn decompression_history_window_is_independent_of_output_limit() {
+        // RFC 8878: an explicit 64 MiB window and one final raw block of three bytes.
+        let mut frame = vec![
+            0x28, 0xb5, 0x2f, 0xfd, 0, 0x80, 25, 0, 0, b'a', b'b', b'c',
+        ];
+        assert_eq!(try_decompress_with_limit(&frame, 3).unwrap(), b"abc");
+        for size in [0, 1, 128 * 1024] {
+            let input = vec![0x5a; size];
+            let encoded = compress(&input).unwrap();
+            assert_eq!(try_decompress_with_limit(&encoded, size).unwrap(), input);
+        }
+
+        let mut concatenated = frame.clone();
+        frame[5] = 0x88; // The same three output bytes, with a 128 MiB history window.
+        concatenated.extend_from_slice(&frame);
+        let mut admitted = 0;
+        for (case, result) in [
+            ("default", try_decompress(&frame)),
+            ("tight", try_decompress_with_limit(&frame, 3)),
+            ("concatenated", try_decompress_with_limit(&concatenated, 6)),
+        ] {
+            println!(
+                "DECOMPRESSION_WINDOW_CASE=observed case={case} admitted={} output_bytes={:?} error={:?}",
+                result.is_ok(),
+                result.as_ref().map(Vec::len),
+                result.as_ref().err()
+            );
+            if result.is_ok() {
+                admitted += 1;
+            }
+        }
+        println!("DECOMPRESSION_WINDOW=observed cases=3 admitted={admitted} controls=4 max_window_bytes=67108864");
+        assert_eq!(
+            admitted, 0,
+            "output bounds cannot authorize excessive decoder history"
+        );
+    }
+
+    #[test]
     fn decompression_is_fallible_and_output_bounded() {
         let encoded = zstd::stream::encode_all(&b"bounded payload"[..], 1)
             .expect("encode decompression fixture");

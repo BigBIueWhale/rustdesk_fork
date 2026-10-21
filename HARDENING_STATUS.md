@@ -1652,37 +1652,33 @@ long-session drift, native other-platform and installed acceptance remain OPEN u
 R-F5. The service/credential authority source and all fifteen action obligations
 are unchanged and OPEN.
 
-**Video quality request ordering — Linux controller accepted; presentation OPEN.**
-Product `1dbe0b8d` replaces millisecond wall-clock ordering over the user HashMap with
-one current quality choice per live viewer, ordered by request admission. Updating a
-known viewer replaces its choice and selects its requested ratio directly; unknown
-viewers cannot publish. Disconnect and same-ID replacement remove that viewer's choice,
-leaving the latest surviving choice or Balanced. There is no clock/sequence counter,
-request backlog, new task, runtime, dependency or change to quality decoding, delay/RTT,
-FPS, congestion thresholds or encoder scheduling.
+**Video quality ownership and retirement — Linux controller accepted; presentation OPEN.**
+One current choice per live viewer follows request-admission order; unknown viewers cannot
+publish. Disconnect and same-ID replacement retire that viewer's choice. When this changes
+the selected quality, `571963f9` immediately restores the surviving choice's bitrate ratio,
+or Balanced when none remains. Unchanged targets preserve their adapted ratio, including
+retirement/replacement of an older, equally configured or unconfigured viewer. The former
+choice-only cleanup left the departed viewer's active ratio behind. Quality decoding,
+delay/RTT, FPS, congestion thresholds and encoder scheduling are unchanged.
 
-Test baseline `60983a61` preserves the prior production code and adds three cases:
-both viewer orders within one observed millisecond; updated/previous/oldest choices
-through disconnect; and unknown/unconfigured/replaced viewers plus custom/default quality.
-At `7e7410be`, the complete Linux parent library compiled under pinned Rust 1.75.0,
-and all fourteen controller cases passed, including the eleven unchanged earlier cases.
-The three quality cases observed both same-tick request orders, live-choice retirement,
-unknown-viewer refusal, replacement and custom/default quality. Existing controller
-congestion and three-cycle recovery observations also passed. The run took 296 outer
-seconds, including 228 compilation seconds; the behavioral summary reports 0.01 seconds.
-Source snapshots before, during and after matched. The exact QEMU child was joined,
-RAM scratch retired, and four complete host-listener snapshots had zero changes.
-The existing 20,480-MiB admission floor and storage/isolation limits were unchanged.
+At unchanged-product preparation `e6f49781`, strengthened disconnect/replacement cases
+fail while sixteen controller tests pass. Their same bodies pass all eighteen cases at
+`571963f9`, including 24 Best/Balanced/Low/custom unchanged-target lifecycle controls
+after an actual congestion adjustment. Same-tick request order, unknown-viewer refusal,
+custom/default choices and prior congestion/recovery controls pass. Both complete Linux
+parent library artifacts compile on Rust 1.75.0 and remain unchanged through execution.
+`video-quality-retirement-571963f9.json` binds source, A/B outcomes, timings, artifacts,
+listener comparisons and joined bounded-RAM cleanup. The existing storage/isolation
+profile is unchanged. These full-parent integration runs exceed the ordinary focused
+iteration target; a smaller source-bound controller build remains OPEN.
 
-The earlier baseline launch refused before QEMU at 18,981 MiB; no empirical old/new
-A/B result is claimed. Its source/refusal evidence remains in
-`.harness-state/verifier-vm/video-qos-quality-source-1dbe0b8d.json`. Native evidence is in
-`.harness-state/verifier-vm/video-qos-quality-native-7e7410be.json`.
-This run's outer receipt printed a stale `tests=11`; the guest's named cases, summary
-and artifact receipts required fourteen. Only that printed count was corrected afterward.
-`git diff --check` and Bash syntax checks pass. Rendered settings,
-native other-platform behavior and all R-F5 real-peer presentation, impairment recovery,
-input-visible latency, numeric budgets and multi-hour acceptance remain OPEN.
+Earlier ordering source/refusal and fourteen-case native evidence remain in
+`video-qos-quality-source-1dbe0b8d.json` and `video-qos-quality-native-7e7410be.json`;
+their historical ordering baseline did not execute. This correction executes controller
+lifecycle/ratio calls with controlled measurements. It supplies no capture/encoder,
+rendered settings, actual presentation, real packet impairment/recovery, input-visible
+latency, multi-hour, other-platform or installed evidence. Those R-F5 and release
+acceptance obligations remain OPEN.
 
 **Video QoS probe timing — Linux controller A/B ACCEPTED; full connection latency OPEN.**
 `VideoQoS` retains one pending elapsed value separately from completed probe measurements.

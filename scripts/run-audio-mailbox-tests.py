@@ -87,7 +87,10 @@ def main():
             '[build-dependencies]\nprotobuf-codegen = "=3.7.2"\n'
             '[[test]]\nname = "audio_mailbox"\n'
             f'path = "{repo}/scripts/test-audio-mailbox.rs"\n')
-        run(["cargo", "generate-lockfile", "--offline", *config], fixture, timeout=30)
+        # The root lock pins the vendored CPAL Git revision before offline resolution.
+        (fixture / "Cargo.lock").write_bytes(inputs["Cargo.lock"])
+        run(["cargo", "metadata", "--offline", "--no-deps", "--format-version=1", *config],
+            fixture, timeout=30)
         lock_bytes = (fixture / "Cargo.lock").read_bytes()
         dependencies = []
         for item in tomllib.loads(lock_bytes.decode("utf-8"))["package"]:

@@ -390,8 +390,18 @@ impl Lease {
         lease.require_current(parent)?;
         // Each traversal holds only one lease. Closing this file releases it on every outcome.
         let fd = lease.file.as_raw_fd();
-        if unsafe { libc::flock(fd, libc::LOCK_EX) } != 0 {
-            return Err(anyhow!("Configuration directory preparation is unavailable: {}", io::Error::last_os_error()));
+        let started = std::time::Instant::now();
+        let budget = std::time::Duration::from_secs(1);
+        loop {
+            if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } == 0 { break; }
+            let error = io::Error::last_os_error();
+            if error.kind() != io::ErrorKind::WouldBlock { return Err(error.into()); }
+            let remaining = budget.saturating_sub(started.elapsed());
+            if remaining.is_zero() {
+                return Err(io::Error::new(io::ErrorKind::TimedOut,
+                    "Configuration directory preparation is busy").into());
+            }
+            std::thread::sleep(remaining.min(std::time::Duration::from_millis(10)));
         }
         lease.require_current(parent)?;
         Ok(Some(lease))

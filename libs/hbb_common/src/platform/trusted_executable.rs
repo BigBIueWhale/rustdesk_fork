@@ -36,7 +36,7 @@ fn steps(path: &Path) -> Option<VecDeque<Step>> {
     Some(result)
 }
 
-/// Resolve a fixed system executable through a namespace protected from non-root writers.
+/// Resolve a fixed system executable, checking root ownership and modes throughout its namespace.
 /// Callers retain responsibility for their finite candidate set, arguments and action authority.
 pub fn resolve(path: &Path) -> Option<PathBuf> {
     let mut pending = steps(path)?;

@@ -6515,7 +6515,30 @@ exists only to make the current source disposition discoverable.
   excludes application-supplied `.rules`. Installed authorization behavior remains OPEN above.
 - R-S11e-1 — Linux pkcheck image, requester, and lifetime authority
 - R-S11e-2 — macOS privileged-service endpoint identity
-- R-S11e-3 — Linux privileged-helper executable provenance
+- R-S11e-3 — Linux privileged-helper executable provenance; complete ancestry source correction,
+  Linux selector components accepted, installed/native integration OPEN.
+  Shared login/session helpers, systemctl/xrandr, pkcheck and Unix terminal-shell selection
+  now delegate to `hbb_common::platform::trusted_executable`. The single resolver checks
+  root ownership and non-group/world-writable directory modes throughout the walk,
+  including symlink targets; root-owned links have a forty-hop limit. A root-owned regular
+  executable with an executable bit and no group/world write authority is required.
+  Four immediate-parent/canonicalize implementations and their obsolete predicate helpers
+  are removed. Fixed candidates, argv, environments and caller failure behavior are retained.
+  At unchanged product `b3f8206a`, one native regression fails: all four selectors accept
+  a path through a UID1000-owned directory whose immediate parent and final executable
+  resolve to root-owned objects. Six controls pass. With the identical fixture and runner,
+  corrected `56393ab8` passes all seven tests in 32 outer seconds: four UID-policy tests
+  plus three selector cases, including eight actual system-command executions, twenty
+  invalid-input refusals and four user-ancestor refusals. Exact extracted production
+  selectors and the actual shared module compile with Rust 1.75; full parent/application
+  builds are not established. Both artifacts remain unchanged before/after execution.
+  Source before/after snapshots match; baseline also has a confirmed live observation.
+  The candidate's first manual observation followed terminal, so no live observation is
+  claimed. All eight endpoint snapshots have zero delta; both VMs/RAM workspaces retire.
+  Installed privileged receivers, canonical-path replacement races, hidden symlink-hop
+  fixtures, other Unix targets and their ACL semantics, full settings/functionality,
+  R-S0/R-F5, cold artifacts, independent reproduction and release acceptance remain OPEN.
+  Evidence: `.harness-state/verifier-vm/trusted-executable-56393ab8.json`.
 - R-S11e-4 — macOS service proof ownership and bounded admission
 - R-S11e-5 — Linux service credential receiver and replica authority
 - R-S11e-6 — Linux service-password server endpoint authority

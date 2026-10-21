@@ -159,7 +159,6 @@ use std::sync::{
 #[cfg(target_os = "linux")]
 use std::{
     fs,
-    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
 

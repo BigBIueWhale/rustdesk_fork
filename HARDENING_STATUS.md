@@ -1702,6 +1702,24 @@ the nineteen cases; the full parent is not rerun for this local controller corre
 Actual encoder scheduling, presentation, impaired peers, input-visible latency, long
 sessions, native other-platform and installed R-S0/R-F5 acceptance remain OPEN.
 
+**Viewer FPS limit updates — Linux controller A/B accepted; presentation OPEN.**
+`439ebb21` recalculates the shared rate before an accepted live-viewer custom or
+automatic FPS setter returns. Existing valid-range/live-owner admission, learned
+estimates, requested-limit selection, pending congestion and startup caps remain.
+At preparation `0a666fa0`, both stored 5-FPS requests still expose 30 FPS before
+another update; the augmented existing case fails while eighteen others pass.
+The identical nineteen-test module passes after correction, including both immediate
+5-FPS assertions, the stored request and other viewer's retained 30-FPS estimate,
+prior feedback/retirement checks, ten admission cases and 24 quality-continuity cases.
+Candidate compilation takes 70 seconds and the focused VM transaction 142 seconds.
+The successful guest log filter omits the new diagnostic prefix: positive evidence
+is the executed named test's assertions, not retained numeric observation lines.
+`video-rate-limit-439ebb21.json` binds source, both stable native artifacts, baseline
+observations, assertion evidence, endpoint comparisons and joined bounded-RAM cleanup.
+No runner, protocol, dependency or authority surface changes. Actual encoder scheduling,
+full settings/UI/peer behavior, presentation latency, impairment/soak, native other-platform
+and installed R-S0/R-F5/release acceptance remain OPEN.
+
 **Focused VideoQoS verification — Linux controller accepted; full integration retained.**
 At `6915dfb9`, `--video-qos-controller-tests` compiled the actual controller and its eighteen
 tests through `video_qos_it`, using real hbb_common configuration/generated protocol

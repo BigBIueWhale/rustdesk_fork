@@ -3810,10 +3810,11 @@ fn peer_removal_retains_its_parent_across_path_replacement() {
         fs::write(&target, b"outside replacement bytes").unwrap();
         let moved = parent.with_file_name("retained-original-peers");
         let mut hooks = 0;
-        let result = PeerConfig::remove_with_unlink_hook(id, || {
+        let result = PeerConfig::remove_with_unlink_hook(id, |unlink| {
             fs::rename(parent, &moved).unwrap();
             std::os::unix::fs::symlink(&outside, parent).unwrap();
             hooks += 1;
+            unlink()
         });
         let outside_preserved = fs::read(&target).ok().as_deref() == Some(b"outside replacement bytes".as_slice());
         let selected_removed = !moved.join(path.file_name().unwrap()).exists();
@@ -3893,6 +3894,79 @@ fn peer_removal_supports_write_search_only_parents() {
         println!("OPTION_COMMIT_PEER_REMOVE_PARENT=observed kind=search_only success={} mode_unchanged={unchanged_mode}", result.is_ok());
         assert!(result.is_ok() && unchanged_mode && !path.exists());
         assert_eq!(fs::read(sibling).unwrap(), b"preserved bytes");
+    });
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn peer_removal_checks_name_absence_before_reporting_success() {
+    const TEST: &str = "config::option_tests::peer_removal_checks_name_absence_before_reporting_success";
+    in_private_process(TEST, |_| {
+        let id = "192.0.2.1:21118";
+        let path = PeerConfig::path(id);
+        let parent = path.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        let sibling = parent.join("sibling.toml");
+        fs::write(&sibling, b"preserved sibling").unwrap();
+        let sibling_before = peer_test_record_snapshot(&sibling);
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for round in 0..2 {
+            for kind in ["file", "dangling-link", "directory", "missing-file", "denied", "healthy", "missing"] {
+                let missing = matches!(kind, "missing-file" | "missing");
+                if !missing {
+                    fs::write(&path, b"selected original").unwrap();
+                }
+                let mut native_errno = 0;
+                let mut replacement = None;
+                let result = PeerConfig::remove_with_unlink_hook(id, |unlink| {
+                    let native = unlink();
+                    native_errno = native.as_ref().err().and_then(io::Error::raw_os_error).unwrap_or(0);
+                    assert_eq!(native_errno, if missing { crate::libc::ENOENT } else { 0 });
+                    assert_eq!(fs::symlink_metadata(&path).unwrap_err().kind(), io::ErrorKind::NotFound);
+                    match kind {
+                        "file" | "missing-file" => {
+                            fs::write(&path, b"replacement retained").unwrap();
+                            replacement = Some(peer_test_record_snapshot(&path));
+                        }
+                        "dangling-link" => std::os::unix::fs::symlink("absent-target", &path).unwrap(),
+                        "directory" => {
+                            fs::create_dir(&path).unwrap();
+                            fs::write(path.join("sentinel"), b"replacement directory retained").unwrap();
+                        }
+                        "denied" => fs::set_permissions(parent, fs::Permissions::from_mode(0)).unwrap(),
+                        _ => {}
+                    }
+                    native
+                });
+                fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+                let preserved = match kind {
+                    "file" | "missing-file" => replacement == Some(peer_test_record_snapshot(&path)),
+                    "dangling-link" => fs::read_link(&path).unwrap() == Path::new("absent-target"),
+                    "directory" => fs::read(path.join("sentinel")).unwrap() == b"replacement directory retained",
+                    _ => fs::symlink_metadata(&path).is_err(),
+                } && peer_test_record_snapshot(&sibling) == sibling_before;
+                let expected_success = matches!(kind, "healthy" | "missing");
+                let correct = result.is_ok() == expected_success;
+                println!("OPTION_COMMIT_PEER_REMOVE_FINALITY={}", serde_json::json!({
+                    "round": round, "kind": kind, "native_errno": native_errno,
+                    "success": result.is_ok(), "expected_success": expected_success,
+                    "preserved": preserved, "correct": correct,
+                }));
+                passed &= correct && preserved;
+                if kind == "directory" {
+                    fs::remove_dir_all(&path).unwrap();
+                } else if matches!(kind, "file" | "missing-file" | "dangling-link") {
+                    fs::remove_file(&path).unwrap();
+                }
+            }
+        }
+        let after_fds = fds();
+        println!("OPTION_COMMIT_PEER_REMOVE_FINALITY_FDS=before:{before_fds} after:{after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(passed, "peer removal must observe absence without removing a replacement");
     });
 }
 

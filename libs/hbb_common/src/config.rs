@@ -4112,10 +4112,13 @@ impl PeerConfig {
     }
 
     pub fn remove(id: &str) -> crate::ResultType<()> {
-        Self::remove_with_unlink_hook(id, || {})
+        Self::remove_with_unlink_hook(id, |unlink| unlink())
     }
 
-    fn remove_with_unlink_hook(id: &str, before_unlink: impl FnOnce()) -> crate::ResultType<()> {
+    fn remove_with_unlink_hook(
+        id: &str,
+        unlink: impl FnOnce(&dyn Fn() -> io::Result<()>) -> io::Result<()>,
+    ) -> crate::ResultType<()> {
         let path = Self::path(id);
         #[cfg(target_os = "linux")]
         let result = {
@@ -4131,18 +4134,16 @@ impl PeerConfig {
             let Some(parent) = Self::open_removal_parent(&path)? else {
                 return Ok(());
             };
-            before_unlink();
-            if unsafe { crate::libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), 0) } == 0 {
-                Ok(())
-            } else {
-                Err(io::Error::last_os_error())
-            }
+            unlink(&|| {
+                if unsafe { crate::libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), 0) } == 0 {
+                    Ok(())
+                } else {
+                    Err(io::Error::last_os_error())
+                }
+            })
         };
         #[cfg(not(target_os = "linux"))]
-        let result = {
-            before_unlink();
-            fs::remove_file(path)
-        };
+        let result = unlink(&|| fs::remove_file(&path));
         match result {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),

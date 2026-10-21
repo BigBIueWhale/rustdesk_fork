@@ -12777,9 +12777,16 @@ Counts refer to their named historical sources, not fresh current-tree execution
 script and exact extracted setup/error callback, with root-locked dependencies.
 Its named latest 34-case run took 87 outer seconds; CPAL setup typechecking is not
 a complete non-Linux parent build or physical stream execution.
-`--audio-buffer-tests` selects eighteen cases including two conversion/allocation
-fixture tests; that expanded standalone selection has not executed. The shared
-gate still runs the compiled mailbox and buffer tests plus retained worker-finality
+`--audio-buffer-tests` passed all eighteen cases at `87dbc335` in 73 outer seconds:
+sixteen production-buffer cases and two real conversion/allocation fixtures.
+Its dedicated profile retains the 2 GiB guest and admits 6 GiB RAM scratch,
+6 GiB host headroom and 1 GiB overhead, with a 4 GiB hard file ceiling and no disk
+fallback. This replaces the generic 16 GiB scratch reservation that refused a
+25 GiB admission before any case ran; measured scratch stayed below 3.2 GiB.
+`audio-buffer-profile-87dbc335.json` binds the unchanged sources/dependencies,
+all eighteen named assertions, actual storage limits and joined cleanup. This
+is Linux portable-buffer execution, not CPAL/device or complete-parent acceptance.
+The shared gate still runs the compiled mailbox and buffer tests plus retained worker-finality
 coverage. The retired 356-line wording checker and its calls remain deleted;
 no replacement source-string catalogue is needed.
 

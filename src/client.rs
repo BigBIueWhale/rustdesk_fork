@@ -108,6 +108,8 @@ pub(crate) use audio_mailbox::{
     NativeOpusFormatAdmission, MAX_NATIVE_OPUS_PACKET_BYTES,
 };
 use audio_mailbox::{audio_mailbox, AudioMailboxItem, AudioMailboxSender};
+#[cfg(not(target_os = "linux"))]
+use audio_mailbox::{AudioOutputFactory, AudioOutputOwner};
 
 pub const MILLI1: Duration = Duration::from_millis(1);
 pub const SEC30: Duration = Duration::from_secs(30);
@@ -975,6 +977,10 @@ pub struct AudioHandler {
     #[cfg(target_os = "linux")]
     simple: Option<psimple::Simple>,
     #[cfg(not(target_os = "linux"))]
+    output_factory: Option<AudioOutputFactory>,
+    #[cfg(not(target_os = "linux"))]
+    output_owner: Option<AudioOutputOwner>,
+    #[cfg(not(target_os = "linux"))]
     audio_buffer: AudioBuffer,
     sample_rate: (u32, u32),
     #[cfg(not(target_os = "linux"))]
@@ -982,8 +988,6 @@ pub struct AudioHandler {
     channels: u16,
     #[cfg(not(target_os = "linux"))]
     device_channel: u16,
-    #[cfg(not(target_os = "linux"))]
-    ready: Arc<AtomicBool>,
 }
 
 
@@ -997,6 +1001,7 @@ impl AudioHandler {
         }
         #[cfg(not(target_os = "linux"))]
         {
+            self.output_owner = None;
             self.audio_stream = None;
         }
     }
@@ -1145,7 +1150,9 @@ impl AudioHandler {
             return;
         }
         #[cfg(not(target_os = "linux"))]
-        if self.audio_stream.is_none() || !self.ready.load(Ordering::Acquire) {
+        if self.audio_stream.is_none()
+            || !self.output_owner.as_ref().map_or(false, AudioOutputOwner::is_ready)
+        {
             return;
         }
         #[cfg(target_os = "linux")]
@@ -1212,26 +1219,44 @@ impl AudioHandler {
         config: &StreamConfig,
         device: &Device,
     ) -> ResultType<()> {
-        self.device_channel = config.channels;
+        let mut output_owner = self
+            .output_factory
+            .as_mut()
+            .ok_or_else(|| anyhow!("Audio output has no playback owner"))?
+            .begin()?;
+        let failure = output_owner.callback();
         let err_fn = move |err| {
-            // too many errors, will improve later
-            log::trace!("an error occurred on stream: {}", err);
+            failure.fail();
+            log::warn!("Audio output failed; closing playback: {err}");
         };
-        self.audio_buffer
-            .resize(config.sample_rate.0 as _, config.channels as _);
-        let audio_buffer = self.audio_buffer.samples.clone();
-        let ready = self.ready.clone();
+        let mut buffer = AudioBuffer::default();
+        buffer.resize(config.sample_rate.0 as _, config.channels as _);
+        let audio_buffer = Arc::clone(&buffer.samples);
+        let ready = output_owner.callback();
         let timeout = None;
         let stream = device.build_output_stream(
             config,
             move |data: &mut [T], _info: &cpal::OutputCallbackInfo| {
-                ready.store(true, Ordering::Release);
-                audio_buffer::fill_output(&audio_buffer, data, T::from_sample);
+                if ready.mark_ready() {
+                    audio_buffer::fill_output(&audio_buffer, data, T::from_sample);
+                } else {
+                    data.fill(T::from_sample(0.0));
+                }
             },
             err_fn,
             timeout,
         )?;
-        stream.play()?;
+        if let Err(err) = stream.play() {
+            drop(output_owner);
+            return Err(err.into());
+        }
+        if let Err(err) = output_owner.activate() {
+            drop(output_owner);
+            return Err(err.into());
+        }
+        self.device_channel = config.channels;
+        self.audio_buffer = buffer;
+        self.output_owner = Some(output_owner);
         self.audio_stream = Some(Box::new(stream));
         Ok(())
     }
@@ -3244,6 +3269,10 @@ fn new_audio_thread() -> (AudioMailboxSender, std::thread::JoinHandle<()>) {
     let (audio_sender, audio_receiver) = audio_mailbox();
     let thread = std::thread::spawn(move || {
         let mut audio_handler = AudioHandler::default();
+        #[cfg(not(target_os = "linux"))]
+        {
+            audio_handler.output_factory = Some(audio_receiver.output_factory());
+        }
         while let Some(data) = audio_receiver.recv() {
             match data {
                 AudioMailboxItem::Frame(frame) => {

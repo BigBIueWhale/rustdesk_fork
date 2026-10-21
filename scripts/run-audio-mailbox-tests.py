@@ -15,7 +15,7 @@ import tomllib
 
 PACKAGE = "rustdesk-audio-mailbox"
 INPUTS = (
-    "Cargo.lock", "src/client.rs", "src/client/audio_mailbox.rs",
+    "Cargo.lock", "src/client.rs", "src/client/audio_mailbox.rs", "src/client/audio_buffer.rs",
     "src/client/io_loop.rs", "src/server/connection.rs",
     "libs/hbb_common/build.rs", "libs/hbb_common/src/protos/mod.rs",
     "libs/hbb_common/protos/message.proto", "libs/hbb_common/protos/rendezvous.proto",
@@ -61,10 +61,29 @@ def main():
         for name in ("message.proto", "rendezvous.proto"):
             (fixture / "protos" / name).write_bytes(inputs[f"libs/hbb_common/protos/{name}"])
         (fixture / "build.rs").write_bytes(inputs["libs/hbb_common/build.rs"])
+        client = inputs["src/client.rs"].decode("utf-8")
+        start = client.index("    fn build_output_stream<T:")
+        end = client.index("\n}\n\n/// Video handler", start)
+        method = client[start:end]
+        callback_start = method.index("        let err_fn = move |err| {")
+        callback_end = method.index("\n        };", callback_start) + len("\n        };")
+        callback = method[callback_start:callback_end]
+        generated = (
+            "impl AudioHandler {\n" + method + "\n}\n"
+            "fn candidate_error_callback(failure: audio_mailbox::AudioOutputCallback) "
+            "-> impl FnMut(cpal::StreamError) {\n" + callback + "\nerr_fn\n}\n"
+        ).encode("utf-8")
+        (fixture / "output-method.rs").write_bytes(generated)
+        os.environ["AUDIO_OUTPUT_METHOD"] = str(fixture / "output-method.rs")
+        print(f"AUDIO_MAILBOX_METHOD=compile-only method_sha256={digest(method.encode())} "
+              f"callback_sha256={digest(callback.encode())} generated_sha256={digest(generated)}",
+              flush=True)
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
             '[dependencies]\nbytes = "=1.11.1"\n'
             'protobuf = { version = "=3.7.2", features = ["with-bytes"] }\n'
+            'ringbuf = "=0.3.3"\nlog = "=0.4.22"\nanyhow = "1.0"\n'
+            'cpal = { git = "https://github.com/rustdesk-org/cpal", branch = "osx-screencapturekit" }\n'
             '[build-dependencies]\nprotobuf-codegen = "=3.7.2"\n'
             '[[test]]\nname = "audio_mailbox"\n'
             f'path = "{repo}/scripts/test-audio-mailbox.rs"\n')
@@ -77,7 +96,7 @@ def main():
             expected = records.get((item["name"], item["version"]))
             if expected is None or any(item.get(k) != expected.get(k) for k in ("source", "checksum")):
                 raise ValueError("mailbox fixture dependency differs from the root lock")
-            dependencies.append({k: item[k] for k in ("name", "version", "source", "checksum")})
+            dependencies.append({k: item[k] for k in ("name", "version", "source", "checksum") if k in item})
         print(f"AUDIO_MAILBOX_DEPENDENCIES=pass lock_sha256={digest(lock_bytes)} "
               f"records_sha256={digest(json.dumps(dependencies, sort_keys=True).encode())}", flush=True)
         output = run(["cargo", "test", "--offline", "--locked", "--test", "audio_mailbox",
@@ -90,14 +109,16 @@ def main():
             raise ValueError("mailbox test executable is absent or ambiguous")
         artifact = artifacts[0]
         artifact_sha = digest(artifact.read_bytes())
-        run([str(artifact), "--test-threads=1", "--color", "never"], fixture, timeout=30)
+        run([str(artifact), "--test-threads=1", "--color", "never", "--nocapture"], fixture, timeout=30)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("mailbox test artifact or dependencies changed")
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"mailbox test source changed: {name}")
             print(f"AUDIO_MAILBOX_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"AUDIO_MAILBOX_ARTIFACT=pass sha256={artifact_sha} tests=12 unchanged=before-after", flush=True)
+        if (fixture / "output-method.rs").read_bytes() != generated:
+            raise ValueError("extracted output method changed")
+        print(f"AUDIO_MAILBOX_ARTIFACT=pass sha256={artifact_sha} tests=32 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

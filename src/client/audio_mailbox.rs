@@ -7,6 +7,11 @@ use std::{
     sync::{Arc, Condvar, Mutex},
     time::Duration,
 };
+#[cfg(any(test, not(target_os = "linux")))]
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Weak,
+};
 
 pub const AUDIO_FRAME_QUEUE_CAPACITY: usize = 8;
 pub const MAX_AUDIO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);
@@ -88,6 +93,108 @@ pub(crate) struct AudioMailboxSender {
 
 pub(super) struct AudioMailboxReceiver {
     shared: Arc<AudioMailboxShared>,
+}
+
+// Each native output attempt owns independent callbacks, including failed setup attempts.
+#[cfg(any(test, not(target_os = "linux")))]
+pub(super) struct AudioOutputFactory(Weak<AudioMailboxShared>);
+
+#[cfg(any(test, not(target_os = "linux")))]
+#[derive(PartialEq)]
+enum AudioOutputPhase {
+    Pending,
+    Active,
+    Terminal,
+}
+
+#[cfg(any(test, not(target_os = "linux")))]
+struct AudioOutputState {
+    phase: Mutex<AudioOutputPhase>,
+    live: AtomicBool,
+    ready: AtomicBool,
+    mailbox: Weak<AudioMailboxShared>,
+}
+
+#[cfg(any(test, not(target_os = "linux")))]
+pub(super) struct AudioOutputOwner(Arc<AudioOutputState>);
+
+#[cfg(any(test, not(target_os = "linux")))]
+#[derive(Clone)]
+pub(super) struct AudioOutputCallback(Arc<AudioOutputState>);
+
+#[cfg(any(test, not(target_os = "linux")))]
+impl AudioOutputFactory {
+    pub(super) fn begin(&mut self) -> std::io::Result<AudioOutputOwner> {
+        let mailbox = self.0.upgrade().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::BrokenPipe, "audio receiver retired")
+        })?;
+        let state = mailbox.state.lock().unwrap();
+        if state.closed || state.format_key.is_none() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe, "audio output requires a live admitted format",
+            ));
+        }
+        Ok(AudioOutputOwner(Arc::new(AudioOutputState {
+            phase: Mutex::new(AudioOutputPhase::Pending),
+            live: AtomicBool::new(true),
+            ready: AtomicBool::new(false),
+            mailbox: self.0.clone(),
+        })))
+    }
+}
+
+#[cfg(any(test, not(target_os = "linux")))]
+impl AudioOutputOwner {
+    pub(super) fn callback(&self) -> AudioOutputCallback {
+        AudioOutputCallback(Arc::clone(&self.0))
+    }
+
+    pub(super) fn activate(&mut self) -> std::io::Result<()> {
+        let mut phase = self.0.phase.lock().unwrap();
+        let mailbox = self.0.mailbox.upgrade().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::BrokenPipe, "audio receiver retired")
+        })?;
+        if *phase != AudioOutputPhase::Pending || mailbox.state.lock().unwrap().closed {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe, "audio output failed before activation",
+            ));
+        }
+        *phase = AudioOutputPhase::Active;
+        Ok(())
+    }
+
+    pub(super) fn is_ready(&self) -> bool {
+        self.0.live.load(Ordering::Acquire) && self.0.ready.load(Ordering::Acquire)
+    }
+}
+
+#[cfg(any(test, not(target_os = "linux")))]
+impl Drop for AudioOutputOwner {
+    fn drop(&mut self) {
+        let mut phase = self.0.phase.lock().unwrap();
+        self.0.live.store(false, Ordering::Release);
+        *phase = AudioOutputPhase::Terminal;
+    }
+}
+
+#[cfg(any(test, not(target_os = "linux")))]
+impl AudioOutputCallback {
+    pub(super) fn mark_ready(&self) -> bool {
+        self.0.ready.store(true, Ordering::Release);
+        self.0.live.load(Ordering::Acquire)
+    }
+
+    pub(super) fn fail(&self) {
+        let mut phase = self.0.phase.lock().unwrap();
+        self.0.live.store(false, Ordering::Release);
+        if *phase == AudioOutputPhase::Active {
+            // Wake the owning decoder even without another packet. It drops the stream.
+            if let Some(mailbox) = self.0.mailbox.upgrade() {
+                mailbox.close();
+            }
+        }
+        *phase = AudioOutputPhase::Terminal;
+    }
 }
 
 pub(super) enum AudioMailboxItem {
@@ -208,6 +315,11 @@ impl Drop for AudioMailboxSender {
 }
 
 impl AudioMailboxReceiver {
+    #[cfg(any(test, not(target_os = "linux")))]
+    pub(super) fn output_factory(&self) -> AudioOutputFactory {
+        AudioOutputFactory(Arc::downgrade(&self.shared))
+    }
+
     pub(super) fn recv(&self) -> Option<AudioMailboxItem> {
         loop {
             let mut state = self.shared.state.lock().unwrap();
@@ -489,5 +601,124 @@ mod tests {
         assert_eq!(sender.admit_frame(audio_frame(2)), AudioFrameAdmission::Closed);
         let state = sender.shared.state.lock().unwrap();
         assert!(state.format.is_none() && state.frames.is_empty());
+    }
+
+    #[test]
+    fn output_pending_failure_allows_a_fresh_setup_attempt() {
+        let (sender, receiver) = audio_mailbox();
+        let mut factory = receiver.output_factory();
+        assert!(factory.begin().is_err());
+        assert_eq!(sender.admit_format(audio_format(48000, 2)), AudioFormatAdmission::Queued);
+        let mut failed = factory.begin().unwrap();
+        let old = failed.callback();
+        assert!(old.mark_ready());
+        old.fail();
+        assert!(!failed.is_ready());
+        assert!(failed.activate().is_err());
+        drop(failed);
+        let mut selected = factory.begin().unwrap();
+        selected.activate().unwrap();
+        assert!(!selected.is_ready());
+        assert!(!old.mark_ready());
+        old.fail();
+        assert!(selected.callback().mark_ready());
+        assert!(selected.is_ready());
+        assert_eq!(sender.admit_format(audio_format(48000, 2)), AudioFormatAdmission::Duplicate);
+        assert!(matches!(receiver.recv(), Some(AudioMailboxItem::Format(_))));
+    }
+
+    #[test]
+    fn output_retired_callbacks_preserve_the_selected_owner() {
+        let (sender, receiver) = audio_mailbox();
+        sender.admit_format(audio_format(48000, 2));
+        let mut factory = receiver.output_factory();
+        let mut retired = factory.begin().unwrap();
+        retired.activate().unwrap();
+        let old = retired.callback();
+        drop(retired);
+        let mut selected = factory.begin().unwrap();
+        selected.activate().unwrap();
+        let callback = selected.callback();
+        let late = std::thread::spawn(move || {
+            for _ in 0..64 {
+                old.fail();
+                assert!(!old.mark_ready());
+            }
+        });
+        assert!(callback.mark_ready());
+        late.join().unwrap();
+        assert!(selected.is_ready());
+        assert_eq!(sender.admit_frame(audio_frame(1)), AudioFrameAdmission::Queued);
+    }
+
+    #[test]
+    fn output_active_failure_releases_payloads_and_closes_admission() {
+        let (sender, receiver) = audio_mailbox();
+        sender.admit_format(audio_format(48000, 2));
+        for i in 0..AUDIO_FRAME_QUEUE_CAPACITY {
+            sender.admit_frame(audio_frame(i as u8));
+        }
+        let mut factory = receiver.output_factory();
+        let mut owner = factory.begin().unwrap();
+        owner.activate().unwrap();
+        let callback = owner.callback();
+        assert!(callback.mark_ready());
+        callback.fail();
+        callback.fail();
+        assert!(!callback.mark_ready());
+        assert!(!owner.is_ready());
+        assert!(receiver.recv().is_none());
+        assert_eq!(sender.admit_frame(audio_frame(42)), AudioFrameAdmission::Closed);
+        assert_eq!(sender.admit_format(audio_format(48000, 2)), AudioFormatAdmission::Closed);
+        assert!(factory.begin().is_err());
+        let state = sender.shared.state.lock().unwrap();
+        assert!(state.format.is_none() && state.frames.is_empty());
+    }
+
+    #[test]
+    fn output_activation_refuses_a_retired_receiver() {
+        let (sender, receiver) = audio_mailbox();
+        sender.admit_format(audio_format(48000, 2));
+        let mut factory = receiver.output_factory();
+        let mut pending = factory.begin().unwrap();
+        drop(receiver);
+        assert!(pending.activate().is_err());
+        assert!(factory.begin().is_err());
+        drop(sender);
+        assert!(factory.begin().is_err());
+        pending.callback().fail();
+    }
+
+    #[test]
+    fn output_failure_and_readiness_converge_across_native_threads() {
+        for _ in 0..64 {
+            let (sender, receiver) = audio_mailbox();
+            sender.admit_format(audio_format(48000, 2));
+            let mut owner = receiver.output_factory().begin().unwrap();
+            let ready = owner.callback();
+            let failure = owner.callback();
+            let gate = Arc::new(std::sync::Barrier::new(3));
+            let ready_gate = Arc::clone(&gate);
+            let ready_worker = std::thread::spawn(move || {
+                ready_gate.wait();
+                for _ in 0..64 { ready.mark_ready(); }
+            });
+            let failure_gate = Arc::clone(&gate);
+            let failure_worker = std::thread::spawn(move || {
+                failure_gate.wait();
+                failure.fail();
+            });
+            gate.wait();
+            let activated = owner.activate().is_ok();
+            ready_worker.join().unwrap();
+            failure_worker.join().unwrap();
+            assert!(!owner.is_ready());
+            assert!(!owner.callback().mark_ready());
+            if activated {
+                assert!(receiver.recv().is_none());
+            } else {
+                assert!(matches!(receiver.recv(), Some(AudioMailboxItem::Format(_))));
+            }
+        }
     }
 }

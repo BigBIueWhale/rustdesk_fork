@@ -4162,7 +4162,7 @@ run_focused_rust_tests() {
             memory_bytes=1073741824
             tmpfs_size=64m
             source_fingerprints=(
-                Cargo.lock src/client.rs src/client/audio_mailbox.rs
+                Cargo.lock src/client.rs src/client/audio_mailbox.rs src/client/audio_buffer.rs
                 src/client/io_loop.rs src/server/connection.rs
                 libs/hbb_common/build.rs libs/hbb_common/src/protos/mod.rs
                 libs/hbb_common/protos/message.proto libs/hbb_common/protos/rendezvous.proto
@@ -4181,6 +4181,26 @@ run_focused_rust_tests() {
                 audio_mailbox::tests::r_s11hi_small_packet_releases_large_backing_owner_at_admission
                 audio_mailbox::tests::r_s11hi_sender_drop_wakes_and_joins_the_native_receiver
                 audio_mailbox::tests::r_s11hi_receiver_drop_refuses_further_admission
+                audio_mailbox::tests::output_pending_failure_allows_a_fresh_setup_attempt
+                audio_mailbox::tests::output_retired_callbacks_preserve_the_selected_owner
+                audio_mailbox::tests::output_active_failure_releases_payloads_and_closes_admission
+                audio_mailbox::tests::output_activation_refuses_a_retired_receiver
+                audio_mailbox::tests::output_failure_and_readiness_converge_across_native_threads
+                output_error_callback_wakes_the_idle_owner_and_joins_off_callback
+                audio_buffer::tests::first_observation_arms_only_its_own_window
+                audio_buffer::tests::exact_interval_trims_without_early_retirement
+                audio_buffer::tests::independently_started_buffers_do_not_postpone_each_other
+                audio_buffer::tests::backwards_clock_preserves_pcm_and_restarts_observation
+                audio_buffer::tests::ring_replacement_retires_old_statistics_and_clock
+                audio_buffer::tests::no_op_resize_preserves_the_current_window
+                audio_buffer::tests::bounded_append_preserves_the_newest_pcm
+                audio_buffer::tests::parallel_native_workers_keep_distinct_clock_epochs
+                audio_buffer::tests::output_fill_consumes_fifo_and_pads_a_short_quantum
+                audio_buffer::tests::empty_output_fill_is_all_silence
+                audio_buffer::tests::output_fill_preserves_next_quantum_order
+                audio_buffer::tests::output_fill_passes_silence_through_the_converter
+                audio_buffer::tests::output_fill_returns_while_the_producer_holds_the_ring
+                audio_buffer::tests::output_fill_refuses_a_poisoned_ring
             )
         elif [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
             container_name=rustdesk-resolution-restoration-tests
@@ -5728,7 +5748,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
         printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=16 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=12 bridge=absent\n'
+        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=32 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
         printf 'WHITEBOARD_CLIENT_STATE_PROFILE=whiteboard-client stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
@@ -6021,7 +6041,7 @@ PY
             || fail 'audio-buffer artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-mailbox summary count differs'
-        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=12 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=32 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'AUDIO_MAILBOX_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'audio-mailbox artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
@@ -6590,7 +6610,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-            grep -E '^test audio_mailbox::tests::.* \.\.\. ok$|^AUDIO_MAILBOX_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            grep -E '^test (audio_mailbox|audio_buffer)::tests::.* \.\.\. ok$|^AUDIO_MAILBOX_(ARTIFACT|DEPENDENCIES|INPUT|METHOD)=|AUDIO_OUTPUT_ERROR=' "$output"
             printf 'AUDIO_MAILBOX_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-mailbox-and-generated-protobuf rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

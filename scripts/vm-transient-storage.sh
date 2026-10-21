@@ -60,6 +60,8 @@ elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:linux-r
     readonly VM_STORAGE_PROFILE=linux-resolution-lifetime
 elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:fusermount-process ]; then
     readonly VM_STORAGE_PROFILE=fusermount-process
+elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:audio-buffer ]; then
+    readonly VM_STORAGE_PROFILE=audio-buffer
 else
     readonly VM_STORAGE_PROFILE=standard
 fi

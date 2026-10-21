@@ -4914,7 +4914,6 @@ if [ -n "$r_s11e25" ]; then echo "  FAIL R-S11e-25 Linux service-owned config-ro
 # closed choice rather than active-user process state or an environment-selected parser.
 echo "== (3b-iii-d5) Linux service-child environment and terminal authority (R-S11l/R-S11fq/R-S11e-26/R-S11e-204) =="
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e204_ --color never
-python3 scripts/verify-linux-service-terminal-authority.py --repo . --self-test
 r_s11e26=
 service_launch=$(awk '/fn try_start_server_\(/,/fn stop_unregistered_service_child/' src/platform/linux.rs)
 service_loop=$(awk '/pub fn start_os_service\(\)/,/^}/' src/platform/linux.rs)

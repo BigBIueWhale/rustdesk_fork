@@ -2385,8 +2385,14 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   idle/pre-first-frame state remains valid and stale pointer/UI owners are refused.
 - **R-S11fq/R-S11e-204 Linux service-child terminal authority** — Source closed. The privileged supervisor selects
   one fixed literal `TERM` from service-owned platform policy after `env_clear`; it does not enumerate user
-  processes, ingest their environment, or parse an ambient-selected terminfo database. Installed-service execution
-  remains open.
+  processes, ingest their environment, or parse an ambient-selected terminfo database. The 337-line terminal
+  wording checker and its ten in-memory string mutations are deleted with their sole invocation. The compiled
+  selector/fixed-root regression, adjacent source guards for launch binding, ambient state and retired parser/
+  dependency absence, and the actual-child lifecycle fixture remain unchanged. The deleted checker executed
+  no selector, metadata probe or service child; its package-version exclusions did not establish privileged
+  terminal behavior. This removes redundant verification, not product code or a native authority result. Installed
+  present/absent/failed-probe behavior, hostile environments, both principals, restart, bounded work and cleanup
+  remain OPEN. `retired-terminal-checker-4635571e.json` binds deletion and retained-source identities.
 - **R-S11fr/R-S11e-205 bounded software-RGBA recovery and completion order** — **SOURCE IMPLEMENTED; NAMED
   MODEL/ANDROID PASSES; INTERMITTENT PRESENTATION AND BROADER ACCEPTANCE OPEN.** Current source retains
   two current conversions plus one latest pending

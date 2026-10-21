@@ -1713,6 +1713,7 @@ android_frame_input_inventory() {
     fi
     if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
         files+=("$SCRIPT_DIR/test-native-clipboard-listener.py" "$SCRIPT_DIR/test-native-clipboard-listener.rs"
+            "$SCRIPT_DIR/test-native-clipboard-authority-lifetime.rs"
             "$SCRIPT_DIR/fixtures/clipboard-error-before-stop.rs" "$SCRIPT_DIR/clipboard-listener-inputs.txt"
             "$REPO_ROOT/src/clipboard.rs" "$REPO_ROOT/Cargo.lock" "$REPO_ROOT/Cargo.toml")
         local package expected extra_field
@@ -4336,6 +4337,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         lifecycle_payload_grafts+=(
             "repo/scripts/test-native-clipboard-listener.py=$SCRIPT_DIR/test-native-clipboard-listener.py"
             "repo/scripts/test-native-clipboard-listener.rs=$SCRIPT_DIR/test-native-clipboard-listener.rs"
+            "repo/scripts/test-native-clipboard-authority-lifetime.rs=$SCRIPT_DIR/test-native-clipboard-authority-lifetime.rs"
             "repo/scripts/fixtures/clipboard-error-before-stop.rs=$SCRIPT_DIR/fixtures/clipboard-error-before-stop.rs"
             "repo/scripts/clipboard-listener-inputs.txt=$SCRIPT_DIR/clipboard-listener-inputs.txt"
             "repo/src/clipboard.rs=$REPO_ROOT/src/clipboard.rs"

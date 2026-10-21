@@ -164,6 +164,38 @@ directory = "/work/clipboard-vendor"
         print(f"CLIPBOARD_NATIVE_BUILD variant={variant} source_sha256={digest(source)} "
               f"component_sha256={digest(module)} fixture_sha256={digest(scaffold)} binary_sha256={digest(binary.read_bytes())} "
               f"lock_sha256={digest(lock_bytes)} dependencies_sha256={digest(json.dumps(dependencies, sort_keys=True).encode())}", flush=True)
+    # A separate main owns a controlled leader-only exit; the libtest main
+    # cannot safely provide that boundary for an ordinary #[test] worker.
+    authority = bytearray(b'use std::{fs::OpenOptions, io::{self, Read}, os::{fd::AsRawFd, unix::fs::{MetadataExt, OpenOptionsExt}}, path::PathBuf, time::{Duration, Instant}};\nuse x11rb_listener::reexports::x11rb_protocol::xauth;\n')
+    for first, last in (
+        (b"        fn native_error(", b"        struct NativeStream {"),
+        (b"        fn check_startup_deadline(", b"        impl NativeStream {"),
+        (b"        fn authority_bytes<'a>(", b"        fn native_connection("),
+    ):
+        require(source.count(first) == source.count(last) == 1,
+                "production authority function boundary differs")
+        authority.extend(source[source.index(first):source.index(last)])
+    authority.extend((ROOT / "scripts/test-native-clipboard-authority-lifetime.rs").read_bytes())
+    (BUILD / "src/bin").mkdir(mode=0o700)
+    (BUILD / "src/bin/authority-lifetime.rs").write_bytes(authority)
+    output = command(["cargo", "build", "--bin", "authority-lifetime", "--locked", "--offline", "--jobs", "2",
+                      "--message-format=json", "--config", str(config)], environment)
+    messages = [json.loads(line) for line in output.splitlines() if line.startswith(b"{")]
+    artifacts = [Path(item["executable"]) for item in messages if item.get("reason") == "compiler-artifact"
+                 and item.get("target", {}).get("name") == "authority-lifetime"
+                 and item.get("manifest_path") == str(BUILD / "Cargo.toml")
+                 and item.get("target", {}).get("src_path") == str(BUILD / "src/bin/authority-lifetime.rs")
+                 and item.get("target", {}).get("kind") == ["bin"] and item.get("executable")]
+    require(len(artifacts) == 1 and any(item.get("reason") == "build-finished" and item.get("success") is True
+            for item in messages), "authority lifetime executable is missing")
+    binary = BUILD / "authority-lifetime"
+    shutil.copyfile(artifacts[0], binary)
+    binary.chmod(0o700)
+    require((BUILD / "Cargo.lock").read_bytes() == lock_bytes, "authority build changed dependencies")
+    binaries["authority-lifetime"] = binary
+    print(f"CLIPBOARD_AUTHORITY_LIFETIME_BUILD production_sha256={digest(source)} "
+          f"fixture_sha256={digest(authority)} binary_sha256={digest(binary.read_bytes())} "
+          f"lock_sha256={digest(lock_bytes)}", flush=True)
     return binaries
 
 
@@ -352,6 +384,10 @@ def main():
     require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
     locked = inputs()
     binaries = build(environment, locked)
+    authority_output = command([str(binaries["authority-lifetime"])], environment, 15)
+    print(authority_output.decode("utf-8"), end="", flush=True)
+    require(authority_output.count(b"CLIPBOARD_AUTHORITY_LIFETIME=pass modes=2 cases=6 children=joined fixture=retired\n") == 1,
+            "authority lifetime observations are missing")
     state_output = command([str(binaries["current"]), "--test-threads=1", "--nocapture", "--color", "never",
                             "clipboard_listener::tests::"], environment, 5)
     print(state_output.decode("utf-8"), end="", flush=True)

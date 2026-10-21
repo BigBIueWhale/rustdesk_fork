@@ -38,13 +38,13 @@ EXPECTED = {
         "regular_files": 7,
     },
     "cargo_lock": {
-        "git_record_identities_sha256": "595aad9de03e1d924a30f5d4a5fc2aa8004441f73888a0299ec5613ccca7cd5e",
-        "git_source_identities_sha256": "847c7b5a812ab25df97ca21cda4e0a6c9afa23874388f75b3106389fc536ab43",
-        "git_sourced_records": 33,
-        "package_records": 889,
-        "package_records_sha256": "ad166c9fe31db625cff52a19f017d87d5a7582c53d2ecca0a268d76c27b211b5",
-        "rustdesk_org_git_records": 24,
-        "unique_git_source_urls": 24,
+        "git_record_identities_sha256": "8401bafc93e30c7100cf89064f2d755bfae01152b1313fad10647a8e0083a805",
+        "git_source_identities_sha256": "284ad6f39f845487027a40ad3adf302923efcae24021c8c199660ca018ea316a",
+        "git_sourced_records": 32,
+        "package_records": 886,
+        "package_records_sha256": "f04e7804c02a64eb83fee2dcd0dae4707c013b6115b8ffc99354e9999486fc7c",
+        "rustdesk_org_git_records": 23,
+        "unique_git_source_urls": 23,
     },
     "flutter_pubspec": {
         "dependencies": [

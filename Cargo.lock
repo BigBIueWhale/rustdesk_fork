@@ -6157,7 +6157,6 @@ dependencies = [
  "windows-service",
  "winit",
  "winreg 0.11.0",
- "wol-rs",
  "x11-clipboard 0.8.1",
  "x11rb 0.12.0",
  "x11rb 0.13.1",
@@ -8890,12 +8889,6 @@ dependencies = [
  "wayland-protocols",
  "wayland-protocols-wlr",
 ]
-
-[[package]]
-name = "wol-rs"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c5a8a033ef9b208ec8b5946761958ed2b2693ac49b04f647fdc013000870b8f"
 
 [[package]]
 name = "x11"

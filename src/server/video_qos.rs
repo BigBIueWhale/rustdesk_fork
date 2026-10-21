@@ -346,7 +346,7 @@ impl VideoQoS {
             }
 
             // Reset quick increase counter if network condition worsens
-            if avg_delay > 50 {
+            if avg_delay >= 50 {
                 user.delay.quick_increase_fps_count = 0;
             }
 

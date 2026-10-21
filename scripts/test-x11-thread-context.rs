@@ -259,18 +259,20 @@ fn fixture_focus(scenario: &str) -> (c_ulong, c_int) {
 fn concurrent_contexts() {
     const WORKERS: usize = 8;
     assert_eq!(std::env::var("DISPLAY").unwrap(), ":98");
-    let expected_focus = fixture_focus("focus-state");
     let baseline = descriptors();
     let tasks = std::fs::read_dir("/proc/self/task").unwrap().count();
     let phase = Arc::new(Barrier::new(WORKERS + 1));
+    let focus_reference = Arc::new(Mutex::new(None));
     let workers: Vec<_> = (0..WORKERS).map(|_| {
         let phase = Arc::clone(&phase);
+        let focus_reference = Arc::clone(&focus_reference);
         thread::spawn(move || {
             phase.wait(); // Begin native construction together.
             let display = pointer(false).unwrap().unwrap();
             let xdo = pointer(true).unwrap().unwrap();
             phase.wait(); // All owners exist before the parent snapshots them.
             phase.wait(); // Keep owners live until that snapshot completes.
+            let expected_focus = (*focus_reference.lock().unwrap()).expect("focus reference absent");
             for _ in 0..64 {
                 x11_context::with_display(|context| unsafe {
                     assert_eq!(context.as_ptr() as usize, display);
@@ -304,6 +306,8 @@ fn concurrent_contexts() {
         assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), tasks + WORKERS);
     };
     live();
+    // Preserve concurrent first construction before opening the independent observer.
+    *focus_reference.lock().unwrap() = Some(fixture_focus("focus-state"));
     phase.wait();
     phase.wait();
     live();

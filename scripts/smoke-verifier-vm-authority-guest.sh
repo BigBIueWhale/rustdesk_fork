@@ -3576,7 +3576,6 @@ run_focused_rust_tests() {
             )
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
-            source_fingerprints+=(libs/hbb_common/src/socket_client.rs)
             required_tests=(
                 test::test_get_version_number
                 test::test_try_into_v4

@@ -8585,11 +8585,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   malformed-request test does not imply normal generated requests naturally fail that way. The
   [XCB reply ownership implementation](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcb_in.c)
   and [X server request validation](https://gitlab.freedesktop.org/xorg/xserver/-/blob/xorg-server-21.1.13/Xext/shm.c)
-  ground that correction. Two serialized SysV tests and the full-integration
-  `verify-x11-capture-shm.py` remain supplements. The focused native profile no longer runs that wording
-  checker or copies source to mutate its mode constant; their input/staging dependencies are removed.
-  That deleted prelude tested string refusal, not kernel permission denial. The checker itself remains
-  because not every source-level invariant has direct native coverage; it is not native acceptance.
+  ground that correction. Two serialized SysV tests remain in the shared gate. The 269-line
+  `verify-x11-capture-shm.py` and its shared invocation are deleted: exact string presence, order and
+  absence cannot establish kernel permissions, cleanup or frame-publication finality. The real capture
+  harness and compiled regressions are unchanged. The focused native profile already omitted the wording
+  checker and its mode-string mutation prelude. Missing native observations below remain required.
 
   **Current native receipt.** Candidate `c33f70079dad32c8dcc6f3d93dd30b6991b0cffa`, tree
   `55caf4a06d083258976073e7df1da63f43d5fef0`, passed
@@ -8642,8 +8642,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   Commit `e314d2b2` records the implementation and a clean Rust 1.75 numeric-nonroot, networkless
   container run covering exact success, size mismatch, preserved protocol diagnostics, connection
-  failure, and missing reply. The focused source checker is supplemental and no longer treats prose or
-  checker mutation strings as product evidence.
+  failure, and missing reply. The shared gate retains both executable result tests; the deleted wording
+  checker supplied no additional behavioral observation.
 
   Exact source `e35c2579ffeea4426292c08933d07ee4a8b68261` (tree
   `cc265dfd755ea0936b0d9d1839a6d7d63fdc652b`) passed the focused zero-NIC

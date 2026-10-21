@@ -1626,6 +1626,101 @@ def capture_connection_loss(binary, environment, xserver):
             stream.close()
 
 
+def build_display_fixture(root, environment, variant, baseline=None, old_server=None):
+    require(variant in ("historical", "corrected"), "unknown display fixture variant")
+    work = Path("/build") / variant
+    (work / "x11").mkdir(mode=0o700, parents=True)
+    (work / "common").mkdir(mode=0o700)
+    shutil.copyfile(root / "scripts/test-x11-display.rs", work / "test.rs")
+    for name in ("display", "ffi", "iter", "server", "capturer"):
+        if name == "capturer" and variant == "historical":
+            continue
+        if name == "iter" and variant == "historical":
+            source = baseline
+        elif name == "server" and variant == "historical":
+            source = old_server
+        else:
+            source = root / f"libs/scrap/src/x11/{name}.rs"
+        shutil.copyfile(source, work / f"x11/{name}.rs")
+    shutil.copyfile(root / "libs/scrap/src/common/x11.rs", work / "common/x11.rs")
+    shutil.copyfile(root / "libs/scrap/src/common/frame_compare.rs", work / "common/frame_compare.rs")
+    binary = work / "native"
+    command = ["/usr/local/cargo/bin/rustc", "--edition=2018", "-C", "debuginfo=1",
+               "-o", str(binary), str(work / "test.rs")]
+    if variant == "corrected":
+        command += ["--cfg", "corrected"]
+    for symbol in ("get_monitors", "get_monitors_unchecked", "get_monitors_reply",
+                   "get_monitors_monitors_iterator", "monitor_info_next"):
+        command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
+    for symbol in ("xcb_get_setup", "xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply",
+                   "xcb_shm_get_image", "xcb_shm_get_image_reply", "xcb_shm_attach_checked",
+                   "xcb_shm_detach_checked", "xcb_request_check",
+                   "xcb_shm_query_version", "xcb_shm_query_version_reply"):
+        command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
+    subprocess.run(command, env=environment, check=True, timeout=30)
+    print(f"X11_DISPLAY_NATIVE_BUILD variant={variant} sha256="
+          f"{hashlib.sha256(binary.read_bytes()).hexdigest()} "
+          f"server_sha256={hashlib.sha256((work / 'x11/server.rs').read_bytes()).hexdigest()}", flush=True)
+    return binary
+
+
+def capture_mapping(binary, environment):
+    mapping = subprocess.run([str(binary), "capture-mapping"], env=environment,
+                             capture_output=True, text=True, timeout=15)
+    receipt = ("X11_SHM_MAPPING_NATIVE=pass callers=direct,public repeats=8 readonly_cases=16 "
+               "writable_calibrations=2 offsets=first,last readonly_copy=EFAULT "
+               "control_copy=accepted alias=same-segment pixels=red,blue mapping=retained "
+               "descriptors=retired segments=retired")
+    require(mapping.returncode == 0 and not mapping.stderr and len(mapping.stdout) <= 4096
+            and mapping.stdout.splitlines() == [receipt,
+                "X11_DISPLAY_COMPONENT=pass scenario=capture-mapping replies=exact errors=explicit cleanup=joined"],
+            f"native capture-mapping protection differs: {mapping}")
+    print(receipt, flush=True)
+
+
+def capture_mapping_main():
+    require(os.getuid() == 4000 and os.getgid() == 4000 and Path("/.dockerenv").is_file(),
+            "capture-mapping shard requires the isolated nonroot container")
+    root = Path("/work")
+    environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C",
+                   "HOME": "/tmp", "DISPLAY": ":98", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
+                   "RUSTUP_HOME": "/usr/local/rustup", "CARGO_HOME": "/usr/local/cargo",
+                   "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}
+    version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
+                             check=True, capture_output=True, text=True, timeout=5)
+    require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
+    binary = build_display_fixture(root, environment, "corrected")
+    require(not Path("/tmp/.X11-unix/X98").exists(), "capture-mapping display already exists")
+    with open("/tmp/capture-mapping-xvfb.log", "xb") as log:
+        server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "640x480x24",
+                                   "-nolisten", "tcp", "-ac", "-noreset"],
+                                  env=environment, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 5
+            while not Path("/tmp/.X11-unix/X98").is_socket():
+                require(server.poll() is None and time.monotonic() < deadline, "mapping Xvfb not ready")
+                time.sleep(0.01)
+            capture_mapping(binary, environment)
+        finally:
+            if server.poll() is None:
+                server.terminate()
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait(timeout=5)
+        require(server.returncode == 0 and not Path("/tmp/.X11-unix/X98").exists()
+                and not Path("/tmp/.X98-lock").exists(), "mapping server/socket/lock retirement differs")
+    binary.unlink()
+    for name in ("tcp", "tcp6"):
+        require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
+                "capture-mapping shard retained TCP")
+    for name in ("udp", "udp6"):
+        require(len(Path("/proc/net", name).read_text().splitlines()) == 1, "capture-mapping shard retained UDP")
+    print("X11_CAPTURE_MAPPING_SHARD=pass source=production-capture-and-public-wrapper "
+          "kernel=actual server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false", flush=True)
+
+
 def key_input_main():
     require(os.getuid() == 4000 and os.getgid() == 4000 and Path("/.dockerenv").is_file(),
             "key-input shard requires the isolated nonroot container")
@@ -1766,42 +1861,8 @@ def main():
             thread_contexts(root, environment, checksum, logging, providers["corrected"])
             enigo_route(root, environment, checksum, logging, providers, before_source)
             window_focus(root, environment)
-            binaries = {}
-            for variant in ("historical", "corrected"):
-                work = Path("/build") / variant
-                (work / "x11").mkdir(mode=0o700, parents=True)
-                (work / "common").mkdir(mode=0o700)
-                shutil.copyfile(root / "scripts/test-x11-display.rs", work / "test.rs")
-                for name in ("display", "ffi", "iter", "server", "capturer"):
-                    if name == "capturer" and variant == "historical":
-                        continue
-                    if name == "iter" and variant == "historical":
-                        source = baseline
-                    elif name == "server" and variant == "historical":
-                        source = old_server
-                    else:
-                        source = root / f"libs/scrap/src/x11/{name}.rs"
-                    shutil.copyfile(source, work / f"x11/{name}.rs")
-                shutil.copyfile(root / "libs/scrap/src/common/x11.rs", work / "common/x11.rs")
-                shutil.copyfile(comparator, work / "common/frame_compare.rs")
-                binary = work / "native"
-                command = ["/usr/local/cargo/bin/rustc", "--edition=2018", "-C", "debuginfo=1",
-                           "-o", str(binary), str(work / "test.rs")]
-                if variant == "corrected":
-                    command += ["--cfg", "corrected"]
-                for symbol in ("get_monitors", "get_monitors_unchecked", "get_monitors_reply",
-                               "get_monitors_monitors_iterator", "monitor_info_next"):
-                    command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
-                for symbol in ("xcb_get_setup", "xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply",
-                               "xcb_shm_get_image", "xcb_shm_get_image_reply", "xcb_shm_attach_checked",
-                               "xcb_shm_detach_checked", "xcb_request_check",
-                               "xcb_shm_query_version", "xcb_shm_query_version_reply"):
-                    command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
-                subprocess.run(command, env=environment, check=True, timeout=30)
-                binaries[variant] = binary
-                print(f"X11_DISPLAY_NATIVE_BUILD variant={variant} sha256="
-                      f"{hashlib.sha256(binary.read_bytes()).hexdigest()} "
-                      f"server_sha256={hashlib.sha256((work / 'x11/server.rs').read_bytes()).hexdigest()}", flush=True)
+            binaries = {variant: build_display_fixture(root, environment, variant, baseline, old_server)
+                        for variant in ("historical", "corrected")}
             require(not Path("/tmp/.X11-unix/X96").exists(), "capture route's Unix display is present")
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as route_listener:
                 route_listener.bind(("127.0.0.1", 6096))
@@ -1878,17 +1939,7 @@ def main():
                            check=True, timeout=15)
             subprocess.run([str(binaries["corrected"]), "capture-24"], env=environment,
                            check=True, timeout=15)
-            mapping = subprocess.run([str(binaries["corrected"]), "capture-mapping"], env=environment,
-                                     capture_output=True, text=True, timeout=15)
-            mapping_receipt = ("X11_SHM_MAPPING_NATIVE=pass callers=direct,public repeats=8 readonly_cases=16 "
-                               "writable_calibrations=2 offsets=first,last readonly_copy=EFAULT "
-                               "control_copy=accepted alias=same-segment pixels=red,blue mapping=retained "
-                               "descriptors=retired segments=retired")
-            require(mapping.returncode == 0 and not mapping.stderr and len(mapping.stdout) <= 4096
-                    and mapping.stdout.splitlines() == [mapping_receipt,
-                        "X11_DISPLAY_COMPONENT=pass scenario=capture-mapping replies=exact errors=explicit cleanup=joined"],
-                    f"native capture-mapping protection differs: {mapping}")
-            print(mapping_receipt, flush=True)
+            capture_mapping(binaries["corrected"], environment)
             rejection = subprocess.run([str(binaries["corrected"]), "capture-reject"], env=environment,
                                        capture_output=True, text=True, timeout=15)
             rejection_receipt = ("X11_CAPTURE_REJECTION_NATIVE=pass server_error=BadDrawable repeats=16 "
@@ -2003,9 +2054,12 @@ def main():
 
 
 if __name__ == "__main__":
-    require(sys.argv in ([sys.argv[0]], [sys.argv[0], "--key-input"], [sys.argv[0], "--focus"]),
+    require(sys.argv in ([sys.argv[0]], [sys.argv[0], "--key-input"], [sys.argv[0], "--focus"],
+                        [sys.argv[0], "--capture-mapping"]),
             "unknown native shard")
-    if sys.argv[1:] == ["--focus"]:
+    if sys.argv[1:] == ["--capture-mapping"]:
+        capture_mapping_main()
+    elif sys.argv[1:] == ["--focus"]:
         focus_main()
     elif len(sys.argv) == 2:
         key_input_main()

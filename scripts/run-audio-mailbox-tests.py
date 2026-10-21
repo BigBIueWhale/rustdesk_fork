@@ -89,7 +89,7 @@ def main():
             f'path = "{repo}/scripts/test-audio-mailbox.rs"\n')
         # The root lock pins the vendored CPAL Git revision before offline resolution.
         (fixture / "Cargo.lock").write_bytes(inputs["Cargo.lock"])
-        run(["cargo", "metadata", "--offline", "--no-deps", "--format-version=1", *config],
+        run(["cargo", "metadata", "--offline", "--format-version=1", *config],
             fixture, timeout=30)
         lock_bytes = (fixture / "Cargo.lock").read_bytes()
         dependencies = []
@@ -98,7 +98,7 @@ def main():
                 continue
             expected = records.get((item["name"], item["version"]))
             if expected is None or any(item.get(k) != expected.get(k) for k in ("source", "checksum")):
-                raise ValueError("mailbox fixture dependency differs from the root lock")
+                raise ValueError(f"mailbox fixture dependency differs from the root lock: {item['name']} {item['version']}")
             dependencies.append({k: item[k] for k in ("name", "version", "source", "checksum") if k in item})
         print(f"AUDIO_MAILBOX_DEPENDENCIES=pass lock_sha256={digest(lock_bytes)} "
               f"records_sha256={digest(json.dumps(dependencies, sort_keys=True).encode())}", flush=True)
@@ -112,7 +112,7 @@ def main():
             raise ValueError("mailbox test executable is absent or ambiguous")
         artifact = artifacts[0]
         artifact_sha = digest(artifact.read_bytes())
-        run([str(artifact), "--test-threads=1", "--color", "never", "--nocapture"], fixture, timeout=30)
+        run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, timeout=30)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("mailbox test artifact or dependencies changed")
         for name, data in inputs.items():

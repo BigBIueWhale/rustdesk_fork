@@ -913,6 +913,7 @@ PY
 run_ledger_token_count() {
     local work work_id source_before status=0 operation root_status
     local storage_helper=$VERIFY_REPO/scripts/vm-transient-storage.py
+    local storage_shell=$VERIFY_REPO/scripts/vm-transient-storage.sh
     local watch_test=$VERIFY_REPO/scripts/test-vm-storage-watch.py
     local watch_sources_before watch_status=0 watch_output=$ROOT/storage-watch.out
     local helper=$VERIFY_REPO/scripts/count-ledger-tokens.py
@@ -926,10 +927,16 @@ run_ledger_token_count() {
         count_hashes+=("$LEDGER_REQUIREMENTS_SHA256")
         count_outputs+=("$ROOT/requirements-token-count.out")
     fi
+    watch_sources_before="$(sha256sum "$storage_helper" "$storage_shell" "$watch_test" \
+        "$VERIFY_REPO/scripts/smoke-verifier-vm-authority.sh" "$VERIFY_REPO/scripts/online-fetch-vm.sh")"
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
-        /usr/bin/python3 -B -I -S - "$storage_helper" <<'PY'
+        /usr/bin/python3 -B -I -S - "$storage_helper" "$storage_shell" <<'PY'
+import json
+from pathlib import Path
+import re
 import runpy
+import subprocess
 import sys
 
 module = runpy.run_path(sys.argv[1])
@@ -986,6 +993,49 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
 print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=21 refusals=36 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+shell = Path(sys.argv[2])
+modes = set()
+for caller in ('smoke-verifier-vm-authority.sh', 'online-fetch-vm.sh'):
+    modes.update(re.findall(r'\bMODE=([a-z][a-z0-9-]*)', shell.with_name(caller).read_text()))
+if len(modes) != 35:
+    raise SystemExit('VM workload control inventory differs')
+special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
+                                  'linux-service-uid-tests', 'hbb-common-fs')}
+special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke'})
+cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]
+cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'standard'),
+              ('hbb-common-fs', {'HBB_FUSE_READ_TESTS': '1'}, 'standard')])
+cases.extend((mode, {}, None) for mode in (None, 'windows-build', 'media-verifier', 'authority_smoke'))
+controls = refusals = 0
+for mode, overrides, expected in cases:
+    env = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'SCRIPT_DIR': str(shell.parent),
+           'HBB_LOGIND_NATIVE': '0', 'HBB_FUSE_READ_TESTS': '0'}
+    if mode is not None:
+        env['MODE'] = mode
+    env.update(overrides)
+    result = subprocess.run(['/bin/bash', '-euo', 'pipefail', '-c', '''
+fail() { printf '%s\\n' "$*" >&2; exit 1; }
+source "$SCRIPT_DIR/vm-transient-storage.sh"
+printf '%s\\n' "$VM_STORAGE_PROFILE"
+'''], env=env, capture_output=True, text=True, timeout=5, check=False)
+    if len(result.stdout) + len(result.stderr) > 4096:
+        raise SystemExit('VM workload selection diagnostics exceed their bound')
+    if expected is None:
+        passed = (result.returncode == 1 and not result.stdout and
+                  result.stderr == 'VM workload has no admitted RAM storage profile\n')
+        refusals += passed
+    else:
+        passed = (result.returncode == 0 and result.stdout == expected + '\n' and not result.stderr)
+        controls += passed
+    print('VM_TRANSIENT_WORKLOAD_CASE=' + json.dumps({
+        'mode': mode, 'overrides': overrides, 'expected': expected,
+        'status': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr,
+        'pass': passed}, sort_keys=True), flush=True)
+print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
+    'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
+if (controls, refusals) != (37, 4):
+    raise SystemExit('VM workload resource admission cases failed')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=35 controls=37 refusals=4 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -1011,7 +1061,6 @@ os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
         && grep -Fxq 'ValueError: QEMU supervisor requires waitable children' "$ROOT/storage-no-wait.err" \
         || fail 'VM storage supervisor did not refuse inherited child auto-reaping'
     printf 'VM_TRANSIENT_WAIT_REFUSAL=pass principal=4000 sigchld=ignored qemu=not-started\n'
-    watch_sources_before="$(sha256sum "$storage_helper" "$watch_test")"
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
         /usr/bin/timeout --signal=TERM --kill-after=2s 30s \
@@ -1022,7 +1071,8 @@ os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
         || fail 'VM storage watch diagnostics exceed their bound'
     cat "$watch_output"
     [ "$watch_status" -eq 0 ] || fail 'VM storage watch behavioral cases failed'
-    [ "$(sha256sum "$storage_helper" "$watch_test")" = "$watch_sources_before" ] \
+    [ "$(sha256sum "$storage_helper" "$storage_shell" "$watch_test" \
+        "$VERIFY_REPO/scripts/smoke-verifier-vm-authority.sh" "$VERIFY_REPO/scripts/online-fetch-vm.sh")" = "$watch_sources_before" ] \
         || fail 'VM storage watch sources changed'
     source_before="$(sha256sum "$helper" "$storage_helper" "$watch_test" "${count_inputs[@]}" "$archive" "$VERIFY_REPO/scripts/pins.env")"
     [ "$(sha256sum "$helper" | awk '{print $1}')" = "$LEDGER_RECIPE_SHA256" ] \

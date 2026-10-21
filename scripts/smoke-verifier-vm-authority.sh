@@ -4511,6 +4511,7 @@ vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFI
     "repo/scripts/verify-scan.sh=$VERIFY_SCAN_SOURCE" \
     "repo/scripts/verify-private-tree-closure.py=$CLEANUP_HELPER" \
     "repo/scripts/vm-transient-storage.py=$VM_STORAGE_SOURCE" \
+    "repo/scripts/vm-transient-storage.sh=$SCRIPT_DIR/vm-transient-storage.sh" \
     "repo/scripts/vm-host-network.py=$VM_HOST_NETWORK_SOURCE" \
     "repo/scripts/smoke-verifier-vm-authority.sh=$OUTER_SOURCE" \
     "repo/scripts/test-verifier-vm-run-admission.sh=$RUN_ADMISSION_TEST" \
@@ -5221,6 +5222,8 @@ elif [ "$MODE" = dependency-inventory ]; then
 elif [ "$MODE" = ledger-token-count ]; then
     require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=21 refusals=36 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
         'VM storage profile limits and guest binding'
+    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=35 controls=37 refusals=4 allocation=not-entered' \
+        'VM workload class selection and unconfigured workload refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_WAIT_REFUSAL=pass principal=4000 sigchld=ignored qemu=not-started' \

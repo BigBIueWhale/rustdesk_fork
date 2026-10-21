@@ -155,8 +155,36 @@ for entry in smoke-verifier-vm-authority online-fetch-vm; do
         END { if (found != 5 || copy) exit 1 }
     ' "$SCRIPT_DIR/$entry.sh" >"$workspace/$entry.process.sh"
 done
+/usr/bin/python3 -I -S - "$SCRIPT_DIR" "$workspace" <<'PY'
+import hashlib
+from pathlib import Path
+import re
+import sys
+
+guest = (Path(sys.argv[1]) / 'smoke-verifier-vm-authority-guest.sh').read_text()
+helpers = re.findall(r'^process_start_time\(\) \{\n.*?^\}\n', guest, re.MULTILINE | re.DOTALL)
+assert len(helpers) <= 1
+start = guest.index('daemon_start="$(')
+end = guest.index("\nprintf 'pid=%s start=%s daemon_sha256=%s client_sha256=%s", start)
+publication = guest[start:end]
+assert 0 < len(publication) <= 1024 and guest.count('daemon_start="$(') == 1
+helper = ''.join(helpers)
+wrapper = (
+    helper + '\ndaemon_published_start() {\n'
+    '    local DAEMON_PID=$1 daemon_start\n'
+    '    [[ "$DAEMON_PID" =~ ^[1-9][0-9]*$ ]] || return 1\n'
+    + publication + '\n'
+    '    printf \'%s\\n\' "$daemon_start"\n}\n'
+)
+(Path(sys.argv[2]) / 'guest-daemon-publisher.process.sh').write_text(wrapper)
+print('VERIFIER_VM_DAEMON_PUBLISH_SOURCE=observed '
+      f'helper_sha256={hashlib.sha256(helper.encode()).hexdigest()} '
+      f'assignment_sha256={hashlib.sha256(publication.encode()).hexdigest()} '
+      f'assignment_bytes={len(publication.encode())}', file=sys.stderr, flush=True)
+PY
 /usr/bin/python3 -I -S - "$workspace" <<'PY'
 import ctypes
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -182,10 +210,16 @@ def inspect(action, value, start='', role=executable):
     return subprocess.run([
         '/bin/bash', '--noprofile', '--norc', '-c', '''
 set -euo pipefail
+fail() { printf "%s\n" "$*" >&2; exit 1; }
 source "$1"
 VIRTIOFSD_BINARY=$5
 case "$2" in
-    start) process_start_time "$3" ;;
+    start)
+        if declare -F daemon_published_start >/dev/null; then
+            daemon_published_start "$3"
+        else
+            process_start_time "$3"
+        fi ;;
     live) is_live_process_generation "$3" "$4" ;;
     role)
         if declare -F is_exact_virtiofsd_process >/dev/null; then
@@ -211,11 +245,12 @@ def legacy(field, value):
 
 try:
     for entry in ('verify-vm-entry-preflight', 'smoke-verifier-vm-authority',
-                  'online-fetch-vm', 'smoke-android-emulator-boot'):
+                  'online-fetch-vm', 'smoke-android-emulator-boot', 'guest-daemon-publisher'):
         has_generation_checks = entry in ('smoke-verifier-vm-authority', 'online-fetch-vm')
         source = str(Path(sys.argv[1]) / (entry + '.process.sh'
                      if entry != 'verify-vm-entry-preflight' else 'process-start.sh'))
         generation_actions = ('live', 'role', 'owned') if has_generation_checks else ()
+        publication_checks = []
         rename(b'rd-kernel-proof')
         baseline = legacy('22', pid)
         assert baseline.strip().isdigit() and int(baseline) > 0
@@ -223,7 +258,11 @@ try:
             rename(name)
             current = inspect('start', pid)
             old = legacy('22', pid)
-            assert current.returncode == 0 and current.stdout == baseline, (entry, label, current)
+            current_matches = current.returncode == 0 and current.stdout == baseline
+            if entry == 'guest-daemon-publisher':
+                publication_checks.append(current_matches)
+            else:
+                assert current_matches, (entry, label, current)
             assert (old == baseline) == (label == 'normal'), (entry, label, old)
             for action in generation_actions:
                 accepted = inspect(action, pid, baseline.decode().strip())
@@ -248,7 +287,11 @@ try:
                 assert fields[0] == b'Z' and fields[19].isdigit(), fields
                 zombie_start = fields[19].decode()
                 parsed = inspect('start', str(child))
-                assert parsed.returncode == 0 and parsed.stdout == fields[19] + b'\n', parsed
+                child_matches = parsed.returncode == 0 and parsed.stdout == fields[19] + b'\n'
+                if entry == 'guest-daemon-publisher':
+                    publication_checks.append(child_matches)
+                else:
+                    assert child_matches, parsed
                 for action in generation_actions:
                     refused = inspect(action, str(child), zombie_start)
                     assert refused.returncode != 0 and not refused.stdout, (entry, label, action, refused)
@@ -258,13 +301,29 @@ try:
                 joined_pid, joined_status = os.waitpid(child, 0)
                 assert joined_pid == child and joined_status == 0, (joined_pid, joined_status)
             print(f'VERIFIER_VM_PROCESS_STAT_NATIVE entry={entry} case={label} '
-                  f'start=same zombie_start=same generation_checks={has_generation_checks} child=joined',
+                  f'start={"same" if current_matches else "mismatch"} '
+                  f'zombie_start={"same" if child_matches else "mismatch"} '
+                  f'generation_checks={has_generation_checks} child=joined',
                   file=sys.stderr, flush=True)
+            if entry == 'guest-daemon-publisher':
+                print('VERIFIER_VM_DAEMON_STAT=' + json.dumps({
+                    'case': label, 'parent_matches': current_matches,
+                    'child_matches': child_matches, 'expected': baseline.decode().strip(),
+                    'actual': current.stdout.decode().strip(),
+                    'child_expected': fields[19].decode(),
+                    'child_actual': parsed.stdout.decode().strip(), 'child_joined': True,
+                }, sort_keys=True), file=sys.stderr, flush=True)
         missing_pid = str(int(Path('/proc/sys/kernel/pid_max').read_text()) + 1)
         for invalid in ('0', 'self', '../self', '-1', pid + 'x', missing_pid):
             for action in ('start',) + generation_actions:
                 refused = inspect(action, invalid, baseline.decode().strip())
                 assert refused.returncode != 0 and not refused.stdout, (entry, invalid, action, refused)
+        if entry == 'guest-daemon-publisher':
+            assert len(publication_checks) == 10
+            mismatches = sum(not match for match in publication_checks)
+            print(f'VERIFIER_VM_DAEMON_STAT_SUMMARY=observed cases=10 mismatches={mismatches} children=5 joined=5',
+                  file=sys.stderr, flush=True)
+            assert mismatches == 0, 'daemon publication must retain the kernel start time for every task name'
         print(f'VERIFIER_VM_PROCESS_STAT_NATIVE=pass entry={entry} '
               'comm_cases=5 zombie_cases=5 legacy_start_mismatches=4 legacy_zombie_mismatches=4 '
               f'generation_checks={has_generation_checks} pid=refused missing=refused uid=nonroot cleanup=joined',

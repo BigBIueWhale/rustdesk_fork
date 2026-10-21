@@ -1905,7 +1905,7 @@ pub mod clipboard_listener {
             check_startup_deadline(deadline)?;
             let file = OpenOptions::new().read(true)
                 .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY | libc::O_CLOEXEC)
-                .open(format!("/proc/self/fd/{}", pinned.as_raw_fd()))?;
+                .open(format!("/proc/thread-self/fd/{}", pinned.as_raw_fd()))?;
             check_startup_deadline(deadline)?;
             let actual = file.metadata()?;
             if !actual.is_file() || actual.dev() != metadata.dev() || actual.ino() != metadata.ino() {

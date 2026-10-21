@@ -354,6 +354,8 @@ impl VideoQoS {
             // A limited shared stream cannot probe an increase in this user's rate.
             if sending_fps < previous_fps {
                 fps = fps.min(previous_fps);
+                user.delay.quick_increase_fps_count = 0;
+                user.delay.increase_fps_count = 0;
             }
             // first network delay message
             adjust_ratio = user.delay.fps.is_none();

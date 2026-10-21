@@ -195,7 +195,7 @@ impl VideoQoS {
     // Initialize new user session
     pub fn on_connection_open(&mut self, id: i32) {
         self.users.insert(id, UserData::default());
-        self.qualities.retain(|(owner, _)| *owner != id);
+        self.retire_quality(id);
         self.abr_config = Config::get_option("enable-abr") != "N";
         self.new_user_instant = Instant::now();
     }
@@ -203,11 +203,20 @@ impl VideoQoS {
     // Clean up user session
     pub fn on_connection_close(&mut self, id: i32) {
         self.users.remove(&id);
-        self.qualities.retain(|(owner, _)| *owner != id);
+        self.retire_quality(id);
         if self.users.is_empty() {
             *self = Default::default();
         } else {
             self.adjust_fps();
+        }
+    }
+
+    fn retire_quality(&mut self, id: i32) {
+        let previous = self.latest_quality();
+        self.qualities.retain(|(owner, _)| *owner != id);
+        let current = self.latest_quality();
+        if current != previous {
+            self.ratio = current.ratio();
         }
     }
 

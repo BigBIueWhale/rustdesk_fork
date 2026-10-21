@@ -6516,7 +6516,7 @@ exists only to make the current source disposition discoverable.
 - R-S11e-1 — Linux pkcheck image, requester, and lifetime authority
 - R-S11e-2 — macOS privileged-service endpoint identity
 - R-S11e-3 — Linux privileged-helper executable provenance; complete ancestry source correction,
-  Linux selector components accepted, installed/native integration OPEN.
+  Linux selector and writable-namespace components accepted, installed integration OPEN.
   Shared login/session helpers, systemctl/xrandr, pkcheck and Unix terminal-shell selection
   now delegate to `hbb_common::platform::trusted_executable`. The single resolver checks
   root ownership and non-group/world-writable directory modes throughout the walk,
@@ -6532,13 +6532,29 @@ exists only to make the current source disposition discoverable.
   invalid-input refusals and four user-ancestor refusals. Exact extracted production
   selectors and the actual shared module compile with Rust 1.75; full parent/application
   builds are not established. Both artifacts remain unchanged before/after execution.
-  Source before/after snapshots match; baseline also has a confirmed live observation.
-  The candidate's first manual observation followed terminal, so no live observation is
-  claimed. All eight endpoint snapshots have zero delta; both VMs/RAM workspaces retire.
-  Installed privileged receivers, canonical-path replacement races, hidden symlink-hop
-  fixtures, other Unix targets and their ACL semantics, full settings/functionality,
+  `40650593` extends the same isolated lane to ten tests: four UID-policy tests and six
+  filesystem-selector tests. A source-pinned historical selector admits twelve actual
+  UID1000 pathname replacements beneath user-owned, group-writable and world-writable
+  canonical ancestors, and four hidden symlink-target changes with observed exits 1/0.
+  All four current production selectors refuse these namespaces before use. Twenty
+  protected-helper executions preserve direct, relative, absolute, parent-component
+  target and forty-link behavior; thirty-two additional invalid-object/link cases refuse,
+  including forty-one links, cycles, non-executable/writable files, FIFO and directory.
+  Four actual protected-helper rename attempts receive kernel permission denial.
+  All 113 root-prepared fixture objects retain their exact pre/post identity, owner,
+  mode, link target or file hash; the fixture retires after the UID1000 capless container.
+  The native run passes ten tests in 35 outer seconds. Source snapshots before, during
+  and after match; four endpoint snapshots have zero delta and the VM/RAM workspace retires.
+  The lane now uses an explicit 2 GiB guest, 6 GiB RAM scratch and 4 GiB QEMU file ceiling,
+  with the existing 6 GiB memory reserve and 1 GiB overhead. Its observed scratch peak is
+  3,439,345,664 bytes. Earlier refusal at the generic memory admission and the pre-test
+  mount-comparison failure, correction and exact cleanup remain in the retained evidence.
+  These are extracted-selector executions as UID1000, with no privileged payload execution.
+  Installed privileged receivers, privileged-launch concurrency/integration, other Unix
+  targets and their ACL semantics, full settings/functionality,
   R-S0/R-F5, cold artifacts, independent reproduction and release acceptance remain OPEN.
-  Evidence: `.harness-state/verifier-vm/trusted-executable-56393ab8.json`.
+  Evidence: `.harness-state/verifier-vm/trusted-executable-56393ab8.json` and
+  `.harness-state/verifier-vm/trusted-executable-namespace-40650593.json`.
 - R-S11e-4 — macOS service proof ownership and bounded admission
 - R-S11e-5 — Linux service credential receiver and replica authority
 - R-S11e-6 — Linux service-password server endpoint authority

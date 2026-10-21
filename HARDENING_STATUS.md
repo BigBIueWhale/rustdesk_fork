@@ -12695,7 +12695,7 @@ checked at native I/O and blocked polls with at most a 50ms requested poll timeo
 The direct binding uses root-locked x11rb 0.13.1; file-copy retains its distinct 0.12 API.
 
 Cookie acquisition pins an `O_PATH` object, requires a regular file at most 1 MiB, opens
-that same object through `/proc/self/fd`, and verifies regular type/device/inode before
+that same object through `/proc/thread-self/fd`, and verifies regular type/device/inode before
 releasing the pin. Two short-lived handles own one object; the original path is never
 reopened and regular symlink targets remain supported. A cap-plus-one read sentinel and
 strict whole-file parser reject oversized consumption, incomplete fields and trailing garbage. Native
@@ -12754,6 +12754,21 @@ image and outer postconditions passed. The zero-NIC VM/nonroot capability-free n
 container had no host endpoint additions in before/during/after snapshots and no process
 inventory. Guest/container/VM cleanup joined and disk/media/run scratch retired.
 These are assistant-observed component samples, not independent reproduction.
+
+**Authority-reader worker lifetime (`a12b4de9`).** Reopening the retained object uses the
+calling thread's descriptor directory independently of the main thread's lifetime. At
+unchanged-product `4ca5cd2e`, the exact production reader passes regular/symlink reads and
+unreadable-file refusal with a live leader, but all three become `NotFound` after actual
+leader exit while the worker's retained-inode alias and ordinary file path remain usable.
+The identical native fixture passes all six after correction, preserving `PermissionDenied`
+for the unreadable file; eight measured rounds retain descriptors 5 to 5 in each mode.
+The same candidate also passes the existing six state/eight native listener cases against
+private Xvfb, including 17 valid cookie callbacks and 12 classified refusals. The new
+standalone probe executes file admission/reopen/parsing/deadline functions; it does not
+establish full clipboard startup after application leader exit. Outer status is 0 in 89s.
+`clipboard-authority-lifetime-a12b4de9.json` binds exact source/fixture/artifacts, A/B
+observations, endpoint inventories and joined bounded-RAM cleanup. Application reachability
+of this boundary, full-app/root/installed and other-kernel/platform acceptance remain OPEN.
 
 **Still OPEN:** Wayland fallback/lifetime limits; Windows/macOS native behavior; full
 parent/root-Cargo feature compilation/linking; exact current whole-app and installed

@@ -248,24 +248,6 @@ pub fn get_modified_time(path: &std::path::Path) -> SystemTime {
         .unwrap_or(UNIX_EPOCH)
 }
 
-pub fn get_created_time(path: &std::path::Path) -> SystemTime {
-    std::fs::metadata(path)
-        .map(|m| m.created().unwrap_or(UNIX_EPOCH))
-        .unwrap_or(UNIX_EPOCH)
-}
-
-pub fn get_exe_time() -> SystemTime {
-    std::env::current_exe().map_or(UNIX_EPOCH, |path| {
-        let m = get_modified_time(&path);
-        let c = get_created_time(&path);
-        if m > c {
-            m
-        } else {
-            c
-        }
-    })
-}
-
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn machine_uuid() -> ResultType<Vec<u8>> {
     static CACHED_MACHINE_UID: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
@@ -463,29 +445,6 @@ pub fn init_log(_is_async: bool, _name: &str) -> Option<flexi_logger::LoggerHand
         }
     });
     logger_holder
-}
-
-// R-SV3 / R-SV1 (§18 sovereignty): the version-check phone-home is DELETED, not neutered.
-// Upstream's `version_check_request` built a device-fingerprinted POST (os/arch/device_id)
-// to a HARDWIRED upstream version endpoint — a global-reaching egress the R-D6 api-server
-// pin never covered, fired ~1s after launch by the Dart `checkUpdate`. That caller + the
-// egress worker are already gone (R-X1) and `check_software_update` is neutered
-// (src/common.rs); removing the request builder, its hardwired URL, and the
-// VersionCheck{Request,Response} types makes the endpoint structurally absent from the binary
-// (R-SV1: "the binary cannot connect because the code is gone"), not merely uncalled.
-
-pub fn time_based_rand() -> u32 {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-
-    let mut x = nanos as u64;
-    x ^= x << 13;
-    x ^= x >> 7;
-    x ^= x << 17;
-
-    (x % 32768) as u32
 }
 
 #[cfg(test)]

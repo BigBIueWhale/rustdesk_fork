@@ -7346,7 +7346,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   are rejected setup evidence. Retained capsules: `android-key-generation-5354a130.json` and
   `android-key-generation-setup-5354a130.json` under `.harness-state/verifier-vm/`.
   The obsolete 168-line migration wording checker remains deleted; Rust policy/crypto regressions and
-  signing/JNI bootstrap checks remain. Legacy plaintext/PRS refusal, authorized rewrap and credential
+  signing/JNI bootstrap checks remain. The iOS `AppDelegate.swift` reader now returns absence only for
+  `errSecItemNotFound`; other read statuses and invalid returned data throw before random generation,
+  Keychain insertion or Rust injection. A successful insertion requires exact byte readback; duplicate
+  insertion instead adopts the validated 32-byte concurrent winner. Neither path updates or deletes an
+  existing item. This Swift correction has source/diff review only: the admitted Apple lane cross-checks
+  Rust and supplies no Swift compiler or native Keychain runner. Current iOS compilation and real Keychain
+  error/invalid-data refusal, concurrent creation, failed random/add/readback, ordinary creation and
+  durable reload remain required; no Linux model or wording check substitutes for them.
+  Legacy plaintext/PRS refusal, authorized rewrap and credential
   reload through the complete app, unavailable/invalidated providers, other API levels, physical hardware,
   current signed packages, iOS Keychain and broader R-S0/R-F5 acceptance remain OPEN.
 - **R-S11bi/R-S11e-75 — macOS launchd lifecycle is domain-qualified and postcondition-checked — SOURCE

@@ -8,6 +8,14 @@ import Security
   private let mobileAtRestKeyAccount = "storage-key-v1"
   private let mobileAtRestKeyLength = 32
 
+  private enum MobileAtRestStorageKeyError: Error {
+    case readFailed(OSStatus)
+    case invalidStoredKey
+    case generationFailed(OSStatus)
+    case storeFailed(OSStatus)
+    case roundTripFailed
+  }
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -30,8 +38,11 @@ import Security
   /// under this key. If this key is unavailable, encrypted reads stay fail-closed; new encryption
   /// never uses the config keypair as its primary key.
   private func installMobileAtRestStorageKey() {
-    guard let key = loadOrCreateMobileAtRestStorageKey() else {
-      NSLog("RustDesk: mobile at-rest storage key unavailable; encrypted config reads fail closed")
+    let key: Data
+    do {
+      key = try loadOrCreateMobileAtRestStorageKey()
+    } catch {
+      NSLog("RustDesk: mobile at-rest storage key unavailable (\(error)); encrypted config reads fail closed")
       return
     }
     let accepted = key.withUnsafeBytes { rawBuffer -> Bool in
@@ -54,16 +65,15 @@ import Security
     ]
   }
 
-  private func loadOrCreateMobileAtRestStorageKey() -> Data? {
-    if let existing = loadMobileAtRestStorageKey() {
+  private func loadOrCreateMobileAtRestStorageKey() throws -> Data {
+    if let existing = try loadMobileAtRestStorageKey() {
       return existing
     }
 
     var generated = [UInt8](repeating: 0, count: mobileAtRestKeyLength)
     let randomStatus = SecRandomCopyBytes(kSecRandomDefault, generated.count, &generated)
     guard randomStatus == errSecSuccess else {
-      NSLog("RustDesk: failed to generate iOS mobile at-rest storage key: \(randomStatus)")
-      return nil
+      throw MobileAtRestStorageKeyError.generationFailed(randomStatus)
     }
 
     var addQuery = mobileAtRestKeyQuery()
@@ -71,20 +81,17 @@ import Security
     addQuery[kSecValueData as String] = Data(generated)
     let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
     if addStatus != errSecSuccess && addStatus != errSecDuplicateItem {
-      NSLog("RustDesk: failed to store iOS mobile at-rest storage key: \(addStatus)")
-      return nil
+      throw MobileAtRestStorageKeyError.storeFailed(addStatus)
     }
 
-    guard let reread = loadMobileAtRestStorageKey(),
-          reread.count == mobileAtRestKeyLength,
-          reread == Data(generated) else {
-      NSLog("RustDesk: iOS mobile at-rest storage key round-trip self-test failed")
-      return nil
+    guard let reread = try loadMobileAtRestStorageKey(),
+          addStatus == errSecDuplicateItem || reread == Data(generated) else {
+      throw MobileAtRestStorageKeyError.roundTripFailed
     }
     return reread
   }
 
-  private func loadMobileAtRestStorageKey() -> Data? {
+  private func loadMobileAtRestStorageKey() throws -> Data? {
     var query = mobileAtRestKeyQuery()
     query[kSecReturnData as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -95,12 +102,10 @@ import Security
       return nil
     }
     guard status == errSecSuccess else {
-      NSLog("RustDesk: failed to read iOS mobile at-rest storage key: \(status)")
-      return nil
+      throw MobileAtRestStorageKeyError.readFailed(status)
     }
     guard let data = result as? Data, data.count == mobileAtRestKeyLength else {
-      NSLog("RustDesk: refusing invalid iOS mobile at-rest storage key")
-      return nil
+      throw MobileAtRestStorageKeyError.invalidStoredKey
     }
     return data
   }

@@ -8055,7 +8055,7 @@ PY
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
     [ "$container_status" -eq 0 ] \
-        || { tail -n 200 "$output" >&2; fail "Android emulator boot exited with status $container_status"; }
+        || { sed -n '1,80p' "$output" >&2; tail -n 200 "$output" >&2; fail "Android emulator boot exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 262144 ] \
         || fail 'Android emulator boot output exceeds its bound'
     if [ "$ANDROID_STORAGE_TESTS" -eq 1 ]; then

@@ -4596,14 +4596,24 @@ if [ -n "$STORAGE_KEY_PROBE" ]; then
     probe_runner=$probe_package/com.rustdesk.harness.storage.AndroidStorageKeyInstrumentation
     [ -z "$(timeout 10s "$ADB" -s "$SERIAL" shell pm list packages "$probe_package")" ] \
         || fail 'storage-key probe package already exists'
-    [ "$(timeout 30s "$ADB" -s "$SERIAL" install --no-streaming "$STORAGE_KEY_PROBE" | tr -d '\r')" = Success ] \
+    timeout 30s "$ADB" -s "$SERIAL" install --no-streaming "$STORAGE_KEY_PROBE" \
+        >"$WORK_ROOT/storage-key-install.out" \
         || fail 'storage-key probe installation failed'
+    [ "$(stat -c %s "$WORK_ROOT/storage-key-install.out")" -le 4096 ] \
+        && [ "$(tr -d '\r' <"$WORK_ROOT/storage-key-install.out" | grep -Fxc Success)" -eq 1 ] \
+        && [ "$(timeout 10s "$ADB" -s "$SERIAL" shell pm list packages "$probe_package" | tr -d '\r')" = "package:$probe_package" ] \
+        || fail 'storage-key probe installation result differs'
     timeout --signal=TERM --kill-after=2s 60s "$ADB" -s "$SERIAL" exec-out \
         am instrument -w -r -e phase cases "$probe_runner" >"$WORK_ROOT/storage-key-cases.out" \
         || fail 'storage-key cases command failed'
     [ "$(stat -c %s "$WORK_ROOT/storage-key-cases.out")" -le 16384 ] || fail 'storage-key case output exceeds bound'
     grep 'ANDROID_STORAGE_KEY_' "$WORK_ROOT/storage-key-cases.out"
-    if ! grep -qE '^INSTRUMENTATION_CODE: -1\r?$' "$WORK_ROOT/storage-key-cases.out"; then
+    if ! python3 -I -S - "$WORK_ROOT/storage-key-cases.out" <<'PY'
+import sys
+from pathlib import Path
+assert Path(sys.argv[1]).read_text().splitlines().count('INSTRUMENTATION_CODE: -1')==1
+PY
+    then
         timeout 20s "$ADB" -s "$SERIAL" uninstall "$probe_package" || fail 'failed-probe uninstall failed'
         fail 'storage-key preservation or valid-creation case failed'
     fi

@@ -12,6 +12,8 @@ elif [ "${MODE:-}:${REQUEST:-}" = transaction:--maintenance-stage-xrandr-runtime
     readonly VM_STORAGE_PROFILE=xrandr-acquisition
 elif [ "${MODE:-}" = cpace-recovery-tests ]; then
     readonly VM_STORAGE_PROFILE=cpace-recovery-tests
+elif [ "${MODE:-}" = linux-service-uid-tests ]; then
+    readonly VM_STORAGE_PROFILE=linux-service-uid-tests
 elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:installer-package ]; then
     readonly VM_STORAGE_PROFILE=installer-package
 elif [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \

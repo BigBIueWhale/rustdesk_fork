@@ -6703,8 +6703,8 @@ PY
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'
             grep -E '^test (config|password_security)::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
-            [ "$tests_passed" -eq 37 ] || fail 'writer retirement test total differs'
-            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME)=' "$output"
+            [ "$tests_passed" -eq 40 ] || fail 'writer retirement test total differs'
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME)=' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq 7 ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_WINDOW' "$output"

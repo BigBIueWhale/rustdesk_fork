@@ -655,11 +655,11 @@ mod tests {
         qos.user_image_quality(8, ImageQuality::Balanced.value());
         qos.user_image_quality(9, ImageQuality::Best.value());
         qos.user_image_quality(8, ImageQuality::Low.value());
-        let updated = qos.latest_quality() == Quality::Low;
+        let updated = qos.latest_quality() == Quality::Low && qos.ratio() == BR_SPEED;
         qos.on_connection_close(8);
-        let previous = qos.latest_quality() == Quality::Best;
+        let previous = qos.latest_quality() == Quality::Best && qos.ratio() == BR_BEST;
         qos.on_connection_close(9);
-        let oldest = qos.latest_quality() == Quality::Low;
+        let oldest = qos.latest_quality() == Quality::Low && qos.ratio() == BR_SPEED;
         qos.on_connection_close(7);
         let reset = qos.latest_quality() == Quality::Balanced && qos.ratio() == BR_BALANCED;
         println!("VIDEO_QOS_QUALITY_RETIRE=observed updated={updated} previous={previous} oldest={oldest} reset={reset}");
@@ -673,16 +673,45 @@ mod tests {
         qos.user_image_quality(999, ImageQuality::Low.value());
         let unknown_refused = qos.latest_quality() == Quality::Best && qos.ratio() == BR_BEST;
         qos.on_connection_open(8);
-        let unconfigured_preserved = qos.latest_quality() == Quality::Best;
+        let unconfigured_preserved = qos.latest_quality() == Quality::Best && qos.ratio() == BR_BEST;
         qos.on_connection_open(7);
-        let replacement_retired = qos.latest_quality() == Quality::Balanced;
+        let replacement_retired = qos.latest_quality() == Quality::Balanced && qos.ratio() == BR_BALANCED;
         qos.user_image_quality(8, 75 << 8);
         let custom_preserved = qos.latest_quality() == Quality::Custom(1.5);
         qos.on_connection_close(8);
-        let live_default = qos.latest_quality() == Quality::Balanced;
+        let live_default = qos.latest_quality() == Quality::Balanced && qos.ratio() == BR_BALANCED;
         println!("VIDEO_QOS_QUALITY_OWNER=observed unknown_refused={unknown_refused} unconfigured_preserved={unconfigured_preserved} replacement_retired={replacement_retired} custom_preserved={custom_preserved} live_default={live_default}");
         assert!(unknown_refused && unconfigured_preserved && replacement_retired
             && custom_preserved && live_default);
+    }
+
+    #[test]
+    fn quality_retirement_preserves_adaptation_when_target_unchanged() {
+        let mut cases = 0;
+        for quality in [ImageQuality::Best.value(), ImageQuality::Balanced.value(), ImageQuality::Low.value(), 75 << 8] {
+            for replacement in [false, true] {
+                for id in [7, 8, 999] {
+                    let mut qos = healthy_pair();
+                    qos.new_display("quality-continuity".into());
+                    qos.set_support_changing_quality("quality-continuity", true);
+                    qos.user_image_quality(7, quality);
+                    qos.user_image_quality(8, quality);
+                    let target = qos.latest_quality();
+                    qos.user_delay_response_elapsed(7, 4000);
+                    qos.adjust_ratio(true);
+                    let adapted = qos.ratio();
+                    assert!(adapted < target.ratio(), "actual congestion adjustment must run");
+                    if replacement { qos.on_connection_open(id); }
+                    else { qos.on_connection_close(id); }
+                    assert_eq!(qos.latest_quality(), target);
+                    assert_eq!(qos.ratio(), adapted,
+                        "unchanged quality must retain congestion adaptation: quality={quality} replacement={replacement} id={id}");
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 24);
+        println!("VIDEO_QOS_QUALITY_CONTINUITY=observed cases={cases} preserved=true");
     }
 
     #[test]

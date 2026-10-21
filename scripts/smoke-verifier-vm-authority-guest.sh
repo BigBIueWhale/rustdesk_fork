@@ -4538,6 +4538,7 @@ run_focused_rust_tests() {
                 server::video_qos::tests::quality_requests_in_one_clock_tick_follow_request_order
                 server::video_qos::tests::closing_quality_requester_restores_latest_live_choice
                 server::video_qos::tests::quality_requests_require_a_live_viewer_and_retire_on_replacement
+                server::video_qos::tests::quality_retirement_preserves_adaptation_when_target_unchanged
                 server::video_qos::tests::two_fresh_replies_retire_a_completed_delay_spike
                 server::video_qos::tests::delay_average_accepts_the_full_u32_measurement_domain
                 server::video_qos::tests::large_completed_delays_recover_in_the_same_controller
@@ -6238,9 +6239,9 @@ PY
         done
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
-        [ "$(grep -Ec '^VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=17 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=18 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIDEO_QOS_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test server::video_qos::tests::.* \.\.\. ok$' "$output")" -eq 17 ] \
+            && [ "$(grep -Ec '^test server::video_qos::tests::.* \.\.\. ok$' "$output")" -eq 18 ] \
             || fail 'video QoS artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution parent summary count differs'
@@ -6758,9 +6759,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
-            [ "$tests_passed" -eq 17 ] || fail 'video QoS total differs'
-            grep -E '^test server::video_qos::tests::.* \.\.\. ok$|^VIDEO_QOS_(BUILD=pass |ARTIFACT(_AFTER)?=|BASE_RTT=|RECOVERY=|CONGESTION=|DELAY_(WINDOW|RANGE|RECOVERY)=|QUALITY_(ORDER|RETIRE|OWNER)=)' "$output"
-            printf 'VIDEO_QOS_VM=pass commit=%s tree=%s tests=17 target=linux-x86_64 scope=complete-parent-library-and-probe-recovery rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 18 ] || fail 'video QoS total differs'
+            grep -E '^test server::video_qos::tests::.* \.\.\. ok$|^VIDEO_QOS_(BUILD=pass |ARTIFACT(_AFTER)?=|BASE_RTT=|RECOVERY=|CONGESTION=|DELAY_(WINDOW|RANGE|RECOVERY)=|QUALITY_(ORDER|RETIRE|OWNER|CONTINUITY)=)' "$output"
+            printf 'VIDEO_QOS_VM=pass commit=%s tree=%s tests=18 target=linux-x86_64 scope=complete-parent-library-and-probe-recovery rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then

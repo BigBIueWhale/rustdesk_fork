@@ -333,9 +333,10 @@ fn rename_private(parent: &File, stage: &CStr, target: &CStr) -> Result<()> {
     Ok(())
 }
 
-struct Lease {
+pub(super) struct Lease {
     file: File,
     name: CString,
+    maximum_len: u64,
 }
 
 impl Lease {
@@ -345,6 +346,30 @@ impl Lease {
         hash.update(DOMAIN);
         hash.update(target);
         let name = CString::new(format!("{prefix}config-dir-lease.{:x}", hash.finalize()))?;
+        Self::open_named(parent, name, create, MAX_JOURNAL as u64)
+    }
+
+    pub(super) fn local_preferences(parent: &File, target: &std::ffi::OsStr) -> Result<Self> {
+        let metadata = parent.metadata()?;
+        if !metadata.is_dir() || metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.mode() & 0o022 != 0
+        {
+            return Err(anyhow!("Local preferences directory metadata is unsafe"));
+        }
+        component(target.as_bytes())?;
+        let mut hash = Sha256::new();
+        hash.update(b"rustdesk-local-preferences-v1\0");
+        hash.update(target.as_bytes());
+        let name = CString::new(format!(".config-view-lease.{:x}", hash.finalize()))?;
+        let lease = Self::open_named(parent, name, true, 0)?
+            .ok_or_else(|| anyhow!("Local preferences lease disappeared"))?;
+        // This persistent inode survives config replacement and is never unlinked on release.
+        lease.file.sync_all()?;
+        parent.sync_all()?;
+        Ok(lease)
+    }
+
+    fn open_named(parent: &File, name: CString, create: bool, maximum_len: u64) -> Result<Option<Self>> {
         let flags = libc::O_RDWR | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_NOCTTY;
         let metadata_flags = libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW;
         let mut fresh = false;
@@ -363,7 +388,7 @@ impl Lease {
                 if fd < 0 { return Err(io::Error::last_os_error().into()); }
             } else { fresh = true; }
         }
-        let mut lease = Self { file: unsafe { File::from_raw_fd(fd) }, name };
+        let mut lease = Self { file: unsafe { File::from_raw_fd(fd) }, name, maximum_len };
         let metadata = lease.file.metadata()?;
         if !metadata.is_file() || metadata.uid() != unsafe { libc::geteuid() } || metadata.nlink() != 1 {
             return Err(anyhow!("Configuration directory lease is not an owned single-link file"));
@@ -375,7 +400,7 @@ impl Lease {
             lease.require_current(parent)?;
             let descriptors = descriptor_directory()?;
             let descriptor = CString::new(lease.file.as_raw_fd().to_string())?;
-            // Only the admitted retained inode may acquire read/write journal authority.
+            // Only the admitted retained inode may acquire read/write authority.
             let fd = unsafe { libc::openat(
                 descriptors.as_raw_fd(), descriptor.as_ptr(),
                 libc::O_RDWR | libc::O_CLOEXEC | libc::O_NONBLOCK | libc::O_NOCTTY,
@@ -388,7 +413,7 @@ impl Lease {
             lease.file = file;
         }
         lease.require_current(parent)?;
-        // Each traversal holds only one lease. Closing this file releases it on every outcome.
+        // Closing this file releases the lock on every outcome.
         let fd = lease.file.as_raw_fd();
         let started = std::time::Instant::now();
         let budget = std::time::Duration::from_secs(1);
@@ -399,7 +424,7 @@ impl Lease {
             let remaining = budget.saturating_sub(started.elapsed());
             if remaining.is_zero() {
                 return Err(io::Error::new(io::ErrorKind::TimedOut,
-                    "Configuration directory preparation is busy").into());
+                    "Configuration transaction is busy").into());
             }
             std::thread::sleep(remaining.min(std::time::Duration::from_millis(10)));
         }
@@ -407,12 +432,12 @@ impl Lease {
         Ok(Some(lease))
     }
 
-    fn require_current(&self, parent: &File) -> Result<()> {
+    pub(super) fn require_current(&self, parent: &File) -> Result<()> {
         let metadata = self.file.metadata()?;
         if !metadata.is_file() || metadata.uid() != unsafe { libc::geteuid() }
             || metadata.dev() != parent.metadata()?.dev()
             || metadata.nlink() != 1 || metadata.mode() & 0o7777 != 0o600
-            || metadata.len() > MAX_JOURNAL as u64
+            || metadata.len() > self.maximum_len
         {
             return Err(anyhow!("Configuration directory lease metadata is unsafe"));
         }

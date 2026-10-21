@@ -2216,6 +2216,10 @@ impl LinuxConfigReadSource {
 }
 
 fn read_config_record(path: &Path) -> io::Result<ConfigFileRead<'_>> {
+    read_config_record_at(path, None)
+}
+
+fn read_config_record_at<'a>(path: &'a Path, _parent: Option<&fs::File>) -> io::Result<ConfigFileRead<'a>> {
     #[cfg(windows)]
     let bytes = if windows_machine_config::contains(path) {
         windows_machine_config::read(path)
@@ -2259,9 +2263,12 @@ fn read_config_record(path: &Path) -> io::Result<ConfigFileRead<'_>> {
                 },
             };
 
-            let parent = open_existing_config_parent(path)
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?
-                .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+            let parent = match _parent {
+                Some(parent) => parent.try_clone()?,
+                None => open_existing_config_parent(path)
+                    .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?
+                    .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?,
+            };
             let name = path.file_name().ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -2342,7 +2349,13 @@ fn read_config_record(path: &Path) -> io::Result<ConfigFileRead<'_>> {
 fn read_config_file<T: serde::de::DeserializeOwned>(
     path: &Path,
 ) -> Result<Option<T>, ConfigReadFailure> {
-    match read_config_record(path) {
+    read_config_file_at(path, None)
+}
+
+fn read_config_file_at<T: serde::de::DeserializeOwned>(
+    path: &Path, parent: Option<&fs::File>,
+) -> Result<Option<T>, ConfigReadFailure> {
+    match read_config_record_at(path, parent) {
         Ok(record) => {
             let text = std::str::from_utf8(&record.bytes)
                 .map_err(|_| ConfigReadFailure::Corrupt)?;
@@ -2525,12 +2538,15 @@ fn store_config_bytes_transaction(path: &Path, data: &[u8], fault: ConfigStoreFa
         path,
         data,
         fault,
-        &|message| {
-            log::error!("Fatal config durability failure after replacement: {message}");
-            std::process::abort()
-        },
+        &fatal_config_durability,
         &|_, _, _| Ok(()),
     )
+}
+
+#[cfg(unix)]
+fn fatal_config_durability(message: &str) -> Result<()> {
+    log::error!("Fatal config durability failure after replacement: {message}");
+    std::process::abort()
 }
 
 #[cfg(unix)]
@@ -2540,6 +2556,18 @@ fn store_config_bytes_transaction_unix(
     fault: ConfigStoreFault,
     fatal_after_replace: &dyn Fn(&str) -> Result<()>,
     before_replace: &dyn Fn(&fs::File, &std::ffi::CStr, &fs::File) -> Result<()>,
+) -> Result<()> {
+    store_config_bytes_transaction_unix_at(path, data, fault, fatal_after_replace, before_replace, None)
+}
+
+#[cfg(unix)]
+fn store_config_bytes_transaction_unix_at(
+    path: &Path,
+    data: &[u8],
+    fault: ConfigStoreFault,
+    fatal_after_replace: &dyn Fn(&str) -> Result<()>,
+    before_replace: &dyn Fn(&fs::File, &std::ffi::CStr, &fs::File) -> Result<()>,
+    retained_parent: Option<&fs::File>,
 ) -> Result<()> {
     use std::{
         ffi::{CStr, CString, OsStr},
@@ -2781,7 +2809,10 @@ fn store_config_bytes_transaction_unix(
     }
 
     let final_name = component(checked_config_file_name(path)?, "config file")?;
-    let parent = open_parent(path)?;
+    let parent = match retained_parent {
+        Some(parent) => parent.try_clone()?,
+        None => open_parent(path)?,
+    };
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::fs::MetadataExt;
@@ -4540,13 +4571,34 @@ impl LocalConfig {
         }
     }
 
-    fn update(mutate: impl FnOnce(&mut Self)) -> crate::ResultType<()> {
+    fn update(mutate: impl Fn(&mut Self)) -> crate::ResultType<()> {
         let mut config = LOCAL_CONFIG.write().unwrap();
         let file = Config::file_("_local");
         let loaded: Self = read_config_view(&file)
             .map_err(|_| anyhow!("Failed to read local preferences"))?;
         let mut candidate = loaded.clone();
         mutate(&mut candidate);
+        #[cfg(target_os = "linux")]
+        let _transaction = if candidate != loaded {
+            let parent = linux_directory::open_parent(&file)?;
+            let lease = linux_directory::Lease::local_preferences(&parent, checked_config_file_name(&file)?)?;
+            // The preflight preserves read-only no-ops; only this locked reread owns a write.
+            let current: Self = read_config_file_at(&file, Some(&parent))
+                .map_err(|_| anyhow!("Failed to read local preferences"))?
+                .unwrap_or_default();
+            candidate = current.clone();
+            mutate(&mut candidate);
+            if candidate != current {
+                let serialized = toml::to_string_pretty(&candidate)?;
+                store_config_bytes_transaction_unix_at(
+                    &file, serialized.as_bytes(), ConfigStoreFault::None,
+                    &fatal_config_durability,
+                    &|_, _, _| lease.require_current(&parent), Some(&parent),
+                )?;
+            }
+            Some((parent, lease))
+        } else { None };
+        #[cfg(not(target_os = "linux"))]
         if candidate != loaded {
             store_path(file, &candidate)?;
         }
@@ -4559,7 +4611,7 @@ impl LocalConfig {
     }
 
     pub fn set_kb_layout_type(kb_layout_type: String) -> crate::ResultType<()> {
-        Self::update(|candidate| candidate.kb_layout_type = kb_layout_type)
+        Self::update(|candidate| candidate.kb_layout_type.clone_from(&kb_layout_type))
     }
 
     pub fn set_remote_id(remote_id: &str) -> crate::ResultType<()> {
@@ -4573,9 +4625,9 @@ impl LocalConfig {
     pub fn set_favorites(ids: Vec<String>, favorite: bool) -> crate::ResultType<()> {
         Self::update(|candidate| {
             if favorite {
-                for id in ids {
-                    if !candidate.fav.contains(&id) {
-                        candidate.fav.push(id);
+                for id in &ids {
+                    if !candidate.fav.contains(id) {
+                        candidate.fav.push(id.clone());
                     }
                 }
             } else {
@@ -4619,11 +4671,11 @@ impl LocalConfig {
                 candidate.options.remove(&k);
             } else if k == keys::OPTION_LANGUAGE && v == "default" {
                 // An explicit system language shadows a custom client's default language.
-                candidate.options.insert(k, String::new());
+                candidate.options.insert(k.clone(), String::new());
             } else if v.is_empty() {
                 candidate.options.remove(&k);
             } else {
-                candidate.options.insert(k, v);
+                candidate.options.insert(k.clone(), v.clone());
             }
         })
     }
@@ -4643,7 +4695,7 @@ impl LocalConfig {
             if v.is_empty() {
                 candidate.ui_flutter.remove(&k);
             } else {
-                candidate.ui_flutter.insert(k, v);
+                candidate.ui_flutter.insert(k.clone(), v.clone());
             }
         })
     }

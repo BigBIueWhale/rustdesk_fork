@@ -1680,8 +1680,29 @@ rendered settings, actual presentation, real packet impairment/recovery, input-v
 latency, multi-hour, other-platform or installed evidence. Those R-F5 and release
 acceptance obligations remain OPEN.
 
+**Video rate at viewer admission — Linux controller A/B accepted; presentation OPEN.**
+`ec11154e` derives the shared FPS immediately after publishing a new or replacement
+viewer's fresh state and startup time, through the existing rate calculation. The old
+path retained the previous shared rate until later feedback or a display update. The
+existing startup limit, remaining viewers' requested limits and pending-probe caps are
+preserved; no estimator, threshold, timer, task, queue, protocol or authority changes.
+
+At unchanged-product preparation `cc23f88f`, the new ten-scenario test reproduces four
+wrong rates: healthy admissions/replacements retain 30 rather than 15 FPS, and replacing
+a limited or pending viewer retains its old 5 or 2 FPS. Eighteen earlier tests pass.
+The byte-identical nineteen-test module passes after correction, including fresh owner
+state, all ten admission/replacement rates, retained other-viewer state, and the 24 prior
+quality-continuity controls. The focused candidate takes 136 outer seconds; both exact
+source-bound Linux artifacts remain unchanged through execution. All eight endpoint
+comparisons show no delta, both QEMU/RAM owners are joined, and the failed baseline's
+exact 35-node diagnostics tree is inventoried and retired. `video-rate-admission-ec11154e.json`
+binds source, artifacts, A/B observations and cleanup. Both existing driver tiers select
+the nineteen cases; the full parent is not rerun for this local controller correction.
+Actual encoder scheduling, presentation, impaired peers, input-visible latency, long
+sessions, native other-platform and installed R-S0/R-F5 acceptance remain OPEN.
+
 **Focused VideoQoS verification — Linux controller accepted; full integration retained.**
-`--video-qos-controller-tests` compiles the actual controller and its unchanged eighteen
+At `6915dfb9`, `--video-qos-controller-tests` compiled the actual controller and its eighteen
 tests through `video_qos_it`, using real hbb_common configuration/generated protocol
 types and the production Quality module. The 683-byte quality definitions move unchanged;
 their existing `scrap::codec` exports remain. The controller and its test module are
@@ -1689,7 +1710,7 @@ byte-identical. The root lock adds one local test package and changes no third-p
 The same guest-only compiler admits only the closed parent/controller target tuples and
 checks Cargo's completed manifest, source, target, profile and owned artifact identity.
 
-At `6915dfb9`, both source-bound lanes pass all eighteen cases, including the 24 unchanged
+Both source-bound lanes passed all eighteen cases, including the 24 unchanged
 quality-target lifecycle controls. The focused transaction takes 145 outer seconds with
 69 compilation seconds; retained `--video-qos-tests` takes 304 outer seconds on the same
 commit. Both use the unchanged bounded-RAM, zero-NIC, UID1000/capless/read-only-root profile

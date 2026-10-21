@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise production watch with native filesystem faults inside the verifier VM."""
+import ctypes
 import importlib.util
 import json
 import os
@@ -14,9 +15,19 @@ from types import SimpleNamespace
 
 
 def publish(path, value):
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'w') as output:
-        json.dump(value, output)
+    fd, temporary = tempfile.mkstemp(prefix=f'.{path.name}.', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            json.dump(value, output)
+        rename = ctypes.CDLL(None, use_errno=True).renameat2
+        rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+                           ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        if rename(-100, os.fsencode(temporary), -100, os.fsencode(path), 1) != 0:
+            error = ctypes.get_errno()
+            raise OSError(error, os.strerror(error), str(path))
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def worker(helper, base, scenario):
@@ -202,7 +213,8 @@ def run_supervisor_case(helper, scenario):
             if supervisor is not None and supervisor.poll() is None:
                 supervisor.terminate()
                 try:
-                    supervisor.communicate(timeout=3)
+                    # Production gives its child five seconds before KILL and join.
+                    supervisor.communicate(timeout=7)
                 except subprocess.TimeoutExpired:
                     supervisor.kill()
                     supervisor.communicate(timeout=3)

@@ -924,6 +924,35 @@ mod tests {
         }
         assert_eq!(qos.fps(), MAX_FPS,
             "new feedback at the unrestricted rate must still allow adaptation");
+        let mut streak_outcomes = Vec::new();
+        for pending in [false, true] {
+            for restricted_samples in [1, 2, 4, 5] {
+                let mut qos = healthy_pair();
+                qos.user_custom_fps(8, MAX_FPS);
+                if pending {
+                    qos.user_delay_response_elapsed(7, 4000);
+                } else {
+                    qos.user_custom_fps(7, 5);
+                }
+                for _ in 0..restricted_samples {
+                    qos.user_network_delay(8, 20);
+                }
+                let restricted_fps = qos.fps();
+                let quick = qos.users[&8].delay.quick_increase_fps_count;
+                let stable = qos.users[&8].delay.increase_fps_count;
+                qos.on_connection_close(7);
+                let mut fresh_rates = Vec::new();
+                for _ in 0..3 {
+                    qos.user_network_delay(8, 20);
+                    fresh_rates.push(qos.fps());
+                }
+                println!("VIDEO_QOS_CONGESTION=observed kind=restricted-streak pending={pending} restricted_samples={restricted_samples} restricted_fps={restricted_fps} quick={quick} stable={stable} fresh_rates={fresh_rates:?}");
+                streak_outcomes.push(restricted_fps == if pending { 2 } else { 5 }
+                    && quick == 0 && stable == 0 && fresh_rates == [FPS, FPS, FPS + 6]);
+            }
+        }
+        assert!(streak_outcomes.into_iter().all(|ok| ok),
+            "restricted feedback cannot seed either FPS increase streak after release");
         let mut outcomes = Vec::new();
         for (excess, expected_fps, expected_quick) in [(49, 36, 2), (50, 31, 1), (51, 31, 1)] {
             let mut qos = healthy_controller();

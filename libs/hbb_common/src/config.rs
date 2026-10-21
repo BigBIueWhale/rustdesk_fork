@@ -4545,6 +4545,43 @@ serde_field_bool!(
     "SyncInitClipboard::default_sync_init_clipboard"
 );
 
+fn update_preferences<T, R>(
+    file: PathBuf, cache: &mut T, read_error: &'static str, mutate: impl Fn(&mut T) -> R,
+) -> crate::ResultType<R>
+where
+    T: serde::de::DeserializeOwned + serde::Serialize + Default + Clone + PartialEq,
+{
+    let loaded: T = read_config_view(&file).map_err(|_| anyhow!(read_error))?;
+    let mut candidate = loaded.clone();
+    let result = mutate(&mut candidate);
+    #[cfg(target_os = "linux")]
+    let (result, _transaction) = if candidate != loaded {
+        let parent = linux_directory::open_parent(&file)?;
+        let lease = linux_directory::Lease::local_preferences(&parent, checked_config_file_name(&file)?)?;
+        // The preflight preserves read-only no-ops; only this locked reread owns a write.
+        let current: T = read_config_file_at(&file, Some(&parent))
+            .map_err(|_| anyhow!(read_error))?
+            .unwrap_or_default();
+        candidate = current.clone();
+        let result = mutate(&mut candidate);
+        if candidate != current {
+            let serialized = toml::to_string_pretty(&candidate)?;
+            store_config_bytes_transaction_unix_at(
+                &file, serialized.as_bytes(), ConfigStoreFault::None,
+                &fatal_config_durability,
+                &|_, _, _| lease.require_current(&parent), Some(&parent),
+            )?;
+        }
+        (result, Some((parent, lease)))
+    } else { (result, None) };
+    #[cfg(not(target_os = "linux"))]
+    if candidate != loaded {
+        store_path(file, &candidate)?;
+    }
+    *cache = candidate;
+    Ok(result)
+}
+
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct LocalConfig {
     #[serde(default)]
@@ -4573,37 +4610,7 @@ impl LocalConfig {
 
     fn update(mutate: impl Fn(&mut Self)) -> crate::ResultType<()> {
         let mut config = LOCAL_CONFIG.write().unwrap();
-        let file = Config::file_("_local");
-        let loaded: Self = read_config_view(&file)
-            .map_err(|_| anyhow!("Failed to read local preferences"))?;
-        let mut candidate = loaded.clone();
-        mutate(&mut candidate);
-        #[cfg(target_os = "linux")]
-        let _transaction = if candidate != loaded {
-            let parent = linux_directory::open_parent(&file)?;
-            let lease = linux_directory::Lease::local_preferences(&parent, checked_config_file_name(&file)?)?;
-            // The preflight preserves read-only no-ops; only this locked reread owns a write.
-            let current: Self = read_config_file_at(&file, Some(&parent))
-                .map_err(|_| anyhow!("Failed to read local preferences"))?
-                .unwrap_or_default();
-            candidate = current.clone();
-            mutate(&mut candidate);
-            if candidate != current {
-                let serialized = toml::to_string_pretty(&candidate)?;
-                store_config_bytes_transaction_unix_at(
-                    &file, serialized.as_bytes(), ConfigStoreFault::None,
-                    &fatal_config_durability,
-                    &|_, _, _| lease.require_current(&parent), Some(&parent),
-                )?;
-            }
-            Some((parent, lease))
-        } else { None };
-        #[cfg(not(target_os = "linux"))]
-        if candidate != loaded {
-            store_path(file, &candidate)?;
-        }
-        *config = candidate;
-        Ok(())
+        update_preferences(Config::file_("_local"), &mut *config, "Failed to read local preferences", mutate)
     }
 
     pub fn get_kb_layout_type() -> String {
@@ -4708,7 +4715,7 @@ impl LocalConfig {
 // no longer reads it. Nothing reads or writes `_lan_peers` anymore. (`deserialize_vec_discoverypeer`
 // went with the struct.)
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct UserDefaultConfig {
     #[serde(default)]
     options: HashMap<String, String>,
@@ -4769,17 +4776,10 @@ impl UserDefaultConfig {
         }
     }
 
-    fn update<R>(mutate: impl FnOnce(&mut Self) -> R) -> crate::ResultType<R> {
+    fn update<R>(mutate: impl Fn(&mut Self) -> R) -> crate::ResultType<R> {
         let mut cache = USER_DEFAULT_CONFIG.write().unwrap();
-        let file = Config::file_("_default");
-        let loaded = read_config_view::<Self>(&file)
-            .map_err(|_| anyhow!("Failed to read default settings"))?;
-        let mut candidate = loaded.clone();
-        let result = mutate(&mut candidate);
-        if candidate.options != loaded.options {
-            store_path(file, &candidate)?;
-        }
-        *cache = (candidate, Instant::now());
+        let result = update_preferences(Config::file_("_default"), &mut cache.0, "Failed to read default settings", mutate)?;
+        cache.1 = Instant::now();
         Ok(result)
     }
 
@@ -4793,7 +4793,7 @@ impl UserDefaultConfig {
             ) || value.is_empty() {
                 candidate.options.remove(&key);
             } else {
-                candidate.options.insert(key.clone(), value);
+                candidate.options.insert(key.clone(), value.clone());
             }
             candidate.get(&key)
         })

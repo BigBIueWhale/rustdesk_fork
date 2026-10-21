@@ -198,6 +198,7 @@ impl VideoQoS {
         self.retire_quality(id);
         self.abr_config = Config::get_option("enable-abr") != "N";
         self.new_user_instant = Instant::now();
+        self.adjust_fps();
     }
 
     // Clean up user session

@@ -2683,7 +2683,79 @@ fn peer_listing_returns_only_metadata_and_alias() {
         assert_eq!(peers.len(), 1);
         let info = serde_json::to_value(&peers[0].2).unwrap();
         assert_eq!(info, serde_json::json!({"info": {"username": "user", "hostname": "host", "platform": "Linux"}, "alias": "alias"}));
-        assert_eq!(fs::read(path).unwrap(), original);
+        assert_eq!(fs::read(&path).unwrap(), original);
+
+        use std::os::unix::{ffi::OsStringExt, fs::MetadataExt};
+        let parent = path.parent().unwrap();
+        let mut expected = vec![id.to_owned()];
+        for control in ["192.0.2.1", "192.0.2.1:21118", "example.test:21118",
+                        "[2001:db8::1]:21118", "תצוגה", "example.test.", "base64_"] {
+            peer.store(control).unwrap();
+            expected.push(control.into());
+        }
+        expected.sort();
+        let snapshot = || {
+            let mut files = fs::read_dir(parent).unwrap().map(|entry| {
+                let path = entry.unwrap().path();
+                let metadata = fs::symlink_metadata(&path).unwrap();
+                (path.clone(), fs::read(&path).unwrap(), metadata.dev(), metadata.ino(), metadata.mode(), metadata.nlink())
+            }).collect::<Vec<_>>();
+            files.sort_by(|a, b| a.0.cmp(&b.0));
+            files
+        };
+        let controls = snapshot();
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for (kind, name) in [
+            ("controls", None),
+            ("invalid-base64", Some(b"base64_!.toml".to_vec())),
+            ("invalid-decoded-utf8", Some(b"base64_gA==.toml".to_vec())),
+            ("encoded-plain-alias", Some(b"base64_MTkyLjAuMi4x.toml".to_vec())),
+            ("decoded-nul", Some(b"base64_AA==.toml".to_vec())),
+            ("unencoded-colon", Some(b"example.test:21119.toml".to_vec())),
+            ("invalid-native-utf8", Some(b"peer-\xff.toml".to_vec())),
+            ("invalid-native-utf8-leading", Some(b"\xfe.toml".to_vec())),
+        ] {
+            let invalid = name.map(|name| parent.join(std::ffi::OsString::from_vec(name)));
+            if let Some(path) = &invalid {
+                fs::write(path, &original).unwrap();
+            }
+            let before = snapshot();
+            let mut all_ids = Vec::new();
+            let mut filtered_ids = Vec::new();
+            let mut projected_ids = Vec::new();
+            let mut paths_match = true;
+            for _ in 0..2 {
+                let all = PeerConfig::get_vec_id_modified_time_path(&None);
+                paths_match &= all.iter().all(|(id, _, path)| PeerConfig::path(id) == *path);
+                all_ids = all.into_iter().map(|(id, _, _)| id).collect();
+                all_ids.sort();
+                filtered_ids = PeerConfig::get_vec_id_modified_time_path(&Some(expected.clone()))
+                    .into_iter().map(|(id, _, _)| id).collect();
+                filtered_ids.sort();
+                projected_ids = PeerConfig::peers(None).into_iter().map(|(id, _, _)| id).collect();
+                projected_ids.sort();
+                passed &= all_ids == expected && filtered_ids == expected && projected_ids == expected;
+            }
+            let preserved = snapshot() == before;
+            let case_passed = all_ids == expected && filtered_ids == expected
+                && projected_ids == expected && paths_match && preserved;
+            println!("OPTION_COMMIT_PEER_LIST_IDENTITY={}", serde_json::json!({
+                "kind": kind, "expected_ids": expected, "listed_ids": all_ids,
+                "filtered_ids": filtered_ids, "projected_ids": projected_ids,
+                "paths_match": paths_match, "sources_preserved": preserved, "passed": case_passed,
+            }));
+            passed &= case_passed;
+            if let Some(path) = invalid {
+                fs::remove_file(path).unwrap();
+            }
+            assert_eq!(snapshot(), controls);
+        }
+        let after_fds = fds();
+        println!("OPTION_COMMIT_PEER_LIST_IDENTITY_FDS=before:{before_fds} after:{after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(passed, "listed peer IDs must select their enumerated records without lossy decoding");
     });
 }
 

@@ -3359,6 +3359,18 @@ run_focused_rust_tests() {
                 libs/hbb_common/src/config/linux_directory.rs
             )
             required_tests=(
+                password_security::test::test_is_encrypted
+                password_security::test::test_encrypted_payload_min_len_macbytes
+                password_security::test::test_encryption_uses_random_nonce
+                password_security::test::test_decrypt_legacy_zero_nonce_payload
+                password_security::test::test_decrypt_legacy_payload_starting_with_v1_marker
+                password_security::test::test_invalid_short_v1_payload_returns_error
+                password_security::test::test_empty_at_rest_storage_key_is_rejected
+                password_security::test::test_mobile_legacy_keypair_fallback_requires_os_storage_key
+                password_security::test::test_decrypt_legacy_string_does_not_request_store
+                password_security::test::test_decrypt_legacy_vec_does_not_request_store
+                password_security::test::test_decrypt_with_pk_fallback
+                password_security::test::test_decrypt_v1_with_pk_fallback
                 config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal
                 config::tests::config_transaction_traverses_search_only_existing_ancestor
                 config::tests::config_transaction_creates_missing_parent_components_privately
@@ -5253,7 +5265,7 @@ run_focused_rust_tests() {
                             printf "FILE_METADATA_DESCRIPTOR_ARTIFACT=pass sha256=%s executable=%s modes=2 cases=6 unchanged=before-after\n" \
                                 "$lifetime_sha" "$lifetime_executable"
                         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
-                            for group in config::tests::config_transaction_ config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options config::tests::test_load_reads_legacy_plaintext_id_without_storing config::tests::test_load_path_ config::option_tests:: config::linux_directory::lease_tests::; do
+                            for group in config::tests::config_transaction_ config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options config::tests::test_load_reads_legacy_plaintext_id_without_storing config::tests::test_load_path_ config::option_tests:: config::linux_directory::lease_tests:: password_security::test::test_; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
@@ -5984,7 +5996,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=16; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=6; fi
-        if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=6; fi
+        if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=7; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
@@ -6642,7 +6654,7 @@ PY
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|rename_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^SOCKET_DESCRIPTOR_LIFETIME=|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=|^test socket_surface::tests::[a-z0-9_]+ [.][.][.] ok$|^SOCKET_SURFACE_IO=' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'
-            grep -E '^test config::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
+            grep -E '^test (config|password_security)::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq 37 ] || fail 'writer retirement test total differs'
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests)|bytes_codec::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME)=' "$output"

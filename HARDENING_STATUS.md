@@ -8588,10 +8588,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   ground that correction. Two serialized SysV tests remain in the shared gate. The 269-line
   `verify-x11-capture-shm.py` and its shared invocation are deleted: exact string presence, order and
   absence cannot establish kernel permissions, cleanup or frame-publication finality. The real capture
-  harness and compiled regressions are unchanged. The focused native profile already omitted the wording
+  harness and compiled regressions remain. The focused native profile already omitted the wording
   checker and its mode-string mutation prelude. Missing native observations below remain required.
 
-  **Current native receipt.** Candidate `c33f70079dad32c8dcc6f3d93dd30b6991b0cffa`, tree
+  **Focused mapping acceptance.** At `a9d3d52d`,
+  `--x11-display-tests --capture-mapping` passes in 53 outer seconds against private real Xvfb.
+  The unchanged production capturer and public wrapper each complete eight cases. Native `read` attempts
+  to copy one ready Unix-socket byte to the frame's first and last addresses; kernel `EFAULT` refuses each
+  transfer and preserves those bytes. Two calibration cases remove `SHM_RDONLY` from the real attachment call
+  and accept the writes. An explicit writable attachment of each same segment accepts and restores
+  bytes visible through the original frame pointer; kernel attachment counts go 2→3→2. Each retained
+  capture then publishes actual blue pixels after red, with its pointer unchanged. All eighteen cases
+  retire their exact segment and return descriptors to baseline. This is kernel-copy protection at
+  selected addresses, not wrong-principal or installed/full-application acceptance.
+  `x11-capture-mapping-a9d3d52d.json` under `.harness-state/verifier-vm/` binds source, binary,
+  observations and joined RAM/container/VM retirement with zero host endpoint delta.
+  The initial broader run at `0587af76` stops at the existing five-second concurrent-context deadline
+  before capture-fixture compilation; that failure remains OPEN and supplies no mapping result.
+
+  **Retained full-profile receipt.** Candidate `c33f70079dad32c8dcc6f3d93dd30b6991b0cffa`, tree
   `55caf4a06d083258976073e7df1da63f43d5fef0`, passed
   `/usr/bin/bash scripts/smoke-verifier-vm-authority.sh --x11-display-tests` in 56 VM seconds.
   Numeric UID/GID 4000 executed the unchanged production capture/public-wrapper components against real
@@ -8624,7 +8639,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Superseded per-run receipts and intermediate
   fixture failures remain in Git history through `37852db7` and the audit, not additional acceptance claims.
 
-  **Still OPEN.** Direct native observation of local mapping protection and checked-attach/RMID ordering,
+  **Still OPEN.** Direct native observation of checked-attach/RMID ordering,
   unauthorized-principal read/write/removal refusal, installed cross-user service behavior,
   server loss during in-flight attach, destruction-failure injection, actual capture-to-codec-to-render,
   focus/background freshness and latency, sustained resource/performance bounds, other platforms,

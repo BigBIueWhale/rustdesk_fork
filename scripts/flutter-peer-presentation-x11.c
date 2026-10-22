@@ -1021,26 +1021,47 @@ static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
                                    SourceHistory *history, unsigned int timeout_ms,
                                    unsigned int required_distinct, uint64_t *first_fresh_ms,
                                    uint64_t *maximum_age_ms) {
+    enum { OBSERVATION_LIMIT = 64 };
+    struct {
+        uint64_t elapsed_ms, captured_us, age_ms;
+        int64_t state, latest_published;
+        int age_valid, admitted;
+    } observations[OBSERVATION_LIMIT];
     uint64_t start = monotonic_millis();
     uint64_t deadline = start + timeout_ms;
+    uint64_t samples = 0U, valid_age_samples = 0U;
     int64_t last_state = -1;
-    unsigned int distinct = 0U;
-    int saw_fresh = 0;
+    unsigned int distinct = 0U, retained = 0U, next = 0U;
+    int saw_fresh = 0, saved_errno;
+    const char *failure = "deadline";
     *first_fresh_ms = 0U;
     *maximum_age_ms = 0U;
     while (monotonic_millis() < deadline) {
         uint64_t now, captured_us = 0U;
         int64_t state;
-        uint64_t age;
+        uint64_t age = 0U;
         int age_valid;
         state = viewer_state(display, viewer, &captured_us);
         age_valid = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
         now = monotonic_millis();
+        observations[next].elapsed_ms = now - start;
+        observations[next].captured_us = captured_us;
+        observations[next].age_ms = age;
+        observations[next].state = state;
+        observations[next].latest_published = (int64_t)history->count - 1;
+        observations[next].age_valid = age_valid;
+        observations[next].admitted = !history->failed && now < deadline &&
+                                      age_valid && age <= FRESH_LIMIT_MS;
+        next = (next + 1U) % OBSERVATION_LIMIT;
+        if (retained < OBSERVATION_LIMIT) retained += 1U;
+        samples += 1U;
+        if (age_valid) valid_age_samples += 1U;
         if (age_valid && age > *maximum_age_ms) {
             *maximum_age_ms = age;
         }
         if (history->failed || now >= deadline) {
-            return -1;
+            if (history->failed) failure = "source-history";
+            break;
         }
         if (age_valid && age <= FRESH_LIMIT_MS) {
             if (saw_fresh == 0) {
@@ -1056,9 +1077,32 @@ static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
             }
         }
         if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) {
-            return -1;
+            failure = "sample-sleep";
+            break;
         }
     }
+    saved_errno = errno;
+    fprintf(stderr, "FLUTTER_PEER_FRESHNESS_WAIT_FAILED reason=%s timeout_ms=%u "
+            "required=%u distinct=%u samples=%llu valid_age_samples=%llu "
+            "saw_fresh=%s first_fresh_ms=%llu maximum_observed_age_ms=%llu "
+            "retained=%u dropped=%llu errno=%d\n", failure, timeout_ms,
+            required_distinct, distinct, (unsigned long long)samples,
+            (unsigned long long)valid_age_samples, saw_fresh ? "true" : "false",
+            (unsigned long long)*first_fresh_ms, (unsigned long long)*maximum_age_ms,
+            retained, (unsigned long long)(samples - retained), saved_errno);
+    for (unsigned int index = 0U; index < retained; ++index) {
+        unsigned int slot = (next + OBSERVATION_LIMIT - retained + index) % OBSERVATION_LIMIT;
+        fprintf(stderr, "FLUTTER_PEER_FRESHNESS_SAMPLE index=%llu elapsed_ms=%llu "
+                "state=%lld latest_published=%lld captured_us=%llu age_valid=%s "
+                "age_ms=%llu admitted=%s\n", (unsigned long long)(samples - retained + index),
+                (unsigned long long)observations[slot].elapsed_ms,
+                (long long)observations[slot].state, (long long)observations[slot].latest_published,
+                (unsigned long long)observations[slot].captured_us,
+                observations[slot].age_valid ? "true" : "false",
+                (unsigned long long)observations[slot].age_ms,
+                observations[slot].admitted ? "true" : "false");
+    }
+    errno = saved_errno;
     return -1;
 }
 

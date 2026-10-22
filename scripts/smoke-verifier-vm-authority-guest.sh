@@ -5603,7 +5603,7 @@ run_focused_rust_tests() {
                             cargo test --offline --locked -p hbb_common --doc tcp::FramedStream \
                                 --color never -- --test-threads=1 --show-output
                         [ "$(sha256sum "$transport_executable" | cut -d " " -f 1)" = "$transport_sha" ]
-                        printf "TCP_FRAMING_API=pass tests=4 compile_pass=1 compile_fail=3 rustdoc=1.75.0 transport_artifact_unchanged=true\n"
+                        printf "TCP_FRAMING_API=pass tests=5 compile_pass=1 compile_fail=4 rustdoc=1.75.0 transport_artifact_unchanged=true\n"
                         ;;
                     linux-pa-authority-tests)
                         if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
@@ -6278,9 +6278,9 @@ PY
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "${#result_lines[@]}" -eq 6 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
-        [ "$(grep -Ec '^test .*tcp.rs - tcp::FramedStream [(]line [0-9]+[)]( - compile fail)? [.][.][.] ok$' "$output")" -eq 4 ] \
-            && [ "$(grep -Ec '^test .*tcp.rs - tcp::FramedStream [(]line [0-9]+[)] - compile fail [.][.][.] ok$' "$output")" -eq 3 ] \
-            && [ "$(grep -Fxc 'TCP_FRAMING_API=pass tests=4 compile_pass=1 compile_fail=3 rustdoc=1.75.0 transport_artifact_unchanged=true' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^test .*tcp.rs - tcp::FramedStream [(]line [0-9]+[)]( - compile fail)? [.][.][.] ok$' "$output")" -eq 5 ] \
+            && [ "$(grep -Ec '^test .*tcp.rs - tcp::FramedStream [(]line [0-9]+[)] - compile fail [.][.][.] ok$' "$output")" -eq 4 ] \
+            && [ "$(grep -Fxc 'TCP_FRAMING_API=pass tests=5 compile_pass=1 compile_fail=4 rustdoc=1.75.0 transport_artifact_unchanged=true' "$output")" -eq 1 ] \
             || fail 'framing API positive/negative compiler cases differ'
         [ "$(grep -Ec '^CPACE_WIRE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CPACE_WIRE_ARTIFACT=' "$output")" -eq 1 ] \
@@ -6995,7 +6995,7 @@ PY
         fi
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
-        [ "$tests_passed" -eq 60 ] \
+        [ "$tests_passed" -eq 61 ] \
             || fail "CPace recovery test count differs: $tests_passed"
         grep -E '^test [a-z0-9_:]+ \.\.\. ok$|^(CPACE_WIRE|TCP_TRANSPORT)_ARTIFACT(_START)?=|^CPACE_PENDING_READ_CANCEL=|^WRITER_(BUFFER_LIFETIME|FATAL_RETURN|RETIRE_CANCEL|FAILURE_READ)=' "$output"
         grep -E '^test .*tcp.rs - tcp::FramedStream |^TCP_FRAMING_API=' "$output"

@@ -181,7 +181,9 @@ impl Encoder<Bytes> for SecretboxCodec {
 ///     stream.set_max_packet_length(4096);
 ///     codec.set_max_packet_length(4096);
 ///     let _ = wrapper.is_secured();
+///     let _ = stream.recv_counter();
 /// }
+/// fn observe(cipher: &hbb_common::cpace::OpenCipher) -> u64 { cipher.read_seq() }
 /// ```
 /// A stream cannot select an unframed mode:
 /// ```compile_fail
@@ -194,6 +196,12 @@ impl Encoder<Bytes> for SecretboxCodec {
 /// The framing codec exposes no raw-mode switch:
 /// ```compile_fail
 /// fn bypass(codec: &mut hbb_common::bytes_codec::BytesCodec) { codec.set_raw(); }
+/// ```
+/// Counter observation does not expose cipher-state mutation:
+/// ```compile_fail,E0624
+/// fn reset(cipher: &hbb_common::cpace::OpenCipher) {
+///     cipher.read_seq_handle().store(0, std::sync::atomic::Ordering::Relaxed);
+/// }
 /// ```
 pub struct FramedStream {
     state: StreamState,

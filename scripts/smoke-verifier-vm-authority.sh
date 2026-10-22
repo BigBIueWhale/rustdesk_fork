@@ -5978,10 +5978,10 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
         'CPACE_PENDING_READ_CANCEL=pass stages=3 partial_socket_bytes=9 recv_counter=2' \
         'actual pending TCP-read cancellation and exact recovery'
     require_exact_fixed_receipt \
-        "CPACE_RECOVERY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=60 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "CPACE_RECOVERY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=61 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused CPace recovery receipt'
     require_exact_fixed_receipt \
-        'TCP_FRAMING_API=pass tests=4 compile_pass=1 compile_fail=3 rustdoc=1.75.0 transport_artifact_unchanged=true' \
+        'TCP_FRAMING_API=pass tests=5 compile_pass=1 compile_fail=4 rustdoc=1.75.0 transport_artifact_unchanged=true' \
         'framing API compiler acceptance/refusal'
     mapfile -t transport_artifacts < <(
         /usr/bin/grep -Eo 'TCP_TRANSPORT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} tests=36 unchanged=before-between-after' "$SERIAL_LOG"

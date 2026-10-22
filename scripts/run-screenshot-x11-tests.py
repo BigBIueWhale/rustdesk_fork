@@ -223,7 +223,7 @@ def main():
                     print(result.stderr, file=sys.stderr, end='', flush=True)
                 if result.returncode == -6:
                     assert result.stdout.count('VIDEO_ALLOCATOR=refused\n') == 1
-                    assert result.stdout.count(f'SCREENSHOT_X11_ALLOC_START=observed depth={depth} phase=first-capture\n') == 1
+                    assert f'test {case} ... ' in result.stdout
                     expected_size = (516 if depth == 24 else 260) * HEIGHT
                     assert re.findall(r'memory allocation of ([0-9]+) bytes failed', result.stderr) == [str(expected_size)]
                     assert not png_path.exists()

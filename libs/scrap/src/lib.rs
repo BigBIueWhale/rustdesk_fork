@@ -33,3 +33,14 @@ mod android_frame_raw_generation_tests;
 mod android_main_service_generation_tests;
 
 mod common;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "../../../src/peer_text.rs"]
+mod peer_text;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "../../../src/server/screenshot_png.rs"]
+mod screenshot_png;
+
+#[cfg(all(test, target_os = "linux"))]
+mod screenshot_png_tests;

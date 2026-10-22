@@ -22,6 +22,9 @@ use super::{display_service::check_display_changed, service::ServiceTmpl, video_
 #[path = "video_qos_apply.rs"]
 mod qos_apply;
 use qos_apply::check_qos;
+#[path = "screenshot_png.rs"]
+mod screenshot_png;
+use screenshot_png::BoundedScreenshotPng;
 #[cfg(target_os = "linux")]
 use crate::common::SimpleCallOnReturn;
 #[cfg(target_os = "linux")]
@@ -372,11 +375,6 @@ struct ScreenshotEncodeJob {
     rgba: Vec<u8>,
 }
 
-struct BoundedScreenshotPng {
-    data: Vec<u8>,
-    max_bytes: usize,
-}
-
 struct ScreenshotEncoder {
     sender: std::sync::mpsc::SyncSender<ScreenshotEncodeJob>,
     _worker: std::thread::JoinHandle<()>,
@@ -385,44 +383,6 @@ struct ScreenshotEncoder {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ScreenshotAdmissionError {
     Capacity,
-}
-
-impl BoundedScreenshotPng {
-    fn new() -> Self {
-        Self::with_limit(crate::peer_text::MAX_PEER_SCREENSHOT_RESPONSE_BYTES)
-    }
-
-    fn with_limit(max_bytes: usize) -> Self {
-        Self {
-            data: Vec::new(),
-            max_bytes,
-        }
-    }
-
-    fn into_bytes(self) -> Vec<u8> {
-        self.data
-    }
-}
-
-impl std::io::Write for BoundedScreenshotPng {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let next_len =
-            self.data.len().checked_add(buf.len()).ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "PNG too large")
-            })?;
-        if next_len > self.max_bytes {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "PNG exceeds screenshot response limit",
-            ));
-        }
-        self.data.extend_from_slice(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
 }
 
 impl PendingScreenshots {

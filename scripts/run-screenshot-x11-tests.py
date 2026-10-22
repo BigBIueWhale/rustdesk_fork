@@ -154,6 +154,37 @@ def paint(display_name, depth):
         x11.XCloseDisplay(display)
 
 
+def allocation_probe(executable, artifact_sha):
+    case = 'screenshot_png_tests::allocation_refusal_preserves_png_bytes_and_reaches_encoder'
+    result = subprocess.run([str(executable), '--exact', case, '--format', 'terse',
+                             '--test-threads=1', '--show-output'],
+                            capture_output=True, text=True, timeout=15)
+    assert len(result.stdout) + len(result.stderr) <= 16384
+    print(result.stdout, end='', flush=True)
+    if result.stderr:
+        print(result.stderr, file=sys.stderr, end='', flush=True)
+    refusals = result.stdout.count('SCREENSHOT_PNG_ALLOCATOR=refused\n')
+    if result.returncode == -6:
+        assert refusals == 1 and re.search(r'memory allocation of [0-9]+ bytes failed', result.stderr)
+        print(f'SCREENSHOT_PNG_ALLOC_RESULT=observed outcome=aborted child_exit=-6 refusals=1 '
+              f'artifact_sha256={artifact_sha} children=joined', flush=True)
+        return False
+    assert result.returncode == 0 and not result.stderr and refusals == 2
+    assert result.stdout.count('test result: ok. 1 passed; 0 failed;') == 1
+    assert result.stdout.count('SCREENSHOT_PNG_ALLOC_NATIVE=pass refusals=2 direct=OutOfMemory encoder=OutOfMemory '
+                               'prefix=preserved retry=pass byte_limit=preserved fresh_png_bytes=150\n') == 1
+    outputs = re.findall(r'^SCREENSHOT_PNG_BOUNDED_HEX=([0-9a-f]+)$', result.stdout, re.MULTILINE)
+    assert len(outputs) == 1 and len(outputs[0]) == 300
+    png = bytes.fromhex(outputs[0])
+    colors, opaque, rgba_sha = inspect_png(png)
+    assert colors and opaque
+    print(f'SCREENSHOT_PNG_ALLOC_RESULT=pass refusals=2 direct=OutOfMemory encoder=OutOfMemory '
+          f'prefix=preserved retry=pass byte_limit=preserved png_bytes={len(png)} '
+          f'png_sha256={hashlib.sha256(png).hexdigest()} rgba_sha256={rgba_sha} '
+          f'artifact_sha256={artifact_sha} children=joined', flush=True)
+    return True
+
+
 def main():
     assert len(sys.argv) == 2 and os.getuid() == os.getgid() == 1000
     assert Path.cwd() == Path('/source') and WORK.is_dir() and not WORK.is_symlink()
@@ -163,6 +194,7 @@ def main():
     assert stat.S_ISREG(metadata.st_mode) and (metadata.st_uid, metadata.st_gid, metadata.st_nlink) == (1000, 1000, 1)
     artifact_sha = hashlib.sha256(executable.read_bytes()).hexdigest()
     oracle_controls()
+    allocation_passed = allocation_probe(executable, artifact_sha)
     outcomes = []
     for depth, number in ((24, 91), (16, 92)):
         socket_path = Path(f'/tmp/.X11-unix/X{number}')
@@ -218,7 +250,7 @@ def main():
     assert hashlib.sha256(executable.read_bytes()).hexdigest() == artifact_sha
     assert len(outcomes) == 2
     print(f'SCREENSHOT_X11_NATIVE=complete cases=2 passed={sum(outcomes)} artifact_sha256={artifact_sha} children=joined', flush=True)
-    return 0 if all(outcomes) else 1
+    return 0 if all(outcomes) and allocation_passed else 1
 
 
 if __name__ == '__main__':

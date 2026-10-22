@@ -598,3 +598,120 @@ impl GoogleImage for Image<'_> {
 }
 
 unsafe impl Send for vpx_codec_ctx_t {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn encoder(codec: VpxVideoCodecId, i444: bool, width: u32, height: u32) -> VpxEncoder {
+        VpxEncoder::new(
+            crate::codec::EncoderCfg::VPX(VpxEncoderConfig {
+                width,
+                height,
+                #[cfg(target_os = "android")]
+                android_scale: 1,
+                quality: 1.0,
+                codec,
+                keyframe_interval: Some(1),
+            }),
+            i444,
+        )
+        .unwrap()
+    }
+
+    fn roundtrip(encoder: &mut VpxEncoder, data: &[u8], alignment: usize) {
+        let mut packets: Vec<Vec<u8>> = encoder
+            .encode(1, data, alignment)
+            .unwrap()
+            .map(|frame| frame.data.to_vec())
+            .collect();
+        packets.extend(encoder.flush().unwrap().map(|frame| frame.data.to_vec()));
+        assert!(!packets.is_empty());
+        let mut decoder = VpxDecoder::new(VpxDecoderConfig { codec: encoder.id }).unwrap();
+        let mut decoded = 0;
+        for packet in packets {
+            if let Some(image) = decoder.decode(&packet).unwrap() {
+                assert_eq!((image.width(), image.height()), (encoder.width, encoder.height));
+                assert_eq!(image.chroma(), if encoder.i444 { Chroma::I444 } else { Chroma::I420 });
+                decoded += 1;
+            }
+        }
+        assert!(decoded > 0);
+    }
+
+    #[test]
+    fn padded_i420_short_inputs_are_refused_and_valid_frames_roundtrip() {
+        let mut refused = Vec::new();
+        for codec in [VpxVideoCodecId::VP8, VpxVideoCodecId::VP9] {
+            let mut encoder = encoder(codec, false, 34, 32);
+            // Keep the entire allocation initialized so the unchanged encoder can
+            // demonstrate false acceptance without reading inaccessible memory.
+            let data = vec![128; 64 * 32 * 3 / 2];
+            for length in [34 * 32 * 3 / 2, data.len() - 1] {
+                let rejected = encoder.encode(0, &data[..length], 64).is_err();
+                println!("VIDEO_VPX_CASE=short codec={codec:?} chroma=420 bytes={length} required={} refused={rejected}", data.len());
+                refused.push(rejected);
+            }
+            roundtrip(&mut encoder, &data, 64);
+        }
+        assert!(refused.into_iter().all(|value| value));
+    }
+
+    #[test]
+    fn padded_i444_short_inputs_are_refused_and_valid_frames_roundtrip() {
+        let mut encoder = encoder(VpxVideoCodecId::VP9, true, 34, 32);
+        let data = vec![128; 64 * 32 * 3];
+        let mut refused = Vec::new();
+        for length in [34 * 32 * 3, data.len() - 1] {
+            let rejected = encoder.encode(0, &data[..length], 64).is_err();
+            println!("VIDEO_VPX_CASE=short codec=VP9 chroma=444 bytes={length} required={} refused={rejected}", data.len());
+            refused.push(rejected);
+        }
+        roundtrip(&mut encoder, &data, 64);
+        assert!(refused.into_iter().all(|value| value));
+    }
+
+    #[test]
+    fn odd_i420_storage_is_disjoint_and_roundtrips_at_supported_alignments() {
+        let mut layouts = Vec::new();
+        for codec in [VpxVideoCodecId::VP8, VpxVideoCodecId::VP9] {
+            for (width, height) in [(33, 31), (34, 31), (33, 32)] {
+                let mut encoder = encoder(codec, false, width, height);
+                let format = encoder.yuvfmt();
+                let storage_width = (width as usize + 1) & !1;
+                let storage_height = (height as usize + 1) & !1;
+                let correct = format.w == storage_width && format.h == storage_height
+                    && format.stride[0] == 64 && format.stride[1] == 32
+                    && format.u == 64 * storage_height
+                    && format.v == format.u + 32 * storage_height / 2;
+                println!("VIDEO_VPX_CASE=odd codec={codec:?} width={width} height={height} disjoint={correct}");
+                layouts.push(correct);
+                for alignment in [0, 1, 2, 64] {
+                    let align = alignment.max(1);
+                    let stride = (storage_width + align - 1) & !(align - 1);
+                    let data = vec![128; stride * storage_height * 3 / 2];
+                    roundtrip(&mut encoder, &data, alignment);
+                }
+            }
+        }
+        assert!(layouts.into_iter().all(|value| value));
+    }
+
+    #[test]
+    fn invalid_alignment_is_refused_before_a_valid_retry() {
+        let mut encoder = encoder(VpxVideoCodecId::VP9, false, 32, 32);
+        let data = vec![128; 64 * 32 * 3 / 2];
+        let mut alignments = vec![3, 65537, usize::MAX];
+        if let Some(truncated) = (u32::MAX as usize).checked_add(2) {
+            alignments.push(truncated);
+        }
+        let mut refused = Vec::new();
+        for alignment in alignments {
+            let rejected = encoder.encode(0, &data, alignment).is_err();
+            println!("VIDEO_VPX_CASE=alignment value={alignment} refused={rejected}");
+            refused.push(rejected);
+        }
+        roundtrip(&mut encoder, &data, 64);
+        assert!(refused.into_iter().all(|value| value));
+    }
+}

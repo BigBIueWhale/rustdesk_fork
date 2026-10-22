@@ -6,6 +6,7 @@ build_linux_parent_test() {
     [[ "$work:$receipt_prefix" = /tmp/pa-runtime:PA_RUNTIME \
         || "$work:$receipt_prefix" = /tmp/video-qos:VIDEO_QOS \
         || "$work:$receipt_prefix" = /tmp/video-qos-controller:VIDEO_QOS_CONTROLLER \
+        || "$work:$receipt_prefix" = /tmp/video-vpx:VIDEO_VPX \
         || "$work:$receipt_prefix" = /tmp/option-ack:OPTION_ACK \
         || "$work:$receipt_prefix" = /tmp/viewer-video:VIEWER_VIDEO \
         || "$work:$receipt_prefix" = /tmp/resolution-parent:RESOLUTION_PARENT \
@@ -34,6 +35,13 @@ build_linux_parent_test() {
         test_name=video_qos_it
         test_source=/source/libs/video_qos_it/src/lib.rs
         test_arguments=(--package video_qos_it --lib)
+    fi
+    if [ "$receipt_prefix" = VIDEO_VPX ]; then
+        build_budget=240
+        test_manifest=/source/libs/scrap/Cargo.toml
+        test_name=scrap
+        test_source=/source/libs/scrap/src/lib.rs
+        test_arguments=(--package scrap --lib --features linux-pkg-config)
     fi
     printf '%s_BUILD=started target=linux-libtest budget_seconds=%s\n' "$receipt_prefix" "$build_budget"
     local build_started=$SECONDS

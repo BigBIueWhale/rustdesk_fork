@@ -350,6 +350,7 @@ impl ToString for CodecFormat {
 pub enum Error {
     FailedCall(String),
     BadPtr(String),
+    UnsupportedImage { format: u32, bit_depth: u32 },
 }
 
 impl std::fmt::Display for Error {

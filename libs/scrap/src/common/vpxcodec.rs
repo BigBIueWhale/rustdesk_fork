@@ -558,7 +558,7 @@ impl VpxDecoder {
             0,
         ));
 
-        Ok(self.last_image())
+        self.last_image()
     }
 
     /// Notify the decoder to return any pending frame
@@ -570,10 +570,10 @@ impl VpxDecoder {
             ptr::null_mut(),
             0
         ));
-        Ok(self.last_image())
+        self.last_image()
     }
 
-    fn last_image(&mut self) -> Option<Image<'_>> {
+    fn last_image(&mut self) -> Result<Option<Image<'_>>> {
         let mut iter = ptr::null();
         let mut last = ptr::null_mut();
         loop {
@@ -585,7 +585,7 @@ impl VpxDecoder {
         }
         // libvpx owns the image until the next decode call. Borrowing the decoder
         // keeps that call, and decoder destruction, after the image's final use.
-        unsafe { last.as_ref() }.map(Image)
+        unsafe { last.as_ref() }.map(Image::new).transpose()
     }
 }
 
@@ -600,17 +600,28 @@ impl Drop for VpxDecoder {
     }
 }
 
-pub struct Image<'a>(&'a vpx_image_t);
-impl Image<'_> {
+pub struct Image<'a> {
+    inner: &'a vpx_image_t,
+    chroma: Chroma,
+}
+
+impl<'a> Image<'a> {
+    fn new(inner: &'a vpx_image_t) -> Result<Self> {
+        let chroma = match inner.fmt {
+            vpx_img_fmt::VPX_IMG_FMT_I444 => Chroma::I444,
+            _ => Chroma::I420,
+        };
+        Ok(Self { inner, chroma })
+    }
+
     #[inline]
     pub fn format(&self) -> vpx_img_fmt_t {
-        // VPX_IMG_FMT_I420
         self.inner().fmt
     }
 
     #[inline]
     pub fn inner(&self) -> &vpx_image_t {
-        self.0
+        self.inner
     }
 }
 
@@ -636,10 +647,7 @@ impl GoogleImage for Image<'_> {
     }
 
     fn chroma(&self) -> Chroma {
-        match self.inner().fmt {
-            vpx_img_fmt::VPX_IMG_FMT_I444 => Chroma::I444,
-            _ => Chroma::I420,
-        }
+        self.chroma
     }
 }
 
@@ -759,5 +767,126 @@ mod tests {
         }
         roundtrip(&mut encoder, &data, 64);
         assert!(refused.into_iter().all(|value| value));
+    }
+
+    fn native_format_packet(format: vpx_img_fmt_t) -> Vec<u8> {
+        let mut encoder = encoder(VpxVideoCodecId::VP9, true, 32, 32);
+        let mut source = vec![128; 64 * 32 * 3 * 2];
+        let mut image = vpx_image_t::default();
+        assert!(!unsafe {
+            vpx_img_wrap(&mut image, format, 32, 32, 64, source.as_mut_ptr())
+        }.is_null());
+        assert_eq!(image.fmt, format);
+        assert_eq!(image.bit_depth, 8);
+        assert_eq!(unsafe {
+            vpx_codec_encode(&mut encoder.ctx, &image, 0, 1, 0, VPX_DL_REALTIME as _)
+        }, VPX_CODEC_OK);
+        let mut packets: Vec<Vec<u8>> = EncodeFrames {
+            ctx: &mut encoder.ctx,
+            iter: ptr::null(),
+        }.map(|frame| frame.data.to_vec()).collect();
+        packets.extend(encoder.flush().unwrap().map(|frame| frame.data.to_vec()));
+        assert_eq!(packets.len(), 1);
+        packets.remove(0)
+    }
+
+    #[test]
+    fn unsupported_vp9_chroma_is_refused_before_supported_retry() {
+        let mut refused = Vec::new();
+        let mut retries = 0;
+        for (name, format) in [
+            ("I422", vpx_img_fmt::VPX_IMG_FMT_I422),
+            ("I440", vpx_img_fmt::VPX_IMG_FMT_I440),
+        ] {
+            let packet = native_format_packet(format);
+            assert!(packet.len() < 4096);
+            let mut packet_hex = String::with_capacity(packet.len() * 2);
+            for byte in &packet {
+                use std::fmt::Write;
+                write!(&mut packet_hex, "{byte:02x}").unwrap();
+            }
+            println!("VIDEO_VPX_FORMAT_PACKET=hex format={name} bytes={} data={packet_hex}", packet.len());
+            let mut decoder = VpxDecoder::new(VpxDecoderConfig { codec: VpxVideoCodecId::VP9 }).unwrap();
+            let rejected = match decoder.decode(&packet) {
+                Err(Error::UnsupportedImage { format: found, bit_depth }) => {
+                    assert_eq!((found, bit_depth), (format as u32, 8));
+                    true
+                }
+                Ok(Some(image)) => {
+                    assert_eq!((image.format(), image.inner().bit_depth), (format, 8));
+                    false
+                }
+                _ => panic!("native VP9 packet did not reach decoded-image admission"),
+            };
+            println!("VIDEO_VPX_FORMAT_CASE=bitstream format={name} bits=8 refused={rejected} packet_bytes={}", packet.len());
+            refused.push(rejected);
+            for i444 in [false, true] {
+                let mut producer = encoder(VpxVideoCodecId::VP9, i444, 32, 32);
+                let layout = producer.yuvfmt();
+                let rows = if i444 { layout.h } else { layout.h / 2 };
+                let source = vec![128; layout.v + layout.stride[2] * rows];
+                let mut packets: Vec<Vec<u8>> = producer.encode(0, &source, 64).unwrap()
+                    .map(|frame| frame.data.to_vec()).collect();
+                packets.extend(producer.flush().unwrap().map(|frame| frame.data.to_vec()));
+                assert_eq!(packets.len(), 1);
+                let image = decoder.decode(&packets[0]).unwrap().unwrap();
+                assert_eq!(image.chroma(), if i444 { Chroma::I444 } else { Chroma::I420 });
+                let mut rgb = crate::ImageRgb::new(crate::ImageFormat::ARGB, 64);
+                image.to(&mut rgb).unwrap();
+                assert_eq!((rgb.w, rgb.h, rgb.raw.len()), (32, 32, 32 * 32 * 4));
+                assert!(rgb.raw.chunks_exact(4).all(|pixel| pixel == [130, 130, 130, 255]));
+                retries += 1;
+                println!("VIDEO_VPX_FORMAT_CASE=retry after={name} i444={i444} pixels=exact");
+            }
+            if let Some(image) = decoder.flush().unwrap() {
+                assert_eq!(image.chroma(), Chroma::I444);
+            }
+        }
+        assert_eq!(retries, 4);
+        assert!(refused.into_iter().all(|value| value));
+        println!("VIDEO_VPX_FORMAT_NATIVE=pass bitstreams=2 refused=2 retries=4 pixels=exact");
+    }
+
+    #[test]
+    fn native_image_descriptor_admission_is_exact() {
+        let mut source = vec![128; 64 * 32 * 3 * 2];
+        let mut correct = Vec::new();
+        let mut allowed = 0;
+        for (name, format, supported) in [
+            ("I420", vpx_img_fmt::VPX_IMG_FMT_I420, true),
+            ("I444", vpx_img_fmt::VPX_IMG_FMT_I444, true),
+            ("I422", vpx_img_fmt::VPX_IMG_FMT_I422, false),
+            ("I440", vpx_img_fmt::VPX_IMG_FMT_I440, false),
+            ("I42016", vpx_img_fmt::VPX_IMG_FMT_I42016, false),
+            ("I44416", vpx_img_fmt::VPX_IMG_FMT_I44416, false),
+            ("I42216", vpx_img_fmt::VPX_IMG_FMT_I42216, false),
+            ("I44016", vpx_img_fmt::VPX_IMG_FMT_I44016, false),
+        ] {
+            let mut image = vpx_image_t::default();
+            assert!(!unsafe {
+                vpx_img_wrap(&mut image, format, 32, 32, 64, source.as_mut_ptr())
+            }.is_null());
+            let admitted = Image::new(&image).is_ok();
+            allowed += usize::from(admitted);
+            correct.push(admitted == supported);
+            println!("VIDEO_VPX_FORMAT_CASE=descriptor format={name} bits={} allowed={admitted} correct={}", image.bit_depth, admitted == supported);
+        }
+        for depth in [0, 10, 12, 16] {
+            let mut image = vpx_image_t::default();
+            assert!(!unsafe {
+                vpx_img_wrap(&mut image, vpx_img_fmt::VPX_IMG_FMT_I420, 32, 32, 64, source.as_mut_ptr())
+            }.is_null());
+            // Fault the sample-depth metadata on an actual native descriptor.
+            // This is supplementary to the real compressed VP9 packet cases.
+            image.bit_depth = depth;
+            let admitted = Image::new(&image).is_ok();
+            allowed += usize::from(admitted);
+            correct.push(!admitted);
+            println!("VIDEO_VPX_FORMAT_CASE=descriptor format=I420 bits={depth} allowed={admitted} correct={}", !admitted);
+        }
+        assert_eq!(correct.len(), 12);
+        assert!(correct.into_iter().all(|value| value));
+        assert_eq!(allowed, 2);
+        println!("VIDEO_VPX_FORMAT_NATIVE=pass descriptors=12 allowed=2 refused=10");
     }
 }

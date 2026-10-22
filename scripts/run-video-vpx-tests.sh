@@ -40,8 +40,8 @@ allocation_status=0
 python3 -B -I -S /source/scripts/run-decoded-image-allocation-tests.py "$test_executable" || allocation_status=$?
 if [ "$execution_status" -eq 0 ]; then execution_status=$allocation_status; fi
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'VIDEO_VPX_ARTIFACT_AFTER=observed sha256=%s tests=13 exit_code=%s unchanged=before-after\n' \
+printf 'VIDEO_VPX_ARTIFACT_AFTER=observed sha256=%s tests=15 exit_code=%s unchanged=before-after\n' \
     "$artifact_sha" "$execution_status"
 [ "$execution_status" -eq 0 ] || exit "$execution_status"
-printf 'VIDEO_VPX_ARTIFACT=pass sha256=%s executable=%s tests=13 unchanged=before-after execution_seconds=%s\n' \
+printf 'VIDEO_VPX_ARTIFACT=pass sha256=%s executable=%s tests=15 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"

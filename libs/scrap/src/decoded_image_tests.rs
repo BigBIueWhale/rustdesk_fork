@@ -18,8 +18,9 @@ fn convert_native_images(warmed: bool) {
         let format = encoder.yuvfmt();
         let chroma_rows = if i444 { format.h } else { format.h / 2 };
         let yuv = vec![128; format.v + format.stride[2] * chroma_rows];
-        let packets: Vec<Vec<u8>> = encoder.encode(0, &yuv, 64).unwrap()
+        let mut packets: Vec<Vec<u8>> = encoder.encode(0, &yuv, 64).unwrap()
             .map(|frame| frame.data.to_vec()).collect();
+        packets.extend(encoder.flush().unwrap().map(|frame| frame.data.to_vec()));
         assert_eq!(packets.len(), 1);
         let mut decoder = VpxDecoder::new(VpxDecoderConfig { codec }).unwrap();
         let image = decoder.decode(&packets[0]).unwrap().unwrap();

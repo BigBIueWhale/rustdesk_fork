@@ -1972,6 +1972,22 @@ and reaches the RAM-backed file ceiling; it is invalid acceptance evidence.
 passes in 139 seconds and retires its VM and RAM scratch. Resource limits remain
 unchanged; the new profile receives an explicit selector control. Exact sources,
 artifacts, attempts and cleanup are retained in `vpx-input-1c1f3575.json`.
+
+`ba09170b` widens the shared `base_bitrate` pixel products to `u64` before
+nearest-preset selection, preserving the existing bitrate formula and native
+configuration admission. At unchanged-product preparation `5c6e4a70`, the new
+regression records ten multiplication panics while the previous 26 tests pass.
+The identical regression passes after correction: five ordinary/zero-size bitrate
+controls, four large calculations through `u32::MAX` by `u32::MAX`, six
+out-of-range VP8/I420, VP9/I420 and VP9/I444 constructor refusals, and six normal
+encode/decode retries. All 27 focused cases pass in 145 reported VM seconds.
+`bitrate-pixel-count-aff7dd17.json` binds source/artifacts, native results and
+joined bounded-RAM cleanup. The baseline's bounded failure tail retains the
+aggregate and five native rows; its earlier calculation rows and build-digest
+receipt are absent. Large valid image allocations are not exercised. This corrects
+an arithmetic/error path; real capture reachability and application effects remain
+unproved.
+
 Full product, other-platform, installed/LPE, R-S0/R-F5 and release acceptance
 remain OPEN.
 

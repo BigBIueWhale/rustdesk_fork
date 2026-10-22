@@ -1263,7 +1263,7 @@ static void print_resources(const char *phase, unsigned int sequence,
            resources->descriptors);
 }
 
-/* The stage retains its unreaped child and supplies its creation identity. Keep both a
+/* The stage owns the child and supplies its creation identity. Keep both a
  * procfs directory and a pidfd; never reacquire a numeric PID to resume the viewer. */
 static int viewer_process_state(int process, unsigned long pid, const char *start,
                                  char *state) {

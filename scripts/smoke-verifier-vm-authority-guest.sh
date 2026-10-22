@@ -4690,6 +4690,8 @@ run_focused_rust_tests() {
                 source_fingerprints+=(
                     libs/video_qos_it/Cargo.toml libs/video_qos_it/src/lib.rs
                     libs/video_qos_it/src/server.rs scripts/run-video-qos-controller-tests.sh
+                    libs/video_qos_it/src/video_service.rs src/server/video_service.rs
+                    src/server/video_qos_apply.rs
                 )
             fi
             required_tests=(
@@ -4713,6 +4715,14 @@ run_focused_rust_tests() {
                 server::video_qos::tests::large_completed_delays_recover_in_the_same_controller
                 server::video_qos::tests::opening_a_viewer_recalculates_rate_from_current_owners
             )
+            if [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
+                required_tests+=(
+                    server::video_service::failed_quality_change_preserves_confirmation_and_retries
+                    server::video_service::unsupported_quality_changes_require_recreation
+                    server::video_service::successful_quality_changes_publish_once_per_target
+                    server::video_service::recording_switch_and_periodic_accounting_remain_active
+                )
+            fi
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
             container_name=rustdesk-resolution-parent-tests
             memory=5g
@@ -6450,9 +6460,9 @@ PY
         done
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS controller summary count differs'
-        [ "$(grep -Ec '^VIDEO_QOS_CONTROLLER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/video_qos_it-[0-9a-f]{16} tests=19 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^VIDEO_QOS_CONTROLLER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/video_qos_it-[0-9a-f]{16} tests=23 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIDEO_QOS_CONTROLLER_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test server::video_qos::tests::.* \.\.\. ok$' "$output")" -eq 19 ] \
+            && [ "$(grep -Ec '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$' "$output")" -eq 23 ] \
             || fail 'video QoS controller artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
@@ -6988,9 +6998,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
-            [ "$tests_passed" -eq 19 ] || fail 'video QoS controller total differs'
-            grep -E '^test server::video_qos::tests::.* \.\.\. ok$|^VIDEO_QOS_CONTROLLER_(BUILD=pass |ARTIFACT(_AFTER)?=)|^VIDEO_QOS_(BASE_RTT=|RECOVERY=|CONGESTION=|DELAY_(WINDOW|RANGE|RECOVERY)=|RATE_ADMISSION=|QUALITY_(ORDER|RETIRE|OWNER|CONTINUITY)=)' "$output"
-            printf 'VIDEO_QOS_CONTROLLER_VM=pass commit=%s tree=%s tests=19 target=linux-x86_64 scope=production-controller-and-shared-types rust=1.75.0 package=video_qos_it vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 23 ] || fail 'video QoS controller total differs'
+            grep -E '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$|^VIDEO_QOS_CONTROLLER_(BUILD=pass |ARTIFACT(_AFTER)?=)|^VIDEO_QOS_(APPLY=|BASE_RTT=|RECOVERY=|CONGESTION=|DELAY_(WINDOW|RANGE|RECOVERY)=|RATE_ADMISSION=|QUALITY_(ORDER|RETIRE|OWNER|CONTINUITY)=)' "$output"
+            printf 'VIDEO_QOS_CONTROLLER_VM=pass commit=%s tree=%s tests=23 target=linux-x86_64 scope=production-controller-and-quality-application rust=1.75.0 package=video_qos_it vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then

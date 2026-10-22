@@ -3,3 +3,5 @@ use std::collections::HashMap;
 
 #[path = "../../../src/server/video_qos.rs"]
 mod video_qos;
+
+mod video_service;

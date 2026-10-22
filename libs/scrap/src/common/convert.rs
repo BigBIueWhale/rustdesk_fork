@@ -9,7 +9,7 @@ include!(concat!(env!("OUT_DIR"), "/yuv_ffi.rs"));
 #[cfg(not(target_os = "ios"))]
 use crate::PixelBuffer;
 use crate::{generate_call_macro, EncodeYuvFormat, TraitPixelBuffer};
-use hbb_common::{bail, log, ResultType};
+use hbb_common::{anyhow::anyhow, bail, log, ResultType};
 
 generate_call_macro!(call_yuv, false);
 
@@ -200,28 +200,66 @@ pub fn convert_to_yuv(
 
 #[cfg(not(target_os = "ios"))]
 pub fn convert_to_rgba(pixbuf: &PixelBuffer<'_>) -> ResultType<Vec<u8>> {
-    let w = pixbuf.width();
-    let h = pixbuf.height();
-    let stride = pixbuf.stride();
-    let Some(s) = stride.get(0) else {
-        bail!("Invalid pixel buf stride.")
+    let format = pixbuf.pixfmt();
+    let bytes_per_pixel = match format {
+        crate::Pixfmt::RGBA | crate::Pixfmt::BGRA => 4,
+        crate::Pixfmt::RGB565LE => 2,
+        _ => bail!("unsupported screenshot pixel format: {format:?}"),
     };
-
-    if *s == w * 4 {
-        let mut rgba = vec![];
-        convert(pixbuf, crate::Pixfmt::RGBA, &mut rgba)?;
-        Ok(rgba)
-    } else {
-        let bgra = pixbuf.data();
-        let mut bit_flipped = Vec::with_capacity(w * h * 4);
-        for y in 0..h {
-            for x in 0..w {
-                let i = s * y + 4 * x;
-                bit_flipped.extend_from_slice(&[bgra[i + 2], bgra[i + 1], bgra[i], bgra[i + 3]]);
-            }
-        }
-        Ok(bit_flipped)
+    let width = pixbuf.width();
+    let height = pixbuf.height();
+    if width == 0 || height == 0 {
+        bail!("empty screenshot pixel buffer");
     }
+    let stride = pixbuf
+        .stride()
+        .first()
+        .copied()
+        .ok_or_else(|| anyhow!("missing screenshot pixel stride"))?;
+    let row_bytes = width
+        .checked_mul(bytes_per_pixel)
+        .ok_or_else(|| anyhow!("screenshot source row size overflow"))?;
+    let required = stride
+        .checked_mul(height - 1)
+        .and_then(|size| size.checked_add(row_bytes))
+        .ok_or_else(|| anyhow!("screenshot source size overflow"))?;
+    let source = pixbuf.data();
+    if stride < row_bytes || source.len() < required {
+        bail!("invalid screenshot pixel buffer layout");
+    }
+    let output_len = width
+        .checked_mul(height)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(|| anyhow!("screenshot output size overflow"))?;
+    let mut rgba = Vec::new();
+    rgba.try_reserve_exact(output_len)?;
+    for y in 0..height {
+        let row = &source[y * stride..][..row_bytes];
+        match format {
+            crate::Pixfmt::RGBA => rgba.extend_from_slice(row),
+            crate::Pixfmt::BGRA => {
+                for pixel in row.chunks_exact(4) {
+                    rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
+                }
+            }
+            crate::Pixfmt::RGB565LE => {
+                for pixel in row.chunks_exact(2) {
+                    let value = u16::from_le_bytes([pixel[0], pixel[1]]);
+                    let r = (value >> 11) as u8;
+                    let g = ((value >> 5) & 0x3f) as u8;
+                    let b = (value & 0x1f) as u8;
+                    rgba.extend_from_slice(&[
+                        (r << 3) | (r >> 2),
+                        (g << 2) | (g >> 4),
+                        (b << 3) | (b >> 2),
+                        255,
+                    ]);
+                }
+            }
+            _ => bail!("unsupported screenshot pixel format: {format:?}"),
+        }
+    }
+    Ok(rgba)
 }
 
 #[cfg(all(test, x11))]
@@ -335,42 +373,4 @@ mod tests {
         }
         assert!(outcomes.into_iter().all(|refused| refused));
     }
-}
-
-
-#[cfg(not(target_os = "ios"))]
-pub fn convert(captured: &PixelBuffer, pixfmt: crate::Pixfmt, dst: &mut Vec<u8>) -> ResultType<()> {
-    if captured.pixfmt() == pixfmt {
-        dst.extend_from_slice(captured.data());
-        return Ok(());
-    }
-
-    let src = captured.data();
-    let src_stride = captured.stride();
-    let src_pixfmt = captured.pixfmt();
-    let src_width = captured.width();
-    let src_height = captured.height();
-
-    let unsupported = format!(
-        "unsupported pixfmt conversion: {src_pixfmt:?} -> {:?}",
-        pixfmt
-    );
-
-    match (src_pixfmt, pixfmt) {
-        (crate::Pixfmt::BGRA, crate::Pixfmt::RGBA) | (crate::Pixfmt::RGBA, crate::Pixfmt::BGRA) => {
-            dst.resize(src.len(), 0);
-            call_yuv!(ABGRToARGB(
-                src.as_ptr(),
-                src_stride[0] as _,
-                dst.as_mut_ptr(),
-                src_stride[0] as _,
-                src_width as _,
-                src_height as _,
-            ));
-        }
-        _ => {
-            bail!(unsupported);
-        }
-    }
-    Ok(())
 }

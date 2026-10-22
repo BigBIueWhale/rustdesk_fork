@@ -23,7 +23,11 @@ pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
                 format!("compression context initialization failed: {err}"),
             )
         })?;
-        compressor.compress(data)
+        let mut output = Vec::new();
+        output.try_reserve_exact(zstd::zstd_safe::compress_bound(data.len()))
+            .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+        compressor.compress_to_buffer(data, &mut output)?;
+        Ok(output)
     })
 }
 

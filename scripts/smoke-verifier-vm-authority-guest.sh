@@ -4687,12 +4687,17 @@ run_focused_rust_tests() {
                 libs/scrap/src/common/vpxcodec.rs libs/scrap/src/common/convert.rs
                 libs/scrap/src/common/codec.rs libs/scrap/src/bindings/vpx_ffi.h
                 scripts/run-video-vpx-tests.sh scripts/linux-parent-test-build.sh
+                src/server/video_service.rs
             )
             required_tests=(
                 common::vpxcodec::tests::padded_i420_short_inputs_are_refused_and_valid_frames_roundtrip
                 common::vpxcodec::tests::padded_i444_short_inputs_are_refused_and_valid_frames_roundtrip
                 common::vpxcodec::tests::odd_i420_storage_is_disjoint_and_roundtrips_at_supported_alignments
                 common::vpxcodec::tests::invalid_alignment_is_refused_before_a_valid_retry
+                common::convert::tests::padded_rgba_screenshots_keep_exact_pixels
+                common::convert::tests::rgb565_screenshots_expand_all_visible_pixels
+                common::convert::tests::packed_and_padded_bgra_screenshots_preserve_pixels
+                common::convert::tests::planar_screenshot_inputs_are_refused
             )
         elif [[ "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = video-qos-controller ]]; then
             container_name=rustdesk-$RUST_TEST_PROFILE-tests
@@ -6486,10 +6491,10 @@ PY
             && [ "$(grep -Ec '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$' "$output")" -eq 23 ] \
             || fail 'video QoS controller artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-vpx ]; then
-        [ "${#result_lines[@]}" -eq 1 ] || fail 'VPX summary count differs'
-        [ "$(grep -Ec '^VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=4 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 2 ] || fail 'VPX summary count differs'
+        [ "$(grep -Ec '^VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=8 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIDEO_VPX_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test common::vpxcodec::tests::.* \.\.\. ok$' "$output")" -eq 4 ] \
+            && [ "$(grep -Ec '^test common::(vpxcodec|convert)::tests::.* \.\.\. ok$' "$output")" -eq 8 ] \
             || fail 'VPX artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
@@ -7031,9 +7036,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-vpx ]; then
-            [ "$tests_passed" -eq 4 ] || fail 'VPX total differs'
-            grep -E '^test common::vpxcodec::tests::.* \.\.\. ok$|^VIDEO_VPX_(BUILD=pass |ARTIFACT(_AFTER)?=|CASE=)' "$output"
-            printf 'VIDEO_VPX_VM=pass commit=%s tree=%s tests=4 target=linux-x86_64 scope=production-vpx-input-layout-and-native-roundtrip rust=1.75.0 package=scrap vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 8 ] || fail 'VPX total differs'
+            grep -E '^test common::(vpxcodec|convert)::tests::.* \.\.\. ok$|^VIDEO_VPX_(BUILD=pass |ARTIFACT(_AFTER)?=|CASE=)|^SCREENSHOT_PIXELS_CASE=' "$output"
+            printf 'VIDEO_VPX_VM=pass commit=%s tree=%s tests=8 target=linux-x86_64 scope=production-vpx-and-screenshot-pixel-conversion rust=1.75.0 package=scrap vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then

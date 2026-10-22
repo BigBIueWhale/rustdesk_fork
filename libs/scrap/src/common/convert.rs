@@ -199,6 +199,146 @@ pub fn convert_to_yuv(
 }
 
 #[cfg(not(target_os = "ios"))]
+pub fn convert_to_rgba(pixbuf: &PixelBuffer<'_>) -> ResultType<Vec<u8>> {
+    let w = pixbuf.width();
+    let h = pixbuf.height();
+    let stride = pixbuf.stride();
+    let Some(s) = stride.get(0) else {
+        bail!("Invalid pixel buf stride.")
+    };
+
+    if *s == w * 4 {
+        let mut rgba = vec![];
+        convert(pixbuf, crate::Pixfmt::RGBA, &mut rgba)?;
+        Ok(rgba)
+    } else {
+        let bgra = pixbuf.data();
+        let mut bit_flipped = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            for x in 0..w {
+                let i = s * y + 4 * x;
+                bit_flipped.extend_from_slice(&[bgra[i + 2], bgra[i + 1], bgra[i], bgra[i + 3]]);
+            }
+        }
+        Ok(bit_flipped)
+    }
+}
+
+#[cfg(all(test, x11))]
+mod tests {
+    use super::*;
+    use crate::Pixfmt;
+
+    const COLORS: [[u8; 4]; 4] = [
+        [13, 29, 211, 7],
+        [241, 83, 5, 128],
+        [0, 255, 67, 255],
+        [193, 0, 109, 42],
+    ];
+
+    fn packed_case(format: Pixfmt, width: usize, height: usize, padding: usize) -> bool {
+        let stride = width * 4 + padding;
+        let mut source = vec![0xd3; stride * height];
+        let mut expected = Vec::new();
+        for y in 0..height {
+            for x in 0..width {
+                let color = COLORS[(y * width + x) % COLORS.len()];
+                expected.extend_from_slice(&color);
+                let pixel = if format == Pixfmt::BGRA {
+                    [color[2], color[1], color[0], color[3]]
+                } else {
+                    color
+                };
+                source[y * stride + x * 4..][..4].copy_from_slice(&pixel);
+            }
+        }
+        let pixels = PixelBuffer::new(&source, format, width, height, stride).unwrap();
+        let output = convert_to_rgba(&pixels).unwrap();
+        let exact = output == expected;
+        println!("SCREENSHOT_PIXELS_CASE=packed format={format:?} width={width} height={height} padding={padding} bytes={} exact={exact}", output.len());
+        exact
+    }
+
+    #[test]
+    fn padded_rgba_screenshots_keep_exact_pixels() {
+        let mut outcomes = Vec::new();
+        for width in [1, 2, 3, 17] {
+            for height in [1, 3] {
+                for padding in [4, 12] {
+                    outcomes.push(packed_case(Pixfmt::RGBA, width, height, padding));
+                }
+            }
+        }
+        assert!(outcomes.into_iter().all(|exact| exact));
+    }
+
+    #[test]
+    fn packed_and_padded_bgra_screenshots_preserve_pixels() {
+        let mut outcomes = Vec::new();
+        for width in [1, 2, 17] {
+            for height in [1, 3] {
+                outcomes.push(packed_case(Pixfmt::RGBA, width, height, 0));
+                for padding in [0, 4, 12] {
+                    outcomes.push(packed_case(Pixfmt::BGRA, width, height, padding));
+                }
+            }
+        }
+        assert!(outcomes.into_iter().all(|exact| exact));
+    }
+
+    #[test]
+    fn rgb565_screenshots_expand_all_visible_pixels() {
+        let colors = [
+            (0xf800u16, [255, 0, 0, 255]),
+            (0x07e0, [0, 255, 0, 255]),
+            (0x001f, [0, 0, 255, 255]),
+            (0xffff, [255, 255, 255, 255]),
+            (0x0000, [0, 0, 0, 255]),
+            (0xf81f, [255, 0, 255, 255]),
+            (0xffe0, [255, 255, 0, 255]),
+            (0x07ff, [0, 255, 255, 255]),
+        ];
+        let mut outcomes = Vec::new();
+        for width in [1, 3, 5, 17] {
+            for height in [1, 2] {
+                for padding in [0, 2] {
+                    let stride = width * 2 + padding;
+                    let mut source = vec![0xd3; stride * height];
+                    let mut expected = Vec::new();
+                    for y in 0..height {
+                        for x in 0..width {
+                            let (pixel, rgba) = colors[(y * width + x) % colors.len()];
+                            source[y * stride + x * 2..][..2].copy_from_slice(&pixel.to_le_bytes());
+                            expected.extend_from_slice(&rgba);
+                        }
+                    }
+                    let pixels = PixelBuffer::new(&source, Pixfmt::RGB565LE, width, height, stride).unwrap();
+                    let result = std::panic::catch_unwind(|| convert_to_rgba(&pixels));
+                    let exact = matches!(&result, Ok(Ok(output)) if *output == expected);
+                    println!("SCREENSHOT_PIXELS_CASE=rgb565 width={width} height={height} padding={padding} panicked={} exact={exact}", result.is_err());
+                    outcomes.push(exact);
+                }
+            }
+        }
+        assert!(outcomes.into_iter().all(|exact| exact));
+    }
+
+    #[test]
+    fn planar_screenshot_inputs_are_refused() {
+        let source = [0xd3; 32];
+        let mut outcomes = Vec::new();
+        for format in [Pixfmt::I420, Pixfmt::I444, Pixfmt::NV12] {
+            let pixels = PixelBuffer::new(&source, format, 3, 2, 16).unwrap();
+            let refused = convert_to_rgba(&pixels).is_err();
+            println!("SCREENSHOT_PIXELS_CASE=planar format={format:?} refused={refused}");
+            outcomes.push(refused);
+        }
+        assert!(outcomes.into_iter().all(|refused| refused));
+    }
+}
+
+
+#[cfg(not(target_os = "ios"))]
 pub fn convert(captured: &PixelBuffer, pixfmt: crate::Pixfmt, dst: &mut Vec<u8>) -> ResultType<()> {
     if captured.pixfmt() == pixfmt {
         dst.extend_from_slice(captured.data());

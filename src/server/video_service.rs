@@ -1368,7 +1368,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                             scrap::Frame::PixelBuffer(f) => {
                                 let (msg, width, height, rgba) =
                                     if screenshot_dimensions_are_bounded(f.width(), f.height()) {
-                                        match get_rgba_from_pixelbuf(f) {
+                                        match scrap::convert_to_rgba(f) {
                                             Ok(rgba) => {
                                                 (String::new(), f.width(), f.height(), rgba)
                                             }
@@ -2051,32 +2051,6 @@ pub fn cancel_take_screenshot(connection_id: i32, tx: &Sender) {
     match SCREENSHOTS.lock() {
         Ok(mut pending) => pending.cancel(connection_id, tx),
         Err(err) => log::error!("Failed to cancel screenshot request after lock poisoning: {err}"),
-    }
-}
-
-// We need to this function, because the `stride` may be larger than `width * 4`.
-fn get_rgba_from_pixelbuf<'a>(pixbuf: &scrap::PixelBuffer<'a>) -> ResultType<Vec<u8>> {
-    let w = pixbuf.width();
-    let h = pixbuf.height();
-    let stride = pixbuf.stride();
-    let Some(s) = stride.get(0) else {
-        bail!("Invalid pixel buf stride.")
-    };
-
-    if *s == w * 4 {
-        let mut rgba = vec![];
-        scrap::convert(pixbuf, scrap::Pixfmt::RGBA, &mut rgba)?;
-        Ok(rgba)
-    } else {
-        let bgra = pixbuf.data();
-        let mut bit_flipped = Vec::with_capacity(w * h * 4);
-        for y in 0..h {
-            for x in 0..w {
-                let i = s * y + 4 * x;
-                bit_flipped.extend_from_slice(&[bgra[i + 2], bgra[i + 1], bgra[i], bgra[i + 3]]);
-            }
-        }
-        Ok(bit_flipped)
     }
 }
 

@@ -2728,9 +2728,30 @@ observations, the excluded first fixture-compilation failure and joined
 bounded-RAM cleanup. Starting tests reconstruct exactly; no public API,
 FFI/Dart, decoder, dependency or verifier change is included.
 Existing per-peer raw preferences, Decoder::preference hardware cases and
-toolbar hardware controls/alternative-codec API require separate review.
+the native alternative-codec API require separate review.
 Rendered settings, actual negotiation/encoding/decoding, native other-platform/
 installed, R-S0/R-F5 and release acceptance remain OPEN.
+
+**Toolbar software-codec controls — dormant hardware UI removed.**
+`ccf76fea` deletes H264/H265 JSON consumers, radio constructors and their
+parallel Boolean slots from `toolbarCodec`, as required by R-G1/R-R2b.
+The remaining VP8 availability result selects the existing Auto/VP8/VP9 menu;
+when VP8 is unavailable the menu remains absent. The redundant per-item enabled
+parameter is removed. Session reads, save/update callback and diagnostic label
+are byte-identical; the rest of the toolbar, public APIs, native codec code,
+dependencies and all tests are unchanged.
+
+The existing Linux Flutter 3.24.5 settings profile freshly generates the bridge
+and passes all 319 tests/thirteen suites plus three result-parser controls.
+`setting_option_mutation_test.dart` imports the complete changed production
+toolbar, so this compiles that module and exercises adjacent settings controls.
+`retired-toolbar-hardware-codecs-e53ee6e6.json` binds exact source, classification,
+native profile receipts and joined bounded-RAM cleanup. These branches were
+dormant under the required software build; no new failing native codec-menu
+scenario or actual codec switch is claimed. Complete menu rendering, native
+FFI/peer switching, device/installed/platform, R-S0/R-F5 and release acceptance
+remain OPEN. The native alternative-codec API's hardware fields and
+Decoder::preference/per-peer raw preferences still require separate review.
 
 Historical comparisons cover named setter/export leaves or controlled rendered
 components, not an old installed whole application. The receipts retain exact sources,

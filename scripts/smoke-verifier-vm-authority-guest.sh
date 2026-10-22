@@ -6927,7 +6927,11 @@ PY
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$uid_test_artifact_sha" "$image_index" "$image_config"
     else
-        [ "$tests_passed" -eq "${#required_tests[@]}" ] \
+        local expected_tests=${#required_tests[@]}
+        if [ "$RUST_TEST_PROFILE" = video-vpx ]; then
+            expected_tests=$((expected_tests + 1))
+        fi
+        [ "$tests_passed" -eq "$expected_tests" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
         if [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
             cat "$output"

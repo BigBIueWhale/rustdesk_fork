@@ -2823,6 +2823,87 @@ fn peer_listing_returns_only_metadata_and_alias() {
             }
             assert_eq!(snapshot(), controls);
         }
+        for (kind, id) in [
+            ("escaped", "198.51.100.77:21118".to_owned()),
+            ("compact", peer_test_long_address(260)),
+        ] {
+            let mut victim = PeerConfig::default();
+            victim.info.hostname = "original-host".into();
+            victim.info.platform = "Linux".into();
+            victim.password_prs = b"original-peer-prs".to_vec();
+            victim.options.insert("alias".into(), "original-peer".into());
+            victim.ui_flutter.insert("canvas".into(), "original-view".into());
+            victim.store(&id).unwrap();
+            let path = PeerConfig::path(&id);
+            let literal = path.file_stem().unwrap().to_str().unwrap().to_owned();
+            let before = peer_test_record_snapshot(&path);
+            let option_isolated = PeerConfig::read_option(&literal, "alias").is_ok_and(|value| value.is_empty());
+            let status_isolated = PeerConfig::credential_status(&literal).is_ok_and(|status| status == PeerCredentialStatus::default());
+            let full_isolated = PeerConfig::load_for_write(&literal).is_ok_and(|value| value.password_prs.is_empty());
+            let ui_isolated = PeerConfig::ui_info_json(&literal).ok()
+                .and_then(|value| serde_json::from_str::<serde_json::Value>(&value).ok())
+                .is_some_and(|value| value["info"]["hostname"] == "");
+            let absent_views = !PeerConfig::exists(&literal) && option_isolated
+                && status_isolated && full_isolated && ui_isolated;
+            let read_preserved = path.exists() && peer_test_record_snapshot(&path) == before;
+            let absent_removed = PeerConfig::remove(&literal).is_ok();
+            let absent_remove_preserved = path.exists() && peer_test_record_snapshot(&path) == before;
+            // Restore the private fixture after an old implementation removes its other key.
+            if !path.exists() {
+                victim.store(&id).unwrap();
+            }
+            let before = peer_test_record_snapshot(&path);
+            let mut own = PeerConfig::default();
+            own.info.hostname = "literal-host".into();
+            own.info.platform = "Linux".into();
+            own.password_prs = b"literal-peer-prs".to_vec();
+            own.options.insert("alias".into(), "literal-peer".into());
+            let stored = own.store(&literal).is_ok();
+            let separate_paths = PeerConfig::path(&literal) != path;
+            let mut workflows = stored;
+            if stored {
+                workflows &= PeerConfig::set_option(&literal, "alias", "literal-updated".into()).is_ok();
+                let mut transfer = TransferSerde::default();
+                transfer.read_jobs.push("literal-job".into());
+                workflows &= PeerConfig::set_transfer(&literal, &transfer).is_ok();
+                workflows &= PeerConfig::add_port_forward(&literal, &(34000, "127.0.0.1".into(), 22)).is_ok();
+                workflows &= PeerConfig::forget_password(&literal).is_ok();
+                workflows &= PeerConfig::load_for_write(&literal).is_ok_and(|loaded| {
+                    loaded.password_prs.is_empty()
+                        && loaded.info.hostname == "literal-host"
+                        && loaded.options.get("alias").map(String::as_str) == Some("literal-updated")
+                        && loaded.transfer == transfer
+                        && loaded.port_forwards == vec![(34000, "127.0.0.1".into(), 22)]
+                });
+            }
+            let victim_preserved = path.exists() && peer_test_record_snapshot(&path) == before
+                && PeerConfig::load_for_write(&id).is_ok_and(|loaded| loaded == victim);
+            let mut listed = PeerConfig::peers(Some(vec![id.clone(), literal.clone()]))
+                .into_iter().map(|(id, _, _)| id).collect::<Vec<_>>();
+            listed.sort();
+            let mut expected_pair = vec![id.clone(), literal.clone()];
+            expected_pair.sort();
+            let listing = listed == expected_pair;
+            let removed = PeerConfig::remove(&literal).is_ok()
+                && PeerConfig::remove(&literal).is_ok();
+            let remove_preserved = path.exists() && peer_test_record_snapshot(&path) == before
+                && PeerConfig::peers(Some(vec![id.clone(), literal.clone()]))
+                    .into_iter().map(|(id, _, _)| id).collect::<Vec<_>>() == vec![id.clone()];
+            let case_passed = absent_views && read_preserved && absent_removed
+                && absent_remove_preserved && separate_paths && stored && workflows
+                && victim_preserved && listing && removed && remove_preserved;
+            println!("OPTION_COMMIT_PEER_PREFIX_IDENTITY={}", serde_json::json!({
+                "kind": kind, "absent_views": absent_views, "read_preserved": read_preserved,
+                "option_isolated": option_isolated, "status_isolated": status_isolated,
+                "full_isolated": full_isolated, "ui_isolated": ui_isolated,
+                "absent_removed": absent_removed, "absent_remove_preserved": absent_remove_preserved,
+                "separate_paths": separate_paths, "stored": stored, "workflows": workflows,
+                "victim_preserved": victim_preserved, "listing": listing,
+                "removed": removed, "remove_preserved": remove_preserved, "passed": case_passed,
+            }));
+            passed &= case_passed;
+            PeerConfig::remove(&id).unwrap();
+        }
         let after_fds = fds();
         println!("OPTION_COMMIT_PEER_LIST_IDENTITY_FDS=before:{before_fds} after:{after_fds}");
         assert_eq!(before_fds, after_fds);

@@ -6982,7 +6982,7 @@ PY
     else
         local expected_tests=${#required_tests[@]}
         if [ "$RUST_TEST_PROFILE" = video-vpx ]; then
-            expected_tests=$((expected_tests + 11))
+            expected_tests=$((expected_tests + 12))
         fi
         [ "$tests_passed" -eq "$expected_tests" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"

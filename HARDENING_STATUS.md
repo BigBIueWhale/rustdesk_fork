@@ -1694,6 +1694,31 @@ The final transaction takes 142 seconds. Harness, oracle, test bodies, compiler,
 inputs and resource budgets are identical across A/B. Exact sources, PNG/RGBA
 hashes and cleanup are retained in `screenshot-x11-f539fc01.json`.
 
+**YUV conversion storage — Linux component accepted; hardware/app OPEN.**
+`9539d75c` carries the encoder's required byte length in `EncodeYuvFormat`,
+validates dimensions, native integer limits, source extent and disjoint plane
+ranges before native pointers, and passes the independent I420 V stride.
+VPX supplies its checked layout length; hardware supplies its positive native
+length. Conversion reserves output and required intermediate capacity before
+resizing either buffer, returning allocation errors with old bytes/lengths intact.
+The guessed oversized allocations and per-branch infallible growth are removed.
+
+At unchanged-product preparation `0e523221`, the V-stride regression fails and
+forced output/intermediate allocation refusals abort their two children; twenty
+controls pass. Corrected native libyuv conversion passes all nine output-refusal
+pairs and three intermediate-refusal pairs, with `TryReserveError`, preserved
+buffers, successful exact-pixel retry and allocation-free warmed calls. Nineteen
+invalid layouts return errors without changing buffers; asymmetric V rows and
+the exact 56-byte storage extent pass. Actual VP8/I420, VP9/I420 and VP9/I444
+conversion/encode/decode retain opaque black pixels. All 23 focused tests pass
+in 138 VM seconds, including prior native X11 PNG and VPX controls.
+`yuv-storage-045f5e09.json` retains sources, artifacts, observations and joined
+bounded-RAM cleanup. Fixtures add the required length field and three length
+refusals; the original failure/pixel/retry oracles remain unchanged.
+Hardware/VRAM compilation and drivers, full application/other native targets,
+padding and partial-frame lifecycle, C-heap/persistent global OOM, installed R-S0,
+actual presentation and R-F5 acceptance remain OPEN.
+
 **Encoder format snapshots — Linux VPX component accepted; hardware/app OPEN.**
 `0d26ee85` stores the three used YUV plane strides inline and makes
 `EncodeYuvFormat` copyable. VPX no longer allocates its stride vector or clones
@@ -1712,7 +1737,7 @@ conversion fixtures change only vector construction/copies to inline metadata;
 their pixel/error checks remain. `encoder-layout-0d5758dd.json` binds exact source,
 native A/B artifacts, unchanged test body and joined bounded-RAM cleanup.
 Hardware/VRAM feature compilation and drivers, full application and other native
-targets, cold buffer growth, descriptor/arithmetic bounds, persistent global OOM,
+targets, persistent global OOM,
 installed R-S0, actual presentation and R-F5 acceptance remain OPEN.
 
 **Warmed capture-to-YUV conversion — diagnostic allocation removed.** `f39be52e`
@@ -1727,8 +1752,7 @@ Three unsupported-format errors retain their exact diagnostics. All nineteen
 focused tests pass in 139 VM seconds, including the prior real-X11 PNG, VPX,
 allocation-failure and metadata controls. `yuv-conversion-diagnostic-e31d479c.json`
 binds sources/artifacts, raw A/B observations and joined bounded-RAM cleanup.
-This covers warmed Rust storage inside the converter. Cold buffer growth,
-descriptor/arithmetic bounds, C-heap allocation, other native targets, complete
+This covers warmed Rust storage inside the converter. C-heap allocation, other native targets, complete
 app/peer/settings behavior, installed R-S0 and R-F5 acceptance remain OPEN.
 
 **Capture stride metadata — Linux component accepted; other native targets OPEN.**

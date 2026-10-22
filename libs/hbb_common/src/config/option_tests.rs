@@ -1846,12 +1846,83 @@ fn exercise_peer_projection_types(kind: &str, id: &str, cases: &[&str]) {
 }
 
 #[test]
-fn peer_option_projection_wrong_types_are_explicit_without_mutation() {
-    in_private_process("config::option_tests::peer_option_projection_wrong_types_are_explicit_without_mutation", |_| {
+fn peer_option_projection_preserves_source_and_normalizes_codecs() {
+    in_private_process("config::option_tests::peer_option_projection_preserves_source_and_normalizes_codecs", |_| {
         exercise_peer_projection_types("options", "peer-view-options", &[
             "options = 42\n", "options = []\n", "[options]\nalias = 42\n",
             "[options]\nalias = 'visible alias'\nother = false\n",
         ]);
+        let key = keys::OPTION_CODEC_PREFERENCE;
+        UserDefaultConfig::set_option(key.into(), "vp9".into()).unwrap();
+        let default_file = Config::file_("_default");
+        let default_before = peer_test_record_snapshot(&default_file);
+        let id = "192.0.2.91:21118";
+        let path = PeerConfig::path(id);
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for (case, input) in [
+            ("auto", Some("auto")), ("vp8", Some("vp8")), ("vp9", Some("vp9")),
+            ("h264", Some("h264")), ("h265", Some("h265")), ("av1", Some("av1")),
+            ("unknown", Some("unknown")), ("empty", Some("")), ("uppercase", Some("VP9")),
+            ("missing-key", None), ("missing-options", None),
+        ] {
+            let mut peer = PeerConfig::default();
+            peer.options.clear();
+            if case != "missing-options" {
+                peer.options.insert("unrelated".into(), "before".into());
+            }
+            if let Some(input) = input {
+                peer.options.insert(key.into(), input.into());
+            }
+            peer.ui_flutter.insert("layout".into(), "preserved".into());
+            peer.info.hostname = "preserved-host".into();
+            peer.store(id).unwrap();
+            let raw = PeerConfig::load_for_write(id).unwrap();
+            let write_raw = raw.options.get(key).map(String::as_str);
+            let before = peer_test_record_snapshot(&path);
+            let expected = match input { Some("vp8") => "vp8", Some("vp9") => "vp9", _ => "auto" };
+            let full = PeerConfig::load(id);
+            let full_value = full.options.get(key).map(String::as_str).unwrap_or_default();
+            let view = PeerConfig::read_option(id, key).unwrap();
+            let mut expected_full = raw.clone();
+            expected_full.options.insert(key.into(), expected.into());
+            let read_only = peer_test_record_snapshot(&path) == before
+                && peer_test_record_snapshot(&default_file) == default_before;
+            let unrelated_preserved = full.options.iter().filter(|(k, _)| k.as_str() != key)
+                .all(|(k, v)| raw.options.get(k) == Some(v))
+                && full.ui_flutter == raw.ui_flutter && full.info == raw.info;
+            PeerConfig::set_option(id, "unrelated", "after".into()).unwrap();
+            let after_raw = PeerConfig::load_for_write(id).unwrap();
+            let mut expected_raw = raw.clone();
+            expected_raw.options.insert("unrelated".into(), "after".into());
+            let raw_preserved = write_raw == input && after_raw == expected_raw;
+            let correct = full == expected_full && view == expected;
+            println!("OPTION_COMMIT_PEER_CODEC={}", serde_json::json!({
+                "case": case, "input": input, "expected": expected,
+                "full": full_value, "view": view, "write_raw": write_raw,
+                "raw_preserved": raw_preserved, "read_only": read_only,
+                "unrelated_preserved": unrelated_preserved, "correct": correct,
+            }));
+            passed &= correct && raw_preserved && read_only && unrelated_preserved;
+        }
+        let missing_id = "192.0.2.92:21118";
+        let missing_path = PeerConfig::path(missing_id);
+        assert!(!missing_path.exists());
+        let missing_full = PeerConfig::load(missing_id).options[key].clone();
+        let missing_view = PeerConfig::read_option(missing_id, key).unwrap();
+        let missing_preserved = !missing_path.exists()
+            && peer_test_record_snapshot(&default_file) == default_before;
+        let missing_correct = missing_full == "vp9" && missing_view == "vp9";
+        println!("OPTION_COMMIT_PEER_CODEC_MISSING={}", serde_json::json!({
+            "full": missing_full, "view": missing_view, "file_absent": missing_preserved,
+            "correct": missing_correct,
+        }));
+        let after_fds = fds();
+        println!("OPTION_COMMIT_PEER_CODEC_FDS=before:{before_fds} after:{after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(passed && missing_correct && missing_preserved,
+            "peer codec reads must be supported and preserve raw write state");
     });
 }
 

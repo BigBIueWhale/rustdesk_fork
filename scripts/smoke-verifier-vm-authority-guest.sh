@@ -3535,7 +3535,7 @@ run_focused_rust_tests() {
                 config::option_tests::peer_schema_collections_and_metadata_refuse_lossy_defaults
                 config::option_tests::peer_schema_failure_precedes_credential_migration_and_global_loading
                 config::option_tests::peer_schema_healthy_sparse_and_normalized_values_keep_their_semantics
-                config::option_tests::peer_option_projection_wrong_types_are_explicit_without_mutation
+                config::option_tests::peer_option_projection_preserves_source_and_normalizes_codecs
                 config::option_tests::peer_ui_projection_wrong_types_are_explicit_without_mutation
                 config::option_tests::peer_list_projection_wrong_alias_types_are_omitted_without_mutation
                 config::option_tests::config_temp_substitution_refuses_foreign_publication

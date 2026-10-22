@@ -517,6 +517,10 @@ PY
     done
     (cd /out && sha256sum flutter-peer-source-x11 flutter-peer-presentation-x11 \
       smoke-bind-loopback.so) > /out/manifest.sha256
+    while read -r digest driver; do
+      printf 'LINUX_FLUTTER_DRIVER_ARTIFACT=pass name=%s sha256=%s builds=2 equality=bytes\n' \
+        "$driver" "$digest"
+    done < /out/manifest.sha256
     chmod 0400 /out/manifest.sha256
     chmod 0500 /out
     printf 'LINUX_FLUTTER_DRIVERS_COMPILED=pass files=3 builds=2 equality=bytes app=unbuilt\n'

@@ -14885,28 +14885,32 @@ The separate CM pre-bootstrap cancellation park and all other user parks remain 
 Previously, a read error or completed job remained queued if its terminal message could
 not be admitted. Initial-open failure already removed the selected entry before sending;
 nonterminal data admission retains its existing ownership and error propagation.
-At clean source `75678d21`, all ten selected `--file-send-digest-tests` cases pass in
-166 reported VM seconds on one unchanged artifact. Three real keyed TCP frame-ceiling
+At clean source `dfaa5d99`, all ten selected `--file-send-digest-tests` cases pass in
+145 reported VM seconds on one unchanged artifact. Three real keyed TCP frame-ceiling
 refusals (read error, completion and open error) retire the selected entry; its paused
 same-ID sibling retains its counters and later delivers exact bytes, EOF and Done on a
 fresh healthy stream. Three healthy terminal controls also pass. Refused nonterminal
 data admission retains its active job, stream, six-byte progress and unchanged source.
 The four prior digest/allocation controls pass, including their exact retry assertions.
-The added native byte-pressure case retains a kernel-blocked partial TCP write and two
-queued frames consuming the complete 256-KiB writer budget. A job admitted at its exact
-end index retires on terminal-message byte refusal while its paused same-ID sibling
-survives. At the public error return, the writer is already joined, every frame/byte
-permit is returned, the active completion is closed and its encoded storage is retired.
-The sibling then reads exact source bytes and EOF through the common reader. Production
-and previous test bodies are unchanged; one test reuses the existing native blocked-writer
-fixture.
-`read-job-backpressure-dfdb784d.json` binds source/artifact identity, these observations
-and joined bounded-RAM cleanup. The earlier nine-case result is retained in
+The native pressure regression covers read error, open error and completion while a
+kernel-blocked partial TCP write and two queued frames exhaust the 256-KiB byte budget.
+A fourth case reaches a full 512-slot command channel through 511 publicly sent empty
+sealed frames and an admitted public drain. Cancelling its waiting future leaves the
+stream/writer ownership intact; the next terminal send returns the channel-full error.
+The completed cases use a job admitted at its exact end index. All four retire the
+selected entry and preserve its paused same-ID sibling. At each public error return,
+the writer is joined/closed, every frame/byte permit is returned, the active completion
+is closed and encoded storage is retired. Every sibling then reads exact source bytes
+and EOF through the common reader. Production, other tests and the real blocked-writer
+fixture are unchanged; one existing test is expanded and renamed without an alias.
+`read-job-pressure-states-d5098ec1.json` binds source/artifact identity, these observations
+and joined bounded-RAM cleanup. The earlier completion-only byte-pressure result remains
+in `read-job-backpressure-dfdb784d.json`; the nine-case result is retained in
 `read-terminal-retirement-native-55045bbb.json`, and RAM-only refusals in
 `read-terminal-retirement-4a151221.json`; no unchanged-product native baseline ran.
-The CM read-tick park remains unchanged. Full channel saturation, read/open failures
-under actual byte pressure, disconnect/cancellation, application error delivery, other
-platforms, installed privilege, R-S0/R-F5 and release acceptance remain OPEN.
+The CM read-tick park remains unchanged. Peer disconnects, cancellation during the sender
+step, full application error delivery, other platforms, installed privilege, R-S0/R-F5
+and release acceptance remain OPEN.
 
 **Send-digest size admission — Linux library/file and keyed TCP component comparison ACCEPTED; caller/platform integration OPEN.**
 At `119b65c6`, the exact earlier getter from `784daba1` accepted lengths changed after enumeration;

@@ -209,10 +209,10 @@ pub(super) mod tests {
                     let output = run(&format!("{mode}:{path}:{size}"));
                     let mut records = 0;
                     for line in String::from_utf8_lossy(&output.stdout).lines() {
-                        if line.starts_with("DECOMPRESSION_INPUT_CASE=") {
-                            println!("{line}");
+                        if let Some((_, observation)) = line.split_once("DECOMPRESSION_INPUT_CASE=") {
+                            println!("DECOMPRESSION_INPUT_CASE={observation}");
                             records += 1;
-                            all_ok &= line.contains(" input_allocations=0 exact=true");
+                            all_ok &= observation.contains(" input_allocations=0 exact=true");
                         }
                     }
                     print!("{}", String::from_utf8_lossy(&output.stderr));

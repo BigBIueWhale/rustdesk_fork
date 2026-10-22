@@ -471,7 +471,15 @@ impl VideoQoS {
 
         // Calculate ratio for adding 150kbps bandwidth
         let ratio_add_150kbps = if current_bitrate > 0 {
-            Some((current_bitrate + 150) as f32 * current_ratio / current_bitrate as f32)
+            let ceiling = (f64::from(current_bitrate) + 150.0) * f64::from(current_ratio)
+                / f64::from(current_bitrate);
+            let rounded = ceiling as f32;
+            // Round the positive ceiling down so conversion cannot exceed the budget.
+            Some(if f64::from(rounded) > ceiling {
+                f32::from_bits(rounded.to_bits() - 1)
+            } else {
+                rounded
+            })
         } else {
             None
         };
@@ -530,7 +538,6 @@ impl VideoQoS {
         // Limit quality increase rate for better stability
         if let Some(ratio_add_150kbps) = ratio_add_150kbps {
             if v > ratio_add_150kbps
-                && ratio_add_150kbps > current_ratio
                 && current_ratio >= BR_SPEED
             {
                 v = ratio_add_150kbps;

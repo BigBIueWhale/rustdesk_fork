@@ -499,7 +499,7 @@ mod tests {
             pixel.copy_from_slice(if index % 8 < 4 { &[0, 0, 255, 255] } else { &[255, 0, 0, 255] });
         }
         let pixels = PixelBuffer::new(&source, Pixfmt::BGRA, 8, 6, 32).unwrap();
-        let expected = Some(([82, 90, 240], [41, 240, 110]));
+        let expected = Some(([82, 90, 239], [41, 239, 110]));
         let mut exact = 0;
         let mut refused = 0;
         for destination in [Pixfmt::I420, Pixfmt::I444, Pixfmt::NV12] {

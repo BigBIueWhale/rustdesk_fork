@@ -4626,13 +4626,13 @@ pub async fn handle_read_jobs(
         },
         Ok(None) => (String::new(), None, false),
     };
+    if finished {
+        jobs.remove(index);
+    }
     let receipt = match message {
         Some(message) => Some(stream.send_with_receipt(&message).await?),
         None => None,
     };
-    if finished {
-        jobs.remove(index);
-    }
     Ok((job_log, receipt))
 }
 

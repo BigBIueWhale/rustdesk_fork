@@ -42,9 +42,12 @@ if [ "$execution_status" -eq 0 ]; then execution_status=$allocation_status; fi
 metadata_status=0
 python3 -B -I -S /source/scripts/run-capture-metadata-tests.py "$test_executable" || metadata_status=$?
 if [ "$execution_status" -eq 0 ]; then execution_status=$metadata_status; fi
+message_status=0
+python3 -B -I -S /source/scripts/run-encoded-video-allocation-tests.py "$test_executable" || message_status=$?
+if [ "$execution_status" -eq 0 ]; then execution_status=$message_status; fi
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'VIDEO_VPX_ARTIFACT_AFTER=observed sha256=%s tests=25 exit_code=%s unchanged=before-after\n' \
+printf 'VIDEO_VPX_ARTIFACT_AFTER=observed sha256=%s tests=26 exit_code=%s unchanged=before-after\n' \
     "$artifact_sha" "$execution_status"
 [ "$execution_status" -eq 0 ] || exit "$execution_status"
-printf 'VIDEO_VPX_ARTIFACT=pass sha256=%s executable=%s tests=25 unchanged=before-after execution_seconds=%s\n' \
+printf 'VIDEO_VPX_ARTIFACT=pass sha256=%s executable=%s tests=26 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"

@@ -654,6 +654,10 @@ impl GoogleImage for Image<'_> {
 
 unsafe impl Send for vpx_codec_ctx_t {}
 
+#[cfg(all(test, target_os = "linux"))]
+#[path = "encoded_video_tests.rs"]
+mod encoded_video_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;

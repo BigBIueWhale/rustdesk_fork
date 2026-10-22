@@ -1723,6 +1723,13 @@ The sole `GoogleImage` implementation returns libvpx's four-slot stride/pointer 
 directly, removing two per-frame Rust heap allocations. Native conversion calls,
 borrowed-image lifetime, app callers, pins and the 160-MiB decoded byte cap are unchanged.
 
+`0cd1ba88` retires the uncalled raw-plane slice accessor and sentinel row-size helper,
+plus unused 24-bit `ImageFormat::Raw` conversion. The remaining I420/I444-to-ARGB/ABGR
+match is exhaustive; its four conversion bodies and active format tags 1/2 are unchanged.
+Capture's separate `PixelBuffer::data` and `ImageRgb` fields are untouched. This removes
+dormant interfaces, including a log-and-success unsupported branch; no reachable failure
+or new LPE reproduction is claimed.
+
 The unchanged-product fixture at `cbb487ec` reproduces two actual VP8 process aborts:
 one refused 4,352-byte output growth and one refused 16-byte metadata allocation with
 an already-sized output buffer. Eleven existing controls pass on the same artifact.
@@ -1742,6 +1749,12 @@ Sources, artifacts, raw receipts, fixture correction and cleanup are retained in
 refusals and the named native conversion cases. Persistent system-wide OOM, complete
 app publication/recovery, other-platform/device, installed/LPE, R-S0/R-F5, performance/
 soak and release acceptance remain OPEN.
+
+After retirement, the same thirteen native tests pass in 133 seconds; the starting
+scrap tree equals the retained `72f9028c` native baseline. Unchanged fixture/harness,
+caller classification, active conversion equality, artifacts and joined bounded-RAM
+cleanup are bound in `retired-decoded-apis-021edfe3.json`. Additional native decoded
+formats and bit-depth admission remain OPEN.
 
 **VPX input storage — native encoder/decoder component accepted; product acceptance OPEN.**
 

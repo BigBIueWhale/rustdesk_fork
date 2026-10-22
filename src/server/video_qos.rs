@@ -643,6 +643,59 @@ mod tests {
         qos
     }
 
+    #[test]
+    fn bitrate_growth_respects_budget_across_u32_range() {
+        let mut cases = 0;
+        let mut panics = 0;
+        let mut budget_violations = 0;
+        let mut failures = 0;
+        for (name, quality) in [
+            ("low", ImageQuality::Low.value()),
+            ("balanced", ImageQuality::Balanced.value()),
+            ("best", ImageQuality::Best.value()),
+            ("custom-low", 10 << 8),
+            ("custom-high", 2000 << 8),
+        ] {
+            for bitrate in [0, 1, 150, 2000, 1 << 24,
+                u32::MAX - 150, u32::MAX - 149, u32::MAX - 1, u32::MAX] {
+                let mut qos = healthy_controller();
+                qos.user_custom_fps(7, 20);
+                qos.user_image_quality(7, quality);
+                qos.user_delay_response_elapsed(7, 4000);
+                qos.adjust_ratio(true);
+                qos.user_network_delay(7, 20);
+                let previous = qos.ratio();
+                let target = qos.latest_quality();
+                let fps = qos.fps();
+                qos.store_bitrate(bitrate);
+                let completed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    qos.adjust_ratio(true);
+                })).is_ok();
+                let current = qos.ratio();
+                let increase = f64::from(bitrate)
+                    * (f64::from(current) / f64::from(previous) - 1.0);
+                let budgeted = bitrate == 0 || previous < BR_SPEED || increase <= 150.0 + 1e-6;
+                let useful = bitrate > (1 << 24) || current > previous;
+                let owner = qos.users.len() == 1 && qos.users[&7].custom_fps == Some(20)
+                    && qos.latest_quality() == target && qos.fps() == fps && qos.bitrate() == bitrate;
+                let valid = current.is_finite() && current >= previous && current <= target.ratio();
+                qos.store_bitrate(2000);
+                qos.user_network_delay(7, 20);
+                let next_previous = qos.ratio();
+                qos.adjust_ratio(true);
+                let subsequent = qos.ratio() >= next_previous && qos.latest_quality() == target;
+                cases += 1;
+                panics += (!completed) as usize;
+                budget_violations += (!budgeted) as usize;
+                failures += (!(completed && budgeted && useful && owner && valid && subsequent)) as usize;
+                println!("VIDEO_QOS_BITRATE_STEP=observed quality={name} bitrate={bitrate} completed={completed} increase_kbps={increase} budgeted={budgeted} useful={useful} owner={owner} valid={valid} subsequent={subsequent}");
+            }
+        }
+        println!("VIDEO_QOS_BITRATE_STEP=complete cases={cases} panics={panics} budget_violations={budget_violations} failures={failures}");
+        assert_eq!(cases, 45);
+        assert_eq!(failures, 0, "bitrate adaptation must preserve its increase budget and live owner");
+    }
+
     fn healthy_pair() -> VideoQoS {
         let mut qos = healthy_controller();
         qos.on_connection_open(8);

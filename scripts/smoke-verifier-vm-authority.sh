@@ -6808,7 +6808,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = opti
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
     mapfile -t video_qos_controller_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'VIDEO_QOS_CONTROLLER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/video_qos_it-[0-9a-f]{16} tests=24 unchanged=before-after execution_seconds=[0-9]+$'
+            'VIDEO_QOS_CONTROLLER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/video_qos_it-[0-9a-f]{16} tests=25 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#video_qos_controller_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'VIDEO_QOS_CONTROLLER_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -6817,7 +6817,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = vide
         'VIDEO_QOS_ENCODER_OWNER=pass cases=9 available=9 passed=9 joined=9 stale=refused feedback=preserved retries=pass' \
         'codec calls release QoS ownership and reject stale display completion'
     require_exact_fixed_receipt \
-        "VIDEO_QOS_CONTROLLER_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=24 target=linux-x86_64 scope=production-controller-and-quality-application rust=1.75.0 package=video_qos_it vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "VIDEO_QOS_CONTROLLER_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=25 target=linux-x86_64 scope=production-controller-and-quality-application rust=1.75.0 package=video_qos_it vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused video QoS controller compilation and native result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'video QoS controller cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-vpx ]; then
@@ -6894,13 +6894,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = vide
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
     mapfile -t video_qos_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=19 unchanged=before-after execution_seconds=[0-9]+$'
+            'VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=20 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#video_qos_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'VIDEO_QOS_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'video QoS artifact receipt differs'
     require_exact_fixed_receipt \
-        "VIDEO_QOS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=19 target=linux-x86_64 scope=complete-parent-library-and-probe-recovery rust=1.75.0 features=linux-pkg-config vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "VIDEO_QOS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=20 target=linux-x86_64 scope=complete-parent-library-and-probe-recovery rust=1.75.0 features=linux-pkg-config vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'video QoS compilation and native result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'video QoS cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
@@ -8192,13 +8192,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'OPTION_ACK_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=14 scope=complete-parent-library-option-and-keyboard-outcomes network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
-        printf 'VIDEO_QOS_CONTROLLER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=24 scope=production-controller-and-quality-application network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'VIDEO_QOS_CONTROLLER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=25 scope=production-controller-and-quality-application network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = video-vpx ]; then
         printf 'VIDEO_VPX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=26 scope=production-vpx-and-screenshot-pixel-conversion network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
-        printf 'VIDEO_QOS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=19 scope=complete-parent-library-and-probe-recovery network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'VIDEO_QOS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=20 scope=complete-parent-library-and-probe-recovery network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
         printf 'RESOLUTION_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=complete-parent-library-and-owned-result network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

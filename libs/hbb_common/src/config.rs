@@ -4834,7 +4834,7 @@ impl UserDefaultConfig {
                 self.get_string(key, "balanced", vec!["best", "low", "custom"])
             }
             keys::OPTION_CODEC_PREFERENCE => {
-                self.get_string(key, "auto", vec!["vp8", "vp9", "h264", "h265"])
+                self.get_string(key, "auto", vec!["vp8", "vp9"])
             }
             keys::OPTION_CUSTOM_IMAGE_QUALITY => {
                 (self.get_num(key, 50.0, 10.0, 0xFFF as f64) as i32).to_string()

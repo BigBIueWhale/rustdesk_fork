@@ -19,7 +19,8 @@ artifact_sha = hashlib.sha256(executable.read_bytes()).hexdigest()
 passed = 0
 for operation, name, allocation_bytes in (
         ('construct', 'construction_needs_no_allocation', 32),
-        ('read', 'stride_read_needs_no_allocation', 8)):
+        ('read', 'stride_read_needs_no_allocation', 8),
+        ('convert', 'warmed_yuv_conversion_needs_no_allocation', 70)):
     case = 'capture_metadata_tests::' + name
     result = subprocess.run([str(executable), '--exact', case, '--format', 'terse',
                              '--test-threads=1', '--show-output'],
@@ -37,10 +38,16 @@ for operation, name, allocation_bytes in (
     assert result.returncode == 0 and not result.stderr
     assert 'VIDEO_ALLOCATOR=refused' not in result.stdout
     assert result.stdout.count('test result: ok. 1 passed; 0 failed;') == 1
-    assert result.stdout.count(f'CAPTURE_METADATA_NATIVE=pass operation={operation} '
-                               'stride=16 allocations=0 pixels=exact\n') == 1
-    print(f'CAPTURE_METADATA_RESULT=pass operation={operation} stride=16 allocations=0 pixels=exact '
+    details = ('combinations=9 allocations=0 pixels=exact unsupported=3' if operation == 'convert'
+               else 'stride=16 allocations=0 pixels=exact')
+    assert result.stdout.count(f'CAPTURE_METADATA_NATIVE=pass operation={operation} {details}\n') == 1
+    if operation == 'convert':
+        cases = re.findall(r'^CAPTURE_YUV_CASE=pass (.+)$', result.stdout, re.MULTILINE)
+        expected = {f'source={source} destination={destination} pixels=exact allocation=unused'
+                    for source in ('BGRA', 'RGBA', 'RGB565LE') for destination in ('I420', 'NV12', 'I444')}
+        assert len(cases) == len(set(cases)) == 9 and set(cases) == expected
+    print(f'CAPTURE_METADATA_RESULT=pass operation={operation} {details} '
           f'artifact_sha256={artifact_sha} children=joined', flush=True)
     passed += 1
 assert hashlib.sha256(executable.read_bytes()).hexdigest() == artifact_sha
-sys.exit(0 if passed == 2 else 1)
+sys.exit(0 if passed == 3 else 1)

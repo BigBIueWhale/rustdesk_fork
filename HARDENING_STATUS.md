@@ -1753,8 +1753,30 @@ soak and release acceptance remain OPEN.
 After retirement, the same thirteen native tests pass in 133 seconds; the starting
 scrap tree equals the retained `72f9028c` native baseline. Unchanged fixture/harness,
 caller classification, active conversion equality, artifacts and joined bounded-RAM
-cleanup are bound in `retired-decoded-apis-021edfe3.json`. Additional native decoded
-formats and bit-depth admission remain OPEN.
+cleanup are bound in `retired-decoded-apis-021edfe3.json`.
+
+**VPX decoded-image admission — native component accepted; app acceptance OPEN.**
+
+`8b5c3595` admits only native eight-bit I420/I444 images before exposing their borrowed
+planes to conversion. `decode` and `flush` share one private checked constructor; its
+verified chroma is retained with the native-image borrow. Other formats/depths return
+typed `UnsupportedImage` instead of the old default-to-I420 interpretation. Required
+formats, native conversion bodies, byte budgets, dependencies and app callers remain.
+
+At unchanged-mapping preparation `ad88a6cf`, both real VP9 I422/I440 packets are admitted
+and ten unsupported descriptor cases pass admission; two tests fail while thirteen
+controls pass. With only the constructor predicate corrected, the identical fifteen
+tests pass in 134 VM seconds. Both captured 22-byte packets are byte-identical across
+runs. Four subsequent I420/I444 keyframes decode and convert to exact expected pixels
+on the same previously-refused decoder. Twelve native-SDK/faulted-metadata cases admit
+only the two supported format/depth combinations; higher-depth compressed peers are
+not exercised. Existing allocation, warmed-conversion, screenshot/PNG and codec controls
+remain green. `vpx-format-admission-ac281fd6.json` retains sources, exact fixtures,
+compressed packet bytes, artifacts, raw results and joined bounded-RAM VM cleanup.
+
+Whole-app publication/error/recording recovery, higher-bit-depth compressed peers,
+other-platform/device, installed/LPE, R-S0/R-F5, performance/soak, independent and
+release acceptance remain OPEN.
 
 **VPX input storage — native encoder/decoder component accepted; product acceptance OPEN.**
 

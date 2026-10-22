@@ -3794,6 +3794,7 @@ run_focused_rust_tests() {
             tcp::writer_lifetime_tests::tcp_failed_writer_retires_encoded_storage
             tcp::writer_lifetime_tests::tcp_cancelled_writer_retires_encoded_storage
             tcp::writer_lifetime_tests::tcp_fatal_send_returns_after_writer_retirement
+            tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors
             tcp::writer_lifetime_tests::tcp_fatal_receive_returns_after_writer_retirement
             tcp::writer_lifetime_tests::tcp_fatal_drain_returns_after_writer_retirement
             tcp::writer_lifetime_tests::tcp_cancelled_retirement_keeps_writer_owned_until_retry
@@ -5592,7 +5593,7 @@ run_focused_rust_tests() {
                                 exit "$group_status"
                             fi
                         done
-                        printf "TCP_TRANSPORT_ARTIFACT=pass sha256=%s executable=%s tests=35 unchanged=before-between-after\n" \
+                        printf "TCP_TRANSPORT_ARTIFACT=pass sha256=%s executable=%s tests=36 unchanged=before-between-after\n" \
                             "$transport_sha" "$transport_executable"
                         [ "$(rustdoc --version)" = "rustdoc 1.75.0 (82e1608df 2023-12-21)" ]
                         export RUSTDOC="$(command -v rustdoc)"
@@ -6284,12 +6285,12 @@ PY
         [ "$(grep -Fxc 'CPACE_PENDING_READ_CANCEL=pass stages=3 partial_socket_bytes=9 recv_counter=2' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CPACE_PENDING_READ_CANCEL=' "$output")" -eq 1 ] \
             || fail 'CPace pending-read cancellation observation is absent or differs'
-        [ "$(grep -Ec '^TCP_TRANSPORT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} tests=35 unchanged=before-between-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^TCP_TRANSPORT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} tests=36 unchanged=before-between-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'TCP_TRANSPORT_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'transport library artifact identity or stability is absent'
         local group count
         for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
-            bytes_codec::tests:12 tcp::writer_lifetime_tests:6; do
+            bytes_codec::tests:12 tcp::writer_lifetime_tests:7; do
             count=${group##*:}; group=${group%:*}
             [ "$(grep -Ec "^test ${group}::[[:alnum:]_]+ [.][.][.] ok$" "$output")" -eq "$count" ] \
                 || fail "transport test group differs: $group"
@@ -6991,7 +6992,7 @@ PY
         fi
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
-        [ "$tests_passed" -eq 59 ] \
+        [ "$tests_passed" -eq 60 ] \
             || fail "CPace recovery test count differs: $tests_passed"
         grep -E '^test [a-z0-9_:]+ \.\.\. ok$|^(CPACE_WIRE|TCP_TRANSPORT)_ARTIFACT(_START)?=|^CPACE_PENDING_READ_CANCEL=|^WRITER_(BUFFER_LIFETIME|FATAL_RETURN|RETIRE_CANCEL|FAILURE_READ)=' "$output"
         grep -E '^test .*tcp.rs - tcp::FramedStream |^TCP_FRAMING_API=' "$output"

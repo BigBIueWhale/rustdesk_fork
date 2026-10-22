@@ -432,15 +432,36 @@ with os.fdopen(pidfd):
         print(f"pidfd signal delivery failed: {error}", file=sys.stderr)
         raise SystemExit(1)
 
+    if signal_name != "KILL":
+        try:
+            signal.pidfd_send_signal(pidfd, signal.SIGCONT, None, 0)
+        except ProcessLookupError:
+            # The requested signal may already have completed; the pidfd must still prove exit.
+            pass
+        except OSError as error:
+            print(f"pidfd continuation failed: {error}", file=sys.stderr)
+            raise SystemExit(1)
+
     poller = select.poll()
     poller.register(pidfd, select.POLLIN)
     deadline = time.monotonic() + timeout_ms / 1000
+    cancelled = False
     while True:
-        remaining_ms = int((deadline - time.monotonic()) * 1000)
-        if remaining_ms <= 0:
-            print("pidfd exit deadline expired", file=sys.stderr)
-            raise SystemExit(1)
-        if poller.poll(remaining_ms):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 and not cancelled:
+            cancelled = True
+            print("pidfd exit deadline expired; retaining exact owner until retirement", file=sys.stderr)
+            if signal_name != "KILL":
+                try:
+                    signal.pidfd_send_signal(pidfd, signal.SIGKILL, None, 0)
+                except ProcessLookupError:
+                    pass  # Exit is still observed below.
+                except OSError as error:
+                    print(f"pidfd cancellation failed; retaining owner: {error}", file=sys.stderr)
+        if poller.poll(1000 if cancelled else max(1, int(remaining * 1000) + 1)):
+            if cancelled:
+                print("pidfd retirement observed after deadline; requested shutdown was not clean", file=sys.stderr)
+                raise SystemExit(1)
             break
 PY
 }
@@ -464,7 +485,7 @@ signal_and_wait() (
   pid_is_same_and_running "$pid" "$expected_start" || fail "$label: retained process identity is not running before signal"
   if ! pidfd_signal_and_wait "$pid" "$expected_start" "$signal_name" "$((seconds * 1000))"; then
     [ "$pinned_log" = - ] || readiness_diagnostic "$pid" "$label: exit deadline expired" "$pinned_log"
-    fail "$label: exact process did not exit after pidfd signal"
+    fail "$label: requested shutdown did not complete cleanly; see pidfd retirement result"
   fi
   if [ "$required_literal" != - ]; then
     grep -Fq -- "$required_literal" "$pinned_log" || fail "$label: required terminal log record is absent"
@@ -593,10 +614,10 @@ EOF
   [ ! -e "/tmp/RustDesk-$SELF_TEST_UID" ] || fail "self-test IPC root already exists"
   local signal_log=$SELF_TEST_TMP/signal.log phase signal_name expected_status child_status
   local identity state start began elapsed signal_status forced marker expected_marker correct
-  local signal_cases_ok=true
+  local signal_cases_ok=true expected_signal_status
   : > "$signal_log"
   remember_tmp_file "$signal_log"
-  for phase in running stopped; do
+  for phase in running stopped ignoring-running ignoring-stopped; do
     for signal_name in TERM INT KILL; do
       : > "$signal_log"
       python3 - "$phase" >"$signal_log" 2>&1 <<'PY' &
@@ -609,10 +630,11 @@ def finish(number, _frame):
     print(f"SMOKE_SIGNAL_HANDLER={number}", flush=True)
     raise SystemExit(0)
 
-signal.signal(signal.SIGTERM, finish)
-signal.signal(signal.SIGINT, finish)
+handler = signal.SIG_IGN if sys.argv[1].startswith("ignoring-") else finish
+signal.signal(signal.SIGTERM, handler)
+signal.signal(signal.SIGINT, handler)
 print("SMOKE_SIGNAL_READY", flush=True)
-if sys.argv[1] == "stopped":
+if sys.argv[1].endswith("stopped"):
     os.kill(os.getpid(), signal.SIGSTOP)
 while True:
     time.sleep(1)
@@ -625,7 +647,7 @@ PY
         read -r state start <<<"$identity"
         [ "$start" = "$SELF_TEST_DECOY_START" ] || fail 'signal fixture identity changed'
         if grep -Fxq SMOKE_SIGNAL_READY "$signal_log" \
-            && { [ "$phase" = running ] || [ "$state" = T ]; }; then break; fi
+            && { [[ "$phase" != *stopped ]] || [ "$state" = T ]; }; then break; fi
         [ "$(( $(monotonic_millis) - began ))" -lt 3000 ] || fail 'signal fixture did not enter its expected state'
         sleep 0.01
       done
@@ -637,7 +659,7 @@ PY
         || fail 'wrong-generation attempt changed the fixture owner'
       identity=$(read_pid_identity "$SELF_TEST_DECOY_PID")
       read -r state start <<<"$identity"
-      [ "$phase" != stopped ] || [ "$state" = T ] || fail 'wrong-generation attempt resumed the fixture'
+      [[ "$phase" != *stopped ]] || [ "$state" = T ] || fail 'wrong-generation attempt resumed the fixture'
       began=$(monotonic_millis)
       signal_status=0
       signal_and_wait 1 "$signal_name" "$SELF_TEST_DECOY_PID" \
@@ -655,9 +677,15 @@ PY
       grep -Eq '^SMOKE_SIGNAL_HANDLER=(2|15)$' "$signal_log" && marker=true
       expected_status=0
       expected_marker=true
+      expected_signal_status=0
       if [ "$signal_name" = KILL ]; then expected_status=137; expected_marker=false; fi
+      if [[ "$phase" = ignoring-* ]] && [ "$signal_name" != KILL ]; then
+        expected_status=137
+        expected_marker=false
+        expected_signal_status=1
+      fi
       correct=false
-      if [ "$signal_status" -eq 0 ] && [ "$forced" = false ] \
+      if [ "$signal_status" -eq "$expected_signal_status" ] && [ "$forced" = false ] \
           && [ "$child_status" -eq "$expected_status" ] && [ "$marker" = "$expected_marker" ]; then
         correct=true
       else

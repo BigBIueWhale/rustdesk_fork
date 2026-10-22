@@ -128,6 +128,28 @@ open. The Windows display-only focus delay remains open until exercised with a c
 native artifact. Focused fast verification is the development default; broader verification is a deliberate
 integration/release checkpoint.
 
+**Owned smoke-child shutdown — native cleanup corrected; full-peer integration OPEN.**
+`scripts/smoke-ready.sh` now sends TERM/INT and CONT through one start-identity-checked
+pidfd, so a stopped owned child can execute its shutdown handler. Grace expiry initiates
+KILL through that same descriptor and retains ownership until observed exit; forced or
+late retirement returns failure. A continuation error likewise initiates cancellation
+without dropping ownership. Explicit KILL does not send CONT. At `0b6930c7`, the existing
+self-test's six new real-child cases reproduced stopped TERM/INT timeouts requiring
+fixture cleanup, while four running/KILL controls passed. At `cde9c7d1`, all six common
+cases and six additional ignoring-child cases passed, with twelve wrong-start refusals,
+no fixture-forced cleanup, and the unchanged original readiness suite passing. The
+self-test runs before native driver compilation in the existing isolated replay stage.
+The deliberate retained-app integration attempt `elvnPiDfqj` compiled byte-equal drivers
+twice and passed three focus cycles, then failed its first server-restart prerequisite:
+the protected libxdo mapping was not observed before the shutdown command. This is an
+unaccepted integration result, not a six-lifecycle pass or a demonstrated product cause.
+Both disposable VMs joined and their RAM workspaces retired; exact diagnostic roots were
+inventoried and removed, preserving serial/viewer logs and artifact identities in
+`stopped-smoke-children-66e1dc64.json`. Continuation/cancellation syscall faults and
+kernel-stalled drain are not injected. Full-peer restart acceptance, actual viewer
+suspension, network recovery, input-to-visible latency, soak, installed/other-platform,
+R-S0/R-F5 and release acceptance remain OPEN; parked work remains parked.
+
 ## Documentation and verification architecture
 
 `requirements.html` owns the normative product, security and build contracts.

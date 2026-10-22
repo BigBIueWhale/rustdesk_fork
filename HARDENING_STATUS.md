@@ -14758,9 +14758,10 @@ The shared post-key decoder sets a 64-MiB Zstd history-window ceiling before its
 decoded read, independently of the caller's output bound. Default output remains capped
 at 64 MiB; tighter caller bounds and explicit errors remain. Clipboard, cursor and
 compressed terminal data share this primitive; no caller or parked terminal work changes.
-File transfers retain their separate production decoder unchanged: 128-KiB encoded,
-decoded and history limits, borrowed raw input and a fixed 128-KiB-plus-one-byte output
-buffer, before filesystem/progress effects.
+The independent file-transfer decoder retains 128-KiB encoded, decoded and history
+limits, borrowed raw input and a fixed 128-KiB-plus-one-byte output buffer before
+filesystem/progress effects. Both memory-input decoders consume the received slice
+directly through `BufRead`, without a second buffered copy of compressed input.
 
 At unchanged-decoder preparation `6f76f44a`, the new regression accepts all three
 128-MiB-history cases with only 3/3/6 output bytes: default, tight caller bound and
@@ -14771,11 +14772,29 @@ production-compressor round trips for empty, one-byte and 128-KiB input. The fiv
 tests retain all three stricter window refusals; their generic-decoder control now expects
 the 128-MiB case to refuse too. The existing `--file-block-tests` component command at
 `d72f676f` also passes all seven tests in 76 VM seconds with exact source/dependency
-bindings and updated membership/count receipts. `--compression-tests` selects the actual
-library's same seven tests without a new resource profile; its corrected run takes
-143 VM seconds. `shared-decompression-window-0e2c9981.json` binds A/B sources, artifacts,
+bindings and updated membership/count receipts. At that source, `--compression-tests`
+passed the same seven actual-library tests without a new resource profile in 143 VM seconds. `shared-decompression-window-0e2c9981.json` binds A/B sources, artifacts,
 outcomes and joined bounded-RAM cleanup. The earlier component/profile receipts remain
 `file-block-accepted-a9a4774a.json` and `file-block-profile-efee13e6.json`.
+
+**Compressed-input storage — `51743019`.** At unchanged-decoder preparation
+`6b6c88ab`, eight controls and six healthy child cases pass; each of the latter
+observes one 131,075-byte input-buffer allocation per decode. All six refused-input-
+allocation children abort, so the new regression fails. Replacing only the two
+`Decoder::new(data)` calls with `Decoder::with_buffer(data)` makes the identical
+nine-case component fixture pass. Both shared and file-block paths decode empty,
+one-byte and 128-KiB content twice with exact output and unchanged compressed input;
+all twelve normal/refusing child cases observe zero input-buffer allocations.
+The positive allocation probe still aborts as required, and all thirteen children
+join. Existing malformed/truncated/concatenated, output/history bounds and output-
+allocation failure/retry controls pass. The artifact is unchanged before/after.
+`decompression-input-8c9ed120.json` binds original/corrected source, actual native
+outcomes, the excluded initial output-filter failure and joined bounded-RAM cleanup.
+Both focused inventories now contain nine cases; this slice executes the component
+lane, not the complete-library or parent/application lane. Limits, dependencies,
+wire bytes and public return types are unchanged. This removes redundant Rust input
+storage and its allocation-abort path; native C-heap, output and whole-process memory
+exhaustion, throughput and native caller/platform acceptance remain unproved.
 
 These are Rust1.75/Linux codec observations, not whole-process allocation measurements,
 full receive/filesystem or application execution, native clipboard/cursor/terminal handoff,

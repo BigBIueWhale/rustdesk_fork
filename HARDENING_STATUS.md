@@ -8842,11 +8842,18 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   change the host RustDesk service, binary, configuration, listener, display, firewall, route, or
   network state. A green transaction does not establish the broader R-B10 online closure.
 
-  The maintained fast checker now validates only this harness source contract. It does not replay
-  the runtime and cannot renew or extend the named-commit evidence. The former self-mutation catalog,
-  requirements/status prose checks, and independent verifier-of-verifier copies were deleted because
-  they measured source wording rather than presentation behavior. The real full-peer harness remains
-  the authoritative executable test.
+  The focused source checker follows the maintained retained-app replay entry and receipts, fixed
+  guest Docker channel with pre/post generation replay, digest-bound read-only source, bounded-RAM
+  no-NIC admission, renderer ordering and real viewer/controller result path. Obsolete candidate CLI,
+  SDK/build-log and pin-wording catalogues are removed (352 to 233 lines). The shared gate remains;
+  the checker also runs as numeric UID/GID 4000 in the ordinary authority VM. The unchanged old checker
+  fails there on its retired `assert_clean_worktree` requirement; `d6f1088d` passes the checker and the
+  existing VM authority transaction in 96 seconds, including real guest-Docker allowed/refused entry
+  controls and joined cleanup. `peer-source-contract-413d11d4.json` retains both runs and scope.
+  This checks source and entry authority only; it supplies no new app build, pixel, recovery,
+  installed or current-product evidence. The former self-mutation catalogue, documentation wording
+  checks and verifier-of-verifier copies remain deleted. The real full-peer harness remains the
+  authoritative executable presentation test.
 
   The obsolete five-file synthetic Flutter texture/X11 smoke was also deleted. It acquired direct
   host-Docker authority and could not establish an authenticated capture-to-present product path,

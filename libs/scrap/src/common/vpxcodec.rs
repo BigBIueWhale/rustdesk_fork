@@ -197,7 +197,7 @@ impl EncoderApi for VpxEncoder {
                         pixfmt: if i444 { Pixfmt::I444 } else { Pixfmt::I420 },
                         w: layout.w,
                         h: layout.h,
-                        stride: layout.stride.to_vec(),
+                        stride: [layout.stride[0], layout.stride[1], layout.stride[2]],
                         u: layout.u,
                         v: layout.v,
                     },
@@ -223,7 +223,7 @@ impl EncoderApi for VpxEncoder {
     }
 
     fn yuvfmt(&self) -> crate::EncodeYuvFormat {
-        self.yuvfmt.clone()
+        self.yuvfmt
     }
 
     #[cfg(feature = "vram")]

@@ -143,13 +143,11 @@ impl EncoderApi for HwRamEncoder {
         } else {
             Pixfmt::I420
         };
-        let stride = self
-            .encoder
-            .linesize
-            .clone()
-            .drain(..)
-            .map(|i| i as usize)
-            .collect();
+        let stride = [
+            self.encoder.linesize[0] as usize,
+            self.encoder.linesize[1] as usize,
+            self.encoder.linesize[2] as usize,
+        ];
         crate::EncodeYuvFormat {
             pixfmt,
             w: self.encoder.ctx.width as _,

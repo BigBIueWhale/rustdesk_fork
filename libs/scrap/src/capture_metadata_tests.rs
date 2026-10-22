@@ -45,9 +45,9 @@ fn warmed_yuv_conversion_needs_no_allocation() {
                 w: 3,
                 h: 2,
                 stride: match destination {
-                    Pixfmt::I420 => vec![8, 4, 4],
-                    Pixfmt::NV12 => vec![8, 8],
-                    Pixfmt::I444 => vec![8, 8, 8],
+                    Pixfmt::I420 => [8, 4, 4],
+                    Pixfmt::NV12 => [8, 8, 0],
+                    Pixfmt::I444 => [8, 8, 8],
                     _ => unreachable!(),
                 },
                 u: 16,
@@ -55,10 +55,10 @@ fn warmed_yuv_conversion_needs_no_allocation() {
             };
             let mut output = Vec::new();
             let mut intermediate = Vec::new();
-            convert_to_yuv(&pixels, format.clone(), &mut output, &mut intermediate).unwrap();
+            convert_to_yuv(&pixels, format, &mut output, &mut intermediate).unwrap();
             output.fill(0xa5);
             intermediate.fill(0xa5);
-            let warmed_format = format.clone();
+            let warmed_format = format;
             let before = test_allocator::refusals();
             test_allocator::arm();
             let result = black_box(convert_to_yuv(
@@ -90,7 +90,7 @@ fn warmed_yuv_conversion_needs_no_allocation() {
             println!("CAPTURE_YUV_CASE=pass source={source:?} destination={destination:?} pixels=exact allocation=unused");
         }
         let unsupported = EncodeYuvFormat {
-            pixfmt: Pixfmt::BGRA, w: 3, h: 2, stride: Vec::new(), u: 0, v: 0,
+            pixfmt: Pixfmt::BGRA, w: 3, h: 2, stride: [0; 3], u: 0, v: 0,
         };
         let error = convert_to_yuv(&pixels, unsupported, &mut Vec::new(), &mut Vec::new()).unwrap_err();
         assert_eq!(error.to_string(), format!("unsupported pixfmt conversion: {source:?} -> BGRA"));

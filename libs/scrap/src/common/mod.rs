@@ -240,12 +240,12 @@ impl Pixfmt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct EncodeYuvFormat {
     pub pixfmt: Pixfmt,
     pub w: usize,
     pub h: usize,
-    pub stride: Vec<usize>,
+    pub stride: [usize; 3],
     pub u: usize,
     pub v: usize,
 }

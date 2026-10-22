@@ -1397,7 +1397,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                     }
 
                     let yuv_format = encoder.yuvfmt();
-                    let frame = frame.to(yuv_format.clone(), &mut yuv, &mut mid_data)?;
+                    let frame = frame.to(yuv_format, &mut yuv, &mut mid_data)?;
                     if let Some(trace) = presentation_trace.as_ref() {
                         trace.trace_yuv(display_idx, ms, &yuv_format, &frame);
                     }

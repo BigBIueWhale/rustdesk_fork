@@ -154,12 +154,11 @@ impl EncoderApi for VRamEncoder {
     }
 
     fn yuvfmt(&self) -> EncodeYuvFormat {
-        // useless
         EncodeYuvFormat {
             pixfmt: Pixfmt::BGRA,
             w: self.ctx.d.width as _,
             h: self.ctx.d.height as _,
-            stride: Vec::new(),
+            stride: [0; 3],
             u: 0,
             v: 0,
         }

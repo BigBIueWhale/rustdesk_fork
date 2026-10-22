@@ -1678,6 +1678,29 @@ performant across every supported viewer and controlled platform. Focus, visibil
 display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,
 fresh presentation, bounded resources, and final ownership without requiring reconnect as a recovery mechanism.
 
+**Screenshot captured pixels — native conversion corrected; live screenshot acceptance OPEN.**
+
+`ee2b8ad6` converts visible rows according to the capture's declared RGBA, BGRA
+or RGB565LE format and returns tightly packed RGBA. Checked source/output sizes,
+stride admission and fallible reservation precede pixel reads. The old manual
+BGRA assumption and its generic append/swap converter are deleted. Screenshot
+ownership, dimension limits, response handling and PNG encoding are unchanged.
+
+Preparation `37a1b39a` moves the actual screenshot conversion into scrap without
+changing its behavior. The same four conversion test bodies reproduce sixteen
+wrong padded-RGBA outputs, sixteen RGB565 failures including fourteen caught
+Rust bounds panics, and three incorrectly accepted planar inputs; twenty-four
+healthy pixel controls and the four VPX tests pass. After correction, all eight
+tests pass: fifty-six exact pixel comparisons, three unsupported-format refusals,
+and the existing twenty-eight VP8/VP9 encode/decode round trips. The focused
+zero-NIC, non-root VM run takes 152 seconds and joins VM/RAM retirement. It uses
+constructed buffers admitted by the production Linux PixelBuffer, rather than
+an OS capture or an application screenshot transaction. Harness, tests, compiler
+and pinned inputs are unchanged across A/B. `screenshot-pixels-e883dbaa.json`
+retains sources, binaries, exact observations and bounded-RAM cleanup.
+Live X11/desktop/mobile capture, screenshot requests and PNG/viewer behavior,
+other-platform, installed/LPE, R-S0/R-F5 and release acceptance remain OPEN.
+
 **VPX input storage — native encoder/decoder component accepted; product acceptance OPEN.**
 
 `bac6069e` uses one checked layout for capture conversion metadata and encoder

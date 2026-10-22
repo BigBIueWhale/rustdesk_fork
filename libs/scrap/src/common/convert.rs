@@ -199,6 +199,7 @@ pub fn convert_to_yuv(
 }
 
 #[cfg(not(target_os = "ios"))]
+/// Convert a captured screen or camera frame to tightly packed, opaque RGBA.
 pub fn convert_to_rgba(pixbuf: &PixelBuffer<'_>) -> ResultType<Vec<u8>> {
     let format = pixbuf.pixfmt();
     let bytes_per_pixel = match format {
@@ -258,6 +259,10 @@ pub fn convert_to_rgba(pixbuf: &PixelBuffer<'_>) -> ResultType<Vec<u8>> {
             }
             _ => bail!("unsupported screenshot pixel format: {format:?}"),
         }
+    }
+    // Four-byte screen-capture formats can carry unused alpha bytes.
+    for pixel in rgba.chunks_exact_mut(4) {
+        pixel[3] = 255;
     }
     Ok(rgba)
 }

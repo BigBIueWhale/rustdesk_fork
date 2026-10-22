@@ -72,8 +72,8 @@ fn reset(supports_quality: bool) -> (f32, DisplayGeneration) {
     (qos.ratio(), generation)
 }
 
-fn publish_test_bitrate(qos: &mut VideoQoS, _generation: &DisplayGeneration, bitrate: u32) {
-    qos.store_bitrate(bitrate);
+fn publish_test_bitrate(qos: &mut VideoQoS, generation: &DisplayGeneration, bitrate: u32) {
+    assert!(qos.set_display_bitrate("monitor", generation, bitrate));
 }
 
 fn apply(encoder: &mut Encoder, ratio: &mut f32, generation: &DisplayGeneration) -> ResultType<()> {

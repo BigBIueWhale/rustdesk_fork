@@ -111,6 +111,7 @@ struct DisplayData {
     generation: DisplayGeneration,
     send_counter: usize, // Number of times encode during period
     support_changing_quality: bool,
+    bitrate: u32,
 }
 
 // Main QoS controller structure
@@ -121,7 +122,6 @@ pub struct VideoQoS {
     // One current choice per live viewer, ordered by its latest request.
     qualities: Vec<(i32, Quality)>,
     displays: HashMap<String, DisplayData>,
-    bitrate_store: u32,
     adjust_ratio_instant: Instant,
     abr_config: bool,
     new_user_instant: Instant,
@@ -135,7 +135,6 @@ impl Default for VideoQoS {
             users: Default::default(),
             qualities: Default::default(),
             displays: Default::default(),
-            bitrate_store: 0,
             adjust_ratio_instant: Instant::now(),
             abr_config: true,
             new_user_instant: Instant::now(),
@@ -160,14 +159,23 @@ impl VideoQoS {
         }
     }
 
-    // Store bitrate for later use
-    pub fn store_bitrate(&mut self, bitrate: u32) {
-        self.bitrate_store = bitrate;
+    pub(super) fn set_display_bitrate(&mut self, name: &str, generation: &DisplayGeneration, bitrate: u32) -> bool {
+        match self.displays.get_mut(name) {
+            Some(display) if Arc::ptr_eq(&display.generation.0, &generation.0) => {
+                display.bitrate = bitrate;
+                true
+            }
+            _ => false,
+        }
     }
 
-    // Get stored bitrate
+    // The status protocol carries u32; adaptation uses the complete live total.
     pub fn bitrate(&self) -> u32 {
-        self.bitrate_store
+        self.total_bitrate().min(u128::from(u32::MAX)) as u32
+    }
+
+    fn total_bitrate(&self) -> u128 {
+        self.displays.values().map(|display| u128::from(display.bitrate)).sum()
     }
 
     // Get current bitrate ratio with bounds checking
@@ -460,7 +468,7 @@ impl VideoQoS {
         let target_quality = self.latest_quality();
         let target_ratio = self.latest_quality().ratio();
         let current_ratio = self.ratio;
-        let current_bitrate = self.bitrate();
+        let current_bitrate = self.total_bitrate();
 
         // Calculate minimum ratio for high resolution (1Mbps baseline)
         let ratio_1mbps = if current_bitrate > 0 {
@@ -471,8 +479,8 @@ impl VideoQoS {
 
         // Calculate ratio for adding 150kbps bandwidth
         let ratio_add_150kbps = if current_bitrate > 0 {
-            let ceiling = (f64::from(current_bitrate) + 150.0) * f64::from(current_ratio)
-                / f64::from(current_bitrate);
+            let ceiling = (current_bitrate as f64 + 150.0) * f64::from(current_ratio)
+                / current_bitrate as f64;
             let rounded = ceiling as f32;
             // Round the positive ceiling down so conversion cannot exceed the budget.
             Some(if f64::from(rounded) > ceiling {
@@ -639,9 +647,8 @@ impl RttCalculator {
 mod tests {
     use super::*;
 
-    fn publish_test_bitrate(qos: &mut VideoQoS, _name: &str, _generation: &DisplayGeneration, bitrate: u32) -> bool {
-        qos.store_bitrate(bitrate);
-        true
+    fn publish_test_bitrate(qos: &mut VideoQoS, name: &str, generation: &DisplayGeneration, bitrate: u32) -> bool {
+        qos.set_display_bitrate(name, generation, bitrate)
     }
 
     fn store_test_bitrate(qos: &mut VideoQoS, bitrate: u32) {

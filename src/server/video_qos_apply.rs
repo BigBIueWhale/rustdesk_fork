@@ -35,8 +35,10 @@ pub(super) fn check_qos(
         bail!("SWITCH");
     }
     if let Some(bitrate) = bitrate {
+        if !video_qos.set_display_bitrate(name, generation, bitrate) {
+            bail!("SWITCH");
+        }
         *ratio = requested_ratio;
-        video_qos.store_bitrate(bitrate);
     }
     *spf = video_qos.spf();
     if second_instant.elapsed() > Duration::from_secs(1) {

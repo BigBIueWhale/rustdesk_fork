@@ -6554,6 +6554,8 @@ PY
             || fail 'video QoS encoder ownership result differs'
         [ "$(grep -Fxc 'VIDEO_QOS_BITRATE_STEP=complete cases=45 panics=0 budget_violations=0 failures=0' "$output")" -eq 1 ] \
             || { tail -c 131072 "$output" >&2; fail 'video QoS bitrate growth result differs'; }
+        [ "$(grep -Fxc 'VIDEO_QOS_DISPLAY_BITRATE=complete growth_cases=6 budget_violations=0 metadata_failures=0 retirement_checks=9 retirement_failures=0' "$output")" -eq 1 ] \
+            || { tail -c 131072 "$output" >&2; fail 'video QoS display bitrate ownership result differs'; }
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-vpx ]; then
         [ "${#result_lines[@]}" -eq 16 ] || fail 'VPX summary count differs'
         [ "$(grep -Ec '^VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=27 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -7153,7 +7155,7 @@ PY
         elif [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] \
                 || { tail -c 131072 "$output" >&2; fail 'video QoS controller total differs'; }
-            grep -E '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$|^VIDEO_QOS_CONTROLLER_(BUILD=pass |ARTIFACT(_AFTER)?=)|^VIDEO_QOS_(ENCODER_OWNER=|APPLY=|BITRATE_STEP=|BASE_RTT=|RECOVERY=|CONGESTION=|DELAY_(WINDOW|RANGE|RECOVERY)=|RATE_ADMISSION=|QUALITY_(ORDER|RETIRE|OWNER|CONTINUITY)=)' "$output"
+            grep -E '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$|^VIDEO_QOS_CONTROLLER_(BUILD=pass |ARTIFACT(_AFTER)?=)|^VIDEO_QOS_(ENCODER_OWNER=|APPLY=|BITRATE_STEP=|DISPLAY_BITRATE=|BASE_RTT=|RECOVERY=|CONGESTION=|DELAY_(WINDOW|RANGE|RECOVERY)=|RATE_ADMISSION=|QUALITY_(ORDER|RETIRE|OWNER|CONTINUITY)=)' "$output"
             printf 'VIDEO_QOS_CONTROLLER_VM=pass commit=%s tree=%s tests=25 target=linux-x86_64 scope=production-controller-and-quality-application rust=1.75.0 package=video_qos_it vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

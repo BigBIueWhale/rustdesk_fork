@@ -639,6 +639,20 @@ impl RttCalculator {
 mod tests {
     use super::*;
 
+    fn publish_test_bitrate(qos: &mut VideoQoS, _name: &str, _generation: &DisplayGeneration, bitrate: u32) -> bool {
+        qos.store_bitrate(bitrate);
+        true
+    }
+
+    fn store_test_bitrate(qos: &mut VideoQoS, bitrate: u32) {
+        let generation = match qos.displays.get("monitor") {
+            Some(display) => display.generation.clone(),
+            None => qos.new_display("monitor".into()),
+        };
+        assert!(publish_test_bitrate(qos, "monitor", &generation, bitrate));
+        qos.set_support_changing_quality("monitor", true);
+    }
+
     fn healthy_controller() -> VideoQoS {
         let mut qos = VideoQoS::default();
         qos.on_connection_open(7);
@@ -674,7 +688,7 @@ mod tests {
                 let previous = qos.ratio();
                 let target = qos.latest_quality();
                 let fps = qos.fps();
-                qos.store_bitrate(bitrate);
+                store_test_bitrate(&mut qos, bitrate);
                 let completed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     qos.adjust_ratio(true);
                 })).is_ok();
@@ -686,7 +700,7 @@ mod tests {
                 let owner = qos.users.len() == 1 && qos.users[&7].custom_fps == Some(20)
                     && qos.latest_quality() == target && qos.fps() == fps && qos.bitrate() == bitrate;
                 let valid = current.is_finite() && current >= previous && current <= target.ratio();
-                qos.store_bitrate(2000);
+                store_test_bitrate(&mut qos, 2000);
                 qos.user_network_delay(7, 20);
                 let next_previous = qos.ratio();
                 qos.adjust_ratio(true);
@@ -701,6 +715,68 @@ mod tests {
         println!("VIDEO_QOS_BITRATE_STEP=complete cases={cases} panics={panics} budget_violations={budget_violations} failures={failures}");
         assert_eq!(cases, 45);
         assert_eq!(failures, 0, "bitrate adaptation must preserve its increase budget and live owner");
+
+        let mut budget_violations = 0;
+        let mut metadata_failures = 0;
+        for (first, second) in [(2000, 2000), (1000, 8000), (8000, 1000),
+            (u32::MAX, u32::MAX), (u32::MAX, 1), (1, u32::MAX)] {
+            let mut qos = healthy_controller();
+            qos.user_custom_fps(7, 20);
+            qos.user_image_quality(7, ImageQuality::Best.value());
+            let a = qos.new_display("first".into());
+            let b = qos.new_display("second".into());
+            assert!(publish_test_bitrate(&mut qos, "first", &a, first));
+            assert!(publish_test_bitrate(&mut qos, "second", &b, second));
+            qos.set_support_changing_quality("first", true);
+            qos.set_support_changing_quality("second", true);
+            qos.user_delay_response_elapsed(7, 4000);
+            qos.adjust_ratio(true);
+            qos.user_network_delay(7, 20);
+            let previous = qos.ratio();
+            assert!(previous >= BR_SPEED && previous < BR_BEST);
+            let total = u64::from(first) + u64::from(second);
+            let reported = qos.bitrate();
+            qos.adjust_ratio(true);
+            let current = qos.ratio();
+            let increase = total as f64 * (f64::from(current) / f64::from(previous) - 1.0);
+            let budgeted = increase <= 150.0 + 1e-6;
+            let metadata = u64::from(reported) == total.min(u64::from(u32::MAX));
+            let owner = qos.users.len() == 1 && qos.users[&7].custom_fps == Some(20)
+                && qos.latest_quality() == Quality::Best && qos.fps() == 20;
+            budget_violations += usize::from(!budgeted);
+            metadata_failures += usize::from(!(metadata && owner));
+            println!("VIDEO_QOS_DISPLAY_BITRATE=observed first={first} second={second} total_kbps={total} reported_kbps={reported} increase_kbps={increase} budgeted={budgeted} metadata={metadata} owner={owner}");
+        }
+
+        let mut qos = healthy_controller();
+        qos.user_custom_fps(7, 20);
+        let a = qos.new_display("first".into());
+        let old_b = qos.new_display("second".into());
+        assert!(publish_test_bitrate(&mut qos, "first", &a, 2000));
+        assert!(publish_test_bitrate(&mut qos, "second", &old_b, 8000));
+        let mut retirement = vec![("two-live", qos.bitrate() == 10000)];
+        qos.remove_display("first", &a);
+        retirement.push(("first-retired", qos.bitrate() == 8000));
+        let b = qos.new_display("second".into());
+        retirement.push(("replacement-unpublished", qos.bitrate() == 0));
+        let stale = publish_test_bitrate(&mut qos, "second", &old_b, 99999);
+        retirement.push(("stale-publication", !stale && qos.bitrate() == 0));
+        assert!(publish_test_bitrate(&mut qos, "second", &b, 7000));
+        retirement.push(("replacement-published", qos.bitrate() == 7000));
+        qos.remove_display("second", &old_b);
+        retirement.push(("stale-retirement", qos.bitrate() == 7000));
+        let unknown = publish_test_bitrate(&mut qos, "missing", &b, 100000);
+        retirement.push(("missing-owner", !unknown && qos.bitrate() == 7000 && qos.displays.len() == 1));
+        qos.remove_display("second", &b);
+        retirement.push(("last-retired", qos.bitrate() == 0));
+        retirement.push(("viewer-preserved", qos.users.len() == 1 && qos.users[&7].custom_fps == Some(20)));
+        for (stage, passed) in &retirement {
+            println!("VIDEO_QOS_DISPLAY_BITRATE=retirement stage={stage} passed={passed}");
+        }
+        let retirement_failures = retirement.iter().filter(|(_, passed)| !passed).count();
+        println!("VIDEO_QOS_DISPLAY_BITRATE=complete growth_cases=6 budget_violations={budget_violations} metadata_failures={metadata_failures} retirement_checks=9 retirement_failures={retirement_failures}");
+        assert_eq!((budget_violations, metadata_failures, retirement_failures), (0, 0, 0),
+            "the shared ratio must use only live display-owned bitrate and preserve its total growth budget");
     }
 
     fn healthy_pair() -> VideoQoS {
@@ -944,7 +1020,7 @@ mod tests {
         let mut qos = healthy_controller();
         qos.new_display("monitor".to_owned());
         qos.set_support_changing_quality("monitor", true);
-        qos.store_bitrate(2000);
+        store_test_bitrate(&mut qos, 2000);
         qos.user_delay_response_elapsed(7, 2000);
         assert_eq!(qos.fps(), FPS);
         let ratio = qos.ratio();
@@ -1055,7 +1131,7 @@ mod tests {
         qos.new_user_instant = Instant::now().checked_sub(Duration::from_secs(2)).unwrap();
         qos.new_display("monitor".to_owned());
         qos.set_support_changing_quality("monitor", true);
-        qos.store_bitrate(2000);
+        store_test_bitrate(&mut qos, 2000);
         for _ in 0..120 {
             qos.user_network_delay(7, round_trip);
             qos.adjust_ratio(true);

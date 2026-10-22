@@ -68,8 +68,12 @@ fn reset(supports_quality: bool) -> (f32, DisplayGeneration) {
     qos.on_connection_open(7);
     let generation = qos.new_display("monitor".into());
     qos.set_support_changing_quality("monitor", supports_quality);
-    qos.store_bitrate(2000);
+    publish_test_bitrate(&mut qos, &generation, 2000);
     (qos.ratio(), generation)
+}
+
+fn publish_test_bitrate(qos: &mut VideoQoS, _generation: &DisplayGeneration, bitrate: u32) {
+    qos.store_bitrate(bitrate);
 }
 
 fn apply(encoder: &mut Encoder, ratio: &mut f32, generation: &DisplayGeneration) -> ResultType<()> {
@@ -198,14 +202,14 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
                 }
                 "replace" => {
                     qos.remove_display("monitor", &generation);
-                    qos.new_display("monitor".into());
-                    qos.store_bitrate(7777);
+                    let replacement = qos.new_display("monitor".into());
+                    publish_test_bitrate(&mut qos, &replacement, 7777);
                 }
                 "reset" => {
                     qos.on_connection_close(7);
                     qos.on_connection_open(7);
-                    qos.new_display("monitor".into());
-                    qos.store_bitrate(7777);
+                    let replacement = qos.new_display("monitor".into());
+                    publish_test_bitrate(&mut qos, &replacement, 7777);
                 }
                 "record" => qos.user_record(7, true),
                 _ => unreachable!(),

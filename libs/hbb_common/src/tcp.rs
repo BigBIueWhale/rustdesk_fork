@@ -1456,6 +1456,81 @@ mod writer_lifetime_tests {
         assert!(observe_then_join(&mut fixture, "send").await);
     }
 
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn read_job_completion_retires_before_writer_byte_pressure_error() {
+        use crate::fs::{handle_read_jobs, JobType, TransferJob};
+        use std::os::unix::fs::DirBuilderExt;
+
+        let root = std::env::temp_dir().join(format!(
+            "rustdesk-read-job-pressure-{}-{:x}", std::process::id(), rand::random::<u64>(),
+        ));
+        std::fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        let source = root.join("source.zip");
+        std::fs::write(&source, b"source").unwrap();
+        let mut paused = TransferJob::new_read(
+            241, JobType::Generic, "paused".to_owned(), source.clone(), 0, false, false, false,
+        ).unwrap();
+        paused.init_data_stream_for_cm().await.unwrap();
+        paused.is_last_job = true;
+        let complete = TransferJob::new_read(
+            241, JobType::Generic, "complete".to_owned(), source.clone(), 1, false, false, false,
+        ).unwrap();
+        let mut jobs = vec![paused, complete];
+        let BlockedWriter {
+            mut stream, peer, observation, witness, admission, mut receipt,
+        } = blocked_writer().await;
+
+        let budget = admission.max_retained_ciphertext_bytes;
+        let mut queued = 0;
+        while admission.ciphertext_bytes.available_permits() > 0 {
+            let wire_size = admission.ciphertext_bytes.available_permits()
+                .min(admission.max_ciphertext_bytes);
+            assert!(wire_size > sodiumoxide::crypto::secretbox::MACBYTES);
+            stream.send_bytes(Bytes::from(vec![
+                0x6d; wire_size - sodiumoxide::crypto::secretbox::MACBYTES
+            ])).await.unwrap();
+            queued += 1;
+        }
+        assert_eq!(queued, 2);
+        assert_eq!(budget, 256 * 1024);
+        assert!(observation.pending_len.load(Ordering::Relaxed) > 0);
+        assert_eq!(admission.frames.available_permits(), WRITER_CHANNEL_CAP - 3);
+        assert!(matches!(&stream.state,
+            StreamState::Keyed(keyed) if keyed.writer_tx.capacity() > 0));
+
+        let mut stream = crate::Stream::Tcp(stream);
+        let error = tokio::time::timeout(Duration::from_secs(2), handle_read_jobs(&mut jobs, &mut stream))
+            .await.unwrap().expect_err("the live writer byte budget is exhausted");
+        assert!(error.to_string().starts_with("R-T18: keyed writer retained-byte capacity reached"));
+        let crate::Stream::Tcp(stream) = stream else { panic!("retain the TCP stream"); };
+        // Observe the public error boundary before any test-side yield or cleanup.
+        assert!(stream.poison);
+        assert!(matches!(&stream.state, StreamState::Keyed(keyed) if keyed.writer.is_none()));
+        assert_eq!(admission.frames.available_permits(), WRITER_CHANNEL_CAP);
+        assert_eq!(admission.ciphertext_bytes.available_permits(), budget);
+        assert!(witness.is_unique());
+        assert!(matches!(receipt.try_recv(), Err(oneshot::error::TryRecvError::Closed)));
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].remote, "paused");
+        assert!(jobs[0].is_last_job);
+        assert_eq!((jobs[0].file_num(), jobs[0].finished_size(), jobs[0].transferred()), (0, 0, 0));
+        jobs[0].is_last_job = false;
+        let block = jobs[0].read().await.unwrap().unwrap();
+        assert!(!block.compressed);
+        assert_eq!(block.data.as_ref(), b"source");
+        assert!(jobs[0].read().await.unwrap().unwrap().data.is_empty());
+        assert!(jobs[0].read().await.unwrap().is_none());
+        assert!(jobs[0].job_completed());
+        assert_eq!(std::fs::read(&source).unwrap(), b"source");
+        drop(jobs);
+        drop(stream);
+        drop(peer);
+        std::fs::remove_file(source).unwrap();
+        std::fs::remove_dir(root).unwrap();
+        println!("READ_JOB_BACKPRESSURE=pass partial_write=true kernel_blocked=true queued_frames={queued} byte_budget={budget} selected=retired survivor=exact writer=joined permits=returned receipt=closed storage=retired");
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn tcp_fatal_receive_returns_after_writer_retirement() {
         let mut fixture = blocked_writer().await;

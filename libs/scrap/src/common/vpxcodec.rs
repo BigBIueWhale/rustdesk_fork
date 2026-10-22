@@ -773,6 +773,81 @@ mod tests {
         assert!(refused.into_iter().all(|value| value));
     }
 
+    #[test]
+    fn realtime_encoders_deliver_current_pixels_without_end_of_stream_flush() {
+        let levels = [32u8, 64, 96, 128, 160, 192, 224, 80];
+        let mut immediate_cases = Vec::new();
+        for (codec, i444) in [(VpxVideoCodecId::VP8, false),
+                              (VpxVideoCodecId::VP9, false),
+                              (VpxVideoCodecId::VP9, true)] {
+            for message_path in [false, true] {
+                let mut encoder = VpxEncoder::new(
+                    crate::codec::EncoderCfg::VPX(VpxEncoderConfig {
+                        width: 32,
+                        height: 32,
+                        quality: 1.0,
+                        codec,
+                        keyframe_interval: None,
+                    }), i444,
+                ).unwrap();
+                assert!(encoder.latency_free());
+                let initial_lag = unsafe { (*encoder.ctx.config.enc).g_lag_in_frames };
+                let format = encoder.yuvfmt();
+                let chroma_rows = if i444 { format.h } else { format.h / 2 };
+                let mut data = vec![128; format.v + format.stride[2] * chroma_rows];
+                let mut decoder = VpxDecoder::new(VpxDecoderConfig { codec }).unwrap();
+                let mut delivered = 0;
+                let mut current = 0;
+                let mut inspect = |packet: &[u8], pts: i64| {
+                    assert_eq!(pts, delivered as i64 * 33);
+                    let image = decoder.decode(packet).unwrap().unwrap();
+                    assert_eq!((image.width(), image.height()), (32, 32));
+                    assert_eq!(image.chroma(), if i444 { Chroma::I444 } else { Chroma::I420 });
+                    let mut rgb = crate::ImageRgb::new(crate::ImageFormat::ARGB, 0);
+                    image.to(&mut rgb).unwrap();
+                    let expected = (298 * (i32::from(levels[delivered]) - 16) + 128) >> 8;
+                    assert_eq!(rgb.raw.len(), 32 * 32 * 4);
+                    for pixel in rgb.raw.chunks_exact(4) {
+                        assert_eq!(pixel[3], 255);
+                        for channel in &pixel[..3] {
+                            assert!((i32::from(*channel) - expected).abs() <= 2);
+                        }
+                    }
+                    delivered += 1;
+                };
+                for (ordinal, level) in levels.iter().enumerate() {
+                    if ordinal == 4 { encoder.set_quality(0.5).unwrap(); }
+                    if ordinal == 6 { encoder.set_quality(1.5).unwrap(); }
+                    data[..format.u].fill(*level);
+                    let packets: Vec<_> = if message_path {
+                        let message = encoder.encode_to_message(EncodeInput::YUV(&data), ordinal as i64 * 33).unwrap();
+                        let frames = match message.union.unwrap() {
+                            hbb_common::message_proto::video_frame::Union::Vp8s(frames) => frames,
+                            hbb_common::message_proto::video_frame::Union::Vp9s(frames) => frames,
+                            _ => panic!("VPX encoder returned another codec"),
+                        };
+                        frames.frames.into_iter().map(|frame| (frame.pts, frame.data.to_vec())).collect()
+                    } else {
+                        encoder.encode(ordinal as i64 * 33, &data, 64).unwrap()
+                            .map(|frame| (frame.pts, frame.data.to_vec())).collect()
+                    };
+                    let is_current = packets.len() == 1 && packets[0].0 == ordinal as i64 * 33;
+                    current += usize::from(is_current);
+                    immediate_cases.push(is_current);
+                    for (pts, packet) in packets { inspect(&packet, pts); }
+                }
+                let tail: Vec<_> = encoder.flush().unwrap()
+                    .map(|frame| (frame.pts, frame.data.to_vec())).collect();
+                for (pts, packet) in &tail { inspect(packet, *pts); }
+                assert_eq!(delivered, levels.len());
+                println!("VIDEO_VPX_REALTIME_CASE=observed codec={codec:?} i444={i444} message_path={message_path} configured_lag={initial_lag} inputs=8 current={current} tail={} decoded=8 pixels=checked quality_changes=2", tail.len());
+            }
+        }
+        assert_eq!(immediate_cases.len(), 48);
+        assert!(immediate_cases.into_iter().all(|current| current));
+        println!("VIDEO_VPX_REALTIME_NATIVE=pass combinations=6 inputs=48 current=48 tail=0 pixels=checked quality_changes=12");
+    }
+
     fn native_format_packet(format: vpx_img_fmt_t) -> Vec<u8> {
         let mut encoder = encoder(VpxVideoCodecId::VP9, true, 32, 32);
         let mut source = vec![128; 64 * 32 * 3 * 2];

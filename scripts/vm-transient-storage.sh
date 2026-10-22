@@ -35,7 +35,11 @@ elif [ "${MODE:-}:${PEER_BUILD_PROFILE:-}" = android-peer-build:bounded ]; then
 elif [ "${MODE:-}:${LINUX_RECEIVER_PROFILE:-}" = linux-service-receiver-tests:authorization-timeout ]; then
     readonly VM_STORAGE_PROFILE=linux-service-receiver
 elif [ "${MODE:-}:${FLUTTER_APP_REPLAY:-0}" = flutter-peer-presentation:1 ]; then
-    readonly VM_STORAGE_PROFILE=linux-flutter-replay
+    case "${FLUTTER_VIEWER_SUSPEND:-0}" in
+        0) readonly VM_STORAGE_PROFILE=linux-flutter-replay ;;
+        1) readonly VM_STORAGE_PROFILE=linux-flutter-suspend ;;
+        *) fail 'VM workload has no admitted RAM storage profile' ;;
+    esac
 elif [ "${MODE:-}:${ANDROID_STORAGE_TESTS:-0}" = android-emulator-boot:1 ]; then
     readonly VM_STORAGE_PROFILE=android-storage-key
 elif [ "${MODE:-}:${X11_FOCUS_ONLY:-0}" = x11-display-tests:1 ]; then

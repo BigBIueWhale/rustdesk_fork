@@ -958,6 +958,7 @@ for profile, memory, scratch, overlay in (
         ('x11-focus', 4096, 9, 8),
         ('linux-parent-libtest', 6144, 7, 6),
         ('linux-flutter-replay', 10240, 7, 6),
+        ('linux-flutter-suspend', 10240, 6, 5),
         ('android-storage-key', 10240, 7, 6),
         ('linux-resolution-lifetime', 2048, 6, 4),
         ('fusermount-process', 2048, 6, 4),
@@ -978,6 +979,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('x11-focus', 4095), ('x11-focus', 8192),
                         ('linux-parent-libtest', 4096), ('linux-parent-libtest', 8192),
                         ('linux-flutter-replay', 10239), ('linux-flutter-replay', 24576),
+                        ('linux-flutter-suspend', 10239), ('linux-flutter-suspend', 16384),
                         ('android-storage-key', 10239), ('android-storage-key', 16384),
                         ('linux-resolution-lifetime', 2047), ('linux-resolution-lifetime', 4096),
                         ('xrandr-acquisition', 2048), ('xrandr-acquisition', 8192),
@@ -997,7 +999,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=21 refusals=36 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=22 refusals=38 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 shell = Path(sys.argv[2])
 modes = set()
 for caller in ('smoke-verifier-vm-authority.sh', 'online-fetch-vm.sh'):
@@ -1009,7 +1011,12 @@ special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
 special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke'})
 cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]
 cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'standard'),
-              ('hbb-common-fs', {'HBB_FUSE_READ_TESTS': '1'}, 'standard')])
+              ('hbb-common-fs', {'HBB_FUSE_READ_TESTS': '1'}, 'standard'),
+              ('flutter-peer-presentation', {'FLUTTER_APP_REPLAY': '1'}, 'linux-flutter-replay'),
+              ('flutter-peer-presentation', {'FLUTTER_APP_REPLAY': '1',
+                                             'FLUTTER_VIEWER_SUSPEND': '1'}, 'linux-flutter-suspend'),
+              ('flutter-peer-presentation', {'FLUTTER_APP_REPLAY': '1',
+                                             'FLUTTER_VIEWER_SUSPEND': '2'}, None)])
 cases.extend((mode, {}, None) for mode in (None, 'windows-build', 'media-verifier', 'authority_smoke'))
 controls = refusals = 0
 for mode, overrides, expected in cases:
@@ -1038,9 +1045,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (37, 4):
+if (controls, refusals) != (39, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=35 controls=37 refusals=4 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=35 controls=39 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0

@@ -55,6 +55,10 @@ def storage_limits(profile, memory_mib):
     if profile in ('linux-flutter-replay', 'android-storage-key'):
         require(memory_mib == 10240, f'{profile} requires its 10 GiB guest')
         return 7 * GIB, 6 * GIB
+    if profile == 'linux-flutter-suspend':
+        require(memory_mib == 10240, 'viewer suspension requires its 10 GiB guest')
+        # Retained-app, single-lifecycle replay: one GiB beside the bounded overlay.
+        return 6 * GIB, 5 * GIB
     if profile in ('linux-resolution-lifetime', 'fusermount-process', 'linux-service-uid-tests',
                    'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')

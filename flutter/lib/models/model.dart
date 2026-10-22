@@ -3656,8 +3656,8 @@ class CursorModel with ChangeNotifier {
   Rect? _windowRect;
   List<RemoteWindowCoords> _remoteWindowCoords = [];
   bool gotMouseControl = true;
-  DateTime _lastPeerMouse = DateTime.now()
-      .subtract(Duration(milliseconds: 3000 * kMouseControlTimeoutMSec));
+  final DateTime Function() _now;
+  late DateTime _lastPeerMouse;
   String peerId = '';
   WeakReference<FFI> parent;
 
@@ -3739,19 +3739,22 @@ class CursorModel with ChangeNotifier {
   double get hoty => _hoty;
 
   bool get isPeerControlProtected =>
-      DateTime.now().difference(_lastPeerMouse).inMilliseconds <
+      _now().difference(_lastPeerMouse).inMilliseconds <
       kMouseControlTimeoutMSec;
 
   bool isConnIn2Secs() {
     if (_firstUpdateMouseTime == null) {
-      _firstUpdateMouseTime = DateTime.now();
+      _firstUpdateMouseTime = _now();
       return true;
     } else {
-      return DateTime.now().difference(_firstUpdateMouseTime!).inSeconds < 2;
+      return _now().difference(_firstUpdateMouseTime!).inSeconds < 2;
     }
   }
 
-  CursorModel(this.parent);
+  CursorModel(this.parent, {DateTime Function()? now}) : _now = now ?? DateTime.now {
+    _lastPeerMouse = _now()
+        .subtract(Duration(milliseconds: 3000 * kMouseControlTimeoutMSec));
+  }
 
   String get customCursorOwner => _customCursorOwner;
 
@@ -4420,7 +4423,7 @@ class CursorModel with ChangeNotifier {
     }
     if (!isConnIn2Secs()) {
       gotMouseControl = false;
-      _lastPeerMouse = DateTime.now();
+      _lastPeerMouse = _now();
     }
     _x = x.toDouble();
     _y = y.toDouble();
@@ -4470,7 +4473,7 @@ class CursorModel with ChangeNotifier {
     _windowRect = null;
     _remoteWindowCoords.clear();
     gotMouseControl = true;
-    _lastPeerMouse = DateTime.now()
+    _lastPeerMouse = _now()
         .subtract(Duration(milliseconds: 3000 * kMouseControlTimeoutMSec));
     peerId = '';
     _keyHelpToolsRect = null;

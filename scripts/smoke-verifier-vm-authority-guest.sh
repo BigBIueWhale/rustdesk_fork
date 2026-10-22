@@ -9809,7 +9809,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_AUTO_DISCONNECT_TEST_JSON
-            expected_result='suites=13 tests=319'
+            expected_result='suites=13 tests=326'
         elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
             memory=3g
             memory_bytes=3221225472

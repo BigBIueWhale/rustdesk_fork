@@ -207,6 +207,13 @@ CUSTOM_SCALE_TESTS = {
 }
 
 CANVAS_IMAGE_TESTS = {
+    "cursor startup grace does not revive after wall clock rollback",
+    "cursor startup grace survives wall clock advance",
+    "cursor peer protection does not revive after wall clock rollback",
+    "cursor peer protection survives wall clock advance",
+    "cursor control timers expire at their exact elapsed boundaries",
+    "cursor clear retires protection and starts a fresh grace period",
+    "cursor models retain independent control timers",
     "edge fallback replacement and clear release provider tickers",
     "canvas disposal releases ticker and both scroll controllers",
     "held edge reply refuses cancel owner",

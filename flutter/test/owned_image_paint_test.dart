@@ -175,6 +175,38 @@ class _CursorInitializationSession implements FFI {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _CursorClock implements Stopwatch {
+  DateTime wall = DateTime.utc(2026);
+
+  @override
+  int elapsedMilliseconds = 0;
+
+  DateTime now() => wall;
+
+  void advance(int milliseconds) {
+    elapsedMilliseconds += milliseconds;
+    wall = wall.add(Duration(milliseconds: milliseconds));
+  }
+
+  void adjustWall(Duration adjustment) => wall = wall.add(adjustment);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+CursorModel _cursorWithClock(
+    _CursorInitializationSession session, _CursorClock clock) {
+  final cursor = CursorModel(WeakReference<FFI>(session), now: clock.now);
+  addTearDown(cursor.dispose);
+  return cursor;
+}
+
+void _movePeerCursor(CursorModel cursor, _CursorInitializationSession session) {
+  expect(cursor.updateCursorPosition(12, 24, 'cursor-timing', session.sessionId, 0),
+      isTrue);
+  expect(cursor.offset, const Offset(12, 24));
+}
+
 class _CursorInitializationInput implements InputModel {
   final moves = <Offset>[];
   int refreshes = 0;
@@ -641,6 +673,128 @@ Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async
 }
 
 void main() {
+  test('cursor startup grace does not revive after wall clock rollback', () {
+    final session = _CursorInitializationSession();
+    final clock = _CursorClock();
+    final cursor = _cursorWithClock(session, clock);
+    _movePeerCursor(cursor, session);
+    clock.advance(2000);
+    _movePeerCursor(cursor, session);
+    expect(cursor.gotMouseControl, isFalse);
+    clock.adjustWall(const Duration(days: -1));
+    cursor.gotMouseControl = true;
+    _movePeerCursor(cursor, session);
+    expect(cursor.gotMouseControl, isFalse);
+  });
+
+  test('cursor startup grace survives wall clock advance', () {
+    final session = _CursorInitializationSession();
+    final clock = _CursorClock();
+    final cursor = _cursorWithClock(session, clock);
+    _movePeerCursor(cursor, session);
+    clock.advance(1999);
+    clock.adjustWall(const Duration(days: 1));
+    _movePeerCursor(cursor, session);
+    expect(cursor.gotMouseControl, isTrue);
+    expect(cursor.isPeerControlProtected, isFalse);
+    clock.advance(1);
+    _movePeerCursor(cursor, session);
+    expect(cursor.gotMouseControl, isFalse);
+  });
+
+  test('cursor peer protection does not revive after wall clock rollback', () {
+    final session = _CursorInitializationSession();
+    final clock = _CursorClock();
+    final cursor = _cursorWithClock(session, clock);
+    _movePeerCursor(cursor, session);
+    clock.advance(2000);
+    _movePeerCursor(cursor, session);
+    clock.advance(kMouseControlTimeoutMSec);
+    expect(cursor.isPeerControlProtected, isFalse);
+    clock.adjustWall(const Duration(days: -1));
+    expect(cursor.isPeerControlProtected, isFalse);
+  });
+
+  test('cursor peer protection survives wall clock advance', () {
+    final session = _CursorInitializationSession();
+    final clock = _CursorClock();
+    final cursor = _cursorWithClock(session, clock);
+    _movePeerCursor(cursor, session);
+    clock.advance(2000);
+    _movePeerCursor(cursor, session);
+    clock.advance(kMouseControlTimeoutMSec - 1);
+    clock.adjustWall(const Duration(days: 1));
+    expect(cursor.isPeerControlProtected, isTrue);
+    clock.advance(1);
+    expect(cursor.isPeerControlProtected, isFalse);
+  });
+
+  test('cursor control timers expire at their exact elapsed boundaries', () {
+    final session = _CursorInitializationSession();
+    final clock = _CursorClock();
+    final cursor = _cursorWithClock(session, clock);
+    expect(cursor.isPeerControlProtected, isFalse);
+    _movePeerCursor(cursor, session);
+    expect(cursor.gotMouseControl, isTrue);
+    clock.advance(1999);
+    _movePeerCursor(cursor, session);
+    expect(cursor.gotMouseControl, isTrue);
+    clock.advance(1);
+    _movePeerCursor(cursor, session);
+    expect(cursor.gotMouseControl, isFalse);
+    expect(cursor.isPeerControlProtected, isTrue);
+    clock.advance(kMouseControlTimeoutMSec - 1);
+    expect(cursor.isPeerControlProtected, isTrue);
+    clock.advance(1);
+    expect(cursor.isPeerControlProtected, isFalse);
+    _movePeerCursor(cursor, session);
+    expect(cursor.isPeerControlProtected, isTrue);
+  });
+
+  test('cursor clear retires protection and starts a fresh grace period', () {
+    final session = _CursorInitializationSession();
+    final clock = _CursorClock();
+    final cursor = _cursorWithClock(session, clock);
+    _movePeerCursor(cursor, session);
+    clock.advance(2000);
+    _movePeerCursor(cursor, session);
+    expect(cursor.isPeerControlProtected, isTrue);
+    cursor.clear();
+    expect(cursor.gotMouseControl, isTrue);
+    expect(cursor.isPeerControlProtected, isFalse);
+    clock.advance(10000);
+    _movePeerCursor(cursor, session);
+    expect(cursor.gotMouseControl, isTrue);
+    clock.advance(1999);
+    _movePeerCursor(cursor, session);
+    expect(cursor.gotMouseControl, isTrue);
+    clock.advance(1);
+    _movePeerCursor(cursor, session);
+    expect(cursor.gotMouseControl, isFalse);
+    expect(cursor.isPeerControlProtected, isTrue);
+  });
+
+  test('cursor models retain independent control timers', () {
+    final firstSession = _CursorInitializationSession();
+    final secondSession = _CursorInitializationSession();
+    final clock = _CursorClock();
+    final first = _cursorWithClock(firstSession, clock);
+    final second = _cursorWithClock(secondSession, clock);
+    _movePeerCursor(first, firstSession);
+    clock.advance(2000);
+    _movePeerCursor(first, firstSession);
+    _movePeerCursor(second, secondSession);
+    expect(first.gotMouseControl, isFalse);
+    expect(first.isPeerControlProtected, isTrue);
+    expect(second.gotMouseControl, isTrue);
+    expect(second.isPeerControlProtected, isFalse);
+    clock.advance(2000);
+    _movePeerCursor(second, secondSession);
+    expect(first.isPeerControlProtected, isFalse);
+    expect(second.gotMouseControl, isFalse);
+    expect(second.isPeerControlProtected, isTrue);
+  });
+
   testWidgets('edge fallback replacement and clear release provider tickers',
       (tester) async {
     await _observeEdgeScroll(tester, (fixture) async {

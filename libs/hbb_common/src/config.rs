@@ -3920,9 +3920,21 @@ impl PeerConfigLoad {
     }
 }
 
+fn normalize_codec_preference(value: String) -> String {
+    if matches!(value.as_str(), "auto" | "vp8" | "vp9") {
+        value
+    } else {
+        "auto".to_owned()
+    }
+}
+
 impl PeerConfig {
     pub fn load(id: &str) -> PeerConfig {
-        Self::load_with_status(id).into_value()
+        let mut config = Self::load_with_status(id).into_value();
+        let key = keys::OPTION_CODEC_PREFERENCE;
+        let value = config.options.remove(key).unwrap_or_default();
+        config.options.insert(key.to_owned(), normalize_codec_preference(value));
+        config
     }
 
     pub fn load_for_write(id: &str) -> crate::ResultType<PeerConfig> {
@@ -4043,7 +4055,12 @@ impl PeerConfig {
             return Ok(String::new());
         }
         let mut file: PeerOptionsFile = Self::read_view(&Self::path(id))?;
-        Ok(file.options.remove(name).unwrap_or_default())
+        let value = file.options.remove(name).unwrap_or_default();
+        Ok(if name == keys::OPTION_CODEC_PREFERENCE {
+            normalize_codec_preference(value)
+        } else {
+            value
+        })
     }
 
     pub fn forget_password(id: &str) -> crate::ResultType<()> {
@@ -4834,7 +4851,7 @@ impl UserDefaultConfig {
                 self.get_string(key, "balanced", vec!["best", "low", "custom"])
             }
             keys::OPTION_CODEC_PREFERENCE => {
-                self.get_string(key, "auto", vec!["vp8", "vp9"])
+                normalize_codec_preference(self.get_after(key).unwrap_or_default())
             }
             keys::OPTION_CUSTOM_IMAGE_QUALITY => {
                 (self.get_num(key, 50.0, 10.0, 0xFFF as f64) as i32).to_string()

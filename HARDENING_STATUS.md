@@ -1694,6 +1694,30 @@ The final transaction takes 142 seconds. Harness, oracle, test bodies, compiler,
 inputs and resource budgets are identical across A/B. Exact sources, PNG/RGBA
 hashes and cleanup are retained in `screenshot-x11-f539fc01.json`.
 
+**Capture comparison allocation failure — native X11/component accepted.**
+
+`bfba2a98` reserves changed-frame cache storage before resizing or copying and returns
+payload-free `OutOfMemory` on refusal. The previous cache is preserved; equal frames
+still return `WouldBlock`. Desktop capture callers propagate the error. Android's
+existing equal-length guard requires no new allocation; its other copies are unchanged.
+
+At unchanged-product `c77c754f`, both real X11 capture children abort on refused
+17,028/8,580-byte cache allocations while fourteen controls pass. The final `5a73078a`
+transaction passes sixteen tests in 136 seconds. Each 24/16-bit public capture returns
+`OutOfMemory`, retries through the same capturer and produces the same independently
+decoded 150-byte PNG: all 8,514 pixels have exact colors and opaque alpha. A second
+refusal preserves a nonempty cache's bytes, pointer and capacity before exact retry.
+Unchanged native capture and five equal/shrink/grow/empty helper operations leave an
+armed Rust allocation unused. Four selected refusals are exercised across the two children.
+
+The driver now retains exact child stdout with its digest and normalizes only the
+injected allocator receipts for libtest parsing. Earlier buffered/interleaved-output
+rejections are partial evidence; the native fixture and corrected artifact are unchanged
+across the final driver repair. `capture-comparison-allocation-2c49e763.json` retains
+source/artifact bindings, raw output, parser correction and joined bounded-RAM cleanup.
+Other capture/metadata allocations, persistent global OOM, complete application/peer
+behavior, other platforms/devices, installed/R-S0/R-F5 and release acceptance remain OPEN.
+
 **Bounded PNG allocation failure — component accepted.** The actual production
 writer is extracted without behavior changes at `77793bf5`. A thread-local,
 one-shot allocator refusal then aborts its child process on a 134-byte growth;

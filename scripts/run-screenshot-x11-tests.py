@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Drive real confined X11 capture and independently inspect its screenshot PNG."""
 import ctypes
+import base64
 import hashlib
 import os
 from pathlib import Path
@@ -218,7 +219,14 @@ def main():
                 result = subprocess.run([str(executable), '--exact', case, '--color', 'never', '--test-threads=1', '--show-output'],
                                         env=environment, capture_output=True, text=True, timeout=15)
                 assert len(result.stdout) + len(result.stderr) <= 16384
-                print(result.stdout, end='', flush=True)
+                raw_stdout = result.stdout.encode('utf-8')
+                print(f'SCREENSHOT_X11_STDOUT=retained depth={depth} bytes={len(raw_stdout)} '
+                      f'sha256={hashlib.sha256(raw_stdout).hexdigest()} '
+                      f'base64={base64.b64encode(raw_stdout).decode("ascii")}', flush=True)
+                marker = '\nVIDEO_ALLOCATOR=refused\n'
+                normalized = result.stdout.replace(marker, '')
+                print('VIDEO_ALLOCATOR=refused\n' * result.stdout.count(marker), end='', flush=True)
+                print(normalized, end='', flush=True)
                 if result.stderr:
                     print(result.stderr, file=sys.stderr, end='', flush=True)
                 if result.returncode == -6:
@@ -231,7 +239,7 @@ def main():
                     print(f'SCREENSHOT_X11_ALLOC_RESULT=observed depth={depth} first=aborted child_exit=-6 '
                           f'refused_bytes={expected_size} artifact_sha256={artifact_sha} children=joined', flush=True)
                     continue
-                assert result.returncode == 0 and f'test {case} ... ok\n' in result.stdout
+                assert result.returncode == 0 and f'test {case} ... ok\n' in normalized
                 assert 'test result: ok. 1 passed; 0 failed;' in result.stdout
                 assert not result.stderr and result.stdout.count('VIDEO_ALLOCATOR=refused\n') == 2
                 assert result.stdout.count(f'SCREENSHOT_X11_ALLOC_NATIVE=pass depth={depth} refusals=2 '

@@ -39,6 +39,7 @@ mod tests {
 
     thread_local! {
         static OUTPUT_ALLOCATION: Cell<(bool, usize)> = const { Cell::new((false, 0)) };
+        static COMPRESSED_OUTPUT_ALLOCATION: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
     }
 
     struct OutputAllocator;
@@ -50,6 +51,14 @@ mod tests {
                 state.set((false, refusals + 1));
             }
             armed
+        }).unwrap_or(false) || COMPRESSED_OUTPUT_ALLOCATION.try_with(|state| {
+            let (target, refusals) = state.get();
+            if target != 0 && target == size {
+                state.set((0, refusals + 1));
+                true
+            } else {
+                false
+            }
         }).unwrap_or(false)
     }
 
@@ -100,12 +109,31 @@ mod tests {
                 String::from_utf8_lossy(&output.stderr));
             assert!(String::from_utf8_lossy(&output.stdout).contains(
                 "FILE_BLOCK_ALLOCATION=pass cases=3 refusals=3 raw=borrowed retries=exact"));
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(stdout.contains(
+                "FILE_COMPRESSION_ALLOCATION=pass cases=3 refusals=3 retries=exact wire=unchanged"));
+            for line in stdout.lines() {
+                if let Some((_, message)) = line.split_once("FILE_COMPRESSION_") {
+                    println!("FILE_COMPRESSION_{message}");
+                }
+            }
             return;
         }
 
         for size in [0, 1, SIZE] {
             let input = vec![0x5a; size];
             let encoded = compress(&input).expect("production compression before fault");
+            let reference = zstd::bulk::compress(&input, crate::config::COMPRESS_LEVEL)
+                .expect("unchanged upstream compression control");
+            assert_eq!(encoded, reference);
+            let bound = zstd::zstd_safe::compress_bound(size);
+            assert!(bound > 0);
+            COMPRESSED_OUTPUT_ALLOCATION.with(|state| state.set((bound, 0)));
+            let error = compress(&input).expect_err("refused compressed output is fallible");
+            assert_eq!(error.kind(), io::ErrorKind::OutOfMemory);
+            COMPRESSED_OUTPUT_ALLOCATION.with(|state| assert_eq!(state.get(), (0, 1)));
+            assert_eq!(compress(&input).expect("same-context compression retry"), reference);
+            println!("FILE_COMPRESSION_CASE=pass bytes={size} allocation={bound} error=OutOfMemory retry=exact wire=unchanged");
             assert_eq!(decode(&encoded, true).unwrap().as_ref(), input);
             OUTPUT_ALLOCATION.with(|state| state.set((true, 0)));
             let raw = decode(&input, false).expect("raw input needs no output allocation");
@@ -119,6 +147,7 @@ mod tests {
             assert_eq!(decode(&encoded, true).expect("retry after one refusal").as_ref(), input);
         }
         println!("FILE_BLOCK_ALLOCATION=pass cases=3 refusals=3 raw=borrowed retries=exact");
+        println!("FILE_COMPRESSION_ALLOCATION=pass cases=3 refusals=3 retries=exact wire=unchanged");
     }
 
     #[test]

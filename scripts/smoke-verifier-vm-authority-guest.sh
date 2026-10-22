@@ -6348,6 +6348,8 @@ PY
         [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FILE_BLOCK_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'file-block artifact receipt differs'
+        [ "$(grep -Fxc 'FILE_COMPRESSION_ALLOCATION=pass cases=3 refusals=3 retries=exact wire=unchanged' "$output")" -eq 1 ] \
+            || fail 'compression output allocation refusal or retry differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
         [ "${#result_lines[@]}" -eq 3 ] || fail 'FUSE process summary count differs'
         [ "$(grep -Ec '^FUSE_PROCESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=18 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -7009,7 +7011,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then
-            grep -E '^test (file_block|compress)::tests::.* \.\.\. ok$|^FILE_BLOCK_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            grep -E '^test (file_block|compress)::tests::.* \.\.\. ok$|^FILE_BLOCK_(ARTIFACT(_BEFORE)?|DEPENDENCIES|INPUT)=|^FILE_COMPRESSION_(ALLOCATION|CASE)=' "$output"
             printf 'FILE_BLOCK_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-file-block-decoder-and-compressor rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

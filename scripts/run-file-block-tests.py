@@ -92,7 +92,8 @@ def main():
             raise ValueError("file-block artifact is absent or ambiguous")
         artifact = candidates[0]
         artifact_sha = digest(artifact.read_bytes())
-        run([str(artifact), "--test-threads=1", "--color", "never"], fixture, 20)
+        print(f"FILE_BLOCK_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=8", flush=True)
+        run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, 20)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("file-block artifact or lock changed")
         for name, data in inputs.items():

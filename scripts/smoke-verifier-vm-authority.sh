@@ -6312,6 +6312,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file
         && [ "$(/usr/bin/grep -Fc 'FILE_BLOCK_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'file-block artifact receipt differs'
     require_exact_fixed_receipt \
+        'FILE_COMPRESSION_ALLOCATION=pass cases=3 refusals=3 retries=exact wire=unchanged' \
+        'compression output allocation refusal and same-context retry'
+    require_exact_fixed_receipt \
         "FILE_BLOCK_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=8 target=linux-x86_64 scope=production-file-block-decoder-and-compressor rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused file-block receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'file-block cloud-init completion'

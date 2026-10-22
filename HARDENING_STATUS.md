@@ -1728,6 +1728,34 @@ system-wide memory exhaustion or the whole screenshot worker. Real hardware and
 other-platform capture, screenshot requests/responses and worker recovery,
 clipboard/viewer behavior, installed/LPE, R-S0/R-F5 and release acceptance remain OPEN.
 
+**Decoded video RGB storage — native conversion component accepted; app acceptance OPEN.**
+
+`21a9dd7c` reserves decoded output fallibly before resizing and publishes dimensions
+after conversion. Layout/allocation refusal preserves previous bytes and dimensions.
+The sole `GoogleImage` implementation returns libvpx's four-slot stride/pointer arrays
+directly, removing two per-frame Rust heap allocations. Native conversion calls,
+borrowed-image lifetime, app callers, pins and the 160-MiB decoded byte cap are unchanged.
+
+The unchanged-product fixture at `cbb487ec` reproduces two actual VP8 process aborts:
+one refused 4,352-byte output growth and one refused 16-byte metadata allocation with
+an already-sized output buffer. Eleven existing controls pass on the same artifact.
+The corrected native suite passes all thirteen tests in 136 VM seconds. Real VP8/I420,
+VP9/I420 and VP9/I444 packets decode to native images; twelve ARGB/ABGR and packed/
+64-byte-aligned combinations return `TryReserveError`, preserve bytes/dimensions and
+retry with exact expected pixels. The twelve warmed conversions leave an armed Rust
+allocation refusal unused, and invalid-alignment refusals preserve output state.
+The expanded fixture initially omitted VP9's delayed-packet flush; that incomplete
+run is excluded. `72f9028c` adds the encoder's existing flush before decoding, with
+the fault region and checks unchanged. Native setup/decoder allocations are outside
+the warmed conversion measurement. Prior screenshot/PNG and codec controls remain.
+
+The zero-NIC, non-root lane joins native children, X servers, VM and bounded RAM scratch.
+Sources, artifacts, raw receipts, fixture correction and cleanup are retained in
+`decoded-image-allocation-ace45e20.json`. This accepts selected one-shot Rust allocator
+refusals and the named native conversion cases. Persistent system-wide OOM, complete
+app publication/recovery, other-platform/device, installed/LPE, R-S0/R-F5, performance/
+soak and release acceptance remain OPEN.
+
 **VPX input storage — native encoder/decoder component accepted; product acceptance OPEN.**
 
 `bac6069e` uses one checked layout for capture conversion metadata and encoder

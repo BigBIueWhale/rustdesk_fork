@@ -53,3 +53,6 @@ mod decoded_image_tests;
 
 #[cfg(all(test, target_os = "linux"))]
 mod capture_metadata_tests;
+
+#[cfg(all(test, target_os = "linux"))]
+mod yuv_storage_tests;

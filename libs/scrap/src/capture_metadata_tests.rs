@@ -101,14 +101,15 @@ fn warmed_yuv_conversion_needs_no_allocation() {
 #[test]
 fn encoder_format_snapshot_and_frame_conversion_need_no_allocation() {
     use crate::codec::{EncoderApi, EncoderCfg};
-    use crate::{Frame, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId};
+    use crate::{Frame, GoogleImage, ImageFormat, ImageRgb, VpxDecoder, VpxDecoderConfig,
+                VpxEncoder, VpxEncoderConfig, VpxVideoCodecId};
 
     let data = vec![0u8; 34 * 32 * 4];
     let mut samples = 0;
     for (codec, i444) in [(VpxVideoCodecId::VP8, false),
                            (VpxVideoCodecId::VP9, false),
                            (VpxVideoCodecId::VP9, true)] {
-        let encoder = VpxEncoder::new(EncoderCfg::VPX(VpxEncoderConfig {
+        let mut encoder = VpxEncoder::new(EncoderCfg::VPX(VpxEncoderConfig {
             width: 34,
             height: 32,
             quality: 1.0,
@@ -145,6 +146,22 @@ fn encoder_format_snapshot_and_frame_conversion_need_no_allocation() {
         let (width, height) = if i444 { (34, 32) } else { (17, 16) };
         plane(reference.u, reference.stride[1], width, height, 128);
         plane(reference.v, reference.stride[2], width, height, 128);
+        let packets: Vec<Vec<u8>> = encoder.encode(0, converted, 64).unwrap()
+            .map(|frame| frame.data.to_vec()).collect();
+        assert_eq!(packets.len(), 1);
+        let mut decoder = VpxDecoder::new(VpxDecoderConfig { codec }).unwrap();
+        let image = decoder.decode(&packets[0]).unwrap().unwrap();
+        assert_eq!((image.width(), image.height()), (34, 32));
+        let mut rgb = ImageRgb::new(ImageFormat::ARGB, 0);
+        image.to(&mut rgb).unwrap();
+        assert_eq!(rgb.raw.len(), 34 * 32 * 4);
+        let mut max_error = 0;
+        for pixel in rgb.raw.chunks_exact(4) {
+            assert_eq!(pixel[3], 255);
+            max_error = max_error.max(*pixel[..3].iter().max().unwrap());
+        }
+        assert!(max_error <= 3);
+        println!("CAPTURE_ENCODER_ENCODE=pass codec={codec:?} i444={i444} dimensions=34x32 pixels=1088 alpha=255 max_error={max_error}");
         let checked = 34 * 32 + 2 * width * height;
         samples += checked;
         println!("CAPTURE_ENCODER_CASE=pass codec={codec:?} i444={i444} snapshot=preserved allocations=0 pixels=exact samples={checked}");

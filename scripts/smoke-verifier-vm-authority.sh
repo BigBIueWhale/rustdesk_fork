@@ -5984,7 +5984,7 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
         'TCP_FRAMING_API=pass tests=4 compile_pass=1 compile_fail=3 rustdoc=1.75.0 transport_artifact_unchanged=true' \
         'framing API compiler acceptance/refusal'
     mapfile -t transport_artifacts < <(
-        /usr/bin/grep -Eo 'TCP_TRANSPORT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} tests=35 unchanged=before-between-after' "$SERIAL_LOG"
+        /usr/bin/grep -Eo 'TCP_TRANSPORT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} tests=36 unchanged=before-between-after' "$SERIAL_LOG"
     )
     [ "${#transport_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fo 'TCP_TRANSPORT_ARTIFACT=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \

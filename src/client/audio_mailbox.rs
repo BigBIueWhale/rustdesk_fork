@@ -71,6 +71,14 @@ struct AudioMailboxState {
     closed: bool,
 }
 
+impl AudioMailboxState {
+    fn close(&mut self) {
+        self.closed = true;
+        self.format = None;
+        self.frames.clear();
+    }
+}
+
 struct AudioMailboxShared {
     state: Mutex<AudioMailboxState>,
     ready: Condvar,
@@ -79,9 +87,7 @@ struct AudioMailboxShared {
 impl AudioMailboxShared {
     fn close(&self) {
         let mut state = self.state.lock().unwrap();
-        state.closed = true;
-        state.format = None;
-        state.frames.clear();
+        state.close();
         drop(state);
         self.ready.notify_all();
     }
@@ -292,9 +298,20 @@ impl AudioMailboxSender {
         if !native_opus_packet_within_limit(frame.data.len()) {
             return AudioFrameAdmission::Oversized;
         }
+        let mut packet = Vec::new();
+        let additional = usize::from(state.frames.len() < AUDIO_FRAME_QUEUE_CAPACITY);
+        if state.frames.try_reserve(additional).is_err()
+            || packet.try_reserve_exact(frame.data.len()).is_err()
+        {
+            state.close();
+            drop(state);
+            self.shared.ready.notify_all();
+            return AudioFrameAdmission::ResourceUnavailable;
+        }
+        packet.extend_from_slice(&frame.data);
         let mut admitted = AudioFrame::new();
         // Own only packet bytes, without unknown fields or a larger shared allocation.
-        admitted.data = Bytes::copy_from_slice(&frame.data);
+        admitted.data = Bytes::from(packet);
         let admission = if state.frames.len() >= AUDIO_FRAME_QUEUE_CAPACITY {
             state.frames.pop_front();
             AudioFrameAdmission::ReplacedOldest

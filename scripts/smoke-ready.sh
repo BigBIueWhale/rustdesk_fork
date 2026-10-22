@@ -591,6 +591,86 @@ EOF
   }
   trap cleanup_self_test EXIT
   [ ! -e "/tmp/RustDesk-$SELF_TEST_UID" ] || fail "self-test IPC root already exists"
+  local signal_log=$SELF_TEST_TMP/signal.log phase signal_name expected_status child_status
+  local identity state start began elapsed signal_status forced marker expected_marker correct
+  local signal_cases_ok=true
+  : > "$signal_log"
+  remember_tmp_file "$signal_log"
+  for phase in running stopped; do
+    for signal_name in TERM INT KILL; do
+      : > "$signal_log"
+      python3 - "$phase" >"$signal_log" 2>&1 <<'PY' &
+import os
+import signal
+import sys
+import time
+
+def finish(number, _frame):
+    print(f"SMOKE_SIGNAL_HANDLER={number}", flush=True)
+    raise SystemExit(0)
+
+signal.signal(signal.SIGTERM, finish)
+signal.signal(signal.SIGINT, finish)
+print("SMOKE_SIGNAL_READY", flush=True)
+if sys.argv[1] == "stopped":
+    os.kill(os.getpid(), signal.SIGSTOP)
+while True:
+    time.sleep(1)
+PY
+      SELF_TEST_DECOY_PID=$!
+      SELF_TEST_DECOY_START=$(capture_pid_start "$SELF_TEST_DECOY_PID")
+      began=$(monotonic_millis)
+      while :; do
+        identity=$(read_pid_identity "$SELF_TEST_DECOY_PID") || fail 'signal fixture exited before admission'
+        read -r state start <<<"$identity"
+        [ "$start" = "$SELF_TEST_DECOY_START" ] || fail 'signal fixture identity changed'
+        if grep -Fxq SMOKE_SIGNAL_READY "$signal_log" \
+            && { [ "$phase" = running ] || [ "$state" = T ]; }; then break; fi
+        [ "$(( $(monotonic_millis) - began ))" -lt 3000 ] || fail 'signal fixture did not enter its expected state'
+        sleep 0.01
+      done
+      if signal_and_wait 1 "$signal_name" "$SELF_TEST_DECOY_PID" \
+          "$((SELF_TEST_DECOY_START + 1))" - - 'wrong-generation signal refusal' >/dev/null 2>&1; then
+        fail 'signal fixture accepted a wrong start identity'
+      fi
+      pid_is_same_and_running "$SELF_TEST_DECOY_PID" "$SELF_TEST_DECOY_START" \
+        || fail 'wrong-generation attempt changed the fixture owner'
+      identity=$(read_pid_identity "$SELF_TEST_DECOY_PID")
+      read -r state start <<<"$identity"
+      [ "$phase" != stopped ] || [ "$state" = T ] || fail 'wrong-generation attempt resumed the fixture'
+      began=$(monotonic_millis)
+      signal_status=0
+      signal_and_wait 1 "$signal_name" "$SELF_TEST_DECOY_PID" \
+        "$SELF_TEST_DECOY_START" - - 'native signal fixture' || signal_status=$?
+      elapsed=$(( $(monotonic_millis) - began ))
+      forced=false
+      if pid_is_same_and_running "$SELF_TEST_DECOY_PID" "$SELF_TEST_DECOY_START"; then
+        forced=true
+        pidfd_signal_and_wait "$SELF_TEST_DECOY_PID" "$SELF_TEST_DECOY_START" KILL 5000 \
+          || fail 'signal fixture cleanup did not join'
+      fi
+      child_status=0
+      wait "$SELF_TEST_DECOY_PID" 2>/dev/null || child_status=$?
+      marker=false
+      grep -Eq '^SMOKE_SIGNAL_HANDLER=(2|15)$' "$signal_log" && marker=true
+      expected_status=0
+      expected_marker=true
+      if [ "$signal_name" = KILL ]; then expected_status=137; expected_marker=false; fi
+      correct=false
+      if [ "$signal_status" -eq 0 ] && [ "$forced" = false ] \
+          && [ "$child_status" -eq "$expected_status" ] && [ "$marker" = "$expected_marker" ]; then
+        correct=true
+      else
+        signal_cases_ok=false
+      fi
+      printf 'SMOKE_SIGNAL_CASE={"phase":"%s","signal":"%s","wrong_start_refused":true,"signal_status":%s,"child_status":%s,"handler":%s,"forced_cleanup":%s,"elapsed_ms":%s,"passed":%s}\n' \
+        "$phase" "$signal_name" "$signal_status" "$child_status" "$marker" "$forced" "$elapsed" "$correct"
+      SELF_TEST_DECOY_PID=
+      SELF_TEST_DECOY_START=
+    done
+  done
+  [ "$signal_cases_ok" = true ] || fail 'native signal fixture did not complete through its requested signal'
+  remove_tmp_file "$signal_log"
   python3 - "$log" "$SELF_TEST_UID" "$SELF_TEST_IPC_MARKER" <<'PY' &
 import os
 import socket

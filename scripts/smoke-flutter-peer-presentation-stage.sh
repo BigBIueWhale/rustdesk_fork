@@ -480,6 +480,7 @@ PY
     ;;
 
   build-drivers)
+    /bin/bash /source/scripts/smoke-ready.sh --self-test
     [ -d /out ] && [ ! -L /out ] \
       && [ "$(stat -c '%u:%g:%a' /out)" = "$(id -u):$(id -g):700" ] \
       && [ -z "$(find /out -mindepth 1 -print -quit)" ] \

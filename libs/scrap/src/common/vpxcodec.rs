@@ -88,6 +88,7 @@ impl EncoderApi for VpxEncoder {
                 c.g_h = config.height;
                 c.g_timebase.num = 1;
                 c.g_timebase.den = 1000; // Output timestamp precision
+                c.g_lag_in_frames = 0;
                 c.rc_undershoot_pct = 95;
                 // When the data buffer falls below this percentage of fullness, a dropped frame is indicated. Set the threshold to zero (0) to disable this feature.
                 // In dynamic scenes, low bitrate gets low fps while high bitrate gets high fps.
@@ -214,11 +215,6 @@ impl EncoderApi for VpxEncoder {
         {
             frames.push(VpxEncoder::create_frame(frame));
         }
-        for ref frame in self.flush().with_context(|| "Failed to flush")? {
-            frames.push(VpxEncoder::create_frame(frame));
-        }
-
-        // to-do: flush periodically, e.g. 1 second
         if frames.len() > 0 {
             Ok(VpxEncoder::create_video_frame(self.id, frames))
         } else {
@@ -373,7 +369,7 @@ impl VpxEncoder {
         #[cfg(target_os = "android")]
         let bitrate = bitrate.saturating_mul(u32::from(android_scale).pow(2));
         let bitrate = bitrate as f32;
-        (bitrate * ratio) as u32
+        ((bitrate * ratio) as u32).max(1)
     }
 
     #[inline]

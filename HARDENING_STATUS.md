@@ -3850,7 +3850,7 @@ scratch/headroom exhaustion. Canonical markers, bounded diagnostics and intentio
 their ownership; exact joins precede retirement, and uncertainty retains the marker and blocks reuse.
 Every helper entry refuses root.
 
-**File-block decoder — fallible bounded output; Linux component accepted.** `fa22a5cb`
+**Shared compression and file-block decoding — fallible output; Linux component accepted.** `fa22a5cb`
 replaces the infallible 128-KiB-plus-one output allocation with checked reservation
 and an `OutOfMemory` IO error. Encoded/output/history limits and raw-input borrowing
 are preserved; the existing receive caller propagates the error before filesystem
@@ -3864,7 +3864,18 @@ The existing lane retains 2 GiB guest RAM, 6 GiB RAM scratch, a 4 GiB hard file
 ceiling, 6 GiB host headroom and 1 GiB overhead. Runtime and RAM roots retire.
 `file-block-allocation-096a4a9d.json` binds source, exact artifact, dependencies,
 native results and cleanup; earlier profile provenance remains in
-`file-block-profile-efee13e6.json`. Faults target only the Rust output vector;
+`file-block-profile-efee13e6.json`.
+
+`36dd7a57` also reserves the shared compressor's output fallibly before writing
+through the pinned zstd buffer API. Its context, level, format and callers remain
+unchanged. At unchanged-product preparation `fa877156`, the extended allocation
+regression aborts its native child on a refused 64-byte compressed-output buffer;
+the seven other cases pass. The identical eight-case shard passes after correction
+in 73 reported VM seconds: three compression refusals return `OutOfMemory`, each
+same-context retry matches upstream bytes for empty, one-byte and 128-KiB inputs,
+and the existing three decoder refusals/retries still pass. Source/artifacts, exact
+native outcomes and joined cleanup are retained in `compression-allocation-cc6460e0.json`.
+Faults target only the Rust output vectors;
 C codec allocations, persistent/global memory pressure, full receive/filesystem
 effects, other platforms, installed and release acceptance remain OPEN.
 

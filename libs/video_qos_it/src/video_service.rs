@@ -117,7 +117,8 @@ fn unsupported_quality_changes_require_recreation() {
             let mut encoder = Encoder::new(false, 0);
             let result = apply(&mut encoder, &mut ratio, &generation);
             let error = result.as_ref().err().map(ToString::to_string);
-            let unchanged = ratio == original && VIDEO_QOS.lock().unwrap().bitrate() == 2000;
+            let expected_bitrate = if registered { 2000 } else { 0 };
+            let unchanged = ratio == original && VIDEO_QOS.lock().unwrap().bitrate() == expected_bitrate;
             println!("VIDEO_QOS_APPLY=unsupported registered={registered} quality={quality} result={error:?} unchanged={unchanged} requests={}", encoder.requests.len());
             observations.push(error.as_deref() == Some("SWITCH") && unchanged
                 && encoder.requests.is_empty() && encoder.bitrate_reads.get() == 0);

@@ -422,12 +422,15 @@ impl OpenCipher {
     ///
     /// R-T5: this is the SOLE writer of `read_seq` and advances it with no `.await` between the read
     /// and the advance, so a cancelled `FramedStream::next` can neither replay nor skip a counter.
-    pub fn open(&mut self, ciphertext: &[u8]) -> Result<Vec<u8>, ()> {
+    pub fn open(&mut self, ciphertext: &mut bytes::BytesMut) -> Result<(), ()> {
         let prev = self.read_seq.fetch_add(1, Ordering::Relaxed);
         if prev == u64::MAX {
             return Err(());
         }
-        secretbox::open(ciphertext, &cipher_nonce(prev + 1), &self.recv_key)
+        let plaintext = secretbox::open(ciphertext, &cipher_nonce(prev + 1), &self.recv_key)?;
+        ciphertext.clear();
+        ciphertext.extend_from_slice(&plaintext);
+        Ok(())
     }
 
     /// The recv counter — exposed for the R-T5 cancellation-safety regression test (a dropped
@@ -495,7 +498,7 @@ impl DirectionalCipher {
     }
 
     /// Open an inbound frame under the recv key (R-P10).
-    pub fn open(&mut self, ciphertext: &[u8]) -> Result<Vec<u8>, ()> {
+    pub fn open(&mut self, ciphertext: &mut bytes::BytesMut) -> Result<(), ()> {
         self.open.open(ciphertext)
     }
 
@@ -504,6 +507,113 @@ impl DirectionalCipher {
     #[inline]
     pub fn read_seq(&self) -> u64 {
         self.open.read_seq()
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod open_tests {
+    use super::*;
+    use bytes::BytesMut;
+    use std::os::unix::process::ExitStatusExt;
+
+    #[test]
+    fn owned_frame_opens_with_rust_allocations_refused() {
+        const CHILD: &str = "RUSTDESK_CIPHER_OPEN_ALLOCATION_CHILD";
+        const TEST: &str = "cpace::open_tests::owned_frame_opens_with_rust_allocations_refused";
+        if std::env::var_os(CHILD).is_none() {
+            let run = |mode| std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                .env(CHILD, mode).output().unwrap();
+            let probe = run("probe");
+            assert_eq!(probe.status.signal(), Some(crate::libc::SIGABRT));
+            assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+            let output = run("open");
+            assert!(output.stdout.len() + output.stderr.len() < 32_768);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "receive cipher child {:?}: {}{}",
+                output.status, stdout, String::from_utf8_lossy(&output.stderr));
+            assert!(stdout.contains("RECEIVE_CIPHER=pass healthy=6 invalid=6 replay=refused exhaustion=refused rust_allocations=refused alias=exact neighbors=preserved"));
+            for line in stdout.lines() {
+                if let Some((_, message)) = line.split_once("RECEIVE_CIPHER") {
+                    println!("RECEIVE_CIPHER{message}");
+                }
+            }
+            return;
+        }
+        if std::env::var(CHILD).unwrap() == "probe" {
+            crate::fs::with_allocations_refused(|| std::hint::black_box(Vec::<u8>::with_capacity(31)));
+            panic!("allocation refusal probe must abort");
+        }
+        assert_eq!(std::env::var(CHILD).unwrap(), "open");
+        let keys = DirectionalKeys { send: [0x2a; 32], recv: [0x19; 32] };
+        let mut exact_alias = true;
+        for shared in [false, true] {
+            for size in [0, 1, 64 * 1_024] {
+                let input = (0..size).map(|i| (i as u8).wrapping_mul(37)).collect::<Vec<_>>();
+                let ciphertext = secretbox::seal(&input, &cipher_nonce(1), &Key(keys.recv));
+                let (mut prefix, mut suffix) = (BytesMut::new(), BytesMut::new());
+                let mut frame = if shared {
+                    let mut storage = BytesMut::from(&b"prefix!"[..]);
+                    storage.extend_from_slice(&ciphertext);
+                    storage.extend_from_slice(b"tail!");
+                    prefix = storage.split_to(7);
+                    suffix = storage.split_off(ciphertext.len());
+                    storage
+                } else {
+                    BytesMut::from(ciphertext.as_slice())
+                };
+                let pointer = frame.as_ptr() as usize;
+                let (_, mut open) = split_session_keys(&keys);
+                let result = crate::fs::with_allocations_refused(|| open.open(&mut frame));
+                assert_eq!(result, Ok(()));
+                assert_eq!(&frame[..], input);
+                assert_eq!(open.read_seq(), 1);
+                let in_place = frame.as_ptr() as usize == pointer + secretbox::MACBYTES;
+                exact_alias &= in_place;
+                if shared {
+                    assert_eq!(&prefix[..], b"prefix!");
+                    assert_eq!(&suffix[..], b"tail!");
+                }
+                println!("RECEIVE_CIPHER_CASE=pass shared={shared} bytes={size} rust_allocations=refused alias={in_place}");
+            }
+        }
+        assert!(exact_alias);
+        let valid = secretbox::seal(b"authenticated", &cipher_nonce(1), &Key(keys.recv));
+        for kind in ["empty", "one", "short", "tag", "payload", "wrong-key"] {
+            let mut raw = valid.clone();
+            match kind {
+                "empty" => raw.clear(),
+                "one" => raw.truncate(1),
+                "short" => raw.truncate(secretbox::MACBYTES - 1),
+                "tag" => raw[0] ^= 1,
+                "payload" => raw[secretbox::MACBYTES] ^= 1,
+                "wrong-key" => {}
+                _ => unreachable!(),
+            }
+            let (_, mut open) = split_session_keys(&keys);
+            if kind == "wrong-key" {
+                open.recv_key = Key([0x55; 32]);
+            }
+            let mut frame = BytesMut::from(raw.as_slice());
+            let result = crate::fs::with_allocations_refused(|| open.open(&mut frame));
+            assert_eq!(result, Err(()));
+            assert_eq!(&frame[..], raw);
+            assert_eq!(open.read_seq(), 1);
+        }
+        let (_, mut open) = split_session_keys(&keys);
+        let mut first = BytesMut::from(valid.as_slice());
+        crate::fs::with_allocations_refused(|| open.open(&mut first)).unwrap();
+        let mut replay = BytesMut::from(valid.as_slice());
+        assert_eq!(crate::fs::with_allocations_refused(|| open.open(&mut replay)), Err(()));
+        assert_eq!(&replay[..], valid);
+        assert_eq!(open.read_seq(), 2);
+        open.read_seq.store(u64::MAX, Ordering::Relaxed);
+        for _ in 0..2 {
+            assert_eq!(crate::fs::with_allocations_refused(|| open.open(&mut replay)), Err(()));
+            assert_eq!(open.read_seq(), u64::MAX);
+            assert_eq!(&replay[..], valid);
+        }
+        println!("RECEIVE_CIPHER=pass healthy=6 invalid=6 replay=refused exhaustion=refused rust_allocations=refused alias=exact neighbors=preserved");
     }
 }
 

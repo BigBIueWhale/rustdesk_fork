@@ -5,7 +5,7 @@ use crate::{
     ResultType,
 };
 use anyhow::Context as AnyhowCtx;
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Bytes, BytesMut};
 use futures::{SinkExt, StreamExt};
 use protobuf::Message;
 use std::{
@@ -80,11 +80,8 @@ impl SecretboxCodec {
                 // channel for R-T6). `secretbox::open` rejects len < MACBYTES, so a tiny injected
                 // frame is a clean decryption error.
                 if let Some(open) = self.open_cipher.as_mut() {
-                    match open.open(&frame) {
-                        Ok(plain) => {
-                            frame.clear();
-                            frame.put_slice(&plain);
-                        }
+                    match open.open(&mut frame) {
+                        Ok(()) => {}
                         Err(()) => return Err(Error::new(ErrorKind::Other, "decryption error")),
                     }
                 }
@@ -1617,6 +1614,80 @@ mod writer_lifetime_tests {
             all_retired &= pending_before_cancel && ownership_retained && resumed_error && retired;
         }
         assert!(all_retired);
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod open_tests {
+    use super::*;
+
+    #[test]
+    fn decoder_reuses_the_authenticated_frame_storage() {
+        const CHILD: &str = "RUSTDESK_RECEIVE_CODEC_ALLOCATION_CHILD";
+        const TEST: &str = "tcp::open_tests::decoder_reuses_the_authenticated_frame_storage";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                .env(CHILD, "1").output().unwrap();
+            assert!(output.stdout.len() + output.stderr.len() < 32_768);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "receive codec child {:?}: {}{}",
+                output.status, stdout, String::from_utf8_lossy(&output.stderr));
+            assert!(stdout.contains("RECEIVE_CODEC=pass cases=6 frames=12 normal=exact eof=exact rust_allocations=refused alias=exact prefetch=preserved"));
+            for line in stdout.lines() {
+                if let Some((_, message)) = line.split_once("RECEIVE_CODEC") {
+                    println!("RECEIVE_CODEC{message}");
+                }
+            }
+            return;
+        }
+        assert_eq!(std::env::var(CHILD).unwrap(), "1");
+        for eof in [false, true] {
+            for size in [0, 1, 64 * 1_024] {
+                let input = vec![0x5a; size];
+                let (mut seal, _) = split_session_keys(&DirectionalKeys {
+                    send: [0x19; 32], recv: [0x2a; 32],
+                });
+                let (_, open) = split_session_keys(&DirectionalKeys {
+                    send: [0x2a; 32], recv: [0x19; 32],
+                });
+                let mut codec = SecretboxCodec::new();
+                codec.set_max_packet_length(128 * 1_024);
+                codec.open_cipher = Some(open);
+                let mut wire = BytesMut::from(&b"prefix!"[..]);
+                let mut next_wire = BytesMut::new();
+                BytesCodec::new().encode(seal.seal(&input).unwrap().into(), &mut wire).unwrap();
+                BytesCodec::new().encode(seal.seal(b"next").unwrap().into(), &mut next_wire).unwrap();
+                wire.extend_from_slice(&next_wire);
+                wire.extend_from_slice(b"tail!");
+                let prefix = wire.split_to(7);
+                let suffix = wire.split_off(wire.len() - 5);
+                for (index, payload) in [input.as_slice(), b"next"].into_iter().enumerate() {
+                    let pointer = wire.as_ptr() as usize + ((wire[0] & 3) + 1) as usize
+                        + sodiumoxide::crypto::secretbox::MACBYTES;
+                    let frame = crate::fs::with_allocations_refused(|| {
+                        if eof { codec.decode_eof(&mut wire) } else { codec.decode(&mut wire) }
+                    }).unwrap().unwrap();
+                    assert_eq!(&frame[..], payload);
+                    assert_eq!(frame.as_ptr() as usize, pointer);
+                    assert_eq!(codec.open_cipher.as_ref().unwrap().read_seq(), index as u64 + 1);
+                    assert_eq!(&prefix[..], b"prefix!");
+                    assert_eq!(&suffix[..], b"tail!");
+                    if index == 0 {
+                        assert_eq!(&wire[..], &next_wire[..]);
+                    } else {
+                        assert!(wire.is_empty());
+                    }
+                }
+                let result = crate::fs::with_allocations_refused(|| {
+                    if eof { codec.decode_eof(&mut wire) } else { codec.decode(&mut wire) }
+                }).unwrap();
+                assert!(result.is_none());
+                assert_eq!(codec.open_cipher.as_ref().unwrap().read_seq(), 2);
+                println!("RECEIVE_CODEC_CASE=pass eof={eof} bytes={size} frames=2 rust_allocations=refused alias=exact prefetch=preserved");
+            }
+        }
+        println!("RECEIVE_CODEC=pass cases=6 frames=12 normal=exact eof=exact rust_allocations=refused alias=exact prefetch=preserved");
     }
 }
 

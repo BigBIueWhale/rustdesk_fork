@@ -4,7 +4,7 @@
 //! two-key [`DirectionalCipher`] is exercised in both directions. Adversarial
 //! cases cover the wrong-password (R-P3/R-P14c) and out-of-order (R-P14a) aborts.
 
-use hbb_common::bytes::Bytes;
+use hbb_common::bytes::{Bytes, BytesMut};
 use hbb_common::cpace::{
     guess_limiter_allows, record_handshake_failure, run_initiator, run_responder,
     DirectionalCipher, HandshakeError,
@@ -194,21 +194,23 @@ async fn handshake_round_trip_and_two_key_cipher() {
     // The two-key cipher round-trips in both directions.
     let mut ci = DirectionalCipher::new(&ki);
     let mut cr = DirectionalCipher::new(&kr);
-    let ct = ci.seal(b"hello from the viewer").unwrap();
-    assert_eq!(cr.open(&ct).unwrap(), b"hello from the viewer");
-    let ct2 = cr.seal(b"hello from the controlled host").unwrap();
-    assert_eq!(ci.open(&ct2).unwrap(), b"hello from the controlled host");
+    let mut ct = BytesMut::from(ci.seal(b"hello from the viewer").unwrap().as_slice());
+    cr.open(&mut ct).unwrap();
+    assert_eq!(&ct[..], b"hello from the viewer");
+    let mut ct2 = BytesMut::from(cr.seal(b"hello from the controlled host").unwrap().as_slice());
+    ci.open(&mut ct2).unwrap();
+    assert_eq!(&ct2[..], b"hello from the controlled host");
 
     // R-P10: a frame sealed under the send key must NOT open under the same side's
     // recv key. Collapsing to one key (the inherited bug) would make this succeed.
     let mut sealer = DirectionalCipher::new(&ki); // seals under ki.send
-    let outbound = sealer.seal(b"probe").unwrap();
+    let mut outbound = BytesMut::from(sealer.seal(b"probe").unwrap().as_slice());
     let mut self_recv = DirectionalCipher::new(&ki); // opens under ki.recv
-    assert!(self_recv.open(&outbound).is_err());
+    assert!(self_recv.open(&mut outbound).is_err());
 }
 
 /// R-P10 / R-A5 / §20 transport security: the per-direction nonce IS the receiver's MONOTONIC read_seq
-/// (DirectionalCipher::open advances it BEFORE secretbox::open, cpace.rs:428), NOT a frame-embedded seq.
+/// (DirectionalCipher::open advances it before authentication), NOT a frame-embedded seq.
 /// So a REPLAYED frame (re-sent) and a REORDERED frame (opened at the wrong position) both present a
 /// different nonce than they were sealed under and FAIL the AEAD — the inherited replay/reorder hole is
 /// closed by construction. A regression to a frame-carried seq, or a read_seq reset, would silently
@@ -232,17 +234,21 @@ async fn directional_cipher_rejects_replay_and_reorder() {
     // REPLAY: a fresh receiver opens c0 (read_seq->1, nonce(1) == c0's: ok), then re-opens the SAME c0 —
     // the second open is at read_seq->2's nonce(2), not c0's nonce(1), so the AEAD rejects it.
     let mut rx_replay = DirectionalCipher::new(&kr);
-    assert_eq!(rx_replay.open(&c0).unwrap(), b"frame zero");
+    let mut plaintext = BytesMut::from(c0.as_slice());
+    rx_replay.open(&mut plaintext).unwrap();
+    assert_eq!(&plaintext[..], b"frame zero");
+    let mut replay = BytesMut::from(c0.as_slice());
     assert!(
-        rx_replay.open(&c0).is_err(),
+        rx_replay.open(&mut replay).is_err(),
         "a replayed frame MUST be rejected (the monotonic nonce moved on)"
     );
 
     // REORDER: a fresh receiver opens c1 FIRST — c1 was sealed at seq 2 but is opened at read_seq->1's
     // nonce(1), so the AEAD rejects the out-of-order frame.
     let mut rx_reorder = DirectionalCipher::new(&kr);
+    let mut reordered = BytesMut::from(c1.as_slice());
     assert!(
-        rx_reorder.open(&c1).is_err(),
+        rx_reorder.open(&mut reordered).is_err(),
         "an out-of-order frame MUST be rejected (sealed at seq 2, opened at the seq-1 nonce)"
     );
 }
@@ -257,9 +263,13 @@ async fn matching_password_streams_can_exchange_after_keying() {
     // Several frames each direction: nonces advance independently, no reuse.
     for i in 0..4u8 {
         let msg = vec![i; 100];
-        assert_eq!(cr.open(&ci.seal(&msg).unwrap()).unwrap(), msg);
+        let mut frame = BytesMut::from(ci.seal(&msg).unwrap().as_slice());
+        cr.open(&mut frame).unwrap();
+        assert_eq!(&frame[..], msg);
         let reply = vec![i.wrapping_add(1); 64];
-        assert_eq!(ci.open(&cr.seal(&reply).unwrap()).unwrap(), reply);
+        let mut frame = BytesMut::from(cr.seal(&reply).unwrap().as_slice());
+        ci.open(&mut frame).unwrap();
+        assert_eq!(&frame[..], reply);
     }
 }
 

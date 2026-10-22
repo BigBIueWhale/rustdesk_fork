@@ -40,6 +40,7 @@ pub(super) mod tests {
     thread_local! {
         static OUTPUT_ALLOCATION: Cell<(bool, usize)> = const { Cell::new((false, 0)) };
         static EXACT_ALLOCATION: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
+        static REFUSE_ALL_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
     }
 
     struct OutputAllocator;
@@ -53,7 +54,24 @@ pub(super) mod tests {
         EXACT_ALLOCATION.with(Cell::get)
     }
 
+    pub(crate) fn with_allocations_refused<T>(action: impl FnOnce() -> T) -> T {
+        struct Restore;
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                REFUSE_ALL_ALLOCATIONS.with(|state| state.set(false));
+            }
+        }
+        assert!(!REFUSE_ALL_ALLOCATIONS.with(|state| state.replace(true)));
+        let restore = Restore;
+        let result = action();
+        drop(restore);
+        result
+    }
+
     fn refuse_allocation(size: usize) -> bool {
+        if REFUSE_ALL_ALLOCATIONS.try_with(Cell::get).unwrap_or(false) {
+            return true;
+        }
         size == SIZE + 1 && OUTPUT_ALLOCATION.try_with(|state| {
             let (armed, refusals) = state.get();
             if armed {

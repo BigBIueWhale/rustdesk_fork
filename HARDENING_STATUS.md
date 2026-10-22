@@ -2609,6 +2609,17 @@ production loading, logging and recovery are byte-identical in this slice.
 Full app/installed logger sinks and permissions, previous log retention, native
 other-platform, R-S0/R-F5 and release acceptance remain OPEN.
 
+**Retired TCP-disable query (`658d5270`).** The unused
+`is_disable_tcp_listen()` resolver is deleted. Both former rendezvous callers
+were removed by `ec589b8c`; current source has no caller. The direct listener,
+settings-disable query and shared hard-settings checks are unchanged. The starting
+common-library tree equals the retained `0e8fef80` baseline; the same unchanged
+201-case Linux configuration/at-rest cohort passes after the five-line deletion.
+`retired-listener-disable-7339b4ce.json` binds source reconstruction, caller/history
+classification, reused baseline, fresh artifact and joined bounded-RAM cleanup.
+This retires a dormant API; it does not establish a new runtime or LPE correction.
+Full app/listener, installed/other-platform, R-S0/R-F5 and release acceptance remain OPEN.
+
 **Retired heartbeat status storage (`44281c4f`).** The unused shared `Status`
 model, lazy cache, `_status` reader/writer, public `common_store`, private
 `Config::store_` wrapper and now-unreferenced tolerant map decoder are deleted.

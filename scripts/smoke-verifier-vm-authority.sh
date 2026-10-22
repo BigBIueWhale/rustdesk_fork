@@ -2493,6 +2493,24 @@ if [ "$MODE" = fixed-archive-tests ]; then
         "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
         "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE")"
 fi
+FLUTTER_REPLAY_INPUT_SOURCE=
+if [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
+    FLUTTER_REPLAY_INPUT_SOURCE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
+        || fail 'cannot resolve the replay input-provider source'
+    for replay_input_contract in \
+        libs/libxdo-sys-stub/src/lib.rs \
+        libs/libxdo-sys-stub/native/xdo.h \
+        libs/libxdo-sys-stub/native/xdo_version.h; do
+        app_input_blob="$(git_closed -C "$REPO_ROOT" rev-parse --verify "$FLUTTER_APP_COMMIT:$replay_input_contract")" \
+            || fail "selected app lacks the replay input contract: $replay_input_contract"
+        provider_input_blob="$(git_closed -C "$REPO_ROOT" rev-parse --verify "$FLUTTER_REPLAY_INPUT_SOURCE:$replay_input_contract")" \
+            || fail "replay provider lacks its input contract: $replay_input_contract"
+        [ "$app_input_blob" = "$provider_input_blob" ] \
+            || fail "selected app and replay provider input contract differ: $replay_input_contract"
+    done
+    printf 'LINUX_FLUTTER_REPLAY_INPUT_CONTRACT=pass app_commit=%s provider_commit=%s files=3 equality=git-blob\n' \
+        "$FLUTTER_APP_COMMIT" "$FLUTTER_REPLAY_INPUT_SOURCE"
+fi
 vm_storage_preflight
 reserve_verifier_run
 reserve_vm_storage
@@ -3377,6 +3395,10 @@ if [ "$MODE" = flutter-peer-presentation ]; then
         || fail 'focused Flutter peer requires a clean source tree'
     [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
         || fail 'Git replacement refs are forbidden'
+    if [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
+        [ "$FLUTTER_REPLAY_INPUT_SOURCE" = "$FLUTTER_PEER_SOURCE_COMMIT" ] \
+            || fail 'replay input-provider source changed after contract admission'
+    fi
 fi
 
 if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then

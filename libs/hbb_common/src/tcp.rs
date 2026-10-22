@@ -1662,7 +1662,7 @@ mod open_tests {
                 wire.extend_from_slice(b"tail!");
                 let prefix = wire.split_to(7);
                 let suffix = wire.split_off(wire.len() - 5);
-                for (index, payload) in [input.as_slice(), b"next"].into_iter().enumerate() {
+                for (index, payload) in [input.as_slice(), b"next"].iter().copied().enumerate() {
                     let pointer = wire.as_ptr() as usize + ((wire[0] & 3) + 1) as usize
                         + sodiumoxide::crypto::secretbox::MACBYTES;
                     let frame = crate::fs::with_allocations_refused(|| {

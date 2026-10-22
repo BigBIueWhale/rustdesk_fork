@@ -4220,7 +4220,8 @@ impl PeerConfig {
     }
 
     fn encoded_id(id: &str) -> String {
-        if id.chars().any(|c| matches!(c, '<' | '>' | ':' | '/' | '\\' | '|' | '?' | '*')) {
+        let reserved = id.strip_prefix("base64_").is_some_and(|suffix| !suffix.is_empty());
+        if reserved || id.chars().any(|c| matches!(c, '<' | '>' | ':' | '/' | '\\' | '|' | '?' | '*')) {
             "base64_".to_string() + base64::encode(id, base64::Variant::Original).as_str()
         } else {
             id.to_string()

@@ -1715,9 +1715,19 @@ artifacts, raw observations and joined bounded-RAM cleanup are retained in
 The additional standalone X11 capture-mapping check is OPEN: admission refused
 27,648 MiB required versus 17,626 MiB available before launch. Android, Windows,
 macOS, full application/peer behavior, persistent global OOM, installed R-S0 and
-R-F5 acceptance remain OPEN. Separately, the pre-existing `ARGBToRAW` paths in
-the `capture_mag` and `screenshot` examples pass empty destination vectors;
-correct or remove those sample paths before treating them as usable.
+R-F5 acceptance remain OPEN.
+
+**Unsafe duplicate screenshot examples — removed.** The auto-discovered
+`capture_mag` and `screenshot` sample targets both passed an empty vector's
+pointer to `ARGBToRAW` for a nonempty image, ignored its result, and then read the
+still-empty vector. Their duplicate manual conversion also assumed four-byte BGRA
+input. Both complete examples are deleted; neither had an explicit repository
+caller or workflow reference. Required screenshot conversion/PNG handling and the
+Windows privacy-mode magnifier backend remain in their production owners, and
+their source and existing focused native fixtures are unchanged. This closes the
+sample-path removal item, not an installed application escalation finding. No new
+native application or example execution is claimed. Exact deleted-file identities,
+caller search and retained-source equality are in `retired-capture-examples-e7145f8d.json`.
 
 **Capture comparison allocation failure — native X11/component accepted.**
 

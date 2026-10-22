@@ -2754,10 +2754,31 @@ preferences; reads create no peer record and descriptors return 4 to 4.
 observations, the excluded first fixture-compilation failure and joined
 bounded-RAM cleanup. Starting tests reconstruct exactly; no public API,
 FFI/Dart, decoder, dependency or verifier change is included.
-Existing per-peer raw preferences, Decoder::preference hardware cases and
-the native alternative-codec API require separate review.
+Decoder::preference hardware cases and the native alternative-codec API
+require separate review; effective existing-peer reads are corrected below.
 Rendered settings, actual negotiation/encoding/decoding, native other-platform/
 installed, R-S0/R-F5 and release acceptance remain OPEN.
+
+**Existing-peer codec vocabulary — Linux library comparison accepted; app integration OPEN.**
+`65fb3f76` shares one Auto/VP8/VP9 normalizer across display defaults,
+`PeerConfig::load` and checked `read_option`. Unsupported or missing preferences in
+existing records read as Auto; a missing peer retains current default inheritance.
+Normalization changes the returned effective options. Strict `load_for_write` and
+persistence retain raw values, so the shared single-key setter preserves them when
+updating an unrelated option. Effective reads do not write peer/default files.
+At unchanged-product `d2a501c6`, eight of twelve real-file scenarios returned the
+wrong effective value; four controls passed. The same renamed/extended projection
+regression passes after correction with all 201 tests/seven groups. Eleven existing-file
+cases cover supported/retired/unknown/empty/missing values, full and narrow reads,
+strict raw-write state, unrelated field updates and byte/inode/mode preservation;
+the missing-peer VP9 control creates no record. Descriptors return 4 to 4, all four
+original malformed-type refusals/retry remain and 27 default-codec controls pass.
+`peer-codec-preferences-6cae2976.json` binds source/artifact identities, native A/B
+observations and joined bounded-RAM cleanup. Public APIs, UI/FFI/decoder and dependency
+sources are unchanged. Native UI cache/setter and decoder integration remain untested;
+legacy whole-peer snapshot writers can serialize effective values and remain separately
+OPEN/PARKED. Rendered selection, negotiation/decode, other-platform/installed,
+R-S0/R-F5 and release acceptance remain OPEN.
 
 **Toolbar software-codec controls — dormant hardware UI removed.**
 `ccf76fea` deletes H264/H265 JSON consumers, radio constructors and their

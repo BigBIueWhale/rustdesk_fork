@@ -2709,6 +2709,29 @@ endpoint comparisons and joined bounded-RAM cleanup, including the failed baseli
 manifested 35-node diagnostics retirement. Full native FFI/UI, client OptionMessage and
 remote encoder effects, other-platform/installed and R-S0/R-F5 acceptance remain OPEN.
 
+**Default codec vocabulary — Linux component accepted; full settings OPEN.**
+`7215054e` removes H264/H265 from the shared default-codec normalizer. Effective
+values are Auto, VP8 or VP9, matching the existing desktop/mobile Default Codec
+controls and R-R2b. Unsupported values use the existing Auto normalization;
+stored representation, source precedence and read-only behavior are unchanged.
+Save acknowledgements, cached/reloaded reads and fresh/missing peer defaults
+therefore consume the same supported value.
+
+At unchanged-product preparation `cce53fec`, H264/H265 remain effective in all
+three stored/default/overwrite sources: six of 27 combinations fail with 185
+other tests passing before fifteen later controls are unreached. The identical
+extended test passes after correction, with the complete 201-case/seven-group
+Linux library cohort. All 27 combinations preserve raw file state and unrelated
+preferences; reads create no peer record and descriptors return 4 to 4.
+`default-codec-preferences-e8e69b71.json` binds exact sources/artifacts, A/B
+observations, the excluded first fixture-compilation failure and joined
+bounded-RAM cleanup. Starting tests reconstruct exactly; no public API,
+FFI/Dart, decoder, dependency or verifier change is included.
+Existing per-peer raw preferences, Decoder::preference hardware cases and
+toolbar hardware controls/alternative-codec API require separate review.
+Rendered settings, actual negotiation/encoding/decoding, native other-platform/
+installed, R-S0/R-F5 and release acceptance remain OPEN.
+
 Historical comparisons cover named setter/export leaves or controlled rendered
 components, not an old installed whole application. The receipts retain exact sources,
 artifacts, cases, raw results, failed/unaccepted preparatory runs and joined bounded-RAM

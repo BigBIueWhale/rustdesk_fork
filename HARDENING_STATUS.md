@@ -2000,6 +2000,29 @@ receipts and joined bounded-RAM cleanup. Complete peer publication, network reco
 real-time performance/soak, other platforms/devices, installed/R-S0/R-F5 and release
 acceptance remain OPEN. All separately parked work stays parked.
 
+**VPX packet storage — native allocation recovery accepted; application acceptance OPEN.**
+`e79c448e` reserves packet bytes and frame-vector capacity fallibly before
+publishing an owned message. A storage error drops the partial message and leaves
+the exact encoder awaiting a keyframe. Encoding requests that keyframe; iteration
+retains recovery across empty output and excludes dependent packets until a native
+keyframe is observed. A failed copy of that keyframe requests recovery again.
+
+At behavior-identical preparation `7fbe387a`, refusing a 31-byte packet allocation
+aborts the new child while the 25 previous cases pass. The same native regression
+passes after correction across VP8/I420, VP9/I420 and VP9/I444: nine one-shot payload
+refusals return `TryReserveError`, nine retries decode current pixels in both the
+existing decoder and a fresh decoder, and nine following frames are non-keyframes.
+Thirty decoded images supply 30,720 checked visible pixels; final flush is empty.
+All 26 focused tests pass in 142 VM seconds at `7e62885a`, with joined bounded-RAM
+cleanup. The regression body is unchanged; an existing fixture gains only the new
+iterator-field binding. `vpx-message-allocation-7ffed930.json` retains exact sources,
+artifacts, the baseline reporting fault, two rejected harness-admission runs and
+their bookkeeping corrections. Bounded failure tails retain only the outcomes
+identified in that evidence; whole-harness A/B identity is not claimed.
+Frame-vector refusal is source reviewed rather than separately injected. Persistent
+global/C-heap OOM, full application error consumption and presentation, other native
+targets, installed R-S0, R-F5 recovery/soaks and release acceptance remain OPEN.
+
 **Video QoS — Linux controller/application boundary accepted; end-to-end latency OPEN.**
 
 Current component evidence reaches `115a449b`: all nineteen controller tests and

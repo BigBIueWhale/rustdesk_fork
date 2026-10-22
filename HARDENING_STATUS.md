@@ -12845,6 +12845,10 @@ retain only format scalars or copied packet bytes, without unknown
 protobuf fields or a larger shared backing allocation. The queue bounds packet
 data to 32,768 bytes plus fixed metadata; this does not bound network parsing,
 in-flight decoding, native/device buffering or total process memory.
+Packet and deque capacity are reserved fallibly before eviction or publication.
+Reservation refusal closes admission and clears pending work under the state mutex,
+then wakes receivers and returns `ResourceUnavailable` for explicit caller reporting.
+The closed owner keeps its first-format key and refuses further admission.
 
 Non-Linux PCM playback uses private `src/client/audio_buffer.rs`; each producer owns its histogram and
 monotonic shrink window; the callback shares only its ring. First observation
@@ -12875,6 +12879,7 @@ Counts refer to their named historical sources, not fresh current-tree execution
 
 | Surface | Executed evidence and limit | Capsule |
 | --- | --- | --- |
+| Frame-storage refusal — `d6fefa11` | At API preparation `c6dbf459`, 34 controls and six healthy child cases pass; all ten refused-allocation children abort on packet or deque storage, so the new regression fails. The identical 35-case fixture passes after correction. Refusal at empty, growing and full queues returns `ResourceUnavailable`, clears pending format/frames, closes replay admission and leaves a fresh mailbox functional. Six finite-budget healthy cases preserve exact bytes, FIFO and oldest replacement at one and 4,096 bytes. The positive 31-byte refusal probe aborts as required; all seventeen children join. Artifact hashes remain stable. This is controlled Rust-allocation refusal and mailbox state evidence, not whole-runtime/C-heap exhaustion, native decoder/device or installed acceptance; stalled Linux playback cancellation remains OPEN/PARKED. | `audio-mailbox-allocation-bb158770.json` |
 | Format-first admission — `847f5566` | Twelve actual mailbox tests with production-generated protobuf cover ordering, fixed format, count/age limits, oversized refusal with state preservation, exact packet bound, parsed unknown-field stripping, backing-owner release, native receiver wake/join on sender loss and admission closure after receiver loss. Every fixture dependency matches the root lock. No decoder/device ran. | `audio-mailbox-accepted-847f5566.json` |
 | Per-buffer clock — `a30df600` | Eight production-buffer cases cover exact interval, independent owners, backwards time, resize/no-op, bounded retention and four joined workers over 200 injected intervals. Linux executes the real locked ring with controlled Instants; it does not measure device timing. The first resumed poll was terminal, so no live manual source observation is claimed. | `audio-buffer-accepted-a30df600.json` |
 | Callback fill — product `908dd918`, evidence `406579e9` | Sixteen cases include ten actual dasp sample-type conversions, signed/unsigned silence, FIFO/underflow, held-producer return before release, poison and a positive allocation-counter control followed by zero calling-thread Rust allocations in 1,000 warmed fills and a contended fill. Backend allocations and universal real-time safety are unproved. | `audio-callback-accepted-406579e9.json` |
@@ -12888,9 +12893,9 @@ All 34 cases passed at `15ed3f4d` in 106 outer seconds under the dedicated
 `audio-mailbox` RAM profile. CPAL setup typechecking is not a complete non-Linux
 parent build or physical stream execution. `audio-mailbox-profile-15ed3f4d.json`
 binds the source/artifact, sixteen channel-format observations, old/current
-callback wake/retirement controls, storage limits and joined cleanup. The unchanged
-export filter retains 33 module-test names and both callback observations;
-the guest checks all 34 names before export, including the callback fixture.
+callback wake/retirement controls, storage limits and joined cleanup. The current
+export retains all 35 named outcomes, allocation cases and callback observations;
+the guest checks that same inventory before export.
 `--audio-buffer-tests` passed all eighteen cases at `87dbc335` in 73 outer seconds:
 sixteen production-buffer cases and two real conversion/allocation fixtures.
 Both audio profiles retain the 2 GiB guest and admit 6 GiB RAM scratch,

@@ -1694,6 +1694,27 @@ The final transaction takes 142 seconds. Harness, oracle, test bodies, compiler,
 inputs and resource budgets are identical across A/B. Exact sources, PNG/RGBA
 hashes and cleanup are retained in `screenshot-x11-f539fc01.json`.
 
+**Encoder format snapshots — Linux VPX component accepted; hardware/app OPEN.**
+`0d26ee85` stores the three used YUV plane strides inline and makes
+`EncodeYuvFormat` copyable. VPX no longer allocates its stride vector or clones
+it on every read; the application passes the value directly while retaining its
+trace snapshot. The hardware getter copies the same three native values, and
+texture frames continue to bypass YUV conversion. Dimensions, offsets and the
+three consumed strides are preserved; unused native plane slots are omitted.
+
+At unchanged-product `15b1b4c4`, a refused 32-byte VPX descriptor allocation aborts
+the new child while nineteen controls pass. The identical new test passes after
+correction for VP8/I420, VP9/I420 and VP9/I444: descriptor acquisition, deliberate
+public snapshot cloning and warmed `Frame::to` leave a one-shot Rust allocation
+refusal unused, preserve descriptor fields and produce all 6,528 expected black
+plane samples. All twenty focused tests pass in 148 VM seconds. Prior nine-pair
+conversion fixtures change only vector construction/copies to inline metadata;
+their pixel/error checks remain. `encoder-layout-0d5758dd.json` binds exact source,
+native A/B artifacts, unchanged test body and joined bounded-RAM cleanup.
+Hardware/VRAM feature compilation and drivers, full application and other native
+targets, cold buffer growth, descriptor/arithmetic bounds, persistent global OOM,
+installed R-S0, actual presentation and R-F5 acceptance remain OPEN.
+
 **Warmed capture-to-YUV conversion — diagnostic allocation removed.** `f39be52e`
 formats the unsupported-conversion diagnostic only on its existing refusal edges;
 successful frames no longer build that string. Conversion branches, buffer

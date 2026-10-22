@@ -3928,12 +3928,24 @@ fn normalize_codec_preference(value: String) -> String {
     }
 }
 
+fn normalize_custom_fps(value: &str) -> String {
+    let fps = value.parse::<f64>().unwrap_or(30.0);
+    if (5.0..=120.0).contains(&fps) {
+        (fps as i32).to_string()
+    } else {
+        "30".to_owned()
+    }
+}
+
 impl PeerConfig {
     pub fn load(id: &str) -> PeerConfig {
         let mut config = Self::load_with_status(id).into_value();
         let key = keys::OPTION_CODEC_PREFERENCE;
         let value = config.options.remove(key).unwrap_or_default();
         config.options.insert(key.to_owned(), normalize_codec_preference(value));
+        if let Some(value) = config.options.get_mut(keys::OPTION_CUSTOM_FPS) {
+            *value = normalize_custom_fps(value);
+        }
         config
     }
 
@@ -4055,6 +4067,10 @@ impl PeerConfig {
             return Ok(String::new());
         }
         let mut file: PeerOptionsFile = Self::read_view(&Self::path(id))?;
+        if name == keys::OPTION_CUSTOM_FPS {
+            return Ok(file.options.remove(name)
+                .map(|value| normalize_custom_fps(&value)).unwrap_or_default());
+        }
         let value = file.options.remove(name).unwrap_or_default();
         Ok(if name == keys::OPTION_CODEC_PREFERENCE {
             normalize_codec_preference(value)
@@ -4856,7 +4872,9 @@ impl UserDefaultConfig {
             keys::OPTION_CUSTOM_IMAGE_QUALITY => {
                 (self.get_num(key, 50.0, 10.0, 0xFFF as f64) as i32).to_string()
             }
-            keys::OPTION_CUSTOM_FPS => (self.get_num(key, 30.0, 5.0, 120.0) as i32).to_string(),
+            keys::OPTION_CUSTOM_FPS => {
+                normalize_custom_fps(self.get_after(key).as_deref().unwrap_or_default())
+            }
             keys::OPTION_ENABLE_FILE_COPY_PASTE => self.get_string(key, "Y", vec!["", "N"]),
             keys::OPTION_EDGE_SCROLL_EDGE_THICKNESS => self.get_num(key, 100, 20, 150).to_string(),
             keys::OPTION_TRACKPAD_SPEED => self.get_num(key, 100, 10, 1000).to_string(),

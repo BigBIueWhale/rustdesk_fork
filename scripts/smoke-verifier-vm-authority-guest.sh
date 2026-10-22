@@ -3320,7 +3320,7 @@ run_focused_rust_tests() {
                 fs::tests::read_step_open_error_preserves_paused_entry_with_a_repeated_id
                 fs::tests::read_step_nonterminal_egress_refusal_retains_owned_job
                 fs::tests::read_step_terminal_retirement_precedes_egress_admission
-                tcp::writer_lifetime_tests::read_job_completion_retires_before_writer_byte_pressure_error
+                tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors
             )
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
@@ -3703,7 +3703,7 @@ run_focused_rust_tests() {
                 tcp::writer_lifetime_tests::tcp_failed_writer_retires_encoded_storage
                 tcp::writer_lifetime_tests::tcp_cancelled_writer_retires_encoded_storage
                 tcp::writer_lifetime_tests::tcp_fatal_send_returns_after_writer_retirement
-                tcp::writer_lifetime_tests::read_job_completion_retires_before_writer_byte_pressure_error
+                tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors
                 tcp::writer_lifetime_tests::tcp_fatal_receive_returns_after_writer_retirement
                 tcp::writer_lifetime_tests::tcp_fatal_drain_returns_after_writer_retirement
                 tcp::writer_lifetime_tests::tcp_cancelled_retirement_keeps_writer_owned_until_retry
@@ -5490,7 +5490,7 @@ run_focused_rust_tests() {
                                 fs::tests::read_step_open_error_preserves_paused_entry_with_a_repeated_id \
                                 fs::tests::read_step_nonterminal_egress_refusal_retains_owned_job \
                                 fs::tests::read_step_terminal_retirement_precedes_egress_admission \
-                                tcp::writer_lifetime_tests::read_job_completion_retires_before_writer_byte_pressure_error; do
+                                tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors; do
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" --exact "$test_name" --color never --test-threads=1 --show-output
                                 [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
@@ -6922,7 +6922,7 @@ PY
             grep -E '^test (config|password_security)::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'writer retirement test total differs'
-            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE=' "$output"
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_WINDOW' "$output"
@@ -6934,9 +6934,9 @@ PY
                 || fail 'terminal send-job retirement differs'
             [ "$(grep -Fxc 'READ_NONTERMINAL_RETIREMENT=pass egress=rejected active=retained bytes=6 source=preserved' "$output")" -eq 1 ] \
                 || fail 'nonterminal send-job retention differs'
-            [ "$(grep -Fxc 'READ_JOB_BACKPRESSURE=pass partial_write=true kernel_blocked=true queued_frames=2 byte_budget=262144 selected=retired survivor=exact writer=joined permits=returned receipt=closed storage=retired' "$output")" -eq 1 ] \
+            [ "$(grep -Fxc 'READ_JOB_BACKPRESSURE=pass cases=4 byte_refusals=3 channel_refusals=1 selected=retired survivors=exact writer=joined permits=returned receipt=closed storage=retired' "$output")" -eq 1 ] \
                 || fail 'native backpressure send-job retirement differs'
-            grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_job_completion_retires_before_writer_byte_pressure_error \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE=' "$output"
+            grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then

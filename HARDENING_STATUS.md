@@ -12429,6 +12429,18 @@ when a later topology change prevents coordinate commit, so an unchanged publica
 cannot strand its successor. Web uses its separate exact-owner one-running/one-latest
 lane with signed-32-bit coordinates and synchronous current-revision commit.
 
+`CursorModel` now measures its two-second startup grace and one-second peer-control
+protection with a per-model monotonic stopwatch. Accepted current-topology updates
+sample elapsed time once; `clear()` retires both timestamps and restores local
+control. Clock corrections cannot prematurely expire or reactivate either interval.
+Confined Flutter 3.24.5/Dart 3.5.4 execution reproduced four wall-clock-jump failures
+before `06b361ee`; all seven timing cases pass afterward, including exact boundaries,
+clear/reuse and independent models. The complete adjacent integration lane passes
+326 tests across 13 suites with fresh bridge generation and joined cleanup. These
+tests execute the production Dart model with controlled clocks and a fixture parent;
+native input, physical OS clock changes and the checkpoint/take acceptance above
+remain OPEN. Evidence: `cursor-elapsed-time-0635f406.json`.
+
 The three retained `r_s11gu_` Rust regressions cover bounds, exact refusal/promotion,
 topology retirement, stream re-arm, stale predecessors and exhaustion. Shared and
 generated-bridge gates invoke the exact family; that wiring establishes no Dart,

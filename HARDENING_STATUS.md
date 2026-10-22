@@ -12416,111 +12416,61 @@ review.
 
 ### R-S11gu/R-S11e-233 — bounded exact-owner native-to-Dart cursor publication
 
-**SOURCE IMPLEMENTED; THREE EXECUTABLE RUST REGRESSIONS RETAINED AND DIRECTLY WIRED;
-SOURCE/MUTATION THEATER DELETED; EXECUTABLE DART, GENERATED-BRIDGE, TARGET-RUNTIME,
-PRESENTATION, LIFECYCLE, PERFORMANCE, ARTIFACT, AND REVIEW EVIDENCE OPEN.**
+**Source implemented; three Rust regressions retained and wired; Dart, bridge and
+target-runtime acceptance OPEN.** Each exact native UI handler owns one
+`CursorPositionMailbox`: one published coordinate/token and one latest value.
+Exact session, UI owner, coordinates and checked token gate acknowledgement.
+Delivery failure blocks further posts until exact stream replacement re-arms
+current state. Topology barriers retire only earlier pending state; later movement
+can promote after the published predecessor drains. Handler retirement drops it.
 
-Each exact native UI handler owns one `CursorPositionMailbox`: one typed published coordinate/token
-and one latest current coordinate. New positions replace only the current value while a publication
-is outstanding. Exact session, UI-owner, coordinates, and checked positive token gate acknowledgement;
-acknowledgement drains or promotes exactly one latest successor. Failed delivery retains only current
-state and blocks another post until exact stream replacement rotates to a fresh token. A topology
-barrier retires only pre-barrier pending state under the same handler lock; later movement may promote
-after the already-published predecessor is acknowledged. Handler retirement drops the mailbox.
+Dart completes its topology checkpoint and attempts the exact native take even
+when a later topology change prevents coordinate commit, so an unchanged publication
+cannot strand its successor. Web uses its separate exact-owner one-running/one-latest
+lane with signed-32-bit coordinates and synchronous current-revision commit.
 
-Dart awaits the exact session/topology checkpoint and then attempts the exact native take even if a
-later topology transition invalidates coordinate commit; this prevents the unchanged publication from
-stranding a post-topology successor. A synchronous commit still requires the captured topology revision.
-Web does not impersonate the native typed stream: signed-32-bit coordinates enter the existing exact-owner
-one-running/one-latest lane and commit only after its topology checkpoint. No retry, reconnect, timer,
-worker, isolate, service restart, transport queue, listener, or persistent-service change is introduced.
-
-The three directly wired `r_s11gu_` Rust regressions exercise one-published/one-latest promotion,
-wrong-coordinate and wrong-token refusal, topology-barrier retirement, post-barrier promotion, stream
-re-arm, stale predecessor refusal, drain, and allocation exhaustion. The shared verifier invokes the
-family directly; the generated-bridge verifier invokes both the enclosing lifecycle module and the exact
-family. These are executable Rust state-machine tests, not Dart, generated-bridge, lifecycle, renderer,
-or target-runtime evidence.
-
-The source-only cursor checker and its duplicated workspace/mutation/wiring machinery are deleted.
-No product source or executable regression changed.
-
-The bounded-before-port requirement remains grounded in the official Dart contracts: [`SendPort.send`](https://api.dart.dev/dart-isolate/SendPort/send.html)
-is asynchronous and does not wait for receipt, while [`ReceivePort`](https://api.dart.dev/dart-isolate/ReceivePort-class.html)
-buffers before listener registration. Flutter also warns that lifecycle notifications may be skipped and
-that mobile [`paused`](https://api.flutter.dev/flutter/dart-ui/AppLifecycleState.html) stops begin/draw-frame
-callbacks. Those platform contracts justify the bounded owner; they do not prove this implementation on a device.
-
-Exact executable Dart tests for checkpoint/take/invalidation and the web lane, fresh generated Rust/Dart
-bridges, and exact-current target scenarios remain STOP-SHIP. Required scenarios include Android
-task-swipe/reopen/Force-Stop, Windows focus/minimize/window transfer, other supported platforms and
-cross-version operation, actual cursor/display presentation ordering, capture-through-presentation timing,
-bounded CPU/memory/tasks/handles/queues, sustained reconnect/focus/resource soak, cold R-B2/R-B10 equality,
-independent reproduction, causation, and external review.
+The three retained `r_s11gu_` Rust regressions cover bounds, exact refusal/promotion,
+topology retirement, stream re-arm, stale predecessors and exhaustion. Shared and
+generated-bridge gates invoke the exact family; that wiring establishes no Dart,
+bridge, device or presentation result. Position checkpoint/take/invalidation and
+web-lane Dart execution, fresh bridge generation and exact runtime owner/token
+round trips remain OPEN/STOP-SHIP, together with the shared acceptance below.
 
 ### R-S11gv/R-S11e-234 — exact bounded cursor-shape identity, publication, presentation, and retirement
 
-**SOURCE MODEL UPDATED; EXACT FLUTTER UNIT STATE-MACHINE COVERAGE PASSES; TARGET-NATIVE, DEVICE,
-PERFORMANCE, AND RELEASE EVIDENCE OPEN.**
+**Source model implemented; historical Flutter unit coverage retained; native and
+release acceptance OPEN.** `custom_cursor_registry.dart` owns each live
+`CustomCursorPresentationSession` by exact UI owner and pointer device.
+Replacement synchronously revokes the predecessor; device and UI-owner retirement
+revoke presentation before serialized fallback/deletion. The shared PointerRouter
+adapter handles actual `PointerRemovedEvent` objects. Stale disposal/finalization
+cannot retire a replacement; the finalizer-safe token is only a last resort.
+An uncertain in-flight presentation keeps its bounded lease until displacement.
 
-- The exact pinned Flutter 3.24.5 source exposes a framework lifetime hole:
-  `MouseCursorManager.handleDeviceCursorUpdate` removes `_lastSession[device]` and returns for
-  `PointerRemovedEvent` without calling `MouseCursorSession.dispose`. `RendererBinding` updates
-  `MouseTracker` before `GestureBinding` routes the same non-hit-tested removal event through
-  `PointerRouter`. Dart's `Finalizer` contract does not guarantee that a callback runs. The former
-  finalizer-only compensation therefore could not establish deterministic pointer-device retirement.
-- `flutter/lib/models/custom_cursor_registry.dart` now gives each live presentation one exact
-  `CustomCursorPresentationSession` keyed by UI owner and pointer device. Claiming a replacement first
-  installs the new exact device owner and synchronously revokes the predecessor; exact session retirement
-  removes only an identity-equal mapping. Device and UI-owner retirement synchronously make every affected
-  session unable to present before their serialized fallback/deletion futures run. The presentation token
-  independently rechecks retirement after asynchronous registration readiness. An in-flight platform
-  presentation remains conservatively leased until serialized fallback or a successful replacement proves
-  displacement.
-- The native and web adapters install one process-lifetime global `PointerRouter` route when their first
-  custom session is created. A real `PointerRemovedEvent` retires the current exact device owner. Normal
-  Flutter disposal detaches and retires the same finalizer-safe session object idempotently, UI teardown
-  retires every device owned by that exact cursor owner, and a stale dispose or later finalizer cannot remove
-  or reset its replacement. The finalizer token has no `MouseCursorSession` back-reference and remains only
-  a best-effort last resort; correctness no longer depends on garbage collection.
-- The existing checked capture, content identity, typed acknowledgement, bounded controller/subscriber/Dart
-  caches, exact decompression, and 64-entry/16 MiB process-global platform registry remain governed by
-  R-S11gv. Direct Rust `r_s11gv_` tests remain in `scripts/verify.sh`. The direct Dart
-  `custom_cursor_registry_test.dart` gate remains in `scripts/dart-verify.sh` and now covers pending
-  device removal, Flutter's exact `MouseCursorManager` replacement order, real `PointerRouter`
-  classification of `PointerRemovedEvent`, stale and unactivated same-device replacement chains, exact
-  UI-owner retirement, and retirement during an in-flight platform presentation in addition to its prior
-  ordering, uncertainty, resource-bound, and diagnostic-finality cases.
-- The 769-line `verify-viewer-cursor-resources.py` source-wording/mutation catalog and 387 lines of its
-  independent workspace verifier, mutation fixtures, source loading, and shell/Apple wiring are deleted.
-  They parsed selected strings and meta-tested 73 mutations but did not execute Flutter, a platform cursor
-  manager, pointer delivery, native capture, or presentation; retaining them would misstate evidence. No
-  skipped placeholder or compatibility wrapper replaces them.
-- A confined exact Flutter 3.24.5/Dart 3.5.4 run mounted the current registry/route sources and repository
-  test read-only into a disposable minimal Flutter package and passed all 24 tests. Its first run correctly exposed
-  four stale test setups: three requested eviction before asynchronous registration finality despite the
-  non-evictable pending-entry contract, and one acquired a failed handle only after it had retired. The tests
-  now acquire before asynchronous failure and await successful registration before inactive eviction. The
-  final suite additionally prevents old-session disposal from reclaiming a handoff after its unactivated
-  successor retires. A separate exact-Dart harness covers the lower-level pending-device, stale-replacement,
-  all-device UI-owner, and in-flight-presentation cases. A second networkless run used a byte-matched current
-  Flutter source snapshot and the unchanged committed lockfile to analyze the four touched production files
-  against the application's actual dependency closure and rerun all 24 tests. This proves the pure Dart
-  owner/coordinator state machine, shared production `PointerRouter` adapter, and touched-file type integration;
-  it does not analyze the whole app, generate the bridge, execute the native cursor plugin, or drive engine-to-
-  `RendererBinding` pointer delivery.
-- Engine/OS `PointerRemovedEvent` delivery, native plugin registration/presentation, physical Android task
-  swipe/reopen/Force Stop, Windows focus/minimize/reconnect, other target platforms, cross-version behavior,
-  capture-through-compositor latency, sustained resource/performance soak, cold artifact equality, installed
-  packages/services, independent reproduction, external review, and causation of the reported display delay
-  remain open. The broader requirement that the complete connection flow be correct and performant is not
-  narrowed by this slice.
-- Source extraction, formatting, structural checks, and product/test execution use disposable unprivileged
-  containers with no published ports. Product/test execution is networkless and uses a private snapshot or
-  read-only exact repository files; one formatter-only invocation made only its two exact source/test mounts
-  writable. Acquisition-only containers with no repository mount used outbound HTTPS to resolve the minimal test
-  and unchanged committed application lockfiles; all analysis/tests then ran offline. Nothing runs RustDesk or
-  inspects/changes host RustDesk, `haggai_computer`, host services, firewall/routing, or listener state.
+Checked capture/content identity, exact decompression, typed acknowledgement and
+bounded native/Dart caches remain governed by R-S11gv. The shared platform registry
+retains its 64-entry/16-MiB global budget, including pending registrations and
+uncertain leases. The `r_s11gv_` Rust family and direct
+`custom_cursor_registry_test.dart` gate remain wired. Retired cursor wording/mutation
+checkers stay deleted; their counts and repair histories are archived in Git.
+
+Historical confined Flutter 3.24.5/Dart 3.5.4 runs passed 24 registry tests and
+touched-file analysis against the committed application dependency closure.
+They cover the pure Dart owner/coordinator, shared PointerRouter adapter and
+four-file type integration. They do not establish whole-app analysis, generated
+bridges, native plugins or engine-to-RendererBinding pointer delivery. Detailed
+fixture corrections and execution history remain in Git at `686658ad`.
+
+**Shared acceptance remains OPEN/STOP-SHIP:** current Rust/Dart/Flutter and generated bridges;
+native capture, cursor registration and presentation; engine/OS pointer-removal
+delivery; physical Android task-swipe/reopen/Force-Stop; Windows focus/minimize,
+window transfer and reconnect; Linux/macOS/iOS/web and cross-version operation;
+concurrent features and complete connection correctness; cursor/display ordering,
+capture-through-compositor and input-visible timing with explicit latency budgets;
+bounded CPU/memory/tasks/handles/queues and sustained reconnect/focus/resource/
+performance soaks; exact installed packages/services and release artifacts; cold
+R-B2/R-B10 equality, independent reproduction, causation and R-V3 external review.
+R-S0 immunity with complete functionality and R-F5 recovery/freshness remain OPEN.
 
 ### R-S11gw/R-S11e-235 — bounded controlled-side service-to-connection egress (2026-08-16)
 

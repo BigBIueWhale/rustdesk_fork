@@ -14863,7 +14863,7 @@ review and release acceptance remain OPEN.
 | Whole-list receive completion | `finalize_write` first requires successful file-list admission, then requires the active file's exact next index to equal the whole admitted list length before consuming the stream or publishing the claim. A missing or rejected list cannot become a successful empty transfer. Explicitly admitted empty and skipped lists retain their no-stream completion path. |
 | Send length and EOF | `read` owns a per-file position and probes at most the admitted remainder plus one byte, capped at 128 KiB. Short EOF or overrun closes the stream and fails before publishing the affected block or changing counters/file number. Successful seek establishes the position; skip, retirement, fresh open and exact EOF reset it. |
 | Overwrite digest size | `get_current_digest` requires the retained source's observed length to equal the admitted entry size before either CM or keyed TCP digest publication and before entering confirmation wait. A changed length refuses without replacing list authority or advancing counters; later read/EOF checks remain required. |
-| Direct read-step retirement | `handle_read_jobs` uses one selected vector entry through initialization and reading, retires that exact entry before awaiting its terminal notification, and returns at most one exact writer receipt. Notification failure propagates; a nonterminal admission error does not remove the active job. The separate initializer and numeric-ID finished list are deleted. Native acceptance of the terminal-notification ordering remains OPEN below. |
+| Direct read-step retirement | `handle_read_jobs` uses one selected vector entry through initialization and reading, retires that exact entry before awaiting its terminal notification, and returns at most one exact writer receipt. Notification failure propagates; a nonterminal admission error does not remove the active job. The separate initializer and numeric-ID finished list are deleted. Linux library/keyed-TCP refusal checks pass; application/platform integration remains OPEN below. |
 | Send resume source ownership | `set_stream_offset` checks metadata and seeks on the retained send `FileStream`; it does not reopen the pathname to replace an active stream. A first open remains provisional until length validation and seek succeed. Refused offsets preserve confirmation and accounting. |
 | Resume admitted size | Both roles reject offsets beyond the admitted entry size before path resolution, open, seek or accounting. Send also checks the retained object's actual length; in-place growth does not enlarge the admitted authority. |
 | File confirmation entry | Every filesystem-backed skip, overwrite and resume action requires a present entry at the exact matching current index before changing flags, counters, streams or cleanup state. Empty and completed lists cannot confirm an absent file; a present zero-byte file remains valid. |
@@ -14880,23 +14880,25 @@ joined QEMU/storage cleanup and retired RAM/private scratch are retained in
 `.harness-state/verifier-vm/cm-read-tick-parked-e3544227.json`.
 The separate CM pre-bootstrap cancellation park and all other user parks remain unchanged.
 
-**Terminal send-job retirement — source corrected; native acceptance OPEN (RAM admission refused).**
+**Terminal send-job retirement — Linux library/keyed TCP checks ACCEPTED; application/platform integration OPEN.**
 `3281b855` moves the existing selected-entry removal before terminal writer admission.
 Previously, a read error or completed job remained queued if its terminal message could
 not be admitted. Initial-open failure already removed the selected entry before sending;
 nonterminal data admission retains its existing ownership and error propagation.
-The focused `--file-send-digest-tests` library shard now selects nine tests, including
-three existing healthy terminal/repeated-ID controls and two new regressions. They
-exercise real keyed TCP frame-ceiling refusal for read error, completion and open error,
-paused sibling preservation and subsequent exact transfer on a fresh healthy stream,
-plus retention of a nonterminal job after refused data admission. These tests have NOT
-executed or compiled in this slice: three preparation attempts and one corrected-source
-attempt refused before VM creation (19,456 MiB required; 18,927–19,402 MiB available).
-Shell parsing, diff review and exact production/source comparison pass; they do not prove
-the runtime behavior. `read-terminal-retirement-4a151221.json` retains source identities
-and admission outcomes. The CM read-tick park remains unchanged. Native library execution,
-actual backpressure/disconnect/cancellation, application error delivery, other platforms,
-installed privilege, R-S0/R-F5 and release acceptance remain OPEN.
+At clean source `55045bbb`, all nine selected `--file-send-digest-tests` cases pass in
+157 reported VM seconds on one unchanged artifact. Three real keyed TCP frame-ceiling
+refusals (read error, completion and open error) retire the selected entry; its paused
+same-ID sibling retains its counters and later delivers exact bytes, EOF and Done on a
+fresh healthy stream. Three healthy terminal controls also pass. Refused nonterminal
+data admission retains its active job, stream, six-byte progress and unchanged source.
+The four prior digest/allocation controls pass, including their exact retry assertions.
+`read-terminal-retirement-native-55045bbb.json` binds source/artifact identity, native
+observations and joined bounded-RAM cleanup. Code, tests and harnesses equal the fixed
+commit byte-for-byte. Earlier RAM-only refusals remain in
+`read-terminal-retirement-4a151221.json`; no unchanged-product native baseline ran.
+The CM read-tick park remains unchanged. Actual queue pressure, disconnect/cancellation,
+application error delivery, other platforms, installed privilege, R-S0/R-F5 and release
+acceptance remain OPEN.
 
 **Send-digest size admission — Linux library/file and keyed TCP component comparison ACCEPTED; caller/platform integration OPEN.**
 At `119b65c6`, the exact earlier getter from `784daba1` accepted lengths changed after enumeration;

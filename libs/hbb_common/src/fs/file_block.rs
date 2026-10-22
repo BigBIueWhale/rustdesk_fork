@@ -13,7 +13,10 @@ pub(super) fn decode(data: &[u8], compressed: bool) -> io::Result<Cow<'_, [u8]>>
     decoder.window_log_max(SIZE.ilog2())?;
     // One extra byte distinguishes a complete block from excessive decoded output.
     // A fixed buffer also avoids read_to_end's capacity growth on hostile input.
-    let mut output = vec![0; SIZE + 1];
+    let mut output = Vec::new();
+    output.try_reserve_exact(SIZE + 1)
+        .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+    output.resize(SIZE + 1, 0);
     let mut length = 0;
     loop {
         let count = decoder.read(&mut output[length..])?;

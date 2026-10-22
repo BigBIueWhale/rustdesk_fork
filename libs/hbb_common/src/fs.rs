@@ -4139,7 +4139,10 @@ impl TransferJob {
         } else {
             FILE_TRANSFER_BLOCK_SIZE
         };
-        let mut buf: Vec<u8> = vec![0; read_limit];
+        let mut buf = Vec::new();
+        buf.try_reserve_exact(read_limit)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
+        buf.resize(read_limit, 0);
         let mut compressed = false;
         let mut offset: usize = 0;
         loop {

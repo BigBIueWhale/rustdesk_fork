@@ -3,6 +3,8 @@ pub fn would_block_if_equal(old: &mut Vec<u8>, b: &[u8]) -> std::io::Result<()> 
     if b == &old[..] {
         return Err(std::io::ErrorKind::WouldBlock.into());
     }
+    old.try_reserve_exact(b.len().saturating_sub(old.len()))
+        .map_err(|_| std::io::ErrorKind::OutOfMemory)?;
     old.resize(b.len(), 0);
     old.copy_from_slice(b);
     Ok(())

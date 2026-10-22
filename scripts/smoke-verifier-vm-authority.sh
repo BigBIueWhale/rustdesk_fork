@@ -2416,7 +2416,7 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$M
    || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; }; then
+        && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard || "$RUST_TEST_PROFILE" = video-vpx ]]; }; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'focused native tests require clean committed master'
@@ -3931,7 +3931,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
             "${rust_lifecycle_files[@]}"
         /usr/bin/sha256sum -- "${rust_lifecycle_files[@]}"
-        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
+        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard || "$RUST_TEST_PROFILE" = video-vpx ]]; then
             engine_xvfb_input_inventory
         fi
     )"
@@ -6820,13 +6820,21 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = vide
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-vpx ]; then
     mapfile -t video_vpx_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=8 unchanged=before-after execution_seconds=[0-9]+$'
+            'VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=10 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#video_vpx_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'VIDEO_VPX_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'VPX artifact receipt differs'
+    vpx_artifact_sha=${video_vpx_artifacts[0]#*sha256=}
+    vpx_artifact_sha=${vpx_artifact_sha%% *}
     require_exact_fixed_receipt \
-        "VIDEO_VPX_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=8 target=linux-x86_64 scope=production-vpx-and-screenshot-pixel-conversion rust=1.75.0 package=scrap vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "SCREENSHOT_X11_NATIVE=complete cases=2 passed=2 artifact_sha256=$vpx_artifact_sha children=joined" \
+        'actual X11 screenshot PNG pixel result'
+    require_exact_fixed_receipt \
+        'SCREENSHOT_X11_ORACLE=pass controls=7 pixels=all alpha=checked crc=checked stream=bounded' \
+        'independent screenshot PNG decoder controls'
+    require_exact_fixed_receipt \
+        "VIDEO_VPX_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=10 target=linux-x86_64 scope=production-vpx-and-screenshot-pixel-conversion rust=1.75.0 package=scrap vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused VPX compilation and native result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'VPX cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
@@ -7662,7 +7670,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
             "${rust_lifecycle_files[@]}"
         /usr/bin/sha256sum -- "${rust_lifecycle_files[@]}"
-        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard ]]; then
+        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-revocation || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime || "$RUST_TEST_PROFILE" = clipboard || "$RUST_TEST_PROFILE" = video-vpx ]]; then
             engine_xvfb_input_inventory
         fi
     )"
@@ -8133,7 +8141,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'VIDEO_QOS_CONTROLLER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=23 scope=production-controller-and-quality-application network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = video-vpx ]; then
-        printf 'VIDEO_VPX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=production-vpx-and-screenshot-pixel-conversion network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'VIDEO_VPX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=10 scope=production-vpx-and-screenshot-pixel-conversion network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
         printf 'VIDEO_QOS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=19 scope=complete-parent-library-and-probe-recovery network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

@@ -281,7 +281,7 @@ mod tests {
         for y in 0..height {
             for x in 0..width {
                 let color = COLORS[(y * width + x) % COLORS.len()];
-                expected.extend_from_slice(&color);
+                expected.extend_from_slice(&[color[0], color[1], color[2], 255]);
                 let pixel = if format == Pixfmt::BGRA {
                     [color[2], color[1], color[0], color[3]]
                 } else {
@@ -372,5 +372,42 @@ mod tests {
             outcomes.push(refused);
         }
         assert!(outcomes.into_iter().all(|refused| refused));
+    }
+
+    fn capture_png(depth: u8, expected_format: Pixfmt) {
+        use crate::TraitCapturer;
+        let display = crate::Display::primary().unwrap();
+        let mut capturer = crate::Capturer::new(display).unwrap();
+        let frame = capturer.frame(std::time::Duration::from_millis(100)).unwrap();
+        let crate::Frame::PixelBuffer(pixels) = frame else {
+            panic!("X11 screenshot capture returned a texture");
+        };
+        assert_eq!((pixels.width(), pixels.height()), (129, 33));
+        assert_eq!(pixels.pixfmt(), expected_format);
+        let rgba = convert_to_rgba(&pixels).unwrap();
+        assert_eq!(rgba.len(), 129 * 33 * 4);
+        let source_alpha_zero = if depth == 24 {
+            pixels.data().chunks_exact(4).filter(|pixel| pixel[3] == 0).count()
+        } else {
+            0
+        };
+        let path = std::env::var("SCREENSHOT_X11_PNG_PATH").unwrap();
+        assert_eq!(path, format!("/tmp/video-vpx/screenshot-{depth}.png"));
+        let file = std::fs::OpenOptions::new().write(true).create_new(true).open(&path).unwrap();
+        let mut encoder = repng::Options::smallest(129, 33).build(file).unwrap();
+        encoder.write(&rgba).unwrap();
+        encoder.finish().unwrap();
+        drop(encoder);
+        println!("SCREENSHOT_X11_PNG=created depth={depth} width=129 height=33 stride={} format={expected_format:?} bytes={} source_alpha_zero={source_alpha_zero}", pixels.stride()[0], std::fs::metadata(path).unwrap().len());
+    }
+
+    #[test]
+    fn native_x11_capture_24_png() {
+        capture_png(24, Pixfmt::BGRA);
+    }
+
+    #[test]
+    fn native_x11_capture_16_png() {
+        capture_png(16, Pixfmt::RGB565LE);
     }
 }

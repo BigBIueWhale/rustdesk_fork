@@ -194,15 +194,15 @@ async fn handshake_round_trip_and_two_key_cipher() {
     // The two-key cipher round-trips in both directions.
     let mut ci = DirectionalCipher::new(&ki);
     let mut cr = DirectionalCipher::new(&kr);
-    let ct = ci.seal(b"hello from the viewer");
+    let ct = ci.seal(b"hello from the viewer").unwrap();
     assert_eq!(cr.open(&ct).unwrap(), b"hello from the viewer");
-    let ct2 = cr.seal(b"hello from the controlled host");
+    let ct2 = cr.seal(b"hello from the controlled host").unwrap();
     assert_eq!(ci.open(&ct2).unwrap(), b"hello from the controlled host");
 
     // R-P10: a frame sealed under the send key must NOT open under the same side's
     // recv key. Collapsing to one key (the inherited bug) would make this succeed.
     let mut sealer = DirectionalCipher::new(&ki); // seals under ki.send
-    let outbound = sealer.seal(b"probe");
+    let outbound = sealer.seal(b"probe").unwrap();
     let mut self_recv = DirectionalCipher::new(&ki); // opens under ki.recv
     assert!(self_recv.open(&outbound).is_err());
 }
@@ -226,8 +226,8 @@ async fn directional_cipher_rejects_replay_and_reorder() {
     // Two frames sealed IN ORDER under ki.send (seq 1, then seq 2); the receiver opens under
     // kr.recv == ki.send (mirrored, R-P2).
     let mut sender = DirectionalCipher::new(&ki);
-    let c0 = sender.seal(b"frame zero"); // nonce(1)
-    let c1 = sender.seal(b"frame one"); // nonce(2)
+    let c0 = sender.seal(b"frame zero").unwrap(); // nonce(1)
+    let c1 = sender.seal(b"frame one").unwrap(); // nonce(2)
 
     // REPLAY: a fresh receiver opens c0 (read_seq->1, nonce(1) == c0's: ok), then re-opens the SAME c0 —
     // the second open is at read_seq->2's nonce(2), not c0's nonce(1), so the AEAD rejects it.
@@ -257,9 +257,9 @@ async fn matching_password_streams_can_exchange_after_keying() {
     // Several frames each direction: nonces advance independently, no reuse.
     for i in 0..4u8 {
         let msg = vec![i; 100];
-        assert_eq!(cr.open(&ci.seal(&msg)).unwrap(), msg);
+        assert_eq!(cr.open(&ci.seal(&msg).unwrap()).unwrap(), msg);
         let reply = vec![i.wrapping_add(1); 64];
-        assert_eq!(ci.open(&cr.seal(&reply)).unwrap(), reply);
+        assert_eq!(ci.open(&cr.seal(&reply).unwrap()).unwrap(), reply);
     }
 }
 

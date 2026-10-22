@@ -628,7 +628,7 @@ impl FramedStream {
                     if bytes.len() != plaintext_bytes {
                         bail!("R-T18: encoded plaintext length disagrees with declared size");
                     }
-                    let sealed = Bytes::from(k.seal.seal(&bytes));
+                    let sealed = Bytes::from(k.seal.seal(&bytes)?);
                     if sealed.len() != reservation.ciphertext_bytes {
                         bail!("R-T18: secretbox ciphertext length disagrees with reserved bytes");
                     }
@@ -1056,7 +1056,7 @@ mod eof_tests {
             let mut codec = BytesCodec::new();
             for payload in [b"".as_slice(), b"complete", b""] {
                 let data = if keyed {
-                    seal.seal(payload)
+                    seal.seal(payload).unwrap()
                 } else {
                     payload.to_vec()
                 };
@@ -1095,7 +1095,7 @@ mod eof_tests {
         for payload in [b"".as_slice(), b"authenticated"] {
             codec
                 .inner
-                .encode(seal.seal(payload).into(), &mut wire)
+                .encode(seal.seal(payload).unwrap().into(), &mut wire)
                 .unwrap();
         }
         for payload in [b"".as_slice(), b"authenticated"] {
@@ -1261,7 +1261,7 @@ mod writer_lifetime_tests {
             send: [0x2a; 32], recv: [0x19; 32],
         });
         let mut wire = BytesMut::new();
-        BytesCodec::new().encode(seal.seal(b"control").into(), &mut wire).unwrap();
+        BytesCodec::new().encode(seal.seal(b"control").unwrap().into(), &mut wire).unwrap();
         peer.write_all(&wire).await.unwrap();
         let control = tokio::time::timeout(Duration::from_secs(2), stream.next())
             .await.unwrap().unwrap().unwrap();
@@ -1336,7 +1336,7 @@ mod writer_lifetime_tests {
             send: [0x2a; 32], recv: [0x19; 32],
         });
         let mut wire = BytesMut::new();
-        BytesCodec::new().encode(seal.seal(b"healthy").into(), &mut wire).unwrap();
+        BytesCodec::new().encode(seal.seal(b"healthy").unwrap().into(), &mut wire).unwrap();
         peer.write_all(&wire).await.unwrap();
         let healthy = tokio::time::timeout(Duration::from_secs(2), stream.next())
             .await.unwrap().unwrap().unwrap();
@@ -1344,7 +1344,7 @@ mod writer_lifetime_tests {
         assert_eq!(stream.recv_counter(), 1);
         if !pending {
             wire.clear();
-            BytesCodec::new().encode(seal.seal(b"after failure").into(), &mut wire).unwrap();
+            BytesCodec::new().encode(seal.seal(b"after failure").unwrap().into(), &mut wire).unwrap();
             peer.write_all(&wire).await.unwrap();
         }
         observation.fail_writes.store(true, Ordering::Relaxed);
@@ -1620,6 +1620,98 @@ mod writer_lifetime_tests {
     }
 }
 
+#[cfg(all(test, target_os = "linux"))]
+mod seal_tests {
+    use super::*;
+
+    #[test]
+    fn allocation_refusal_retires_the_native_writer() {
+        const CHILD: &str = "RUSTDESK_TCP_SEAL_ALLOCATION_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "tcp::seal_tests::allocation_refusal_retires_the_native_writer",
+                    "--nocapture", "--test-threads=1"])
+                .env(CHILD, "1").output().unwrap();
+            assert!(output.stdout.len() + output.stderr.len() < 32_768);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "TCP seal allocation child {:?}: {}{}",
+                output.status, stdout, String::from_utf8_lossy(&output.stderr));
+            assert!(stdout.contains("TCP_SEAL_ALLOCATION=pass cases=9 refusals=9 healthy=exact writer=joined permits=returned peer=no-failed-frame"));
+            for line in stdout.lines() {
+                if let Some((_, message)) = line.split_once("TCP_SEAL_ALLOCATION") {
+                    println!("TCP_SEAL_ALLOCATION{message}");
+                }
+            }
+            return;
+        }
+        assert_eq!(std::env::var(CHILD).unwrap(), "1");
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            for api in ["bytes", "message", "receipt"] {
+                for size in [0, 1, 64 * 1_024] {
+                    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+                    let address = listener.local_addr().unwrap();
+                    let (socket, (peer, _)) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                        tokio::try_join!(tokio::net::TcpStream::connect(address), listener.accept())
+                    }).await.unwrap().unwrap();
+                    drop(listener);
+                    let mut stream = FramedStream::from(socket, address);
+                    stream.set_max_packet_length(128 * 1_024);
+                    stream.set_session_keys(DirectionalKeys { send: [0x19; 32], recv: [0x2a; 32] });
+                    let mut peer = Framed::new(peer, BytesCodec::new());
+                    peer.codec_mut().set_max_packet_length(128 * 1_024);
+                    stream.send_bytes(Bytes::from_static(b"healthy")).await.unwrap();
+                    stream.flush_writer().await.unwrap();
+                    let healthy = tokio::time::timeout(std::time::Duration::from_secs(2), peer.next())
+                        .await.unwrap().unwrap().unwrap();
+                    let mut nonce = sodiumoxide::crypto::secretbox::Nonce([0; 24]);
+                    nonce.0[..8].copy_from_slice(&1u64.to_le_bytes());
+                    assert_eq!(&healthy[..], sodiumoxide::crypto::secretbox::seal(
+                        b"healthy", &nonce, &sodiumoxide::crypto::secretbox::Key([0x19; 32])));
+
+                    let input = vec![0x5a; size];
+                    let raw = Bytes::from(input.clone());
+                    let mut response = crate::message_proto::ScreenshotResponse::new();
+                    response.data = input.into();
+                    let mut message = crate::message_proto::Message::new();
+                    message.set_screenshot_response(response);
+                    let encoded = message.write_to_bytes().unwrap();
+                    let length = if api == "bytes" { raw.len() } else { encoded.len() };
+                    crate::fs::fail_next_exact_allocation(length + sodiumoxide::crypto::secretbox::MACBYTES);
+                    let error = match api {
+                        "bytes" => stream.send_bytes(raw).await.unwrap_err(),
+                        "message" => stream.send(&message).await.unwrap_err(),
+                        "receipt" => stream.send_with_receipt(&message).await.unwrap_err(),
+                        _ => unreachable!(),
+                    };
+                    // Observe exact retirement at return, before any test-side yield or cleanup.
+                    assert_eq!(error.downcast_ref::<io::Error>().unwrap().kind(), ErrorKind::OutOfMemory);
+                    assert_eq!(crate::fs::exact_allocation_failure_state(), (0, 1));
+                    assert!(stream.poison);
+                    if let StreamState::Keyed(keyed) = &stream.state {
+                        assert!(keyed.writer.is_none());
+                        assert!(keyed.writer_tx.is_closed());
+                        assert!(keyed.writer_admission.frames.is_closed());
+                        assert!(keyed.writer_admission.ciphertext_bytes.is_closed());
+                        assert_eq!(keyed.writer_admission.frames.available_permits(), WRITER_CHANNEL_CAP);
+                        assert_eq!(keyed.writer_admission.ciphertext_bytes.available_permits(), 256 * 1_024);
+                    } else {
+                        panic!("stream must remain keyed");
+                    }
+                    assert!(stream.send_bytes(Bytes::new()).await.is_err());
+                    assert!(stream.flush_writer().await.is_err());
+                    assert!(stream.next().await.is_none());
+                    drop(stream);
+                    assert!(tokio::time::timeout(std::time::Duration::from_secs(2), peer.next())
+                        .await.unwrap().is_none(), "failed ciphertext must never reach the peer");
+                    println!("TCP_SEAL_ALLOCATION_CASE=pass api={api} bytes={size} writer=joined permits=returned peer=no-failed-frame");
+                }
+            }
+        });
+        println!("TCP_SEAL_ALLOCATION=pass cases=9 refusals=9 healthy=exact writer=joined permits=returned peer=no-failed-frame");
+    }
+}
+
 #[cfg(test)]
 mod writer_receipt_tests {
     use super::*;
@@ -1820,7 +1912,7 @@ mod writer_receipt_tests {
                 if let StreamState::Keyed(keyed) = &stream.state {
                     assert!(keyed.writer_tx.is_closed());
                 }
-                expected_seal.seal(&[]);
+                expected_seal.seal(&[]).unwrap();
             } else if let StreamState::Keyed(keyed) = &stream.state {
                 // The current-thread test has not yielded since spawning the writer. Fill its
                 // channel with drain commands, which do not consume frame or byte admission.
@@ -1845,7 +1937,7 @@ mod writer_receipt_tests {
             if let StreamState::Keyed(keyed) = &mut stream.state {
                 observations.push((
                     message.encodes.load(Ordering::Relaxed),
-                    keyed.seal.seal(b"next nonce") == expected_seal.seal(b"next nonce"),
+                    keyed.seal.seal(b"next nonce").unwrap() == expected_seal.seal(b"next nonce").unwrap(),
                 ));
                 assert!(keyed.writer_admission.frames.is_closed());
                 assert!(keyed.writer_admission.ciphertext_bytes.is_closed());

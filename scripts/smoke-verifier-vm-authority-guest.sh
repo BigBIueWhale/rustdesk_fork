@@ -3708,6 +3708,8 @@ run_focused_rust_tests() {
                 tcp::writer_lifetime_tests::tcp_fatal_drain_returns_after_writer_retirement
                 tcp::writer_lifetime_tests::tcp_cancelled_retirement_keeps_writer_owned_until_retry
                 tcp::exclusive_listener_tests::second_exclusive_listener_bind_is_refused
+                cpace::seal_tests::allocation_refusal_preserves_nonce_and_wire
+                tcp::seal_tests::allocation_refusal_retires_the_native_writer
             )
         fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
@@ -5467,7 +5469,8 @@ run_focused_rust_tests() {
                             done
                         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
                             for group in tcp::writer_receipt_tests:: tcp::eof_tests:: \
-                                bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4 socket_client::tests:: tcp::exclusive_listener_tests::; do
+                                bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4 socket_client::tests:: tcp::exclusive_listener_tests:: \
+                                cpace::seal_tests:: tcp::seal_tests::; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
@@ -6150,13 +6153,14 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'Shared-library failure artifact metadata could not be read\n' >&2
             awk '
-                /^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests)|bytes_codec::tests)::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ {
+                /^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests)|cpace::seal_tests|bytes_codec::tests)::[[:alnum:]_]+ \.\.\. (ok|FAILED)$/ {
                     if (++cases <= 64) print
                 }
                 /^test result: (ok|FAILED)\./ { if (++summaries <= 32) print }
                 /^test fs::(tests::(file_metadata_[[:alnum:]_]+|rename_[[:alnum:]_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[[:alnum:]_]+) \.\.\. (ok|FAILED)$/ { if (++metadata_cases <= 64) print }
                 /^FILE_METADATA_/ { if (++metadata_observations <= 96) print }
                 /^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ|RETIREMENT_ARTIFACT_STOP)=/ { if (++writer_observations <= 32) print }
+                /^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION)/ { if (++seal_observations <= 20) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'File-peer probe failure artifact metadata could not be read\n' >&2
@@ -6202,7 +6206,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         # The two digest cases share one invocation; all other send cases run exactly.
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=$(( ${#required_tests[@]} - 1 )); fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=16; fi
-        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=8; fi
+        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=10; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=7; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
@@ -6260,7 +6264,8 @@ PY
             [ "$(grep -Fxc 'test test::test_try_into_v4 ... ok' "$output")" -eq 1 ] \
                 || fail 'direct address normalization test differs'
             for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
-                bytes_codec::tests:12 tcp::writer_lifetime_tests:6 tcp::exclusive_listener_tests:1; do
+                bytes_codec::tests:12 tcp::writer_lifetime_tests:7 tcp::exclusive_listener_tests:1 \
+                cpace::seal_tests:1 tcp::seal_tests:1; do
                 count=${group##*:}; group=${group%:*}
                 [ "$(grep -Ec "^test ${group}::[[:alnum:]_]+ [.][.][.] ok$" "$output")" -eq "$count" ] \
                     || fail "writer retirement test group differs: $group"
@@ -6922,7 +6927,7 @@ PY
             grep -E '^test (config|password_security)::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'writer retirement test total differs'
-            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=' "$output"
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests)|cpace::seal_tests|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION)' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_WINDOW' "$output"

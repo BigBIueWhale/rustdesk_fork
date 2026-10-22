@@ -373,12 +373,12 @@ impl SealCipher {
     /// silently wrap in a release build, so use a checked increment. The spec prefers a fresh-key
     /// rekey; aborting is its conservative form (the MUST is "not a counter reset"), and a full
     /// mid-session re-CPace is over-engineering for an unreachable case.
-    pub fn seal(&mut self, plaintext: &[u8]) -> Vec<u8> {
+    pub fn seal(&mut self, plaintext: &[u8]) -> std::io::Result<Vec<u8>> {
         self.write_seq = self
             .write_seq
             .checked_add(1)
             .expect("R-A5: send nonce-counter exhausted (2^64 frames) — fail-closed, never reuse a nonce");
-        secretbox::seal(plaintext, &cipher_nonce(self.write_seq), &self.send_key)
+        Ok(secretbox::seal(plaintext, &cipher_nonce(self.write_seq), &self.send_key))
     }
 
     /// TEST-SUPPORT (R-A8/R-T7 runtime validation): overwrite the send key with a fixed
@@ -484,7 +484,7 @@ impl DirectionalCipher {
     }
 
     /// Seal an outbound frame under the send key (R-P10).
-    pub fn seal(&mut self, plaintext: &[u8]) -> Vec<u8> {
+    pub fn seal(&mut self, plaintext: &[u8]) -> std::io::Result<Vec<u8>> {
         self.seal.seal(plaintext)
     }
 
@@ -498,6 +498,58 @@ impl DirectionalCipher {
     #[inline]
     pub fn read_seq(&self) -> u64 {
         self.open.read_seq()
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod seal_tests {
+    use super::*;
+
+    #[test]
+    fn allocation_refusal_preserves_nonce_and_wire() {
+        const CHILD: &str = "RUSTDESK_CIPHER_SEAL_ALLOCATION_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "cpace::seal_tests::allocation_refusal_preserves_nonce_and_wire",
+                    "--nocapture", "--test-threads=1"])
+                .env(CHILD, "1").output().unwrap();
+            assert!(output.stdout.len() + output.stderr.len() < 32_768);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "cipher allocation child {:?}: {}{}",
+                output.status, stdout, String::from_utf8_lossy(&output.stderr));
+            assert!(stdout.contains("CIPHER_SEAL_ALLOCATION=pass cases=3 refusals=3 nonce=preserved retries=exact wire=unchanged exhaustion=refused"));
+            for line in stdout.lines() {
+                if let Some((_, message)) = line.split_once("CIPHER_SEAL_") {
+                    println!("CIPHER_SEAL_{message}");
+                }
+            }
+            return;
+        }
+        assert_eq!(std::env::var(CHILD).unwrap(), "1");
+        let keys = DirectionalKeys { send: [0x19; 32], recv: [0x2a; 32] };
+        let (mut seal, _) = split_session_keys(&keys);
+        for size in [0, 1, 64 * 1_024] {
+            let input = (0..size).map(|i| (i as u8).wrapping_mul(37)).collect::<Vec<_>>();
+            let before = seal.write_seq;
+            crate::fs::fail_next_exact_allocation(size + secretbox::MACBYTES);
+            let error = seal.seal(&input).expect_err("refused ciphertext allocation must return");
+            assert_eq!(error.kind(), std::io::ErrorKind::OutOfMemory);
+            assert_eq!(crate::fs::exact_allocation_failure_state(), (0, 1));
+            assert_eq!(seal.write_seq, before);
+            let ciphertext = seal.seal(&input).unwrap();
+            assert_eq!(seal.write_seq, before + 1);
+            assert_eq!(ciphertext, secretbox::seal(&input, &cipher_nonce(before + 1), &Key(keys.send)));
+            assert_eq!(secretbox::open(&ciphertext, &cipher_nonce(before + 1), &Key(keys.send)).unwrap(), input);
+            println!("CIPHER_SEAL_ALLOCATION_CASE=pass bytes={size} nonce=preserved retry=exact wire=unchanged");
+        }
+        seal.write_seq = u64::MAX;
+        for _ in 0..2 {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| seal.seal(b"exhausted")));
+            assert!(result.is_ok(), "nonce exhaustion must return an error");
+            assert_eq!(result.unwrap().unwrap_err().kind(), std::io::ErrorKind::Other);
+            assert_eq!(seal.write_seq, u64::MAX);
+        }
+        println!("CIPHER_SEAL_ALLOCATION=pass cases=3 refusals=3 nonce=preserved retries=exact wire=unchanged exhaustion=refused");
     }
 }
 

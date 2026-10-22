@@ -19,6 +19,8 @@ use crate::{anyhow::anyhow, bail, get_version_number, message_proto::*, ResultTy
 use crate::{compress::compress, config::Config};
 
 mod file_block;
+#[cfg(test)]
+pub(crate) use file_block::tests::{exact_allocation_failure_state, fail_next_exact_allocation};
 mod atomic_write;
 pub use atomic_write::write_user_file_atomically;
 use file_block::SIZE as FILE_TRANSFER_BLOCK_SIZE;

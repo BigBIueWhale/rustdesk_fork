@@ -607,9 +607,13 @@ pub struct Image<'a> {
 
 impl<'a> Image<'a> {
     fn new(inner: &'a vpx_image_t) -> Result<Self> {
-        let chroma = match inner.fmt {
-            vpx_img_fmt::VPX_IMG_FMT_I444 => Chroma::I444,
-            _ => Chroma::I420,
+        let chroma = match (inner.fmt, inner.bit_depth) {
+            (vpx_img_fmt::VPX_IMG_FMT_I420, 8) => Chroma::I420,
+            (vpx_img_fmt::VPX_IMG_FMT_I444, 8) => Chroma::I444,
+            _ => return Err(Error::UnsupportedImage {
+                format: inner.fmt as u32,
+                bit_depth: inner.bit_depth,
+            }),
         };
         Ok(Self { inner, chroma })
     }

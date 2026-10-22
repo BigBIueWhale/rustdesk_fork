@@ -6,7 +6,7 @@ use hbb_common::{
     message_proto::{video_frame, Chroma, VideoFrame},
     ResultType,
 };
-use std::{ffi::c_void, slice};
+use std::ffi::c_void;
 
 cfg_if! {
     if #[cfg(quartz)] {
@@ -60,9 +60,8 @@ mod vpx;
 #[repr(usize)]
 #[derive(Debug, Copy, Clone)]
 pub enum ImageFormat {
-    Raw,
-    ABGR,
-    ARGB,
+    ABGR = 1,
+    ARGB = 2,
 }
 
 #[repr(C)]
@@ -421,12 +420,8 @@ pub trait GoogleImage {
     fn stride(&self) -> [i32; 4];
     fn planes(&self) -> [*mut u8; 4];
     fn chroma(&self) -> Chroma;
-    fn get_bytes_per_row_checked(w: usize, fmt: ImageFormat, align: usize) -> Option<usize> {
-        let bytes_per_pixel = match fmt {
-            ImageFormat::Raw => 3,
-            ImageFormat::ARGB | ImageFormat::ABGR => 4,
-        };
-        let row = w.checked_mul(bytes_per_pixel)?;
+    fn get_bytes_per_row_checked(w: usize, align: usize) -> Option<usize> {
+        let row = w.checked_mul(4)?;
         if align <= 1 {
             return Some(row);
         }
@@ -437,14 +432,11 @@ pub trait GoogleImage {
         // https://github.com/lemenkov/libyuv/blob/6900494d90ae095d44405cd4cc3f346971fa69c9/source/convert_argb.cc#L129
         Some((row.checked_add(align - 1)?) & !(align - 1))
     }
-    fn get_bytes_per_row(w: usize, fmt: ImageFormat, align: usize) -> usize {
-        Self::get_bytes_per_row_checked(w, fmt, align).unwrap_or(usize::MAX)
-    }
     // rgb [in/out] fmt and stride must be set in ImageRgb
     fn to(&self, rgb: &mut ImageRgb) -> ResultType<()> {
         let width = self.width();
         let height = self.height();
-        let bytes_per_row = Self::get_bytes_per_row_checked(width, rgb.fmt, rgb.align())
+        let bytes_per_row = Self::get_bytes_per_row_checked(width, rgb.align())
             .ok_or_else(|| anyhow!("native video decoded row size overflow or invalid alignment"))?;
         let decoded_len = height.checked_mul(bytes_per_row).ok_or_else(|| {
             anyhow!("native video decoded buffer size overflow")
@@ -460,20 +452,6 @@ pub trait GoogleImage {
         let planes = self.planes();
         unsafe {
             match (self.chroma(), rgb.fmt()) {
-                (Chroma::I420, ImageFormat::Raw) => {
-                    super::I420ToRAW(
-                        planes[0],
-                        stride[0],
-                        planes[1],
-                        stride[1],
-                        planes[2],
-                        stride[2],
-                        rgb.raw.as_mut_ptr(),
-                        bytes_per_row as _,
-                        self.width() as _,
-                        self.height() as _,
-                    );
-                }
                 (Chroma::I420, ImageFormat::ARGB) => {
                     super::I420ToARGB(
                         planes[0],
@@ -530,25 +508,10 @@ pub trait GoogleImage {
                         self.height() as _,
                     );
                 }
-                // (Chroma::I444, ImageFormat::Raw), new version libyuv have I444ToRAW
-                _ => log::error!("unsupported pixfmt: {:?}", self.chroma()),
             }
         }
         rgb.w = width;
         rgb.h = height;
         Ok(())
-    }
-    fn data(&self) -> (&[u8], &[u8], &[u8]) {
-        unsafe {
-            let stride = self.stride();
-            let planes = self.planes();
-            let h = (self.height() as usize + 1) & !1;
-            let n = stride[0] as usize * h;
-            let y = slice::from_raw_parts(planes[0], n);
-            let n = stride[1] as usize * (h >> 1);
-            let u = slice::from_raw_parts(planes[1], n);
-            let v = slice::from_raw_parts(planes[2], n);
-            (y, u, v)
-        }
     }
 }

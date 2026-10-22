@@ -777,6 +777,7 @@ mod tests {
     fn realtime_encoders_deliver_current_pixels_without_end_of_stream_flush() {
         let levels = [32u8, 64, 96, 128, 160, 192, 224, 80];
         let mut immediate_cases = Vec::new();
+        let mut sequence_cases = Vec::new();
         for (codec, i444) in [(VpxVideoCodecId::VP8, false),
                               (VpxVideoCodecId::VP9, false),
                               (VpxVideoCodecId::VP9, true)] {
@@ -798,19 +799,21 @@ mod tests {
                 let mut decoder = VpxDecoder::new(VpxDecoderConfig { codec }).unwrap();
                 let mut delivered = 0;
                 let mut current = 0;
+                let mut pixels_and_order = true;
                 let mut inspect = |packet: &[u8], pts: i64| {
-                    assert_eq!(pts, delivered as i64 * 33);
+                    pixels_and_order &= pts == delivered as i64 * 33;
                     let image = decoder.decode(packet).unwrap().unwrap();
                     assert_eq!((image.width(), image.height()), (32, 32));
                     assert_eq!(image.chroma(), if i444 { Chroma::I444 } else { Chroma::I420 });
                     let mut rgb = crate::ImageRgb::new(crate::ImageFormat::ARGB, 0);
                     image.to(&mut rgb).unwrap();
-                    let expected = (298 * (i32::from(levels[delivered]) - 16) + 128) >> 8;
+                    let level = levels.get(delivered).copied().unwrap_or(0);
+                    let expected = (298 * (i32::from(level) - 16) + 128) >> 8;
                     assert_eq!(rgb.raw.len(), 32 * 32 * 4);
                     for pixel in rgb.raw.chunks_exact(4) {
-                        assert_eq!(pixel[3], 255);
+                        pixels_and_order &= pixel[3] == 255;
                         for channel in &pixel[..3] {
-                            assert!((i32::from(*channel) - expected).abs() <= 2);
+                            pixels_and_order &= (i32::from(*channel) - expected).abs() <= 2;
                         }
                     }
                     delivered += 1;
@@ -831,6 +834,7 @@ mod tests {
                         encoder.encode(ordinal as i64 * 33, &data, 64).unwrap()
                             .map(|frame| (frame.pts, frame.data.to_vec())).collect()
                     };
+                    println!("VIDEO_VPX_REALTIME_INPUT=observed codec={codec:?} i444={i444} message_path={message_path} ordinal={ordinal} bitrate={} packets={} pts={:?}", encoder.bitrate(), packets.len(), packets.iter().map(|packet| packet.0).collect::<Vec<_>>());
                     let is_current = packets.len() == 1 && packets[0].0 == ordinal as i64 * 33;
                     current += usize::from(is_current);
                     immediate_cases.push(is_current);
@@ -839,12 +843,13 @@ mod tests {
                 let tail: Vec<_> = encoder.flush().unwrap()
                     .map(|frame| (frame.pts, frame.data.to_vec())).collect();
                 for (pts, packet) in &tail { inspect(packet, *pts); }
-                assert_eq!(delivered, levels.len());
-                println!("VIDEO_VPX_REALTIME_CASE=observed codec={codec:?} i444={i444} message_path={message_path} configured_lag={initial_lag} inputs=8 current={current} tail={} decoded=8 pixels=checked quality_changes=2", tail.len());
+                sequence_cases.push(delivered == levels.len() && pixels_and_order);
+                println!("VIDEO_VPX_REALTIME_CASE=observed codec={codec:?} i444={i444} message_path={message_path} configured_lag={initial_lag} inputs=8 current={current} tail={} decoded={delivered} pixels_and_order={pixels_and_order} quality_changes=2", tail.len());
             }
         }
         assert_eq!(immediate_cases.len(), 48);
         assert!(immediate_cases.into_iter().all(|current| current));
+        assert!(sequence_cases.into_iter().all(|exact| exact));
         println!("VIDEO_VPX_REALTIME_NATIVE=pass combinations=6 inputs=48 current=48 tail=0 pixels=checked quality_changes=12");
     }
 

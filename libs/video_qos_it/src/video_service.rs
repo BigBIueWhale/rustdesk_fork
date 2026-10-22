@@ -1,6 +1,12 @@
 use super::{video_qos::VideoQoS, Enum, ImageQuality};
 use hbb_common::{anyhow::anyhow, lazy_static::lazy_static, ResultType};
-use std::{cell::Cell, sync::Mutex, time::{Duration, Instant}};
+use std::{cell::{Cell, RefCell}, sync::{mpsc, Mutex}, time::{Duration, Instant}};
+
+struct EncoderGate {
+    stage: &'static str,
+    entered: mpsc::SyncSender<()>,
+    release: mpsc::Receiver<()>,
+}
 
 // Only the encoder boundary is controlled; QoS selection and application are production code.
 struct Encoder {
@@ -9,18 +15,31 @@ struct Encoder {
     requests: Vec<f32>,
     bitrate: u32,
     bitrate_reads: Cell<usize>,
+    gate: RefCell<Option<EncoderGate>>,
 }
 
 impl Encoder {
     fn new(supports_quality: bool, failures: usize) -> Self {
         Self { supports_quality, failures, requests: Vec::new(), bitrate: 2000,
-            bitrate_reads: Cell::new(0) }
+            bitrate_reads: Cell::new(0), gate: RefCell::new(None) }
+    }
+
+    fn wait_at(&self, stage: &str) {
+        let gate = {
+            let mut gate = self.gate.borrow_mut();
+            if gate.as_ref().map(|gate| gate.stage) == Some(stage) { gate.take() } else { None }
+        };
+        if let Some(gate) = gate {
+            gate.entered.send(()).unwrap();
+            gate.release.recv_timeout(Duration::from_secs(2)).unwrap();
+        }
     }
 
     fn support_changing_quality(&self) -> bool { self.supports_quality }
 
     fn set_quality(&mut self, ratio: f32) -> ResultType<()> {
         self.requests.push(ratio);
+        self.wait_at("set");
         if self.failures > 0 {
             self.failures -= 1;
             return Err(anyhow!("controlled encoder quality failure"));
@@ -31,6 +50,7 @@ impl Encoder {
 
     fn bitrate(&self) -> u32 {
         self.bitrate_reads.set(self.bitrate_reads.get() + 1);
+        self.wait_at("bitrate");
         self.bitrate
     }
 }
@@ -138,4 +158,99 @@ fn recording_switch_and_periodic_accounting_remain_active() {
     assert_eq!(result.unwrap_err().to_string(), "SWITCH");
     assert!(encoder.requests.is_empty() && encoder.bitrate_reads.get() == 0);
     println!("VIDEO_QOS_APPLY=controls accounting=true pacing=true record_switch=true unchanged_target_no_apply=true");
+}
+
+#[test]
+fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
+    let mut passed = 0;
+    let mut available = 0;
+    let mut joined = 0;
+    for (stage, event, failures) in [
+        ("set", "feedback", 0), ("bitrate", "feedback", 0),
+        ("set", "replace", 0), ("bitrate", "replace", 0),
+        ("set", "reset", 0), ("bitrate", "reset", 0),
+        ("set", "record", 0), ("bitrate", "record", 0),
+        ("set", "failure", 1),
+    ] {
+        let original = reset(true);
+        VIDEO_QOS.lock().unwrap().user_image_quality(7, ImageQuality::Best.value());
+        let requested = VIDEO_QOS.lock().unwrap().ratio();
+        let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+        let (release_tx, release_rx) = mpsc::sync_channel(1);
+        let mut encoder = Encoder::new(true, failures);
+        *encoder.gate.get_mut() = Some(EncoderGate { stage, entered: entered_tx, release: release_rx });
+        let worker = std::thread::spawn(move || {
+            let mut ratio = original;
+            let mut spf = Duration::ZERO;
+            let result = qos_apply::check_qos(&mut encoder, &mut ratio, &mut spf, false,
+                &mut 0, &mut Instant::now(), "monitor");
+            (encoder, ratio, spf, result.err().map(|error| error.to_string()))
+        });
+        let entered = entered_rx.recv_timeout(Duration::from_secs(2)).is_ok();
+        let applied = if let Ok(mut qos) = VIDEO_QOS.try_lock() {
+            match event {
+                "feedback" | "failure" => {
+                    qos.user_custom_fps(7, 5);
+                    qos.user_delay_response_elapsed(7, 4000);
+                    qos.user_image_quality(7, ImageQuality::Low.value());
+                }
+                "replace" => {
+                    qos.remove_display("monitor");
+                    qos.new_display("monitor".into());
+                    qos.store_bitrate(7777);
+                }
+                "reset" => {
+                    qos.on_connection_close(7);
+                    qos.on_connection_open(7);
+                    qos.new_display("monitor".into());
+                    qos.store_bitrate(7777);
+                }
+                "record" => qos.user_record(7, true),
+                _ => unreachable!(),
+            }
+            true
+        } else { false };
+        let released = release_tx.send(()).is_ok();
+        let (mut encoder, mut ratio, spf, error) = worker.join().unwrap();
+        joined += 1;
+        available += usize::from(applied);
+        let mut correct = entered && released && applied && encoder.requests == [requested];
+        match event {
+            "feedback" => {
+                let mut qos = VIDEO_QOS.lock().unwrap();
+                let latest = qos.ratio();
+                correct &= error.is_none() && ratio == requested && qos.bitrate() == 2500
+                    && qos.fps() == 2 && spf == Duration::from_millis(500) && latest != requested;
+                drop(qos);
+                let retry = apply(&mut encoder, &mut ratio);
+                correct &= retry.is_ok() && ratio == latest && encoder.requests == [requested, latest]
+                    && VIDEO_QOS.lock().unwrap().bitrate() == 3000;
+            }
+            "replace" | "reset" => {
+                let mut qos = VIDEO_QOS.lock().unwrap();
+                correct &= error.as_deref() == Some("SWITCH") && ratio == original && qos.bitrate() == 7777;
+                qos.remove_display("monitor");
+                correct &= !qos.in_vbr_state();
+            }
+            "record" => {
+                let qos = VIDEO_QOS.lock().unwrap();
+                correct &= error.as_deref() == Some("SWITCH") && ratio == original
+                    && qos.bitrate() == 2000 && qos.record();
+            }
+            "failure" => {
+                let mut qos = VIDEO_QOS.lock().unwrap();
+                correct &= error.as_deref() == Some("controlled encoder quality failure")
+                    && ratio == original && qos.bitrate() == 2000
+                    && qos.ratio() != requested && qos.fps() == 2 && encoder.bitrate_reads.get() == 0;
+            }
+            _ => unreachable!(),
+        }
+        passed += usize::from(correct);
+        println!("VIDEO_QOS_ENCODER_OWNER=observed stage={stage} event={event} available={applied} entered={entered} released={released} joined=true correct={correct} error={error:?}");
+    }
+    println!("VIDEO_QOS_ENCODER_OWNER=observed cases=9 available={available} passed={passed} joined={joined}");
+    assert_eq!(passed, 9);
+    assert_eq!(available, 9);
+    assert_eq!(joined, 9);
+    println!("VIDEO_QOS_ENCODER_OWNER=pass cases=9 available=9 passed=9 joined=9 stale=refused feedback=preserved retries=pass");
 }

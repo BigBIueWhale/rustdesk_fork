@@ -4759,6 +4759,7 @@ run_focused_rust_tests() {
                     server::video_service::unsupported_quality_changes_require_recreation
                     server::video_service::successful_quality_changes_publish_once_per_target
                     server::video_service::recording_switch_and_periodic_accounting_remain_active
+                    server::video_service::encoder_calls_allow_feedback_and_revalidate_the_display_owner
                 )
             fi
         elif [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
@@ -6503,10 +6504,12 @@ PY
         done
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS controller summary count differs'
-        [ "$(grep -Ec '^VIDEO_QOS_CONTROLLER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/video_qos_it-[0-9a-f]{16} tests=23 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^VIDEO_QOS_CONTROLLER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/video_qos_it-[0-9a-f]{16} tests=24 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIDEO_QOS_CONTROLLER_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$' "$output")" -eq 23 ] \
+            && [ "$(grep -Ec '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$' "$output")" -eq 24 ] \
             || fail 'video QoS controller artifact or named outcomes differ'
+        [ "$(grep -Fxc 'VIDEO_QOS_ENCODER_OWNER=pass cases=9 available=9 passed=9 joined=9 stale=refused feedback=preserved retries=pass' "$output")" -eq 1 ] \
+            || fail 'video QoS encoder ownership result differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-vpx ]; then
         [ "${#result_lines[@]}" -eq 15 ] || fail 'VPX summary count differs'
         [ "$(grep -Ec '^VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=25 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -7089,9 +7092,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
-            [ "$tests_passed" -eq 23 ] || fail 'video QoS controller total differs'
-            grep -E '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$|^VIDEO_QOS_CONTROLLER_(BUILD=pass |ARTIFACT(_AFTER)?=)|^VIDEO_QOS_(APPLY=|BASE_RTT=|RECOVERY=|CONGESTION=|DELAY_(WINDOW|RANGE|RECOVERY)=|RATE_ADMISSION=|QUALITY_(ORDER|RETIRE|OWNER|CONTINUITY)=)' "$output"
-            printf 'VIDEO_QOS_CONTROLLER_VM=pass commit=%s tree=%s tests=23 target=linux-x86_64 scope=production-controller-and-quality-application rust=1.75.0 package=video_qos_it vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 24 ] || fail 'video QoS controller total differs'
+            grep -E '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$|^VIDEO_QOS_CONTROLLER_(BUILD=pass |ARTIFACT(_AFTER)?=)|^VIDEO_QOS_(ENCODER_OWNER=|APPLY=|BASE_RTT=|RECOVERY=|CONGESTION=|DELAY_(WINDOW|RANGE|RECOVERY)=|RATE_ADMISSION=|QUALITY_(ORDER|RETIRE|OWNER|CONTINUITY)=)' "$output"
+            printf 'VIDEO_QOS_CONTROLLER_VM=pass commit=%s tree=%s tests=24 target=linux-x86_64 scope=production-controller-and-quality-application rust=1.75.0 package=video_qos_it vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-vpx ]; then

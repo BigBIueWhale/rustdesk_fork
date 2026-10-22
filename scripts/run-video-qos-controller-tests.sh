@@ -29,8 +29,8 @@ timeout --signal=TERM --kill-after=5s 30s \
     "$test_executable" server:: \
     --color never --test-threads=1 --show-output || execution_status=$?
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'VIDEO_QOS_CONTROLLER_ARTIFACT_AFTER=observed sha256=%s tests=23 exit_code=%s unchanged=before-after\n' \
+printf 'VIDEO_QOS_CONTROLLER_ARTIFACT_AFTER=observed sha256=%s tests=24 exit_code=%s unchanged=before-after\n' \
     "$artifact_sha" "$execution_status"
 [ "$execution_status" -eq 0 ] || exit "$execution_status"
-printf 'VIDEO_QOS_CONTROLLER_ARTIFACT=pass sha256=%s executable=%s tests=23 unchanged=before-after execution_seconds=%s\n' \
+printf 'VIDEO_QOS_CONTROLLER_ARTIFACT=pass sha256=%s executable=%s tests=24 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"

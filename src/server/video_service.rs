@@ -52,7 +52,7 @@ use scrap::{
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
     CodecFormat, Display, EncodeInput, EncodeYuvFormat, ImageFormat, ImageRgb, ImageTexture,
-    Pixfmt, TraitCapturer, TraitPixelBuffer,
+    yuv_samples, Pixfmt, TraitCapturer, TraitPixelBuffer,
 };
 #[cfg(windows)]
 use std::sync::Once;
@@ -286,50 +286,6 @@ fn pixelbuffer_rgb_samples(pixels: &scrap::PixelBuffer<'_>) -> Option<([u8; 4], 
     Some((
         sample(width / 4)?,
         sample(width.checked_mul(3)?.checked_div(4)?)?,
-    ))
-}
-
-fn yuv_samples(data: &[u8], format: &EncodeYuvFormat) -> Option<([u8; 3], [u8; 3])> {
-    if format.w == 0 || format.h == 0 {
-        return None;
-    }
-    let y_stride = *format.stride.first()?;
-    let uv_stride = *format.stride.get(1)?;
-    let y = format.h / 2;
-    let sample = |x: usize| -> Option<[u8; 3]> {
-        let luma = *data.get(y.checked_mul(y_stride)?.checked_add(x)?)?;
-        match format.pixfmt {
-            Pixfmt::I420 => {
-                let chroma_offset = (y / 2)
-                    .checked_mul(uv_stride)?
-                    .checked_add(x / 2)?;
-                Some([
-                    luma,
-                    *data.get(format.u.checked_add(chroma_offset)?)?,
-                    *data.get(format.v.checked_add(chroma_offset)?)?,
-                ])
-            }
-            Pixfmt::I444 => {
-                let chroma_offset = y.checked_mul(uv_stride)?.checked_add(x)?;
-                Some([
-                    luma,
-                    *data.get(format.u.checked_add(chroma_offset)?)?,
-                    *data.get(format.v.checked_add(chroma_offset)?)?,
-                ])
-            }
-            Pixfmt::NV12 => {
-                let chroma_offset = (y / 2)
-                    .checked_mul(uv_stride)?
-                    .checked_add((x / 2).checked_mul(2)?)?;
-                let u = format.u.checked_add(chroma_offset)?;
-                Some([luma, *data.get(u)?, *data.get(u.checked_add(1)?)?])
-            }
-            _ => None,
-        }
-    };
-    Some((
-        sample(format.w / 4)?,
-        sample(format.w.checked_mul(3)?.checked_div(4)?)?,
     ))
 }
 

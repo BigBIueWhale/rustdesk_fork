@@ -8,10 +8,55 @@ include!(concat!(env!("OUT_DIR"), "/yuv_ffi.rs"));
 
 #[cfg(not(target_os = "ios"))]
 use crate::PixelBuffer;
-use crate::{generate_call_macro, EncodeYuvFormat, TraitPixelBuffer};
+use crate::{generate_call_macro, EncodeYuvFormat, Pixfmt, TraitPixelBuffer};
 use hbb_common::{anyhow::anyhow, bail, log, ResultType};
 
 generate_call_macro!(call_yuv, false);
+
+/// Sample the horizontal quarter points at mid-height for presentation tracing.
+pub fn yuv_samples(data: &[u8], format: &EncodeYuvFormat) -> Option<([u8; 3], [u8; 3])> {
+    if format.w == 0 || format.h == 0 {
+        return None;
+    }
+    let y_stride = *format.stride.first()?;
+    let uv_stride = *format.stride.get(1)?;
+    let y = format.h / 2;
+    let sample = |x: usize| -> Option<[u8; 3]> {
+        let luma = *data.get(y.checked_mul(y_stride)?.checked_add(x)?)?;
+        match format.pixfmt {
+            Pixfmt::I420 => {
+                let chroma_offset = (y / 2)
+                    .checked_mul(uv_stride)?
+                    .checked_add(x / 2)?;
+                Some([
+                    luma,
+                    *data.get(format.u.checked_add(chroma_offset)?)?,
+                    *data.get(format.v.checked_add(chroma_offset)?)?,
+                ])
+            }
+            Pixfmt::I444 => {
+                let chroma_offset = y.checked_mul(uv_stride)?.checked_add(x)?;
+                Some([
+                    luma,
+                    *data.get(format.u.checked_add(chroma_offset)?)?,
+                    *data.get(format.v.checked_add(chroma_offset)?)?,
+                ])
+            }
+            Pixfmt::NV12 => {
+                let chroma_offset = (y / 2)
+                    .checked_mul(uv_stride)?
+                    .checked_add((x / 2).checked_mul(2)?)?;
+                let u = format.u.checked_add(chroma_offset)?;
+                Some([luma, *data.get(u)?, *data.get(u.checked_add(1)?)?])
+            }
+            _ => None,
+        }
+    };
+    Some((
+        sample(format.w / 4)?,
+        sample(format.w.checked_mul(3)?.checked_div(4)?)?,
+    ))
+}
 
 #[cfg(not(target_os = "ios"))]
 struct YuvConversionLayout {
@@ -451,6 +496,78 @@ mod tests {
             outcomes.push(refused);
         }
         assert!(outcomes.into_iter().all(|refused| refused));
+    }
+
+    #[test]
+    fn native_yuv_trace_samples_follow_each_plane_stride() {
+        use crate::test_allocator;
+
+        let mut source = [0u8; 8 * 6 * 4];
+        for (index, pixel) in source.chunks_exact_mut(4).enumerate() {
+            pixel.copy_from_slice(if index % 8 < 4 { &[0, 0, 255, 255] } else { &[255, 0, 0, 255] });
+        }
+        let pixels = PixelBuffer::new(&source, Pixfmt::BGRA, 8, 6, 32).unwrap();
+        let expected = Some(([82, 90, 240], [41, 240, 110]));
+        let mut exact = 0;
+        let mut refused = 0;
+        for destination in [Pixfmt::I420, Pixfmt::I444, Pixfmt::NV12] {
+            let (stride, u, v, buffer_len) = match destination {
+                Pixfmt::I420 => ([16, 8, 12], 96, 120, 156),
+                Pixfmt::I444 => ([16, 12, 16], 96, 168, 264),
+                Pixfmt::NV12 => ([16, 12, 0], 96, 0, 132),
+                _ => unreachable!(),
+            };
+            let format = EncodeYuvFormat { pixfmt: destination, w: 8, h: 6, stride, u, v, buffer_len };
+            let mut yuv = vec![0xa5; buffer_len];
+            convert_to_yuv(&pixels, format, &mut yuv, &mut Vec::new()).unwrap();
+            let original = yuv.clone();
+            let initial_refusals = test_allocator::refusals();
+            test_allocator::arm();
+            let observed = yuv_samples(&yuv, &format);
+            let unused = test_allocator::take_armed();
+            assert!(unused);
+            assert_eq!(test_allocator::refusals(), initial_refusals);
+            let matches = observed == expected;
+            exact += usize::from(matches);
+            println!("YUV_TRACE_CASE=observed format={destination:?} stride_u={} stride_v={} samples={observed:?} exact={matches} allocations=0", stride[1], stride[2]);
+            for case in 0..9 {
+                let mut invalid = format;
+                let data = match case {
+                    0 => { invalid.w = 0; &yuv[..] }
+                    1 => { invalid.h = 0; &yuv[..] }
+                    2 => { invalid.stride[0] = usize::MAX; &yuv[..] }
+                    3 => { invalid.stride[1] = usize::MAX; &yuv[..] }
+                    4 => { invalid.u = usize::MAX; &yuv[..] }
+                    5 => { invalid.w = usize::MAX; &yuv[..] }
+                    6 => { invalid.h = usize::MAX; &yuv[..] }
+                    7 => { invalid.pixfmt = Pixfmt::BGRA; &yuv[..] }
+                    8 => &yuv[..0],
+                    _ => unreachable!(),
+                };
+                let rejected = yuv_samples(data, &invalid).is_none();
+                refused += usize::from(rejected);
+                println!("YUV_TRACE_BOUNDS=observed format={destination:?} case={case} refused={rejected}");
+            }
+            if destination != Pixfmt::NV12 {
+                for case in 9..11 {
+                    let mut invalid = format;
+                    if case == 9 { invalid.stride[2] = usize::MAX; } else { invalid.v = usize::MAX; }
+                    let rejected = yuv_samples(&yuv, &invalid).is_none();
+                    refused += usize::from(rejected);
+                    println!("YUV_TRACE_BOUNDS=observed format={destination:?} case={case} refused={rejected}");
+                }
+            } else {
+                let mut unused = format;
+                unused.stride[2] = usize::MAX;
+                unused.v = usize::MAX;
+                assert_eq!(yuv_samples(&yuv, &unused), expected);
+            }
+            assert_eq!(yuv, original);
+        }
+        println!("YUV_TRACE_NATIVE=observed formats=3 exact={exact} refused={refused} expected_refusals=31 allocations=0 buffers=preserved");
+        assert_eq!(exact, 3);
+        assert_eq!(refused, 31);
+        println!("YUV_TRACE_NATIVE=pass formats=3 samples=6 refused=31 unused_nv12=true allocations=0 buffers=preserved");
     }
 
     fn capture_png(depth: u8, expected_format: Pixfmt) {

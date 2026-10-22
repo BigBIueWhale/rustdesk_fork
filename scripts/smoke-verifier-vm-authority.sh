@@ -6820,7 +6820,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = vide
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-vpx ]; then
     mapfile -t video_vpx_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=24 unchanged=before-after execution_seconds=[0-9]+$'
+            'VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=25 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#video_vpx_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'VIDEO_VPX_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -6879,7 +6879,10 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = vide
         "CAPTURE_METADATA_RESULT=pass operation=viewport combinations=9 mismatches=27 retries=27 pixels=36828 viewport=exact buffers=preserved artifact_sha256=$vpx_artifact_sha children=joined" \
         'native captured-frame viewport refusal and healthy retry'
     require_exact_fixed_receipt \
-        "VIDEO_VPX_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=24 target=linux-x86_64 scope=production-vpx-and-screenshot-pixel-conversion rust=1.75.0 package=scrap vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'YUV_TRACE_NATIVE=pass formats=3 samples=6 refused=31 unused_nv12=true allocations=0 buffers=preserved' \
+        'native presentation-trace sampling with independent plane strides'
+    require_exact_fixed_receipt \
+        "VIDEO_VPX_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=25 target=linux-x86_64 scope=production-vpx-and-screenshot-pixel-conversion rust=1.75.0 package=scrap vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused VPX compilation and native result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'VPX cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
@@ -8186,7 +8189,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'VIDEO_QOS_CONTROLLER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=23 scope=production-controller-and-quality-application network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = video-vpx ]; then
-        printf 'VIDEO_VPX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=24 scope=production-vpx-and-screenshot-pixel-conversion network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'VIDEO_VPX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=25 scope=production-vpx-and-screenshot-pixel-conversion network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = video-qos ]; then
         printf 'VIDEO_QOS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=19 scope=complete-parent-library-and-probe-recovery network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

@@ -22,15 +22,13 @@ impl BoundedScreenshotPng {
 
 impl std::io::Write for BoundedScreenshotPng {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let next_len =
-            self.data.len().checked_add(buf.len()).ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "PNG too large")
-            })?;
+        let next_len = self
+            .data
+            .len()
+            .checked_add(buf.len())
+            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
         if next_len > self.max_bytes {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "PNG exceeds screenshot response limit",
-            ));
+            return Err(std::io::ErrorKind::InvalidData.into());
         }
         self.data
             .try_reserve(buf.len())

@@ -411,25 +411,23 @@ pub struct OpenCipher {
 }
 
 impl OpenCipher {
-    /// Open an inbound frame under the recv key (R-P10).
+    /// Authenticate and decrypt the owned frame under the recv key (R-P10).
     ///
-    /// R-A5 (recv side): the recv nonce-counter MUST NOT wrap either (a wrap would accept a frame
-    /// under a reused recv nonce). At exhaustion, reject the frame (`Err`) so the connection tears
-    /// down fail-closed — never reset the counter. `fetch_add` returns the PREVIOUS value, so the
-    /// nonce is the new value `prev + 1` (identical to the old `checked_add`-then-use), and a `prev`
-    /// of `u64::MAX` means the increment just wrapped the counter to 0 → reuse → reject. The
-    /// connection tears down on that `Err`, so the wrapped-to-0 counter is never observed again.
-    ///
-    /// R-T5: this is the SOLE writer of `read_seq` and advances it with no `.await` between the read
-    /// and the advance, so a cancelled `FramedStream::next` can neither replay nor skip a counter.
+    /// Reuse its payload storage and remove the tag only after authentication succeeds. Each
+    /// complete frame attempt consumes one nonce; checked advancement refuses exhaustion without
+    /// wrapping (R-A5). The transport retires the stream on an authentication error.
+    /// Counter advancement and authentication have no intervening await (R-T5).
     pub fn open(&mut self, ciphertext: &mut bytes::BytesMut) -> Result<(), ()> {
-        let prev = self.read_seq.fetch_add(1, Ordering::Relaxed);
-        if prev == u64::MAX {
+        let prev = self.read_seq.fetch_update(Ordering::Relaxed, Ordering::Relaxed,
+            |seq| seq.checked_add(1)).map_err(|_| ())?;
+        if ciphertext.len() < secretbox::MACBYTES {
             return Err(());
         }
-        let plaintext = secretbox::open(ciphertext, &cipher_nonce(prev + 1), &self.recv_key)?;
-        ciphertext.clear();
-        ciphertext.extend_from_slice(&plaintext);
+        let mut tag = secretbox::Tag([0; secretbox::MACBYTES]);
+        tag.0.copy_from_slice(&ciphertext[..secretbox::MACBYTES]);
+        secretbox::open_detached(&mut ciphertext[secretbox::MACBYTES..], &tag,
+            &cipher_nonce(prev + 1), &self.recv_key)?;
+        bytes::Buf::advance(ciphertext, secretbox::MACBYTES);
         Ok(())
     }
 

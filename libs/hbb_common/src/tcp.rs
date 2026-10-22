@@ -77,7 +77,7 @@ impl SecretboxCodec {
                 // a 16-byte tag even to a 0-byte plaintext), so any shorter frame cannot be a valid
                 // ciphertext and MUST fail closed at the AEAD — closing the one path by which a byte
                 // could reach the application parser unauthenticated (also the worst-case carryover
-                // channel for R-T6). `secretbox::open` rejects len < MACBYTES, so a tiny injected
+                // channel for R-T6). `OpenCipher` rejects len < MACBYTES, so a tiny injected
                 // frame is a clean decryption error.
                 if let Some(open) = self.open_cipher.as_mut() {
                     match open.open(&mut frame) {

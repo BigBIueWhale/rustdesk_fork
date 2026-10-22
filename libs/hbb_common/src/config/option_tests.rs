@@ -4258,6 +4258,64 @@ fn default_purge_is_retryable_and_returns_effective_normalized_values() {
             && UserDefaultConfig::get_option(keys::OPTION_ENABLE_FILE_COPY_PASTE) == "Y";
         println!("OPTION_COMMIT_DEFAULT_BOOL=observed explicit_disabled={disabled} empty_restores_enabled_default={restored}");
         assert!(disabled && restored);
+
+        let key = keys::OPTION_CODEC_PREFERENCE;
+        UserDefaultConfig::set_option("codec-unrelated".into(), "preserved".into()).unwrap();
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for source in ["stored", "defaults", "overwrite"] {
+            for input in ["auto", "vp8", "vp9", "h264", "h265", "av1", "unknown", "", "VP9"] {
+                DEFAULT_DISPLAY_SETTINGS.write().unwrap().remove(key);
+                OVERWRITE_DISPLAY_SETTINGS.write().unwrap().remove(key);
+                let effective = match source {
+                    "stored" => UserDefaultConfig::set_option(key.into(), input.into()).unwrap(),
+                    "defaults" => {
+                        UserDefaultConfig::set_option(key.into(), String::new()).unwrap();
+                        DEFAULT_DISPLAY_SETTINGS.write().unwrap().insert(key.into(), input.into());
+                        UserDefaultConfig::get_option(key)
+                    }
+                    _ => {
+                        UserDefaultConfig::set_option(key.into(), "vp8".into()).unwrap();
+                        OVERWRITE_DISPLAY_SETTINGS.write().unwrap().insert(key.into(), input.into());
+                        UserDefaultConfig::get_option(key)
+                    }
+                };
+                let before = peer_test_record_snapshot(&file);
+                let expected = if matches!(input, "vp8" | "vp9") { input } else { "auto" };
+                let cached = UserDefaultConfig::get_option(key);
+                let loaded = UserDefaultConfig::load();
+                let reloaded = loaded.get(key);
+                let inherited = PeerConfig::default().options[key].clone();
+                let missing_id = "192.0.2.90:21118";
+                let missing_peer = PeerConfig::load(missing_id).options[key].clone();
+                let raw_expected = match source {
+                    "stored" if !input.is_empty() => Some(input),
+                    "overwrite" => Some("vp8"),
+                    _ => None,
+                };
+                let raw_preserved = loaded.options.get(key).map(String::as_str) == raw_expected;
+                let reads_preserved = peer_test_record_snapshot(&file) == before
+                    && !PeerConfig::path(missing_id).exists();
+                let unrelated = loaded.get("codec-unrelated") == "preserved";
+                let correct = [&effective, &cached, &reloaded, &inherited, &missing_peer]
+                    .into_iter().all(|value| value == expected);
+                println!("OPTION_COMMIT_DEFAULT_CODEC={}", serde_json::json!({
+                    "source": source, "input": input, "expected": expected,
+                    "effective": effective, "cached": cached, "reloaded": reloaded,
+                    "inherited": inherited, "missing_peer": missing_peer,
+                    "raw_preserved": raw_preserved, "reads_preserved": reads_preserved,
+                    "unrelated_preserved": unrelated, "correct": correct,
+                }));
+                passed &= correct && raw_preserved && reads_preserved && unrelated;
+            }
+        }
+        DEFAULT_DISPLAY_SETTINGS.write().unwrap().remove(key);
+        OVERWRITE_DISPLAY_SETTINGS.write().unwrap().remove(key);
+        let after_fds = fds();
+        println!("OPTION_COMMIT_DEFAULT_CODEC_FDS=before:{before_fds} after:{after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(passed, "default codec readback and peer inheritance must use supported software choices");
     });
 }
 

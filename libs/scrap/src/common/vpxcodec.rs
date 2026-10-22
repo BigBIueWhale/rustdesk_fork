@@ -723,6 +723,68 @@ mod tests {
     }
 
     #[test]
+    fn large_geometry_bitrate_and_native_rejection_do_not_panic() {
+        let mut failures = 0;
+        let mut panics = 0;
+        let mut calculations = 0;
+        for (width, height, expected) in [
+            (0, 1080, 0), (640, 480, 400), (1920, 1080, 2073),
+            (3840, 2160, 5000), (7680, 4320, 12000),
+        ] {
+            let actual = base_bitrate(width, height);
+            failures += usize::from(actual != expected);
+            calculations += 1;
+            println!("VIDEO_VPX_BITRATE_CASE=preset width={width} height={height} actual={actual} expected={expected}");
+        }
+        for (width, height) in [
+            (65536u32, 65536u32), (65537, 65537),
+            (131072, 65536), (u32::MAX, u32::MAX),
+        ] {
+            // Above the largest preset, compare with an independent integer calculation.
+            let denominator = 7680u128 * 4320;
+            let expected = ((u128::from(width) * u128::from(height) * 12000
+                + denominator / 2) / denominator).min(u128::from(u32::MAX)) as u32;
+            let actual = std::panic::catch_unwind(|| base_bitrate(width, height));
+            let correct = actual.as_ref().is_ok_and(|value| value.abs_diff(expected) <= 1);
+            panics += usize::from(actual.is_err());
+            failures += usize::from(!correct);
+            calculations += 1;
+            println!("VIDEO_VPX_BITRATE_CASE=large width={width} height={height} actual={:?} expected={expected} correct={correct}", actual.ok());
+        }
+        let mut native_refusals = 0;
+        let mut retries = 0;
+        for (codec, i444) in [
+            (VpxVideoCodecId::VP8, false),
+            (VpxVideoCodecId::VP9, false),
+            (VpxVideoCodecId::VP9, true),
+        ] {
+            // Both rectangles exceed libvpx's limits; no giant image is allocated.
+            for (width, height) in [(65537, 65537), (131072, 65536)] {
+                let result = std::panic::catch_unwind(|| VpxEncoder::new(
+                    crate::codec::EncoderCfg::VPX(VpxEncoderConfig {
+                        width, height,
+                        #[cfg(target_os = "android")]
+                        android_scale: 1,
+                        quality: 1.0, codec, keyframe_interval: Some(1),
+                    }), i444,
+                ));
+                let refused = result.as_ref().is_ok_and(|value| value.is_err());
+                let panicked = result.is_err();
+                panics += usize::from(panicked);
+                failures += usize::from(!refused);
+                native_refusals += usize::from(refused);
+                let mut valid = encoder(codec, i444, 32, 32);
+                let data = vec![128; if i444 { 64 * 32 * 3 } else { 64 * 32 * 3 / 2 }];
+                roundtrip(&mut valid, &data, 64);
+                retries += 1;
+                println!("VIDEO_VPX_BITRATE_CASE=native codec={codec:?} i444={i444} width={width} height={height} panicked={panicked} refused={refused} retry=true");
+            }
+        }
+        println!("VIDEO_VPX_BITRATE_NATIVE=complete calculations={calculations} panics={panics} native_refusals={native_refusals} retries={retries} failures={failures}");
+        assert_eq!((calculations, panics, native_refusals, retries, failures), (9, 0, 6, 6, 0));
+    }
+
+    #[test]
     fn padded_i420_short_inputs_are_refused_and_valid_frames_roundtrip() {
         let mut refused = Vec::new();
         for codec in [VpxVideoCodecId::VP8, VpxVideoCodecId::VP9] {

@@ -47,6 +47,15 @@ pub struct VpxDecoder {
     ctx: vpx_codec_ctx_t,
 }
 
+struct VpxImageLayout {
+    w: usize,
+    h: usize,
+    stride: [usize; 4],
+    u: usize,
+    v: usize,
+    len: usize,
+}
+
 impl EncoderApi for VpxEncoder {
     fn new(cfg: crate::codec::EncoderCfg, i444: bool) -> ResultType<Self>
     where
@@ -58,6 +67,12 @@ impl EncoderApi for VpxEncoder {
                 if !matches!(config.android_scale, 1 | 2) {
                     return Err(anyhow!("invalid Android screen scale"));
                 }
+                let layout = Self::yuv_layout(
+                    config.width as _,
+                    config.height as _,
+                    i444,
+                    STRIDE_ALIGN,
+                )?;
                 let i = match config.codec {
                     VpxVideoCodecId::VP8 => call_vpx_ptr!(vpx_codec_vp8_cx()),
                     VpxVideoCodecId::VP9 => call_vpx_ptr!(vpx_codec_vp9_cx()),
@@ -177,7 +192,14 @@ impl EncoderApi for VpxEncoder {
                     android_scale: config.android_scale,
                     id: config.codec,
                     i444,
-                    yuvfmt: Self::get_yuvfmt(config.width, config.height, i444),
+                    yuvfmt: EncodeYuvFormat {
+                        pixfmt: if i444 { Pixfmt::I444 } else { Pixfmt::I420 },
+                        w: layout.w,
+                        h: layout.h,
+                        stride: layout.stride.to_vec(),
+                        u: layout.u,
+                        v: layout.v,
+                    },
                 })
             }
             _ => Err(anyhow!("encoder type mismatch")),
@@ -251,9 +273,13 @@ impl EncoderApi for VpxEncoder {
 
 impl VpxEncoder {
     pub fn encode<'a>(&'a mut self, pts: i64, data: &[u8], stride_align: usize) -> Result<EncodeFrames<'a>> {
-        let bpp = if self.i444 { 24 } else { 12 };
-        if data.len() < self.width * self.height * bpp / 8 {
-            return Err(Error::FailedCall("len not enough".to_string()));
+        let layout = Self::yuv_layout(self.width, self.height, self.i444, stride_align)?;
+        if data.len() < layout.len {
+            return Err(Error::FailedCall(format!(
+                "VPX input buffer too short: {} < {}",
+                data.len(),
+                layout.len,
+            )));
         }
         let fmt = if self.i444 {
             vpx_img_fmt::VPX_IMG_FMT_I444
@@ -265,10 +291,17 @@ impl VpxEncoder {
         call_vpx_ptr!(vpx_img_wrap(
             &mut image,
             fmt,
-            self.width as _,
-            self.height as _,
+            layout.w as _,
+            layout.h as _,
             stride_align as _,
             data.as_ptr() as _,
+        ));
+        call_vpx!(vpx_img_set_rect(
+            &mut image,
+            0,
+            0,
+            self.width as _,
+            self.height as _,
         ));
 
         call_vpx!(vpx_codec_encode(
@@ -363,32 +396,45 @@ impl VpxEncoder {
         (q_min, q_max)
     }
 
-    fn get_yuvfmt(width: u32, height: u32, i444: bool) -> EncodeYuvFormat {
-        let mut img = Default::default();
-        let fmt = if i444 {
-            vpx_img_fmt::VPX_IMG_FMT_I444
-        } else {
-            vpx_img_fmt::VPX_IMG_FMT_I420
-        };
-        unsafe {
-            vpx_img_wrap(
-                &mut img,
-                fmt,
-                width as _,
-                height as _,
-                crate::STRIDE_ALIGN as _,
-                0x1 as _,
-            );
+    fn yuv_layout(
+        width: usize,
+        height: usize,
+        i444: bool,
+        stride_align: usize,
+    ) -> Result<VpxImageLayout> {
+        let invalid = || Error::FailedCall("invalid VPX input layout".to_string());
+        // Match libvpx's image limits before narrowing any argument for the FFI.
+        let align = stride_align.max(1);
+        if width == 0
+            || height == 0
+            || width > 0x08000000
+            || height > 0x08000000
+            || align > 65536
+            || !align.is_power_of_two()
+        {
+            return Err(invalid());
         }
-        let pixfmt = if i444 { Pixfmt::I444 } else { Pixfmt::I420 };
-        EncodeYuvFormat {
-            pixfmt,
-            w: img.w as _,
-            h: img.h as _,
-            stride: img.stride.map(|s| s as usize).to_vec(),
-            u: img.planes[1] as usize - img.planes[0] as usize,
-            v: img.planes[2] as usize - img.planes[0] as usize,
-        }
+        let shift = usize::from(!i444);
+        // I420 needs complete chroma samples even for an odd display rectangle.
+        let w = width.checked_add(shift).ok_or_else(invalid)? & !shift;
+        let h = height.checked_add(shift).ok_or_else(invalid)? & !shift;
+        let stride = w.checked_add(align - 1).ok_or_else(invalid)? & !(align - 1);
+        let chroma_stride = stride >> shift;
+        let u = stride.checked_mul(h).ok_or_else(invalid)?;
+        let chroma_bytes = chroma_stride.checked_mul(h >> shift).ok_or_else(invalid)?;
+        let v = u.checked_add(chroma_bytes).ok_or_else(invalid)?;
+        let required = v
+            .checked_add(chroma_bytes)
+            .filter(|size| *size <= isize::MAX as usize)
+            .ok_or_else(invalid)?;
+        Ok(VpxImageLayout {
+            w,
+            h,
+            stride: [stride, chroma_stride, chroma_stride, stride],
+            u,
+            v,
+            len: required,
+        })
     }
 }
 

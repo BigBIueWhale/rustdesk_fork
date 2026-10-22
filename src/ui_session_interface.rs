@@ -772,22 +772,18 @@ impl<T: InvokeUiSession> Session<T> {
         true
     }
 
-    pub fn alternative_codecs(&self) -> (bool, bool, bool) {
-        let mark_unsupported = self.lc.read().unwrap().mark_unsupported.clone();
+    pub fn is_vp8_available(&self) -> bool {
+        let (mark_unsupported, vp8_encoding) = {
+            let lc = self.lc.read().unwrap();
+            (lc.mark_unsupported.clone(), lc.supported_encoding.vp8)
+        };
         let decoder = scrap::codec::Decoder::supported_decodings(
             None,
             use_texture_render(),
             None,
             &mark_unsupported,
         );
-        let mut vp8 = decoder.ability_vp8 > 0;
-        let mut h264 = decoder.ability_h264 > 0;
-        let mut h265 = decoder.ability_h265 > 0;
-        let enc = &self.lc.read().unwrap().supported_encoding;
-        vp8 = vp8 && enc.vp8;
-        h264 = h264 && enc.h264;
-        h265 = h265 && enc.h265;
-        (vp8, h264, h265)
+        decoder.ability_vp8 > 0 && vp8_encoding
     }
 
     pub fn update_supported_decodings(&self) {

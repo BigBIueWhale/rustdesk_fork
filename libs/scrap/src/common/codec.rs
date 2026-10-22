@@ -840,21 +840,12 @@ impl Decoder {
             return (PreferCodec::Auto, Chroma::I420);
         }
         let options = PeerConfig::load(id).options;
-        let codec = options
-            .get("codec-preference")
-            .map_or("".to_owned(), |c| c.to_owned());
-        let codec = if codec == "vp8" {
-            PreferCodec::VP8
-        } else if codec == "vp9" {
-            PreferCodec::VP9
-        } else if codec == "h264" {
-            PreferCodec::H264
-        } else if codec == "h265" {
-            PreferCodec::H265
-        } else {
-            PreferCodec::Auto
+        let codec = match options.get("codec-preference").map(String::as_str) {
+            Some("vp8") => PreferCodec::VP8,
+            Some("vp9") => PreferCodec::VP9,
+            _ => PreferCodec::Auto,
         };
-        let chroma = if options.get("i444") == Some(&"Y".to_string()) {
+        let chroma = if options.get("i444").map(String::as_str) == Some("Y") {
             Chroma::I444
         } else {
             Chroma::I420

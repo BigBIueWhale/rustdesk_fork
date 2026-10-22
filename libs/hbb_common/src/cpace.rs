@@ -366,19 +366,25 @@ pub struct SealCipher {
 impl SealCipher {
     /// Seal an outbound frame under the send key (R-P10).
     ///
-    /// R-A5: the per-direction nonce IS this monotonic counter, so it MUST NEVER wrap — a wrap
-    /// resets to an already-used nonce and reuses `(key, nonce)`, the catastrophic XSalsa20-Poly1305
-    /// failure. At `u64::MAX` (2^64 frames) the counter is exhausted; that is physically unreachable
-    /// (~5.8e8 yr at 1000 frames/s), but the fork still FAILS CLOSED rather than reset — `+= 1` would
-    /// silently wrap in a release build, so use a checked increment. The spec prefers a fresh-key
-    /// rekey; aborting is its conservative form (the MUST is "not a counter reset"), and a full
-    /// mid-session re-CPace is over-engineering for an unreachable case.
+    /// Reserve the complete tag and payload before consuming the next nonce. Allocation failure
+    /// and counter exhaustion return errors without changing the counter; it never wraps (R-A5).
+    /// The detached tag is prefixed to preserve the combined secretbox wire format.
     pub fn seal(&mut self, plaintext: &[u8]) -> std::io::Result<Vec<u8>> {
-        self.write_seq = self
-            .write_seq
+        let next_seq = self.write_seq
             .checked_add(1)
-            .expect("R-A5: send nonce-counter exhausted (2^64 frames) — fail-closed, never reuse a nonce");
-        Ok(secretbox::seal(plaintext, &cipher_nonce(self.write_seq), &self.send_key))
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "send nonce-counter exhausted"))?;
+        let length = plaintext.len().checked_add(secretbox::MACBYTES)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "ciphertext length overflow"))?;
+        let mut ciphertext = Vec::new();
+        ciphertext.try_reserve_exact(length)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
+        ciphertext.resize(secretbox::MACBYTES, 0);
+        ciphertext.extend_from_slice(plaintext);
+        let tag = secretbox::seal_detached(
+            &mut ciphertext[secretbox::MACBYTES..], &cipher_nonce(next_seq), &self.send_key);
+        ciphertext[..secretbox::MACBYTES].copy_from_slice(&tag.0);
+        self.write_seq = next_seq;
+        Ok(ciphertext)
     }
 
     /// TEST-SUPPORT (R-A8/R-T7 runtime validation): overwrite the send key with a fixed

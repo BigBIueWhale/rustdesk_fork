@@ -3829,22 +3829,23 @@ scratch/headroom exhaustion. Canonical markers, bounded diagnostics and intentio
 their ownership; exact joins precede retirement, and uncertainty retains the marker and blocks reuse.
 Every helper entry refuses root.
 
-**File-block component profile (`efee13e6`).** The existing `--file-block-tests` lane
-selects 2 GiB guest RAM, 6 GiB RAM scratch and a 4 GiB hard file ceiling, retaining
-6 GiB host headroom and 1 GiB overhead: 15 GiB admission. Its former standard
-profile refused before boot at 25,600 MiB required versus 23,031 MiB available;
-no VM or test case ran. All other profile mappings and limits are unchanged.
-The isolated production compressor/file-block decoder passes all six existing tests
-in 85 VM seconds, including exact raw/compressed boundaries, concatenated output,
-history-window limits and malformed/truncated refusal. RAM scratch peaks at
-3,379,392,512 bytes and overlay allocation at 3,214,872,576; waited QEMU block writes
-are 4,096 bytes. All four endpoint records have zero changes and exact RAM/runtime
-roots retire. `file-block-profile-efee13e6.json` binds source, generated-fixture
-dependency agreement, six input hashes, the stable artifact, outcomes and cleanup.
-This component imports the actual two modules and compression-level constant;
-it does not execute complete filesystem/receive-path, installed or release behavior.
-The subsequent ZIP dependency removal is recorded in the dependency-inventory entry
-above; this retained run supplies its pre-removal compression baseline.
+**File-block decoder — fallible bounded output; Linux component accepted.** `fa22a5cb`
+replaces the infallible 128-KiB-plus-one output allocation with checked reservation
+and an `OutOfMemory` IO error. Encoded/output/history limits and raw-input borrowing
+are preserved; the existing receive caller propagates the error before filesystem
+or progress effects. No retry or authority path is added.
+The unchanged A/B test reproduces the old native child's abort on a refused
+131,073-byte allocation. The corrected isolated production compressor/decoder
+passes all eight cases in 73 VM seconds: three controlled output-allocation
+refusals, exact successful subsequent decodes for empty/one-byte/full blocks,
+borrowed raw controls, boundaries, concatenation, history and malformed input.
+The existing lane retains 2 GiB guest RAM, 6 GiB RAM scratch, a 4 GiB hard file
+ceiling, 6 GiB host headroom and 1 GiB overhead. Runtime and RAM roots retire.
+`file-block-allocation-096a4a9d.json` binds source, exact artifact, dependencies,
+native results and cleanup; earlier profile provenance remains in
+`file-block-profile-efee13e6.json`. Faults target only the Rust output vector;
+C codec allocations, persistent/global memory pressure, full receive/filesystem
+effects, other platforms, installed and release acceptance remain OPEN.
 
 At source `3156926f`, actual filesystem admission passed, standard admission refused at
 19,745 MiB available, and a filesystem profile with a 4 GiB guest refused. Before launch,

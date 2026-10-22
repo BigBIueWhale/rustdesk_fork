@@ -1678,6 +1678,33 @@ performant across every supported viewer and controlled platform. Focus, visibil
 display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,
 fresh presentation, bounded resources, and final ownership without requiring reconnect as a recovery mechanism.
 
+**VPX input storage — native encoder/decoder component accepted; product acceptance OPEN.**
+
+`bac6069e` uses one checked layout for capture conversion metadata and encoder
+admission. It accounts for row padding and complete I420 chroma samples, checks
+alignment before FFI narrowing, and rejects short buffers before native wrapping
+or encoding. Odd display dimensions use even storage dimensions and an explicit
+native viewport. The unchecked sentinel-pointer metadata wrapper is deleted;
+per-frame layout calculation allocates no heap storage.
+
+At preparation `9eb9154b`, the actual scrap/libvpx fixture fails all four tests:
+six short buffers are accepted, six odd-dimension layouts differ, and a large
+alignment truncates to an accepted value. The identical four test bodies pass
+at `68eae059`, including all refusals and 28 valid VP8/VP9 encode/decode round trips
+with preserved dimensions and chroma type. Alignments zero, one, two and 64 are
+covered. These are native component tests in the existing zero-NIC, non-root
+bounded-RAM VM lane; no product connection or installed receiver is established.
+
+The first launch refuses an unpushed source before QEMU. A subsequent corrected
+attempt exposes a new dispatch fallthrough into the parked whole-parent producer
+and reaches the RAM-backed file ceiling; it is invalid acceptance evidence.
+`68eae059` replaces that dispatch with a terminal `exec`. The final focused run
+passes in 139 seconds and retires its VM and RAM scratch. Resource limits remain
+unchanged; the new profile receives an explicit selector control. Exact sources,
+artifacts, attempts and cleanup are retained in `vpx-input-1c1f3575.json`.
+Full product, other-platform, installed/LPE, R-S0/R-F5 and release acceptance
+remain OPEN.
+
 **Video QoS — Linux controller/application boundary accepted; end-to-end latency OPEN.**
 
 Current component evidence reaches `5c1dede9`: all nineteen controller tests and

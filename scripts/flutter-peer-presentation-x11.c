@@ -1068,7 +1068,7 @@ static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
                 *first_fresh_ms = now - start;
                 saw_fresh = 1;
             }
-            if (state != last_state) {
+            if (state > last_state) {
                 last_state = state;
                 distinct += 1U;
             }
@@ -1147,7 +1147,7 @@ static int observe_current_frames_for_duration(Display *source, Display *display
         fresh = age_valid && age <= FRESH_LIMIT_MS;
         if (fresh) {
             last_fresh = now;
-            if (state != last_state) {
+            if (state > last_state) {
                 last_state = state;
                 *distinct_states += 1U;
             }

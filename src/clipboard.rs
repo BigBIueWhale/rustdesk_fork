@@ -1322,8 +1322,6 @@ impl ClipboardContext {
                 // The host-side clear file clipboard `let _ = self.inner.clear();`,
                 // does not work on KDE Plasma for the installed version.
 
-                // Don't use `hbb_common::platform::linux::is_kde()` here.
-                // It's not correct in the server process.
                 #[cfg(target_os = "linux")]
                 let is_kde_x11 = hbb_common::platform::linux::is_kde_session()
                     && crate::platform::linux::is_x11();

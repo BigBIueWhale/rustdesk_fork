@@ -272,9 +272,6 @@ impl Drop for OwnedAuthorizationChild {
 
 pub const DISPLAY_SERVER_WAYLAND: &str = "wayland";
 pub const DISPLAY_SERVER_X11: &str = "x11";
-pub const DISPLAY_DESKTOP_KDE: &str = "KDE";
-
-pub const XDG_CURRENT_DESKTOP: &str = "XDG_CURRENT_DESKTOP";
 
 pub struct Distro {
     pub name: String,
@@ -481,17 +478,6 @@ pub fn configure_command_close_nonstdio_on_exec(command: &mut Command) -> io::Re
     configure_command_descriptor_allowlist_on_exec(command, &[])
 }
 
-// Deprecated. Use `hbb_common::platform::linux::is_kde_session()` instead for now.
-// Or we need to set the correct environment variable in the server process.
-#[inline]
-pub fn is_kde() -> bool {
-    if let Ok(env) = std::env::var(XDG_CURRENT_DESKTOP) {
-        env == DISPLAY_DESKTOP_KDE
-    } else {
-        false
-    }
-}
-
 fn proc_entry_pid(entry: &std::fs::DirEntry) -> Option<u32> {
     let file_name = entry.file_name();
     let pid_str = file_name.to_str()?;
@@ -531,8 +517,6 @@ fn process_basename_is_kded(args: &[String]) -> bool {
     !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
 }
 
-// Don't use `hbb_common::platform::linux::is_kde()` here.
-// It's not correct in the server process.
 pub fn is_kde_session() -> bool {
     let Ok(entries) = std::fs::read_dir("/proc") else {
         return false;

@@ -1686,7 +1686,7 @@ are checked before reads. The earlier `ee2b8ad6` color/stride correction removes
 the manual BGRA assumption and orphaned generic append/swap converter. Its paired
 constructed-buffer evidence, including caught RGB565 bounds panics, remains in
 `screenshot-pixels-e883dbaa.json`. Screenshot ownership, dimension limits,
-response handling, YUV conversion and the PNG worker are unchanged.
+response handling, YUV conversion and the PNG worker's request ownership are unchanged.
 
 At preparation `f198ad8f`, actual 24-bit Xvfb capture supplies 4,257 zero unused
 alpha bytes. Capture and PNG encoding succeed, but independent decoding finds
@@ -1699,16 +1699,34 @@ constructed pixel comparisons, three planar refusals and twenty-eight native
 VP8/VP9 round trips also pass. Seven oracle controls detect transparent pixels,
 wrong first/last colors, bad CRC, truncation and trailing bytes. This executes
 production capture/PixelBuffer/conversion and the pinned screenshot PNG settings;
-it does not execute the application request/response or bounded PNG writer.
+it does not execute the application request/response.
 
 The existing zero-NIC, non-root focused lane authenticates seven offline Xvfb
 packages and joins both X servers, their sockets/locks, VM and bounded RAM scratch.
 The final transaction takes 142 seconds. Harness, oracle, test bodies, compiler,
 inputs and resource budgets are identical across A/B. Exact sources, PNG/RGBA
 hashes and cleanup are retained in `screenshot-x11-f539fc01.json`.
-Real hardware and other-platform capture, screenshot requests, bounded PNG
-output, clipboard/viewer behavior, installed/LPE, R-S0/R-F5 and release acceptance
-remain OPEN.
+
+**Bounded PNG allocation failure — component accepted.** The actual production
+writer is extracted without behavior changes at `77793bf5`. A thread-local,
+one-shot allocator refusal then aborts its child process on a 134-byte growth;
+the ten capture/conversion/codec controls pass on that same artifact.
+`0e806d9b`/`c0d33d0b` reserve vector capacity fallibly before appending and construct
+allocation/limit errors without allocating. The unchanged native fault fixture
+now receives `OutOfMemory` both directly and through the pinned repng producer,
+preserves existing bytes, retries successfully, and enforces direct and encoded
+output limits. A fresh bounded-writer PNG independently decodes to all 4,257
+expected opaque pixels and matches the healthy real-capture PNG. All eleven
+tests pass in the final zero-NIC VM transaction (136 seconds); children, X servers,
+VM and bounded RAM scratch are joined/retired. The intermediate guest count
+refusal is excluded from acceptance and corrected at `21784da0`. Sources, exact
+artifacts, emitted PNG bytes, raw receipts and cleanup are retained in
+`screenshot-png-allocation-1b462d08.json`.
+
+This exercises selected allocator refusals in the real writer, not persistent
+system-wide memory exhaustion or the whole screenshot worker. Real hardware and
+other-platform capture, screenshot requests/responses and worker recovery,
+clipboard/viewer behavior, installed/LPE, R-S0/R-F5 and release acceptance remain OPEN.
 
 **VPX input storage — native encoder/decoder component accepted; product acceptance OPEN.**
 

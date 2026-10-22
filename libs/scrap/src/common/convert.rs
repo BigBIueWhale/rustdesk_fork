@@ -54,7 +54,7 @@ pub fn convert_to_yuv(
         }
     }
     let align = |x: usize| (x + 63) / 64 * 64;
-    let unsupported = format!(
+    let unsupported = || format!(
         "unsupported pixfmt conversion: {src_pixfmt:?} -> {:?}",
         dst_fmt.pixfmt
     );
@@ -73,7 +73,7 @@ pub fn convert_to_yuv(
                 crate::Pixfmt::BGRA => ARGBToI420,
                 crate::Pixfmt::RGBA => ABGRToI420,
                 crate::Pixfmt::RGB565LE => RGB565ToI420,
-                _ => bail!(unsupported),
+                _ => bail!(unsupported()),
             };
             call_yuv!(f(
                 src.as_ptr(),
@@ -115,13 +115,13 @@ pub fn convert_to_yuv(
                     ));
                     (mid_data.as_ptr(), mid_stride)
                 }
-                _ => bail!(unsupported),
+                _ => bail!(unsupported()),
             };
             let f = match src_pixfmt {
                 crate::Pixfmt::BGRA => ARGBToNV12,
                 crate::Pixfmt::RGBA => ABGRToNV12,
                 crate::Pixfmt::RGB565LE => ARGBToNV12,
-                _ => bail!(unsupported),
+                _ => bail!(unsupported()),
             };
             call_yuv!(f(
                 input,
@@ -175,7 +175,7 @@ pub fn convert_to_yuv(
                     ));
                     (mid_data.as_ptr(), mid_stride)
                 }
-                _ => bail!(unsupported),
+                _ => bail!(unsupported()),
             };
 
             call_yuv!(ARGBToI444(
@@ -192,7 +192,7 @@ pub fn convert_to_yuv(
             ));
         }
         _ => {
-            bail!(unsupported);
+            bail!(unsupported());
         }
     }
     Ok(())

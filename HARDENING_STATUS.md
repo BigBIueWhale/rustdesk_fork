@@ -1694,6 +1694,30 @@ The final transaction takes 142 seconds. Harness, oracle, test bodies, compiler,
 inputs and resource budgets are identical across A/B. Exact sources, PNG/RGBA
 hashes and cleanup are retained in `screenshot-x11-f539fc01.json`.
 
+**Captured-frame viewport — Linux component accepted; application/native OPEN.**
+`40745d16` requires captured width/height to equal the encoder's visible frame.
+VPX reports those visible dimensions in `EncodeYuvFormat`; checked padded
+storage, offsets, strides, byte length and native viewport setup remain separate.
+A smaller capture can no longer overwrite part of a reused image and encode
+the previous frame's remaining visible pixels.
+
+At unchanged-product preparation `98e9d2a4`, actual VP8/I420, VP9/I420 and
+VP9/I444 decoding shows retained white pixels beside new black input in all
+27 partial-frame cases across BGRA/RGBA/RGB565LE. Nine complete 33x31 controls
+decode correctly. At `9a72d97c`, all 27 mismatches return errors with both buffers'
+bytes, lengths, pointers and capacities preserved. Complete-frame retries produce
+exact reference YUV and decoded RGBA bytes against an independent uninterrupted
+encoder/decoder sequence; 36,828 visible pixels are checked. All 24 focused tests
+pass in 145 VM seconds, including prior VPX, conversion, native X11 PNG and
+allocation controls. An initial per-retry RGB tolerance failed; the uninterrupted
+VP9 control also exceeds it. The explicit reference-oracle correction and both
+original failing runs are retained in `frame-viewport-4afce1ce.json`, with exact
+sources/artifacts and joined bounded-RAM cleanup. The older odd-I420 descriptor
+assertion now checks visible dimensions; its storage and round-trip checks remain.
+Full application capture/encoder replacement, hardware/other native targets,
+padding lifecycle, trace V-stride sampling (`video_service.rs::yuv_samples`),
+actual presentation/R-F5 and installed R-S0 acceptance remain OPEN.
+
 **YUV conversion storage — Linux component accepted; hardware/app OPEN.**
 `9539d75c` carries the encoder's required byte length in `EncodeYuvFormat`,
 validates dimensions, native integer limits, source extent and disjoint plane
@@ -1716,7 +1740,7 @@ in 138 VM seconds, including prior native X11 PNG and VPX controls.
 bounded-RAM cleanup. Fixtures add the required length field and three length
 refusals; the original failure/pixel/retry oracles remain unchanged.
 Hardware/VRAM compilation and drivers, full application/other native targets,
-padding and partial-frame lifecycle, C-heap/persistent global OOM, installed R-S0,
+full capture/encoder lifecycle and padding, C-heap/persistent global OOM, installed R-S0,
 actual presentation and R-F5 acceptance remain OPEN.
 
 **Encoder format snapshots — Linux VPX component accepted; hardware/app OPEN.**

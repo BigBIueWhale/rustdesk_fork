@@ -1145,11 +1145,18 @@ fn run(vs: VideoService) -> ResultType<()> {
             bail!(e);
         }
     }
-    VIDEO_QOS.lock().unwrap().store_bitrate(encoder.bitrate());
-    VIDEO_QOS
-        .lock()
-        .unwrap()
-        .set_support_changing_quality(&sp.name(), encoder.support_changing_quality());
+    let bitrate = encoder.bitrate();
+    let support_changing_quality = encoder.support_changing_quality();
+    {
+        let mut video_qos = VIDEO_QOS.lock().unwrap();
+        if !video_qos.is_display_current(&_raii.name, &_raii.generation)
+            || client_record != video_qos.record()
+        {
+            bail!("SWITCH");
+        }
+        video_qos.store_bitrate(bitrate);
+        video_qos.set_support_changing_quality(&_raii.name, support_changing_quality);
+    }
     log::info!("initial quality: {quality:?}");
 
     if sp.is_option_true(OPTION_REFRESH) {
@@ -1190,7 +1197,8 @@ fn run(vs: VideoService) -> ResultType<()> {
             client_record,
             &mut send_counter,
             &mut second_instant,
-            &sp.name(),
+            &_raii.name,
+            &_raii.generation,
         )?;
         if sp.is_option_true(OPTION_REFRESH) {
             if vs.source.is_monitor() {
@@ -1495,15 +1503,17 @@ fn run(vs: VideoService) -> ResultType<()> {
 
 struct Raii {
     name: String,
+    generation: super::video_qos::DisplayGeneration,
     try_vram: bool,
 }
 
 impl Raii {
     fn new(name: String) -> Self {
         log::info!("new video service: {}", name);
-        VIDEO_QOS.lock().unwrap().new_display(name.clone());
+        let generation = VIDEO_QOS.lock().unwrap().new_display(name.clone());
         Raii {
             name,
+            generation,
             try_vram: true,
         }
     }
@@ -1518,7 +1528,7 @@ impl Drop for Raii {
         }
         #[cfg(feature = "vram")]
         Encoder::update(scrap::codec::EncodingUpdate::Check);
-        VIDEO_QOS.lock().unwrap().remove_display(&self.name);
+        VIDEO_QOS.lock().unwrap().remove_display(&self.name, &self.generation);
     }
 }
 

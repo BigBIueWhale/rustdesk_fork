@@ -2,6 +2,7 @@ use super::*;
 use scrap::codec::{Quality, BR_BALANCED, BR_BEST, BR_SPEED};
 use std::{
     collections::VecDeque,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -103,7 +104,11 @@ impl UserData {
 }
 
 #[derive(Default, Debug, Clone)]
+pub(super) struct DisplayGeneration(Arc<()>);
+
+#[derive(Default, Debug, Clone)]
 struct DisplayData {
+    generation: DisplayGeneration,
     send_counter: usize, // Number of times encode during period
     support_changing_quality: bool,
 }
@@ -379,13 +384,23 @@ impl VideoQoS {
 
 // Common adjust functions
 impl VideoQoS {
-    pub fn new_display(&mut self, video_service_name: String) {
-        self.displays
-            .insert(video_service_name, DisplayData::default());
+    pub(super) fn new_display(&mut self, video_service_name: String) -> DisplayGeneration {
+        let display = DisplayData::default();
+        let generation = display.generation.clone();
+        self.displays.insert(video_service_name, display);
+        generation
     }
 
-    pub fn remove_display(&mut self, video_service_name: &str) {
-        self.displays.remove(video_service_name);
+    pub(super) fn is_display_current(&self, name: &str, generation: &DisplayGeneration) -> bool {
+        self.displays.get(name)
+            .map(|display| Arc::ptr_eq(&display.generation.0, &generation.0))
+            .unwrap_or(false)
+    }
+
+    pub(super) fn remove_display(&mut self, name: &str, generation: &DisplayGeneration) {
+        if self.is_display_current(name, generation) {
+            self.displays.remove(name);
+        }
     }
 
     pub fn update_display_data(&mut self, video_service_name: &str, send_counter: usize) {

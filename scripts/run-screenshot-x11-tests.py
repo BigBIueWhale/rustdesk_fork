@@ -221,8 +221,22 @@ def main():
                 print(result.stdout, end='', flush=True)
                 if result.stderr:
                     print(result.stderr, file=sys.stderr, end='', flush=True)
+                if result.returncode == -6:
+                    assert result.stdout.count('VIDEO_ALLOCATOR=refused\n') == 1
+                    assert result.stdout.count(f'SCREENSHOT_X11_ALLOC_START=observed depth={depth} phase=first-capture\n') == 1
+                    expected_size = (516 if depth == 24 else 260) * HEIGHT
+                    assert re.findall(r'memory allocation of ([0-9]+) bytes failed', result.stderr) == [str(expected_size)]
+                    assert not png_path.exists()
+                    outcomes.append(False)
+                    print(f'SCREENSHOT_X11_ALLOC_RESULT=observed depth={depth} first=aborted child_exit=-6 '
+                          f'refused_bytes={expected_size} artifact_sha256={artifact_sha} children=joined', flush=True)
+                    continue
                 assert result.returncode == 0 and f'test {case} ... ok\n' in result.stdout
                 assert 'test result: ok. 1 passed; 0 failed;' in result.stdout
+                assert not result.stderr and result.stdout.count('VIDEO_ALLOCATOR=refused\n') == 2
+                assert result.stdout.count(f'SCREENSHOT_X11_ALLOC_NATIVE=pass depth={depth} refusals=2 '
+                                           'first=OutOfMemory growth=OutOfMemory preserved=true retry=pass '
+                                           'unchanged=WouldBlock warmed=allocation-free\n') == 1
                 png_metadata = png_path.lstat()
                 assert stat.S_ISREG(png_metadata.st_mode) and png_metadata.st_nlink == 1
                 assert (png_metadata.st_uid, png_metadata.st_gid) == (1000, 1000) and 0 < png_metadata.st_size <= 65536
@@ -231,6 +245,9 @@ def main():
                 print(f'SCREENSHOT_X11_CASE=observed depth={depth} pixels={WIDTH * HEIGHT} colors_exact={str(colors).lower()} '
                       f'opaque={str(opaque).lower()} png_bytes={len(png)} png_sha256={hashlib.sha256(png).hexdigest()} rgba_sha256={rgba_sha}', flush=True)
                 outcomes.append(colors and opaque)
+                print(f'SCREENSHOT_X11_ALLOC_RESULT=pass depth={depth} first=OutOfMemory growth=OutOfMemory '
+                      f'preserved=true retry=pass unchanged=WouldBlock warmed=allocation-free '
+                      f'artifact_sha256={artifact_sha} children=joined', flush=True)
                 current = png_path.lstat()
                 assert (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns) == \
                        (png_metadata.st_dev, png_metadata.st_ino, png_metadata.st_size, png_metadata.st_mtime_ns)

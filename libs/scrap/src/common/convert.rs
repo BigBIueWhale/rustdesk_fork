@@ -381,8 +381,19 @@ mod tests {
 
     fn capture_png(depth: u8, expected_format: Pixfmt) {
         use crate::TraitCapturer;
+        use crate::test_allocator::{arm, refusals, take_armed};
+        use std::io::ErrorKind;
         let display = crate::Display::primary().unwrap();
         let mut capturer = crate::Capturer::new(display).unwrap();
+        let before = refusals();
+        println!("SCREENSHOT_X11_ALLOC_START=observed depth={depth} phase=first-capture");
+        arm();
+        match capturer.frame(std::time::Duration::from_millis(100)) {
+            Err(error) => assert_eq!(error.kind(), ErrorKind::OutOfMemory),
+            Ok(_) => panic!("capture cache allocation refusal was not reported"),
+        }
+        assert!(!take_armed());
+        assert_eq!(refusals(), before + 1);
         let frame = capturer.frame(std::time::Duration::from_millis(100)).unwrap();
         let crate::Frame::PixelBuffer(pixels) = frame else {
             panic!("X11 screenshot capture returned a texture");
@@ -396,6 +407,43 @@ mod tests {
         } else {
             0
         };
+        let stride = pixels.stride()[0];
+        drop(pixels);
+        arm();
+        match capturer.frame(std::time::Duration::from_millis(100)) {
+            Err(error) => assert_eq!(error.kind(), ErrorKind::WouldBlock),
+            Ok(_) => panic!("unchanged native capture was not suppressed"),
+        }
+        assert!(take_armed());
+        assert_eq!(refusals(), before + 1);
+
+        let mut cache = vec![0x52, 0x44, 0xff];
+        let original_pointer = cache.as_ptr();
+        let original_capacity = cache.capacity();
+        arm();
+        assert_eq!(crate::would_block_if_equal(&mut cache, &rgba).unwrap_err().kind(),
+                   ErrorKind::OutOfMemory);
+        assert!(!take_armed());
+        assert_eq!(refusals(), before + 2);
+        assert_eq!(cache, [0x52, 0x44, 0xff]);
+        assert_eq!(cache.as_ptr(), original_pointer);
+        assert_eq!(cache.capacity(), original_capacity);
+        crate::would_block_if_equal(&mut cache, &rgba).unwrap();
+        assert_eq!(cache, rgba);
+        for (data, equal) in [(&rgba[..], true), (&rgba[..3], false),
+                              (&rgba[..], false), (&[][..], false), (&[][..], true)] {
+            arm();
+            let result = crate::would_block_if_equal(&mut cache, data);
+            assert!(take_armed());
+            if equal {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::WouldBlock);
+            } else {
+                result.unwrap();
+            }
+            assert_eq!(cache, data);
+        }
+        assert_eq!(refusals(), before + 2);
+        println!("SCREENSHOT_X11_ALLOC_NATIVE=pass depth={depth} refusals=2 first=OutOfMemory growth=OutOfMemory preserved=true retry=pass unchanged=WouldBlock warmed=allocation-free");
         let path = std::env::var("SCREENSHOT_X11_PNG_PATH").unwrap();
         assert_eq!(path, format!("/tmp/video-vpx/screenshot-{depth}.png"));
         let file = std::fs::OpenOptions::new().write(true).create_new(true).open(&path).unwrap();
@@ -403,7 +451,7 @@ mod tests {
         encoder.write(&rgba).unwrap();
         encoder.finish().unwrap();
         drop(encoder);
-        println!("SCREENSHOT_X11_PNG=created depth={depth} width=129 height=33 stride={} format={expected_format:?} bytes={} source_alpha_zero={source_alpha_zero}", pixels.stride()[0], std::fs::metadata(path).unwrap().len());
+        println!("SCREENSHOT_X11_PNG=created depth={depth} width=129 height=33 stride={stride} format={expected_format:?} bytes={} source_alpha_zero={source_alpha_zero}", std::fs::metadata(path).unwrap().len());
     }
 
     #[test]

@@ -6839,6 +6839,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = vide
     require_exact_fixed_receipt \
         "SCREENSHOT_X11_NATIVE=complete cases=2 passed=2 artifact_sha256=$vpx_artifact_sha children=joined" \
         'actual X11 screenshot PNG pixel result'
+    for depth in 24 16; do
+        require_exact_fixed_receipt \
+            "SCREENSHOT_X11_ALLOC_RESULT=pass depth=$depth first=OutOfMemory growth=OutOfMemory preserved=true retry=pass unchanged=WouldBlock warmed=allocation-free artifact_sha256=$vpx_artifact_sha children=joined" \
+            'native capture cache allocation refusal and same-capture recovery'
+    done
     require_exact_fixed_receipt \
         'SCREENSHOT_X11_ORACLE=pass controls=7 pixels=all alpha=checked crc=checked stream=bounded' \
         'independent screenshot PNG decoder controls'

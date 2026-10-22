@@ -3648,6 +3648,7 @@ run_focused_rust_tests() {
                 fs::file_block::tests::concatenated_frames_obey_one_total_output_limit
                 fs::file_block::tests::small_output_cannot_authorize_a_larger_history_window
                 fs::file_block::tests::malformed_and_truncated_frames_refuse
+                fs::file_block::tests::allocation_refusal_returns_error_and_preserves_retry
                 compress::tests::decompression_is_fallible_and_output_bounded
                 compress::tests::decompression_history_window_is_independent_of_output_limit
             )
@@ -4247,6 +4248,7 @@ run_focused_rust_tests() {
                 file_block::tests::concatenated_frames_obey_one_total_output_limit
                 file_block::tests::small_output_cannot_authorize_a_larger_history_window
                 file_block::tests::malformed_and_truncated_frames_refuse
+                file_block::tests::allocation_refusal_returns_error_and_preserves_retry
             )
         elif [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
             container_name=rustdesk-fusermount-process-tests
@@ -6063,7 +6065,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=5 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
-        printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=7 bridge=absent\n'
+        printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=8 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
         printf 'FUSE_PROCESS_PROFILE=fusermount-process stage=container-start tests=43 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
@@ -6341,7 +6343,7 @@ PY
             || fail 'control-egress artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'file-block summary count differs'
-        [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=7 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FILE_BLOCK_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'file-block artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then

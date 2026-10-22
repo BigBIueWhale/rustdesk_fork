@@ -32,6 +32,91 @@ pub(super) fn decode(data: &[u8], compressed: bool) -> io::Result<Cow<'_, [u8]>>
 mod tests {
     use super::*;
     use crate::compress::{compress, try_decompress_with_limit};
+    use std::{alloc::{GlobalAlloc, Layout, System}, cell::Cell, process::Command};
+
+    thread_local! {
+        static OUTPUT_ALLOCATION: Cell<(bool, usize)> = const { Cell::new((false, 0)) };
+    }
+
+    struct OutputAllocator;
+
+    fn refuse_output_allocation(size: usize) -> bool {
+        size == SIZE + 1 && OUTPUT_ALLOCATION.try_with(|state| {
+            let (armed, refusals) = state.get();
+            if armed {
+                state.set((false, refusals + 1));
+            }
+            armed
+        }).unwrap_or(false)
+    }
+
+    unsafe impl GlobalAlloc for OutputAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            if refuse_output_allocation(layout.size()) {
+                std::ptr::null_mut()
+            } else {
+                System.alloc(layout)
+            }
+        }
+
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            if refuse_output_allocation(layout.size()) {
+                std::ptr::null_mut()
+            } else {
+                System.alloc_zeroed(layout)
+            }
+        }
+
+        unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+            if refuse_output_allocation(size) {
+                std::ptr::null_mut()
+            } else {
+                System.realloc(pointer, layout, size)
+            }
+        }
+
+        unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+            System.dealloc(pointer, layout)
+        }
+    }
+
+    #[global_allocator]
+    static OUTPUT_ALLOCATOR: OutputAllocator = OutputAllocator;
+
+    #[test]
+    fn allocation_refusal_returns_error_and_preserves_retry() {
+        if !matches!(std::env::var("RD_FILE_BLOCK_ALLOC_CHILD").as_deref(), Ok("1")) {
+            let thread = std::thread::current();
+            let name = thread.name().expect("native test name");
+            let output = Command::new(std::env::current_exe().expect("native test artifact"))
+                .args(["--exact", name, "--nocapture", "--test-threads=1"])
+                .env("RD_FILE_BLOCK_ALLOC_CHILD", "1")
+                .output().expect("join allocation child");
+            assert!(output.status.success(), "allocation child {:?}: {}{}",
+                output.status, String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr));
+            assert!(String::from_utf8_lossy(&output.stdout).contains(
+                "FILE_BLOCK_ALLOCATION=pass cases=3 refusals=3 raw=borrowed retries=exact"));
+            return;
+        }
+
+        for size in [0, 1, SIZE] {
+            let input = vec![0x5a; size];
+            let encoded = compress(&input).expect("production compression before fault");
+            assert_eq!(decode(&encoded, true).unwrap().as_ref(), input);
+            OUTPUT_ALLOCATION.with(|state| state.set((true, 0)));
+            let raw = decode(&input, false).expect("raw input needs no output allocation");
+            assert!(matches!(raw, Cow::Borrowed(_)));
+            assert_eq!(raw.as_ptr(), input.as_ptr());
+            assert_eq!(raw.as_ref(), input);
+            OUTPUT_ALLOCATION.with(|state| assert_eq!(state.get(), (true, 0)));
+            let error = decode(&encoded, true).expect_err("refused output allocation is fallible");
+            assert_eq!(error.kind(), io::ErrorKind::OutOfMemory);
+            OUTPUT_ALLOCATION.with(|state| assert_eq!(state.get(), (false, 1)));
+            assert_eq!(decode(&encoded, true).expect("retry after one refusal").as_ref(), input);
+        }
+        println!("FILE_BLOCK_ALLOCATION=pass cases=3 refusals=3 raw=borrowed retries=exact");
+    }
 
     #[test]
     fn raw_blocks_borrow_exact_input_and_refuse_excess() {

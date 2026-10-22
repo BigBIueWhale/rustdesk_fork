@@ -6817,6 +6817,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = vide
         'VIDEO_QOS_ENCODER_OWNER=pass cases=9 available=9 passed=9 joined=9 stale=refused feedback=preserved retries=pass' \
         'codec calls release QoS ownership and reject stale display completion'
     require_exact_fixed_receipt \
+        'VIDEO_QOS_BITRATE_STEP=complete cases=45 panics=0 budget_violations=0 failures=0' \
+        'bitrate growth preserves its budget across the u32 domain'
+    require_exact_fixed_receipt \
         "VIDEO_QOS_CONTROLLER_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=25 target=linux-x86_64 scope=production-controller-and-quality-application rust=1.75.0 package=video_qos_it vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused video QoS controller compilation and native result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'video QoS controller cloud-init completion'

@@ -6510,10 +6510,12 @@ PY
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS controller summary count differs'
         [ "$(grep -Ec '^VIDEO_QOS_CONTROLLER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/video_qos_it-[0-9a-f]{16} tests=25 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIDEO_QOS_CONTROLLER_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$' "$output")" -eq 24 ] \
-            || fail 'video QoS controller artifact or named outcomes differ'
+            && [ "$(grep -Ec '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$' "$output")" -eq 25 ] \
+            || { tail -c 131072 "$output" >&2; fail 'video QoS controller artifact or named outcomes differ'; }
         [ "$(grep -Fxc 'VIDEO_QOS_ENCODER_OWNER=pass cases=9 available=9 passed=9 joined=9 stale=refused feedback=preserved retries=pass' "$output")" -eq 1 ] \
             || fail 'video QoS encoder ownership result differs'
+        [ "$(grep -Fxc 'VIDEO_QOS_BITRATE_STEP=complete cases=45 panics=0 budget_violations=0 failures=0' "$output")" -eq 1 ] \
+            || { tail -c 131072 "$output" >&2; fail 'video QoS bitrate growth result differs'; }
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-vpx ]; then
         [ "${#result_lines[@]}" -eq 16 ] || fail 'VPX summary count differs'
         [ "$(grep -Ec '^VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=26 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -6567,7 +6569,7 @@ PY
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
         [ "$(grep -Ec '^VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=20 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIDEO_QOS_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test server::video_qos::tests::.* \.\.\. ok$' "$output")" -eq 19 ] \
+            && [ "$(grep -Ec '^test server::video_qos::tests::.* \.\.\. ok$' "$output")" -eq 20 ] \
             || fail 'video QoS artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-parent ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution parent summary count differs'

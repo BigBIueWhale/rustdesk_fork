@@ -47,7 +47,7 @@ const MAX_DECOMPRESSED: usize = 64 * 1024 * 1024;
 /// limit. Decode and limit failures remain explicit receive errors.
 pub fn try_decompress_with_limit(data: &[u8], max_decompressed: usize) -> io::Result<Vec<u8>> {
     use io::Read;
-    let mut decoder = zstd::stream::read::Decoder::new(data)?;
+    let mut decoder = zstd::stream::read::Decoder::with_buffer(data)?;
     decoder.window_log_max(MAX_DECOMPRESSED.ilog2())?;
     let max_decompressed = u64::try_from(max_decompressed)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "decompression limit overflow"))?;

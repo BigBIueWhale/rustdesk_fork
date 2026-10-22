@@ -9,7 +9,7 @@ pub(super) fn decode(data: &[u8], compressed: bool) -> io::Result<Cow<'_, [u8]>>
     if !compressed {
         return Ok(Cow::Borrowed(data));
     }
-    let mut decoder = zstd::stream::read::Decoder::new(data)?;
+    let mut decoder = zstd::stream::read::Decoder::with_buffer(data)?;
     decoder.window_log_max(SIZE.ilog2())?;
     // One extra byte distinguishes a complete block from excessive decoded output.
     // A fixed buffer also avoids read_to_end's capacity growth on hostile input.

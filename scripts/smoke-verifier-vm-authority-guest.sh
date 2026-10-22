@@ -5605,7 +5605,7 @@ run_focused_rust_tests() {
                             exit 0
                         fi
                         if [ "$RUST_TEST_PROFILE" = video-vpx ]; then
-                            /bin/bash /source/scripts/run-video-vpx-tests.sh
+                            exec /bin/bash /source/scripts/run-video-vpx-tests.sh
                         fi
                         if [ "$RUST_TEST_PROFILE" = video-qos-controller ]; then
                             /bin/bash /source/scripts/run-video-qos-controller-tests.sh

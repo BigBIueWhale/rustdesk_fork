@@ -43,6 +43,7 @@ DEV_CHECK_ARCHIVE=
 FLUTTER_PEER_CANDIDATE=0
 FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_REPLAY=0
+FLUTTER_VIEWER_SUSPEND=0
 FLUTTER_APP_COMMIT=
 FLUTTER_APP_EXPECTED_MANIFEST_SHA256=
 FLUTTER_APP_ENGINE_COMMIT=
@@ -507,7 +508,11 @@ case "$#:${1:-}" in
             || { echo 'focused Rust-audit input/run overrides are forbidden' >&2; exit 2; }
         MODE=rust-audit
         ;;
-    11:--linux-flutter-app-replay)
+    11:--linux-flutter-app-replay|12:--linux-flutter-app-replay)
+        if [ "$#" -eq 12 ]; then
+            [ "${12}" = --viewer-suspend ] || exit 2
+            FLUTTER_VIEWER_SUSPEND=1
+        fi
         [ "$2" = --app-commit ] && [ "$4" = --app-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             || { echo 'Linux Flutter replay requires an exact app commit and manifest digest' >&2; exit 2; }
@@ -553,7 +558,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
         printf 'Focused Debian authorization dependency tests: %s --debian-polkit-tests\n' "${0##*/}" >&2
@@ -598,7 +603,7 @@ case "$#:${1:-}" in
         exit 2
         ;;
 esac
-readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_EXPECTED_MANIFEST_SHA256
+readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_EXPECTED_MANIFEST_SHA256 FLUTTER_VIEWER_SUSPEND
 readonly FLUTTER_TEST_PROFILE
 readonly RUST_TEST_PROFILE
 readonly FLUTTER_APP_ENGINE_COMMIT FLUTTER_APP_ENGINE_ARCHIVE_SHA256 FLUTTER_APP_ENGINE_MANIFEST_SHA256
@@ -4686,6 +4691,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
+        [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || guest_invocation+=' --viewer-suspend'
     fi
 elif [ "$MODE" = dart-audit ]; then
     guest_invocation+=" --dart-audit /mnt/rustdesk-verifier-inputs/source.tar $DART_SOURCE_COMMIT $DART_SOURCE_TREE $DART_SOURCE_ARCHIVE_SHA256 /mnt/rustdesk-verifier-inputs/dart-audit.docker.tar.gz"
@@ -7389,8 +7395,10 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$MODE" = flutter-peer-presentation ]; then
+    peer_scenario=focus-reconnect-resource
+    [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_scenario=viewer-suspend
     require_exact_fixed_receipt \
-        "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 build=absent" \
+        "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-$peer_scenario network=owned-none-namespace app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 build=absent" \
         'focused Flutter full-peer product verdict'
     require_exact_fixed_receipt \
         "LINUX_FLUTTER_APP_REPLAY_VM=pass harness_commit=$FLUTTER_PEER_SOURCE_COMMIT harness_tree=$FLUTTER_PEER_SOURCE_TREE archive=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 driver_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace artifact=readonly-landlocked build=absent cleanup=joined" \
@@ -8209,9 +8217,9 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         "$FLUTTER_APP_MANIFEST_SHA256" "$FLUTTER_PEER_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" \
         "$DEB_BUILDER_CONFIG_ID" "$vm_elapsed_seconds"
 elif [ "$MODE" = flutter-peer-presentation ]; then
-    printf 'LINUX_FLUTTER_APP_REPLAY_VM_OUTER=pass host_uid=%s harness_commit=%s harness_tree=%s app_commit=%s app_tree=%s manifest_sha256=%s network=none listeners=no-harness-addition inputs=readonly-landlocked artifact=readonly-landlocked docker=guest-only product=linux-x11-full-peer-focus-reconnect-resource build=absent cleanup=joined elapsed_seconds=%s\n' \
+    printf 'LINUX_FLUTTER_APP_REPLAY_VM_OUTER=pass host_uid=%s harness_commit=%s harness_tree=%s app_commit=%s app_tree=%s manifest_sha256=%s network=none listeners=no-harness-addition inputs=readonly-landlocked artifact=readonly-landlocked docker=guest-only product=linux-x11-full-peer-%s build=absent cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \
-        "$FLUTTER_APP_COMMIT" "$FLUTTER_APP_TREE" "$FLUTTER_APP_EXPECTED_MANIFEST_SHA256" "$vm_elapsed_seconds"
+        "$FLUTTER_APP_COMMIT" "$FLUTTER_APP_TREE" "$FLUTTER_APP_EXPECTED_MANIFEST_SHA256" "$peer_scenario" "$vm_elapsed_seconds"
 elif [ "$MODE" = dart-audit ]; then
     printf 'DART_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-media docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$DART_SOURCE_COMMIT" "$DART_SOURCE_TREE" \

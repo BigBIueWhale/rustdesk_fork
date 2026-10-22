@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 
 /*
@@ -17,11 +18,14 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <poll.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
 #include "x11-frame-oracle.h"
@@ -1259,6 +1263,173 @@ static void print_resources(const char *phase, unsigned int sequence,
            resources->descriptors);
 }
 
+/* The stage retains its unreaped child and supplies its creation identity. Keep both a
+ * procfs directory and a pidfd; never reacquire a numeric PID to resume the viewer. */
+static int viewer_process_state(int process, unsigned long pid, const char *start,
+                                 char *state) {
+    char record[4096], prefix[32];
+    char *cursor, *end;
+    int descriptor = openat(process, "stat", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    ssize_t length;
+    int result = -1;
+    if (descriptor < 0) return -1;
+    do {
+        length = read(descriptor, record, sizeof(record) - 1U);
+    } while (length < 0 && errno == EINTR);
+    if (length <= 0 || (size_t)length == sizeof(record) - 1U) goto finished;
+    record[length] = '\0';
+    if (snprintf(prefix, sizeof(prefix), "%lu (", pid) <= 0 ||
+        strncmp(record, prefix, strlen(prefix)) != 0) goto finished;
+    cursor = strrchr(record, ')');
+    if (cursor == NULL || cursor[1] != ' ') goto finished;
+    cursor += 2;
+    for (unsigned int field = 3U; field <= 22U; ++field) {
+        end = strchr(cursor, ' ');
+        if (end == NULL || end == cursor) goto finished;
+        if (field == 3U) {
+            if (end != cursor + 1 || strchr("RSDTtZIXP", *cursor) == NULL ||
+                strchr("ZIX", *cursor) != NULL) goto finished;
+            *state = *cursor;
+        } else if (field == 22U &&
+                   ((size_t)(end - cursor) != strlen(start) ||
+                    strncmp(cursor, start, (size_t)(end - cursor)) != 0)) {
+            goto finished;
+        }
+        cursor = end + 1;
+    }
+    result = 0;
+finished:
+    if (close(descriptor) != 0) result = -1;
+    return result;
+}
+
+static int viewer_pidfd_alive(int pidfd) {
+    struct pollfd descriptor = {.fd = pidfd, .events = POLLIN};
+    int result;
+    do {
+        result = poll(&descriptor, 1U, 0);
+    } while (result < 0 && errno == EINTR);
+    return result == 0;
+}
+
+static int exercise_viewer_suspension(Display *source, Display *display,
+                                      ViewerWindow *viewer, SourceHistory *history,
+                                      unsigned long pid, const char *start,
+                                      const ConnectionIdentity *connection,
+                                      const ProcessResources *baseline) {
+    char path[64], state = '\0';
+    int process = -1, pidfd = -1, result = -1, resume_needed = 0;
+    uint64_t max_gap = 0U, max_age = 0U;
+    unsigned int distinct = 0U, active_cycle = 0U;
+    const char *phase = "process-identity";
+    struct stat metadata;
+    if (start[0] < '1' || start[0] > '9' || strspn(start, "0123456789") != strlen(start) ||
+        strlen(start) > 20U || pid > INT_MAX ||
+        snprintf(path, sizeof(path), "/proc/%lu", pid) <= 0) goto finished;
+    process = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (process < 0 || fstat(process, &metadata) != 0 || metadata.st_uid != geteuid() ||
+        viewer_process_state(process, pid, start, &state) != 0 || state == 'T' || state == 't')
+        goto finished;
+    pidfd = (int)syscall(SYS_pidfd_open, (pid_t)pid, 0U);
+    if (pidfd < 0 || !viewer_pidfd_alive(pidfd) ||
+        viewer_process_state(process, pid, start, &state) != 0) goto finished;
+    phase = "healthy-baseline";
+    if (observe_current_frames_for_duration(source, display, viewer, history, 3000U,
+                                            &max_gap, &max_age, &distinct) != 0 ||
+        max_age > FRESH_LIMIT_MS) goto finished;
+    printf("FLUTTER_PEER_SUSPEND_BASELINE_OK duration_ms=3000 maximum_gap_ms=%llu "
+           "maximum_age_ms=%llu distinct=%u\n", (unsigned long long)max_gap,
+           (unsigned long long)max_age, distinct);
+    for (unsigned int cycle = 0U; cycle < FOCUS_CYCLE_COUNT; ++cycle) {
+        uint64_t deadline, held_from, resumed_at, recovery_ms, first_fresh, recovery_age;
+        int64_t paused_frame, source_before, source_after;
+        uint64_t captured_us = 0U;
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources = {0};
+        ViewerWindow same_viewer = {0};
+        active_cycle = cycle + 1U;
+        phase = "stop";
+        if (!viewer_pidfd_alive(pidfd) ||
+            viewer_process_state(process, pid, start, &state) != 0 ||
+            syscall(SYS_pidfd_send_signal, pidfd, SIGSTOP, NULL, 0U) != 0) goto finished;
+        resume_needed = 1;
+        deadline = monotonic_millis() + 1000U;
+        do {
+            if (viewer_process_state(process, pid, start, &state) != 0 ||
+                !viewer_pidfd_alive(pidfd)) goto finished;
+            if (state == 'T') break;
+            if (sleep_millis(10U) != 0) goto finished;
+        } while (monotonic_millis() < deadline);
+        if (state != 'T' || sleep_millis(200U) != 0) goto finished;
+        /* Let already-submitted X11 work finish before measuring the frozen surface. */
+        paused_frame = viewer_state(display, viewer, &captured_us);
+        source_before = source_state(source);
+        if (paused_frame < 0 || source_before < 0) goto finished;
+        held_from = monotonic_millis();
+        deadline = held_from + blur_hold_ms[cycle];
+        phase = "frozen-pixels";
+        do {
+            if (viewer_process_state(process, pid, start, &state) != 0 || state != 'T' ||
+                !viewer_pidfd_alive(pidfd) ||
+                viewer_state(display, viewer, &captured_us) != paused_frame ||
+                sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto finished;
+        } while (monotonic_millis() < deadline);
+        source_after = source_state(source);
+        phase = "source-progress-and-connection";
+        if (source_after < source_before ||
+            source_after - source_before < (int64_t)(blur_hold_ms[cycle] / 100U) ||
+            read_connection_identity(&after) != 0 || !same_connection(connection, &after))
+            goto finished;
+        printf("FLUTTER_PEER_SUSPENDED_OK cycle=%u requested_ms=%u held_ms=%llu "
+               "viewer_frame=%lld source_before=%lld source_after=%lld kernel_state=T "
+               "pixels=frozen stable_connection=true\n", cycle + 1U, blur_hold_ms[cycle],
+               (unsigned long long)(monotonic_millis() - held_from), (long long)paused_frame,
+               (long long)source_before, (long long)source_after);
+        fflush(stdout);
+        resumed_at = monotonic_millis();
+        phase = "resume";
+        if (syscall(SYS_pidfd_send_signal, pidfd, SIGCONT, NULL, 0U) != 0) goto finished;
+        resume_needed = 0;
+        phase = "fresh-frame-recovery";
+        if (wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U,
+                                    &first_fresh, &recovery_age) != 0) goto finished;
+        recovery_ms = monotonic_millis() - resumed_at;
+        phase = "healthy-follow-up-and-resources";
+        if (recovery_ms > RECOVERY_LIMIT_MS ||
+            inspect_viewer_candidate(display, viewer->window, pid, &same_viewer) != 1 ||
+            same_viewer.window != viewer->window || !viewer_pidfd_alive(pidfd) ||
+            viewer_process_state(process, pid, start, &state) != 0 || state == 'T' ||
+            observe_current_frames_for_duration(source, display, viewer, history, 3000U,
+                                                &max_gap, &max_age, &distinct) != 0 ||
+            max_age > FRESH_LIMIT_MS || read_connection_identity(&after) != 0 ||
+            !same_connection(connection, &after) ||
+            read_process_resources(pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto finished;
+        print_resources("suspend", cycle + 1U, &resources);
+        printf("FLUTTER_PEER_SUSPEND_RECOVERY_OK cycle=%u recovery_ms=%llu "
+               "first_fresh_ms=%llu recovery_observed_maximum_age_ms=%llu "
+               "healthy_ms=3000 healthy_maximum_gap_ms=%llu healthy_maximum_age_ms=%llu "
+               "distinct=%u same_window=true stable_connection=true resources=bounded\n",
+               cycle + 1U, (unsigned long long)recovery_ms, (unsigned long long)first_fresh,
+               (unsigned long long)recovery_age, (unsigned long long)max_gap,
+               (unsigned long long)max_age, distinct);
+        fflush(stdout);
+    }
+    result = 0;
+finished:
+    if (result != 0) {
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL suspension phase=%s cycle=%u state=%c "
+                "errno=%d maximum_age_ms=%llu maximum_gap_ms=%llu distinct=%u\n",
+                phase, active_cycle, state != '\0' ? state : '?', errno,
+                (unsigned long long)max_age, (unsigned long long)max_gap, distinct);
+    }
+    if (resume_needed && syscall(SYS_pidfd_send_signal, pidfd, SIGCONT, NULL, 0U) != 0)
+        fputs("FLUTTER_PEER_X11_FAIL exact viewer resume; stage retains cleanup ownership\n", stderr);
+    if (pidfd >= 0 && close(pidfd) != 0) result = -1;
+    if (process >= 0 && close(process) != 0) result = -1;
+    return result;
+}
+
 static int write_all(int descriptor, const char *buffer, size_t length) {
     size_t offset = 0U;
     while (offset < length) {
@@ -1807,8 +1978,9 @@ int main(int argc, char **argv) {
     PasswordPromptScan prompt_scan = {0};
     AtspiAccessible *previous_caption = NULL;
 
-    if (argc != 4) {
-        fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID\n",
+    if (argc != 5 && (argc != 6 || strcmp(argv[5], "--viewer-suspend") != 0)) {
+        fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
+              "VIEWER_START [--viewer-suspend]\n",
               stderr);
         return 2;
     }
@@ -1961,6 +2133,28 @@ int main(int argc, char **argv) {
         return 1;
     }
     print_resources("initial", 0U, &baseline_resources);
+
+    if (argc == 6) {
+        int suspension_status = exercise_viewer_suspension(
+            source, display, &viewer, &history, viewer_pid, argv[4],
+            &current_connection, &baseline_resources);
+        if (suspension_status != 0) {
+            fputs("FLUTTER_PEER_X11_FAIL viewer suspension/recovery\n", stderr);
+            exit_atspi_after_failure();
+        } else if (atspi_exit() != 0) {
+            fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown\n", stderr);
+            suspension_status = -1;
+        }
+        if (close_viewer(display, viewer.window) != 0) suspension_status = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        if (suspension_status != 0) return 1;
+        puts("FLUTTER_PEER_SUSPEND_PRESENTATION_OK cycles=3 holds_ms=2000,6000,12000 "
+             "recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 "
+             "actual_peer=true x11_pixels=true same_window=true stable_connection=true "
+             "resources=bounded threads_growth_max=8 fds_growth_max=16 rss_growth_kib_max=131072");
+        return 0;
+    }
 
     for (unsigned int cycle = 0U; cycle < FOCUS_CYCLE_COUNT; ++cycle) {
         Window sink = create_focus_sink(display);

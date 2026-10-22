@@ -6,6 +6,7 @@ FLUTTER_PEER_CANDIDATE=0
 FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_BUILD_CONTEXT=
 FLUTTER_APP_REPLAY=0
+FLUTTER_VIEWER_SUSPEND=0
 FLUTTER_APP_COMMIT=
 FLUTTER_APP_TREE=
 FLUTTER_APP_RECIPE_SHA256=
@@ -212,7 +213,11 @@ case "$#:${8:-}" in
             APPLE_FILE_MODE_ONLY=1
         fi
         ;;
-    18:--linux-flutter-app-replay)
+    18:--linux-flutter-app-replay|19:--linux-flutter-app-replay)
+        if [ "$#" -eq 19 ]; then
+            [ "${19}" = --viewer-suspend ] || exit 2
+            FLUTTER_VIEWER_SUSPEND=1
+        fi
         MODE=flutter-peer-presentation
         FLUTTER_PEER_CANDIDATE=1
         FLUTTER_APP_REPLAY=1
@@ -284,7 +289,7 @@ if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
     [ -n "$FLUTTER_APP_ENGINE_CONTEXT" ] && [ "${#FLUTTER_APP_ENGINE_CONTEXT}" -le 2048 ] || exit 2
 fi
 readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_TREE \
-    FLUTTER_APP_RECIPE_SHA256 FLUTTER_APP_MANIFEST_SHA256
+    FLUTTER_APP_RECIPE_SHA256 FLUTTER_APP_MANIFEST_SHA256 FLUTTER_VIEWER_SUSPEND
 readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
 readonly RUST_TEST_SOURCE_COMMIT=${10:-}
 readonly RUST_TEST_SOURCE_TREE=${11:-}
@@ -10988,6 +10993,7 @@ run_flutter_peer_presentation() {
             --app-manifest-sha256 "$FLUTTER_APP_MANIFEST_SHA256")
     fi
     peer_args+=(--engine-context "$FLUTTER_APP_ENGINE_CONTEXT")
+    [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
     set +e
     setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
@@ -11019,13 +11025,18 @@ run_flutter_peer_presentation() {
     if grep -Eq '^LINUX_FLUTTER_APP_COMPILED=|^FLUTTER_PEER_BUILD_PHASE=' "$output"; then
         fail 'Linux replay unexpectedly built an app'
     fi
+    local peer_scenario=focus-reconnect-resource peer_cycles=6
+    if [ "$FLUTTER_VIEWER_SUSPEND" -eq 1 ]; then
+        peer_scenario=viewer-suspend
+        peer_cycles=1
+    fi
     [ "$(grep -Fxc \
-      "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_RUNTIME_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 build=absent" \
+      "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_RUNTIME_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-$peer_scenario network=owned-none-namespace app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 build=absent" \
       "$output")" -eq 1 ] \
         || fail 'Flutter full-peer product verdict is absent or duplicated'
-    [ "$(grep -Fxc 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 instrumentation=none' "$output")" -eq 1 ] \
+    [ "$(grep -Fxc "FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=$peer_cycles instrumentation=none" "$output")" -eq 1 ] \
         || fail 'Flutter full-peer repeated lifecycle verdict is absent or duplicated'
-    for cycle in 1 2 3 4 5 6; do
+    for cycle in $(seq 1 "$peer_cycles"); do
         [ "$(grep -Fxc \
           "FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=$cycle instrumentation=none viewer=joined server=joined" \
           "$output")" -eq 1 ] \

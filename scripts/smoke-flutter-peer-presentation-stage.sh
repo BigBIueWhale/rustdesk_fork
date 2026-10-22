@@ -13,6 +13,13 @@ fail() {
 [ -z "${LD_PRELOAD:-}" ] || fail 'refuses an ambient preload'
 [ "$#" -eq 1 ] \
   || fail 'expected one stage: input-check, atspi-check, pub-cache, pub-cache-check, build-drivers, prepare-sdk, build-app, server, or viewer'
+readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
+case "$PEER_SCENARIO" in
+  focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
+  viewer-suspend) EXPECTED_RESTARTS=0 ;;
+  *) fail 'unknown peer runtime scenario' ;;
+esac
+readonly EXPECTED_RESTARTS
 
 verify_regular() {
   [ -f "$1" ] && [ ! -L "$1" ] || fail "missing regular input: $1"
@@ -1118,7 +1125,7 @@ PY
       emit_runtime_logs SERVER "$HOME/.local/share/logs"
       echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_END' >&2
     else
-      [ "$completed_restarts" -eq 3 ] \
+      [ "$completed_restarts" -eq "$EXPECTED_RESTARTS" ] \
         || fail "successful viewer completed only $completed_restarts server restarts"
     fi
     "$READY" --stop "$SOURCE_PID" "$SOURCE_START"
@@ -1211,9 +1218,11 @@ PY
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
+    controller_args=(:98 :99 "$VIEWER_PID" "$VIEWER_START")
+    [ "$PEER_SCENARIO" != viewer-suspend ] || controller_args+=(--viewer-suspend)
     set +e
     controller_output="$(timeout --signal=TERM --kill-after=3s 180s \
-      "$CONTROLLER" :98 :99 "$VIEWER_PID" 2>&1)"
+      "$CONTROLLER" "${controller_args[@]}" 2>&1)"
     controller_status=$?
     set -e
     printf '%s\n' "$controller_output"
@@ -1227,6 +1236,14 @@ PY
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
+    if [ "$PEER_SCENARIO" = viewer-suspend ]; then
+      [ "$(grep -Ec '^FLUTTER_PEER_SUSPENDED_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
+        && [ "$(grep -Ec '^FLUTTER_PEER_SUSPEND_RECOVERY_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
+        || fail 'three actual suspension/recovery cycles are missing'
+      grep -Fxq 'FLUTTER_PEER_SUSPEND_PRESENTATION_OK cycles=3 holds_ms=2000,6000,12000 recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 actual_peer=true x11_pixels=true same_window=true stable_connection=true resources=bounded threads_growth_max=8 fds_growth_max=16 rss_growth_kib_max=131072' \
+        <<<"$controller_output" || fail 'focused viewer suspension verdict is missing'
+      viewer_result='viewer=joined xvfb=joined suspension_cycles=3 stable_connection=true resources=bounded'
+    else
     [ "$(grep -Ec '^FLUTTER_PEER_BACKGROUND_FRESHNESS_OK cycle=[123] ' \
         <<<"$controller_output")" -eq 3 ] \
       || fail 'three-cycle background freshness evidence is missing'
@@ -1243,6 +1260,8 @@ PY
       <<<"$controller_output" || fail 'viewer resource-bound verdict is missing'
     grep -q '^FLUTTER_PEER_PRESENTATION_OK actual_peer=true password_prompt=true capture=true transport=true decode=true flutter_texture=true x11_pixels=true focus_recovery=true background_freshness=true reconnects=3 resources=bounded$' \
       <<<"$controller_output" || fail 'full peer-presentation verdict is missing'
+      viewer_result='viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded'
+    fi
     for _ in $(seq 1 750); do
       "$READY" --is-running "$VIEWER_PID" "$VIEWER_START" || break
       sleep 0.02
@@ -1266,12 +1285,12 @@ PY
     "$READY" --stop "$XVFB_PID" "$XVFB_START"
     wait "$XVFB_PID" 2>/dev/null || true
     XVFB_PID= XVFB_START=
-    printf 'viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded\n' \
+    printf '%s\n' "$viewer_result" \
       > "$COORD/viewer.result.tmp"
     mv "$COORD/viewer.result.tmp" "$COORD/viewer.result"
     printf 'viewer-complete\n' > "$COORD/stop.tmp"
     mv "$COORD/stop.tmp" "$COORD/stop"
-    echo 'FLUTTER_PEER_VIEWER_RUNTIME_OK viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded'
+    printf 'FLUTTER_PEER_VIEWER_RUNTIME_OK %s\n' "$viewer_result"
     trap - EXIT HUP INT TERM
     ;;
 

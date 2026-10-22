@@ -66,11 +66,16 @@ APP_TREE=
 APP_RECIPE_SHA256=
 APP_MANIFEST_SHA256=
 APP_ENGINE_CONTEXT=
+PEER_SCENARIO=focus-reconnect-resource
 case "$#:${1:-}" in
   1:--self-test-vm-authority)
     PEER_VM_AUTHORITY_SELF_TEST=1
     ;;
-  20:--source-archive)
+  20:--source-archive|21:--source-archive)
+    if [ "$#" -eq 21 ]; then
+      [ "${21}" = --viewer-suspend ] || die 'unknown app replay scenario'
+      PEER_SCENARIO=viewer-suspend
+    fi
     [ "$3" = --commit ] && [ "$5" = --tree ] && [ "$7" = --archive-sha256 ] \
       && [ "$9" = --replay-app ] && [ "${11}" = --app-commit ] \
       && [ "${13}" = --app-tree ] && [ "${15}" = --app-recipe-sha256 ] \
@@ -113,6 +118,19 @@ readonly SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
   SUPPLIED_SOURCE_TREE SUPPLIED_SOURCE_ARCHIVE_SHA256 \
   FLUTTER_PRESENTATION_CANDIDATE SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE \
   BUILD_APP_ONLY APP_BUILD_CONTEXT APP_MANIFEST_SHA256 APP_ENGINE_CONTEXT
+readonly PEER_SCENARIO
+if [ "$PEER_SCENARIO" = viewer-suspend ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined suspension_cycles=3 stable_connection=true resources=bounded'
+else
+  RUNTIME_CYCLES=6
+  SERVER_GENERATIONS='1 2 3 4'
+  SERVER_REPLACEMENTS=3
+  VIEWER_RESULT='viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded'
+fi
+readonly RUNTIME_CYCLES SERVER_GENERATIONS SERVER_REPLACEMENTS VIEWER_RESULT
 if [ "$PEER_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
   authority_version="$(peer_vm_docker version \
     --format '{{.Client.Version}}|{{.Server.Version}}')" \
@@ -1017,14 +1035,15 @@ else
 fi
 
 if [ "$BUILD_APP_ONLY" -eq 0 ]; then
-for cycle in 1 2 3 4 5 6; do
+for cycle in $(seq 1 "$RUNTIME_CYCLES"); do
 COORD="$WORKSPACE/coord.$cycle"
 mkdir "$COORD"
 SERVER_CID_FILE="$WORKSPACE/server.$cycle.cid"
 VIEWER_CID_FILE="$WORKSPACE/viewer.$cycle.cid"
 SERVER_LOG="$WORKSPACE/server.$cycle.log"
 VIEWER_LOG="$WORKSPACE/viewer.$cycle.log"
-printf '== peer runtime cycle %s/6, instrumentation=none, network=none ==\n' "$cycle"
+printf '== peer runtime cycle %s/%s, scenario=%s, instrumentation=none, network=none ==\n' \
+  "$cycle" "$RUNTIME_CYCLES" "$PEER_SCENARIO"
 CID_FILES+=("$SERVER_CID_FILE")
 peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --pull=never --network=none --read-only \
@@ -1043,6 +1062,7 @@ peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
   --mount "type=bind,source=$SERVER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled" \
   --env RUSTDESK_PRESENTATION_TRACE=1 \
+  --env "FLUTTER_PEER_SCENARIO=$PEER_SCENARIO" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh server \
   >/dev/null
@@ -1096,6 +1116,7 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --env XDG_RUNTIME_DIR=/tmp/viewer-runtime \
   --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share \
   --env RUSTDESK_PRESENTATION_TRACE=1 \
+  --env "FLUTTER_PEER_SCENARIO=$PEER_SCENARIO" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-private-atspi-session.sh viewer \
   > "$VIEWER_LOG" 2>&1
@@ -1139,12 +1160,12 @@ peer_vm_docker logs "$SERVER_CID" > "$SERVER_LOG" 2>&1 || true
 cat "$SERVER_LOG"
 [ "$(input_provider_binding)" = "$INPUT_PROVIDER_BINDING" ] \
   || die 'protected private input provider changed during the peer cycle'
-for generation in 1 2 3 4; do
+for generation in $SERVER_GENERATIONS; do
   grep -Fxq "FLUTTER_PEER_INPUT_PROVIDER_MAPPED generation=$generation path=/usr/lib/rustdesk-fork/libxdo.so.3 live_mapping=true" \
     "$SERVER_LOG" \
     || die "serving generation $generation did not load the protected private input provider"
 done
-[ "$(grep -c '^FLUTTER_PEER_INPUT_PROVIDER_MAPPED ' "$SERVER_LOG")" -eq 4 ] \
+[ "$(grep -c '^FLUTTER_PEER_INPUT_PROVIDER_MAPPED ' "$SERVER_LOG")" -eq "$((SERVER_REPLACEMENTS + 1))" ] \
   || die 'serving input-provider observation cardinality differs'
 printf 'FLUTTER_PEER_INPUT_PROVIDER_OBSERVED=pass cycle=%s sha256=%s unchanged=before-after instrumentation=none\n' \
   "$cycle" "$INPUT_PROVIDER_SHA256"
@@ -1154,22 +1175,21 @@ server_status="$(peer_vm_docker inspect --format '{{.State.ExitCode}}' "$SERVER_
 
 [ "$viewer_status" -eq 0 ] || exit "$viewer_status"
 [ "$server_status" -eq 0 ] || die "controlled peer stage exited $server_status"
-grep -q '^FLUTTER_PEER_VIEWER_RUNTIME_OK viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded$' \
+grep -Fxq "FLUTTER_PEER_VIEWER_RUNTIME_OK $VIEWER_RESULT" \
   "$VIEWER_LOG" || die 'viewer terminal verdict is missing'
-grep -q '^FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined listener=closed replacements=3$' \
+grep -Fxq "FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined listener=closed replacements=$SERVER_REPLACEMENTS" \
   "$SERVER_LOG" || die 'server terminal verdict is missing'
-[ "$(<"$COORD/viewer.result")" = \
-  'viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded' ] \
+[ "$(<"$COORD/viewer.result")" = "$VIEWER_RESULT" ] \
   || die 'viewer result receipt differs'
 [ "$(<"$COORD/server.result")" = \
-  'server=joined source=joined xvfb=joined listener=closed replacements=3' ] \
+  "server=joined source=joined xvfb=joined listener=closed replacements=$SERVER_REPLACEMENTS" ] \
   || die 'server result receipt differs'
 cleanup_container "$VIEWER_CID_FILE"
 cleanup_container "$SERVER_CID_FILE"
 printf 'FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=%s instrumentation=none viewer=joined server=joined\n' \
   "$cycle"
 done
-echo 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 instrumentation=none'
+printf 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=%s instrumentation=none\n' "$RUNTIME_CYCLES"
 fi
 
 if [ "$BUILD_APP_ONLY" -eq 1 ]; then
@@ -1195,7 +1215,7 @@ if [ "$BUILD_APP_ONLY" -eq 1 ]; then
     "$APP_RECIPE_SHA256" "$SOURCE_DATE_EPOCH_PIN"
   exit 0
 fi
-printf 'FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=%s tree=%s archive_sha256=%s flutter=%s tools=%s scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace app_commit=%s app_tree=%s manifest_sha256=%s build=absent\n' \
+printf 'FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=%s tree=%s archive_sha256=%s flutter=%s tools=%s scope=linux-x11-full-peer-%s network=owned-none-namespace app_commit=%s app_tree=%s manifest_sha256=%s build=absent\n' \
   "$SOURCE_COMMIT" "$SOURCE_TREE" "$SOURCE_ARCHIVE_SHA256" \
-  "$BUILD_FLUTTER_VERSION" "$BUILD_FLUTTER_TOOLS_MODE" \
+  "$BUILD_FLUTTER_VERSION" "$BUILD_FLUTTER_TOOLS_MODE" "$PEER_SCENARIO" \
   "$APP_COMMIT" "$APP_TREE" "$APP_MANIFEST_SHA256"

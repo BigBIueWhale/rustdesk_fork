@@ -4299,7 +4299,7 @@ fn default_purge_is_retryable_and_returns_effective_normalized_values() {
                     && !PeerConfig::path(missing_id).exists();
                 let unrelated = loaded.get("codec-unrelated") == "preserved";
                 let correct = [&effective, &cached, &reloaded, &inherited, &missing_peer]
-                    .into_iter().all(|value| value == expected);
+                    .iter().all(|value| value.as_str() == expected);
                 println!("OPTION_COMMIT_DEFAULT_CODEC={}", serde_json::json!({
                     "source": source, "input": input, "expected": expected,
                     "effective": effective, "cached": cached, "reloaded": reloaded,

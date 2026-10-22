@@ -33,6 +33,149 @@ struct AudioHandler {
 
 include!(env!("AUDIO_OUTPUT_METHOD"));
 
+struct AdmissionAllocator;
+thread_local! {
+    static ALLOCATION_BUDGET: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    static ALLOCATION_REFUSALS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn refuse_allocation() -> bool {
+    ALLOCATION_BUDGET.try_with(|budget| match budget.get() {
+        None => false,
+        Some(0) => {
+            ALLOCATION_REFUSALS.with(|count| count.set(count.get() + 1));
+            true
+        }
+        Some(remaining) => { budget.set(Some(remaining - 1)); false }
+    }).unwrap_or(false)
+}
+
+unsafe impl std::alloc::GlobalAlloc for AdmissionAllocator {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        if refuse_allocation() { std::ptr::null_mut() }
+        else { std::alloc::GlobalAlloc::alloc(&std::alloc::System, layout) }
+    }
+    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
+        if refuse_allocation() { std::ptr::null_mut() }
+        else { std::alloc::GlobalAlloc::alloc_zeroed(&std::alloc::System, layout) }
+    }
+    unsafe fn realloc(&self, pointer: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
+        if refuse_allocation() { std::ptr::null_mut() }
+        else { std::alloc::GlobalAlloc::realloc(&std::alloc::System, pointer, layout, size) }
+    }
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: std::alloc::Layout) {
+        std::alloc::GlobalAlloc::dealloc(&std::alloc::System, pointer, layout);
+    }
+}
+
+#[global_allocator]
+static ADMISSION_ALLOCATOR: AdmissionAllocator = AdmissionAllocator;
+
+fn with_allocation_budget<T>(budget: usize, action: impl FnOnce() -> T) -> (T, usize) {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) { ALLOCATION_BUDGET.with(|budget| budget.set(None)); }
+    }
+    ALLOCATION_REFUSALS.with(|count| count.set(0));
+    ALLOCATION_BUDGET.with(|current| { assert!(current.get().is_none()); current.set(Some(budget)); });
+    let reset = Reset;
+    let result = action();
+    drop(reset);
+    (result, ALLOCATION_REFUSALS.with(std::cell::Cell::get))
+}
+
+fn allocation_admission_case(case: &str) {
+    use audio_mailbox::{AudioFormatAdmission, AudioFrameAdmission, AudioMailboxItem};
+    fn format() -> message_proto::AudioFormat {
+        let mut format = message_proto::AudioFormat::new();
+        format.sample_rate = 48000; format.channels = 2; format
+    }
+    fn frame(marker: u8, bytes: usize) -> message_proto::AudioFrame {
+        let mut frame = message_proto::AudioFrame::new();
+        frame.data = vec![marker; bytes].into(); frame
+    }
+    if case == "probe" {
+        with_allocation_budget(0, || std::hint::black_box(Vec::<u8>::with_capacity(31)));
+        panic!("the allocation-refusal probe unexpectedly returned");
+    }
+    let parts: Vec<_> = case.split(':').collect();
+    assert_eq!(parts.len(), 4);
+    let healthy = parts[0] == "healthy";
+    let bytes: usize = parts[1].parse().unwrap();
+    let queued: usize = parts[2].parse().unwrap();
+    let budget: usize = parts[3].parse().unwrap();
+    let (sender, receiver) = audio_mailbox::audio_mailbox();
+    assert_eq!(sender.admit_format(format()), AudioFormatAdmission::Queued);
+    assert!(matches!(receiver.recv(), Some(AudioMailboxItem::Format(_))));
+    for marker in 0..queued {
+        assert_eq!(sender.admit_frame(frame(marker as u8, bytes)), AudioFrameAdmission::Queued);
+    }
+    let packet = frame(255, bytes);
+    let (result, refusals) = with_allocation_budget(budget, || sender.admit_frame(packet));
+    if healthy {
+        assert_eq!(refusals, 0);
+        assert_eq!(result, if queued == 8 { AudioFrameAdmission::ReplacedOldest } else { AudioFrameAdmission::Queued });
+        assert_eq!(sender.state_for_test(), (false, false, (queued + 1).min(8)));
+        for marker in usize::from(queued == 8)..queued {
+            let Some(AudioMailboxItem::Frame(packet)) = receiver.recv() else { panic!("queued packet lost"); };
+            assert_eq!(packet.data, vec![marker as u8; bytes]);
+        }
+        let Some(AudioMailboxItem::Frame(packet)) = receiver.recv() else { panic!("new packet lost"); };
+        assert_eq!(packet.data, vec![255; bytes]);
+    } else {
+        assert!(refusals > 0);
+        assert_eq!(result, AudioFrameAdmission::ResourceUnavailable);
+        assert_eq!(sender.state_for_test(), (true, false, 0));
+        assert!(receiver.recv().is_none());
+        assert_eq!(sender.admit_format(format()), AudioFormatAdmission::Closed);
+        assert_eq!(sender.admit_frame(frame(1, bytes)), AudioFrameAdmission::Closed);
+        let (fresh, fresh_receiver) = audio_mailbox::audio_mailbox();
+        assert_eq!(fresh.admit_format(format()), AudioFormatAdmission::Queued);
+        assert_eq!(fresh.admit_frame(frame(9, bytes)), AudioFrameAdmission::Queued);
+        assert!(matches!(fresh_receiver.recv(), Some(AudioMailboxItem::Format(_))));
+        let Some(AudioMailboxItem::Frame(packet)) = fresh_receiver.recv() else { panic!("fresh owner failed"); };
+        assert_eq!(packet.data, vec![9; bytes]);
+    }
+    println!("AUDIO_MAILBOX_ALLOC_CASE=pass kind={} bytes={bytes} queued={queued} budget={budget} refusals={refusals} terminal={} state=checked",
+        if healthy { "healthy" } else { "refusal" }, !healthy);
+}
+
+#[test]
+fn frame_admission_allocation_failure_is_terminal_and_recoverable() {
+    use std::{os::unix::process::ExitStatusExt, process::Command};
+    if let Ok(case) = std::env::var("AUDIO_MAILBOX_ALLOC_CASE") {
+        allocation_admission_case(&case);
+        return;
+    }
+    let executable = std::env::current_exe().unwrap();
+    let run = |case: &str| Command::new(&executable)
+        .args(["--exact", "frame_admission_allocation_failure_is_terminal_and_recoverable", "--nocapture"])
+        .env("AUDIO_MAILBOX_ALLOC_CASE", case).output().unwrap();
+    let probe = run("probe");
+    assert_eq!(probe.status.signal(), Some(6));
+    assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+    println!("AUDIO_MAILBOX_ALLOC_PROBE=observed bytes=31 signal={:?}", probe.status.signal());
+    let mut passed = 0;
+    for bytes in [1, 4096] {
+        for queued in [0, 4, 8] {
+            let allocations = if queued == 8 { 1 } else { 2 };
+            for budget in 0..=allocations {
+                let kind = if budget == allocations { "healthy" } else { "refusal" };
+                let case = format!("{kind}:{bytes}:{queued}:{budget}");
+                let output = run(&case);
+                assert!(output.stdout.len() + output.stderr.len() <= 65536);
+                for line in String::from_utf8_lossy(&output.stdout).lines() {
+                    if line.starts_with("AUDIO_MAILBOX_ALLOC_CASE=") { println!("{line}"); }
+                }
+                print!("{}", String::from_utf8_lossy(&output.stderr));
+                println!("AUDIO_MAILBOX_ALLOC_CHILD=observed case={case} success={} signal={:?}", output.status.success(), output.status.signal());
+                passed += usize::from(output.status.success());
+            }
+        }
+    }
+    assert_eq!(passed, 16, "every allocation refusal must return a terminal result and healthy admission must preserve packets");
+    println!("AUDIO_MAILBOX_ALLOC=pass refusals=10 healthy=6 probe=SIGABRT children=joined");
+}
 #[test]
 fn output_error_callback_wakes_the_idle_owner_and_joins_off_callback() {
     use std::{sync::mpsc, thread, time::Duration};

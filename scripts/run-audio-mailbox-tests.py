@@ -112,8 +112,13 @@ def main():
             raise ValueError("mailbox test executable is absent or ambiguous")
         artifact = artifacts[0]
         artifact_sha = digest(artifact.read_bytes())
-        print(f"AUDIO_MAILBOX_BUILD=sha256={artifact_sha} tests=34", flush=True)
-        run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, timeout=30)
+        print(f"AUDIO_MAILBOX_BUILD=sha256={artifact_sha} tests=35", flush=True)
+        try:
+            run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, timeout=30)
+        finally:
+            if digest(artifact.read_bytes()) != artifact_sha:
+                raise ValueError("mailbox artifact changed during execution")
+            print(f"AUDIO_MAILBOX_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=35 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("mailbox test artifact or dependencies changed")
         for name, data in inputs.items():
@@ -122,7 +127,7 @@ def main():
             print(f"AUDIO_MAILBOX_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
         if (fixture / "output-method.rs").read_bytes() != generated:
             raise ValueError("extracted output method changed")
-        print(f"AUDIO_MAILBOX_ARTIFACT=pass sha256={artifact_sha} tests=34 unchanged=before-after", flush=True)
+        print(f"AUDIO_MAILBOX_ARTIFACT=pass sha256={artifact_sha} tests=35 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

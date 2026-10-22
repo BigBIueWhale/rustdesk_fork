@@ -10238,6 +10238,9 @@ impl Connection {
                                         "controlled audio decoder is closed; dropping peer audio frame"
                                     );
                                 }
+                                AudioFrameAdmission::ResourceUnavailable => {
+                                    log::error!("controlled audio mailbox could not reserve frame storage; admission closed");
+                                }
                             }
                         } else {
                             log::warn!(

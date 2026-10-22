@@ -4419,6 +4419,7 @@ run_focused_rust_tests() {
                 audio_mailbox::tests::output_activation_refuses_a_retired_receiver
                 audio_mailbox::tests::output_failure_and_readiness_converge_across_native_threads
                 output_error_callback_wakes_the_idle_owner_and_joins_off_callback
+                frame_admission_allocation_failure_is_terminal_and_recoverable
                 audio_buffer::tests::first_observation_arms_only_its_own_window
                 audio_buffer::tests::exact_interval_trims_without_early_retirement
                 audio_buffer::tests::independently_started_buffers_do_not_postpone_each_other
@@ -6106,7 +6107,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
         printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=22 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=34 bridge=absent\n'
+        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=35 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
         printf 'WHITEBOARD_CLIENT_STATE_PROFILE=whiteboard-client stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
@@ -6417,9 +6418,12 @@ PY
             || fail 'audio-buffer artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-mailbox summary count differs'
-        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=34 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=35 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'AUDIO_MAILBOX_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'audio-mailbox artifact receipt differs'
+        [ "$(grep -Fxc 'AUDIO_MAILBOX_ALLOC=pass refusals=10 healthy=6 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^AUDIO_MAILBOX_ALLOC_CHILD=observed .* success=true signal=None$' "$output")" -eq 16 ] \
+            || fail 'audio-mailbox allocation outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'resolution-restoration summary count differs'
         [ "$(grep -Ec '^RESOLUTION_RESTORATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -7076,7 +7080,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-            grep -E '^test (audio_mailbox|audio_buffer)::tests::.* \.\.\. ok$|^AUDIO_MAILBOX_(ARTIFACT|BUILD|DEPENDENCIES|INPUT|METHOD)=|^AUDIO_(OUTPUT_ERROR|FRAME_ALIGNMENT|GEOMETRY_RESET)=' "$output"
+            grep -E '^test ((audio_mailbox|audio_buffer)::tests::.*|output_error_callback_wakes_the_idle_owner_and_joins_off_callback|frame_admission_allocation_failure_is_terminal_and_recoverable) \.\.\. ok$|^AUDIO_MAILBOX_(ARTIFACT(_AFTER)?|BUILD|DEPENDENCIES|INPUT|METHOD|ALLOC(_CASE|_CHILD|_PROBE)?)=|^AUDIO_(OUTPUT_ERROR|FRAME_ALIGNMENT|GEOMETRY_RESET)=' "$output"
             printf 'AUDIO_MAILBOX_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-mailbox-and-generated-protobuf rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

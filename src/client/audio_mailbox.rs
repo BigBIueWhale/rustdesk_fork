@@ -217,6 +217,7 @@ pub(crate) enum AudioFrameAdmission {
     ReplacedOldest,
     AwaitingFormat,
     Oversized,
+    ResourceUnavailable,
     Closed,
 }
 
@@ -238,6 +239,12 @@ pub(super) fn audio_mailbox() -> (AudioMailboxSender, AudioMailboxReceiver) {
 }
 
 impl AudioMailboxSender {
+    #[cfg(test)]
+    pub(super) fn state_for_test(&self) -> (bool, bool, usize) {
+        let state = self.shared.state.lock().unwrap();
+        (state.closed, state.format.is_some(), state.frames.len())
+    }
+
     pub(crate) fn admit_format(&self, format: AudioFormat) -> AudioFormatAdmission {
         let mut state = self.shared.state.lock().unwrap();
         if state.closed {

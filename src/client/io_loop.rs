@@ -3695,6 +3695,9 @@ impl<T: InvokeUiSession> Remote<T> {
                                         "viewer audio decoder is closed; dropping peer audio frame"
                                     );
                                 }
+                                AudioFrameAdmission::ResourceUnavailable => {
+                                    log::error!("viewer audio mailbox could not reserve frame storage; admission closed");
+                                }
                             }
                         } else {
                             log::warn!(

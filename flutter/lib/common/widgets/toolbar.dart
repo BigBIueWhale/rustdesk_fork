@@ -473,21 +473,14 @@ Future<List<TRadioMenu<String>>> toolbarCodec(
   final groupValue = await bind.sessionGetOption(
           sessionId: sessionId, arg: kOptionCodecPreference) ??
       '';
-  final List<bool> codecs = [];
+  var vp8 = false;
   try {
     final Map codecsJson = jsonDecode(alternativeCodecs);
-    final vp8 = codecsJson['vp8'] ?? false;
-    final h264 = codecsJson['h264'] ?? false;
-    final h265 = codecsJson['h265'] ?? false;
-    codecs.add(vp8);
-    codecs.add(h264);
-    codecs.add(h265);
+    vp8 = codecsJson['vp8'] ?? false;
   } catch (e) {
     debugPrint("Show Codec Preference err=$e");
   }
-  final visible =
-      codecs.length == 3 && (codecs[0] || codecs[1] || codecs[2]);
-  if (!visible) return [];
+  if (!vp8) return [];
   onChanged(String? value) async {
     if (value == null) return;
     await bind.sessionPeerOption(
@@ -495,12 +488,12 @@ Future<List<TRadioMenu<String>>> toolbarCodec(
     bind.sessionChangePreferCodec(sessionId: sessionId);
   }
 
-  TRadioMenu<String> radio(String label, String value, bool enabled) {
+  TRadioMenu<String> radio(String label, String value) {
     return TRadioMenu<String>(
         child: Text(label),
         value: value,
         groupValue: groupValue,
-        onChanged: enabled ? onChanged : null);
+        onChanged: onChanged);
   }
 
   var autoLabel = translate('Auto');
@@ -509,11 +502,9 @@ Future<List<TRadioMenu<String>>> toolbarCodec(
     autoLabel = '$autoLabel (${ffi.qualityMonitorModel.data.codecFormat})';
   }
   return [
-    radio(autoLabel, 'auto', true),
-    if (codecs[0]) radio('VP8', 'vp8', codecs[0]),
-    radio('VP9', 'vp9', true),
-    if (codecs[1]) radio('H264', 'h264', codecs[1]),
-    if (codecs[2]) radio('H265', 'h265', codecs[2]),
+    radio(autoLabel, 'auto'),
+    radio('VP8', 'vp8'),
+    radio('VP9', 'vp9'),
   ];
 }
 

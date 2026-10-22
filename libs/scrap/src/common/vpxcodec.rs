@@ -626,13 +626,13 @@ impl GoogleImage for Image<'_> {
     }
 
     #[inline]
-    fn stride(&self) -> Vec<i32> {
-        self.inner().stride.iter().map(|x| *x as i32).collect()
+    fn stride(&self) -> [i32; 4] {
+        self.inner().stride
     }
 
     #[inline]
-    fn planes(&self) -> Vec<*mut u8> {
-        self.inner().planes.iter().map(|p| *p as *mut u8).collect()
+    fn planes(&self) -> [*mut u8; 4] {
+        self.inner().planes
     }
 
     fn chroma(&self) -> Chroma {

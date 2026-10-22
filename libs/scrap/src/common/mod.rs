@@ -418,8 +418,8 @@ macro_rules! generate_call_ptr_macro {
 pub trait GoogleImage {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
-    fn stride(&self) -> Vec<i32>;
-    fn planes(&self) -> Vec<*mut u8>;
+    fn stride(&self) -> [i32; 4];
+    fn planes(&self) -> [*mut u8; 4];
     fn chroma(&self) -> Chroma;
     fn get_bytes_per_row_checked(w: usize, fmt: ImageFormat, align: usize) -> Option<usize> {
         let bytes_per_pixel = match fmt {
@@ -442,11 +442,11 @@ pub trait GoogleImage {
     }
     // rgb [in/out] fmt and stride must be set in ImageRgb
     fn to(&self, rgb: &mut ImageRgb) -> ResultType<()> {
-        rgb.w = self.width();
-        rgb.h = self.height();
-        let bytes_per_row = Self::get_bytes_per_row_checked(rgb.w, rgb.fmt, rgb.align())
+        let width = self.width();
+        let height = self.height();
+        let bytes_per_row = Self::get_bytes_per_row_checked(width, rgb.fmt, rgb.align())
             .ok_or_else(|| anyhow!("native video decoded row size overflow or invalid alignment"))?;
-        let decoded_len = rgb.h.checked_mul(bytes_per_row).ok_or_else(|| {
+        let decoded_len = height.checked_mul(bytes_per_row).ok_or_else(|| {
             anyhow!("native video decoded buffer size overflow")
         })?;
         if decoded_len > MAX_NATIVE_VIDEO_DECODED_BYTES {
@@ -454,6 +454,7 @@ pub trait GoogleImage {
                 "native video decoded buffer too large: {decoded_len} > {MAX_NATIVE_VIDEO_DECODED_BYTES}"
             );
         }
+        rgb.raw.try_reserve_exact(decoded_len.saturating_sub(rgb.raw.len()))?;
         rgb.raw.resize(decoded_len, 0);
         let stride = self.stride();
         let planes = self.planes();
@@ -533,6 +534,8 @@ pub trait GoogleImage {
                 _ => log::error!("unsupported pixfmt: {:?}", self.chroma()),
             }
         }
+        rgb.w = width;
+        rgb.h = height;
         Ok(())
     }
     fn data(&self) -> (&[u8], &[u8], &[u8]) {

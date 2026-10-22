@@ -1714,6 +1714,12 @@ controls, with joined bounded-RAM cleanup. The caller binding is source reviewed
 full application compilation/tracing, other targets, native presentation, R-F5
 latency/recovery/soaks and installed R-S0 acceptance remain OPEN.
 
+Codec acceptance here follows R-R2b's software-only VP8/VP9 build matrix.
+`hwcodec`, `vram` and `mediacodec` are forbidden in every build; compiling those
+features or qualifying their drivers is outside the supported acceptance scope.
+Current supported-build and final-artifact exclusion, dormant native-codec source
+review, and R-S11ey software-RGBA plugin/package execution remain OPEN.
+
 **Captured-frame viewport — Linux component accepted; application/native OPEN.**
 `40745d16` requires captured width/height to equal the encoder's visible frame.
 VPX reports those visible dimensions in `EncodeYuvFormat`; checked padded
@@ -1734,16 +1740,16 @@ VP9 control also exceeds it. The explicit reference-oracle correction and both
 original failing runs are retained in `frame-viewport-4afce1ce.json`, with exact
 sources/artifacts and joined bounded-RAM cleanup. The older odd-I420 descriptor
 assertion now checks visible dimensions; its storage and round-trip checks remain.
-Full application capture/encoder replacement, hardware/other native targets,
+Full application capture/encoder replacement, other supported native targets,
 padding lifecycle, full application tracing,
 actual presentation/R-F5 and installed R-S0 acceptance remain OPEN.
 
-**YUV conversion storage — Linux component accepted; hardware/app OPEN.**
+**YUV conversion storage — Linux component accepted; application/native OPEN.**
 `9539d75c` carries the encoder's required byte length in `EncodeYuvFormat`,
 validates dimensions, native integer limits, source extent and disjoint plane
 ranges before native pointers, and passes the independent I420 V stride.
-VPX supplies its checked layout length; hardware supplies its positive native
-length. Conversion reserves output and required intermediate capacity before
+VPX supplies its checked layout length.
+Conversion reserves output and required intermediate capacity before
 resizing either buffer, returning allocation errors with old bytes/lengths intact.
 The guessed oversized allocations and per-branch infallible growth are removed.
 
@@ -1759,17 +1765,16 @@ in 138 VM seconds, including prior native X11 PNG and VPX controls.
 `yuv-storage-045f5e09.json` retains sources, artifacts, observations and joined
 bounded-RAM cleanup. Fixtures add the required length field and three length
 refusals; the original failure/pixel/retry oracles remain unchanged.
-Hardware/VRAM compilation and drivers, full application/other native targets,
+Full application and other supported native targets,
 full capture/encoder lifecycle and padding, C-heap/persistent global OOM, installed R-S0,
 actual presentation and R-F5 acceptance remain OPEN.
 
-**Encoder format snapshots — Linux VPX component accepted; hardware/app OPEN.**
+**Encoder format snapshots — Linux VPX component accepted; application/native OPEN.**
 `0d26ee85` stores the three used YUV plane strides inline and makes
 `EncodeYuvFormat` copyable. VPX no longer allocates its stride vector or clones
 it on every read; the application passes the value directly while retaining its
-trace snapshot. The hardware getter copies the same three native values, and
-texture frames continue to bypass YUV conversion. Dimensions, offsets and the
-three consumed strides are preserved; unused native plane slots are omitted.
+trace snapshot. Dimensions, offsets and the three consumed strides are preserved;
+unused native plane slots are omitted.
 
 At unchanged-product `15b1b4c4`, a refused 32-byte VPX descriptor allocation aborts
 the new child while nineteen controls pass. The identical new test passes after
@@ -1780,7 +1785,7 @@ plane samples. All twenty focused tests pass in 148 VM seconds. Prior nine-pair
 conversion fixtures change only vector construction/copies to inline metadata;
 their pixel/error checks remain. `encoder-layout-0d5758dd.json` binds exact source,
 native A/B artifacts, unchanged test body and joined bounded-RAM cleanup.
-Hardware/VRAM feature compilation and drivers, full application and other native
+Full application and other supported native
 targets, persistent global OOM,
 installed R-S0, actual presentation and R-F5 acceptance remain OPEN.
 
@@ -7376,20 +7381,6 @@ source-conformance gate had been **failing on a deliberately-absent file** since
 revert. The gate now reflects the accepted residual (`apple-conform-check` **PASS** at
 HEAD); re-closing #2b later restores the worker subsystem on *all* platforms, so the
 removal is deliberately not a presence-of-absence pin.
-
-On the same date a separate beyond-spec change (f0b9966) that had disabled the
-desktop viewer's GPU texture-upload display path — routing decoded peer RGBA
-through the native `texture_rgba_renderer` plugin — was also **reverted** by
-maintainer decision, restoring upstream GPU rendering. That plugin is
-**#2b-adjacent native viewer surface**, but distinct from and smaller than the
-decode residual itself: it receives already-decoded, shape/length-validated RGBA
-(no compressed-codec or container parser), and the soft `CustomPaint` fallback it
-replaced hands the same validated pixels to Skia's native image decode — so no
-decoder/parser surface is removed either way. With hwcodec compiled out, the
-texture upload was the desktop pipeline's only GPU acceleration; disabling it made
-every desktop viewer fully CPU-bound for display at no real security gain. It is
-accepted alongside #2b (viewer-side only; desktop Windows/Debian/macOS — Android
-and iOS already software-render).
 
 The genuinely-good companion work from that session is **kept**: the post-key
 DoS bounds above (R-T0/R-S7/R-S10), the `sanitize_relative_names` path-traversal

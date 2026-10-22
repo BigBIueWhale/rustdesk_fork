@@ -2026,7 +2026,7 @@ targets, installed R-S0, R-F5 recovery/soaks and release acceptance remain OPEN.
 
 **Video QoS — Linux controller/application boundary accepted; end-to-end latency OPEN.**
 
-Current component evidence reaches `115a449b`: all nineteen controller tests and
+Current component evidence reaches `757ebd0d`: all twenty controller tests and
 five quality-application tests pass in the focused Linux lane. The controller,
 application function and test sources are imported directly; shared configuration,
 protocol types and Quality are production definitions. Elapsed/RTT inputs and the
@@ -2065,6 +2065,10 @@ The current behavior is:
   rechecks that exact generation and recording state before publishing; a stale
   result requests recreation without replacing newer state. Pacing is reread
   after the call, and a newer quality target remains pending for the next update.
+- The existing 150-kbps quality-growth ceiling uses wide arithmetic and rounds
+  down to a representable ratio. A ceiling equal to the current ratio still
+  constrains growth. Zero bitrate, the `BR_SPEED` threshold, quality bounds and
+  congestion reductions retain their existing policy.
 
 **Retained evidence.** The named capsules are under
 `.harness-state/verifier-vm/`. They retain source/provenance and, for executed runs,
@@ -2086,9 +2090,10 @@ current full-parent or platform execution.
 | Quality application — `5c1dede9` | The private `check_qos` function propagates encoder errors and confirms ratio/bitrate only after success. Unsupported live adjustment requests capture-loop recreation for preset and custom targets, independently of the display registry. At behavior-identical preparation `dd462cb9`, 21 tests pass/two fail: one rejected update is falsely confirmed and later attempts are skipped; unsupported custom changes return success. The identical 23-case module passes after correction. Two refused attempts preserve 0.67/2000 and perform no bitrate read; the third retries and confirms success. Four unsupported preset/custom and registered/absent-display cases return `SWITCH` without applying or confirming. Successful targets apply once each; recording, pacing and accounting controls pass. The first fixture attempt has an explicit module-path compilation failure and no behavioral result. Actual source is imported with a controlled encoder; supported software-codec errors, capture-loop recreation and live-peer presentation remain OPEN. | `encoder-quality-55aff11b.json` |
 | Unlocked encoder calls and display generations — `115a449b` | At unchanged-product preparation `147b1acc`, all nine joined-thread scenarios observe the QoS mutex unavailable during paused quality/bitrate calls; 23 controls pass and the new test fails. The corrected 24-test lane passes in 137 seconds. Native threads execute the production controller/application function with a controlled encoder: all nine pauses allow concurrent mutation; two feedback cases retain the newest target, publish fresh 2-FPS/500-ms pacing and retry; same-name replacement/controller reset reject stale publication and removal in four cases; two recording changes request recreation; one codec failure preserves prior confirmation and new feedback. All nine workers join. Fixtures pass the new generation argument and add a VBR prerequisite; core oracles and all nineteen controller test bodies remain unchanged. Capture-loop startup publication/cleanup wiring is source reviewed. Full application compilation, real software-codec blocking/refusal, multi-display behavior, capture-loop recreation, presentation and R-S0/R-F5 remain OPEN. R-R2b's software-only build policy is preserved. | `qos-encoder-lease-e79f51d6.json` |
 | Focused/full-parent lanes — `6915dfb9` | Both source-bound eighteen-case lanes pass at that source: focused 145 seconds versus full parent 304 seconds. A first focused transaction was rejected for a missing offline canary despite passing tests; the admitted runner checks the canary before compilation. This is not current full-parent acceptance. | `video-qos-controller-6915dfb9.json` |
+| Bitrate-growth arithmetic — `93f37385` | At `f9802627`, the 45-case regression observes fifteen overflow panics and four budget violations while all 24 prior tests pass. The unchanged test passes after correction across five qualities and nine bitrates from zero through `u32::MAX`; viewer limits, selected quality, rate, metadata and subsequent adaptation remain correct. All 25 component tests pass in 127 seconds at `757ebd0d`. Two rejected wrapper-count runs remain unaccepted; internal named/total checks now derive from the required-test list, and failure output is bounded and retained. Inputs and encoder behavior are controlled; real bitrate/peer/presentation and installed/release acceptance remain OPEN. | `qos-bitrate-growth-f7692cab.json` |
 
 **Verification tiers.** `--video-qos-controller-tests` is the ordinary focused lane;
-the latest accepted 24-case transaction took 137 seconds.
+the latest accepted 25-case transaction took 127 seconds.
 `--video-qos-tests` retains complete-parent integration for
 relevant milestones. Its older eighteen-case pass does not validate the current
 whole application. The shared Rust 1.75 compiler admits only its closed target tuples and

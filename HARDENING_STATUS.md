@@ -1805,6 +1805,32 @@ artifacts, attempts and cleanup are retained in `vpx-input-1c1f3575.json`.
 Full product, other-platform, installed/LPE, R-S0/R-F5 and release acceptance
 remain OPEN.
 
+**VPX continuous encoding — native component accepted; app acceptance OPEN.**
+
+`285acf07` configures zero lookahead, keeps target bitrate at least 1 kbit/s at
+construction and live quality updates, and removes per-input end-of-stream flushing.
+The explicit final-drain API, reference-state owner, CBR/drop policy, bounds and pins remain.
+At unchanged-product preparation `110186f4`, all six paced 32x32 cases fail:
+zero bitrate repeats old VP8 packets or produces no message, while raw VP9 retains
+seven frames until flush. Fifteen existing native controls pass.
+
+The final `7e8b268e` transaction passes sixteen tests in 133 seconds. VP8/I420,
+VP9/I420 and VP9/I444 each run eight changing images through raw encoding and the
+production message API, with two quality changes per path. All 48 selected frames
+have current ordered timestamps, decodable distinct pixels and no final buffered tail.
+Timestamps model 1 FPS; this is no wall-clock or presentation-latency measurement.
+The first 33-ms fixtures also encountered normal rate-control dropping and are partial
+evidence. The initial two-level color oracle was too strict for lossy VP9; `7e8b268e`
+preserves the timing/count/quality checks and accepts disjoint eight-level RGB ranges
+whose nearest expected greys are eighteen levels apart. Actual maximum error is three;
+every pixel's alpha is exact. Earlier codec, format-refusal, allocation, X11 and PNG
+controls remain green.
+
+`vpx-low-delay-eab02790.json` binds sources, fixture/oracle corrections, actual artifacts,
+receipts and joined bounded-RAM cleanup. Complete peer publication, network recovery,
+real-time performance/soak, other platforms/devices, installed/R-S0/R-F5 and release
+acceptance remain OPEN. All separately parked work stays parked.
+
 **Video QoS — Linux controller/application boundary accepted; end-to-end latency OPEN.**
 
 Current component evidence reaches `5c1dede9`: all nineteen controller tests and

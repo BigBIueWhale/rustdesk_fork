@@ -41,6 +41,7 @@ pub(super) mod tests {
         static OUTPUT_ALLOCATION: Cell<(bool, usize)> = const { Cell::new((false, 0)) };
         static EXACT_ALLOCATION: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
         static REFUSE_ALL_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
+        static DECODER_INPUT_ALLOCATION: Cell<(usize, usize, bool)> = const { Cell::new((0, 0, false)) };
     }
 
     struct OutputAllocator;
@@ -69,6 +70,17 @@ pub(super) mod tests {
     }
 
     fn refuse_allocation(size: usize) -> bool {
+        if DECODER_INPUT_ALLOCATION.try_with(|state| {
+            let (target, count, refuse) = state.get();
+            if target != 0 && target == size {
+                state.set((target, count + 1, refuse));
+                refuse
+            } else {
+                false
+            }
+        }).unwrap_or(false) {
+            return true;
+        }
         if REFUSE_ALL_ALLOCATIONS.try_with(Cell::get).unwrap_or(false) {
             return true;
         }
@@ -121,6 +133,98 @@ pub(super) mod tests {
 
     #[global_allocator]
     static OUTPUT_ALLOCATOR: OutputAllocator = OutputAllocator;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn slice_decoding_uses_existing_input_storage() {
+        use std::os::unix::process::ExitStatusExt;
+
+        fn observe<T>(refuse: bool, action: impl FnOnce() -> T) -> (T, usize) {
+            struct Reset;
+            impl Drop for Reset {
+                fn drop(&mut self) {
+                    DECODER_INPUT_ALLOCATION.with(|state| state.set((0, 0, false)));
+                }
+            }
+            let target = zstd::zstd_safe::DCtx::in_size();
+            assert!(target > SIZE + 1);
+            DECODER_INPUT_ALLOCATION.with(|state| {
+                assert_eq!(state.get(), (0, 0, false));
+                state.set((target, 0, refuse));
+            });
+            let reset = Reset;
+            let result = action();
+            let count = DECODER_INPUT_ALLOCATION.with(|state| state.get().1);
+            drop(reset);
+            (result, count)
+        }
+
+        if let Ok(case) = std::env::var("RD_FILE_BLOCK_ALLOC_INPUT_CASE") {
+            if case == "probe" {
+                observe(true, || std::hint::black_box(
+                    Vec::<u8>::with_capacity(zstd::zstd_safe::DCtx::in_size())
+                ));
+                panic!("positive allocation-refusal probe did not abort");
+            }
+            let mut fields = case.split(':');
+            let mode = fields.next().unwrap();
+            let path = fields.next().unwrap();
+            let size: usize = fields.next().unwrap().parse().unwrap();
+            assert!(fields.next().is_none());
+            assert!(matches!(mode, "count" | "refuse"));
+            assert!(matches!(path, "shared" | "file"));
+            assert!([0, 1, SIZE].contains(&size));
+            let input = vec![0x5a; size];
+            let encoded = compress(&input).unwrap();
+            let original = encoded.clone();
+            let (results, allocations) = observe(mode == "refuse", || {
+                let decode_once = || match path {
+                    "shared" => try_decompress_with_limit(&encoded, size),
+                    _ => decode(&encoded, true).map(Cow::into_owned),
+                };
+                (decode_once(), decode_once())
+            });
+            assert_eq!(results.0.unwrap(), input);
+            assert_eq!(results.1.unwrap(), input);
+            assert_eq!(encoded, original);
+            println!("DECOMPRESSION_INPUT_CASE=observed mode={mode} path={path} bytes={size} reads=2 input_allocations={allocations} exact=true");
+            return;
+        }
+
+        let thread = std::thread::current();
+        let name = thread.name().unwrap();
+        let run = |case: &str| Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture", "--test-threads=1"])
+            .env("RD_FILE_BLOCK_ALLOC_INPUT_CASE", case)
+            .output().unwrap();
+        let probe = run("probe");
+        let probe_ok = probe.status.signal() == Some(6)
+            && String::from_utf8_lossy(&probe.stderr).contains("memory allocation of");
+        println!("DECOMPRESSION_INPUT_PROBE=observed bytes={} signal={:?} passed={probe_ok}",
+            zstd::zstd_safe::DCtx::in_size(), probe.status.signal());
+        let mut all_ok = probe_ok;
+        for mode in ["count", "refuse"] {
+            for path in ["shared", "file"] {
+                for size in [0, 1, SIZE] {
+                    let output = run(&format!("{mode}:{path}:{size}"));
+                    let mut records = 0;
+                    for line in String::from_utf8_lossy(&output.stdout).lines() {
+                        if line.starts_with("DECOMPRESSION_INPUT_CASE=") {
+                            println!("{line}");
+                            records += 1;
+                            all_ok &= line.contains(" input_allocations=0 exact=true");
+                        }
+                    }
+                    print!("{}", String::from_utf8_lossy(&output.stderr));
+                    println!("DECOMPRESSION_INPUT_CHILD=observed mode={mode} path={path} bytes={size} success={} signal={:?}",
+                        output.status.success(), output.status.signal());
+                    all_ok &= output.status.success() && records == 1;
+                }
+            }
+        }
+        assert!(all_ok, "slice decoding must use its existing input storage");
+        println!("DECOMPRESSION_INPUT=pass paths=2 sizes=3 healthy=6 refused=6 probe=SIGABRT children=joined");
+    }
 
     #[test]
     fn allocation_refusal_returns_error_and_preserves_retry() {

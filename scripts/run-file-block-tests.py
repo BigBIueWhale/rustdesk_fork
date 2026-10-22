@@ -92,15 +92,20 @@ def main():
             raise ValueError("file-block artifact is absent or ambiguous")
         artifact = candidates[0]
         artifact_sha = digest(artifact.read_bytes())
-        print(f"FILE_BLOCK_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=8", flush=True)
-        run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, 20)
+        print(f"FILE_BLOCK_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=9", flush=True)
+        try:
+            run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, 20)
+        finally:
+            if digest(artifact.read_bytes()) != artifact_sha:
+                raise ValueError("file-block artifact changed during execution")
+            print(f"FILE_BLOCK_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=9 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("file-block artifact or lock changed")
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"file-block source changed: {name}")
             print(f"FILE_BLOCK_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"FILE_BLOCK_ARTIFACT=pass sha256={artifact_sha} tests=8 unchanged=before-after", flush=True)
+        print(f"FILE_BLOCK_ARTIFACT=pass sha256={artifact_sha} tests=9 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

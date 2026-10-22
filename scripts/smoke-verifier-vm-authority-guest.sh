@@ -3660,6 +3660,7 @@ run_focused_rust_tests() {
                 fs::file_block::tests::small_output_cannot_authorize_a_larger_history_window
                 fs::file_block::tests::malformed_and_truncated_frames_refuse
                 fs::file_block::tests::allocation_refusal_returns_error_and_preserves_retry
+                fs::file_block::tests::slice_decoding_uses_existing_input_storage
                 compress::tests::decompression_is_fallible_and_output_bounded
                 compress::tests::decompression_history_window_is_independent_of_output_limit
             )
@@ -4266,6 +4267,7 @@ run_focused_rust_tests() {
                 file_block::tests::small_output_cannot_authorize_a_larger_history_window
                 file_block::tests::malformed_and_truncated_frames_refuse
                 file_block::tests::allocation_refusal_returns_error_and_preserves_retry
+                file_block::tests::slice_decoding_uses_existing_input_storage
             )
         elif [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
             container_name=rustdesk-fusermount-process-tests
@@ -6099,7 +6101,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=5 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
-        printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=8 bridge=absent\n'
+        printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
         printf 'FUSE_PROCESS_PROFILE=fusermount-process stage=container-start tests=43 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
@@ -6381,11 +6383,14 @@ PY
             || fail 'control-egress artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'file-block summary count differs'
-        [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=9 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FILE_BLOCK_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'file-block artifact receipt differs'
         [ "$(grep -Fxc 'FILE_COMPRESSION_ALLOCATION=pass cases=3 refusals=3 retries=exact wire=unchanged' "$output")" -eq 1 ] \
             || fail 'compression output allocation refusal or retry differs'
+        [ "$(grep -Fxc 'DECOMPRESSION_INPUT=pass paths=2 sizes=3 healthy=6 refused=6 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^DECOMPRESSION_INPUT_CHILD=observed .* success=true signal=None$' "$output")" -eq 12 ] \
+            || fail 'slice decoder input-storage outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
         [ "${#result_lines[@]}" -eq 3 ] || fail 'FUSE process summary count differs'
         [ "$(grep -Ec '^FUSE_PROCESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=18 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -6940,7 +6945,7 @@ PY
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests|open_tests)|cpace::(seal_tests|open_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|RECEIVE_CIPHER|RECEIVE_CODEC)' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'decompression test total differs'
-            grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_WINDOW' "$output"
+            grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_(WINDOW|INPUT)' "$output"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'send admission test total differs'
             [ "$(grep -Fxc 'SEND_READ_ALLOCATION=pass cases=3 refusals=3 state=preserved retries=exact eof=exact' "$output")" -eq 1 ] \
@@ -7060,7 +7065,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then
-            grep -E '^test (file_block|compress)::tests::.* \.\.\. ok$|^FILE_BLOCK_(ARTIFACT(_BEFORE)?|DEPENDENCIES|INPUT)=|^FILE_COMPRESSION_(ALLOCATION|CASE)=' "$output"
+            grep -E '^test (file_block|compress)::tests::.* \.\.\. ok$|^FILE_BLOCK_(ARTIFACT(_BEFORE|_AFTER)?|DEPENDENCIES|INPUT)=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^DECOMPRESSION_INPUT' "$output"
             printf 'FILE_BLOCK_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-file-block-decoder-and-compressor rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

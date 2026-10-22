@@ -11733,6 +11733,11 @@ if [ "$MODE" = flutter-peer-presentation ]; then
 fi
 
 if [ "$MODE" = authority-smoke ]; then
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        /usr/bin/python3 -B -I -S \
+            "$VERIFY_REPO/scripts/verify-flutter-peer-presentation.py" --repo "$VERIFY_REPO" \
+        || fail 'Flutter full-peer source contract failed'
     for syntax_source in verify.sh dart-verify.sh apple-conform-check.sh lib.sh online-fetch.sh provision-windows-vm.sh; do
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \

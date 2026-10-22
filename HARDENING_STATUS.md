@@ -15109,6 +15109,21 @@ This compares the old getter and current production entry points, not two whole-
 Length equality is observed at digest creation; content snapshots, later same-size mutations,
 actual CM IPC/caller error delivery, CPace handshake, installed/other-platform and release acceptance remain OPEN.
 
+**Send-read storage — Linux library allocation/retry comparison ACCEPTED; caller/platform integration OPEN.**
+`cde5ec71` reserves and initializes the existing bounded input buffer before source
+reads or progress mutation. Refusal returns `OutOfMemory` while retaining the same
+job and open source. At unchanged-product preparation `5a3cc395`, the new regression's
+owned child aborts on its one-byte allocation while the three selected controls pass.
+The identical four-test library shard passes after correction in 169 reported VM
+seconds. Empty, one-byte and 128-KiB sources retain kernel file position zero, the
+same descriptor and job counters/flags after refusal; retry delivers exact decoded
+payload and EOF while preserving source bytes. The two CM/keyed-TCP digest tests and
+the existing compression/decoder allocation regression also pass. No automatic retry
+or authority path is added. `send-read-allocation-bf8e66da.json` binds exact source,
+artifacts, native outcomes and joined bounded-RAM cleanup. Application sender/error
+delivery, other platforms, persistent/global memory pressure, installed privilege,
+R-S0/R-F5 and release acceptance remain OPEN.
+
 **Completion before list admission — Linux library regression ACCEPTED; caller integration OPEN.**
 Current source refuses `Done(0)` before any list is admitted, including after a rejected
 first list. The viewer creates a receive job before the peer's directory response and uses

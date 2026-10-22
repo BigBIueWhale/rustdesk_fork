@@ -32,6 +32,9 @@ impl std::io::Write for BoundedScreenshotPng {
                 "PNG exceeds screenshot response limit",
             ));
         }
+        self.data
+            .try_reserve(buf.len())
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
         self.data.extend_from_slice(buf);
         Ok(buf.len())
     }

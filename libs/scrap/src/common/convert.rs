@@ -37,8 +37,8 @@ impl YuvConversionLayout {
         if [width, height, format.w, format.h]
             .iter()
             .any(|&dimension| dimension == 0 || dimension > native_max)
-            || width > format.w
-            || height > format.h
+            || width != format.w
+            || height != format.h
         {
             bail!("invalid YUV conversion dimensions");
         }

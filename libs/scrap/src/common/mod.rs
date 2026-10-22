@@ -243,7 +243,9 @@ impl Pixfmt {
 #[derive(Debug, Clone, Copy)]
 pub struct EncodeYuvFormat {
     pub pixfmt: Pixfmt,
+    /// Required captured width, excluding plane-storage padding.
     pub w: usize,
+    /// Required captured height, excluding plane-storage padding.
     pub h: usize,
     pub stride: [usize; 3],
     pub u: usize,

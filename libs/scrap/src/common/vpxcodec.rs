@@ -195,8 +195,8 @@ impl EncoderApi for VpxEncoder {
                     i444,
                     yuvfmt: EncodeYuvFormat {
                         pixfmt: if i444 { Pixfmt::I444 } else { Pixfmt::I420 },
-                        w: layout.w,
-                        h: layout.h,
+                        w: config.width as _,
+                        h: config.height as _,
                         stride: [layout.stride[0], layout.stride[1], layout.stride[2]],
                         u: layout.u,
                         v: layout.v,
@@ -735,7 +735,7 @@ mod tests {
                 let format = encoder.yuvfmt();
                 let storage_width = (width as usize + 1) & !1;
                 let storage_height = (height as usize + 1) & !1;
-                let correct = format.w == storage_width && format.h == storage_height
+                let correct = format.w == width as usize && format.h == height as usize
                     && format.stride[0] == 64 && format.stride[1] == 32
                     && format.u == 64 * storage_height
                     && format.v == format.u + 32 * storage_height / 2;

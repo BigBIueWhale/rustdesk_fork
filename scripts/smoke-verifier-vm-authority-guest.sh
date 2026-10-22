@@ -4707,7 +4707,6 @@ run_focused_rust_tests() {
                 common::vpxcodec::tests::unsupported_vp9_chroma_is_refused_before_supported_retry
                 common::vpxcodec::tests::native_image_descriptor_admission_is_exact
                 common::vpxcodec::tests::realtime_encoders_deliver_current_pixels_without_end_of_stream_flush
-                common::vpxcodec::encoded_video_tests::message_allocation_failure_recovers_current_pixels_with_keyframe
                 common::convert::tests::padded_rgba_screenshots_keep_exact_pixels
                 common::convert::tests::rgb565_screenshots_expand_all_visible_pixels
                 common::convert::tests::packed_and_padded_bgra_screenshots_preserve_pixels

@@ -1694,6 +1694,31 @@ The final transaction takes 142 seconds. Harness, oracle, test bodies, compiler,
 inputs and resource budgets are identical across A/B. Exact sources, PNG/RGBA
 hashes and cleanup are retained in `screenshot-x11-f539fc01.json`.
 
+**Capture stride metadata — Linux component accepted; other native targets OPEN.**
+
+`244a186d` changes `TraitPixelBuffer::stride` from an allocated vector to one
+`usize`. X11, DXGI, Android and Quartz all exposed exactly one stride; every
+consumer used only that element. Constructors retain their previous calculation
+and layout checks, and callers now consume the integer directly. Planar decoder
+and destination-stride metadata are unchanged.
+
+At unchanged-product `25c51dcb`, the two native children abort when construction's
+32-byte allocation or the getter's 8-byte allocation is refused; sixteen controls
+pass. The identical fixture at `74a5dcd5` passes both operations without allocating,
+and all eighteen tests pass in the zero-NIC VM in 151 seconds. Real 24/16-bit X11
+capture retains exact colors and opaque alpha across all 8,514 PNG pixels. The
+earlier corrected run's final report still expected sixteen tests; that one count
+is corrected without changing product code, fixtures or native commands. Exact
+artifacts, raw observations and joined bounded-RAM cleanup are retained in
+`capture-stride-ef865a66.json`.
+
+The additional standalone X11 capture-mapping check is OPEN: admission refused
+27,648 MiB required versus 17,626 MiB available before launch. Android, Windows,
+macOS, full application/peer behavior, persistent global OOM, installed R-S0 and
+R-F5 acceptance remain OPEN. Separately, the pre-existing `ARGBToRAW` paths in
+the `capture_mag` and `screenshot` examples pass empty destination vectors;
+correct or remove those sample paths before treating them as usable.
+
 **Capture comparison allocation failure — native X11/component accepted.**
 
 `bfba2a98` reserves changed-frame cache storage before resizing or copying and returns

@@ -5257,7 +5257,7 @@ elif [ "$MODE" = ledger-token-count ]; then
         'VM storage profile limits and guest binding'
     require_exact_fixed_receipt 'VM_TRANSIENT_SUSPEND_CLI=pass profile=linux-flutter-suspend guest_mib=10240 required_mib=23552 insufficient_ram=refused allocation=not-entered' \
         'actual suspension profile CLI and RAM refusal'
-    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=35 controls=39 refusals=5 allocation=not-entered' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=36 controls=40 refusals=5 allocation=not-entered' \
         'VM workload class selection and unconfigured workload refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'
@@ -5641,6 +5641,13 @@ elif [ "$MODE" = android-frame-tests ]; then
         "$SERIAL_LOG" || true)
     [ "${#frame_x11_build[@]}" -eq 1 ] \
         || fail 'shared C frame-oracle build receipt is absent or duplicated'
+    require_exact_fixed_receipt \
+        'X11_OBSERVER_AGE=pass scope=controller-aggregation inputs=synthetic freshness=unchanged' \
+        'actual controller-loop age aggregation controls'
+    require_exact_fixed_receipt \
+        'X11_OBSERVER_PROGRESS=pass cases=8 scope=controller-aggregation inputs=synthetic replay=not-progress increasing=accepted' \
+        'actual controller loops require advancing frame counters'
+    printf 'X11_OBSERVER_PROGRESS=pass cases=8 scope=controller-aggregation inputs=synthetic replay=not-progress increasing=accepted\n'
     require_exact_fixed_receipt \
         'ANDROID_FRAME_NATIVE_X11_CASES=pass full_bits=32 reordered=refused incomplete=refused ambiguous=refused unknown=refused clock=refused mode=refused link=refused fifo=refused history=bounded uncertainty=sticky cleanup=joined' \
         'shared C frame-oracle identity/authority cases'

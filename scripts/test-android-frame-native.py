@@ -28,13 +28,14 @@ def test_observer_age(environment):
             "observer function boundaries are ambiguous")
     loops = controller[controller.index(begin):controller.index(end)]
     fixture = r'''
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 typedef void Display;
 typedef struct { int unused; } ViewerWindow;
-typedef struct { int failed; } SourceHistory;
+typedef struct { int failed; unsigned int count; } SourceHistory;
 #define FRESH_LIMIT_MS 1000U
 #define SAMPLE_INTERVAL_MS 40U
 static uint64_t clock_ms, sample_age;
@@ -50,15 +51,24 @@ static int64_t viewer_state(Display *display, const ViewerWindow *viewer,
                              uint64_t *captured_us) {
     (void)display; (void)viewer;
     *captured_us = clock_ms * 1000U;
+    if (mode == 4U) return 100 + sample_index % 2U;
+    if (mode == 5U) return 103 - (int64_t)sample_index;
+    if (mode == 6U) return 100;
+    if (mode == 7U) {
+        static const int64_t states[] = {10, 11, 10, 11, 12, 13};
+        return states[sample_index < 6U ? sample_index : 5U];
+    }
     return sample_index;
 }
 static int x11_frame_age(SourceHistory *history, const char *directory, int64_t state,
                          uint64_t captured_us, uint64_t *age) {
-    (void)history; (void)directory; (void)state; (void)captured_us;
+    (void)directory; (void)captured_us;
+    if (state >= 0 && (uint64_t)state >= history->count) history->count = (unsigned int)state + 1U;
     if (mode == 3U || (mode == 0U && sample_index == 1U)) return -1;
     sample_age = mode == 0U ? (sample_index == 0U ? 5000U :
                  sample_index == 2U ? 1000U : 30U) :
-                 mode == 1U ? (sample_index == 0U ? 1500U : 30U) : 2000U;
+                 mode == 1U ? (sample_index == 0U ? 1500U : 30U) :
+                 mode >= 4U ? 30U : 2000U;
     *age = sample_age;
     return 0;
 }
@@ -73,6 +83,7 @@ int main(void) {
     ViewerWindow viewer = {0};
     uint64_t first_fresh, maximum_age, maximum_gap;
     unsigned int distinct;
+    int progress_passed = 1;
     int status;
     status = wait_for_current_frames(NULL, &viewer, &history, 500U, 2U,
                                      &first_fresh, &maximum_age);
@@ -99,6 +110,43 @@ int main(void) {
                                                  &maximum_gap, &maximum_age, &distinct);
     REQUIRE(status == -1 && maximum_age == 0U && maximum_gap == 1040U && distinct == 0U);
     puts("X11_OBSERVER_AGE_CASE unknown_duration=refused measured_age=unavailable gap_ms=1040");
+    {
+        const struct {
+            const char *name;
+            unsigned int mode, duration_ms, required, duration;
+            int expected_status;
+            unsigned int expected_sample, expected_distinct;
+        } cases[] = {
+            {"alternating-recovery", 4U, 160U, 4U, 0U, -1, 4U, 0U},
+            {"backward-recovery", 5U, 160U, 4U, 0U, -1, 4U, 0U},
+            {"duplicate-recovery", 6U, 160U, 2U, 0U, -1, 4U, 0U},
+            {"replay-then-progress", 7U, 240U, 4U, 0U, 0, 5U, 0U},
+            {"increasing-recovery", 8U, 160U, 4U, 0U, 0, 3U, 0U},
+            {"alternating-duration", 4U, 3000U, 0U, 1U, -1, 75U, 2U},
+            {"duplicate-duration", 6U, 3000U, 0U, 1U, -1, 75U, 1U},
+            {"increasing-duration", 8U, 1200U, 0U, 1U, 0, 30U, 30U},
+        };
+        for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+            mode = cases[index].mode; clock_ms = 0U; sample_index = 0U; distinct = 0U;
+            history = (SourceHistory){0};
+            if (cases[index].duration) {
+                status = observe_current_frames_for_duration(NULL, NULL, &viewer, &history,
+                    cases[index].duration_ms, &maximum_gap, &maximum_age, &distinct);
+            } else {
+                status = wait_for_current_frames(NULL, &viewer, &history,
+                    cases[index].duration_ms, cases[index].required, &first_fresh, &maximum_age);
+            }
+            int passed = status == cases[index].expected_status &&
+                sample_index == cases[index].expected_sample &&
+                distinct == cases[index].expected_distinct && maximum_age == 30U;
+            printf("X11_OBSERVER_PROGRESS_CASE name=%s status=%d expected=%d sample=%u "
+                   "distinct=%u passed=%s\n", cases[index].name, status,
+                   cases[index].expected_status, sample_index, distinct, passed ? "true" : "false");
+            progress_passed = progress_passed && passed;
+        }
+    }
+    REQUIRE(progress_passed);
+    puts("X11_OBSERVER_PROGRESS=pass cases=8 scope=controller-aggregation inputs=synthetic replay=not-progress increasing=accepted");
     puts("X11_OBSERVER_AGE=pass scope=controller-aggregation inputs=synthetic freshness=unchanged");
     return 0;
 }

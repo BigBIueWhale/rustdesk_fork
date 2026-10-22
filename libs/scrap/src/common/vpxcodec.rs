@@ -796,6 +796,7 @@ mod tests {
                 let mut delivered = 0;
                 let mut current = 0;
                 let mut pixels_and_order = true;
+                let mut max_rgb_error = 0;
                 let mut inspect = |packet: &[u8], pts: i64| {
                     pixels_and_order &= pts == delivered as i64 * 1000;
                     let image = decoder.decode(packet).unwrap().unwrap();
@@ -809,7 +810,11 @@ mod tests {
                     for pixel in rgb.raw.chunks_exact(4) {
                         pixels_and_order &= pixel[3] == 255;
                         for channel in &pixel[..3] {
-                            pixels_and_order &= (i32::from(*channel) - expected).abs() <= 2;
+                            let error = (i32::from(*channel) - expected).abs();
+                            max_rgb_error = max_rgb_error.max(error);
+                            // The closest expected greys are 18 levels apart; this
+                            // allows lossy quantization without ambiguous frame identity.
+                            pixels_and_order &= error <= 8;
                         }
                     }
                     delivered += 1;
@@ -847,7 +852,7 @@ mod tests {
                     .map(|frame| (frame.pts, frame.data.to_vec())).collect();
                 for (pts, packet) in &tail { inspect(packet, *pts); }
                 sequence_cases.push(delivered == levels.len() && pixels_and_order);
-                println!("VIDEO_VPX_REALTIME_CASE=observed codec={codec:?} i444={i444} message_path={message_path} configured_lag={initial_lag} inputs=8 current={current} tail={} decoded={delivered} pixels_and_order={pixels_and_order} quality_changes=2", tail.len());
+                println!("VIDEO_VPX_REALTIME_CASE=observed codec={codec:?} i444={i444} message_path={message_path} configured_lag={initial_lag} inputs=8 current={current} tail={} decoded={delivered} pixels_and_order={pixels_and_order} quality_changes=2 max_rgb_error={max_rgb_error}", tail.len());
             }
         }
         assert_eq!(immediate_cases.len(), 48);

@@ -1678,13 +1678,14 @@ performant across every supported viewer and controlled platform. Focus, visibil
 display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,
 fresh presentation, bounded resources, and final ownership without requiring reconnect as a recovery mechanism.
 
-**Video QoS — Linux controller accepted; end-to-end latency OPEN.**
+**Video QoS — Linux controller/application boundary accepted; end-to-end latency OPEN.**
 
-Current product evidence reaches `a439ebae`: all nineteen controller tests pass in
-the focused Linux lane. The controller and test sources are imported directly;
-shared configuration/protocol types and Quality are production definitions.
-This is controller evidence with controlled elapsed/RTT inputs, not packet,
-encoder, renderer or installed-service acceptance.
+Current component evidence reaches `5c1dede9`: all nineteen controller tests and
+four quality-application tests pass in the focused Linux lane. The controller,
+application function and test sources are imported directly; shared configuration,
+protocol types and Quality are production definitions. Elapsed/RTT inputs and the
+encoder boundary are controlled. This is not real codec/device, packet, renderer
+or installed-service acceptance.
 
 The current behavior is:
 
@@ -1730,17 +1731,18 @@ current full-parent or platform execution.
 | Immediate requested limits — `439ebb21` | Preparation `0a666fa0` exposes 30 FPS after both stored 5-FPS requests: eighteen pass/one fails. The identical nineteen-case module passes both immediate 5-FPS assertions and preserves the other viewer's 30-FPS estimate. The successful log filter omits the new numeric prefix; positive evidence is the executed named assertions, not retained numeric observation lines. | `video-rate-limit-439ebb21.json` |
 | Rapid-probe delay boundary — `62b0c186` | Preparation `669cd873` reproduces 36 FPS instead of 31 at exactly 50-ms excess delay: eighteen pass/one fails. The identical nineteen-case module passes after correction, with retained numeric observations at 49/50/51 ms: 36/31/31 FPS and rapid counts 2/1/1. The ordinary stable probe and existing viewer/quality controls remain covered. | `video-qos-rapid-boundary-62b0c186.json` |
 | Probe streaks under shared restrictions — `a439ebae` | Preparation `ecc5c97b` reproduces an early increase in eight cases: custom 5-FPS or pending 2-FPS caps with 1/2/4/5 restricted replies retain both streaks and produce 30/36/36 or 36/36/36 FPS after release; eighteen tests pass/one fails. The identical nineteen-case module passes with both restricted counters zero and fresh rates 30/30/36 in all eight cases. Learned estimates, immediate caps, three delay-boundary controls and quality/owner behavior remain covered. | `video-qos-probe-streak-a439ebae.json` |
+| Quality application — `5c1dede9` | The private `check_qos` function propagates encoder errors and confirms ratio/bitrate only after success. Unsupported live adjustment requests capture-loop recreation for preset and custom targets, independently of the display registry. At behavior-identical preparation `dd462cb9`, 21 tests pass/two fail: one rejected update is falsely confirmed and later attempts are skipped; unsupported custom changes return success. The identical 23-case module passes after correction. Two refused attempts preserve 0.67/2000 and perform no bitrate read; the third retries and confirms success. Four unsupported preset/custom and registered/absent-display cases return `SWITCH` without applying or confirming. Successful targets apply once each; recording, pacing and accounting controls pass. The first fixture attempt has an explicit module-path compilation failure and no behavioral result. Actual source is imported with a controlled encoder; real codec/device errors, backend bitrate error handling, capture-loop recreation and live-peer presentation remain OPEN. | `encoder-quality-55aff11b.json` |
 | Focused/full-parent lanes — `6915dfb9` | Both source-bound eighteen-case lanes pass at that source: focused 145 seconds versus full parent 304 seconds. A first focused transaction was rejected for a missing offline canary despite passing tests; the admitted runner checks the canary before compilation. This is not current full-parent acceptance. | `video-qos-controller-6915dfb9.json` |
 
 **Verification tiers.** `--video-qos-controller-tests` is the ordinary focused lane;
-the latest accepted nineteen-case transaction took 134 seconds, including 66
+the latest accepted 23-case transaction took 134 seconds, including 67
 compilation seconds. `--video-qos-tests` retains complete-parent integration for
 relevant milestones. Its older eighteen-case pass does not validate the current
 whole application. The shared Rust 1.75 compiler admits only its closed target tuples and
 checks completed Cargo manifest/source/target/profile and owned artifact identity;
 executable hashes are stable through execution. Quality's 683-byte definitions
 and public `scrap::codec` exports are retained; the test package adds no third-party
-dependency or controller copy. Both lanes use the admitted zero-NIC bounded-RAM
+dependency or controller/application copy. Both lanes use the admitted zero-NIC bounded-RAM
 VM and guest-only UID1000/capless/read-only-root container. The shared profile
 admits 6 GiB guest RAM, 7 GiB RAM scratch, 6 GiB host headroom and 1 GiB overhead
 (20 GiB total), with a 6 GiB hard file ceiling and no disk fallback. Rejected

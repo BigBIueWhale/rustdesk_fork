@@ -14,10 +14,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     ops::{Deref, DerefMut},
     pin::Pin,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
+    sync::Arc,
     task::{Context, Poll},
 };
 use tokio::{
@@ -27,6 +24,8 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts, FramedWrite};
+#[cfg(test)]
+use std::sync::atomic::Ordering;
 
 pub trait TcpStreamTrait: AsyncRead + AsyncWrite + Unpin {}
 pub struct DynTcpStream(pub Box<dyn TcpStreamTrait + Send + Sync>);
@@ -198,7 +197,7 @@ impl Encoder<Bytes> for SecretboxCodec {
 /// fn bypass(codec: &mut hbb_common::bytes_codec::BytesCodec) { codec.set_raw(); }
 /// ```
 /// Counter observation does not expose cipher-state mutation:
-/// ```compile_fail,E0624
+/// ```compile_fail,E0599
 /// fn reset(cipher: &hbb_common::cpace::OpenCipher) {
 ///     cipher.read_seq_handle().store(0, std::sync::atomic::Ordering::Relaxed);
 /// }
@@ -244,8 +243,6 @@ struct KeyedStream {
     writer_tx: mpsc::Sender<WriterCommand>,
     /// Nonblocking count-and-ciphertext admission held through the exact sink send (R-T18).
     writer_admission: WriterAdmission,
-    /// A read-only handle to the counter owned by the retained receive codec.
-    read_seq: Arc<AtomicU64>,
     /// The sole writer, retained until joined. Hard drop can only request cancellation.
     writer: Option<JoinHandle<()>>,
 }
@@ -546,7 +543,10 @@ impl FramedStream {
     /// R-T5 cancellation-safety regression test (a dropped `next()` MUST NOT advance it).
     pub fn recv_counter(&self) -> u64 {
         match &self.state {
-            StreamState::Keyed(k) => k.read_seq.load(Ordering::Relaxed),
+            StreamState::Keyed(k) => match k.read.codec().open_cipher.as_ref() {
+                Some(open) => open.read_seq(),
+                None => unreachable!("keyed read codec has no receive cipher"),
+            },
             _ => 0,
         }
     }
@@ -798,7 +798,6 @@ impl FramedStream {
         // Split the keys into the producer's SealCipher + the read-codec's OpenCipher (R-T3); R-A5
         // distinctness is asserted inside split_session_keys.
         let (seal, open) = split_session_keys(&keys);
-        let read_seq = open.read_seq_handle();
         // Keep the exact receive codec and buffered input, but give encoded output its own owner.
         framed.codec_mut().open_cipher = Some(open);
         let backpressure_boundary = framed.backpressure_boundary();
@@ -818,7 +817,6 @@ impl FramedStream {
             seal,
             writer_tx,
             writer_admission,
-            read_seq,
             writer: Some(writer),
         });
     }

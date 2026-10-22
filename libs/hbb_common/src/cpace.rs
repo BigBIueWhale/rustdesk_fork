@@ -24,10 +24,6 @@ pub use pake::DirectionalKeys;
 use pake::{Initiator, PakeError, Responder, Step1, Step2, Step3, Step4, CI_PORT};
 use protobuf::Message as _;
 use sodiumoxide::crypto::secretbox::{self, Key, Nonce};
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
-};
 
 /// Per-step bounded-read deadline (R-P14b). Matches the inherited
 /// CONNECT_TIMEOUT/READ_TIMEOUT of 18 s; the timeout is the sole bound on a peer
@@ -400,14 +396,11 @@ impl SealCipher {
 
 /// The recv half (R-T3 codec side) — owns the recv key and the read counter.
 ///
-/// `read_seq` lives behind an `Arc<AtomicU64>` so `FramedStream::recv_counter` can
-/// observe the count after this codec is moved into the (split) read half of the
-/// Framed transport — `tokio_util`'s `SplitStream` exposes no codec accessor. The
-/// producer side never touches it, and `open` is the SOLE writer (a single read
-/// task), so `Relaxed` is sufficient (no cross-thread happens-before rides on it).
+/// The retained read codec owns this state across pending-read cancellation. Transport status
+/// borrows that codec; no observer receives a separate handle that can change its sequence.
 pub struct OpenCipher {
     recv_key: Key,
-    read_seq: Arc<AtomicU64>,
+    read_seq: u64,
 }
 
 impl OpenCipher {
@@ -418,15 +411,14 @@ impl OpenCipher {
     /// wrapping (R-A5). The transport retires the stream on an authentication error.
     /// Counter advancement and authentication have no intervening await (R-T5).
     pub fn open(&mut self, ciphertext: &mut bytes::BytesMut) -> Result<(), ()> {
-        let prev = self.read_seq.fetch_update(Ordering::Relaxed, Ordering::Relaxed,
-            |seq| seq.checked_add(1)).map_err(|_| ())?;
+        self.read_seq = self.read_seq.checked_add(1).ok_or(())?;
         if ciphertext.len() < secretbox::MACBYTES {
             return Err(());
         }
         let mut tag = secretbox::Tag([0; secretbox::MACBYTES]);
         tag.0.copy_from_slice(&ciphertext[..secretbox::MACBYTES]);
         secretbox::open_detached(&mut ciphertext[secretbox::MACBYTES..], &tag,
-            &cipher_nonce(prev + 1), &self.recv_key)?;
+            &cipher_nonce(self.read_seq), &self.recv_key)?;
         bytes::Buf::advance(ciphertext, secretbox::MACBYTES);
         Ok(())
     }
@@ -435,14 +427,7 @@ impl OpenCipher {
     /// `FramedStream::next` MUST NOT advance it).
     #[inline]
     pub fn read_seq(&self) -> u64 {
-        self.read_seq.load(Ordering::Relaxed)
-    }
-
-    /// A clone of the shared read-counter handle, for `FramedStream::recv_counter` to observe the
-    /// count after this `OpenCipher` is moved into the split read half (R-T3).
-    #[inline]
-    pub fn read_seq_handle(&self) -> Arc<AtomicU64> {
-        self.read_seq.clone()
+        self.read_seq
     }
 }
 
@@ -470,7 +455,7 @@ pub fn split_session_keys(keys: &DirectionalKeys) -> (SealCipher, OpenCipher) {
         },
         OpenCipher {
             recv_key,
-            read_seq: Arc::new(AtomicU64::new(0)),
+            read_seq: 0,
         },
     )
 }
@@ -605,7 +590,7 @@ mod open_tests {
         assert_eq!(crate::fs::with_allocations_refused(|| open.open(&mut replay)), Err(()));
         assert_eq!(&replay[..], valid);
         assert_eq!(open.read_seq(), 2);
-        open.read_seq.store(u64::MAX, Ordering::Relaxed);
+        open.read_seq = u64::MAX;
         for _ in 0..2 {
             assert_eq!(crate::fs::with_allocations_refused(|| open.open(&mut replay)), Err(()));
             assert_eq!(open.read_seq(), u64::MAX);

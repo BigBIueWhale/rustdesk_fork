@@ -1694,6 +1694,26 @@ The final transaction takes 142 seconds. Harness, oracle, test bodies, compiler,
 inputs and resource budgets are identical across A/B. Exact sources, PNG/RGBA
 hashes and cleanup are retained in `screenshot-x11-f539fc01.json`.
 
+**Presentation YUV sampling — Linux component accepted; application tracing OPEN.**
+`6714a3a1` samples planar U and V with their independent strides and checked
+offsets. The former private server helper moves to `scrap::yuv_samples`, and
+the presentation trace imports that single implementation; its other behavior
+and native conversion paths are unchanged.
+
+Native BGRA red/blue conversion with asymmetric plane strides exposes the old
+I420 V samples as 165/165 and I444 as 110/165, including untouched padding.
+The baseline also exposes two incorrect 240 chroma references in the fixture;
+`a5ec92ee` corrects them to libyuv's integer BT.601 value 239. Exact source and
+fixture deltas are retained in `yuv-trace-93dd8c12.json`; final whole-fixture
+A/B identity is not claimed. Corrected I420/I444/NV12 sampling returns exact
+red `[82,90,239]` and blue `[41,239,110]`. All 31 invalid sampling inputs return
+`None`, unused NV12 V metadata stays inert, buffers are preserved, and three
+armed one-shot allocation refusals remain unused. All 25 focused tests pass
+in 139 VM seconds, including prior codec, viewport, native X11 PNG and allocation
+controls, with joined bounded-RAM cleanup. The caller binding is source reviewed;
+full application compilation/tracing, other targets, native presentation, R-F5
+latency/recovery/soaks and installed R-S0 acceptance remain OPEN.
+
 **Captured-frame viewport — Linux component accepted; application/native OPEN.**
 `40745d16` requires captured width/height to equal the encoder's visible frame.
 VPX reports those visible dimensions in `EncodeYuvFormat`; checked padded
@@ -1715,7 +1735,7 @@ original failing runs are retained in `frame-viewport-4afce1ce.json`, with exact
 sources/artifacts and joined bounded-RAM cleanup. The older odd-I420 descriptor
 assertion now checks visible dimensions; its storage and round-trip checks remain.
 Full application capture/encoder replacement, hardware/other native targets,
-padding lifecycle, trace V-stride sampling (`video_service.rs::yuv_samples`),
+padding lifecycle, full application tracing,
 actual presentation/R-F5 and installed R-S0 acceptance remain OPEN.
 
 **YUV conversion storage — Linux component accepted; hardware/app OPEN.**

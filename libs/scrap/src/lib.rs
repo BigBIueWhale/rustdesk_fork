@@ -44,3 +44,9 @@ mod screenshot_png;
 
 #[cfg(all(test, target_os = "linux"))]
 mod screenshot_png_tests;
+
+#[cfg(all(test, target_os = "linux"))]
+mod test_allocator;
+
+#[cfg(all(test, target_os = "linux"))]
+mod decoded_image_tests;

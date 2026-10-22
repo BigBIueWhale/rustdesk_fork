@@ -163,7 +163,7 @@ def allocation_probe(executable, artifact_sha):
     print(result.stdout, end='', flush=True)
     if result.stderr:
         print(result.stderr, file=sys.stderr, end='', flush=True)
-    refusals = result.stdout.count('SCREENSHOT_PNG_ALLOCATOR=refused\n')
+    refusals = result.stdout.count('VIDEO_ALLOCATOR=refused\n')
     if result.returncode == -6:
         assert refusals == 1 and re.search(r'memory allocation of [0-9]+ bytes failed', result.stderr)
         print(f'SCREENSHOT_PNG_ALLOC_RESULT=observed outcome=aborted child_exit=-6 refusals=1 '

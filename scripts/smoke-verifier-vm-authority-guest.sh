@@ -4689,6 +4689,8 @@ run_focused_rust_tests() {
                 scripts/run-video-vpx-tests.sh scripts/linux-parent-test-build.sh
                 src/server/video_service.rs
                 src/server/screenshot_png.rs src/peer_text.rs libs/scrap/src/screenshot_png_tests.rs
+                libs/scrap/src/test_allocator.rs libs/scrap/src/decoded_image_tests.rs
+                scripts/run-decoded-image-allocation-tests.py
                 scripts/run-screenshot-x11-tests.py scripts/smoke-xvfb-prepare.sh
                 scripts/smoke-xvfb-packages.tsv scripts/smoke-xvfb-files.tsv
             )
@@ -6496,8 +6498,8 @@ PY
             && [ "$(grep -Ec '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$' "$output")" -eq 23 ] \
             || fail 'video QoS controller artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-vpx ]; then
-        [ "${#result_lines[@]}" -eq 5 ] || fail 'VPX summary count differs'
-        [ "$(grep -Ec '^VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=11 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 7 ] || fail 'VPX summary count differs'
+        [ "$(grep -Ec '^VIDEO_VPX_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=13 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIDEO_VPX_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^test common::(vpxcodec|convert)::tests::.* \.\.\. ok$' "$output")" -eq 10 ] \
             || fail 'VPX artifact or named outcomes differ'
@@ -6507,6 +6509,10 @@ PY
             || fail 'native screenshot PNG or joined X11 result differs'
         [ "$(grep -Ec '^SCREENSHOT_PNG_ALLOC_RESULT=pass refusals=2 direct=OutOfMemory encoder=OutOfMemory prefix=preserved retry=pass byte_limit=preserved png_bytes=150 png_sha256=[0-9a-f]{64} rgba_sha256=[0-9a-f]{64} artifact_sha256=[0-9a-f]{64} children=joined$' "$output")" -eq 1 ] \
             || fail 'native screenshot allocation refusal or recovery differs'
+        for allocation_case in false:12 true:0; do
+            [ "$(grep -Ec "^VIDEO_RGB_ALLOC_RESULT=pass warmed=${allocation_case%:*} combinations=12 refusals=${allocation_case#*:} pixels=exact state=preserved artifact_sha256=[0-9a-f]{64} children=joined$" "$output")" -eq 1 ] \
+                || fail 'native decoded-image allocation or preserved-output result differs'
+        done
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = video-qos ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'video QoS summary count differs'
         [ "$(grep -Ec '^VIDEO_QOS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=19 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -6929,7 +6935,7 @@ PY
     else
         local expected_tests=${#required_tests[@]}
         if [ "$RUST_TEST_PROFILE" = video-vpx ]; then
-            expected_tests=$((expected_tests + 1))
+            expected_tests=$((expected_tests + 3))
         fi
         [ "$tests_passed" -eq "$expected_tests" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
@@ -7051,9 +7057,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-vpx ]; then
-            [ "$tests_passed" -eq 11 ] || fail 'VPX total differs'
-            grep -E '^test common::(vpxcodec|convert)::tests::.* \.\.\. ok$|^VIDEO_VPX_(BUILD=pass |ARTIFACT(_AFTER)?=|CASE=)|^SCREENSHOT_(PIXELS_CASE|PNG_(ALLOCATOR|ALLOC_NATIVE|ALLOC_RESULT|BOUNDED_HEX)|X11_(PNG|ORACLE|CASE|CLEANUP|NATIVE))=' "$output"
-            printf 'VIDEO_VPX_VM=pass commit=%s tree=%s tests=11 target=linux-x86_64 scope=production-vpx-and-screenshot-pixel-conversion rust=1.75.0 package=scrap vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 13 ] || fail 'VPX total differs'
+            grep -E '^test common::(vpxcodec|convert)::tests::.* \.\.\. ok$|^VIDEO_VPX_(BUILD=pass |ARTIFACT(_AFTER)?=|CASE=)|^VIDEO_(ALLOCATOR|RGB_ALLOC_(CASE|NATIVE|RESULT))=|^SCREENSHOT_(PIXELS_CASE|PNG_(ALLOC_NATIVE|ALLOC_RESULT|BOUNDED_HEX)|X11_(PNG|ORACLE|CASE|CLEANUP|NATIVE))=' "$output"
+            printf 'VIDEO_VPX_VM=pass commit=%s tree=%s tests=13 target=linux-x86_64 scope=production-vpx-and-screenshot-pixel-conversion rust=1.75.0 package=scrap vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-qos ]; then

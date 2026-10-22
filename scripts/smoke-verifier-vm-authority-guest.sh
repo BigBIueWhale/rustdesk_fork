@@ -3496,7 +3496,7 @@ run_focused_rust_tests() {
                 config::option_tests::retired_local_geometry_is_ignored_without_losing_live_preferences
                 config::option_tests::default_single_key_writes_preserve_other_keys_and_concurrent_writers
                 config::option_tests::default_write_failure_preserves_cache_file_and_identical_retry
-                config::option_tests::default_integer_readback_matches_peer_inheritance
+                config::option_tests::numeric_readback_matches_effective_peer_and_default_preferences
                 config::option_tests::default_purge_is_retryable_and_returns_effective_normalized_values
                 config::option_tests::default_unreadable_source_refuses_mutation_without_losing_existing_values
                 config::option_tests::default_initial_read_preserves_corrupt_files

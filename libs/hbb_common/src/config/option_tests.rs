@@ -4253,8 +4253,8 @@ fn default_write_failure_preserves_cache_file_and_identical_retry() {
 }
 
 #[test]
-fn default_integer_readback_matches_peer_inheritance() {
-    in_private_process("config::option_tests::default_integer_readback_matches_peer_inheritance", |_| {
+fn numeric_readback_matches_effective_peer_and_default_preferences() {
+    in_private_process("config::option_tests::numeric_readback_matches_effective_peer_and_default_preferences", |_| {
         UserDefaultConfig::set_option("integer-unrelated".into(), "preserved".into()).unwrap();
         let mut outcomes = Vec::new();
         for (key, cases) in [
@@ -4290,6 +4290,84 @@ fn default_integer_readback_matches_peer_inheritance() {
         assert_eq!(outcomes.len(), 24);
         assert!(outcomes.into_iter().all(|ok| ok),
             "effective integer defaults must agree with fresh peer configuration consumers");
+
+        let key = keys::OPTION_CUSTOM_FPS;
+        UserDefaultConfig::set_option(key.into(), "60".into()).unwrap();
+        let defaults = Config::file_("_default");
+        let defaults_before = peer_test_record_snapshot(&defaults);
+        let id = "192.0.2.95:21118";
+        let path = PeerConfig::path(id);
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let mut passed = true;
+        for (case, input, expected) in [
+            ("min", Some("5"), Some("5")), ("middle", Some("30"), Some("30")),
+            ("max", Some("120"), Some("120")), ("fraction", Some("25.9"), Some("25")),
+            ("boundary-fraction", Some("29.999999999999996"), Some("29")),
+            ("scientific", Some("2.5e1"), Some("25")), ("decimal", Some("25.0"), Some("25")),
+            ("decimal-min", Some("5.0"), Some("5")), ("decimal-max", Some("120.0"), Some("120")),
+            ("below", Some("4.9"), Some("30")), ("above", Some("120.1"), Some("30")),
+            ("zero", Some("0"), Some("30")), ("negative", Some("-5"), Some("30")),
+            ("nan", Some("NaN"), Some("30")), ("infinity", Some("inf"), Some("30")),
+            ("negative-infinity", Some("-inf"), Some("30")), ("huge", Some("1e400"), Some("30")),
+            ("invalid", Some("invalid"), Some("30")), ("empty", Some(""), Some("30")),
+            ("missing-key", None, None), ("missing-options", None, None),
+        ] {
+            let mut peer = PeerConfig::default();
+            peer.options.clear();
+            if case != "missing-options" {
+                peer.options.insert(keys::OPTION_CODEC_PREFERENCE.into(), "vp8".into());
+                peer.options.insert("unrelated".into(), "before".into());
+            }
+            if let Some(input) = input { peer.options.insert(key.into(), input.into()); }
+            peer.ui_flutter.insert("layout".into(), "preserved".into());
+            peer.info.hostname = "preserved-host".into();
+            peer.store(id).unwrap();
+            let raw = PeerConfig::load_for_write(id).unwrap();
+            let write_raw = raw.options.get(key).map(String::as_str);
+            let before = peer_test_record_snapshot(&path);
+            let full = PeerConfig::load(id);
+            let full_value = full.options.get(key).map(String::as_str);
+            let view = PeerConfig::read_option(id, key).unwrap();
+            let mut expected_full = raw.clone();
+            expected_full.options.entry(keys::OPTION_CODEC_PREFERENCE.into()).or_insert("auto".into());
+            if let Some(expected) = expected { expected_full.options.insert(key.into(), expected.into()); }
+            let canonical_integer = match full_value {
+                Some(value) => value.parse::<i32>().ok().filter(|v| (5..=120).contains(v)).is_some()
+                    && view.parse::<i32>().ok() == value.parse::<i32>().ok(),
+                None => view.is_empty(),
+            };
+            let read_only = peer_test_record_snapshot(&path) == before
+                && peer_test_record_snapshot(&defaults) == defaults_before;
+            PeerConfig::set_option(id, "unrelated", "after".into()).unwrap();
+            let mut expected_raw = raw.clone();
+            expected_raw.options.insert("unrelated".into(), "after".into());
+            let raw_preserved = write_raw == input && PeerConfig::load_for_write(id).unwrap() == expected_raw;
+            let correct = full == expected_full && full_value == expected
+                && view == expected.unwrap_or_default() && canonical_integer;
+            println!("OPTION_COMMIT_PEER_FPS={}", serde_json::json!({
+                "case": case, "input": input, "expected": expected, "full": full_value,
+                "view": view, "write_raw": write_raw, "canonical_integer": canonical_integer,
+                "read_only": read_only, "raw_preserved": raw_preserved, "correct": correct,
+            }));
+            passed &= correct && read_only && raw_preserved;
+        }
+        let missing_id = "192.0.2.96:21118";
+        let missing_path = PeerConfig::path(missing_id);
+        assert!(!missing_path.exists());
+        let full = PeerConfig::load(missing_id).options[key].clone();
+        let view = PeerConfig::read_option(missing_id, key).unwrap();
+        let missing_preserved = !missing_path.exists()
+            && peer_test_record_snapshot(&defaults) == defaults_before;
+        let missing_correct = full == "60" && view == "60";
+        println!("OPTION_COMMIT_PEER_FPS_MISSING={}", serde_json::json!({
+            "full": full, "view": view, "file_absent": missing_preserved, "correct": missing_correct,
+        }));
+        let after_fds = fds();
+        println!("OPTION_COMMIT_PEER_FPS_FDS=before:{before_fds} after:{after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(passed && missing_preserved && missing_correct,
+            "present peer FPS must be canonical and bounded; absence must remain unset");
     });
 }
 

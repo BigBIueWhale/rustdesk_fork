@@ -143,7 +143,7 @@ pub trait TraitPixelBuffer {
     fn data(&self) -> &[u8];
     fn width(&self) -> usize;
     fn height(&self) -> usize;
-    fn stride(&self) -> Vec<usize>;
+    fn stride(&self) -> usize;
     fn pixfmt(&self) -> Pixfmt;
 }
 
@@ -1763,7 +1763,7 @@ fn main() -> io::Result<()> {
             let frame = public_capture.frame(std::time::Duration::from_millis(100))?;
             let Frame::PixelBuffer(buffer) = frame;
             assert_eq!(buffer.pixfmt(), expected);
-            assert_eq!(buffer.stride(), vec![stride]);
+            assert_eq!(buffer.stride(), stride);
             assert_eq!(buffer.data().len(), stride * height);
             finish_case(0);
             println!("X11_LAYOUT_NATIVE=pass depth={depth} width={width} height={height} stride={stride} pixel=red capture=production-shm public=production-buffer");

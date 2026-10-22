@@ -39,7 +39,7 @@ fn main() {
                 let Frame::PixelBuffer(frame) = frame else {
                     return;
                 };
-                let stride = frame.stride()[0];
+                let stride = frame.stride();
                 let rowlen = 4 * w;
                 for row in frame.data().chunks(stride) {
                     let row = &row[..rowlen];

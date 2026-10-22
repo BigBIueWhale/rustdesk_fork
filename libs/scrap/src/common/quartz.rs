@@ -94,10 +94,8 @@ impl<'a> crate::TraitPixelBuffer for PixelBuffer<'a> {
         self.height
     }
 
-    fn stride(&self) -> Vec<usize> {
-        let mut v = Vec::new();
-        v.push(self.frame.stride());
-        v
+    fn stride(&self) -> usize {
+        self.frame.stride()
     }
 
     fn pixfmt(&self) -> Pixfmt {

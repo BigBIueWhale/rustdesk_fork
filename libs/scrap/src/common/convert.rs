@@ -37,18 +37,18 @@ pub fn convert_to_yuv(
         || src_pixfmt == crate::Pixfmt::RGB565LE
     {
         // stride is calculated, not real, so we need to check it
-        if src_stride[0] < src_width * src_pixfmt.bytes_per_pixel() {
+        if src_stride < src_width * src_pixfmt.bytes_per_pixel() {
             bail!(
                 "src_stride too small: {} < {}",
-                src_stride[0],
+                src_stride,
                 src_width * src_pixfmt.bytes_per_pixel()
             );
         }
-        if src.len() < src_stride[0] * src_height {
+        if src.len() < src_stride * src_height {
             bail!(
                 "wrong src len, {} < {} * {}",
                 src.len(),
-                src_stride[0],
+                src_stride,
                 src_height
             );
         }
@@ -77,7 +77,7 @@ pub fn convert_to_yuv(
             };
             call_yuv!(f(
                 src.as_ptr(),
-                src_stride[0] as _,
+                src_stride as _,
                 dst_y,
                 dst_stride_y as _,
                 dst_u,
@@ -100,14 +100,14 @@ pub fn convert_to_yuv(
             let dst_y = dst.as_mut_ptr();
             let dst_uv = dst[dst_fmt.u..].as_mut_ptr();
             let (input, input_stride) = match src_pixfmt {
-                crate::Pixfmt::BGRA => (src.as_ptr(), src_stride[0]),
-                crate::Pixfmt::RGBA => (src.as_ptr(), src_stride[0]),
+                crate::Pixfmt::BGRA => (src.as_ptr(), src_stride),
+                crate::Pixfmt::RGBA => (src.as_ptr(), src_stride),
                 crate::Pixfmt::RGB565LE => {
                     let mid_stride = src_width * 4;
                     mid_data.resize(mid_stride * src_height, 0);
                     call_yuv!(RGB565ToARGB(
                         src.as_ptr(),
-                        src_stride[0] as _,
+                        src_stride as _,
                         mid_data.as_mut_ptr(),
                         mid_stride as _,
                         src_width as _,
@@ -149,25 +149,25 @@ pub fn convert_to_yuv(
             let dst_u = dst[dst_fmt.u..].as_mut_ptr();
             let dst_v = dst[dst_fmt.v..].as_mut_ptr();
             let (input, input_stride) = match src_pixfmt {
-                crate::Pixfmt::BGRA => (src.as_ptr(), src_stride[0]),
+                crate::Pixfmt::BGRA => (src.as_ptr(), src_stride),
                 crate::Pixfmt::RGBA => {
                     mid_data.resize(src.len(), 0);
                     call_yuv!(ABGRToARGB(
                         src.as_ptr(),
-                        src_stride[0] as _,
+                        src_stride as _,
                         mid_data.as_mut_ptr(),
-                        src_stride[0] as _,
+                        src_stride as _,
                         src_width as _,
                         src_height as _,
                     ));
-                    (mid_data.as_ptr(), src_stride[0])
+                    (mid_data.as_ptr(), src_stride)
                 }
                 crate::Pixfmt::RGB565LE => {
                     let mid_stride = src_width * 4;
                     mid_data.resize(mid_stride * src_height, 0);
                     call_yuv!(RGB565ToARGB(
                         src.as_ptr(),
-                        src_stride[0] as _,
+                        src_stride as _,
                         mid_data.as_mut_ptr(),
                         mid_stride as _,
                         src_width as _,
@@ -212,11 +212,7 @@ pub fn convert_to_rgba(pixbuf: &PixelBuffer<'_>) -> ResultType<Vec<u8>> {
     if width == 0 || height == 0 {
         bail!("empty screenshot pixel buffer");
     }
-    let stride = pixbuf
-        .stride()
-        .first()
-        .copied()
-        .ok_or_else(|| anyhow!("missing screenshot pixel stride"))?;
+    let stride = pixbuf.stride();
     let row_bytes = width
         .checked_mul(bytes_per_pixel)
         .ok_or_else(|| anyhow!("screenshot source row size overflow"))?;
@@ -407,7 +403,7 @@ mod tests {
         } else {
             0
         };
-        let stride = pixels.stride()[0];
+        let stride = pixels.stride();
         drop(pixels);
         arm();
         match capturer.frame(std::time::Duration::from_millis(100)) {

@@ -158,7 +158,7 @@ pub trait TraitPixelBuffer {
 
     fn height(&self) -> usize;
 
-    fn stride(&self) -> Vec<usize>;
+    fn stride(&self) -> usize;
 
     fn pixfmt(&self) -> Pixfmt;
 }

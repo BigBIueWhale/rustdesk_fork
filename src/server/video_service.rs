@@ -247,8 +247,7 @@ impl PresentationVideoTrace {
 fn pixelbuffer_rgb_samples(pixels: &scrap::PixelBuffer<'_>) -> Option<([u8; 4], [u8; 4])> {
     let width = pixels.width();
     let height = pixels.height();
-    let strides = pixels.stride();
-    let stride = *strides.first()?;
+    let stride = pixels.stride();
     if width == 0 || height == 0 {
         return None;
     }

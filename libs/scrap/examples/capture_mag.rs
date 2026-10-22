@@ -93,7 +93,7 @@ fn record(i: usize) {
         unsafe {
             scrap::ARGBToRAW(
                 frame.data().as_ptr(),
-                frame.stride()[0] as _,
+                frame.stride() as _,
                 (&mut raw).as_mut_ptr(),
                 (w * 3) as _,
                 w as _,

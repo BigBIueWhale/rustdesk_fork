@@ -40,7 +40,7 @@ pub struct PixelBuffer<'a> {
     pixfmt: Pixfmt,
     width: usize,
     height: usize,
-    stride: Vec<usize>,
+    stride: usize,
 }
 
 impl<'a> PixelBuffer<'a> {
@@ -51,14 +51,12 @@ impl<'a> PixelBuffer<'a> {
             || frame_bytes != Some(data.len()) {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid X capture buffer layout"));
         }
-        let mut stride = Vec::new();
-        stride.push(stride0);
         Ok(Self {
             data,
             pixfmt,
             width,
             height,
-            stride,
+            stride: stride0,
         })
     }
 }
@@ -76,8 +74,8 @@ impl<'a> TraitPixelBuffer for PixelBuffer<'a> {
         self.height
     }
 
-    fn stride(&self) -> Vec<usize> {
-        self.stride.clone()
+    fn stride(&self) -> usize {
+        self.stride
     }
 
     fn pixfmt(&self) -> crate::Pixfmt {

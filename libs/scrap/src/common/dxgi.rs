@@ -73,14 +73,12 @@ pub struct PixelBuffer<'a> {
     pixfmt: Pixfmt,
     width: usize,
     height: usize,
-    stride: Vec<usize>,
+    stride: usize,
 }
 
 impl<'a> PixelBuffer<'a> {
     pub fn new(data: &'a [u8], pixfmt: Pixfmt, width: usize, height: usize) -> Self {
-        let stride0 = data.len() / height;
-        let mut stride = Vec::new();
-        stride.push(stride0);
+        let stride = data.len() / height;
         PixelBuffer {
             data,
             pixfmt,
@@ -109,8 +107,8 @@ impl<'a> crate::TraitPixelBuffer for PixelBuffer<'a> {
         self.height
     }
 
-    fn stride(&self) -> Vec<usize> {
-        self.stride.clone()
+    fn stride(&self) -> usize {
+        self.stride
     }
 
     fn pixfmt(&self) -> Pixfmt {

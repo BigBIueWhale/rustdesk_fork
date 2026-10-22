@@ -432,6 +432,7 @@ with os.fdopen(pidfd):
         print(f"pidfd signal delivery failed: {error}", file=sys.stderr)
         raise SystemExit(1)
 
+    continuation_failed = False
     if signal_name != "KILL":
         try:
             signal.pidfd_send_signal(pidfd, signal.SIGCONT, None, 0)
@@ -439,12 +440,12 @@ with os.fdopen(pidfd):
             # The requested signal may already have completed; the pidfd must still prove exit.
             pass
         except OSError as error:
-            print(f"pidfd continuation failed: {error}", file=sys.stderr)
-            raise SystemExit(1)
+            print(f"pidfd continuation failed; retaining owner: {error}", file=sys.stderr)
+            continuation_failed = True
 
     poller = select.poll()
     poller.register(pidfd, select.POLLIN)
-    deadline = time.monotonic() + timeout_ms / 1000
+    deadline = time.monotonic() + (0 if continuation_failed else timeout_ms / 1000)
     cancelled = False
     while True:
         remaining = deadline - time.monotonic()

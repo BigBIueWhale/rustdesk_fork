@@ -8943,6 +8943,71 @@ mod tests {
         assert!(digest.exists());
     }
 
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn send_read_buffer_refusal_preserves_job_and_retry() {
+        use std::os::unix::io::AsRawFd;
+        const CHILD: &str = "RUSTDESK_SEND_READ_ALLOCATION_CHILD";
+        const TEST: &str = "fs::tests::send_read_buffer_refusal_preserves_job_and_retry";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                .env(CHILD, "1").output().unwrap();
+            assert!(output.stdout.len() + output.stderr.len() < 32_768);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "allocation child {:?}: {}{}",
+                output.status, stdout, String::from_utf8_lossy(&output.stderr));
+            assert!(stdout.contains("SEND_READ_ALLOCATION=pass cases=3 refusals=3 state=preserved retries=exact eof=exact"));
+            for line in stdout.lines() {
+                if let Some((_, message)) = line.split_once("SEND_READ_ALLOCATION") {
+                    println!("SEND_READ_ALLOCATION{message}");
+                }
+            }
+            return;
+        }
+        assert_eq!(std::env::var(CHILD).unwrap(), "1");
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            for (size, allocation) in [(0, 1), (1, 2), (FILE_TRANSFER_BLOCK_SIZE, FILE_TRANSFER_BLOCK_SIZE)] {
+                let tmp = TestTempDir::new("send_read_allocation");
+                std::fs::create_dir_all(&tmp.path).unwrap();
+                let source = tmp.join("source.bin");
+                let input = (0..size).map(|index| (index as u8).wrapping_mul(37)).collect::<Vec<_>>();
+                std::fs::write(&source, &input).unwrap();
+                let mut job = TransferJob::new_read(
+                    281, JobType::Generic, String::new(), source.clone(),
+                    0, false, false, false,
+                ).unwrap();
+                assert!(!job.open_data_stream().await.unwrap());
+                let fd = job.data_stream.as_ref().unwrap().as_raw_fd();
+                assert_eq!(unsafe { crate::libc::lseek(fd, 0, crate::libc::SEEK_CUR) }, 0);
+                let before = (job.file_num(), job.finished_size(), job.transferred(),
+                    job.send_file_offset, job.file_confirmed(), job.file_is_waiting());
+                file_block::tests::fail_next_exact_allocation(allocation);
+                let error = job.read().await.expect_err("refused send buffer is fallible");
+                assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                    std::io::ErrorKind::OutOfMemory);
+                assert_eq!(file_block::tests::exact_allocation_failure_state(), (0, 1));
+                assert_eq!(before, (job.file_num(), job.finished_size(), job.transferred(),
+                    job.send_file_offset, job.file_confirmed(), job.file_is_waiting()));
+                assert_eq!(job.data_stream.as_ref().unwrap().as_raw_fd(), fd);
+                assert_eq!(unsafe { crate::libc::lseek(fd, 0, crate::libc::SEEK_CUR) }, 0);
+                let block = job.read().await.unwrap().unwrap();
+                assert_eq!(file_block::decode(&block.data, block.compressed).unwrap().as_ref(), input);
+                assert_eq!((job.finished_size(), job.transferred()), (size as u64, block.data.len() as u64));
+                if size > 0 {
+                    assert!(job.read().await.unwrap().unwrap().data.is_empty());
+                }
+                assert!(job.read().await.unwrap().is_none());
+                assert_eq!(job.file_num(), 1);
+                assert!(job.data_stream.is_none());
+                assert_eq!(std::fs::read(&source).unwrap(), input);
+                println!("SEND_READ_ALLOCATION_CASE=pass bytes={size} allocation={allocation} state=preserved position=0 retry=exact eof=exact");
+            }
+        });
+        println!("SEND_READ_ALLOCATION=pass cases=3 refusals=3 state=preserved retries=exact eof=exact");
+    }
+
     async fn assert_send_digest_size_admission(wire: bool) {
         for (admitted_size, changed_size) in [(3, 0), (3, 2), (3, 6), (0, 3)] {
             let tmp = TestTempDir::new("rustdesk_send_digest_size");

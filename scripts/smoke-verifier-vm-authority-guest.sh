@@ -3208,6 +3208,7 @@ run_focused_rust_tests() {
             fs::tests::receive_regular_acquisition_preserves_creation_and_collision_semantics
             fs::tests::send_open_refuses_nonregular_replacements
             fs::tests::send_source_open_preserves_regular_files_and_source_links
+            fs::tests::send_read_buffer_refusal_preserves_job_and_retry
             fs::tests::receive_job_cannot_initialize_a_send_source
             fs::tests::send_file_job_refuses_a_start_index_outside_its_native_list
             fs::tests::send_file_job_preserves_valid_start_resume_and_exact_end
@@ -3306,10 +3307,12 @@ run_focused_rust_tests() {
             )
         fi
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
-            source_fingerprints+=(scripts/fixtures/file-send-digest-before-size-admission.rs)
+            source_fingerprints+=(scripts/fixtures/file-send-digest-before-size-admission.rs libs/hbb_common/src/fs/file_block.rs)
             required_tests=(
                 fs::tests::send_digest_refuses_changed_lengths_before_cm_wait
                 fs::tests::send_digest_refuses_changed_lengths_before_wire_publication
+                fs::file_block::tests::allocation_refusal_returns_error_and_preserves_retry
+                fs::tests::send_read_buffer_refusal_preserves_job_and_retry
             )
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
@@ -5470,6 +5473,11 @@ run_focused_rust_tests() {
                             timeout --signal=TERM --kill-after=5s 20s \
                                 "$test_executable" fs::tests::send_digest_ --color never --test-threads=1 --show-output
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            for test_name in fs::file_block::tests::allocation_refusal_returns_error_and_preserves_retry fs::tests::send_read_buffer_refusal_preserves_job_and_retry; do
+                                timeout --signal=TERM --kill-after=5s 20s \
+                                    "$test_executable" --exact "$test_name" --color never --test-threads=1 --show-output
+                                [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            done
                         else
                         "$test_executable" platform::linux::tests::r_s11at_loginctl_output_ \
                             --color never --test-threads=1
@@ -6174,7 +6182,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     )
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=9
-        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=1; fi
+        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=3; fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=16; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=8; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
@@ -6898,11 +6906,13 @@ PY
             [ "$tests_passed" -eq 41 ] || fail 'writer retirement test total differs'
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
-            [ "$tests_passed" -eq 7 ] || fail 'decompression test total differs'
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_WINDOW' "$output"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
-            [ "$tests_passed" -eq 2 ] || fail 'send digest test total differs'
-            grep -E '^test fs::tests::send_digest_.* \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=' "$output"
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'send admission test total differs'
+            [ "$(grep -Fxc 'SEND_READ_ALLOCATION=pass cases=3 refusals=3 state=preserved retries=exact eof=exact' "$output")" -eq 1 ] \
+                || fail 'send buffer refusal or native retry differs'
+            grep -E '^test fs::(tests::send_(digest_|read_buffer_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
@@ -6940,7 +6950,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
-            printf 'FILE_SEND_DIGEST_VM=pass commit=%s tree=%s tests=2 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-size-admission cleanup=joined\n' \
+            printf 'FILE_SEND_DIGEST_VM=pass commit=%s tree=%s tests=4 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-and-read-admission cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else

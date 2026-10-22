@@ -5924,7 +5924,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
         hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default snapshot=readonly mounted_fuse=unexecuted cleanup=joined'
     elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
         hbb_receipt_kind=FILE_SEND_DIGEST_VM
-        hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-size-admission cleanup=joined'
+        hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-and-read-admission cleanup=joined'
     elif [ "$RUST_TEST_PROFILE" = file-metadata ]; then
         hbb_receipt_kind=FILE_METADATA_VM
     elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
@@ -8092,8 +8092,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
-        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test fs::tests::send_digest_[a-z_]+ \.\.\. ok|SEND_DIGEST_(BEFORE|SIZE)=.*'
-        printf 'FILE_SEND_DIGEST_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=2 artifact_sha256=%s scope=send-digest-size-admission network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test fs::(tests::send_(digest_|read_buffer_)|file_block::tests::allocation_refusal_)[a-z_]+ \.\.\. ok|SEND_DIGEST_(BEFORE|SIZE)=.*|SEND_READ_ALLOCATION(_CASE)?=.*|FILE_COMPRESSION_(ALLOCATION|CASE)=.*'
+        printf 'FILE_SEND_DIGEST_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=4 artifact_sha256=%s scope=send-digest-and-read-admission network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = config-options ]; then

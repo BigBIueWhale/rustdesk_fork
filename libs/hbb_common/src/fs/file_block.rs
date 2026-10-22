@@ -32,26 +32,35 @@ pub(super) fn decode(data: &[u8], compressed: bool) -> io::Result<Cow<'_, [u8]>>
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::compress::{compress, try_decompress_with_limit};
     use std::{alloc::{GlobalAlloc, Layout, System}, cell::Cell, process::Command};
 
     thread_local! {
         static OUTPUT_ALLOCATION: Cell<(bool, usize)> = const { Cell::new((false, 0)) };
-        static COMPRESSED_OUTPUT_ALLOCATION: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
+        static EXACT_ALLOCATION: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
     }
 
     struct OutputAllocator;
 
-    fn refuse_output_allocation(size: usize) -> bool {
+    pub(crate) fn fail_next_exact_allocation(size: usize) {
+        assert!(size > 0);
+        EXACT_ALLOCATION.with(|state| state.set((size, 0)));
+    }
+
+    pub(crate) fn exact_allocation_failure_state() -> (usize, usize) {
+        EXACT_ALLOCATION.with(Cell::get)
+    }
+
+    fn refuse_allocation(size: usize) -> bool {
         size == SIZE + 1 && OUTPUT_ALLOCATION.try_with(|state| {
             let (armed, refusals) = state.get();
             if armed {
                 state.set((false, refusals + 1));
             }
             armed
-        }).unwrap_or(false) || COMPRESSED_OUTPUT_ALLOCATION.try_with(|state| {
+        }).unwrap_or(false) || EXACT_ALLOCATION.try_with(|state| {
             let (target, refusals) = state.get();
             if target != 0 && target == size {
                 state.set((0, refusals + 1));
@@ -64,7 +73,7 @@ mod tests {
 
     unsafe impl GlobalAlloc for OutputAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            if refuse_output_allocation(layout.size()) {
+            if refuse_allocation(layout.size()) {
                 std::ptr::null_mut()
             } else {
                 System.alloc(layout)
@@ -72,7 +81,7 @@ mod tests {
         }
 
         unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-            if refuse_output_allocation(layout.size()) {
+            if refuse_allocation(layout.size()) {
                 std::ptr::null_mut()
             } else {
                 System.alloc_zeroed(layout)
@@ -80,7 +89,7 @@ mod tests {
         }
 
         unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-            if refuse_output_allocation(size) {
+            if refuse_allocation(size) {
                 std::ptr::null_mut()
             } else {
                 System.realloc(pointer, layout, size)
@@ -128,10 +137,10 @@ mod tests {
             assert_eq!(encoded, reference);
             let bound = zstd::zstd_safe::compress_bound(size);
             assert!(bound > 0);
-            COMPRESSED_OUTPUT_ALLOCATION.with(|state| state.set((bound, 0)));
+            fail_next_exact_allocation(bound);
             let error = compress(&input).expect_err("refused compressed output is fallible");
             assert_eq!(error.kind(), io::ErrorKind::OutOfMemory);
-            COMPRESSED_OUTPUT_ALLOCATION.with(|state| assert_eq!(state.get(), (0, 1)));
+            assert_eq!(exact_allocation_failure_state(), (0, 1));
             assert_eq!(compress(&input).expect("same-context compression retry"), reference);
             println!("FILE_COMPRESSION_CASE=pass bytes={size} allocation={bound} error=OutOfMemory retry=exact wire=unchanged");
             assert_eq!(decode(&encoded, true).unwrap().as_ref(), input);

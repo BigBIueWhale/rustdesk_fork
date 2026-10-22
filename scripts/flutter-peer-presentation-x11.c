@@ -1342,6 +1342,7 @@ static int exercise_viewer_suspension(Display *source, Display *display,
            (unsigned long long)max_age, distinct);
     for (unsigned int cycle = 0U; cycle < FOCUS_CYCLE_COUNT; ++cycle) {
         uint64_t deadline, held_from, resumed_at, recovery_ms, first_fresh, recovery_age;
+        uint64_t source_progress_at, source_max_gap = 0U;
         int64_t paused_frame, source_before, source_after;
         uint64_t captured_us = 0U;
         ConnectionIdentity after = {{0}, {0}, 0UL};
@@ -1366,25 +1367,37 @@ static int exercise_viewer_suspension(Display *source, Display *display,
         source_before = source_state(source);
         if (paused_frame < 0 || source_before < 0) goto finished;
         held_from = monotonic_millis();
+        source_progress_at = held_from;
+        source_after = source_before;
         deadline = held_from + blur_hold_ms[cycle];
         phase = "frozen-pixels";
         do {
+            int64_t current_source = source_state(source);
+            uint64_t now = monotonic_millis();
+            uint64_t source_gap = now - source_progress_at;
+            if (source_gap > source_max_gap) source_max_gap = source_gap;
+            if (source_gap > FRESH_LIMIT_MS ||
+                (current_source >= 0 && current_source < source_after)) goto finished;
+            if (current_source > source_after) {
+                source_after = current_source;
+                source_progress_at = now;
+            }
             if (viewer_process_state(process, pid, start, &state) != 0 || state != 'T' ||
                 !viewer_pidfd_alive(pidfd) ||
                 viewer_state(display, viewer, &captured_us) != paused_frame ||
                 sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto finished;
         } while (monotonic_millis() < deadline);
-        source_after = source_state(source);
         phase = "source-progress-and-connection";
-        if (source_after < source_before ||
-            source_after - source_before < (int64_t)(blur_hold_ms[cycle] / 100U) ||
+        if (source_after <= source_before ||
             read_connection_identity(&after) != 0 || !same_connection(connection, &after))
             goto finished;
         printf("FLUTTER_PEER_SUSPENDED_OK cycle=%u requested_ms=%u held_ms=%llu "
-               "viewer_frame=%lld source_before=%lld source_after=%lld kernel_state=T "
+               "viewer_frame=%lld source_before=%lld source_after=%lld "
+               "source_maximum_gap_ms=%llu kernel_state=T "
                "pixels=frozen stable_connection=true\n", cycle + 1U, blur_hold_ms[cycle],
                (unsigned long long)(monotonic_millis() - held_from), (long long)paused_frame,
-               (long long)source_before, (long long)source_after);
+               (long long)source_before, (long long)source_after,
+               (unsigned long long)source_max_gap);
         fflush(stdout);
         resumed_at = monotonic_millis();
         phase = "resume";

@@ -24,23 +24,15 @@ pub fn yuv_samples(data: &[u8], format: &EncodeYuvFormat) -> Option<([u8; 3], [u
     let sample = |x: usize| -> Option<[u8; 3]> {
         let luma = *data.get(y.checked_mul(y_stride)?.checked_add(x)?)?;
         match format.pixfmt {
-            Pixfmt::I420 => {
-                let chroma_offset = (y / 2)
-                    .checked_mul(uv_stride)?
-                    .checked_add(x / 2)?;
-                Some([
-                    luma,
-                    *data.get(format.u.checked_add(chroma_offset)?)?,
-                    *data.get(format.v.checked_add(chroma_offset)?)?,
-                ])
-            }
-            Pixfmt::I444 => {
-                let chroma_offset = y.checked_mul(uv_stride)?.checked_add(x)?;
-                Some([
-                    luma,
-                    *data.get(format.u.checked_add(chroma_offset)?)?,
-                    *data.get(format.v.checked_add(chroma_offset)?)?,
-                ])
+            Pixfmt::I420 | Pixfmt::I444 => {
+                let (x, y) = if format.pixfmt == Pixfmt::I420 { (x / 2, y / 2) } else { (x, y) };
+                let u = format.u
+                    .checked_add(y.checked_mul(uv_stride)?)?
+                    .checked_add(x)?;
+                let v = format.v
+                    .checked_add(y.checked_mul(format.stride[2])?)?
+                    .checked_add(x)?;
+                Some([luma, *data.get(u)?, *data.get(v)?])
             }
             Pixfmt::NV12 => {
                 let chroma_offset = (y / 2)

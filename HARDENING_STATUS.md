@@ -1678,28 +1678,37 @@ performant across every supported viewer and controlled platform. Focus, visibil
 display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,
 fresh presentation, bounded resources, and final ownership without requiring reconnect as a recovery mechanism.
 
-**Screenshot captured pixels — native conversion corrected; live screenshot acceptance OPEN.**
+**Screenshot captured pixels — real X11/PNG component accepted; app acceptance OPEN.**
 
-`ee2b8ad6` converts visible rows according to the capture's declared RGBA, BGRA
-or RGB565LE format and returns tightly packed RGBA. Checked source/output sizes,
-stride admission and fallible reservation precede pixel reads. The old manual
-BGRA assumption and its generic append/swap converter are deleted. Screenshot
-ownership, dimension limits, response handling and PNG encoding are unchanged.
+`dd4773f8` returns tightly packed, opaque screenshot RGBA from captured RGBA,
+BGRA or RGB565LE rows. Source/output arithmetic, stride and fallible allocation
+are checked before reads. The earlier `ee2b8ad6` color/stride correction removes
+the manual BGRA assumption and orphaned generic append/swap converter. Its paired
+constructed-buffer evidence, including caught RGB565 bounds panics, remains in
+`screenshot-pixels-e883dbaa.json`. Screenshot ownership, dimension limits,
+response handling, YUV conversion and the PNG worker are unchanged.
 
-Preparation `37a1b39a` moves the actual screenshot conversion into scrap without
-changing its behavior. The same four conversion test bodies reproduce sixteen
-wrong padded-RGBA outputs, sixteen RGB565 failures including fourteen caught
-Rust bounds panics, and three incorrectly accepted planar inputs; twenty-four
-healthy pixel controls and the four VPX tests pass. After correction, all eight
-tests pass: fifty-six exact pixel comparisons, three unsupported-format refusals,
-and the existing twenty-eight VP8/VP9 encode/decode round trips. The focused
-zero-NIC, non-root VM run takes 152 seconds and joins VM/RAM retirement. It uses
-constructed buffers admitted by the production Linux PixelBuffer, rather than
-an OS capture or an application screenshot transaction. Harness, tests, compiler
-and pinned inputs are unchanged across A/B. `screenshot-pixels-e883dbaa.json`
-retains sources, binaries, exact observations and bounded-RAM cleanup.
-Live X11/desktop/mobile capture, screenshot requests and PNG/viewer behavior,
-other-platform, installed/LPE, R-S0/R-F5 and release acceptance remain OPEN.
+At preparation `f198ad8f`, actual 24-bit Xvfb capture supplies 4,257 zero unused
+alpha bytes. Capture and PNG encoding succeed, but independent decoding finds
+every pixel transparent despite exact RGB colors; the 16-bit control is opaque.
+Two opaque-output byte tests also fail while eight tests pass. With only the
+capture-output opacity correction, the identical ten test bodies and independent
+oracle pass. Both real 129x33, 24/16-bit captures produce the same 150-byte opaque
+PNG: all 8,514 decoded pixels match the painted four-color pattern. Fifty-six
+constructed pixel comparisons, three planar refusals and twenty-eight native
+VP8/VP9 round trips also pass. Seven oracle controls detect transparent pixels,
+wrong first/last colors, bad CRC, truncation and trailing bytes. This executes
+production capture/PixelBuffer/conversion and the pinned screenshot PNG settings;
+it does not execute the application request/response or bounded PNG writer.
+
+The existing zero-NIC, non-root focused lane authenticates seven offline Xvfb
+packages and joins both X servers, their sockets/locks, VM and bounded RAM scratch.
+The final transaction takes 142 seconds. Harness, oracle, test bodies, compiler,
+inputs and resource budgets are identical across A/B. Exact sources, PNG/RGBA
+hashes and cleanup are retained in `screenshot-x11-f539fc01.json`.
+Real hardware and other-platform capture, screenshot requests, bounded PNG
+output, clipboard/viewer behavior, installed/LPE, R-S0/R-F5 and release acceptance
+remain OPEN.
 
 **VPX input storage — native encoder/decoder component accepted; product acceptance OPEN.**
 

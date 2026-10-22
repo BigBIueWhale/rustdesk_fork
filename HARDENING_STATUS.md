@@ -1694,6 +1694,22 @@ The final transaction takes 142 seconds. Harness, oracle, test bodies, compiler,
 inputs and resource budgets are identical across A/B. Exact sources, PNG/RGBA
 hashes and cleanup are retained in `screenshot-x11-f539fc01.json`.
 
+**Warmed capture-to-YUV conversion — diagnostic allocation removed.** `f39be52e`
+formats the unsupported-conversion diagnostic only on its existing refusal edges;
+successful frames no longer build that string. Conversion branches, buffer
+calculations, error text and native calls are unchanged. At unchanged-product
+`4758bd19`, refusing its 70-byte allocation aborts an already-warmed converter while
+eighteen controls pass. The identical fixture passes after correction: all nine
+BGRA/RGBA/RGB565LE to I420/NV12/I444 pairs leave a one-shot Rust allocation refusal
+unused and produce exact limited-range black in all 114 visible plane samples.
+Three unsupported-format errors retain their exact diagnostics. All nineteen
+focused tests pass in 139 VM seconds, including the prior real-X11 PNG, VPX,
+allocation-failure and metadata controls. `yuv-conversion-diagnostic-e31d479c.json`
+binds sources/artifacts, raw A/B observations and joined bounded-RAM cleanup.
+This covers warmed Rust storage inside the converter. Cold buffer growth,
+descriptor/arithmetic bounds, C-heap allocation, other native targets, complete
+app/peer/settings behavior, installed R-S0 and R-F5 acceptance remain OPEN.
+
 **Capture stride metadata — Linux component accepted; other native targets OPEN.**
 
 `244a186d` changes `TraitPixelBuffer::stride` from an allocated vector to one

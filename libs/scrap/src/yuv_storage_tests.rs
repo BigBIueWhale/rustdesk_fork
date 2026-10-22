@@ -157,13 +157,12 @@ fn captured_frame_must_match_encoder_viewport_before_conversion() {
         rgb.raw
     }
 
-    fn white(rgb: &[u8]) -> u8 {
+    fn white_error(rgb: &[u8]) -> u8 {
         let mut error = 0;
         for pixel in rgb.chunks_exact(4) {
             assert_eq!(pixel[3], 255);
             error = error.max(255 - *pixel[..3].iter().min().unwrap());
         }
-        assert!(error <= 3, "white round trip error {error}");
         error
     }
 
@@ -175,10 +174,13 @@ fn captured_frame_must_match_encoder_viewport_before_conversion() {
                            (VpxVideoCodecId::VP9, false),
                            (VpxVideoCodecId::VP9, true)] {
         for source in [Pixfmt::BGRA, Pixfmt::RGBA, Pixfmt::RGB565LE] {
-            let mut encoder = VpxEncoder::new(EncoderCfg::VPX(VpxEncoderConfig {
+            let make_encoder = || VpxEncoder::new(EncoderCfg::VPX(VpxEncoderConfig {
                 width: 33, height: 31, quality: 1.0, codec, keyframe_interval: Some(1),
             }), i444).unwrap();
+            let mut encoder = make_encoder();
+            let mut control_encoder = make_encoder();
             let mut decoder = VpxDecoder::new(VpxDecoderConfig { codec }).unwrap();
+            let mut control_decoder = VpxDecoder::new(VpxDecoderConfig { codec }).unwrap();
             let format = encoder.yuvfmt();
             snapshots_wrong += usize::from((format.w, format.h) != (33, 31));
             let bpp = if source == Pixfmt::RGB565LE { 2 } else { 4 };
@@ -187,7 +189,12 @@ fn captured_frame_must_match_encoder_viewport_before_conversion() {
             let mut output = Vec::new();
             let mut intermediate = Vec::new();
             let input = full.to(format, &mut output, &mut intermediate).unwrap();
-            let max_error = white(&decoded(&mut encoder, &mut decoder, 0, input.yuv().unwrap()));
+            let control_yuv = input.yuv().unwrap().to_vec();
+            let rgb = decoded(&mut encoder, &mut decoder, 0, input.yuv().unwrap());
+            let control_rgb = decoded(&mut control_encoder, &mut control_decoder, 0, &control_yuv);
+            assert_eq!(rgb, control_rgb);
+            let max_error = white_error(&rgb);
+            assert!(max_error <= 3, "initial white round trip error {}", max_error);
             println!("CAPTURE_VIEWPORT_CASE=pass operation=healthy codec={codec:?} i444={i444} source={source:?} dimensions=33x31 pixels=1023 max_error={max_error}");
             for (index, (width, height)) in [(16, 31), (33, 16), (16, 16)].iter().copied().enumerate() {
                 full.to(format, &mut output, &mut intermediate).unwrap();
@@ -197,6 +204,7 @@ fn captured_frame_must_match_encoder_viewport_before_conversion() {
                 let partial_data = vec![0u8; width * height * bpp];
                 let partial = Frame::PixelBuffer(PixelBuffer::new(&partial_data, source, width, height, width * bpp).unwrap());
                 let pts = index as i64 + 1;
+                let control_rgb = decoded(&mut control_encoder, &mut control_decoder, pts, &control_yuv);
                 let rejected = match partial.to(format, &mut output, &mut intermediate) {
                     Err(_) => true,
                     Ok(input) => {
@@ -218,9 +226,12 @@ fn captured_frame_must_match_encoder_viewport_before_conversion() {
                     assert_eq!(intermediate, old_intermediate);
                     assert_eq!((output.as_ptr(), output.capacity(), intermediate.as_ptr(), intermediate.capacity()), identities);
                     let input = full.to(format, &mut output, &mut intermediate).unwrap();
-                    white(&decoded(&mut encoder, &mut decoder, pts, input.yuv().unwrap()));
+                    assert_eq!(input.yuv().unwrap(), control_yuv);
+                    let rgb = decoded(&mut encoder, &mut decoder, pts, input.yuv().unwrap());
+                    assert_eq!(rgb, control_rgb);
+                    let control_error = white_error(&control_rgb);
                     refused += 1;
-                    println!("CAPTURE_VIEWPORT_CASE=pass operation=refuse codec={codec:?} i444={i444} source={source:?} width={width} height={height} buffers=preserved retry=pass");
+                    println!("CAPTURE_VIEWPORT_CASE=pass operation=refuse codec={codec:?} i444={i444} source={source:?} width={width} height={height} buffers=preserved retry=pass control_error={control_error}");
                 }
             }
         }

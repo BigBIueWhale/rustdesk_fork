@@ -118,10 +118,10 @@ for operation, name, allocation_bytes in (
         assert len(healthy) == 9 and {v[:3] for v in healthy} == combinations
         refused = re.findall(r'^CAPTURE_VIEWPORT_CASE=pass operation=refuse codec=(VP8|VP9) '
                              r'i444=(false|true) source=(BGRA|RGBA|RGB565LE) width=(16|33) height=(16|31) '
-                             r'buffers=preserved retry=pass$', result.stdout, re.MULTILINE)
+                             r'buffers=preserved retry=pass control_error=([0-9]+)$', result.stdout, re.MULTILINE)
         expected = {(*combination, width, height) for combination in combinations
                     for width, height in [('16', '31'), ('33', '16'), ('16', '16')]}
-        assert len(refused) == len(set(refused)) == 27 and set(refused) == expected
+        assert len(refused) == 27 and {v[:5] for v in refused} == expected
         assert 'CAPTURE_VIEWPORT_OBSERVED=' not in result.stdout
     elif operation in ('output', 'intermediate'):
         cases = re.findall(r'^CAPTURE_STORAGE_CASE=pass stage=' + operation + r' (.+)$', result.stdout, re.MULTILINE)

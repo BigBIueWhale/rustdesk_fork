@@ -41,6 +41,7 @@ pub struct VpxEncoder {
     id: VpxVideoCodecId,
     i444: bool,
     yuvfmt: EncodeYuvFormat,
+    needs_keyframe: bool,
 }
 
 pub struct VpxDecoder {
@@ -202,6 +203,7 @@ impl EncoderApi for VpxEncoder {
                         v: layout.v,
                         buffer_len: layout.len,
                     },
+                    needs_keyframe: false,
                 })
             }
             _ => Err(anyhow!("encoder type mismatch")),
@@ -209,13 +211,17 @@ impl EncoderApi for VpxEncoder {
     }
 
     fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<VideoFrame> {
-        let mut frames = Vec::new();
-        for ref frame in self
+        let encoded = self
             .encode(ms, input.yuv()?, STRIDE_ALIGN)
-            .with_context(|| "Failed to encode")?
-        {
-            frames.push(VpxEncoder::create_frame(frame));
-        }
+            .with_context(|| "Failed to encode")?;
+        let frames = match Self::collect_frames(encoded) {
+            Ok(frames) => frames,
+            Err(error) => {
+                // Native references advanced without delivering their packet.
+                self.needs_keyframe = true;
+                return Err(error);
+            }
+        };
         if frames.len() > 0 {
             Ok(VpxEncoder::create_video_frame(self.id, frames))
         } else {
@@ -306,12 +312,13 @@ impl VpxEncoder {
             &image,
             pts as _,
             1, // Duration
-            0, // Flags
+            if self.needs_keyframe { VPX_EFLAG_FORCE_KF as _ } else { 0 },
             VPX_DL_REALTIME as _,
         ));
 
         Ok(EncodeFrames {
             ctx: &mut self.ctx,
+            needs_keyframe: &mut self.needs_keyframe,
             iter: ptr::null(),
         })
     }
@@ -329,6 +336,7 @@ impl VpxEncoder {
 
         Ok(EncodeFrames {
             ctx: &mut self.ctx,
+            needs_keyframe: &mut self.needs_keyframe,
             iter: ptr::null(),
         })
     }
@@ -351,13 +359,21 @@ impl VpxEncoder {
     }
 
     #[inline]
-    fn create_frame(frame: &EncodeFrame) -> EncodedVideoFrame {
-        EncodedVideoFrame {
-            data: Bytes::from(frame.data.to_vec()),
-            key: frame.key,
-            pts: frame.pts,
-            ..Default::default()
+    fn collect_frames(encoded: EncodeFrames<'_>) -> ResultType<Vec<EncodedVideoFrame>> {
+        let mut frames = Vec::new();
+        for frame in encoded {
+            let mut data = Vec::new();
+            data.try_reserve_exact(frame.data.len())?;
+            data.extend_from_slice(frame.data);
+            frames.try_reserve(1)?;
+            frames.push(EncodedVideoFrame {
+                data: Bytes::from(data),
+                key: frame.key,
+                pts: frame.pts,
+                ..Default::default()
+            });
         }
+        Ok(frames)
     }
 
     fn bitrate(
@@ -480,6 +496,7 @@ pub struct VpxDecoderConfig {
 
 pub struct EncodeFrames<'a> {
     ctx: &'a mut vpx_codec_ctx_t,
+    needs_keyframe: &'a mut bool,
     iter: vpx_codec_iter_t,
 }
 
@@ -493,9 +510,16 @@ impl<'a> Iterator for EncodeFrames<'a> {
                     return None;
                 } else if (*pkt).kind == vpx_codec_cx_pkt_kind::VPX_CODEC_CX_FRAME_PKT {
                     let f = &(*pkt).data.frame;
+                    let key = (f.flags & VPX_FRAME_IS_KEY) != 0;
+                    if *self.needs_keyframe && !key {
+                        continue;
+                    }
+                    if key {
+                        *self.needs_keyframe = false;
+                    }
                     return Some(Self::Item {
                         data: slice::from_raw_parts(f.buf as _, f.sz as _),
-                        key: (f.flags & VPX_FRAME_IS_KEY) != 0,
+                        key,
                         pts: f.pts,
                     });
                 } else {
@@ -880,6 +904,7 @@ mod tests {
         }, VPX_CODEC_OK);
         let mut packets: Vec<Vec<u8>> = EncodeFrames {
             ctx: &mut encoder.ctx,
+            needs_keyframe: &mut encoder.needs_keyframe,
             iter: ptr::null(),
         }.map(|frame| frame.data.to_vec()).collect();
         packets.extend(encoder.flush().unwrap().map(|frame| frame.data.to_vec()));

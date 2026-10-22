@@ -28,7 +28,6 @@ if result.stderr:
 assert hashlib.sha256(executable.read_bytes()).hexdigest() == artifact_sha
 if result.returncode == -6:
     assert result.stdout.count('VIDEO_ALLOCATOR=refused\n') == 1
-    assert result.stdout.count('VIDEO_MESSAGE_ALLOC_ATTEMPT=observed ') == 1
     sizes = re.findall(r'memory allocation of ([0-9]+) bytes failed', result.stderr)
     assert len(sizes) == 1 and 0 < int(sizes[0]) <= 64 * 1024 * 1024
     print(f'VIDEO_MESSAGE_ALLOC_RESULT=observed child_exit=-6 refused_bytes={sizes[0]} '

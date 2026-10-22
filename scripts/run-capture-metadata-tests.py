@@ -20,7 +20,8 @@ passed = 0
 for operation, name, allocation_bytes in (
         ('construct', 'construction_needs_no_allocation', 32),
         ('read', 'stride_read_needs_no_allocation', 8),
-        ('convert', 'warmed_yuv_conversion_needs_no_allocation', 70)):
+        ('convert', 'warmed_yuv_conversion_needs_no_allocation', 70),
+        ('format', 'encoder_format_snapshot_and_frame_conversion_need_no_allocation', 32)):
     case = 'capture_metadata_tests::' + name
     result = subprocess.run([str(executable), '--exact', case, '--format', 'terse',
                              '--test-threads=1', '--show-output'],
@@ -38,16 +39,25 @@ for operation, name, allocation_bytes in (
     assert result.returncode == 0 and not result.stderr
     assert 'VIDEO_ALLOCATOR=refused' not in result.stdout
     assert result.stdout.count('test result: ok. 1 passed; 0 failed;') == 1
-    details = ('combinations=9 allocations=0 pixels=exact unsupported=3' if operation == 'convert'
-               else 'stride=16 allocations=0 pixels=exact')
+    if operation == 'convert':
+        details = 'combinations=9 allocations=0 pixels=exact unsupported=3'
+    elif operation == 'format':
+        details = 'combinations=3 allocations=0 pixels=exact samples=6528 snapshot=preserved'
+    else:
+        details = 'stride=16 allocations=0 pixels=exact'
     assert result.stdout.count(f'CAPTURE_METADATA_NATIVE=pass operation={operation} {details}\n') == 1
     if operation == 'convert':
         cases = re.findall(r'^CAPTURE_YUV_CASE=pass (.+)$', result.stdout, re.MULTILINE)
         expected = {f'source={source} destination={destination} pixels=exact allocation=unused'
                     for source in ('BGRA', 'RGBA', 'RGB565LE') for destination in ('I420', 'NV12', 'I444')}
         assert len(cases) == len(set(cases)) == 9 and set(cases) == expected
+    elif operation == 'format':
+        cases = re.findall(r'^CAPTURE_ENCODER_CASE=pass (.+)$', result.stdout, re.MULTILINE)
+        expected = {f'codec={codec} i444={chroma} snapshot=preserved allocations=0 pixels=exact samples={samples}'
+                    for codec, chroma, samples in [('VP8', 'false', 1632), ('VP9', 'false', 1632), ('VP9', 'true', 3264)]}
+        assert len(cases) == len(set(cases)) == 3 and set(cases) == expected
     print(f'CAPTURE_METADATA_RESULT=pass operation={operation} {details} '
           f'artifact_sha256={artifact_sha} children=joined', flush=True)
     passed += 1
 assert hashlib.sha256(executable.read_bytes()).hexdigest() == artifact_sha
-sys.exit(0 if passed == 3 else 1)
+sys.exit(0 if passed == 4 else 1)

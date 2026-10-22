@@ -97,3 +97,58 @@ fn warmed_yuv_conversion_needs_no_allocation() {
     }
     println!("CAPTURE_METADATA_NATIVE=pass operation=convert combinations=9 allocations=0 pixels=exact unsupported=3");
 }
+
+#[test]
+fn encoder_format_snapshot_and_frame_conversion_need_no_allocation() {
+    use crate::codec::{EncoderApi, EncoderCfg};
+    use crate::{Frame, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId};
+
+    let data = vec![0u8; 34 * 32 * 4];
+    let mut samples = 0;
+    for (codec, i444) in [(VpxVideoCodecId::VP8, false),
+                           (VpxVideoCodecId::VP9, false),
+                           (VpxVideoCodecId::VP9, true)] {
+        let encoder = VpxEncoder::new(EncoderCfg::VPX(VpxEncoderConfig {
+            width: 34,
+            height: 32,
+            quality: 1.0,
+            codec,
+            keyframe_interval: Some(1),
+        }), i444).unwrap();
+        let frame = Frame::PixelBuffer(PixelBuffer::new(&data, Pixfmt::BGRA, 34, 32, 136).unwrap());
+        let reference = encoder.yuvfmt();
+        assert_eq!((reference.w, reference.h), (34, 32));
+        let mut output = Vec::new();
+        let mut intermediate = Vec::new();
+        frame.to(reference.clone(), &mut output, &mut intermediate).unwrap();
+        output.fill(0xa5);
+        let before = test_allocator::refusals();
+        test_allocator::arm();
+        let snapshot = black_box(encoder.yuvfmt());
+        // Deliberately exercise the descriptor's public Clone operation as well.
+        let copied = black_box(Clone::clone(black_box(&snapshot)));
+        let result = black_box(frame.to(copied, &mut output, &mut intermediate));
+        let unused = test_allocator::take_armed();
+        assert!(unused, "{codec:?} i444={i444} allocated");
+        assert_eq!(test_allocator::refusals(), before);
+        assert_eq!((snapshot.pixfmt, snapshot.w, snapshot.h, snapshot.u, snapshot.v),
+                   (reference.pixfmt, reference.w, reference.h, reference.u, reference.v));
+        assert_eq!(snapshot.stride[..3], reference.stride[..3]);
+        let input = result.unwrap();
+        let converted = input.yuv().unwrap();
+        let plane = |offset: usize, stride: usize, width: usize, height: usize, value: u8| {
+            for row in 0..height {
+                assert!(converted[offset + row * stride..][..width].iter().all(|&v| v == value));
+            }
+        };
+        plane(0, reference.stride[0], 34, 32, 16);
+        let (width, height) = if i444 { (34, 32) } else { (17, 16) };
+        plane(reference.u, reference.stride[1], width, height, 128);
+        plane(reference.v, reference.stride[2], width, height, 128);
+        let checked = 34 * 32 + 2 * width * height;
+        samples += checked;
+        println!("CAPTURE_ENCODER_CASE=pass codec={codec:?} i444={i444} snapshot=preserved allocations=0 pixels=exact samples={checked}");
+    }
+    assert_eq!(samples, 6528);
+    println!("CAPTURE_METADATA_NATIVE=pass operation=format combinations=3 allocations=0 pixels=exact samples=6528 snapshot=preserved");
+}

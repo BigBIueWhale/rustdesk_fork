@@ -24,6 +24,7 @@ use hwcodec::{
         ffmpeg_linesize_offset_length, CodecInfo,
     },
 };
+use std::convert::TryFrom;
 
 const DEFAULT_PIXFMT: AVPixelFormat = AVPixelFormat::AV_PIX_FMT_NV12;
 pub const DEFAULT_FPS: i32 = 30;
@@ -50,6 +51,7 @@ pub struct HwRamEncoderConfig {
 
 pub struct HwRamEncoder {
     encoder: Encoder,
+    buffer_len: usize,
     pub format: DataFormat,
     pub pixfmt: AVPixelFormat,
     bitrate: u32, //kbs
@@ -93,13 +95,20 @@ impl EncoderApi for HwRamEncoder {
                     }
                 };
                 match Encoder::new(ctx.clone()) {
-                    Ok(encoder) => Ok(HwRamEncoder {
-                        encoder,
-                        format,
-                        pixfmt: ctx.pixfmt,
-                        bitrate,
-                        config,
-                    }),
+                    Ok(encoder) => {
+                        let buffer_len = usize::try_from(encoder.length)?;
+                        if buffer_len == 0 {
+                            bail!("empty hardware encoder input layout");
+                        }
+                        Ok(HwRamEncoder {
+                            encoder,
+                            buffer_len,
+                            format,
+                            pixfmt: ctx.pixfmt,
+                            bitrate,
+                            config,
+                        })
+                    }
                     Err(_) => Err(anyhow!(format!("Failed to create encoder"))),
                 }
             }
@@ -159,6 +168,7 @@ impl EncoderApi for HwRamEncoder {
             } else {
                 self.encoder.offset[1] as _
             },
+            buffer_len: self.buffer_len,
         }
     }
 

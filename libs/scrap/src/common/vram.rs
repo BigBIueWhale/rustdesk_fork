@@ -161,6 +161,7 @@ impl EncoderApi for VRamEncoder {
             stride: [0; 3],
             u: 0,
             v: 0,
+            buffer_len: 0,
         }
     }
 

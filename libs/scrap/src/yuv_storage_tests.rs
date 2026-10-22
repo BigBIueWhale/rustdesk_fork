@@ -12,6 +12,7 @@ fn format(destination: Pixfmt) -> EncodeYuvFormat {
         },
         u: 16,
         v: if destination == Pixfmt::I420 { 20 } else { 32 },
+        buffer_len: if destination == Pixfmt::I444 { 48 } else { 24 },
     }
 }
 
@@ -88,7 +89,7 @@ fn intermediate_allocation_failures_preserve_buffers_and_retry() { allocation_fa
 fn plane_layout_is_checked_and_v_stride_is_independent() {
     let data = [0u8; 64];
     let pixels = PixelBuffer::new(&data, Pixfmt::BGRA, 3, 4, 16).unwrap();
-    let layout = EncodeYuvFormat { pixfmt: Pixfmt::I420, w: 3, h: 4, stride: [8, 4, 8], u: 32, v: 40 };
+    let layout = EncodeYuvFormat { pixfmt: Pixfmt::I420, w: 3, h: 4, stride: [8, 4, 8], u: 32, v: 40, buffer_len: 56 };
     let mut output = vec![0xa5; 64];
     convert_to_yuv(&pixels, layout, &mut output, &mut Vec::new()).unwrap();
     println!("CAPTURE_LAYOUT_OBSERVED=v_plane stride_u=4 stride_v=8 first={} second={}", output[40], output[48]);
@@ -99,7 +100,7 @@ fn plane_layout_is_checked_and_v_stride_is_independent() {
         }
     }
     assert_eq!(output.len(), 56);
-    for case in 0..16 {
+    for case in 0..19 {
         let mut invalid = layout;
         let name = match case {
             0 => { invalid.w = 0; "zero-width" }
@@ -118,6 +119,9 @@ fn plane_layout_is_checked_and_v_stride_is_independent() {
             13 => { invalid.stride[0] = usize::MAX; "stride-outside-native-int" }
             14 => { invalid.pixfmt = Pixfmt::NV12; invalid.stride[1] = 3; "short-nv12-stride" }
             15 => { invalid.pixfmt = Pixfmt::I444; invalid.stride = [8, 4, 2]; invalid.v = 48; "short-i444-stride" }
+            16 => { invalid.buffer_len = 0; "zero-buffer-length" }
+            17 => { invalid.buffer_len = 55; "short-buffer-length" }
+            18 => { invalid.buffer_len = usize::MAX; "buffer-length-outside-address-space" }
             _ => unreachable!(),
         };
         let mut output = b"old frame".to_vec();
@@ -132,5 +136,5 @@ fn plane_layout_is_checked_and_v_stride_is_independent() {
         assert_eq!((output.as_ptr(), output.capacity(), intermediate.as_ptr(), intermediate.capacity()), identities);
         println!("CAPTURE_LAYOUT_REFUSAL=pass case={name} buffers=preserved outcome=error");
     }
-    println!("CAPTURE_METADATA_NATIVE=pass operation=layout independent_v_stride=true invalid=16 storage_bytes=56 pixels=exact state=preserved");
+    println!("CAPTURE_METADATA_NATIVE=pass operation=layout independent_v_stride=true invalid=19 storage_bytes=56 pixels=exact state=preserved");
 }

@@ -6867,7 +6867,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = vide
         "CAPTURE_METADATA_RESULT=pass operation=format combinations=3 allocations=0 pixels=exact samples=6528 snapshot=preserved artifact_sha256=$vpx_artifact_sha children=joined" \
         'native encoder format acquisition and snapshot copy without allocation'
     require_exact_fixed_receipt \
-        "CAPTURE_METADATA_RESULT=pass operation=layout independent_v_stride=true invalid=16 storage_bytes=56 pixels=exact state=preserved artifact_sha256=$vpx_artifact_sha children=joined" \
+        "CAPTURE_METADATA_RESULT=pass operation=layout independent_v_stride=true invalid=19 storage_bytes=56 pixels=exact state=preserved artifact_sha256=$vpx_artifact_sha children=joined" \
         'native YUV plane ownership and independent stride'
     for allocation_case in output:9 intermediate:3; do
         combinations=${allocation_case#*:}

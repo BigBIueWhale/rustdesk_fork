@@ -56,7 +56,7 @@ for operation, name, allocation_bytes in (
     elif operation == 'format':
         details = 'combinations=3 allocations=0 pixels=exact samples=6528 snapshot=preserved'
     elif operation == 'layout':
-        details = 'independent_v_stride=true invalid=16 storage_bytes=56 pixels=exact state=preserved'
+        details = 'independent_v_stride=true invalid=19 storage_bytes=56 pixels=exact state=preserved'
     elif operation in ('output', 'intermediate'):
         details = (f'combinations={refusals} refusals={refusals} pixels=exact '
                    f'state=preserved retries={refusals} warmed=allocation-free')
@@ -84,8 +84,9 @@ for operation, name, allocation_bytes in (
                     'short-y-stride', 'short-u-stride', 'short-v-stride', 'overlapping-y-u',
                     'overlapping-u-v', 'u-offset-overflow', 'v-offset-overflow',
                     'width-outside-native-int', 'height-outside-native-int', 'stride-outside-native-int',
-                    'short-nv12-stride', 'short-i444-stride'}
-        assert len(cases) == len(set(cases)) == 16 and set(cases) == expected
+                    'short-nv12-stride', 'short-i444-stride', 'zero-buffer-length',
+                    'short-buffer-length', 'buffer-length-outside-address-space'}
+        assert len(cases) == len(set(cases)) == 19 and set(cases) == expected
     elif operation in ('output', 'intermediate'):
         cases = re.findall(r'^CAPTURE_STORAGE_CASE=pass stage=' + operation + r' (.+)$', result.stdout, re.MULTILINE)
         pairs = ([(source, destination) for source in ('BGRA', 'RGBA', 'RGB565LE')

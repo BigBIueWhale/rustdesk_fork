@@ -200,6 +200,7 @@ impl EncoderApi for VpxEncoder {
                         stride: [layout.stride[0], layout.stride[1], layout.stride[2]],
                         u: layout.u,
                         v: layout.v,
+                        buffer_len: layout.len,
                     },
                 })
             }

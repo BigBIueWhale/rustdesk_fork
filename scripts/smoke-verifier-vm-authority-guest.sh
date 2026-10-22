@@ -6539,7 +6539,7 @@ PY
             || fail 'native warmed YUV conversion allocation result differs'
         [ "$(grep -Ec '^CAPTURE_METADATA_RESULT=pass operation=format combinations=3 allocations=0 pixels=exact samples=6528 snapshot=preserved artifact_sha256=[0-9a-f]{64} children=joined$' "$output")" -eq 1 ] \
             || fail 'native encoder format snapshot result differs'
-        [ "$(grep -Ec '^CAPTURE_METADATA_RESULT=pass operation=layout independent_v_stride=true invalid=16 storage_bytes=56 pixels=exact state=preserved artifact_sha256=[0-9a-f]{64} children=joined$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CAPTURE_METADATA_RESULT=pass operation=layout independent_v_stride=true invalid=19 storage_bytes=56 pixels=exact state=preserved artifact_sha256=[0-9a-f]{64} children=joined$' "$output")" -eq 1 ] \
             || fail 'native YUV layout result differs'
         for allocation_case in output:9 intermediate:3; do
             local combinations=${allocation_case#*:}

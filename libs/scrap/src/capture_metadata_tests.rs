@@ -52,6 +52,7 @@ fn warmed_yuv_conversion_needs_no_allocation() {
                 },
                 u: 16,
                 v: if destination == Pixfmt::I420 { 20 } else { 32 },
+                buffer_len: if destination == Pixfmt::I444 { 48 } else { 24 },
             };
             let mut output = Vec::new();
             let mut intermediate = Vec::new();
@@ -90,7 +91,7 @@ fn warmed_yuv_conversion_needs_no_allocation() {
             println!("CAPTURE_YUV_CASE=pass source={source:?} destination={destination:?} pixels=exact allocation=unused");
         }
         let unsupported = EncodeYuvFormat {
-            pixfmt: Pixfmt::BGRA, w: 3, h: 2, stride: [0; 3], u: 0, v: 0,
+            pixfmt: Pixfmt::BGRA, w: 3, h: 2, stride: [0; 3], u: 0, v: 0, buffer_len: 0,
         };
         let error = convert_to_yuv(&pixels, unsupported, &mut Vec::new(), &mut Vec::new()).unwrap_err();
         assert_eq!(error.to_string(), format!("unsupported pixfmt conversion: {source:?} -> BGRA"));
@@ -135,6 +136,7 @@ fn encoder_format_snapshot_and_frame_conversion_need_no_allocation() {
         assert_eq!((snapshot.pixfmt, snapshot.w, snapshot.h, snapshot.u, snapshot.v),
                    (reference.pixfmt, reference.w, reference.h, reference.u, reference.v));
         assert_eq!(snapshot.stride[..3], reference.stride[..3]);
+        assert_eq!(snapshot.buffer_len, reference.buffer_len);
         let input = result.unwrap();
         let converted = input.yuv().unwrap();
         let plane = |offset: usize, stride: usize, width: usize, height: usize, value: u8| {

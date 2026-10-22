@@ -248,6 +248,7 @@ pub struct EncodeYuvFormat {
     pub stride: [usize; 3],
     pub u: usize,
     pub v: usize,
+    pub buffer_len: usize,
 }
 
 // R-X12 (§8): the scrap capture backend is pinned to X11 — is_x11() is a compile-time `true`

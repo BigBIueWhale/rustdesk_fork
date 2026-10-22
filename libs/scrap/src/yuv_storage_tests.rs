@@ -138,3 +138,98 @@ fn plane_layout_is_checked_and_v_stride_is_independent() {
     }
     println!("CAPTURE_METADATA_NATIVE=pass operation=layout independent_v_stride=true invalid=19 storage_bytes=56 pixels=exact state=preserved");
 }
+
+#[test]
+fn captured_frame_must_match_encoder_viewport_before_conversion() {
+    use crate::codec::{EncoderApi, EncoderCfg};
+    use crate::{Frame, GoogleImage, ImageFormat, ImageRgb, VpxDecoder, VpxDecoderConfig,
+                VpxEncoder, VpxEncoderConfig, VpxVideoCodecId};
+
+    fn decoded(encoder: &mut VpxEncoder, decoder: &mut VpxDecoder, pts: i64, yuv: &[u8]) -> Vec<u8> {
+        let packets: Vec<Vec<u8>> = encoder.encode(pts, yuv, 64).unwrap()
+            .map(|frame| frame.data.to_vec()).collect();
+        assert_eq!(packets.len(), 1);
+        let image = decoder.decode(&packets[0]).unwrap().unwrap();
+        assert_eq!((image.width(), image.height()), (33, 31));
+        let mut rgb = ImageRgb::new(ImageFormat::ARGB, 0);
+        image.to(&mut rgb).unwrap();
+        assert_eq!(rgb.raw.len(), 33 * 31 * 4);
+        rgb.raw
+    }
+
+    fn white(rgb: &[u8]) -> u8 {
+        let mut error = 0;
+        for pixel in rgb.chunks_exact(4) {
+            assert_eq!(pixel[3], 255);
+            error = error.max(255 - *pixel[..3].iter().min().unwrap());
+        }
+        assert!(error <= 3, "white round trip error {error}");
+        error
+    }
+
+    let mut accepted_partial = 0;
+    let mut stale_pixels = 0;
+    let mut snapshots_wrong = 0;
+    let mut refused = 0;
+    for (codec, i444) in [(VpxVideoCodecId::VP8, false),
+                           (VpxVideoCodecId::VP9, false),
+                           (VpxVideoCodecId::VP9, true)] {
+        for source in [Pixfmt::BGRA, Pixfmt::RGBA, Pixfmt::RGB565LE] {
+            let mut encoder = VpxEncoder::new(EncoderCfg::VPX(VpxEncoderConfig {
+                width: 33, height: 31, quality: 1.0, codec, keyframe_interval: Some(1),
+            }), i444).unwrap();
+            let mut decoder = VpxDecoder::new(VpxDecoderConfig { codec }).unwrap();
+            let format = encoder.yuvfmt();
+            snapshots_wrong += usize::from((format.w, format.h) != (33, 31));
+            let bpp = if source == Pixfmt::RGB565LE { 2 } else { 4 };
+            let full_data = vec![255u8; 33 * 31 * bpp];
+            let full = Frame::PixelBuffer(PixelBuffer::new(&full_data, source, 33, 31, 33 * bpp).unwrap());
+            let mut output = Vec::new();
+            let mut intermediate = Vec::new();
+            let input = full.to(format, &mut output, &mut intermediate).unwrap();
+            let max_error = white(&decoded(&mut encoder, &mut decoder, 0, input.yuv().unwrap()));
+            println!("CAPTURE_VIEWPORT_CASE=pass operation=healthy codec={codec:?} i444={i444} source={source:?} dimensions=33x31 pixels=1023 max_error={max_error}");
+            for (index, (width, height)) in [(16, 31), (33, 16), (16, 16)].iter().copied().enumerate() {
+                full.to(format, &mut output, &mut intermediate).unwrap();
+                let old_output = output.clone();
+                let old_intermediate = intermediate.clone();
+                let identities = (output.as_ptr(), output.capacity(), intermediate.as_ptr(), intermediate.capacity());
+                let partial_data = vec![0u8; width * height * bpp];
+                let partial = Frame::PixelBuffer(PixelBuffer::new(&partial_data, source, width, height, width * bpp).unwrap());
+                let pts = index as i64 + 1;
+                let rejected = match partial.to(format, &mut output, &mut intermediate) {
+                    Err(_) => true,
+                    Ok(input) => {
+                        let rgb = decoded(&mut encoder, &mut decoder, pts, input.yuv().unwrap());
+                        let new_pixel = &rgb[..4];
+                        let retained_pixel = &rgb[(33 * 31 - 1) * 4..];
+                        assert_eq!((new_pixel[3], retained_pixel[3]), (255, 255));
+                        let new_rgb = *new_pixel[..3].iter().max().unwrap();
+                        let retained_rgb = *retained_pixel[..3].iter().min().unwrap();
+                        assert!(new_rgb <= 8 && retained_rgb >= 240);
+                        accepted_partial += 1;
+                        stale_pixels += 1;
+                        println!("CAPTURE_VIEWPORT_OBSERVED=partial codec={codec:?} i444={i444} source={source:?} width={width} height={height} new_rgb={new_rgb} retained_rgb={retained_rgb}");
+                        false
+                    }
+                };
+                if rejected {
+                    assert_eq!(output, old_output);
+                    assert_eq!(intermediate, old_intermediate);
+                    assert_eq!((output.as_ptr(), output.capacity(), intermediate.as_ptr(), intermediate.capacity()), identities);
+                    let input = full.to(format, &mut output, &mut intermediate).unwrap();
+                    white(&decoded(&mut encoder, &mut decoder, pts, input.yuv().unwrap()));
+                    refused += 1;
+                    println!("CAPTURE_VIEWPORT_CASE=pass operation=refuse codec={codec:?} i444={i444} source={source:?} width={width} height={height} buffers=preserved retry=pass");
+                }
+            }
+        }
+    }
+    if accepted_partial != 0 {
+        println!("CAPTURE_VIEWPORT_NATIVE=observed combinations=9 accepted_partial={accepted_partial} stale_pixels={stale_pixels} snapshots_wrong={snapshots_wrong} healthy_pixels=9207");
+    }
+    assert_eq!(accepted_partial, 0, "partial capture must not retain previous visible pixels");
+    assert_eq!(snapshots_wrong, 0, "descriptor must name the visible frame dimensions");
+    assert_eq!(refused, 27);
+    println!("CAPTURE_METADATA_NATIVE=pass operation=viewport combinations=9 mismatches=27 retries=27 pixels=36828 viewport=exact buffers=preserved");
+}

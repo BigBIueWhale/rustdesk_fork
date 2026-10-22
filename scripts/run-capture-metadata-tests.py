@@ -24,8 +24,9 @@ for operation, name, allocation_bytes in (
         ('format', 'encoder_format_snapshot_and_frame_conversion_need_no_allocation', 32),
         ('layout', 'plane_layout_is_checked_and_v_stride_is_independent', None),
         ('output', 'output_allocation_failures_preserve_buffers_and_retry', 32),
-        ('intermediate', 'intermediate_allocation_failures_preserve_buffers_and_retry', 24)):
-    module = 'yuv_storage_tests::' if operation in ('layout', 'output', 'intermediate') else 'capture_metadata_tests::'
+        ('intermediate', 'intermediate_allocation_failures_preserve_buffers_and_retry', 24),
+        ('viewport', 'captured_frame_must_match_encoder_viewport_before_conversion', None)):
+    module = 'yuv_storage_tests::' if operation in ('layout', 'output', 'intermediate', 'viewport') else 'capture_metadata_tests::'
     case = module + name
     result = subprocess.run([str(executable), '--exact', case, '--format', 'terse',
                              '--test-threads=1', '--show-output'],
@@ -34,6 +35,24 @@ for operation, name, allocation_bytes in (
     print(result.stdout, end='', flush=True)
     if result.stderr:
         print(result.stderr, file=sys.stderr, end='', flush=True)
+    if operation == 'viewport' and result.returncode == 101:
+        assert not result.stderr
+        assert result.stdout.count('test result: FAILED. 0 passed; 1 failed;') == 1
+        assert case in result.stdout
+        assert result.stdout.count('CAPTURE_VIEWPORT_NATIVE=observed combinations=9 accepted_partial=27 '
+                                   'stale_pixels=27 snapshots_wrong=6 healthy_pixels=9207\n') == 1
+        observed = re.findall(r'^CAPTURE_VIEWPORT_OBSERVED=partial codec=(VP8|VP9) i444=(false|true) '
+                              r'source=(BGRA|RGBA|RGB565LE) width=(16|33) height=(16|31) '
+                              r'new_rgb=([0-9]+) retained_rgb=([0-9]+)$', result.stdout, re.MULTILINE)
+        expected = {(codec, chroma, source, width, height)
+                    for codec, chroma in [('VP8', 'false'), ('VP9', 'false'), ('VP9', 'true')]
+                    for source in ('BGRA', 'RGBA', 'RGB565LE')
+                    for width, height in [('16', '31'), ('33', '16'), ('16', '16')]}
+        assert len(observed) == 27 and {v[:5] for v in observed} == expected
+        assert all(int(v[5]) <= 8 and int(v[6]) >= 240 for v in observed)
+        print(f'CAPTURE_METADATA_RESULT=observed operation=viewport child_exit=101 combinations=9 '
+              f'accepted_partial=27 stale_pixels=27 artifact_sha256={artifact_sha} children=joined', flush=True)
+        continue
     if operation == 'layout' and result.returncode == 101:
         assert result.stdout.count('test result: FAILED. 0 passed; 1 failed;') == 1
         assert case in result.stdout
@@ -57,6 +76,8 @@ for operation, name, allocation_bytes in (
         details = 'combinations=3 allocations=0 pixels=exact samples=6528 snapshot=preserved'
     elif operation == 'layout':
         details = 'independent_v_stride=true invalid=19 storage_bytes=56 pixels=exact state=preserved'
+    elif operation == 'viewport':
+        details = 'combinations=9 mismatches=27 retries=27 pixels=36828 viewport=exact buffers=preserved'
     elif operation in ('output', 'intermediate'):
         details = (f'combinations={refusals} refusals={refusals} pixels=exact '
                    f'state=preserved retries={refusals} warmed=allocation-free')
@@ -87,6 +108,21 @@ for operation, name, allocation_bytes in (
                     'short-nv12-stride', 'short-i444-stride', 'zero-buffer-length',
                     'short-buffer-length', 'buffer-length-outside-address-space'}
         assert len(cases) == len(set(cases)) == 19 and set(cases) == expected
+    elif operation == 'viewport':
+        healthy = re.findall(r'^CAPTURE_VIEWPORT_CASE=pass operation=healthy codec=(VP8|VP9) '
+                             r'i444=(false|true) source=(BGRA|RGBA|RGB565LE) '
+                             r'dimensions=33x31 pixels=1023 max_error=([0-3])$', result.stdout, re.MULTILINE)
+        combinations = {(codec, chroma, source)
+                        for codec, chroma in [('VP8', 'false'), ('VP9', 'false'), ('VP9', 'true')]
+                        for source in ('BGRA', 'RGBA', 'RGB565LE')}
+        assert len(healthy) == 9 and {v[:3] for v in healthy} == combinations
+        refused = re.findall(r'^CAPTURE_VIEWPORT_CASE=pass operation=refuse codec=(VP8|VP9) '
+                             r'i444=(false|true) source=(BGRA|RGBA|RGB565LE) width=(16|33) height=(16|31) '
+                             r'buffers=preserved retry=pass$', result.stdout, re.MULTILINE)
+        expected = {(*combination, width, height) for combination in combinations
+                    for width, height in [('16', '31'), ('33', '16'), ('16', '16')]}
+        assert len(refused) == len(set(refused)) == 27 and set(refused) == expected
+        assert 'CAPTURE_VIEWPORT_OBSERVED=' not in result.stdout
     elif operation in ('output', 'intermediate'):
         cases = re.findall(r'^CAPTURE_STORAGE_CASE=pass stage=' + operation + r' (.+)$', result.stdout, re.MULTILINE)
         pairs = ([(source, destination) for source in ('BGRA', 'RGBA', 'RGB565LE')
@@ -99,4 +135,4 @@ for operation, name, allocation_bytes in (
           f'artifact_sha256={artifact_sha} children=joined', flush=True)
     passed += 1
 assert hashlib.sha256(executable.read_bytes()).hexdigest() == artifact_sha
-sys.exit(0 if passed == 7 else 1)
+sys.exit(0 if passed == 8 else 1)

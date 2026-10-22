@@ -3123,8 +3123,8 @@ preferences; reads create no peer record and descriptors return 4 to 4.
 observations, the excluded first fixture-compilation failure and joined
 bounded-RAM cleanup. Starting tests reconstruct exactly; no public API,
 FFI/Dart, decoder, dependency or verifier change is included.
-Decoder::preference hardware cases and the native alternative-codec API
-require separate review; effective existing-peer reads are corrected below.
+The decoder/menu follow-through is recorded below; effective existing-peer
+reads are corrected below.
 Rendered settings, actual negotiation/encoding/decoding, native other-platform/
 installed, R-S0/R-F5 and release acceptance remain OPEN.
 
@@ -3187,8 +3187,27 @@ native profile receipts and joined bounded-RAM cleanup. These branches were
 dormant under the required software build; no new failing native codec-menu
 scenario or actual codec switch is claimed. Complete menu rendering, native
 FFI/peer switching, device/installed/platform, R-S0/R-F5 and release acceptance
-remain OPEN. The native alternative-codec API's hardware fields and
-Decoder::preference/per-peer raw preferences still require separate review.
+remain OPEN.
+
+**Native software-codec menu data — dormant hardware fields retired.**
+`48710f22` removes H264/H265 from the decoder preference matcher and native
+alternative-codec JSON. Shared `PeerConfig::load` already normalizes every codec
+choice to Auto/VP8/VP9, making the removed matcher branches unreachable. The sole
+toolbar consumer reads only `vp8`; its controls and the public String bridge
+signature are unchanged. `is_vp8_available` replaces the three-Boolean internal
+tuple and snapshots unsupported codecs plus VP8 encoding availability under one
+read lock before querying decoder support. Preference matching borrows strings.
+
+The initial scrap tree and unchanged harness match the retained `7e62885a`
+26-test native baseline. After retirement, all 26 tests pass in 139 VM seconds,
+including codec, continuous-output, packet-allocation/recovery, capture/conversion
+and native X11 PNG controls. Exact sources, classification, artifacts and joined
+bounded-RAM cleanup are in `retired-codec-advertisement-8bb1c697.json`.
+This compiles the changed codec library; application getter/FFI wiring is source
+reviewed. No newly reproduced functional or LPE failure is claimed. Full application
+compilation, actual bridge/menu/peer selection, remaining decoder profile-read review,
+other-platform/installed, R-S0/R-F5 and release acceptance remain OPEN. Separately
+parked whole-peer writers remain OPEN/PARKED.
 
 Historical comparisons cover named setter/export leaves or controlled rendered
 components, not an old installed whole application. The receipts retain exact sources,

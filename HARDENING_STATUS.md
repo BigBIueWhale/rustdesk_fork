@@ -9555,259 +9555,43 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Flutter/Pub/WiX and maintenance producers,
   stable signing/golden/operator assets, exact R-B2/R-B10 artifacts, native/device/performance/
   resource/soak behavior, independent reproduction and R-V3 external review.
-- **R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority —
-  SOURCE/GATES COMPLETE 2026-07-24; EXACT CLEAN RELEASE EVIDENCE REMAINS OPEN.** Platform: the unprivileged Linux
-  acquisition host. Endpoint/action: `scripts/online-fetch.sh::stage_libvpx_distfiles`, which
-  publishes the repository-owned CVE patch and the complete libvpx overlay/source key beside the
-  network-acquired vcpkg distfiles. Boundary: the exact committed source identity and two
-  deterministic local bytes ↔ the durable `online/vcpkg-distfiles` consumer namespace.
+- **R-S11cv/R-S11e-114 — committed libvpx patch/native-key publication.**
+  Source owner: `scripts/online-fetch.sh::stage_libvpx_distfiles` and
+  `scripts/online-libvpx-local-output.py`. One clean commit/tree/blob and whole-overlay key
+  bind a private committed patch source. The locked publisher validates exact occupied
+  files without replacement, stages missing outputs privately, records source/inode/byte
+  authority, and publishes patch before key through durable no-replace renames. Recovery
+  and read-only consumers reject unresolved or contradictory state.
+  Historical nonroot, networkless helper fixtures cover cold/mixed publication, exact
+  occupied inode reuse, wrong-output preservation, interrupted recovery, source/staging
+  symlinks, external hardlinks, xattrs and mismatched recorded authority. They establish
+  component observations, not current clean acquisition or final-artifact acceptance.
+  The executable filesystem self-test and supplementary source guard remain in the shared
+  gate; source-text mutation rejection is not native publication evidence.
+  Current exact-source acquisition, R-B2/R-B10 artifacts, native/device behavior, independent
+  distribution and R-V3 review remain OPEN. Cargo vendoring, Windows Flutter/Pub/WiX and
+  maintenance-image producers retain their separate acceptance obligations.
 
-  Before this slice, the shell hashed the live patch pathname, copied it into the predictable
-  `libvpx-<fix>.patch.part`, and used overwrite-capable `mv`. It then regenerated
-  `libvpx-native-key.txt.part` unconditionally and overwrote the final receipt. A symlinked
-  temporary could redirect the path write; wrong occupied state was replaced rather than rejected;
-  the hash and copy were separate pathname operations; and an interruption left ambiguous shared
-  residue. This was source-proven current-user build-input publication, namespace, and stale-state
-  authority debt. It is not evidence that either cached file changed, host root was acquired,
-  Docker escaped, a listener or port was exposed, host RustDesk/service/configuration/firewall/
-  network state changed, exploitation occurred, or the host was compromised.
-
-  `online-fetch.sh` now resolves and retains one exact Git commit and tree, requires the canonical
-  clean live checkout, explicitly refuses Git graft or replacement-ref state, and proves the fixed
-  patch is one mode-100644 tracked blob whose no-filter live object equals the committed blob. The native-input key is computed from the established pin
-  fields plus every ordinary committed blob below `res/vcpkg/libvpx`; a symlink, submodule, or
-  special committed entry is fatal. The independently retained live-tree calculation must equal
-  that committed key. Commit/tree/blob/clean-state/live-key equality is reproved after local
-  publication and after each x64-linux or arm64-Android networked vcpkg producer, and either native
-  output may publish only when that source postcondition and its independent output verdict pass.
-
-  The dedicated `scripts/online-libvpx-local-output.py` refuses UID or primary GID zero and accepts
-  only the canonical patch path below a current-user, non-group/world-writable source root. The
-  shell holds the existing nonblocking exclusive online-root lock around publication. The helper
-  stably reads the patch through a no-follow single-link descriptor, rejects xattrs and mutable
-  metadata, and independently enforces `SHA512_LIBVPX_PATCH`. It opens only the exact current-user
-  same-filesystem/same-mount/no-xattr `vcpkg-distfiles` parent. An occupied final must be a stable
-  same-mount single-link regular file in one closed current-user or historical root-owned mode
-  profile and match the exact patch or newline-terminated native-key bytes. Wrong or unsafe state
-  fails before candidate creation and is not deleted, replaced, or chmodded.
-
-  Missing output is created exclusively under an unpredictable same-filesystem mode-0700 staging
-  directory. A bounded fsynced mode-0600 state record binds online/distfile/staging identities,
-  owner, source commit/tree/blob, exactly two ordered outputs, candidate identities, lengths,
-  SHA-256 values, patch SHA-512, and key bytes. Candidates are exclusive no-follow current-owner
-  files, stably rechecked, synchronized, and sealed 0400. Patch publication deliberately precedes
-  receipt publication. Each uses descriptor-relative `renameat2(RENAME_NOREPLACE)` and fsyncs both
-  namespaces; an exact concurrently occupied final consumes only its identical staged duplicate,
-  while a different final fails. Both finals are rechecked before exact staging retirement.
-
-  Restart reconciliation accepts only bounded ordinary current-owner partial files in an
-  unprepared reserved directory, or a recorded arrangement whose exact source/byte authority still
-  equals the current transaction and in which each candidate identity is still staged or is the
-  exact final, or the candidate is absent only while the independently revalidated exact occupied
-  final remains. This last topology is required when an existing exact patch consumes its staged
-  duplicate while the same transaction publishes a previously missing receipt. State is stably
-  reread before retirement. A symlink, special file,
-  external hardlink, descendant mount, xattr, unexpected entry, changed parent, missing candidate
-  identity, or mismatched recorded authority is preserved and rejected. The read-only consumer
-  command refuses and preserves any unreconciled reserved transaction and applies the same
-  descriptor/metadata/byte verdict. The old patch/key `.part`, `cp`, overwrite `mv`, direct path-hash
-  consumer, and refresh-in-place receipt semantics are absent.
-
-  Verification: the helper self-test passes in immutable Android-builder
-  image `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`
-  as numeric UID:GID 1000:1000 with `--pull=never`, no network, read-only root/source, all
-  capabilities dropped, no-new-privileges, fixed PID/memory/no-swap/CPU ceilings, and bounded
-  non-executable scratch. It exercised cold two-file publication, exact occupied inode reuse,
-  mixed exact-patch/missing-receipt publication without replacing the occupied patch,
-  historical-mode reuse, wrong occupied output refusal without overwrite, interrupted unprepared
-  reconciliation, successful read-only validation, preservation of unresolved read-only state,
-  preservation of a recorded transaction from a different source authority, and symlinked
-  source/staging, external-hardlink staging, and xattr refusal. The focused deliberate-mutation
-  verifier passes. The independent workspace verifier passes both its normal source contract and
-  complete source-mutation-only matrix. The adjacent vcpkg native-output verifier passes with all
-  48 mutations rejected; fixed-archive authority passes with all 59 mutations rejected; online
-  container authority passes with all 36 mutations rejected; and native-codec watch passes both
-  normal and mutation-self-test modes. A separate confined calculation proves the live and exact
-  committed libvpx native-key algorithms agree at
-  `afa7f36e0104d94645cbd9d8c08e9701b406ac1bc3e5f7f533e5b241f7a6551f`. Python AST parsing, `online-fetch.sh`/`verify.sh` Bash
-  parsing, requirements HTML parsing, synchronized requirements SHA-256
-  `e91c445b89284741bbf8e781bb5fc755bbfd1b7d6c670ee805daf05818d085a2`, and `git diff --check`
-  pass in the final confined source state. These are source/helper fixture verdicts, not a claim
-  that the persistent cache was published or that an exact release artifact was built.
-
-  Evidence boundary: this source slice runs no network producer, image operation, compiler,
-  archive extractor, or release build for the two deterministic local files. The persistent online
-  cache was not mutated. Host Cargo vendoring, Windows Flutter/Pub/WiX producers, maintenance-image
-  acquisition/distribution, exact clean R-B2/R-B10 artifacts, native/device behavior, independent
-  image distribution, and R-V3 external review remain open. No root command/container, image
-  pull/build/tag, host RustDesk process/service/configuration/listener/firewall/network operation,
-  or native device was used.
-- **R-S11cw/R-S11e-115 — exact Cargo vendor acquisition-output authority —
-  SOURCE, TRANSACTION, OFFLINE SEMANTIC, AND MUTATION VERIFIED 2026-07-24; EXACT CLEAN
-  RELEASE EVIDENCE REMAINS OPEN.** Platform: the unprivileged Linux acquisition host and the
-  immutable Debian builder. Endpoint/action: `scripts/online-fetch.sh::vendor_cargo`, which
-  materializes the complete Cargo registry/Git source closure and source-replacement map consumed
-  by every offline Rust build. Boundary: networked Cargo archive/Git processing ↔ one exact
-  committed source, the pinned Rust toolchain, sealed build inputs, and the durable online cache.
-
-  Before this slice, `vendor_cargo` called ambient host `cargo` against the live checkout with host
-  network/Cargo/Git state, directed it into permanent `online/cargo-vendor`, and truncated the
-  permanent `online/cargo-vendor-config.toml` pathname. An occupied tree was updated instead of
-  proved, a failure could leave a partial tree/config pair, and no independent Cargo process showed
-  that the resulting bytes resolved the committed lockfile offline. This was build-host execution,
-  acquisition-input/output, namespace, stale-state, and denial-of-service authority debt. It is not
-  evidence that the existing vendor bytes changed, any dependency was malicious, host root was
-  acquired, Docker escaped, a listener or public port was exposed, host RustDesk/service/config/
-  firewall/network state changed, exploitation occurred, or the host was compromised.
-
-  `online-fetch.sh` now stages and verifies the pinned Rust 1.75 archive before Cargo vendoring and
-  contains no host-Cargo path. It requires the already-loaded immutable Debian builder and constructs
-  the same exact clean commit/tree/archive authority used by the Gradle and Pub paths. The authority
-  rejects sparse checkout, replacement refs, grafts, noncanonical index flags, staged/tracked/
-  untracked drift, archive-transforming attributes, and committed symlink/special entries. Its
-  read-only extraction is independently compared with a private writable extraction, after which
-  the writable copy is retired before Cargo starts. After producer and semantic runs, a fresh
-  extraction re-proves commit/tree/clean/archive/source equality and is again retired.
-
-  The current-user mode-0700 online root is exclusively locked. Every reserved transaction is
-  reconciled before reuse or staging. A present final is accepted only when both the vendor
-  directory and config exist and the same complete non-mutating validators accept them; partial,
-  wrong, linked, mounted, foreign, mutable, or otherwise unsafe occupied state fails without
-  deletion, replacement, chmod, or producer execution. A cold run creates an unpredictable
-  same-filesystem mode-0700 transaction directory plus a hidden sibling vendor candidate. The
-  candidate is deliberately a sibling of the permanent vendor name: Linux permits the fully sealed
-  directory to move between names under the same parent without granting write permission to the
-  directory to update a cross-parent `..` relationship.
-
-  `scripts/online-cargo-vendor-output.py` refuses UID or primary GID zero and records online,
-  transaction, candidate, raw-config, canonical-config, source commit/tree/archive, builder, Rust,
-  output pins, owners, inode identities, exact counts, phase, and dispositions in a bounded
-  mode-0600 append-only fsynced JSON-lines journal. The only admitted forward sequence is
-  `prepared → verified → authorized → publishing → vendor-published → complete`, with exact
-  phase/disposition combinations. Pre-journal recovery accepts only the exact empty files/tree
-  created by preparation. Prepared or structurally verified state is discardable and cannot
-  publish; only authorized-or-later exact state can resume publication.
-
-  The producer uses intentional isolated bridge egress but no pull, a read-only root, the invoking
-  numeric UID:GID, all capabilities dropped, no-new-privileges, fixed PID/memory/no-swap/CPU bounds,
-  and bounded executable scratch. It receives exactly four host mounts: exact committed source and
-  the pinned Rust archive read-only, plus the private hidden vendor directory and exact raw-config
-  inode writable. It receives no online root, permanent output name, live checkout, Docker socket,
-  device, port, other writable host path, or host namespace. HOME, Cargo home/target, Git config, and
-  the installed Rust toolchain live only in tmpfs. Exact Rust 1.75 runs
-  `cargo vendor --locked --versioned-dirs --manifest-path /source/Cargo.toml /outputs/vendor` and
-  emits its map only to `/outputs/raw-config.toml`.
-
-  Independent host validation bounds paths, depth, per-file size, total files/directories/bytes,
-  journal/config sizes, and mountinfo. It rejects noncanonical roots, descendant mounts, filesystem
-  crossings, symlinks, special objects, foreign ownership, set-id/sticky bits, extended attributes,
-  external hardlinks, unsupported modes, and unstable reads. The exact accepted closure is 50,926
-  files, 12,144 directories, 2,299,420,401 regular-file bytes, and canonical provenance SHA-256
-  `fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04`.
-  Producer file executability is retained while all files/directories are normalized to 0400/0500,
-  synchronized, and then completely revalidated. The bounded raw config must have one unambiguous
-  terminal `/outputs/vendor` declaration. Only that declaration is transformed to the established
-  final path; the resulting 4,393-byte config must equal SHA-256
-  `18a946aa319d64fa07e9616801981b1794c01764f9d870090de593cec412d62f`, and is
-  synchronized and sealed 0400.
-
-  Structural validation does not authorize publication. A second immutable numeric-nonroot
-  container runs with `--network=none`, no pull, read-only root, zero capabilities,
-  no-new-privileges, fixed resource ceilings, and bounded executable tmpfs. It receives only exact
-  source, Rust archive, sealed vendor tree, and canonical config read-only. It creates a disposable
-  empty Cargo home, changes only that copy's sole directory declaration to `/vendor`, and requires
-  exact Rust 1.75 `cargo fetch --offline --locked --manifest-path /source/Cargo.toml` to succeed.
-  Producer, source, Rust input, structural output, semantic, and publication statuses remain
-  independent. The helper records authorization only when every preceding verdict is green.
-
-  Publication moves the sealed tree first through descriptor-relative same-parent
-  `renameat2(RENAME_NOREPLACE)`, synchronizes the online namespace, and records
-  `vendor-published`; only then may the sealed config enter its final name through the same
-  no-clobber primitive. Exact concurrent output is independently revalidated, while different
-  output fails. Every journal and namespace transition is synchronized and complete output is
-  rechecked. Recovery accepts only exact recorded inode arrangements; malformed/partial journals,
-  contradictory dispositions, symlink/special/hardlink/mount/xattr state, changed parents or
-  identities, and unexpected inventory are preserved. Reconciled private state is retired through
-  the established exact-identity mode restorer and external-inode closure remover. Consumers refuse
-  any surviving reserved transaction.
-
-  The disposable cold producer exposed a pre-existing reproducibility mismatch instead of being
-  forced to reproduce it: the historical vendor/config pins retained the unversioned
-  `https://github.com/rustdesk-org/tokio-socks` source and its `tokio-socks-0.5.2-3` tree even
-  though the current committed `Cargo.lock` no longer contains that source. Exact Rust 1.75
-  vendoring therefore emits 25 rather than 26 source-map entries and removes precisely 96 files,
-  27 directories, and 685,019 content bytes. Keeping the historical superset would make the new
-  producer permanently fail its own lockfile-exact contract. The source pins now bind the measured
-  current output: vendor root
-  `fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04`,
-  config `18a946aa319d64fa07e9616801981b1794c01764f9d870090de593cec412d62f`,
-  and full online closure
-  `ab9d1b9e467dbc7723f809eb7d7e905ca5b9285fe00f8572e96c2490fe0ffc66`
-  over 145,614 files, 42,828 directories, 41 symlinks, and 25,722,811,491 content
-  bytes. The full closure was derived in disposable reflink storage by replacing only those two
-  measured artifacts and running the canonical whole-tree algorithm. The persistent historical
-  cache was not edited or chmodded. Because silent cache replacement would violate this boundary,
-  its now-stale exact occupied pair intentionally fails until an operator explicitly retires it and
-  reruns acquisition; the transaction does not delete it merely because source pins advanced.
-
-  A disposable cold-output proof also exercised the real producer and publication path against
-  the corrected closure. The producer used immutable Debian builder
-  `sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776`
-  as numeric UID:GID 1000:1000 with an isolated bridge, no pull, read-only root, all capabilities
-  dropped, no-new-privileges, explicit resource ceilings, no port or host namespace, the exact
-  pinned Rust archive read-only, the current source read-only, and only its candidate tree and
-  raw-config inode writable. The first attempt used the historical pins and correctly stopped at
-  the independently checked config digest before authorization or publication, exposing the stale
-  `tokio-socks` surplus described above. With the corrected pins, the producer completed; the
-  helper admitted, normalized, synchronized, and revalidated all 50,926 files; a separate
-  `--network=none` exact Rust 1.75 `cargo fetch --offline --locked` completed from an otherwise
-  empty Cargo home; and authorization, tree-before-config no-clobber publication, recovery, and
-  final complete validation all passed. The disposable final and its whole-online reflink proof
-  were then mode-restored where necessary and completely removed. The persistent online cache was
-  never mounted writable by those proofs.
-
-  That cold proof intentionally is not promoted to exact clean release evidence: it mounted the
-  current read-only working tree while this source slice was uncommitted and used synthetic
-  source/journal identities for the disposable helper transaction. `Cargo.toml` and `Cargo.lock`
-  had no working-tree diff, so it validates the measured Cargo output, offline resolution, sealing,
-  recovery, and publication mechanics, but not the exact clean commit/archive precondition or an
-  R-B2 release artifact. The committed `online-fetch.sh` path enforces that precondition before a
-  real persistent acquisition.
-
-  Source-fixture verification uses immutable image
-  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`
-  as numeric UID:GID 1000:1000 with no network, read-only root/source, all capabilities dropped,
-  no-new-privileges, fixed PID/memory/no-swap/CPU ceilings, and bounded non-executable scratch for
-  source fixtures. The helper self-test covers cold publication, verified-but-unauthorized recovery,
-  authorized complete recovery, interruption after tree-before-config publication, exact final
-  checking, writable occupied root/file/config refusal, wrong occupied output preservation, and
-  external-hardlink refusal. The focused
-  structural verifier rejected all 22 deliberate authority mutations; the adjacent container,
-  exact-source, fixed-archive, and Rust-audit gates rejected 39, 38, 59, and 53 mutations
-  respectively. The independent workspace passed normally and across its complete source-mutation
-  matrix. That matrix exposed and closed two source-verifier gaps before publication: shared Rust
-  archive-check literals are now scoped to the exact Cargo-tool lifecycle, and main acquisition
-  order independently requires fixed Rust inputs before Cargo vendoring. During the 2026-07-25
-  whole-closure refresh, the focused Cargo semantic-profile extractor was also found to span the
-  following Pub semantic profile; a missing Cargo `--cap-drop=ALL` therefore borrowed the Pub copy
-  and escaped its capability-widening mutation. The extractor now ends at the immediate Pub-profile
-  boundary, the focused 22-mutation suite rejects that removal, and the independent workspace
-  extracts the same exact function and carries its own capability-drop mutation. This is an
-  assurance repair; the already capability-free producer/semantic runtime profiles did not change.
-  The native-codec watch
-  passed normally and in mutation-self-test mode. Bash/Python/HTML parsing, synchronized
-  requirements SHA-256
-  `f785be15c36ac3e0b9d31b83a761a6d5480a62e706be7161c32274aa22e3b862`,
-  unchanged Cargo manifests/lockfile, and diff hygiene passed in the final source state; final
-  index, commit, and remote-publication evidence follows after it exists.
-
-  Evidence boundary: no root command/container, host Cargo, host-network listener, published port,
-  host namespace, image pull/build/tag, persistent online-cache mutation, release build, native
-  device, or host RustDesk process/service/configuration/listener/firewall/network operation is part
-  of this source slice. A disposable producer/offline-resolver transaction is separate evidence and
-  is not an exact clean R-B2 release artifact. Windows Flutter/Pub/WiX producers,
-  maintenance-image acquisition/distribution, native/device behavior, independent image
-  distribution, and R-V3 external review remain open.
+- **R-S11cw/R-S11e-115 — Cargo vendor acquisition/output authority.**
+  Source owner: `scripts/online-fetch.sh::vendor_cargo` and
+  `scripts/online-cargo-vendor-output.py`. The pinned builder/Rust toolchain receives only
+  exact committed source and private outputs. Independent closure/config validation and
+  separate networkless lockfile resolution precede authorization. A retained phase journal
+  binds source, pins, output identities and ordered tree-before-config no-replace publication;
+  recovery cannot promote merely prepared/verified state. Occupied outputs require the
+  complete non-mutating verdict; direct host Cargo and direct-final publication are absent.
+  The current closure, file/directory/content counts, source-map length and digests are the
+  committed Cargo vendor fields in `scripts/pins.env`, not the superseded July values.
+  Historical helper fixtures cover authorized/unauthorized recovery, interrupted publication,
+  exact and wrong occupied outputs, unsafe metadata and external hardlinks. The recorded
+  disposable cold producer/offline-resolution proof used an uncommitted source view and
+  synthetic transaction identities; it does not prove the clean commit/archive precondition
+  or an R-B2 release. It also does not establish current occupied-cache identity.
+  The executable filesystem self-test and supplementary source guard remain in the shared
+  gate. Exact-source acquisition and cold clean R-B2/R-B10 artifacts, Windows Flutter/Pub/WiX,
+  maintenance-image acquisition/distribution, native/device behavior, independent distribution
+  and R-V3 review remain OPEN. No acquisition producer or persistent cache runs in this
+  documentation correction; the separate user-requested acquisition parks remain in force.
 - **R-S11cx/R-S11e-116 — exact Windows Flutter-engine acquisition-output authority —
   SOURCE, TRANSACTION, COLD PRODUCER, ARCHIVE SEMANTIC, AND MUTATION VERIFIED 2026-07-24;
   EXACT CLEAN RELEASE EVIDENCE REMAINS OPEN.** Platform: the unprivileged Linux acquisition

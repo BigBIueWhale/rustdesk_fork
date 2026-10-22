@@ -916,11 +916,11 @@ pub fn base_bitrate(width: u32, height: u32) -> u32 {
         (3840, 2160, 5000),  // 4K UHD, 8294k pixels
         (7680, 4320, 12000), // 8K UHD, 33177k pixels
     ];
-    let pixels = width * height;
+    let pixels = u64::from(width) * u64::from(height);
 
     let (preset_pixels, preset_bitrate) = RESOLUTION_PRESETS
         .iter()
-        .map(|(w, h, bitrate)| (w * h, bitrate))
+        .map(|(w, h, bitrate)| (u64::from(*w) * u64::from(*h), bitrate))
         .min_by_key(|(preset_pixels, _)| {
             if *preset_pixels >= pixels {
                 preset_pixels - pixels
@@ -928,7 +928,7 @@ pub fn base_bitrate(width: u32, height: u32) -> u32 {
                 pixels - preset_pixels
             }
         })
-        .unwrap_or(((1920 * 1080) as u32, &2073)); // default 1080p
+        .unwrap_or((1920 * 1080, &2073)); // default 1080p
 
     let bitrate = (*preset_bitrate as f32 * (pixels as f32 / preset_pixels as f32)).round() as u32;
 

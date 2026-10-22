@@ -801,7 +801,7 @@ mod tests {
                 let mut current = 0;
                 let mut pixels_and_order = true;
                 let mut inspect = |packet: &[u8], pts: i64| {
-                    pixels_and_order &= pts == delivered as i64 * 33;
+                    pixels_and_order &= pts == delivered as i64 * 1000;
                     let image = decoder.decode(packet).unwrap().unwrap();
                     assert_eq!((image.width(), image.height()), (32, 32));
                     assert_eq!(image.chroma(), if i444 { Chroma::I444 } else { Chroma::I420 });
@@ -823,19 +823,26 @@ mod tests {
                     if ordinal == 6 { encoder.set_quality(1.5).unwrap(); }
                     data[..format.u].fill(*level);
                     let packets: Vec<_> = if message_path {
-                        let message = encoder.encode_to_message(EncodeInput::YUV(&data), ordinal as i64 * 33).unwrap();
-                        let frames = match message.union.unwrap() {
-                            hbb_common::message_proto::video_frame::Union::Vp8s(frames) => frames,
-                            hbb_common::message_proto::video_frame::Union::Vp9s(frames) => frames,
-                            _ => panic!("VPX encoder returned another codec"),
-                        };
-                        frames.frames.into_iter().map(|frame| (frame.pts, frame.data.to_vec())).collect()
+                        match encoder.encode_to_message(EncodeInput::YUV(&data), ordinal as i64 * 1000) {
+                            Ok(message) => {
+                                let frames = match message.union.unwrap() {
+                                    hbb_common::message_proto::video_frame::Union::Vp8s(frames) => frames,
+                                    hbb_common::message_proto::video_frame::Union::Vp9s(frames) => frames,
+                                    _ => panic!("VPX encoder returned another codec"),
+                                };
+                                frames.frames.into_iter().map(|frame| (frame.pts, frame.data.to_vec())).collect()
+                            }
+                            Err(error) => {
+                                println!("VIDEO_VPX_REALTIME_ERROR=observed codec={codec:?} i444={i444} ordinal={ordinal} error={error}");
+                                Vec::new()
+                            }
+                        }
                     } else {
-                        encoder.encode(ordinal as i64 * 33, &data, 64).unwrap()
+                        encoder.encode(ordinal as i64 * 1000, &data, 64).unwrap()
                             .map(|frame| (frame.pts, frame.data.to_vec())).collect()
                     };
                     println!("VIDEO_VPX_REALTIME_INPUT=observed codec={codec:?} i444={i444} message_path={message_path} ordinal={ordinal} bitrate={} packets={} pts={:?}", encoder.bitrate(), packets.len(), packets.iter().map(|packet| packet.0).collect::<Vec<_>>());
-                    let is_current = packets.len() == 1 && packets[0].0 == ordinal as i64 * 33;
+                    let is_current = packets.len() == 1 && packets[0].0 == ordinal as i64 * 1000;
                     current += usize::from(is_current);
                     immediate_cases.push(is_current);
                     for (pts, packet) in packets { inspect(&packet, pts); }

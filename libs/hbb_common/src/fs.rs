@@ -6151,7 +6151,7 @@ mod tests {
             .expect("the exact file frame write must succeed");
     }
 
-    async fn keyed_read_job_tcp_pair() -> (crate::Stream, crate::Stream) {
+    async fn keyed_read_job_tcp_pair(sender_limit: usize) -> (crate::Stream, crate::Stream) {
         let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
             .await
             .expect("bind an isolated guest-loopback listener");
@@ -6169,7 +6169,7 @@ mod tests {
         drop(listener);
         let mut sender = crate::tcp::FramedStream::from(sender_side, address);
         let mut receiver = crate::tcp::FramedStream::from(receiver_side, address);
-        sender.set_max_packet_length(8 * 1024);
+        sender.set_max_packet_length(sender_limit);
         receiver.set_max_packet_length(8 * 1024);
         sender.set_session_keys(crate::cpace::DirectionalKeys {
             send: [0x51; 32],
@@ -6231,7 +6231,7 @@ mod tests {
             ).expect("admit real-file read job"));
         }
         jobs[1].is_last_job = true;
-        let (mut sender, mut receiver) = keyed_read_job_tcp_pair().await;
+        let (mut sender, mut receiver) = keyed_read_job_tcp_pair(8 * 1024).await;
         let (log, response) = {
             let mut step = Box::pin(read_job_tcp_step(&mut jobs, &mut sender, &mut receiver));
             std::future::poll_fn(|cx| {
@@ -6276,7 +6276,7 @@ mod tests {
         OpenError,
     }
 
-    async fn assert_read_step_retires_selected_entry(case: ReadJobRetirementCase) {
+    async fn assert_read_step_retires_selected_entry(case: ReadJobRetirementCase, reject_egress: bool) -> bool {
         let tmp = TestTempDir::new("rustdesk_read_step_selected_entry");
         std::fs::create_dir_all(&tmp.path).expect("create source directory");
         let paused_source = tmp.join("paused.zip");
@@ -6317,7 +6317,7 @@ mod tests {
             ReadJobRetirementCase::Complete => {}
         }
         let mut jobs = vec![paused, active];
-        let (mut sender, mut receiver) = keyed_read_job_tcp_pair().await;
+        let (mut sender, mut receiver) = keyed_read_job_tcp_pair(8 * 1024).await;
         if matches!(case, ReadJobRetirementCase::Complete) {
             let (_, data) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
             assert!(matches!(
@@ -6335,25 +6335,52 @@ mod tests {
             ));
             assert_eq!(jobs.len(), 2);
         }
-        let (log, response) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
-        let expected_done = matches!(case, ReadJobRetirementCase::Complete);
-        if expected_done {
-            assert!(matches!(
-                response.union,
-                Some(file_response::Union::Done(done)) if done.id == 184 && done.file_num == 1
-            ));
+        let retired = if reject_egress {
+            let rejected_pair = keyed_read_job_tcp_pair(sodiumoxide::crypto::secretbox::MACBYTES).await;
+            sender = rejected_pair.0;
+            receiver = rejected_pair.1;
+            let error = tokio::time::timeout(Duration::from_secs(5), handle_read_jobs(&mut jobs, &mut sender))
+                .await.expect("terminal admission deadline").expect_err("terminal frame exceeds the engaged ceiling");
+            assert!(error.to_string().starts_with("R-T18: outbound keyed frame exceeds the engaged packet ceiling"));
+            let retired = jobs.len() == 1 && jobs[0].remote == "paused";
+            let label = match case {
+                ReadJobRetirementCase::ReadError => "read_error",
+                ReadJobRetirementCase::Complete => "complete",
+                ReadJobRetirementCase::OpenError => "open_error",
+            };
+            println!("READ_TERMINAL_RETIREMENT_CASE=observed case={label} egress=rejected retired={retired}");
+            if !retired {
+                // Reconcile only the wrongly retained fixture before checking its survivor.
+                assert_eq!(jobs.len(), 2);
+                assert_eq!(jobs[1].remote, "active");
+                drop(jobs.remove(1));
+            }
+            let healthy_pair = keyed_read_job_tcp_pair(8 * 1024).await;
+            sender = healthy_pair.0;
+            receiver = healthy_pair.1;
+            retired
         } else {
-            assert!(matches!(
-                response.union,
-                Some(file_response::Union::Error(error))
-                    if error.id == 184 && error.file_num == 0 && !error.error.is_empty()
-            ));
-        }
-        if !matches!(case, ReadJobRetirementCase::OpenError) {
-            let log: serde_json::Value = serde_json::from_str(&log).expect("decode terminal log");
-            assert_eq!(log["remote"], "active");
-            assert_eq!(log["done"], expected_done);
-        }
+            let (log, response) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+            let expected_done = matches!(case, ReadJobRetirementCase::Complete);
+            if expected_done {
+                assert!(matches!(
+                    response.union,
+                    Some(file_response::Union::Done(done)) if done.id == 184 && done.file_num == 1
+                ));
+            } else {
+                assert!(matches!(
+                    response.union,
+                    Some(file_response::Union::Error(error))
+                        if error.id == 184 && error.file_num == 0 && !error.error.is_empty()
+                ));
+            }
+            if !matches!(case, ReadJobRetirementCase::OpenError) {
+                let log: serde_json::Value = serde_json::from_str(&log).expect("decode terminal log");
+                assert_eq!(log["remote"], "active");
+                assert_eq!(log["done"], expected_done);
+            }
+            true
+        };
         assert_eq!(jobs.len(), 1);
         assert!(jobs[0].is_last_job, "retirement must preserve the paused entry");
         assert_eq!(jobs[0].remote, "paused");
@@ -6384,21 +6411,52 @@ mod tests {
             Some(file_response::Union::Done(done)) if done.id == 184 && done.file_num == 1
         ));
         assert!(jobs.is_empty());
+        retired
     }
 
     #[tokio::test]
     async fn read_step_error_retires_selected_entry_with_a_repeated_id() {
-        assert_read_step_retires_selected_entry(ReadJobRetirementCase::ReadError).await;
+        assert!(assert_read_step_retires_selected_entry(ReadJobRetirementCase::ReadError, false).await);
     }
 
     #[tokio::test]
     async fn read_step_completion_retires_selected_entry_with_a_repeated_id() {
-        assert_read_step_retires_selected_entry(ReadJobRetirementCase::Complete).await;
+        assert!(assert_read_step_retires_selected_entry(ReadJobRetirementCase::Complete, false).await);
     }
 
     #[tokio::test]
     async fn read_step_open_error_preserves_paused_entry_with_a_repeated_id() {
-        assert_read_step_retires_selected_entry(ReadJobRetirementCase::OpenError).await;
+        assert!(assert_read_step_retires_selected_entry(ReadJobRetirementCase::OpenError, false).await);
+    }
+
+    #[tokio::test]
+    async fn read_step_terminal_retirement_precedes_egress_admission() {
+        let mut passed = 0;
+        for case in [ReadJobRetirementCase::ReadError, ReadJobRetirementCase::Complete, ReadJobRetirementCase::OpenError] {
+            passed += usize::from(assert_read_step_retires_selected_entry(case, true).await);
+        }
+        println!("READ_TERMINAL_RETIREMENT=complete cases=3 passed={passed}");
+        assert_eq!(passed, 3);
+    }
+
+    #[tokio::test]
+    async fn read_step_nonterminal_egress_refusal_retains_owned_job() {
+        let tmp = TestTempDir::new("read_step_nonterminal_refusal");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let source = tmp.join("source.zip");
+        std::fs::write(&source, b"active").unwrap();
+        let mut jobs = vec![TransferJob::new_read(
+            185, JobType::Generic, String::new(), source.clone(), 0, false, false, false,
+        ).unwrap()];
+        let (mut sender, _receiver) = keyed_read_job_tcp_pair(sodiumoxide::crypto::secretbox::MACBYTES).await;
+        let error = tokio::time::timeout(Duration::from_secs(5), handle_read_jobs(&mut jobs, &mut sender))
+            .await.unwrap().expect_err("data frame exceeds the engaged ceiling");
+        assert!(error.to_string().starts_with("R-T18: outbound keyed frame exceeds the engaged packet ceiling"));
+        assert_eq!(jobs.len(), 1);
+        assert_eq!((jobs[0].file_num(), jobs[0].finished_size(), jobs[0].transferred()), (0, 6, 6));
+        assert!(jobs[0].data_stream.is_some());
+        assert_eq!(std::fs::read(source).unwrap(), b"active");
+        println!("READ_NONTERMINAL_RETIREMENT=pass egress=rejected active=retained bytes=6 source=preserved");
     }
 
     struct TestTempDir {
@@ -9033,7 +9091,7 @@ mod tests {
             assert_ne!(before_size, admitted_size as u64);
             println!("SEND_DIGEST_BEFORE=observed wire={wire} admitted={admitted_size} accepted={before_size}");
 
-            let mut wire_pair = if wire { Some(keyed_read_job_tcp_pair().await) } else { None };
+            let mut wire_pair = if wire { Some(keyed_read_job_tcp_pair(8 * 1024).await) } else { None };
             let result = match wire_pair.as_mut() {
                 Some((sender, _)) => job.init_data_stream(sender).await.map(|_| ()),
                 None => job.init_data_stream_for_cm().await.map(|_| ()),

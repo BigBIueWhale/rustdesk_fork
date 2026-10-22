@@ -590,7 +590,7 @@ case "$#:${1:-}" in
         printf 'Installed Linux authorization deadline: %s --linux-service-authorization-timeout-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Exact CM read-tick ownership: %s --cm-read-tick-tests\n' "${0##*/}" >&2
         printf 'Blocked-worker owner transitions: %s --android-client-drain-tests\n' "${0##*/}" >&2
-        printf 'Send digest size admission: %s --file-send-digest-tests\n' "${0##*/}" >&2
+        printf 'Send digest/read admission and terminal retirement: %s --file-send-digest-tests\n' "${0##*/}" >&2
         printf 'File metadata admission/finality: %s --file-metadata-tests\n' "${0##*/}" >&2
         printf 'TCP writer retirement: %s --writer-retirement-tests\n' "${0##*/}" >&2
         printf 'Shared and file-block decompression: %s --compression-tests\n' "${0##*/}" >&2
@@ -8092,8 +8092,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
-        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test fs::(tests::send_(digest_|read_buffer_)|file_block::tests::allocation_refusal_)[a-z_]+ \.\.\. ok|SEND_DIGEST_(BEFORE|SIZE)=.*|SEND_READ_ALLOCATION(_CASE)?=.*|FILE_COMPRESSION_(ALLOCATION|CASE)=.*'
-        printf 'FILE_SEND_DIGEST_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=4 artifact_sha256=%s scope=send-digest-and-read-admission network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test fs::(tests::(send_(digest_|read_buffer_)|read_step_)|file_block::tests::allocation_refusal_)[a-z_]+ \.\.\. ok|SEND_DIGEST_(BEFORE|SIZE)=.*|SEND_READ_ALLOCATION(_CASE)?=.*|FILE_COMPRESSION_(ALLOCATION|CASE)=.*|READ_TERMINAL_RETIREMENT(_CASE)?=.*|READ_NONTERMINAL_RETIREMENT=.*'
+        printf 'FILE_SEND_DIGEST_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=9 artifact_sha256=%s scope=send-digest-and-read-admission network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = config-options ]; then

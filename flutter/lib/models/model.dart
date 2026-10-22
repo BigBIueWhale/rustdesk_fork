@@ -3652,12 +3652,12 @@ class CursorModel with ChangeNotifier {
   double _hoty = 0;
   double _displayOriginX = 0;
   double _displayOriginY = 0;
-  DateTime? _firstUpdateMouseTime;
+  final Stopwatch _mouseControlClock;
+  int? _firstUpdateMouseElapsedMSec;
   Rect? _windowRect;
   List<RemoteWindowCoords> _remoteWindowCoords = [];
   bool gotMouseControl = true;
-  final DateTime Function() _now;
-  late DateTime _lastPeerMouse;
+  int? _lastPeerMouseElapsedMSec;
   String peerId = '';
   WeakReference<FFI> parent;
 
@@ -3738,23 +3738,15 @@ class CursorModel with ChangeNotifier {
   double get hotx => _hotx;
   double get hoty => _hoty;
 
-  bool get isPeerControlProtected =>
-      _now().difference(_lastPeerMouse).inMilliseconds <
-      kMouseControlTimeoutMSec;
-
-  bool isConnIn2Secs() {
-    if (_firstUpdateMouseTime == null) {
-      _firstUpdateMouseTime = _now();
-      return true;
-    } else {
-      return _now().difference(_firstUpdateMouseTime!).inSeconds < 2;
-    }
+  bool get isPeerControlProtected {
+    final lastPeerMouse = _lastPeerMouseElapsedMSec;
+    return lastPeerMouse != null &&
+        _mouseControlClock.elapsedMilliseconds - lastPeerMouse <
+            kMouseControlTimeoutMSec;
   }
 
-  CursorModel(this.parent, {DateTime Function()? now}) : _now = now ?? DateTime.now {
-    _lastPeerMouse = _now()
-        .subtract(Duration(milliseconds: 3000 * kMouseControlTimeoutMSec));
-  }
+  CursorModel(this.parent, {Stopwatch? elapsedClock})
+      : _mouseControlClock = elapsedClock ?? (Stopwatch()..start());
 
   String get customCursorOwner => _customCursorOwner;
 
@@ -4421,9 +4413,11 @@ class CursorModel with ChangeNotifier {
         true) {
       return false;
     }
-    if (!isConnIn2Secs()) {
+    final elapsed = _mouseControlClock.elapsedMilliseconds;
+    final firstUpdate = _firstUpdateMouseElapsedMSec ??= elapsed;
+    if (elapsed - firstUpdate >= 2000) {
       gotMouseControl = false;
-      _lastPeerMouse = _now();
+      _lastPeerMouseElapsedMSec = elapsed;
     }
     _x = x.toDouble();
     _y = y.toDouble();
@@ -4469,12 +4463,11 @@ class CursorModel with ChangeNotifier {
     _hoty = 0;
     _displayOriginX = 0;
     _displayOriginY = 0;
-    _firstUpdateMouseTime = null;
+    _firstUpdateMouseElapsedMSec = null;
     _windowRect = null;
     _remoteWindowCoords.clear();
     gotMouseControl = true;
-    _lastPeerMouse = _now()
-        .subtract(Duration(milliseconds: 3000 * kMouseControlTimeoutMSec));
+    _lastPeerMouseElapsedMSec = null;
     peerId = '';
     _keyHelpToolsRect = null;
     _lastIsBlocked = false;

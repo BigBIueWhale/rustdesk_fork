@@ -196,7 +196,7 @@ class _CursorClock implements Stopwatch {
 
 CursorModel _cursorWithClock(
     _CursorInitializationSession session, _CursorClock clock) {
-  final cursor = CursorModel(WeakReference<FFI>(session), now: clock.now);
+  final cursor = CursorModel(WeakReference<FFI>(session), elapsedClock: clock);
   addTearDown(cursor.dispose);
   return cursor;
 }

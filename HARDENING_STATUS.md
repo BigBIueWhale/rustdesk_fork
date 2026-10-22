@@ -128,27 +128,32 @@ open. The Windows display-only focus delay remains open until exercised with a c
 native artifact. Focused fast verification is the development default; broader verification is a deliberate
 integration/release checkpoint.
 
-**Owned smoke-child shutdown — native cleanup corrected; full-peer integration OPEN.**
-`scripts/smoke-ready.sh` now sends TERM/INT and CONT through one start-identity-checked
-pidfd, so a stopped owned child can execute its shutdown handler. Grace expiry initiates
-KILL through that same descriptor and retains ownership until observed exit; forced or
-late retirement returns failure. A continuation error likewise initiates cancellation
-without dropping ownership. Explicit KILL does not send CONT. At `0b6930c7`, the existing
-self-test's six new real-child cases reproduced stopped TERM/INT timeouts requiring
-fixture cleanup, while four running/KILL controls passed. At `cde9c7d1`, all six common
-cases and six additional ignoring-child cases passed, with twelve wrong-start refusals,
-no fixture-forced cleanup, and the unchanged original readiness suite passing. The
-self-test runs before native driver compilation in the existing isolated replay stage.
-The deliberate retained-app integration attempt `elvnPiDfqj` compiled byte-equal drivers
-twice and passed three focus cycles, then failed its first server-restart prerequisite:
-the protected libxdo mapping was not observed before the shutdown command. This is an
-unaccepted integration result, not a six-lifecycle pass or a demonstrated product cause.
-Both disposable VMs joined and their RAM workspaces retired; exact diagnostic roots were
-inventoried and removed, preserving serial/viewer logs and artifact identities in
-`stopped-smoke-children-66e1dc64.json`. Continuation/cancellation syscall faults and
-kernel-stalled drain are not injected. Full-peer restart acceptance, actual viewer
-suspension, network recovery, input-to-visible latency, soak, installed/other-platform,
-R-S0/R-F5 and release acceptance remain OPEN; parked work remains parked.
+**Owned smoke-child shutdown and replay input admission — focused corrections accepted;
+full-peer integration OPEN.** `scripts/smoke-ready.sh` sends TERM/INT and CONT through
+one start-identity-checked pidfd. Grace expiry or failed continuation initiates exact-fd
+KILL and retains ownership until observed exit; forced/late retirement returns failure.
+Explicit KILL does not send CONT. Baseline `0b6930c7` reproduced two stopped graceful
+failures among six cases. At `cde9c7d1`, the six common cases and six final-only ignoring
+cases passed with twelve wrong-start refusals, no fixture-forced cleanup and the original
+readiness suite passing. `stopped-smoke-children-66e1dc64.json` retains that comparison.
+Continuation/cancellation syscall faults and kernel-stalled drain remain uninjected.
+
+Replay `elvnPiDfqj` had paired the old `a3755044` distro loader with the current private
+provider24, then failed its first pre-shutdown mapping check. `e3ad311f` requires exact
+Git-blob equality of the selected app's Rust loader, native public header and version
+header with the provider source before VM/storage allocation; the retained source commit
+must also match the later clean pushed harness commit. The actual old command now refuses
+before allocation. The matching retained `31f8e5ef` app needs no rebuild. Its unchanged
+manifest and selected `63493887` engine ran at `gNjg4aFxlS`: twelve cleanup cases, three
+complete viewer/server lifecycles, twelve focus cycles, twelve real reconnects, sixteen
+serving-generation provider mappings and nine native dialog resizes passed. Cycle four
+then failed its dialog resize transaction; the six-cycle integration remains unaccepted.
+Maximum observed receipt pixel age was 1,372 ms, including transient samples; this is no
+one-second display-age ceiling. No dialog failure cause is established. The VM joined,
+RAM scratch and the exact inventoried diagnostic tree retired, and bounded logs/identities
+remain in `flutter-replay-input-contract-b0b2dc70.json`. Actual viewer suspension, network
+recovery, input-to-visible latency, soak, installed/other-platform, R-S0/R-F5 and release
+acceptance remain OPEN. Parked source, window/dispatcher and producer work remains parked.
 
 ## Documentation and verification architecture
 

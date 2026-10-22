@@ -2780,6 +2780,26 @@ legacy whole-peer snapshot writers can serialize effective values and remain sep
 OPEN/PARKED. Rendered selection, negotiation/decode, other-platform/installed,
 R-S0/R-F5 and release acceptance remain OPEN.
 
+**Existing-peer FPS reads — Linux library comparison accepted; app integration OPEN.**
+`b246fcd7` shares the existing default-FPS numeric contract with full peer and checked
+option reads: a present finite value in 5–120 becomes an integer string, truncating
+fractions; invalid/out-of-range values use 30. Missing FPS keys remain absent/empty,
+so loading an existing record introduces no FPS override. A missing peer keeps its
+current default inheritance. Raw strict-write loads, persistence and other fields are
+unchanged. The real-file comparison at `21186ce1` observes sixteen wrong effective
+scenarios among twenty-two; six valid/absent/new-peer controls pass. Identical test bytes
+at the correction pass all twenty-two and the complete 201-test/seven-group cohort.
+Twenty-one stored/absent cases cover integer, decimal, scientific, non-finite, range,
+empty and missing values; full/narrow reads preserve source bytes/identity/mode and
+defaults, while an unrelated shared-key update preserves raw FPS and known fields.
+The missing-peer control inherits 60 without creating a record; descriptors return
+4 to 4. All 24 prior numeric-default, 12 peer-codec and 27 default-codec controls pass.
+`peer-fps-preferences-0a456fb4.json` binds sources, native artifacts, A/B observations,
+exact failed-root retirement and joined bounded-RAM cleanup. Integer-consumer
+compatibility is a library value property. Native UI/cache/setter, actual OptionMessage
+and remote encoder effects, legacy whole-peer writers, other-platform/installed,
+R-S0/R-F5 and release acceptance remain OPEN; separately parked work remains parked.
+
 **Toolbar software-codec controls — dormant hardware UI removed.**
 `ccf76fea` deletes H264/H265 JSON consumers, radio constructors and their
 parallel Boolean slots from `toolbarCodec`, as required by R-G1/R-R2b.

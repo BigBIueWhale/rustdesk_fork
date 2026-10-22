@@ -1000,6 +1000,14 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
 print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=22 refusals=38 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+cli = subprocess.run([sys.executable, '-B', '-I', '-S', sys.argv[1], 'preflight',
+                      '--memory-mib', '10240', '--storage-profile', 'linux-flutter-suspend'],
+                     capture_output=True, text=True, timeout=5, check=False)
+# This 2 GiB guest cannot admit the 23 GiB transaction, but must reach RAM admission.
+if (cli.returncode != 1 or cli.stdout or len(cli.stderr) > 4096 or
+        'ValueError: VM refused: RAM requires 23552 MiB including scratch and headroom;' not in cli.stderr):
+    raise SystemExit('viewer suspension CLI did not reach native RAM admission: ' + cli.stderr)
+print('VM_TRANSIENT_SUSPEND_CLI=pass profile=linux-flutter-suspend guest_mib=10240 required_mib=23552 insufficient_ram=refused allocation=not-entered')
 shell = Path(sys.argv[2])
 modes = set()
 for caller in ('smoke-verifier-vm-authority.sh', 'online-fetch-vm.sh'):

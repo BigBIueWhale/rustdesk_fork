@@ -429,7 +429,7 @@ def main():
                                  'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
-                                 'android-storage-key'),
+                                 'android-storage-key', 'linux-flutter-suspend'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

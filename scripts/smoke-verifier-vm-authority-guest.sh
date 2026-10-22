@@ -7073,7 +7073,7 @@ PY
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = video-vpx ]; then
             [ "$tests_passed" -eq 16 ] || fail 'VPX total differs'
-            grep -E '^test common::(vpxcodec|convert)::tests::.* \.\.\. ok$|^VIDEO_VPX_(BUILD=pass |ARTIFACT(_AFTER)?=|CASE=|FORMAT_(CASE|NATIVE|PACKET)=|REALTIME_(CASE|NATIVE)=)|^VIDEO_(ALLOCATOR|RGB_ALLOC_(CASE|NATIVE|RESULT))=|^SCREENSHOT_(PIXELS_CASE|PNG_(ALLOC_NATIVE|ALLOC_RESULT|BOUNDED_HEX)|X11_(ALLOC_(START|NATIVE|RESULT)|PNG|ORACLE|CASE|CLEANUP|NATIVE))=' "$output"
+            grep -E '^test common::(vpxcodec|convert)::tests::.* \.\.\. ok$|^VIDEO_VPX_(BUILD=pass |ARTIFACT(_AFTER)?=|CASE=|FORMAT_(CASE|NATIVE|PACKET)=|REALTIME_(CASE|NATIVE)=)|^VIDEO_(ALLOCATOR|RGB_ALLOC_(CASE|NATIVE|RESULT))=|^SCREENSHOT_(PIXELS_CASE|PNG_(ALLOC_NATIVE|ALLOC_RESULT|BOUNDED_HEX)|X11_(STDOUT|ALLOC_(START|NATIVE|RESULT)|PNG|ORACLE|CASE|CLEANUP|NATIVE))=' "$output"
             printf 'VIDEO_VPX_VM=pass commit=%s tree=%s tests=16 target=linux-x86_64 scope=production-vpx-and-screenshot-pixel-conversion rust=1.75.0 package=scrap vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

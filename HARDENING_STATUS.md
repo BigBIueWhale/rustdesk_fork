@@ -2042,9 +2042,9 @@ Frame-vector refusal is source reviewed rather than separately injected. Persist
 global/C-heap OOM, full application error consumption and presentation, other native
 targets, installed R-S0, R-F5 recovery/soaks and release acceptance remain OPEN.
 
-**Video QoS — named Linux component results retained; current display-bitrate validation OPEN.**
+**Video QoS — Linux controller/application components accepted at the named sources; end-to-end latency OPEN.**
 
-Current component evidence reaches `757ebd0d`: all twenty controller tests and
+Current component evidence reaches `30c85201`: all twenty controller tests and
 five quality-application tests pass in the focused Linux lane. The controller,
 application function and test sources are imported directly; shared configuration,
 protocol types and Quality are production definitions. Elapsed/RTT inputs and the
@@ -2089,7 +2089,7 @@ The current behavior is:
   congestion reductions retain their existing policy.
 - Current source stores confirmed bitrate in each exact display generation and
   derives the aggregate only from live registrations. The context-free global
-  setter is removed. This source correction awaits the native validation below.
+  setter is removed. Only the existing status field clamps the wide live sum to `u32`.
 
 **Retained evidence.** The named capsules are under
 `.harness-state/verifier-vm/`. They retain source/provenance and, for executed runs,
@@ -2099,7 +2099,7 @@ current full-parent or platform execution.
 
 | Correction | Native evidence and limits | Retained capsules |
 | --- | --- | --- |
-| Live display bitrate ownership — source `22b4d3ef`, fixture `98401d5b`; native validation OPEN | One global last-writer bitrate is replaced by per-display, exact-generation publication. Shared adaptation uses the wide live sum; the existing status field clamps to `u32`. Display removal/replacement retires its contribution; stale/missing publication refuses. The existing 25-case lane retains its original 45 bitrate checks and adds six combined-display growth cases plus nine retirement/API checks. Their native execution has not run: preparation `ae3b932f` was refused before VM startup at 20,053 MiB available versus 20,480 MiB required. One old unsupported-encoder fixture now expects zero metadata after registration removal; live metadata still requires 2000. Source review and `git diff --check` pass; no current compile, empirical original/fixed, codec, peer or presentation acceptance is claimed. | `qos-display-bitrate-fd340f26.json` |
+| Live display bitrate ownership — `22b4d3ef` / `98401d5b` | At `30c85201`, all 25 component tests pass. Six paired-display cases preserve the configured aggregate 150-kbps growth ceiling in both publication orders, exact live totals and clamped status above `u32`; nine checks cover removal, replacement, stale/missing publication, stale retirement, final zero and surviving viewer limits. The original 45 bitrate cases and nine joined encoder-owner scenarios pass on the same stable artifact. Source publication is exact-generation scoped and removal retires that display's contribution. A historical-source attempt was refused before VM startup by the unchanged pushed-master authority; no empirical original/fixed failure is claimed. Inputs and encoder boundary are controlled; real codec/peer, capture-loop startup, installed/other-platform, actual presentation/latency and release acceptance remain OPEN. | `qos-display-bitrate-native-30c85201.json` |
 | Pending probes — `7c537a6c` | Baseline `50570c81` has two failures/two controls passing; the same four cases pass after correction. Covers nonmanufactured RTT history, reply retirement, waiting rate/quality reduction, unknown users, three same-owner outage/recovery input cycles and final retirement. A rejected fingerprint ran no application test. | `video-qos-probe-baseline-50570c81.json`; `video-qos-probe-accepted-7c537a6c.json` |
 | Per-viewer rate ownership — `6c9eeaf3` | Baseline `4d99946f` has three failures/four controls passing; eight cases pass after correction, retaining the seven baseline bodies and adding restricted-rate nonincrease followed by unrestricted adaptation to 120 FPS. Custom/automatic limits, pending owners, survivor state and reset are covered. | `video-qos-peer-baseline-4d99946f.json`; `video-qos-peer-accepted-6c9eeaf3.json` |
 | RTT subtraction — `8a05385e` | Eleven complete-parent cases pass: 150/250/1000-ms baselines give zero excess, 30 FPS and target quality; three outage cycles restore the same 20-FPS owner; 1,250-ms excess still reduces rate. Baseline source `8789a96d` did not execute, so this is no empirical A/B. Existing warmup/window/threshold policy remains. | `video-qos-rtt-8a05385e.json`; source/refusal provenance `video-qos-baseline-source-8789a96d.json` |

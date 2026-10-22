@@ -113,6 +113,7 @@ def wait_for(path, child):
 
 def qmp_child(base, scenario):
     base = Path(base)
+    term_notification = {'pending': True}
 
     def stall():
         publish(base / 'running', {'pid': os.getpid()})
@@ -121,6 +122,8 @@ def qmp_child(base, scenario):
 
     def term(signum, frame):
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        if not term_notification.pop('pending', False):
+            return
         publish(base / 'term', {'signal': signum})
         if scenario == 'graceful':
             raise SystemExit(0)

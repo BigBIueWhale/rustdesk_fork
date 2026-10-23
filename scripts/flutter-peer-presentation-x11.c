@@ -1145,7 +1145,7 @@ static int observe_current_frames_for_duration(Display *source, Display *display
             return -1;
         }
         gap = now - last_fresh;
-        fresh = age_valid && age <= FRESH_LIMIT_MS;
+        fresh = now < deadline && age_valid && age <= FRESH_LIMIT_MS;
         if (fresh) {
             last_fresh = now;
             if (state > last_state) {

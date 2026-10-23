@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import sys
@@ -68,9 +69,20 @@ def main():
         callback_start = method.index("        let err_fn = move |err| {")
         callback_end = method.index("\n        };", callback_start) + len("\n        };")
         callback = method[callback_start:callback_end]
+        def extract(start_marker, end_marker):
+            start = client.index(start_marker)
+            return client[start:client.index(end_marker, start)]
+        codec_methods = {
+            "fail_audio": extract("    fn fail_audio(&mut self)", '\n    #[cfg(target_os = "linux")]'),
+            "handle_format": extract("    pub fn handle_format(&mut self, f: AudioFormat)", "\n    /// Handle audio frame"),
+            "handle_frame": extract("    pub fn handle_frame(&mut self, frame: AudioFrame)", "\n    /// Build audio output stream"),
+        }
+        worker_start = client.index("fn new_audio_thread()")
+        worker = client[worker_start:client.index("\n}\n", worker_start) + 3]
         generated = (
-            "impl AudioHandler {\n" + method + "\n}\n"
-            "fn candidate_error_callback(failure: audio_mailbox::AudioOutputCallback) "
+            "impl AudioHandler {\n" + method + "\n" + "\n".join(codec_methods.values()) + "\n}\n"
+            + worker + "\n"
+            + "fn candidate_error_callback(failure: audio_mailbox::AudioOutputCallback) "
             "-> impl FnMut(cpal::StreamError) {\n" + callback + "\nerr_fn\n}\n"
         ).encode("utf-8")
         (fixture / "output-method.rs").write_bytes(generated)
@@ -78,12 +90,15 @@ def main():
         print(f"AUDIO_MAILBOX_METHOD=compile-only method_sha256={digest(method.encode())} "
               f"callback_sha256={digest(callback.encode())} generated_sha256={digest(generated)}",
               flush=True)
+        for name, body in [*codec_methods.items(), ("new_audio_thread", worker)]:
+            print(f"AUDIO_DECODE_METHOD=observed name={name} bytes={len(body.encode())} sha256={digest(body.encode())}", flush=True)
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
             '[dependencies]\nbytes = "=1.11.1"\n'
             'protobuf = { version = "=3.7.2", features = ["with-bytes"] }\n'
             'ringbuf = "=0.3.3"\nlog = "=0.4.22"\nanyhow = "1.0"\n'
             'cpal = { git = "https://github.com/rustdesk-org/cpal", branch = "osx-screencapturekit" }\n'
+            'magnum-opus = { git = "https://github.com/rustdesk-org/magnum-opus", features = ["linux-pkg-config"] }\n'
             '[build-dependencies]\nprotobuf-codegen = "=3.7.2"\n'
             '[[test]]\nname = "audio_mailbox"\n'
             f'path = "{repo}/scripts/test-audio-mailbox.rs"\n')
@@ -112,13 +127,25 @@ def main():
             raise ValueError("mailbox test executable is absent or ambiguous")
         artifact = artifacts[0]
         artifact_sha = digest(artifact.read_bytes())
-        print(f"AUDIO_MAILBOX_BUILD=sha256={artifact_sha} tests=35", flush=True)
+        linked = run(["ldd", str(artifact)], fixture)
+        opus_paths = re.findall(rb"^\s*libopus\.so\.[^ ]+ => (/[^ ]+) ", linked, re.MULTILINE)
+        if len(opus_paths) != 1:
+            raise ValueError("native Opus runtime linkage is absent or ambiguous")
+        opus = Path(os.fsdecode(opus_paths[0])).resolve(strict=True)
+        version = run(["pkg-config", "--modversion", "opus"], fixture).decode().strip()
+        if not opus.is_file() or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", version):
+            raise ValueError("native Opus runtime identity differs")
+        opus_sha = digest(opus.read_bytes())
+        print(f"AUDIO_OPUS_RUNTIME=observed version={version} path={opus} sha256={opus_sha} wrapper=5cd2bf989c148662fa3a2d9d539a71d71fd1d256 backend=controlled-pcm-sink", flush=True)
+        print(f"AUDIO_MAILBOX_BUILD=sha256={artifact_sha} tests=36", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, timeout=30)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("mailbox artifact changed during execution")
-            print(f"AUDIO_MAILBOX_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=35 unchanged=before-after", flush=True)
+            print(f"AUDIO_MAILBOX_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=36 unchanged=before-after", flush=True)
+            if digest(opus.read_bytes()) != opus_sha:
+                raise ValueError("native Opus runtime changed during execution")
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("mailbox test artifact or dependencies changed")
         for name, data in inputs.items():
@@ -127,7 +154,7 @@ def main():
             print(f"AUDIO_MAILBOX_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
         if (fixture / "output-method.rs").read_bytes() != generated:
             raise ValueError("extracted output method changed")
-        print(f"AUDIO_MAILBOX_ARTIFACT=pass sha256={artifact_sha} tests=35 unchanged=before-after", flush=True)
+        print(f"AUDIO_MAILBOX_ARTIFACT=pass sha256={artifact_sha} tests=36 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

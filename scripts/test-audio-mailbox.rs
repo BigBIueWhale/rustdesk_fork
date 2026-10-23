@@ -15,15 +15,27 @@ mod audio_mailbox;
 mod audio_buffer;
 
 use audio_buffer::AudioBuffer;
-use audio_mailbox::{AudioOutputFactory, AudioOutputOwner};
+use audio_mailbox::{
+    audio_mailbox, native_opus_format_admission, native_opus_format_key,
+    native_opus_format_within_limit, native_opus_packet_within_limit,
+    AudioFormatAdmission, AudioFrameAdmission, AudioMailboxItem, AudioMailboxSender,
+    AudioOutputFactory, AudioOutputOwner, NativeOpusFormatAdmission, MAX_NATIVE_OPUS_PACKET_BYTES,
+};
+use message_proto::{AudioFormat, AudioFrame};
+use magnum_opus::{Application, Channels::{Mono, Stereo}, Decoder as AudioDecoder, Encoder};
 use cpal::{traits::{DeviceTrait, StreamTrait}, Device, StreamConfig};
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
 type ResultType<T> = anyhow::Result<T>;
 use anyhow::anyhow;
 
-// Only the fields used by the exact extracted production method. No device is opened here.
+// Production codec/worker methods use a controlled PCM sink; no physical device is opened.
 #[derive(Default)]
 struct AudioHandler {
+    audio_decoder: Option<(AudioDecoder, Vec<f32>)>,
+    audio_format: Option<(u32, u32)>,
+    audio_failed: bool,
+    channels: u16,
+    simple: Option<ControlledPlayback>,
     output_factory: Option<AudioOutputFactory>,
     output_owner: Option<AudioOutputOwner>,
     audio_buffer: Option<AudioBuffer>,
@@ -32,6 +44,50 @@ struct AudioHandler {
 }
 
 include!(env!("AUDIO_OUTPUT_METHOD"));
+
+static PCM_TARGET_BYTES: AtomicUsize = AtomicUsize::new(0);
+static PCM_REFUSE: AtomicBool = AtomicBool::new(false);
+static PCM_REFUSALS: AtomicUsize = AtomicUsize::new(0);
+static PLAYBACK_STARTS: AtomicUsize = AtomicUsize::new(0);
+static PCM_WRITES: AtomicUsize = AtomicUsize::new(0);
+static PCM_SCALARS: AtomicUsize = AtomicUsize::new(0);
+static PCM_NONZERO: AtomicUsize = AtomicUsize::new(0);
+static PCM_NONFINITE: AtomicUsize = AtomicUsize::new(0);
+
+struct ControlledPlayback;
+impl ControlledPlayback {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        assert_eq!(bytes.len() % 4, 0);
+        for sample in bytes.chunks_exact(4) {
+            let value = f32::from_ne_bytes(sample.try_into().unwrap());
+            PCM_NONFINITE.fetch_add(usize::from(!value.is_finite()), Ordering::SeqCst);
+            PCM_NONZERO.fetch_add(usize::from(value.abs() > 0.000001), Ordering::SeqCst);
+        }
+        PCM_SCALARS.fetch_add(bytes.len() / 4, Ordering::SeqCst);
+        PCM_WRITES.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+impl AudioHandler {
+    fn start_audio(&mut self, format: AudioFormat) -> ResultType<()> {
+        let (_, pcm) = self.audio_decoder.as_ref().expect("native decoder must precede playback");
+        assert_eq!(pcm.len(), format.sample_rate as usize * format.channels as usize);
+        assert!(pcm.iter().all(|sample| *sample == 0.0));
+        self.simple = Some(ControlledPlayback);
+        PLAYBACK_STARTS.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+fn refuse_pcm(layout: std::alloc::Layout, bytes: usize) -> bool {
+    if bytes != 0 && bytes == PCM_TARGET_BYTES.load(Ordering::SeqCst)
+        && layout.align() == std::mem::align_of::<f32>() && PCM_REFUSE.load(Ordering::SeqCst)
+    {
+        PCM_REFUSALS.fetch_add(1, Ordering::SeqCst);
+        true
+    } else { false }
+}
 
 struct AdmissionAllocator;
 thread_local! {
@@ -52,15 +108,15 @@ fn refuse_allocation() -> bool {
 
 unsafe impl std::alloc::GlobalAlloc for AdmissionAllocator {
     unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
-        if refuse_allocation() { std::ptr::null_mut() }
+        if refuse_pcm(layout, layout.size()) || refuse_allocation() { std::ptr::null_mut() }
         else { std::alloc::GlobalAlloc::alloc(&std::alloc::System, layout) }
     }
     unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
-        if refuse_allocation() { std::ptr::null_mut() }
+        if refuse_pcm(layout, layout.size()) || refuse_allocation() { std::ptr::null_mut() }
         else { std::alloc::GlobalAlloc::alloc_zeroed(&std::alloc::System, layout) }
     }
     unsafe fn realloc(&self, pointer: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
-        if refuse_allocation() { std::ptr::null_mut() }
+        if refuse_pcm(layout, size) || refuse_allocation() { std::ptr::null_mut() }
         else { std::alloc::GlobalAlloc::realloc(&std::alloc::System, pointer, layout, size) }
     }
     unsafe fn dealloc(&self, pointer: *mut u8, layout: std::alloc::Layout) {
@@ -70,6 +126,153 @@ unsafe impl std::alloc::GlobalAlloc for AdmissionAllocator {
 
 #[global_allocator]
 static ADMISSION_ALLOCATOR: AdmissionAllocator = AdmissionAllocator;
+
+fn wait_for(mut predicate: impl FnMut() -> bool) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !predicate() {
+        if std::time::Instant::now() >= deadline { return false; }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    true
+}
+
+fn decoder_format(rate: u32, channels: u32) -> AudioFormat {
+    let mut format = AudioFormat::new();
+    format.sample_rate = rate;
+    format.channels = channels;
+    format
+}
+
+fn encoded_frame(rate: u32, channels: u32) -> AudioFrame {
+    let mut encoder = Encoder::new(rate, if channels == 1 { Mono } else { Stereo }, Application::LowDelay).unwrap();
+    let pcm: Vec<f32> = (0..rate / 50).flat_map(|i| {
+        let sample = (i as f32 * std::f32::consts::TAU * 440.0 / rate as f32).sin() * 0.25;
+        std::iter::repeat(sample).take(channels as usize)
+    }).collect();
+    let mut packet = [0u8; MAX_NATIVE_OPUS_PACKET_BYTES];
+    let bytes = encoder.encode_float(&pcm, &mut packet).unwrap();
+    let mut frame = AudioFrame::new();
+    frame.data = packet[..bytes].to_vec().into();
+    frame
+}
+
+fn start_decoder(rate: u32, channels: u32) -> (AudioMailboxSender, std::thread::JoinHandle<()>) {
+    let (sender, worker) = new_audio_thread();
+    assert_eq!(sender.admit_format(decoder_format(rate, channels)), AudioFormatAdmission::Queued);
+    (sender, worker)
+}
+
+fn decoder_storage_case(case: &str) {
+    if case == "probe" {
+        PCM_TARGET_BYTES.store(384000, Ordering::SeqCst);
+        PCM_REFUSE.store(true, Ordering::SeqCst);
+        std::hint::black_box(Vec::<f32>::with_capacity(96000));
+        panic!("PCM allocation-refusal probe returned");
+    }
+    let parts: Vec<_> = case.split(':').collect();
+    assert_eq!(parts.len(), 3);
+    let rate: u32 = parts[1].parse().unwrap();
+    let channels: u32 = parts[2].parse().unwrap();
+    let (sender, worker) = start_decoder(rate, channels);
+    let started = wait_for(|| PLAYBACK_STARTS.load(Ordering::SeqCst) == 1);
+    if !started { drop(sender); worker.join().unwrap(); panic!("healthy decoder never started"); }
+    if parts[0] == "refusal" {
+        PCM_TARGET_BYTES.store(rate as usize * channels as usize * 4, Ordering::SeqCst);
+        PCM_REFUSE.store(true, Ordering::SeqCst);
+        let (failed_sender, failed_worker) = start_decoder(rate, channels);
+        let terminal = wait_for(|| failed_worker.is_finished());
+        PCM_REFUSE.store(false, Ordering::SeqCst);
+        let closed = failed_sender.state_for_test() == (true, false, 0);
+        let starts = PLAYBACK_STARTS.load(Ordering::SeqCst);
+        drop(failed_sender);
+        failed_worker.join().unwrap();
+        // Existing playback must survive, and a fresh worker must decode with the same format.
+        assert_eq!(sender.admit_frame(encoded_frame(rate, channels)), AudioFrameAdmission::Queued);
+        let survivor = wait_for(|| PCM_WRITES.load(Ordering::SeqCst) == 1);
+        drop(sender);
+        worker.join().unwrap();
+        let (fresh, fresh_worker) = start_decoder(rate, channels);
+        let restarted = wait_for(|| PLAYBACK_STARTS.load(Ordering::SeqCst) == 2);
+        assert_eq!(fresh.admit_frame(encoded_frame(rate, channels)), AudioFrameAdmission::Queued);
+        let recovered = wait_for(|| PCM_WRITES.load(Ordering::SeqCst) == 2);
+        drop(fresh);
+        fresh_worker.join().unwrap();
+        assert!(terminal && closed && survivor && restarted && recovered);
+        assert_eq!(starts, 1, "storage refusal must precede backend setup");
+        assert_eq!(PCM_REFUSALS.load(Ordering::SeqCst), 1);
+        assert_eq!(PCM_SCALARS.load(Ordering::SeqCst), rate as usize / 50 * channels as usize * 2);
+        println!("AUDIO_DECODE_CASE=pass case={case} refusals=1 terminal=natural mailbox=closed survivor=decoded fresh=decoded");
+    } else if parts[0] == "decode-error" {
+        let mut decoder = AudioDecoder::new(rate, if channels == 1 { Mono } else { Stereo }).unwrap();
+        assert!(decoder.decode_float(&[0xff], &mut vec![0.0; rate as usize * channels as usize], false).is_err());
+        let mut frame = AudioFrame::new();
+        frame.data = vec![0xff].into();
+        assert_eq!(sender.admit_frame(frame), AudioFrameAdmission::Queued);
+        let terminal = wait_for(|| worker.is_finished());
+        let closed = sender.state_for_test() == (true, false, 0);
+        // A failed old worker is still joined; sender loss is cleanup, not accepted finality.
+        drop(sender);
+        worker.join().unwrap();
+        println!("AUDIO_DECODE_FAILURE=observed terminal={terminal} mailbox_closed={closed} forced_cleanup={}", !terminal);
+        assert!(terminal && closed, "native decode failure left worker admission open");
+        assert_eq!(PCM_WRITES.load(Ordering::SeqCst), 0);
+    } else {
+        assert_eq!(parts[0], "healthy");
+        for count in 1..=3 {
+            assert_eq!(sender.admit_frame(encoded_frame(rate, channels)), AudioFrameAdmission::Queued);
+            if !wait_for(|| PCM_WRITES.load(Ordering::SeqCst) == count) {
+                drop(sender); worker.join().unwrap(); panic!("native PCM write timed out");
+            }
+        }
+        drop(sender);
+        worker.join().unwrap();
+        let scalars = PCM_SCALARS.load(Ordering::SeqCst);
+        assert_eq!(scalars, rate as usize / 50 * channels as usize * 3);
+        assert_eq!(PCM_REFUSALS.load(Ordering::SeqCst), 0);
+        println!("AUDIO_DECODE_CASE=pass case={case} writes=3 scalars={scalars} worker=joined");
+    }
+    if parts[0] != "decode-error" {
+        assert!(PCM_NONZERO.load(Ordering::SeqCst) > 0);
+        assert_eq!(PCM_NONFINITE.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[test]
+fn decoder_storage_failure_closes_worker_and_preserves_native_opus() {
+    use std::{os::unix::process::ExitStatusExt, process::Command};
+    if let Ok(case) = std::env::var("AUDIO_DECODE_CASE") {
+        decoder_storage_case(&case);
+        return;
+    }
+    let executable = std::env::current_exe().unwrap();
+    let run = |case: &str| Command::new(&executable)
+        .args(["--exact", "decoder_storage_failure_closes_worker_and_preserves_native_opus", "--nocapture"])
+        .env("AUDIO_DECODE_CASE", case).output().unwrap();
+    let probe = run("probe");
+    assert_eq!(probe.status.signal(), Some(6));
+    assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 384000 bytes failed"));
+    println!("AUDIO_DECODE_PROBE=observed bytes=384000 signal=Some(6)");
+    let mut cases = Vec::new();
+    for rate in [8000, 12000, 16000, 24000, 48000] {
+        for channels in [1, 2] {
+            for kind in ["healthy", "refusal"] { cases.push(format!("{kind}:{rate}:{channels}")); }
+        }
+    }
+    cases.push("decode-error:48000:2".to_owned());
+    let mut passed = 0;
+    for case in cases {
+        let output = run(&case);
+        assert!(output.stdout.len() + output.stderr.len() <= 65536);
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if line.starts_with("AUDIO_DECODE_") { println!("{line}"); }
+        }
+        print!("{}", String::from_utf8_lossy(&output.stderr));
+        println!("AUDIO_DECODE_CHILD=observed case={case} success={} signal={:?}", output.status.success(), output.status.signal());
+        passed += usize::from(output.status.success());
+    }
+    assert_eq!(passed, 21, "PCM storage refusal and native decode errors must retire only their worker");
+    println!("AUDIO_DECODE_STORAGE=pass refusals=10 healthy=10 decode_failure=1 probe=SIGABRT children=22");
+}
 
 fn with_allocation_budget<T>(budget: usize, action: impl FnOnce() -> T) -> (T, usize) {
     struct Reset;

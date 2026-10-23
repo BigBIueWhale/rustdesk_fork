@@ -8192,8 +8192,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cannot be rewritten into a retained CM-token snapshot or service-generation
   check. At unchanged-product preparation `ddcb2aa0`, fifteen controls pass but
   the new regression fails: one live C peer changes its initial environment
-  storage from `0x80` to `0x81`, procfs observes the change, yet both rewritten
-  values and full peer snapshots stay equal. The identical fixture passes all
+  storage from `0x80` to `0x81`, procfs observes the change, yet the rewritten
+  values stay equal and both full peer snapshots are accepted. The identical fixture passes all
   sixteen component tests after correction: both malformed reads/snapshots refuse;
   ASCII, actual Unicode replacement-character, empty, missing and unrelated-invalid
   controls preserve selected values and snapshot construction. Valid UTF-8 text is

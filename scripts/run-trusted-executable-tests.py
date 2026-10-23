@@ -80,15 +80,23 @@ def main():
     for path in ("scripts/test-linux-service-uid-policy.rs", "scripts/test-trusted-executable.rs",
                  "scripts/run-trusted-executable-tests.py", "src/ipc/uid_policy.rs",
                  "scripts/test-linux-process-identity.rs", "scripts/test-linux-process-peer.c",
-                 "src/ipc/auth.rs"):
+                 "src/ipc/auth.rs", "src/common.rs"):
         inputs[path] = (repo / path).read_bytes()
     identity_source = inputs["src/ipc/auth.rs"].decode("utf-8")
     structure_start = identity_source.index("pub struct LinuxProcessIdentity {")
     structure_end = identity_source.index("\n}", structure_start) + 2
     identity_body = identity_source[structure_start:structure_end] + "\n"
     for name in ("linux_proc_stat_start_time", "linux_proc_start_time", "linux_proc_uid",
-                 "linux_kernel_process_identity_by_pid", "linux_process_identity_is_live"):
+                 "linux_kernel_process_identity_by_pid", "linux_process_identity_is_live",
+                 "linux_proc_cmdline_args", "user_owned_main_server_argv_is_expected",
+                 "linux_service_owned_server_argv_is_expected", "process_argv_is_exact",
+                 "linux_service_owned_password_client_argv_is_expected",
+                 "cm_process_argv_is_expected", "helper_server_argv_is_expected"):
         identity_body += function(identity_source, name)
+    common = inputs["src/common.rs"].decode("utf-8")
+    constant = next(line for line in common.splitlines()
+                    if line.startswith("pub const SERVICE_OWNED_SERVER_ARG: &str = "))
+    generated += "mod common { " + constant + " }\n"
     # The exact metadata bodies use the error and kernel ABI adapters below. Serialization and anyhow's
     # error representation are outside this component; Result/refusal behavior is retained.
     generated += ('use std::{fs, os::unix::fs::MetadataExt};\n'
@@ -116,7 +124,7 @@ def main():
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=13", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=14", flush=True)
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("LINUX_IDENTITY_")}
     environment["LINUX_IDENTITY_PEER_PROBE"] = str(peer)

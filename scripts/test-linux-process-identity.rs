@@ -3,6 +3,7 @@ mod linux_process_identity_tests {
     use std::{
         io::Write,
         os::unix::{fs::DirBuilderExt, io::AsRawFd, net::{UnixListener, UnixStream}},
+        os::unix::process::CommandExt,
         path::PathBuf,
         process::{Child, Command, Stdio},
         sync::atomic::{AtomicUsize, Ordering},
@@ -22,15 +23,25 @@ mod linux_process_identity_tests {
 
     impl Owner {
         fn spawn(dumpable: u32, leader_exit: bool) -> Self {
+            Self::spawn_with_argv(dumpable, leader_exit, None)
+        }
+
+        fn spawn_with_argv(dumpable: u32, leader_exit: bool, argv: Option<&[String]>) -> Self {
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let root = std::env::temp_dir().join(format!("linux-identity-{}-{}",
                 std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
             fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
             let listener = UnixListener::bind(root.join("peer")).unwrap();
             listener.set_nonblocking(true).unwrap();
-            let child = Command::new(std::env::var_os("LINUX_IDENTITY_PEER_PROBE").unwrap())
-                .arg(root.join("peer")).arg(dumpable.to_string())
-                .arg(if leader_exit { "leader-exit" } else { "normal" })
+            let mut command = Command::new(std::env::var_os("LINUX_IDENTITY_PEER_PROBE").unwrap());
+            if let Some(argv) = argv {
+                command.arg0(&argv[0]).args(&argv[1..])
+                    .env("LINUX_IDENTITY_ARGV_SOCKET", root.join("peer"));
+            } else {
+                command.arg(root.join("peer")).arg(dumpable.to_string())
+                    .arg(if leader_exit { "leader-exit" } else { "normal" });
+            }
+            let child = command
                 .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::inherit())
                 .spawn().unwrap();
             let mut owner = Self { child: Some(child), root, peer: None };
@@ -96,6 +107,65 @@ mod linux_process_identity_tests {
             fs::remove_file(self.root.join("peer")).unwrap();
             fs::remove_dir(&self.root).unwrap();
         }
+    }
+
+    #[test]
+    fn kernel_cmdline_preserves_empty_argument_positions() {
+        fn roles(args: &[String]) -> [bool; 6] {
+            [
+                user_owned_main_server_argv_is_expected(args),
+                linux_service_owned_server_argv_is_expected(args),
+                linux_service_owned_password_client_argv_is_expected(args),
+                cm_process_argv_is_expected(args, "--cm"),
+                cm_process_argv_is_expected(args, "--cm-no-ui"),
+                helper_server_argv_is_expected(args),
+            ]
+        }
+        let layouts: &[&[&str]] = &[
+            &[], &["--password"], &["--password-stdin"], &["--server"],
+            &["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
+            &["--cm"], &["--cm-no-ui"],
+        ];
+        let mut cases = 0;
+        let mut failures = 0;
+        for (layout, tail) in layouts.iter().enumerate() {
+            let base: Vec<String> = std::iter::once("/kernel/argv-probe")
+                .chain(tail.iter().copied()).map(str::to_owned).collect();
+            let expected_roles = roles(&base);
+            assert!(expected_roles.iter().any(|&allowed| allowed));
+            let mut variants = vec![("ordinary", None, base.clone())];
+            let mut empty_name = base.clone();
+            empty_name[0].clear();
+            variants.push(("empty-name", None, empty_name));
+            for position in 0..=base.len() {
+                let mut extra = base.clone();
+                extra.insert(position, String::new());
+                variants.push(("extra-empty", Some(position), extra));
+            }
+            for (kind, position, expected) in variants {
+                let mut owner = Owner::spawn_with_argv(1, false, Some(&expected));
+                assert_eq!(owner.credentials().uid, unsafe { geteuid() });
+                let kernel = fs::read(format!("/proc/{}/cmdline", owner.pid())).unwrap();
+                let mut expected_bytes = Vec::new();
+                for argument in &expected {
+                    expected_bytes.extend_from_slice(argument.as_bytes());
+                    expected_bytes.push(0);
+                }
+                assert_eq!(kernel, expected_bytes, "exec argv and actual kernel data differ");
+                let actual = linux_proc_cmdline_args(owner.pid()).unwrap();
+                let admitted = roles(&actual);
+                let expected_admission = if kind == "extra-empty" { [false; 6] } else { expected_roles };
+                let correct = actual == expected && admitted == expected_admission;
+                println!("LINUX_KERNEL_ARGV_CASE=observed layout={layout} kind={kind} position={position:?} kernel_argc={} parsed_argc={} expected={expected_admission:?} actual={admitted:?} correct={correct}", expected.len(), actual.len());
+                owner.request_exit();
+                owner.join();
+                failures += usize::from(!correct);
+                cases += 1;
+            }
+        }
+        assert_eq!(cases, 35);
+        assert_eq!(failures, 0, "empty arguments must not disappear before exact role admission");
+        println!("LINUX_KERNEL_ARGV=pass cases=35 layouts=7 ordinary=7 empty_name=7 extra_empty=21 source=procfs children=joined");
     }
 
     #[test]

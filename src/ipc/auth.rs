@@ -2677,31 +2677,31 @@ impl LinuxProcessIdentity {
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn linux_proc_stat_start_time(pid: u32, stat: &str) -> ResultType<String> {
-    let Some((_, after_comm)) = stat.rsplit_once(") ") else {
+pub(crate) fn linux_proc_stat_start_time(pid: u32, stat: &[u8]) -> ResultType<String> {
+    let Some(comm_end) = stat.windows(2).rposition(|bytes| bytes == b") ") else {
         bail!("Failed to parse /proc/{pid}/stat: missing command terminator");
     };
-    let fields: Vec<_> = after_comm.split_whitespace().collect();
-    let Some(start_time) = fields.get(19) else {
+    let after_comm = std::str::from_utf8(&stat[comm_end + 2..])?;
+    let Some(start_time) = after_comm.split_ascii_whitespace().nth(19) else {
         bail!("Failed to parse /proc/{pid}/stat: missing start time");
     };
-    Ok((*start_time).to_owned())
+    Ok(start_time.to_owned())
 }
 
 #[cfg(target_os = "linux")]
 pub(crate) fn linux_proc_start_time(pid: u32) -> ResultType<String> {
-    let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
+    let stat = fs::read(format!("/proc/{pid}/stat"))?;
     linux_proc_stat_start_time(pid, &stat)
 }
 
 #[cfg(target_os = "linux")]
 fn linux_proc_parent_pid(pid: u32) -> ResultType<u32> {
-    let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
-    let Some((_, after_comm)) = stat.rsplit_once(") ") else {
+    let stat = fs::read(format!("/proc/{pid}/stat"))?;
+    let Some(comm_end) = stat.windows(2).rposition(|bytes| bytes == b") ") else {
         bail!("Failed to parse /proc/{pid}/stat: missing command terminator");
     };
-    let fields: Vec<_> = after_comm.split_whitespace().collect();
-    let Some(ppid) = fields.get(1) else {
+    let after_comm = std::str::from_utf8(&stat[comm_end + 2..])?;
+    let Some(ppid) = after_comm.split_ascii_whitespace().nth(1) else {
         bail!("Failed to parse /proc/{pid}/stat: missing parent pid");
     };
     ppid.parse::<u32>()

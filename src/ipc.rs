@@ -12499,7 +12499,7 @@ mod test {
         let stat =
             "123 (name with spaces) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 424242 20 21";
         assert_eq!(
-            linux_proc_stat_start_time(123, stat).unwrap(),
+            linux_proc_stat_start_time(123, stat.as_bytes()).unwrap(),
             "424242".to_owned()
         );
     }
@@ -12508,7 +12508,7 @@ mod test {
     #[test]
     fn linux_proc_stat_start_time_rejects_missing_start_time() {
         let stat = "123 (rustdesk) S 1 2 3";
-        assert!(linux_proc_stat_start_time(123, stat).is_err());
+        assert!(linux_proc_stat_start_time(123, stat.as_bytes()).is_err());
     }
 
     #[cfg(target_os = "linux")]

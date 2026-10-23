@@ -3484,14 +3484,6 @@ impl Config {
         format!("{parent}/ipc{postfix}")
     }
 
-    pub fn icon_path() -> PathBuf {
-        let mut path = Self::path("icons");
-        if fs::create_dir_all(&path).is_err() {
-            path = std::env::temp_dir();
-        }
-        path
-    }
-
     #[inline]
     pub fn get_any_listen_addr(is_ipv4: bool) -> SocketAddr {
         if is_ipv4 {

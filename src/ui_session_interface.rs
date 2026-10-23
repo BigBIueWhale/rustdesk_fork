@@ -12,8 +12,6 @@ use hbb_common::anyhow::anyhow;
 use hbb_common::config::keys;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::config::MAX_OWNED_PORT_FORWARD_MAPPINGS;
-#[cfg(not(feature = "flutter"))]
-use hbb_common::fs;
 use hbb_common::ResultType;
 use hbb_common::{
     allow_err, bail,
@@ -1719,57 +1717,6 @@ impl<T: InvokeUiSession> Session<T> {
         remember: bool,
     ) -> bool {
         self.reconnect_with_credential(Some((prompt_round, password, remember)))
-    }
-
-    #[cfg(not(feature = "flutter"))]
-    pub fn get_icon_path(&self, file_type: i32, ext: String) -> String {
-        let mut path = Config::icon_path();
-        if file_type == FileType::DirLink as i32 {
-            let new_path = path.join("dir_link");
-            if !std::fs::metadata(&new_path).is_ok() {
-                #[cfg(windows)]
-                allow_err!(std::os::windows::fs::symlink_file(&path, &new_path));
-                #[cfg(not(windows))]
-                allow_err!(std::os::unix::fs::symlink(&path, &new_path));
-            }
-            path = new_path;
-        } else if file_type == FileType::File as i32 {
-            if !ext.is_empty() {
-                path = path.join(format!("file.{}", ext));
-            } else {
-                path = path.join("file");
-            }
-            if !std::fs::metadata(&path).is_ok() {
-                allow_err!(std::fs::File::create(&path));
-            }
-        } else if file_type == FileType::FileLink as i32 {
-            let new_path = path.join("file_link");
-            if !std::fs::metadata(&new_path).is_ok() {
-                path = path.join("file");
-                if !std::fs::metadata(&path).is_ok() {
-                    allow_err!(std::fs::File::create(&path));
-                }
-                #[cfg(windows)]
-                allow_err!(std::os::windows::fs::symlink_file(&path, &new_path));
-                #[cfg(not(windows))]
-                allow_err!(std::os::unix::fs::symlink(&path, &new_path));
-            }
-            path = new_path;
-        } else if file_type == FileType::DirDrive as i32 {
-            if cfg!(windows) {
-                path = fs::get_path("C:");
-            } else if cfg!(target_os = "macos") {
-                if let Ok(entries) = fs::get_path("/Volumes/").read_dir() {
-                    for entry in entries {
-                        if let Ok(entry) = entry {
-                            path = entry.path();
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        fs::get_string(&path)
     }
 
     pub fn login(&self, password: String, remember: bool) {

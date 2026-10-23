@@ -4265,6 +4265,7 @@ run_focused_rust_tests() {
                 scripts/test-control-egress.rs scripts/run-control-egress-tests.py
                 src/ui_cm_interface.rs src/ipc.rs libs/enigo/src/lib.rs
                 libs/hbb_common/src/bytes_codec.rs libs/hbb_common/src/fs.rs
+                libs/hbb_common/src/config.rs libs/hbb_common/src/lib.rs src/common.rs
             )
             required_tests=(
                 control_egress_tests::r_s11gw_cursor_positions_replace_only_the_trailing_cursor
@@ -4288,6 +4289,8 @@ run_focused_rust_tests() {
                 cm_directory_batch_allocation_refusal_reports_error_and_retries
                 cm_directory_size_matches_wire_and_preserves_limit_and_fields
                 cm_directory_size_does_not_allocate_a_serialized_copy
+                cm_directory_proto_conversion_preserves_fields_and_validation
+                cm_directory_proto_allocation_refusal_reports_error_and_retries
                 bytes_codec::tests::test_codec1
                 bytes_codec::tests::test_codec2
                 bytes_codec::tests::test_codec3
@@ -6159,7 +6162,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=34 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=36 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6255,7 +6258,17 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         fi
         local failure_lines=200
         if [ "$RUST_TEST_PROFILE" = video-vpx ]; then failure_lines=576; fi
-        tail -n "$failure_lines" "$output" >&2
+        if [ "$RUST_TEST_PROFILE" = control-egress ] \
+            && grep -Eq '^CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256=[0-9a-f]{64} tests=[0-9]+$' "$output"; then
+            awk '
+                /^(CONTROL_EGRESS_|test |CM_|CONTROL_QUEUE_|BYTES_CODEC_|memory allocation of )/ {
+                    if (++records > 512) exit 1
+                    print
+                }
+            ' "$output" >&2 || fail 'controlled-egress runtime failure records exceed their bound'
+        else
+            tail -n "$failure_lines" "$output" >&2
+        fi
         fail "focused Rust tests exited with status $container_status"
     fi
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
@@ -6460,7 +6473,7 @@ PY
             || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=34 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=36 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
         [ "$(grep -Fxc 'CM_DIRECTORY_ALLOC=pass refusals=3 retries=exact queue_identity=preserved probe=SIGABRT children=joined' "$output")" -eq 1 ] \
@@ -6474,6 +6487,10 @@ PY
             && [ "$(grep -Ec '^CM_SIZE_ALLOC_CASE=pass bytes=[0-9]+ copy_allocations=0 allocations=[0-9]+ largest=[0-9]+ result=(accepted|refused) wire=exact owner=preserved$' "$output")" -eq 4 ] \
             && [ "$(grep -Fxc 'CM_SIZE_CONTROL=pass boundaries=5 nested_entries=5 fields=exact wire=exact owner=preserved' "$output")" -eq 1 ] \
             || fail 'directory size admission or encoded-copy allocation differs'
+        [ "$(grep -Fxc 'CM_PROTO_ALLOC=pass cases=9 errors=reported retries=exact wire=exact probe=SIGABRT children=joined' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^CM_PROTO_ALLOC_CASE=pass stage=(entries|batch) allow=(false|true) count=(1|5|64) bytes=[1-9][0-9]* refusals=1 error=reported retry=exact wire=exact$' "$output")" -eq 9 ] \
+            && [ "$(grep -Fxc 'CM_PROTO_CONTROL=pass directories=10 batches=5 empty_single=accepted refusals=18 fields=exact wire=exact count_boundary=preserved validators=production builtin=empty' "$output")" -eq 1 ] \
+            || fail 'complete connection directory conversion or allocation recovery differs'
         [ "$(grep -Fxc 'CONTROL_QUEUE_ALLOC=pass refusals=3 healthy=5 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^CONTROL_QUEUE_ALLOC_CHILD=observed .* success=true signal=None$' "$output")" -eq 8 ] \
             || fail 'control queue allocation refusal or healthy controls differ'
@@ -7182,7 +7199,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
-            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
+            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_PROTO_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
             printf 'CONTROL_EGRESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

@@ -3,6 +3,8 @@ extern crate self as hbb_common;
 pub use log;
 pub use sodiumoxide;
 pub use tokio;
+pub use anyhow::{self, bail};
+pub use libc;
 
 #[path = "../libs/hbb_common/src/bytes_codec.rs"]
 pub mod bytes_codec;
@@ -46,9 +48,22 @@ use ipc::Data;
 include!(env!("CM_EGRESS_SOURCE"));
 include!(env!("CM_DIRECTORY_SOURCE"));
 mod fs {
+    use crate::{bail, message_proto::FileEntry, ResultType};
+    use std::{convert::TryFrom, path::{Path, PathBuf}, time::{Duration, UNIX_EPOCH}};
     include!(env!("CM_DIRECTORY_ENUM_LIMIT"));
+    include!(env!("CM_PROTO_FS"));
 }
 include!(env!("CM_DIRECTORY_SIZE_SOURCE"));
+mod config {
+    use std::{collections::HashMap, sync::RwLock};
+    include!(env!("CM_PROTO_CONFIG"));
+}
+include!(env!("CM_PROTO_GETTER"));
+mod ui_cm_interface {
+    use crate::{config::keys::OPTION_FILE_TRANSFER_MAX_FILES, fs};
+    include!(env!("CM_PROTO_COUNT"));
+}
+include!(env!("CM_PROTO_CONVERSION"));
 
 mod cm_egress_tests {
     use super::*;
@@ -466,6 +481,202 @@ fn cm_directory_size_does_not_allocate_a_serialized_copy() {
     }
     assert_eq!(passed, 4, "size admission must succeed without allocating an encoded copy");
     println!("CM_SIZE_ALLOC=pass cases=4 copy_allocations=0 wire=exact owner=preserved probe=SIGABRT children=joined");
+}
+
+fn connection_directory(count: usize) -> ipc::CmFileDirectory {
+    let mut directory = cm_file_directory(cm_directory_input(count)).unwrap();
+    let kinds = [ipc::CmFileEntryType::Directory, ipc::CmFileEntryType::DirectoryLink,
+        ipc::CmFileEntryType::File, ipc::CmFileEntryType::FileLink];
+    for (index, entry) in directory.entries.iter_mut().enumerate() {
+        entry.entry_type = kinds[index % kinds.len()];
+    }
+    directory
+}
+
+fn connection_batch(count: usize, entries: usize) -> Vec<ipc::CmFileDirectory> {
+    (0..count).map(|index| {
+        let mut directory = connection_directory(entries);
+        directory.id += index as i32;
+        directory.path.push_str(&format!("/{index}"));
+        directory
+    }).collect()
+}
+
+fn assert_connection_directory(actual: &FileDirectory, expected: &ipc::CmFileDirectory) {
+    assert_eq!(actual.id, expected.id);
+    assert_eq!(actual.path, expected.path);
+    assert_eq!(actual.entries.len(), expected.entries.len());
+    for (actual, expected) in actual.entries.iter().zip(&expected.entries) {
+        let kind = match expected.entry_type {
+            ipc::CmFileEntryType::Directory => FileType::Dir,
+            ipc::CmFileEntryType::DirectoryLink => FileType::DirLink,
+            ipc::CmFileEntryType::DirectoryDrive => FileType::DirDrive,
+            ipc::CmFileEntryType::File => FileType::File,
+            ipc::CmFileEntryType::FileLink => FileType::FileLink,
+        };
+        assert_eq!(actual.entry_type.enum_value().unwrap(), kind);
+        assert_eq!(actual.name, expected.name);
+        assert_eq!(actual.is_hidden, expected.is_hidden);
+        assert_eq!(actual.size, expected.size);
+        assert_eq!(actual.modified_time, expected.modified_time);
+    }
+    let wire = actual.write_to_bytes().unwrap();
+    assert_eq!(actual.compute_size(), wire.len() as u64);
+    assert_eq!(FileDirectory::parse_from_bytes(&wire).unwrap(), *actual);
+}
+
+fn assert_connection_batch(actual: &[FileDirectory], expected: &[ipc::CmFileDirectory]) {
+    assert_eq!(actual.len(), expected.len());
+    for (actual, expected) in actual.iter().zip(expected) {
+        assert_connection_directory(actual, expected);
+    }
+}
+
+#[test]
+fn cm_directory_proto_conversion_preserves_fields_and_validation() {
+    assert!(config::BUILTIN_SETTINGS.read().unwrap().is_empty());
+    let limit = ui_cm_interface::get_max_validated_files();
+    assert_eq!(limit, fs::DEFAULT_FILE_TRANSFER_MAX_FILES);
+    for allow in [false, true] {
+        for count in [0, 1, 5, 64, limit] {
+            let directory = connection_directory(count);
+            let expected = directory.clone();
+            let result = DirectoryConnection::cm_file_directory_to_proto(directory, allow).unwrap();
+            assert_connection_directory(&result, &expected);
+        }
+    }
+    for count in [0, 1, 5, 64, limit] {
+        let directories = connection_batch(count, if count == limit { 0 } else { 5 });
+        let expected = directories.clone();
+        assert_connection_batch(&DirectoryConnection::cm_directories_to_proto(directories).unwrap(), &expected);
+    }
+    let mut refusals = 0;
+    for allow in [false, true] {
+        for name in ["../escape", "/absolute", "bad\0name"] {
+            let mut directory = connection_directory(1);
+            directory.entries[0].name = name.into();
+            assert!(DirectoryConnection::cm_file_directory_to_proto(directory, allow).is_err());
+            refusals += 1;
+        }
+        let mut directory = connection_directory(1);
+        directory.entries[0].entry_type = ipc::CmFileEntryType::DirectoryDrive;
+        directory.entries[0].name = "C:".into();
+        directory.path = "/".into();
+        assert!(DirectoryConnection::cm_file_directory_to_proto(directory, allow).unwrap_err().contains("drive"));
+        refusals += 1;
+        assert!(DirectoryConnection::cm_file_directory_to_proto(connection_directory(limit + 1), allow).unwrap_err().contains("too many files"));
+        refusals += 1;
+    }
+    let mut directory = connection_directory(1);
+    directory.entries[0].modified_time = u64::MAX;
+    assert!(DirectoryConnection::cm_file_directory_to_proto(directory, false).unwrap_err().contains("modification time"));
+    refusals += 1;
+    let mut directory = connection_directory(2);
+    directory.entries[1].name.clear();
+    assert!(DirectoryConnection::cm_file_directory_to_proto(directory, false).is_err());
+    refusals += 1;
+    let mut directory = connection_directory(1);
+    directory.entries[0].name.clear();
+    assert!(DirectoryConnection::cm_file_directory_to_proto(directory.clone(), true).is_err());
+    refusals += 1;
+    assert_connection_directory(&DirectoryConnection::cm_file_directory_to_proto(directory.clone(), false).unwrap(), &directory);
+    let mut directory = connection_directory(0);
+    directory.path = "x".repeat(fs::MAX_FILE_ENUM_SERIALIZED_BYTES + 1);
+    assert!(DirectoryConnection::cm_file_directory_to_proto(directory, false).unwrap_err().contains("serialized bytes"));
+    refusals += 1;
+    for index in [0, 2, 4] {
+        let mut directories = connection_batch(5, 1);
+        directories[index].entries[0].name = "../escape".into();
+        assert!(DirectoryConnection::cm_directories_to_proto(directories).is_err());
+        refusals += 1;
+    }
+    assert!(DirectoryConnection::cm_directories_to_proto(connection_batch(limit + 1, 0)).unwrap_err().contains("too many files"));
+    refusals += 1;
+    assert_eq!(refusals, 18);
+    println!("CM_PROTO_CONTROL=pass directories=10 batches=5 empty_single=accepted refusals=18 fields=exact wire=exact count_boundary=preserved validators=production builtin=empty");
+}
+
+#[test]
+fn cm_directory_proto_allocation_refusal_reports_error_and_retries() {
+    use std::os::unix::process::ExitStatusExt;
+    fn observe<T>(batch: bool, target: usize, action: impl FnOnce() -> T) -> (T, usize, usize) {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                CM_DIRECTORY_TARGET.with(|state| state.set((0, 0)));
+                CM_BATCH_REFUSAL.with(|state| state.set(None));
+            }
+        }
+        assert_eq!(CM_DIRECTORY_TARGET.with(std::cell::Cell::get), (0, 0));
+        assert!(CM_BATCH_REFUSAL.with(std::cell::Cell::get).is_none());
+        if batch { CM_BATCH_REFUSAL.with(|state| state.set(Some(0))); }
+        else { CM_DIRECTORY_TARGET.with(|state| state.set((target, 0))); }
+        let reset = Reset;
+        let result = action();
+        let (bytes, refusals) = if batch {
+            let bytes = CM_BATCH_REFUSAL.with(|state| state.get().unwrap());
+            (bytes, usize::from(bytes != 0))
+        } else { (target, CM_DIRECTORY_TARGET.with(|state| state.get().1)) };
+        drop(reset);
+        (result, bytes, refusals)
+    }
+    if let Ok(case) = std::env::var("CM_PROTO_ALLOC_CASE") {
+        if case == "probe" {
+            observe(false, 31, || std::hint::black_box(Vec::<u8>::with_capacity(31)));
+            panic!("connection directory allocation-refusal probe returned");
+        }
+        assert_eq!(ui_cm_interface::get_max_validated_files(), fs::DEFAULT_FILE_TRANSFER_MAX_FILES);
+        let parts: Vec<_> = case.split(':').collect();
+        assert_eq!(parts.len(), 3);
+        let batch = parts[0] == "batch";
+        let allow: bool = parts[1].parse().unwrap();
+        let count: usize = parts[2].parse().unwrap();
+        assert!([1, 5, 64].contains(&count));
+        let (bytes, refusals) = if batch {
+            assert!(!allow);
+            let input = connection_batch(count, 0);
+            let (result, bytes, refusals) = observe(true, 0, || DirectoryConnection::cm_directories_to_proto(input));
+            assert_eq!(bytes, count * std::mem::size_of::<FileDirectory>());
+            assert_eq!(result.unwrap_err(), "Not enough memory for directories");
+            let retry = connection_batch(count, 5);
+            let expected = retry.clone();
+            assert_connection_batch(&DirectoryConnection::cm_directories_to_proto(retry).unwrap(), &expected);
+            (bytes, refusals)
+        } else {
+            assert_eq!(parts[0], "entries");
+            let input = connection_directory(count);
+            let (result, bytes, refusals) = observe(false, count * std::mem::size_of::<FileEntry>(), || DirectoryConnection::cm_file_directory_to_proto(input, allow));
+            assert_eq!(result.unwrap_err(), "Not enough memory for directory entries");
+            let retry = connection_directory(count);
+            let expected = retry.clone();
+            assert_connection_directory(&DirectoryConnection::cm_file_directory_to_proto(retry, allow).unwrap(), &expected);
+            (bytes, refusals)
+        };
+        assert_eq!(refusals, 1);
+        println!("CM_PROTO_ALLOC_CASE=pass stage={} allow={allow} count={count} bytes={bytes} refusals={refusals} error=reported retry=exact wire=exact", parts[0]);
+        return;
+    }
+    let run = |case: &str| run_allocation_child(
+        "cm_directory_proto_allocation_refusal_reports_error_and_retries", "CM_PROTO_ALLOC_CASE", case);
+    let probe = run("probe");
+    assert_eq!(probe.status.signal(), Some(6));
+    assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+    println!("CM_PROTO_ALLOC_PROBE=observed bytes=31 signal=6");
+    let mut passed = 0;
+    for (stage, allow) in [("entries", false), ("entries", true), ("batch", false)] {
+        for count in [1, 5, 64] {
+            let case = format!("{stage}:{allow}:{count}");
+            let output = run(&case);
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if line.starts_with("CM_PROTO_ALLOC_CASE=") { println!("{line}"); }
+            }
+            print!("{}", String::from_utf8_lossy(&output.stderr));
+            println!("CM_PROTO_ALLOC_CHILD=observed case={case} success={} signal={:?}", output.status.success(), output.status.signal());
+            passed += usize::from(output.status.success());
+        }
+    }
+    assert_eq!(passed, 9, "connection directory allocation failures must be returned without aborting");
+    println!("CM_PROTO_ALLOC=pass cases=9 errors=reported retries=exact wire=exact probe=SIGABRT children=joined");
 }
 
 fn queue_allocation_case(case: &str) {

@@ -24,6 +24,7 @@ INPUTS = (
     "libs/hbb_common/protos/message.proto", "libs/hbb_common/protos/rendezvous.proto",
     "scripts/test-control-egress.rs", "scripts/run-control-egress-tests.py",
     "libs/hbb_common/src/fs.rs",
+    "libs/hbb_common/src/config.rs", "libs/hbb_common/src/lib.rs", "src/common.rs",
 )
 
 
@@ -105,6 +106,41 @@ def main():
     if len(enum_limits) != 1:
         raise ValueError("CM directory serialization limit is ambiguous")
     snippets["cm-directory-enum-limit.rs"] = enum_limits[0]
+    fs_source = inputs["libs/hbb_common/src/fs.rs"].decode("utf-8")
+    config = inputs["libs/hbb_common/src/config.rs"].decode("utf-8")
+    common = inputs["src/common.rs"].decode("utf-8")
+    shared = inputs["libs/hbb_common/src/lib.rs"].decode("utf-8")
+    def declaration(source, expression):
+        matches = re.findall(expression, source, re.MULTILINE)
+        if len(matches) != 1:
+            raise ValueError("CM directory helper declaration is absent or ambiguous")
+        return matches[0] + "\n"
+    snippets["cm-proto-fs.rs"] = (
+        declaration(fs_source, r"^pub const DEFAULT_FILE_TRANSFER_MAX_FILES: usize = [0-9_]+;$")
+        + between(fs_source, "pub fn validate_file_name_no_traversal(",
+                  "#[inline]\nfn validate_fs_path_argument(")
+        + between(fs_source, "fn is_symlink_or_reparse_point(", "fn join_validated_path("))
+    snippets["cm-proto-config.rs"] = (
+        "lazy_static::lazy_static! {\n"
+        + declaration(config, r"^    pub static ref BUILTIN_SETTINGS: RwLock<HashMap<String, String>> = Default::default\(\);$")
+        + "}\npub mod keys {\n"
+        + declaration(config, r'^    pub const OPTION_FILE_TRANSFER_MAX_FILES: &str = "file-transfer-max-files";$')
+        + "}\n")
+    snippets["cm-proto-count.rs"] = (
+        declaration(cm, r"^const DEFAULT_MAX_VALIDATED_FILES: usize = fs::DEFAULT_FILE_TRANSFER_MAX_FILES;$")
+        + declaration(cm, r"^static MAX_VALIDATED_FILES: std::sync::OnceLock<usize> = std::sync::OnceLock::new\(\);$")
+        + between(cm, "pub fn get_max_validated_files()", '#[cfg(not(any(target_os = "ios")))]\npub fn file_transfer_enumeration_budget(')
+        + between(cm, "pub fn check_file_count_limit(", "#[derive(Serialize, Clone)]\npub struct Client {"))
+    snippets["cm-proto-getter.rs"] = (
+        declaration(shared, r"^pub type ResultType<F, E = anyhow::Error> = anyhow::Result<F, E>;$")
+        + between(common, "pub fn get_builtin_option(", "#[inline]\npub fn is_custom_client("))
+    snippets["cm-proto-conversion.rs"] = (
+        "struct DirectoryConnection;\nimpl DirectoryConnection {\n"
+        + between(connection, "    fn cm_file_directory_to_proto(", "    fn active_cm_write_generation(")
+        + "    fn cm_directories_to_proto(directories: Vec<ipc::CmFileDirectory>) -> Result<Vec<FileDirectory>, String> {\n"
+        + between(connection, "                match result.and_then(|directories| {\n",
+                  "                }) {\n                    Ok(empty_dirs) => {").split("\n", 1)[1]
+        + "    }\n}\n")
     snippets["cm-tests.rs"] = between(
         cm, '    #[tokio::test(flavor = "current_thread")]\n    async fn r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive()',
         '    #[tokio::test(flavor = "current_thread")]\n    async fn r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner()')
@@ -145,7 +181,12 @@ def main():
                                ("CM_EGRESS_LIMIT", "cm-limits.rs"),
                                ("CM_DIRECTORY_SOURCE", "cm-directory.rs"),
                                ("CM_DIRECTORY_SIZE_SOURCE", "cm-directory-size.rs"),
-                               ("CM_DIRECTORY_ENUM_LIMIT", "cm-directory-enum-limit.rs")):
+                               ("CM_DIRECTORY_ENUM_LIMIT", "cm-directory-enum-limit.rs"),
+                               ("CM_PROTO_FS", "cm-proto-fs.rs"),
+                               ("CM_PROTO_CONFIG", "cm-proto-config.rs"),
+                               ("CM_PROTO_COUNT", "cm-proto-count.rs"),
+                               ("CM_PROTO_GETTER", "cm-proto-getter.rs"),
+                               ("CM_PROTO_CONVERSION", "cm-proto-conversion.rs")):
             os.environ[variable] = str(fixture / name)
 
         roots = [p for p in packages if p["name"] == "rustdesk" and "source" not in p]
@@ -170,6 +211,8 @@ def main():
             f'serde = "={version("serde")}"\nserde_derive = "={version("serde_derive")}"\n'
             f'serde_json = "={version("serde_json")}"\n'
             f'sodiumoxide = "={version("sodiumoxide")}"\n'
+            f'anyhow = "={version("anyhow")}"\nfiletime = "={version("filetime")}"\n'
+            f'libc = "={version("libc")}"\nlazy_static = "={version("lazy_static")}"\n'
             f'protobuf = {{ version = "={version("protobuf")}", features = ["with-bytes"] }}\n'
             f'tokio = {{ version = "={version("tokio")}", features = ["full"] }}\n'
             f'tokio-util = {{ version = "={version("tokio-util")}", features = ["codec"] }}\n'
@@ -211,15 +254,19 @@ def main():
             raise ValueError("controlled-egress lacks one completed exact test artifact")
         artifact = artifacts[0]
         artifact_sha = digest(artifact.read_bytes())
+        for name, body in inputs.items():
+            if (repo / name).read_bytes() != body:
+                raise ValueError(f"controlled-egress source changed before execution: {name}")
+            print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=34", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=36", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=34 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=36 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -228,8 +275,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-            print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=34 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=36 unchanged=before-after",
               flush=True)
 
 

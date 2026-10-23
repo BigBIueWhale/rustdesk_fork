@@ -2928,10 +2928,9 @@ fn linux_process_has_ancestor(pid: u32, ancestor_pid: u32) -> bool {
 #[cfg(target_os = "linux")]
 fn linux_proc_cmdline_args(pid: u32) -> ResultType<Vec<String>> {
     let cmdline = fs::read(format!("/proc/{pid}/cmdline"))?;
-    Ok(cmdline
-        .split(|byte| *byte == 0)
-        .filter(|part| !part.is_empty())
-        .map(|part| String::from_utf8_lossy(part).into_owned())
+    Ok(String::from_utf8_lossy(&cmdline)
+        .split_terminator('\0')
+        .map(str::to_owned)
         .collect())
 }
 

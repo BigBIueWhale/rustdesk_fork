@@ -1912,6 +1912,7 @@ pub(crate) enum ControlEgressFailure {
         limit: usize,
     },
     AccountingOverflow,
+    StorageUnavailable,
 }
 
 impl fmt::Display for ControlEgressFailure {
@@ -1941,6 +1942,9 @@ impl fmt::Display for ControlEgressFailure {
             ),
             Self::AccountingOverflow => {
                 write!(f, "controlled control message size accounting overflowed")
+            }
+            Self::StorageUnavailable => {
+                write!(f, "controlled control queue storage is unavailable")
             }
         }
     }
@@ -2164,6 +2168,8 @@ impl Sender {
             }
             if replaced_bytes != 0 {
                 state.queue.pop_back();
+            } else if state.queue.try_reserve(1).is_err() {
+                return self.fail_with_state(state, ControlEgressFailure::StorageUnavailable);
             }
             state.queue.push_back(QueuedControlEgress {
                 message,

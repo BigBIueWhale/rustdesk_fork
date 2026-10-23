@@ -1204,12 +1204,16 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         password_role_regression.require((rejected,), f"rejected {rejected} role")
 
     user_server_argv = auth.function("user_owned_main_server_argv_is_expected")
-    user_server_argv.require(("args", ".", "len", "(", ")", "==", "2"), "exact user server argv length", unique=True)
-    user_server_argv.require(("Some", "(", '"--server"', ")"), "user server role", unique=True)
+    if user_server_argv.values != [
+        "process_argv_is_exact", "(", "args", ",", "&", "[", '"--server"', "]", ")",
+    ]:
+        raise VerificationError("user server role must use the exact complete argv predicate")
     service_owned_argv = auth.function("linux_service_owned_server_argv_is_expected")
-    service_owned_argv.require(("args", ".", "len", "(", ")", "==", "3"), "exact service-owned child argv length", unique=True)
-    service_owned_argv.require(("Some", "(", '"--server"', ")"), "service-owned child server role", unique=True)
-    service_owned_argv.require(("Some", "(", "crate", "::", "common", "::", "SERVICE_OWNED_SERVER_ARG", ")"), "service-owned child marker", unique=True)
+    if service_owned_argv.values != [
+        "process_argv_is_exact", "(", "args", ",", "&", "[", '"--server"', ",",
+        "crate", "::", "common", "::", "SERVICE_OWNED_SERVER_ARG", "]", ")",
+    ]:
+        raise VerificationError("service-owned child role must use the exact complete argv predicate")
 
     root_service_peer = auth.function("validate_linux_root_service_peer")
     root_service_peer.require_order(

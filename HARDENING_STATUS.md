@@ -13134,14 +13134,24 @@ metadata decoding with fixed diagnostics. Refused input preserves its exact prio
 platform input, both resolution encodings, positive-dimension filtering, ordering and recovery
 remain covered. Session/type checks stay at the callers; incremental platform merging is separate.
 
-**Outgoing chat reset — OPEN, regression preparation.** `ChatModel.resetClientMode()`
-looks up an integer in its `MessageKey` map, so starting a new outgoing Remote session
-does not clear its old chat bodies. The focused peer-data cohort now includes two actual
-ChatModel regressions for outgoing reset, incoming preservation, repeated reuse and incoming
-reconnect. Local chat-user creation is lazy so history-only operations do not require native
-translation startup. Existing peer decoding tests are unchanged. The intended reset clears
-outgoing bodies in place, preserving incoming history, keys, peer metadata and list identity.
-Behavioral A/B execution and mobile/desktop session integration remain OPEN.
+**Outgoing chat reset (`52b9db70`) — model correction verified; session integration OPEN.**
+`ChatModel.resetClientMode()` clears every outgoing message body in place instead of looking
+up an integer in its `MessageKey` map and silently clearing nothing. Incoming history,
+selection, keys, peer metadata and list identity remain intact. Local chat-user creation is
+lazy, so history-only operations do not require native translation startup. On unchanged
+regression preparation `c4224baf`, the two new production-model tests fail because outgoing
+messages survive reset; all ten prior peer tests pass. With only the reset method changed,
+the same isolated Linux Flutter 3.24.5 cohort passes all twelve tests and three result-parser
+checks in 268 outer seconds. Cases cover multiple outgoing peers, both directions for one
+peer, incoming selection, empty/repeated reset, fresh messages after reset and incoming
+reconnect. The ten prior test bodies are byte-identical. Both runs retain unattributed
+external endpoint changes; no host service was inspected or changed, and the accepted
+candidate's harness audit proves host IP-socket creation kernel-denied. QEMU and bounded RAM
+workspaces are retired; baseline failure diagnostics were reconciled under the exact run
+lock. Evidence: `.harness-state/verifier-vm/chat-reset-6b77b932.json`. This is actual Dart-model
+behavior and fresh bridge/import compilation, not a native session or installed-app test.
+Mobile/desktop session integration, message delivery and broader lifecycle, R-S0 and R-F5
+acceptance remain OPEN; all user-parked work stays parked.
 
 Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests

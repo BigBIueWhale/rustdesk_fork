@@ -710,6 +710,14 @@ FILE_NAVIGATION_SUITES = {
     },
 }
 PEER_DATA_TESTS = {
+    "chat delivery keeps a live outgoing owner",
+    "chat delivery refuses outgoing close after page wait",
+    "chat delivery refuses outgoing session after page wait",
+    "chat delivery refuses outgoing ui after page wait",
+    "chat delivery refuses retired outgoing owner after window wait",
+    "chat delivery keeps a live incoming generation",
+    "chat delivery refuses replaced incoming generation after page wait",
+    "chat delivery refuses replaced incoming generation after CM wait",
     "chat reset clears outgoing bodies and preserves incoming history",
     "chat reset supports empty repeated and reused session histories",
     "peer decode redacts malformed JSON exception content",

@@ -1,11 +1,129 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dash_chat_2/dash_chat_2.dart';
+import 'package:desktop_multi_window/src/channels.dart' show miltiWindowChannel;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_hbb/common.dart' show desktopType, DesktopType;
+import 'package:flutter_hbb/common/shared_state.dart';
+import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
+import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
+import 'package:uuid/uuid.dart';
+
+class _ChatPeer implements FfiModel {
+  @override
+  final pi = PeerInfo()..username = 'Outgoing peer';
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnsupportedError('Unexpected peer access');
+}
+
+Client _incomingClient(int generation) =>
+    Client(7, true, false, false, 'Incoming peer', 'incoming-peer', true, true,
+        true)
+      ..registryGeneration = generation;
+
+class _ChatServer implements ServerModel {
+  @override
+  final clients = [_incomingClient(19)];
+  @override
+  final tabController = DesktopTabController(tabType: DesktopTabType.cm);
+  var jumps = 0;
+
+  _ChatServer() {
+    final tab = TabInfo(key: '7', label: 'Incoming', page: const SizedBox());
+    tabController.state.value.tabs.add(tab);
+  }
+
+  @override
+  void jumpTo(int id) => jumps += 1;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnsupportedError('Unexpected server access');
+}
+
+class _ChatOwner implements FFI {
+  @override
+  var id = 'outgoing-peer';
+  @override
+  var sessionId = Uuid().v4obj();
+  @override
+  var clientOwnerId = Uuid().v4obj();
+  @override
+  var closed = false;
+  @override
+  final ffiModel = _ChatPeer();
+  @override
+  final serverModel = _ChatServer();
+
+  @override
+  bool isCurrentSessionOwner(UuidValue session, UuidValue owner) =>
+      !closed && sessionId == session && clientOwnerId == owner;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnsupportedError('Unexpected session access');
+}
+
+class _HeldChat extends ChatModel {
+  _HeldChat(_ChatOwner owner) : super(WeakReference<FFI>(owner));
+
+  Completer<void>? page;
+  final shown = <MessageKey>[];
+
+  @override
+  Future<void> showChatPage(MessageKey key) {
+    shown.add(key);
+    return page?.future ?? Future<void>.value();
+  }
+}
+
+class _ChatDelivery {
+  final owner = _ChatOwner();
+  late final model = _HeldChat(owner);
+  final windowCalls = <String>[];
+  var notifications = 0;
+
+  _ChatDelivery() {
+    model.addListener(() => notifications += 1);
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    const windowChannel = MethodChannel('window_manager');
+    messenger.setMockMethodCallHandler(windowChannel, (call) async {
+      windowCalls.add(call.method);
+      return null;
+    });
+    messenger.setMockMethodCallHandler(miltiWindowChannel, (call) async {
+      windowCalls.add('multi.${call.method}');
+      return call.method == 'isMinimized' ? false : null;
+    });
+    addTearDown(() async {
+      await Future<void>.delayed(Duration.zero);
+      messenger.setMockMethodCallHandler(windowChannel, null);
+      messenger.setMockMethodCallHandler(miltiWindowChannel, null);
+      model.inputNode.dispose();
+      model.dispose();
+      owner.serverModel.tabController.state.value.pageController.dispose();
+    });
+  }
+
+  void expectRetired() {
+    expect(model.messages, isEmpty);
+    expect(model.currentKey.peerId, isEmpty);
+    expect(model.latestReceivedKey, isNull);
+    expect(notifications, 0);
+    expect(owner.serverModel.jumps, 0);
+  }
+}
 
 class _UnusedChatOwner implements FFI {
   @override
@@ -45,6 +163,137 @@ void main() {
   tearDown(() {
     debugPrint = previousDebugPrint;
     peers.dispose();
+  });
+
+  test('chat delivery keeps a live outgoing owner', () async {
+    final delivery = _ChatDelivery();
+    delivery.model.page = Completer<void>();
+    final task = delivery.model.receive(ChatModel.clientModeID, 'Outgoing');
+    expect(delivery.model.shown.single.peerId, delivery.owner.id);
+    expect(delivery.model.messages, isEmpty);
+    delivery.model.page!.complete();
+    await task;
+
+    final key = delivery.model.messages.keys.single;
+    expect(key.isOut, isTrue);
+    expect(key.peerId, delivery.owner.id);
+    expect(delivery.model.messages[key]!.chatMessages.single.text, 'Outgoing');
+    expect(delivery.model.messages[key]!.chatUser.firstName, 'Outgoing peer');
+    expect(delivery.model.latestReceivedKey, key);
+    expect(delivery.notifications, 1);
+    expect(delivery.windowCalls, isEmpty);
+  });
+
+  for (final retirement in ['close', 'session', 'ui']) {
+    test('chat delivery refuses outgoing $retirement after page wait',
+        () async {
+      final delivery = _ChatDelivery();
+      delivery.model.page = Completer<void>();
+      final task = delivery.model.receive(ChatModel.clientModeID, 'Retired');
+      expect(delivery.model.shown, hasLength(1));
+      if (retirement == 'close') {
+        delivery.owner.closed = true;
+      } else if (retirement == 'session') {
+        delivery.owner.sessionId = Uuid().v4obj();
+        delivery.owner.id = 'replacement-peer';
+      } else {
+        delivery.owner.clientOwnerId = Uuid().v4obj();
+      }
+      delivery.model.page!.complete();
+      await task;
+
+      delivery.expectRetired();
+      expect(delivery.windowCalls, isEmpty);
+    });
+  }
+
+  test('chat delivery refuses retired outgoing owner after window wait',
+      () async {
+    final delivery = _ChatDelivery();
+    final tabs = DesktopTabController(tabType: DesktopTabType.remoteScreen);
+    tabs.state.value.tabs.addAll([
+      TabInfo(key: delivery.owner.id, label: 'Peer', page: const SizedBox()),
+      TabInfo(key: 'selected', label: 'Other', page: const SizedBox()),
+    ]);
+    tabs.state.value.selected = 1;
+    Get.put<DesktopTabController>(tabs);
+    UnreadChatCountState.init(delivery.owner.id);
+    addTearDown(() {
+      UnreadChatCountState.delete(delivery.owner.id);
+      Get.delete<DesktopTabController>();
+      tabs.state.value.pageController.dispose();
+    });
+    final started = Completer<void>();
+    final minimized = Completer<bool>();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(miltiWindowChannel, (call) async {
+      expect(call.method, 'isMinimized');
+      started.complete();
+      return minimized.future;
+    });
+
+    final task = delivery.model.receive(ChatModel.clientModeID, 'Retired');
+    await started.future;
+    delivery.owner.closed = true;
+    minimized.complete(false);
+    await task;
+
+    delivery.expectRetired();
+    expect(UnreadChatCountState.find(delivery.owner.id).value, 0);
+    expect(delivery.windowCalls, isEmpty);
+  });
+
+  test('chat delivery keeps a live incoming generation', () async {
+    final delivery = _ChatDelivery();
+    delivery.model.page = Completer<void>();
+    final task = delivery.model.receive(7, 'Incoming');
+    expect(delivery.model.shown.single.peerId, 'incoming-peer');
+    delivery.owner.sessionId = Uuid().v4obj();
+    delivery.model.page!.complete();
+    await task;
+    await Future<void>.delayed(Duration.zero);
+
+    final key = delivery.model.messages.keys.single;
+    expect(key.isOut, isFalse);
+    expect(key.peerId, 'incoming-peer');
+    expect(delivery.model.messages[key]!.chatMessages.single.text, 'Incoming');
+    expect(delivery.model.messages[key]!.chatUser.firstName, 'Incoming peer');
+    expect(delivery.model.latestReceivedKey, key);
+    expect(delivery.notifications, 1);
+    expect(delivery.owner.serverModel.jumps, 1);
+    expect(delivery.windowCalls, ['show', 'focus']);
+  });
+
+  test('chat delivery refuses replaced incoming generation after page wait',
+      () async {
+    final delivery = _ChatDelivery();
+    delivery.model.page = Completer<void>();
+    final task = delivery.model.receive(7, 'Retired');
+    expect(delivery.model.shown, hasLength(1));
+    delivery.owner.serverModel.clients[0] = _incomingClient(20);
+    delivery.model.page!.complete();
+    await task;
+    await Future<void>.delayed(Duration.zero);
+
+    delivery.expectRetired();
+    expect(delivery.windowCalls, isEmpty);
+  });
+
+  test('chat delivery refuses replaced incoming generation after CM wait',
+      () async {
+    final delivery = _ChatDelivery();
+    final previousType = desktopType;
+    desktopType = DesktopType.cm;
+    addTearDown(() => desktopType = previousType);
+    final task = delivery.model.receive(7, 'Retired');
+    expect(delivery.model.shown, isEmpty);
+    delivery.owner.serverModel.clients[0] = _incomingClient(20);
+    await task;
+    await Future<void>.delayed(Duration.zero);
+
+    delivery.expectRetired();
+    expect(delivery.model.shown, isEmpty);
+    expect(delivery.windowCalls, isEmpty);
   });
 
   test('chat reset clears outgoing bodies and preserves incoming history', () {

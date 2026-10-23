@@ -14,11 +14,11 @@ enum ChatPageType {
 
 Widget Function(void Function()) chatSendButtonBuilder(ChatModel model,
         {required Color color}) =>
-    defaultSendButton(
+    (_) => defaultSendButton(
       padding: EdgeInsets.symmetric(horizontal: 6, vertical: 0),
       color: color,
       icon: Icons.send_rounded,
-    );
+    )(model.sendDraft);
 
 class ChatPage extends StatelessWidget implements PageShape {
   late final ChatModel chatModel;

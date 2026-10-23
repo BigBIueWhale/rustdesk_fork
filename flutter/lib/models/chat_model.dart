@@ -130,13 +130,7 @@ class ChatModel with ChangeNotifier {
         }
 
         if (isEnterPressed && !isShiftPressed) {
-          final ChatMessage message = ChatMessage(
-            text: textController.text,
-            user: me,
-            createdAt: DateTime.now(),
-          );
-          send(message);
-          textController.clear();
+          sendDraft();
           return KeyEventResult.handled;
         }
 
@@ -461,14 +455,28 @@ class ChatModel with ChangeNotifier {
     notifyListeners();
   }
 
+  bool sendDraft() {
+    if (textController.text.trim().isEmpty) return false;
+    final message = ChatMessage(
+      text: textController.text,
+      user: me,
+      createdAt: DateTime.now(),
+    );
+    if (!send(message)) return false;
+    textController.clear();
+    return true;
+  }
+
   bool send(ChatMessage message) {
     String trimmedText = message.text.trim();
     if (trimmedText.isEmpty) {
       return false;
     }
+    final session = parent.target;
+    if (session == null) return false;
     final client = _currentKey.isOut
         ? null
-        : parent.target?.serverModel.clients
+        : session.serverModel.clients
             .firstWhereOrNull((client) =>
                 client.id == _currentKey.connId &&
                 client.peerId == _currentKey.peerId &&
@@ -477,8 +485,8 @@ class ChatModel with ChangeNotifier {
     if (!_currentKey.isOut && client == null) return false;
     message.text = trimmedText;
     insertMessage(_currentKey, message);
-    if (_currentKey.connId == clientModeID && parent.target != null) {
-      bind.sessionSendChat(sessionId: sessionId, text: message.text);
+    if (_currentKey.isOut) {
+      bind.sessionSendChat(sessionId: session.sessionId, text: message.text);
     } else if (client != null) {
       bind.cmSendChat(
           connId: client.id,

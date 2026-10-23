@@ -42,6 +42,10 @@ static uint64_t clock_ms, sample_age;
 static unsigned int sample_index, mode;
 static uint64_t monotonic_millis(void) { return clock_ms; }
 static int sleep_millis(unsigned int duration) {
+    if (mode == 16U && sample_index == 38U) clock_ms += 2000U;
+    if ((mode == 17U && sample_index == 50U) ||
+        (mode == 18U && sample_index == 49U) ||
+        (mode == 19U && sample_index == 74U)) clock_ms += 1000U;
     clock_ms += duration;
     sample_index += 1U;
     return 0;
@@ -54,7 +58,8 @@ static int64_t viewer_state(Display *display, const ViewerWindow *viewer,
         /* Elapsed time inside acquisition, followed by a genuinely fresh sample. */
         clock_ms += mode == 9U ? 1000U : mode == 10U ? 960U : 961U;
     }
-    if (mode >= 12U && sample_index == 74U) {
+    if (mode == 18U && sample_index == 49U) clock_ms += 39U;
+    if (mode >= 12U && mode <= 15U && sample_index == 74U) {
         clock_ms += mode == 12U ? 39U : mode == 14U ? 41U : 40U;
     }
     *captured_us = clock_ms * 1000U;
@@ -76,7 +81,7 @@ static int x11_frame_age(SourceHistory *history, const char *directory, int64_t 
     (void)directory; (void)captured_us;
     if (state >= 0 && (uint64_t)state >= history->count) history->count = (unsigned int)state + 1U;
     if (mode == 3U || (mode == 0U && sample_index == 1U)) return -1;
-    if (mode >= 12U) {
+    if (mode >= 12U && mode <= 15U) {
         uint64_t published_ms = mode == 15U ? (uint64_t)state * 1000U :
             state == 0 ? 0U : state == 1 ? 1520U : clock_ms;
         *age = clock_ms - published_ms;
@@ -227,6 +232,37 @@ int main(void) {
         REQUIRE(deadlines_passed);
     }
     puts("X11_OBSERVER_DEADLINE=pass cases=4 scope=controller-aggregation inputs=synthetic completion=inside-window-only qualified=preserved");
+    {
+        const struct {
+            const char *name;
+            unsigned int mode, expected_sample, expected_distinct;
+            int expected_status;
+            uint64_t expected_gap;
+        } cases[] = {
+            {"unobserved-tail", 16U, 39U, 39U, -1, 1480U},
+            {"boundary-tail", 17U, 51U, 51U, 0, 1000U},
+            {"over-boundary-tail", 18U, 50U, 50U, -1, 1001U},
+            {"qualified-before-sleep", 19U, 75U, 75U, 0, 40U},
+        };
+        int tails_passed = 1;
+        for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+            mode = cases[index].mode; clock_ms = 0U; sample_index = 0U;
+            history = (SourceHistory){0};
+            status = observe_current_frames_for_duration(NULL, NULL, &viewer, &history,
+                3000U, &maximum_gap, &maximum_age, &distinct);
+            int passed = status == cases[index].expected_status &&
+                sample_index == cases[index].expected_sample &&
+                distinct == cases[index].expected_distinct &&
+                maximum_gap == cases[index].expected_gap && maximum_age == 30U;
+            printf("X11_OBSERVER_TAIL_CASE name=%s status=%d expected=%d sample=%u "
+                   "distinct=%u maximum_gap_ms=%llu passed=%s\n", cases[index].name,
+                   status, cases[index].expected_status, sample_index, distinct,
+                   (unsigned long long)maximum_gap, passed ? "true" : "false");
+            tails_passed = tails_passed && passed;
+        }
+        REQUIRE(tails_passed);
+    }
+    puts("X11_OBSERVER_TAIL=pass cases=4 scope=controller-aggregation inputs=synthetic window_end=checked boundary_ms=1000 qualified=preserved");
     return 0;
 }
 '''

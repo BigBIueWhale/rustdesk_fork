@@ -12332,12 +12332,15 @@ despite stale sender clones. R-S11gw / Appendix C #358 is the normative contract
 
 **Current evidence shared with R-S11gy/R-S11gz.** The focused command is
 `bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
-At `91cf0b41`, all 45 named native Rust cases pass with actual Tokio channels,
-OS threads and production-generated protobufs. The 19 executed source inputs still
-match the current source; later changes are documentation only. Source/artifact,
-case, dependency, bounded-RAM and joined-cleanup bindings are in
-`file-clipboard-growth-fc23970f.json`. Capsule names here resolve under
-`.harness-state/verifier-vm/`.
+At `e553f7cc`, all 46 named native Rust cases pass with actual Tokio channels,
+OS threads and production-generated protobufs. All 20 input receipts were rechecked
+against the `d2a102e6` source checkpoint. The 45 queue/framing/allocation tests are
+unchanged; the added case exercises portable recent-marker file operations on Linux, with Windows Shell
+unexecuted. `recent-document-markers-571ee664.json` binds the exact source/artifact,
+cases, dependencies, bounded-RAM storage and joined cleanup. The earlier growth-refusal
+A/B remains in `file-clipboard-growth-fc23970f.json`; its 19-input source snapshot
+is historical. `control-egress-evidence-d2a102e6.json` retains the current input
+comparison and ledger correction. Capsule names resolve under `.harness-state/verifier-vm/`.
 
 | Surface | Component coverage and retained failure/design provenance |
 | --- | --- |
@@ -12351,7 +12354,7 @@ clipboard, complete service producers, connection loops and CM IPC do not.
 Owner/deallocation flags establish lifetime, not RSS or whole-process memory bounds;
 error formatting and surrounding allocations remain available during selective faults.
 The older raw-backing baseline has test/artifact receipts but lacks full input/source
-receipts; its corrected run and the current 45-case run supply those bindings.
+receipts; its corrected run and the retained 46-case run supply those bindings.
 Script wiring, source patterns and historical string mutations do not establish behavior.
 The profile remains 2 GiB guest / 6 GiB RAM scratch / 4 GiB overlay / 6 GiB host
 headroom / 1 GiB overhead, with no disk fallback and joined retirement.
@@ -12532,7 +12535,7 @@ Earlier isolated entry/batch/size evidence remains in
 `cm-directory-allocation-77d5ab6a.json`,
 `cm-directory-batch-allocation-26af6d15.json` and
 `cm-directory-size-d023a678.json`; their raw timings, intermediate failures and
-per-run receipts belong in those capsules and Git history. The current 45-case
+per-run receipts belong in those capsules and Git history. The retained 46-case
 cohort retains these checks. Error/diagnostic allocations remain available during
 selective refusal. Filesystem enumeration/jobs, complete handlers, native CM IPC
 authority, settings and installed/root/platform behavior are unproven here.
@@ -12569,10 +12572,10 @@ allocation fixture: FIFO/drain, retained-capacity and count/byte limits, wake an
 producer/receiver finality, fresh role-disjoint routes, generation-safe lease cleanup,
 exact delivery and duplicate controlled-ID refusal without minting a generation or
 channel. Three refused growth cases and four healthy/spare controls also pass.
-Current source/artifact bindings and the earlier diagnostic omission are retained
-in `file-clipboard-growth-fc23970f.json`; shared evidence and limits are under
-R-S11gw. These common tests exclude OS clipboard backends and do not establish
-Windows ABI, viewer/CM/FUSE lifecycle or installed behavior.
+Growth-refusal A/B and the earlier diagnostic omission are retained in
+`file-clipboard-growth-fc23970f.json`; source/artifact bindings for the retained run,
+shared evidence and limits are under R-S11gw. These common tests exclude OS clipboard
+backends and do not establish Windows ABI, viewer/CM/FUSE lifecycle or installed behavior.
 
 Native viewer, Unix-controlled, Windows-CM and mounted-FUSE routes still require
 connection/reconnect, refusal/replacement and cleanup with file correctness,

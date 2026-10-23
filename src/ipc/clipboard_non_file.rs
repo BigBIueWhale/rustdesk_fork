@@ -124,14 +124,17 @@ impl ClipboardNonFile {
                 "raw clipboard length differs from metadata",
             ));
         }
+        let mut clipboards = Vec::new();
+        clipboards.try_reserve_exact(contents.len())
+            .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
         for item in &mut contents {
             if item.next_raw {
                 item.content = raw.split_to(item.content_len).freeze();
             }
         }
-        contents.into_iter().map(|item| {
+        for item in contents {
             let format = item.format()?.into();
-            Ok(Clipboard {
+            clipboards.push(Clipboard {
                 compress: item.compress,
                 content: item.content,
                 width: item.width,
@@ -139,8 +142,9 @@ impl ClipboardNonFile {
                 format,
                 special_name: item.special_name,
                 ..Default::default()
-            })
-        }).collect()
+            });
+        }
+        Ok(clipboards)
     }
 }
 

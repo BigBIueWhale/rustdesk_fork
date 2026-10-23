@@ -5,7 +5,7 @@ mod chat_tests {
     use super::*;
     use crate::{cm_egress_channel, CmEgressItem, CmEgressReceiver};
 
-    fn client(id: i32, peer: &str, conn_type: ipc::CmAuthConnType) -> (Client, CmEgressReceiver) {
+    pub(super) fn client(id: i32, peer: &str, conn_type: ipc::CmAuthConnType) -> (Client, CmEgressReceiver) {
         let (tx, receiver) = cm_egress_channel();
         (Client {
             id,
@@ -33,7 +33,7 @@ mod chat_tests {
         }, receiver)
     }
 
-    fn admit(client: &mut Client, source: u64) -> CmClientOwner {
+    pub(super) fn admit(client: &mut Client, source: u64) -> CmClientOwner {
         CLIENTS.write().unwrap().admit(client, source).unwrap().0
     }
 

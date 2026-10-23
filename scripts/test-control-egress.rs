@@ -9,6 +9,7 @@ pub use libc;
 
 include!(env!("CM_CHAT_LOG"));
 include!(env!("CM_CHAT_FFI"));
+include!(env!("CM_DISCONNECT_FFI"));
 
 #[path = "test-cursor-echo.rs"]
 mod cursor_echo;
@@ -78,6 +79,8 @@ mod ui_cm_interface {
     include!(env!("CM_CHAT_SENDER"));
     include!(env!("CM_CHAT_SEND"));
     include!(env!("CM_CHAT_TESTS"));
+    include!(env!("CM_DISCONNECT_ACTIONS"));
+    include!(env!("CM_DISCONNECT_TESTS"));
 }
 include!(env!("CM_PROTO_CONVERSION"));
 include!(env!("CM_READ_BLOCK_SOURCE"));

@@ -486,7 +486,8 @@ class ConnectionManager extends StatelessWidget {
       style: ButtonStyle(backgroundColor: MaterialStatePropertyAll(Colors.red)),
       icon: const Icon(Icons.close),
       onPressed: () {
-        bind.cmCloseConnection(connId: client.id);
+        bind.cmCloseConnection(
+            connId: client.id, registryGeneration: client.registryGeneration);
         gFFI.invokeMethod("cancel_notification", client.id);
       },
       label: Text(translate("Disconnect")),

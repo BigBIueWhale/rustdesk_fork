@@ -790,8 +790,8 @@ class ServerModel with ChangeNotifier {
     final closingOwners = <int, int>{
       for (final client in _clients) client.id: client.registryGeneration,
     };
-    await Future.wait(closingOwners.keys
-        .map((connectionId) => bind.cmCloseConnection(connId: connectionId)));
+    await Future.wait(closingOwners.entries.map((owner) => bind.cmCloseConnection(
+        connId: owner.key, registryGeneration: owner.value)));
     for (var index = _clients.length - 1; index >= 0; index -= 1) {
       final client = _clients[index];
       if (closingOwners[client.id] == client.registryGeneration) {

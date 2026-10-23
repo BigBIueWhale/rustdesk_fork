@@ -28,7 +28,7 @@ INPUTS = (
     "libs/clipboard/src/lib.rs", "libs/clipboard/Cargo.toml",
     "src/ui_session_interface.rs",
     "src/server/input_service.rs", "scripts/test-cursor-echo.rs",
-    "src/flutter_ffi.rs", "scripts/test-cm-chat.rs",
+    "src/flutter_ffi.rs", "scripts/test-cm-chat.rs", "scripts/test-cm-disconnect.rs",
 )
 
 
@@ -172,6 +172,12 @@ def main():
     snippets["cm-chat-log.rs"] = between(
         inputs["libs/hbb_common/src/lib.rs"].decode("utf-8"),
         "#[macro_export]\nmacro_rules! allow_err {", "#[inline]\npub fn timeout<")
+    snippets["cm-disconnect-actions.rs"] = between(
+        cm, '#[inline]\n#[cfg(not(any(target_os = "ios")))]\npub fn close(',
+        '// server mode send chat to peer\n')
+    snippets["cm-disconnect-ffi.rs"] = between(
+        inputs["src/flutter_ffi.rs"].decode("utf-8"),
+        "pub fn cm_close_connection(", "pub fn cm_should_hide(")
     ipc = inputs["src/ipc.rs"].decode("utf-8")
     enigo = inputs["libs/enigo/src/lib.rs"].decode("utf-8")
     snippets["cm-queue.rs"] = between(cm, "const CM_EGRESS_WAKE_CAPACITY:",
@@ -288,9 +294,12 @@ def main():
                                ("CM_CHAT_SENDER", "cm-chat-sender.rs"),
                                ("CM_CHAT_SEND", "cm-chat-send.rs"),
                                ("CM_CHAT_FFI", "cm-chat-ffi.rs"),
-                               ("CM_CHAT_LOG", "cm-chat-log.rs")):
+                               ("CM_CHAT_LOG", "cm-chat-log.rs"),
+                               ("CM_DISCONNECT_ACTIONS", "cm-disconnect-actions.rs"),
+                               ("CM_DISCONNECT_FFI", "cm-disconnect-ffi.rs")):
             os.environ[variable] = str(fixture / name)
         os.environ["CM_CHAT_TESTS"] = str(repo / "scripts/test-cm-chat.rs")
+        os.environ["CM_DISCONNECT_TESTS"] = str(repo / "scripts/test-cm-disconnect.rs")
 
         roots = [p for p in packages if p["name"] == "rustdesk" and "source" not in p]
         if len(roots) != 1:
@@ -367,13 +376,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=51", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=55", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=51 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=55 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -382,7 +391,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=51 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=55 unchanged=before-after",
               flush=True)
 
 

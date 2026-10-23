@@ -1293,14 +1293,14 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
 
 #[inline]
 #[cfg(not(any(target_os = "ios")))]
-pub fn close(id: i32) {
+pub fn close(id: i32, _registry_generation: i64) {
     if let Some(tx) = cm_egress_sender(id) {
         allow_err!(tx.send(Data::Close));
     };
 }
 
 #[inline]
-pub fn remove(id: i32) {
+pub fn remove(id: i32, _registry_generation: i64) {
     let mut clients = CLIENTS.write().unwrap();
     if clients
         .clients

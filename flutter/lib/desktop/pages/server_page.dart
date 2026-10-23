@@ -913,14 +913,16 @@ class _CmControlPanel extends StatelessWidget {
   }
 
   void handleDisconnect() {
-    bind.cmCloseConnection(connId: client.id);
+    bind.cmCloseConnection(
+        connId: client.id, registryGeneration: client.registryGeneration);
   }
 
   // R-G7 (§19): handleAccept (the manual click-to-accept sender) is removed with the Accept
   // button — approve-mode is pinned 'password', so acceptance is automatic.
 
   void handleClose() async {
-    await bind.cmRemoveDisconnectedConnection(connId: client.id);
+    await bind.cmRemoveDisconnectedConnection(
+        connId: client.id, registryGeneration: client.registryGeneration);
     if (await bind.cmGetClientsLength() == 0) {
       windowManager.close();
     }

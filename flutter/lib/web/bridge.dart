@@ -1441,12 +1441,13 @@ class RustdeskImpl {
     throw UnimplementedError("cmSendChat");
   }
 
-  Future<void> cmCloseConnection({required int connId, dynamic hint}) {
+  Future<void> cmCloseConnection(
+      {required int connId, required int registryGeneration, dynamic hint}) {
     throw UnimplementedError("cmCloseConnection");
   }
 
   Future<void> cmRemoveDisconnectedConnection(
-      {required int connId, dynamic hint}) {
+      {required int connId, required int registryGeneration, dynamic hint}) {
     throw UnimplementedError("cmRemoveDisconnectedConnection");
   }
 

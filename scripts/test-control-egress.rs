@@ -69,7 +69,7 @@ mod config {
 }
 include!(env!("CM_PROTO_GETTER"));
 mod ui_cm_interface {
-    use crate::{config::keys::OPTION_FILE_TRANSFER_MAX_FILES, fs, ipc, CmEgressSender};
+    use crate::{config::keys::OPTION_FILE_TRANSFER_MAX_FILES, fs, ipc, CmEgressSender, Data};
     use serde_derive::Serialize;
     use std::{collections::HashMap, fmt, sync::RwLock};
     include!(env!("CM_PROTO_COUNT"));

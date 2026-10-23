@@ -12592,8 +12592,7 @@ Classification and the preserved evidence inventory are retained in
 
 ### R-S11gy/R-S11e-237 — bounded connection-manager result ownership (2026-08-17)
 
-**SOURCE IMPLEMENTED; FIVE EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
-SOURCE/MUTATION THEATER DELETED; CURRENT INSTALLED/NATIVE CM EVIDENCE OPEN.**
+**SOURCE IMPLEMENTED; LINUX QUEUE COMPONENT PASS; INSTALLED CM/PLATFORM ACCEPTANCE OPEN.**
 Platforms: Windows, Linux, and macOS desktop CM result hops plus Android's direct in-process hop.
 Surface: synchronous UI, clipboard, voice, and file-result producers -> bounded CM egress -> exact
 connection owner.
@@ -12610,7 +12609,7 @@ display delay.
 The current `CmEgressSender`/`CmEgressReceiver` owner has one wake token, at most 256 entries, a
 128 MiB structured ceiling, a separately enforced 256 KiB raw-block ceiling, and a checked aggregate
 budget of two maximum complete messages plus fixed entry accounting. Its closed vocabulary excludes
-ambient filesystem data. Wrong class, encoding failure, individual or aggregate oversize, count or
+ambient filesystem data. Wrong class, encoding failure, queue storage refusal, individual or aggregate oversize, count or
 accounting failure atomically clears retained work, records one typed terminal cause, wakes the
 owner, and terminates the exact bridge/connection. Receiver retirement closes admission and releases
 payloads despite stale senders. No coalescing, retry, reconnect, alternate route, task, runtime,
@@ -12628,10 +12627,28 @@ The shared verifier retains the direct command
 `cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never`. Its execution—not its
 presence—is the relevant regression evidence.
 
+**Queue storage refusal — Linux component PASS.** `62f658eb` reserves a queue entry
+with `try_reserve(1)` before publication; allocation failure uses the existing terminal
+clear/wake path with typed `StorageUnavailable`. At unchanged-product `c04468c1`, three
+forced initial/growth allocation failures abort their child processes while four healthy
+CM controls and the other eleven tests pass. The same fixture passes all twelve tests
+after correction in 0.07 seconds (119 seconds including VM setup/build). It executes the
+five existing CM queue tests with the complete production Linux `Data`, file-response and
+keyboard/mouse declarations, actual JSON serialization and root-resolved dependencies.
+Three refusal cases release every queued and newly offered raw payload, clear accounting,
+publish one terminal result, refuse stale senders and leave a fresh independent queue
+functional. Four healthy cases preserve exact response metadata, raw bytes and FIFO order.
+All seventeen child processes, including two allocation probes and the existing control
+queue cases, are reaped; both A/B RAM workspaces are retired. Limits, wire types, dependencies
+and the bounded profile are unchanged across A/B. Evidence:
+`.harness-state/verifier-vm/cm-queue-allocation-ed4e0911.json`.
+This covers the shared mailbox component; complete desktop hops, Android execution,
+whole-process allocation bounds, installed-service/LPE and display latency remain OPEN.
+
 Desktop response-write lifetime now has the named Linux socket-backpressure A/B
 evidence under R-S11is below. A single private send operation owns JSON plus its
 optional raw payload under one five-second initiating deadline; error retires the
-exact runner and stream. Queue-state and broader installed/platform obligations remain.
+exact runner and stream. Other queue interleavings and broader installed/platform obligations remain.
 
 Remaining STOP-SHIP evidence is the current installed/native transaction itself: complete desktop
 and Android CM/file operations after Login, both hops, saturation and terminal-first refusal, stale

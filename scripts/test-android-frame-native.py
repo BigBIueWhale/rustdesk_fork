@@ -50,6 +50,10 @@ static int64_t source_state(Display *display) { (void)display; return 0; }
 static int64_t viewer_state(Display *display, const ViewerWindow *viewer,
                              uint64_t *captured_us) {
     (void)display; (void)viewer;
+    if (mode >= 9U && sample_index == 1U) {
+        /* Elapsed time inside acquisition, followed by a genuinely fresh sample. */
+        clock_ms += mode == 9U ? 1000U : mode == 10U ? 960U : 961U;
+    }
     *captured_us = clock_ms * 1000U;
     if (mode == 4U) return 100 + sample_index % 2U;
     if (mode == 5U) return 103 - (int64_t)sample_index;
@@ -93,7 +97,7 @@ int main(void) {
     mode = 1U; clock_ms = 0U; sample_index = 0U;
     status = observe_current_frames_for_duration(NULL, NULL, &viewer, &history, 1200U,
                                                  &maximum_gap, &maximum_age, &distinct);
-    REQUIRE(status == 0 && maximum_age == 1500U && maximum_gap == 0U && distinct == 29U);
+    REQUIRE(status == 0 && maximum_age == 1500U && distinct == 29U);
     puts("X11_OBSERVER_AGE_CASE duration=pass stale_ms=1500 fresh_distinct=29");
     mode = 2U; clock_ms = 0U; sample_index = 0U;
     status = wait_for_current_frames(NULL, &viewer, &history, 120U, 1U,
@@ -148,6 +152,37 @@ int main(void) {
     REQUIRE(progress_passed);
     puts("X11_OBSERVER_PROGRESS=pass cases=8 scope=controller-aggregation inputs=synthetic replay=not-progress increasing=accepted");
     puts("X11_OBSERVER_AGE=pass scope=controller-aggregation inputs=synthetic freshness=unchanged");
+    {
+        const struct {
+            const char *name;
+            unsigned int mode, duration, expected_sample, expected_distinct;
+            int expected_status;
+            uint64_t expected_gap;
+        } cases[] = {
+            {"ordinary", 8U, 1200U, 30U, 30U, 0, 40U},
+            {"boundary", 10U, 3000U, 51U, 51U, 0, 1000U},
+            {"over-boundary", 9U, 3000U, 1U, 2U, -1, 1040U},
+            {"over-boundary-one", 11U, 3000U, 1U, 2U, -1, 1001U},
+        };
+        int gaps_passed = 1;
+        for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+            mode = cases[index].mode; clock_ms = 0U; sample_index = 0U;
+            history = (SourceHistory){0};
+            status = observe_current_frames_for_duration(NULL, NULL, &viewer, &history,
+                cases[index].duration, &maximum_gap, &maximum_age, &distinct);
+            int passed = status == cases[index].expected_status &&
+                sample_index == cases[index].expected_sample &&
+                distinct == cases[index].expected_distinct &&
+                maximum_gap == cases[index].expected_gap && maximum_age == 30U;
+            printf("X11_OBSERVER_GAP_CASE name=%s status=%d expected=%d sample=%u "
+                   "distinct=%u maximum_gap_ms=%llu passed=%s\n", cases[index].name,
+                   status, cases[index].expected_status, sample_index, distinct,
+                   (unsigned long long)maximum_gap, passed ? "true" : "false");
+            gaps_passed = gaps_passed && passed;
+        }
+        REQUIRE(gaps_passed);
+    }
+    puts("X11_OBSERVER_GAP=pass cases=4 scope=controller-aggregation inputs=synthetic observation_gap=retained boundary_ms=1000");
     return 0;
 }
 '''
@@ -160,8 +195,14 @@ int main(void) {
           f"loops_sha256={hashlib.sha256(loops.encode()).hexdigest()} "
           f"fixture_sha256={hashlib.sha256(source.read_bytes()).hexdigest()} "
           f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()}", flush=True)
-    subprocess.run([str(binary)], env=dict(environment, RUSTDESK_PRESENTATION_TRACE="0"),
-                   check=True, timeout=5)
+    binary_digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+    try:
+        subprocess.run([str(binary)], env=dict(environment, RUSTDESK_PRESENTATION_TRACE="0"),
+                       check=True, timeout=5)
+    finally:
+        require(hashlib.sha256(binary.read_bytes()).hexdigest() == binary_digest,
+                "observer aggregation artifact changed during execution")
+        print(f"X11_OBSERVER_AGE_ARTIFACT=observed sha256={binary_digest} unchanged=before-after", flush=True)
 
 
 

@@ -12655,6 +12655,23 @@ the existing 21 allocation-child processes are joined. Evidence:
 These controlled schedules do not establish all interleavings, real CM producer/IPC hops,
 installed/mobile behavior, latency or soak acceptance.
 
+**Directory-response conversion — Linux component PASS; caller integration OPEN.**
+`8b02008d` makes the shared directory entry-vector reservation fallible and returns
+an explicit listing error. API, file-kind mapping, fields, ordering and callers are
+unchanged. With the same fixture at unchanged-product `11a675a5`, refusing the
+output allocation for one/five/sixty-four entries aborts all three native children;
+twenty-nine tests pass and the new allocation test fails. The correction passes all
+thirty tests in 1.14s (107s outer). All three errors retain their response identity
+through actual closed-response JSON and the production CM queue; fresh conversions
+then preserve exact entries. Four healthy counts cover all five kinds, UTF-8 names/
+paths, hidden flags, sizes/timestamps and unknown-kind refusal. Twenty-five child
+invocations, including three positive allocation probes, and sixteen existing producer
+threads join; both A/B VM/RAM roots retire. Source, artifacts and receipts:
+`cm-directory-allocation-77d5ab6a.json`. Refusal is selective and one-time; small error
+strings, encoding and caller/job allocations remain available. This does not exercise
+full filesystem enumeration, file-job handlers, native IPC authorization, installed
+services, other platforms or blanket memory pressure. Those obligations remain OPEN.
+
 Desktop response-write lifetime now has the named Linux socket-backpressure A/B
 evidence under R-S11is below. A single private send operation owns JSON plus its
 optional raw payload under one five-second initiating deadline; error retires the

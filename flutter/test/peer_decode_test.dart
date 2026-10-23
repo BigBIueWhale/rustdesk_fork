@@ -322,14 +322,17 @@ void main() {
         await _mountDraftToolbar(tester, model);
         const draft = '  Unsent draft  ';
         await tester.enterText(find.byType(TextField), draft);
+        await tester.pump();
         await tester.sendKeyEvent(LogicalKeyboardKey.enter);
         final afterKeyboard = model.textController.text;
         await tester.enterText(find.byType(TextField), draft);
+        await tester.pump();
         await tester.tap(find.byIcon(Icons.send));
         await tester.pump();
         final afterButton = model.textController.text;
 
-        expect(afterKeyboard, draft, reason: 'Enter must retain a refused draft');
+        expect(afterKeyboard, draft,
+            reason: 'Enter must retain a refused draft');
         expect(afterButton, draft, reason: 'Send must retain a refused draft');
         expect(model.messages[key], same(body));
         expect(body.chatMessages, [prior]);
@@ -400,11 +403,13 @@ void main() {
       try {
         await _mountDraftToolbar(tester, model);
         await tester.enterText(find.byType(TextField), 'Keyboard draft');
+        await tester.pump();
         await tester.sendKeyEvent(LogicalKeyboardKey.enter);
         expect(model.textController.text, isEmpty);
         expect(model.submitted, ['Keyboard draft']);
 
         await tester.enterText(find.byType(TextField), 'Button draft');
+        await tester.pump();
         await tester.tap(find.byIcon(Icons.send));
         await tester.pump();
         expect(model.textController.text, isEmpty);

@@ -77,6 +77,8 @@ FRAME_QUEUE_TESTS = {
     "parallel failure retires its peer and retained successor",
     "observed submissions retain only running and latest without futures",
     "observed failure is visible and retires its exact queue",
+    "observed failure retires before reentrant recovery and admission",
+    "pending capacity failure retires before reentrant recovery",
     "a failed frame retires its retained successor",
     "owner mismatch and display overflow refuse frames before invocation",
     "exact retirement releases retained frames and cannot block replacement",

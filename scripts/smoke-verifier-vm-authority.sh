@@ -7655,7 +7655,7 @@ else
         queue_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/latest_frame_queue.dart" | /usr/bin/awk '{print $1}')"
         queue_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/latest_frame_queue_test.dart" | /usr/bin/awk '{print $1}')"
         require_exact_fixed_receipt \
-            "FLUTTER_FRAME_QUEUE_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=24 flutter=$FLUTTER_VERSION queue=$queue_sha256 tests_source=$queue_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-queue-tests cleanup=joined" \
+            "FLUTTER_FRAME_QUEUE_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=26 flutter=$FLUTTER_VERSION queue=$queue_sha256 tests_source=$queue_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-queue-tests cleanup=joined" \
             'focused Flutter frame-queue receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
         address_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/common/formatter/direct_address.dart" | /usr/bin/awk '{print $1}')"

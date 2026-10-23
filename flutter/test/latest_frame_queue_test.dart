@@ -675,6 +675,133 @@ void main() {
     expect(failures, isEmpty);
   });
 
+  test('observed failure retires before reentrant recovery and admission',
+      () async {
+    final pool =
+        LatestFrameDrainPool(maxConcurrentDrains: 2, maxWaitingDrains: 0);
+    final queue = LatestFrameQueue<String, int, String>('old', drainPool: pool);
+    final fresh = LatestFrameQueue<String, int, String>('fresh', drainPool: pool);
+    final releaseFailed = Completer<void>();
+    final releaseEscaped = Completer<void>();
+    final releaseFresh = Completer<void>();
+    final notified = Completer<void>();
+    final failure = StateError('expected presentation failure');
+    final errors = <Object>[];
+    final freshErrors = <Object>[];
+    final presented = <String>[];
+    final admission = <String, bool>{};
+    expect(
+        queue.submitObserved('old', 0, 'failed', (frame) async {
+          presented.add(frame);
+          await releaseFailed.future;
+          throw failure;
+        }, onError: (error, stackTrace) {
+          errors.add(error);
+          admission['recovered'] = queue.recover('old');
+          admission['old'] = queue.submitObserved('old', 1, 'escaped',
+              (frame) async {
+            presented.add(frame);
+            await releaseEscaped.future;
+          }, onError: (error, stackTrace) => errors.add(error));
+          admission['fresh'] = fresh.submitObserved('fresh', 0, 'fresh',
+              (frame) async {
+            presented.add(frame);
+            await releaseFresh.future;
+          }, onError: (error, stackTrace) => freshErrors.add(error));
+          notified.complete();
+        }),
+        isTrue);
+    final pending = queue.submit('old', 0, 'pending', (frame) async {
+      presented.add(frame);
+    });
+    try {
+      expect(pool.activeDrains, 1);
+      releaseFailed.complete();
+      await notified.future;
+      expect(errors, [same(failure)]);
+      expect(admission, {'recovered': false, 'old': false, 'fresh': true});
+      expect(freshErrors, isEmpty);
+      expect(presented, ['failed', 'fresh']);
+      expect(await pending, LatestFrameDisposition.retired);
+      expect(pool.activeDrains, 1);
+      expect(pool.waitingDrains, 0);
+      expect(pool.peakActiveDrains, 2);
+    } finally {
+      if (!releaseFailed.isCompleted) releaseFailed.complete();
+      releaseEscaped.complete();
+      releaseFresh.complete();
+      await pending;
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(pool.activeDrains, 0);
+    expect(pool.waitingDrains, 0);
+  });
+
+  test('pending capacity failure retires before reentrant recovery', () async {
+    final pool =
+        LatestFrameDrainPool(maxConcurrentDrains: 1, maxWaitingDrains: 1);
+    final queue = LatestFrameQueue<String, int, String>('old', drainPool: pool);
+    final blocker =
+        LatestFrameQueue<String, int, String>('blocker', drainPool: pool);
+    final follower =
+        LatestFrameQueue<String, int, String>('follower', drainPool: pool);
+    final releaseFirst = Completer<void>();
+    final releaseBlocker = Completer<void>();
+    final releaseFollower = Completer<void>();
+    final notified = Completer<void>();
+    final errors = <Object>[];
+    final presented = <String>[];
+    bool? recovered;
+    Future<LatestFrameDisposition>? waiting;
+    Future<LatestFrameDisposition>? following;
+    final first = queue.submit('old', 0, 'first', (frame) async {
+      presented.add(frame);
+      await releaseFirst.future;
+    });
+    try {
+      expect(
+          queue.submitObserved('old', 0, 'pending', (frame) async {
+            presented.add(frame);
+          }, onError: (error, stackTrace) {
+            errors.add(error);
+            recovered = queue.recover('old');
+            notified.complete();
+          }),
+          isTrue);
+      waiting = blocker.submit('blocker', 0, 'blocker', (frame) async {
+        presented.add(frame);
+        following = follower.submit('follower', 0, 'follower', (frame) async {
+          presented.add(frame);
+          await releaseFollower.future;
+        });
+        await releaseBlocker.future;
+      });
+      expect(pool.activeDrains, 1);
+      expect(pool.waitingDrains, 1);
+      releaseFirst.complete();
+      await notified.future;
+      expect(errors, [isA<StateError>()]);
+      expect(recovered, isFalse);
+      expect(await first, LatestFrameDisposition.presented);
+      expect(presented, ['first', 'blocker']);
+      expect(pool.activeDrains, 1);
+      expect(pool.waitingDrains, 1);
+      expect(await queue.submit('old', 1, 'retired', (_) async {}),
+          LatestFrameDisposition.retired);
+    } finally {
+      if (!releaseFirst.isCompleted) releaseFirst.complete();
+      releaseBlocker.complete();
+      releaseFollower.complete();
+      await first;
+      if (waiting != null) await waiting;
+      if (following != null) await following;
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(pool.activeDrains, 0);
+    expect(pool.waitingDrains, 0);
+    expect(pool.peakActiveDrains, 1);
+  });
+
   test('observed failure is visible and retires its exact queue', () async {
     final failure = Completer<Object>();
     final queue = LatestFrameQueue<String, int, String>('session-a');

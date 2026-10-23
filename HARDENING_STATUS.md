@@ -215,6 +215,7 @@ obligation mapping, exact comparisons and any counts for their named historical 
 | Transport nonce and original admission inventory | R-P10 states the existing directional-key, checked-counter, exhaustion, fresh-key/reset and engaged-key requirements without the obsolete `Encrypt`/multi-stream/WebSocket rewrite plan. Appendix C #1–#3/#5–#8 state enduring failure classes and required dispositions; the old severity-tier captions and present-tense claims about retired paths are deleted. All requirement/finding IDs and reference multiplicities, CVE references, anchors and links remain. The explicit decoder residual in #2b, framing disposition in #4 and intentional terminal policy in #11 remain verbatim. Product and verification code are unchanged; installed/native, R-S0/R-F5 and release acceptance remain OPEN. | `transport-inventory-91d1c3f3.json` |
 | Transport lifecycle and authentication | R-T9/R-T10/R-T11/R-T12/R-T13/R-T15; listener exclusivity agrees with R-T17 | `transport-lifecycle-document-role.json` |
 | Terminal availability and principal policy | R-F1/R-X8 and Appendix C #11 retain all five session types, the immutable terminal pin and the intentional Linux process-owner root shell. Removed Windows-only OS-login/stub claims refer to a deleted helper; Windows service-owned terminals instead require the receiver's proved served-session primary token under the unchanged R-S11c/#118 contract. Peer OS credentials, runtime policy mutation and LocalSystem PTY fallback remain forbidden. Repeated rationale and a misleading CI-completion claim are deleted. Product and verification code are unchanged; installed/native allow/refusal, lifetime, R-S0/R-F5 and release acceptance remain OPEN. | `terminal-principal-contract-835f7c50.json` |
+| File-transfer scope and complete receive-path ownership | R-S8 and Appendix C #10 retain the single full-filesystem mode, both receive roles and every Linux send/resume/lifetime clause. The write contract names the complete retained-parent walk and finalization, replacing the claim that existing name validation leaves only the base untrusted. The current ledger replaces historical CLOSED/LOW and deployed-host assurances with source disposition, preserved reported Windows 25-pass/one-ignored coverage, deferred trusted-link support and explicit exact-current acceptance gaps. Product/tests/verifiers are unchanged; R-S0, native/installed, release and all parked obligations remain OPEN. | `receive-write-contract-ef4fcf96.json` |
 | Direct-only configuration | R-X3/R-X4, R-A4/R-A6 and Appendix C #6; an inert baked constant grants no channel authority | `direct-only-authority-document-role-3a0306a4.json` |
 | Release metadata and codec provenance | Native-codec source/advisory-ledger synchronization; the versioning guide separates release provenance from the specification hash | `codec-specification-provenance-390120c4.json` |
 | Acquisition authority | Complete pinned-input contract and isolated acquisition authority | `acquisition-document-roles-951a4a8e.json` |
@@ -11751,104 +11752,46 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   is historical only, and no current setting was queried or changed in this documentation slice.
   Current advisory evidence, exact artifacts, cold equality and release/independent acceptance
   remain OPEN; neither source validation nor a historical API response closes them (R-R1a/R-B2/R-B10).
-- **File-transfer receive write-path no-follow (R-S8/R-A5) — POSIX handle walk confirmed
-  correct-by-design.** The Unix receive-write path (`libs/hbb_common/src/fs.rs`:
-  `open_parent_dir_no_follow` ~828, `open_recv_write_no_follow_std` ~979) opens **every** parent
-  component with `openat(O_RDONLY|O_DIRECTORY|O_CLOEXEC|O_NOFOLLOW)` walking down from `/` (or cwd),
-  then the target with `openat(O_NOFOLLOW)` (rejecting non-regular targets), and finalizes with
-  `renameat`/`unlinkat`/`fstatat` under that same parent handle — a full-path **handle walk**, not a
-  final-component check. This is **correct-by-design and deliberately not narrowed**: it is a
-  *per-write TOCTOU* guarantee (R-A5) defending the authenticated peer's **own** privileged write
-  (root on the §17 box) against a **local unprivileged** attacker racing a symlink into an
-  intermediate directory or the target between validation and write. It is **not** scope-confinement —
-  per §2/R-S8 the password-holding peer is trusted with full-filesystem reach as a single unconfined
-  mode, and a confinement toggle is forbidden (R-S12). Two intended design consequences: (1) a receive
-  destination that legitimately *traverses* a symlinked prefix (a relocated `~/Downloads` on a
-  symlinked volume, a macOS firmlink, an Android `/sdcard` bind) is **refused** — the walk cannot tell
-  a trusted admin-made prefix symlink from an attacker-raced one without canonicalizing, and
-  canonicalizing the peer-chosen base then reopening by path would reintroduce the exact race; on the
-  deployed Ubuntu box (`/home/user`, `/root` — no symlink components) it never triggers. (2) The
-  proposed **narrowing** to "no-follow only the peer-relative segments, trust the base prefix" was
-  **considered and rejected as a TOCTOU regression**: the peer-chosen base is uncanonicalized, so
-  following base-prefix symlinks reopens the escape. The one airtight way to support symlinked-prefix
-  destinations without reopening the race is a *trusted-symlink resolver* (a `chase_symlinks`/
-  CHASE_SAFE walk that follows a link component only when its immediate parent is root/euid-owned and
-  non-group/other-writable, else refuses) — **deferred** until a deployment concretely needs it (this
-  one does not). **Both roles** ride the same shared path — server-receive (upload into the box,
-  `src/ui_cm_interface.rs:1002 handle_fs` → `TransferJob::new_write`) and client/viewer-receive
-  (download from a peer, `src/client/io_loop.rs:797,869`) — so R-A5's per-write assertion binds the
-  viewer path too, per R-S8. Behavior-tested (`fs.rs`
-  `recv_write_no_follow_refuses_symlink_{target,parent_component}` +
-  `recv_finish_renameat_replaces_symlink_final_...`, `#[cfg(unix)]`) and gated by `verify.sh` (3c) /
-  the R-S8/R-A5 grep gate.
-- **Windows file-transfer parent-junction TOCTOU — ✅ CLOSED (applied 2026-07-05, Windows-VM-validated).**
-  The Windows receive-write path now performs the same reparse-safe, handle-relative walk as the POSIX
-  side — the "Windows equivalent" of `openat(O_NOFOLLOW)` that R-S8 mandates. Previously the Windows
-  branch opened only the **final** component reparse-safe and let the OS resolve every intermediate
-  directory *by path*, so a junction / mount-point / symlink planted on a parent between validation and
-  write was followed (the intermediate-directory TOCTOU the Unix walk closes). That path-based resolve
-  is replaced by the NT layer (`fs.rs` module `nt_nofollow`, `#[cfg(windows)]`): open the volume root
-  once via Win32 (`FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT` — the analogue of the Unix
-  `/` anchor), then walk each `Normal` component with `NtCreateFile` +
-  `OBJECT_ATTRIBUTES{ RootDirectory = parent_handle, ObjectName = <bare component> }` +
-  `FILE_OPEN_REPARSE_POINT | FILE_DIRECTORY_FILE` (the real `openat` equivalent — resolves relative to
-  the parent HANDLE and opens the reparse point itself instead of traversing it), fail-closed
-  **rejecting** any component whose handle reports `FILE_ATTRIBUTE_REPARSE_POINT` (catches NTFS
-  **junctions**, `IO_REPARSE_TAG_MOUNT_POINT`, *and* symlinks — the junctions `is_symlink()` misses).
-  The final target is opened relative to the walked handle, and the finalize/cleanup steps that also
-  shared the old gap are now handle-relative too: rename via
-  `NtSetInformationFile(FileRenameInformation, RootDirectory=parent)`, and digest/sidecar read+delete
-  relative to the walked parent — so no step re-resolves a parent by path.
-  `validate_no_symlink_components` is made junction-inclusive on Windows
-  (`file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT (0x400)` — the primitive
-  `src/platform/windows/acl.rs::is_reparse_point` uses) as defense-in-depth atop the walk (being a
-  separate syscall from the open, that stat is TOCTOU-prone on its own, so it complements rather than
-  replaces the handle walk). **Both roles** on Windows — server-receive (upload; the `--cm` process's
-  `ui_cm_interface.rs handle_fs` → `TransferJob::new_write`) and viewer-download (`io_loop.rs`) — ride
-  the same `fs.rs` path, so R-A5's per-write no-follow guarantee now binds the viewer path on Windows too.
-  **Severity was LOW, Windows-only** (the deployed box is Ubuntu/Xorg — unaffected). **Privilege reality
-  (corrected — the earlier "SYSTEM / service account" wording overstated it):** the redirected write
-  would have run at the **interactive logged-in user's** privilege, **not** SYSTEM. On Windows the
-  SYSTEM `--server` does not write received files itself — it forwards the file bytes over IPC to the
-  `--cm` connection-manager, which runs in the *active user's* session (an explorer /
-  `CreateProcessAsUserW` token via `run_as_user`) and performs the actual `open_recv_write`; the
-  viewer/download side likewise writes as the user running the client. So the (now-closed) exposure was
-  a **local cross-user write-redirection**, capped at the interactive user's privilege, not a
-  SYSTEM-LPE. Exploitation still needed a co-located **local** principal able to plant/swap a reparse
-  point on an intermediate directory **on** the receive path *and* writable by them: creating an NTFS
-  **junction** needs **no** privilege (`mklink /J` / `FSCTL_SET_REPARSE_POINT`), a **symlink** needs
-  `SeCreateSymbolicLinkPrivilege`/Developer-Mode — but either way write access to that specific dir,
-  which the default per-user download dir (ACL'd to the owner) denies a lower-privileged user; the
-  practical exposure was a **non-default** receive path traversing a directory writable by a
-  lower-privileged principal. Hence LOW — and now closed regardless.
-  **Validated in the §12.2 Windows VM (2026-07-05).** The fork's rule is *never ship a raw-NT-syscall
-  Windows security change that cannot be run here* (a mis-shaped
-  `OBJECT_ATTRIBUTES`/`UNICODE_STRING`/`FILE_RENAME_INFORMATION` = memory corruption), so the walk was
-  built correct-by-construction from primary sources (the `cap-std` Windows resolver, the `ntapi 0.4.1`
-  + `winapi 0.3.9` struct/fn shapes, and the ntifs docs) **and then type-checked + run on real Windows**:
-  `cargo test -p hbb_common --target x86_64-pc-windows-msvc --lib fs::tests` under the pinned Rust 1.75
-  (MSVC) **compiled and passed 25/25** (1 privileged-symlink e2e `ignore`d), including the new
-  `#[cfg(windows)]` junction tests that plant an NTFS junction (`mklink /J`, unprivileged) as the
-  intermediate/final component and assert: a junction **parent** is REFUSED and does not redirect the
-  write out of tree (`recv_write_no_follow_refuses_junction_parent_component`); a junction **final**
-  component is REFUSED and its target directory is untouched (`..._refuses_junction_final_component`);
-  a legit nested non-junction path SUCCEEDS (`..._allows_regular_nested_target_windows`); the
-  junction-inclusive validate rejects (`validate_no_symlink_components_rejects_junction_windows`); and
-  the handle-relative finalize renames on a clean path yet refuses a junction parent
-  (`recv_finish_rename_windows_happy_path` / `recv_finish_refuses_junction_parent_windows`).
-  (The earlier boundary — `cargo check --target x86_64-pc-windows-msvc` fails on *this Linux host* at the
-  native-C-dep build, `zstd-sys`/`sodiumoxide`/`ring` needing MSVC `lib.exe` — is why the change is
-  validated in the VM, not on the host; the VM has Rust 1.75-msvc + VS Build Tools + the Win11 SDK.)
-  **Gated:** `verify.sh` now asserts the Windows walk tokens (`mod nt_nofollow`, `NtCreateFile`,
-  `OBJECT_ATTRIBUTES`, `oa.RootDirectory = parent`, `FILE_OPEN_REPARSE_POINT`, `FILE_DIRECTORY_FILE`,
-  `FILE_ATTRIBUTE_REPARSE_POINT`, `FileRenameInformation`, the `nt_nofollow::*` wiring, the
-  junction-inclusive `is_symlink_or_reparse_point`, the junction tests, and the `ntapi` dep) alongside
-  the Unix `openat`/`O_NOFOLLOW` tokens — closing the gate's prior **Windows false-green** (it grepped
-  only the always-present `#[cfg(unix)]` tokens, so the `cfg(not(unix))` receive-write branch went
-  entirely unasserted on a Windows build). **New dependency:** `ntapi = "0.4"` (already resolved in the
-  lock, built on the same `winapi 0.3` hbb_common already uses — no new external crate lineage) plus the
-  winapi `ntdef`/`fileapi` features. (The `fs.rs` module doc-comment describes the walk in full; the
-  code + the VM-run tests are the record.)
+- **File-transfer receive no-follow authority (R-S8/R-A5) — source implemented;
+  exact-current native/installed acceptance OPEN.** Unix `open_parent_dir_no_follow`
+  in `libs/hbb_common/src/fs.rs` walks every parent relative to a retained descriptor,
+  with no-follow directory opens, then opens a regular final target relative to that
+  parent. Linux/Android existing ancestors use search-only `O_PATH` where applicable;
+  the publication/final parent retains the required sync authority. Finalization,
+  sidecar access and cleanup use that same parent rather than reopening its pathname.
+  Windows `nt_nofollow` opens the root once, uses `NtCreateFile` with a retained
+  `RootDirectory` and reparse-safe flags, rejects reparse attributes on each component,
+  and performs final-target/rename/sidecar operations relative to the retained handles.
+  A pathname precheck or a final-component flag alone is insufficient.
+
+  Both controlled-side upload and viewer download use the shared receive path.
+  Full-filesystem reach is the intended authenticated-owner capability at the actual
+  receiver's privilege; it is not permission for an unprivileged local caller.
+  The historical Windows flow described here wrote through the interactive user's CM
+  or viewer, not a LocalSystem writer. That is not a current installed-principal proof.
+
+  Receive destinations traversing symlink/reparse prefixes are deliberately refused.
+  Trusting the peer-selected base or canonicalizing it before pathname reopening cannot
+  replace the retained walk. A trusted-link resolver remains deferred until a concrete
+  deployment needs it. Send-source link support is a separate R-S8 contract.
+
+  The historical ledger reports a Windows Rust 1.75/MSVC filesystem run with 25 passing
+  tests and one ignored privileged-symlink end-to-end case. Named coverage includes
+  `recv_write_no_follow_refuses_junction_parent_component`,
+  `recv_write_no_follow_refuses_junction_final_component`,
+  `recv_write_no_follow_allows_regular_nested_target_windows`,
+  `validate_no_symlink_components_rejects_junction_windows`,
+  `recv_finish_rename_windows_happy_path` and
+  `recv_finish_refuses_junction_parent_windows`. Unix regressions include
+  `recv_write_no_follow_refuses_symlink_target`,
+  `recv_write_no_follow_refuses_symlink_parent_component` and
+  `recv_finish_renameat_replaces_symlink_final_without_touching_target`.
+  The old entry supplies no exact-current artifact binding; these reported passes and
+  `verify.sh`'s source checks do not establish present Windows/POSIX or installed
+  behavior. Fresh exact-artifact authorized/refused operations, replacement races,
+  persistence/finalization/cleanup, principal/platform coverage and R-S0 acceptance
+  remain OPEN. Separate receive/send producer parks are unchanged. Classification:
+  `receive-write-contract-ef4fcf96.json`.
 
 ## Closed excision and direct-only presentation backlog
 

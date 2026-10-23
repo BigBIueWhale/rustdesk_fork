@@ -282,6 +282,110 @@ mod tests {
         println!("CLIPBOARD_PREPARE_ALLOC=pass refusal_points=5 refusals=5 controls=4 probe=SIGABRT children=joined");
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn framed_receiver_allocation_refusal_preserves_exact_contents() {
+        use hbb_common::{bytes_codec::BytesCodec, tokio_util::codec::{Decoder, Encoder}};
+        use std::{os::unix::process::ExitStatusExt, process::Command};
+        use allocations::observe;
+
+        fn exercise(case: &str, refuse: bool) -> (usize, bool) {
+            const RAW: &[u8] = &[b'x'; ClipboardNonFile::INLINE_CONTENT_BYTES + 1];
+            let count = match case { "empty" => 0, "sixteen" => MAX_NATIVE_CLIPBOARD_ITEMS, "mixed" => 4, _ => 1 };
+            let expected: Vec<_> = (0..count).map(|index| Clipboard {
+                content: Bytes::from_static(if case == "inline" || (case == "mixed" && index % 2 == 0) {
+                    b"inline"
+                } else { RAW }),
+                compress: index % 2 == 0,
+                width: index as i32,
+                height: -(index as i32),
+                format: ClipboardFormat::Html.into(),
+                special_name: format!("format-{index}"),
+                ..Default::default()
+            }).collect();
+            let (metadata, payload) = ClipboardNonFile::prepare_contents(expected.clone()).unwrap();
+            let mut codec = BytesCodec::new();
+            codec.set_max_packet_length(ClipboardNonFile::METADATA_FRAME_BYTES);
+            let mut wire = BytesMut::new();
+            let raw = if payload.is_empty() {
+                BytesMut::new()
+            } else {
+                codec.encode(payload, &mut wire).unwrap();
+                codec.encode(Bytes::from_static(b"next-frame"), &mut wire).unwrap();
+                codec.decode(&mut wire).unwrap().unwrap()
+            };
+            let raw_ptr = raw.as_ptr();
+            let (result, count) = observe(if refuse { 1 } else { usize::MAX }, || {
+                ClipboardNonFile::restore_raw_contents(metadata, raw)
+            });
+            let refused = match result {
+                Ok(restored) => {
+                    assert_eq!(restored, expected);
+                    let mut offset = 0;
+                    for clipboard in &restored {
+                        if clipboard.content.len() > ClipboardNonFile::INLINE_CONTENT_BYTES {
+                            assert_eq!(clipboard.content.as_ptr(), raw_ptr.wrapping_add(offset));
+                            offset += clipboard.content.len();
+                        }
+                    }
+                    false
+                }
+                Err(error) => {
+                    assert!(refuse);
+                    assert_eq!(error.kind(), io::ErrorKind::OutOfMemory);
+                    true
+                }
+            };
+            if wire.is_empty() {
+                assert!(case == "empty" || case == "inline");
+            } else {
+                assert_eq!(codec.decode(&mut wire).unwrap().unwrap().as_ref(), b"next-frame");
+                assert!(wire.is_empty());
+            }
+            if refuse { assert_eq!(count, usize::from(refused)); }
+            (count, refused)
+        }
+
+        if let Ok(case) = std::env::var("RD_CLIPBOARD_RESTORE_ALLOC_CASE") {
+            if case == "probe" {
+                observe(1, || std::hint::black_box(Vec::<u8>::with_capacity(64)));
+                panic!("allocation-refusal probe did not abort");
+            }
+            assert!(["empty", "inline", "raw", "mixed", "sixteen"].contains(&case.as_str()));
+            let (count, refused) = exercise(&case, true);
+            exercise(&case, false);
+            println!("CLIPBOARD_RESTORE_ALLOC_CASE=observed case={case} allocations={count} refused={refused} retry_exact=true zero_copy=true coalesced=true");
+            return;
+        }
+
+        let thread = std::thread::current();
+        let name = thread.name().unwrap();
+        let run = |case: &str| Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture", "--test-threads=1"])
+            .env("RD_CLIPBOARD_RESTORE_ALLOC_CASE", case)
+            .output().unwrap();
+        let probe = run("probe");
+        let probe_ok = probe.status.signal() == Some(6)
+            && String::from_utf8_lossy(&probe.stderr).contains("memory allocation of");
+        println!("CLIPBOARD_RESTORE_ALLOC_PROBE=observed signal={:?} passed={probe_ok}", probe.status.signal());
+        let mut all_ok = probe_ok;
+        for case in ["empty", "inline", "raw", "mixed", "sixteen"] {
+            let output = run(case);
+            let records: Vec<_> = String::from_utf8_lossy(&output.stdout).lines()
+                .filter_map(|line| line.split_once("CLIPBOARD_RESTORE_ALLOC_CASE=").map(|(_, value)| value.to_owned())).collect();
+            for record in &records { println!("CLIPBOARD_RESTORE_ALLOC_CASE={record}"); }
+            let correct = output.status.success() && records.len() == 1
+                && records[0].starts_with(&format!("observed case={case} allocations="))
+                && records[0].ends_with(" retry_exact=true zero_copy=true coalesced=true");
+            print!("{}", String::from_utf8_lossy(&output.stderr));
+            println!("CLIPBOARD_RESTORE_ALLOC_CHILD=observed case={case} success={} signal={:?} correct={correct}",
+                output.status.success(), output.status.signal());
+            all_ok &= correct;
+        }
+        assert!(all_ok, "framed clipboard receive must recover from refused output storage");
+        println!("CLIPBOARD_RESTORE_ALLOC=pass cases=5 retry=exact zero_copy=true coalesced=true probe=SIGABRT children=joined");
+    }
+
     fn item(content: &'static [u8], content_len: usize, next_raw: bool) -> ClipboardNonFile {
         ClipboardNonFile {
             compress: false,

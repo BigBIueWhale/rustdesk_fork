@@ -28,7 +28,8 @@ def run(arguments, directory, timeout):
     result = subprocess.run(arguments, cwd=directory, timeout=timeout,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             env={key: value for key, value in os.environ.items()
-                                 if not key.startswith("RD_CLIPBOARD_PREPARE_ALLOC_")})
+                                 if not key.startswith(("RD_CLIPBOARD_PREPARE_ALLOC_",
+                                                        "RD_CLIPBOARD_RESTORE_ALLOC_"))})
     if len(result.stdout) > 2 * 1024 * 1024:
         raise ValueError("CM clipboard response output exceeds 2 MiB")
     print(result.stdout.decode("utf-8", errors="replace"), end="", flush=True)
@@ -105,20 +106,20 @@ def main():
             raise ValueError("CM clipboard response artifact is absent or ambiguous")
         artifact = candidates[0]
         artifact_sha = digest(artifact.read_bytes())
-        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=35", flush=True)
+        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=36", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, 20)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("CM clipboard response artifact changed during execution")
-            print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=35 unchanged=before-after", flush=True)
+            print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=36 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("CM clipboard response artifact or lock changed")
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"CM clipboard response source changed: {name}")
             print(f"CM_CLIPBOARD_RESPONSE_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256={artifact_sha} tests=35 unchanged=before-after", flush=True)
+        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256={artifact_sha} tests=36 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

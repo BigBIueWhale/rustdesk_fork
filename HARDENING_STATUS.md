@@ -13154,6 +13154,27 @@ behavior and fresh bridge/import compilation, not a native session or installed-
 Mobile/desktop session integration, message delivery and broader lifecycle, R-S0 and R-F5
 acceptance remain OPEN; all user-parked work stays parked.
 
+**Chat delivery ownership (`b86445fc`) — model correction verified; native integration OPEN.**
+`ChatModel.receive` captures the outgoing session/UI-owner UUIDs and peer, or the incoming
+registry generation and peer, before its first asynchronous wait. It rechecks that owner
+after CM-window, chat-page and minimized-window waits and before committing messages.
+Incoming work retains its admitted client instead of selecting a successor by numeric ID.
+Outgoing session changes do not invalidate a still-current incoming generation. At unchanged
+production preparation `2413796d`, all six retirement/replacement assertions fail while both
+live-delivery controls and the twelve pre-existing cases pass. With only `receive` changed,
+the identical twenty-case production Dart cohort and three parser checks pass in 269 outer
+seconds on pinned Flutter 3.24.5. Cases observe message/selection/latest-key publication,
+notifications, unread state and recorded window/tab effects across controlled page and
+platform-query waits. Existing test bodies are byte-identical. Earlier formatter, fixture
+typing and window-mock failures are retained separately; they are not a clean A/B result.
+Evidence: `.harness-state/verifier-vm/chat-receive-3d2bc867.json`. All run roots and bounded
+RAM workspaces are retired. Host IP-socket creation is kernel-denied; external endpoint
+changes remain unattributed and untouched. These are actual ChatModel tests with fixture
+parents and recorded platform-channel doubles, not native-window or peer/session tests.
+Already-started native window effects, cancellation/drain, message ordering/resource bounds,
+desktop/mobile event and lifecycle integration, installed behavior and R-S0/R-F5/release
+acceptance remain OPEN. Every user park remains unchanged.
+
 Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests
 on `6dfedef7` passed eight cases and failed the two live-metadata privacy cases, exposing synthetic

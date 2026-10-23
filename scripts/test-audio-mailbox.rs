@@ -18,6 +18,135 @@ mod android_raw {
     include!("../libs/scrap/src/android/frame_raw.rs");
 
     #[test]
+    fn publication_storage_refusal_preserves_pending_state_and_recovers() {
+        use std::{os::unix::process::ExitStatusExt, process::Command};
+        if let Ok(case) = std::env::var("ANDROID_RAW_PUBLICATION_CASE") {
+            if case == "probe" {
+                crate::with_allocation_budget(0, || std::hint::black_box(Vec::<u8>::with_capacity(31)));
+                panic!("publication allocation-refusal probe returned");
+            }
+            let mut owned = GenerationOwnedFrameRaw::new("test", Duration::from_secs(60));
+            assert!(owned.begin_generation(1) && owned.set_enable(1, true));
+            let healthy = matches!(case.as_str(), "spare" | "equal");
+            if case != "empty" {
+                let mut seed = vec![3; if healthy { 65536 } else { 4096 }];
+                owned.update_from_jni_buffer(1, seed.as_mut_ptr(), seed.len(), seed.len());
+                if case == "spare" {
+                    owned.update_from_jni_buffer(1, seed.as_mut_ptr(), 4096, seed.len());
+                }
+            }
+            let generation = if case == "successor" {
+                assert!(owned.retire_generation(1));
+                assert!(owned.begin_generation(2) && owned.set_enable(2, true));
+                2
+            } else { 1 };
+            let mut incoming = vec![8; 65536];
+            if case == "successor" {
+                let (_, refusals) = crate::with_allocation_budget(0, ||
+                    owned.update_from_jni_buffer(1, incoming.as_mut_ptr(), incoming.len(), incoming.len()));
+                assert_eq!(refusals, 0);
+                assert!(owned.frame.data.is_empty());
+            }
+            owned.frame.last_update = Instant::now().checked_sub(Duration::from_secs(
+                if case == "expired" { 61 } else { 2 })).unwrap();
+            let previous = owned.frame.data.clone();
+            let pointer = owned.frame.data.as_ptr();
+            let capacity = owned.frame.data.capacity();
+            let timestamp = owned.frame.last_update;
+            let (_, refusals) = crate::with_allocation_budget(0, ||
+                owned.update_from_jni_buffer(generation, incoming.as_mut_ptr(), incoming.len(), incoming.len()));
+            let state_exact = owned.frame.data.as_ptr() == pointer && owned.frame.data.capacity() == capacity
+                && owned.frame.data.as_slice() == if healthy { &incoming[..] } else { &previous[..] };
+            let clock_exact = if healthy { owned.frame.last_update >= timestamp }
+                else { owned.frame.last_update == timestamp };
+            assert_eq!(refusals, usize::from(!healthy));
+            assert!(state_exact && clock_exact);
+            let mut dst = vec![9];
+            if case == "expired" {
+                assert!(owned.take(generation, &mut dst, &mut Vec::new()).is_none());
+                assert_eq!(dst, [9]);
+                assert!(owned.frame.data.is_empty());
+                println!("ANDROID_RAW_EXPIRED=pass old_frame=refused timestamp=unchanged");
+            } else if case == "growing" {
+                assert!(owned.take(generation, &mut dst, &mut Vec::new()).is_some());
+                assert_eq!(dst, previous);
+            }
+            incoming.fill(7);
+            owned.update_from_jni_buffer(generation, incoming.as_mut_ptr(), incoming.len(), incoming.len());
+            assert!(owned.frame.last_update > timestamp);
+            assert!(owned.take(generation, &mut dst, &mut Vec::new()).is_some());
+            let recovery_exact = dst == incoming;
+            assert!(recovery_exact);
+            if case == "successor" {
+                assert!(!owned.retire_generation(1));
+                assert!(owned.is_enabled(2));
+                println!("ANDROID_RAW_SUCCESSOR=pass stale_update=refused stale_cleanup=refused current=usable");
+            }
+            println!("ANDROID_RAW_PUBLICATION_CASE=observed case={case} refusals={refusals} state_exact={state_exact} clock_exact={clock_exact} recovery_exact={recovery_exact}");
+            return;
+        }
+        let executable = std::env::current_exe().unwrap();
+        let run = |case: &str| Command::new(&executable)
+            .args(["--exact", "android_raw::publication_storage_refusal_preserves_pending_state_and_recovers", "--nocapture"])
+            .env("ANDROID_RAW_PUBLICATION_CASE", case).output().unwrap();
+        let probe = run("probe");
+        assert_eq!(probe.status.signal(), Some(6));
+        assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+        println!("ANDROID_RAW_PUBLICATION_PROBE=observed bytes=31 signal=Some(6)");
+        let mut passed = 0;
+        for case in ["empty", "growing", "expired", "successor", "spare", "equal"] {
+            let output = run(case);
+            assert!(output.stdout.len() + output.stderr.len() <= 65536);
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if line.starts_with("ANDROID_RAW_") { println!("{line}"); }
+            }
+            print!("{}", String::from_utf8_lossy(&output.stderr));
+            println!("ANDROID_RAW_PUBLICATION_CHILD=observed case={case} success={} signal={:?}", output.status.success(), output.status.signal());
+            passed += usize::from(output.status.success());
+        }
+        assert_eq!(passed, 6, "refused raw-buffer publication must preserve state and allow a fresh update");
+        println!("ANDROID_RAW_PUBLICATION=pass refusals=4 healthy=2 state=preserved clock=preserved retry=exact stale=refused expired=refused probe=SIGABRT children=joined scope=portable-linux");
+    }
+
+    #[test]
+    fn publication_input_guards_preserve_state_and_copy_owned_bytes() {
+        let mut raw = FrameRaw::new("test", Duration::from_secs(60));
+        raw.set_enable(true);
+        let mut input = vec![3; 32];
+        raw.update_from_jni_buffer(input.as_mut_ptr(), input.len(), input.len());
+        let pointer = raw.data.as_ptr();
+        let capacity = raw.data.capacity();
+        let timestamp = raw.last_update;
+        for (source, length, maximum) in [(std::ptr::null_mut(), 32, 32),
+            (input.as_mut_ptr(), 0, 32), (input.as_mut_ptr(), 32, 31)] {
+            let (_, refusals) = crate::with_allocation_budget(0, || raw.update_from_jni_buffer(source, length, maximum));
+            assert_eq!(refusals, 0);
+            assert_eq!(raw.data, input);
+            assert_eq!(raw.data.as_ptr(), pointer);
+            assert_eq!(raw.data.capacity(), capacity);
+            assert_eq!(raw.last_update, timestamp);
+        }
+        input.fill(8);
+        assert_eq!(raw.data, [3; 32], "publisher must own a copy before returning");
+        raw.set_enable(false);
+        let (_, refusals) = crate::with_allocation_budget(0, ||
+            raw.update_from_jni_buffer(input.as_mut_ptr(), input.len(), input.len()));
+        assert_eq!(refusals, 0);
+        assert!(raw.data.is_empty());
+        assert_eq!(raw.last_update, timestamp);
+        let mut owned = GenerationOwnedFrameRaw::new("test", Duration::from_secs(60));
+        assert!(owned.begin_generation(7) && owned.set_enable(7, true));
+        owned.update_from_jni_buffer(7, input.as_mut_ptr(), input.len(), input.len());
+        let timestamp = owned.frame.last_update;
+        let (_, refusals) = crate::with_allocation_budget(0, ||
+            owned.update_from_jni_buffer(8, std::ptr::null_mut(), usize::MAX, 0));
+        assert_eq!(refusals, 0);
+        assert_eq!(owned.frame.data, input);
+        assert_eq!(owned.frame.last_update, timestamp);
+        println!("ANDROID_RAW_PUBLICATION_GUARDS=pass cases=5 null=refused empty=refused oversize=refused disabled=refused stale=refused source_copy=owned state=preserved clock=preserved scope=portable-linux");
+    }
+
+    #[test]
     fn take_moves_owned_storage_without_allocation() {
         use std::{os::unix::process::ExitStatusExt, process::Command};
         if let Ok(case) = std::env::var("ANDROID_RAW_TRANSFER_CASE") {

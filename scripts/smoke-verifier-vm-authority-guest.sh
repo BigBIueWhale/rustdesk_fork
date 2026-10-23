@@ -4502,6 +4502,8 @@ run_focused_rust_tests() {
                 decoder_storage_failure_closes_worker_and_preserves_native_opus
                 android_raw::take_moves_owned_storage_without_allocation
                 android_raw::take_preserves_terminal_and_generation_semantics
+                android_raw::publication_storage_refusal_preserves_pending_state_and_recovers
+                android_raw::publication_input_guards_preserve_state_and_copy_owned_bytes
                 frame_compare::tests::changed_frames_replace_the_complete_cache
                 frame_compare::tests::equal_frames_preserve_the_cache_and_allocation
                 frame_compare::tests::empty_frames_follow_the_same_equality_and_replacement_rules
@@ -6197,7 +6199,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
         printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=24 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=46 bridge=absent\n'
+        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=48 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
         printf 'WHITEBOARD_CLIENT_STATE_PROFILE=whiteboard-client stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
@@ -6599,13 +6601,17 @@ PY
             || fail 'audio-buffer reservation or geometry outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-mailbox summary count differs'
-        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=46 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=48 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'AUDIO_MAILBOX_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'audio-mailbox artifact receipt differs'
         [ "$(grep -Fxc 'ANDROID_RAW_TRANSFER=pass cases=4 rounds=3 copy_allocations=0 pointer=transferred producer_storage=reused payload=exact probe=SIGABRT children=joined scope=portable-linux' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^ANDROID_RAW_TRANSFER_CHILD=observed case=(empty|short|spare|reused) success=true signal=None$' "$output")" -eq 4 ] \
             && [ "$(grep -Fxc 'ANDROID_RAW_SEMANTICS=pass cases=8 disabled=refused empty=refused single_use=true equal=refused changed=exact expired=retired stale=refused successor=usable scope=portable-linux' "$output")" -eq 1 ] \
             || fail 'Android raw-buffer transfer or retirement semantics differ'
+        [ "$(grep -Fxc 'ANDROID_RAW_PUBLICATION=pass refusals=4 healthy=2 state=preserved clock=preserved retry=exact stale=refused expired=refused probe=SIGABRT children=joined scope=portable-linux' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^ANDROID_RAW_PUBLICATION_CHILD=observed case=(empty|growing|expired|successor|spare|equal) success=true signal=None$' "$output")" -eq 6 ] \
+            && [ "$(grep -Fxc 'ANDROID_RAW_PUBLICATION_GUARDS=pass cases=5 null=refused empty=refused oversize=refused disabled=refused stale=refused source_copy=owned state=preserved clock=preserved scope=portable-linux' "$output")" -eq 1 ] \
+            || fail 'Android raw-buffer publication refusal or freshness differs'
         [ "$(grep -Fxc 'AUDIO_MAILBOX_ALLOC=pass refusals=10 healthy=6 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^AUDIO_MAILBOX_ALLOC_CHILD=observed .* success=true signal=None$' "$output")" -eq 16 ] \
             || fail 'audio-mailbox allocation outcomes differ'

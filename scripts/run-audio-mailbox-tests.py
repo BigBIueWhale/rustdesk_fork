@@ -143,13 +143,13 @@ def main():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"mailbox test source changed before execution: {name}")
             print(f"AUDIO_MAILBOX_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"AUDIO_MAILBOX_BUILD=sha256={artifact_sha} tests=46", flush=True)
+        print(f"AUDIO_MAILBOX_BUILD=sha256={artifact_sha} tests=48", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, timeout=30)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("mailbox artifact changed during execution")
-            print(f"AUDIO_MAILBOX_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=46 unchanged=before-after", flush=True)
+            print(f"AUDIO_MAILBOX_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=48 unchanged=before-after", flush=True)
             if digest(opus.read_bytes()) != opus_sha:
                 raise ValueError("native Opus runtime changed during execution")
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
@@ -159,7 +159,7 @@ def main():
                 raise ValueError(f"mailbox test source changed: {name}")
         if (fixture / "output-method.rs").read_bytes() != generated:
             raise ValueError("extracted output method changed")
-        print(f"AUDIO_MAILBOX_ARTIFACT=pass sha256={artifact_sha} tests=46 unchanged=before-after", flush=True)
+        print(f"AUDIO_MAILBOX_ARTIFACT=pass sha256={artifact_sha} tests=48 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

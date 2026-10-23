@@ -388,3 +388,122 @@ fn cm_queue_admission_owns_only_raw_payload_bytes() {
     assert_eq!(failures, 0, "a queued raw payload must not pin unrelated transport-buffer capacity");
     println!("CM_RAW_BACKING=pass cases=5 original_allocation=retired-at-admission payload=exact");
 }
+
+fn concurrent_cm_response(id: i32) -> (Data, Arc<std::sync::atomic::AtomicBool>) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct Source {
+        storage: Vec<u8>,
+        retired: Arc<AtomicBool>,
+    }
+    impl AsRef<[u8]> for Source {
+        fn as_ref(&self) -> &[u8] { &self.storage }
+    }
+    impl Drop for Source {
+        fn drop(&mut self) { self.retired.store(true, Ordering::SeqCst); }
+    }
+    let retired = Arc::new(AtomicBool::new(false));
+    let mut storage = Vec::with_capacity(ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES);
+    storage.resize(64, id as u8);
+    let data = bytes::Bytes::from_owner(Source { storage, retired: Arc::clone(&retired) });
+    (Data::CmFileResponse(ipc::CmFileResponse {
+        conn_id: 7, cm_auth_token: "token".to_owned(),
+        response: Box::new(ipc::CmFileResponseKind::ReadBlock {
+            id, generation: 2, file_num: 3, compressed: false, data,
+        }),
+    }), retired)
+}
+
+#[test]
+fn cm_queue_concurrent_producers_release_sources_and_preserve_fifo() {
+    use std::sync::{atomic::Ordering, Barrier};
+    let (sender, mut receiver) = cm_egress_channel();
+    let start = Arc::new(Barrier::new(9));
+    let workers: Vec<_> = (0..8).map(|producer| {
+        let sender = sender.clone();
+        let start = Arc::clone(&start);
+        std::thread::spawn(move || {
+            start.wait();
+            (0..16).map(|sequence| {
+                let (response, retired) = concurrent_cm_response(1 + producer * 16 + sequence);
+                let result = sender.send(response);
+                (result, retired.load(Ordering::SeqCst))
+            }).collect::<Vec<_>>()
+        })
+    }).collect();
+    start.wait();
+    let outcomes: Vec<_> = workers.into_iter().map(|worker| worker.join().unwrap()).collect();
+    assert!(outcomes.iter().flatten().all(|(result, retired)| result.is_ok() && *retired));
+    let mut next = [0; 8];
+    for _ in 0..128 {
+        let Ok(Some(CmEgressItem::Data(Data::CmFileResponse(response)))) = receiver.take_next() else {
+            panic!("concurrent CM response lost");
+        };
+        assert_eq!((response.conn_id, response.cm_auth_token.as_str()), (7, "token"));
+        let ipc::CmFileResponseKind::ReadBlock { id, generation, file_num, compressed, data } = *response.response else {
+            panic!("concurrent CM response kind changed");
+        };
+        assert!((1..=128).contains(&id));
+        let producer = ((id - 1) / 16) as usize;
+        assert_eq!((id - 1) % 16, next[producer]);
+        next[producer] += 1;
+        assert_eq!((generation, file_num, compressed), (2, 3, false));
+        assert_eq!(data.as_ref(), &[id as u8; 64]);
+    }
+    assert_eq!(next, [16; 8]);
+    assert!(receiver.take_next().unwrap().is_none());
+    assert_eq!(lock_cm_egress(&sender.state).queued_bytes, 0);
+    println!("CM_QUEUE_CONCURRENT=pass case=fifo producers=8 messages=128 raw_source=retired payload=exact threads=joined");
+}
+
+#[test]
+fn cm_queue_concurrent_saturation_is_terminal() {
+    use std::sync::{atomic::Ordering, Barrier};
+    let (sender, mut receiver) = cm_egress_channel_with_limits(CmEgressLimits {
+        max_messages: 8, ..CM_EGRESS_LIMITS
+    });
+    let start = Arc::new(Barrier::new(9));
+    let filled = Arc::new(Barrier::new(9));
+    let overflow = Arc::new(Barrier::new(9));
+    let workers: Vec<_> = (0..8).map(|producer| {
+        let sender = sender.clone();
+        let start = Arc::clone(&start);
+        let filled = Arc::clone(&filled);
+        let overflow = Arc::clone(&overflow);
+        std::thread::spawn(move || {
+            start.wait();
+            let (response, retired) = concurrent_cm_response(1 + producer);
+            let first = sender.send(response);
+            let first_retired = retired.load(Ordering::SeqCst);
+            filled.wait();
+            overflow.wait();
+            let (response, retired) = concurrent_cm_response(9 + producer);
+            let second = sender.send(response);
+            (first, first_retired, second, retired.load(Ordering::SeqCst))
+        })
+    }).collect();
+    start.wait();
+    filled.wait();
+    let held_count = lock_cm_egress(&sender.state).queue.len();
+    overflow.wait();
+    let outcomes: Vec<_> = workers.into_iter().map(|worker| worker.join().unwrap()).collect();
+    assert_eq!(held_count, 8);
+    let failure = CmEgressAdmissionError::Failed(CmEgressFailure::MessageCapacity);
+    assert!(outcomes.iter().all(|(first, retired, second, refused_retired)|
+        first.is_ok() && *retired && *second == Err(failure) && *refused_retired));
+    {
+        let state = lock_cm_egress(&sender.state);
+        assert!(state.queue.is_empty());
+        assert_eq!(state.queued_bytes, 0);
+    }
+    assert_eq!(receiver.wake.try_recv(), Ok(()));
+    assert!(matches!(receiver.take_next(), Ok(Some(CmEgressItem::Failed(CmEgressFailure::MessageCapacity)))));
+    assert!(receiver.take_next().is_err());
+    assert_eq!(sender.send(Data::Close), Err(CmEgressAdmissionError::ReceiverGone));
+    let (fresh, mut fresh_receiver) = cm_egress_channel();
+    let (response, retired) = concurrent_cm_response(17);
+    fresh.send(response).unwrap();
+    assert!(retired.load(Ordering::SeqCst));
+    assert!(matches!(fresh_receiver.take_next(), Ok(Some(CmEgressItem::Data(Data::CmFileResponse(_))))));
+    assert!(fresh_receiver.take_next().unwrap().is_none());
+    println!("CM_QUEUE_CONCURRENT=pass case=saturation producers=8 admitted=8 refused=8 terminal=once stale=refused fresh=usable threads=joined");
+}

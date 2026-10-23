@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart' show desktopType, DesktopType;
 import 'package:flutter_hbb/common/shared_state.dart';
+import 'package:flutter_hbb/common/widgets/chat_page.dart'
+    show chatSendButtonBuilder;
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/model.dart';
@@ -84,6 +86,40 @@ class _HeldChat extends ChatModel {
     shown.add(key);
     return page?.future ?? Future<void>.value();
   }
+}
+
+class _DraftChat extends ChatModel {
+  _DraftChat(_ChatOwner owner, {this.interceptSubmission = false})
+      : super(WeakReference<FFI>(owner));
+
+  @override
+  final me = ChatUser(id: 'local');
+  final bool interceptSubmission;
+  final submitted = <String>[];
+
+  @override
+  bool send(ChatMessage message) {
+    // Valid controls replace native I/O; refused sends execute the real model.
+    if (!interceptSubmission) return super.send(message);
+    submitted.add(message.text);
+    return true;
+  }
+}
+
+Future<void> _mountDraftToolbar(WidgetTester tester, _DraftChat model) async {
+  await tester.pumpWidget(MaterialApp(
+    home: Scaffold(
+      body: InputToolbar(
+        currentUser: model.me,
+        onSend: model.send,
+        inputOptions: InputOptions(
+          focusNode: model.inputNode,
+          textController: model.textController,
+          sendButtonBuilder: chatSendButtonBuilder(model, color: Colors.blue),
+        ),
+      ),
+    ),
+  ));
 }
 
 class _ChatDelivery {
@@ -260,6 +296,54 @@ void main() {
     'invalid generation',
     'disconnected client'
   ]) {
+    testWidgets('chat draft survives $caseName at both send inputs',
+        (tester) async {
+      final owner = _ChatOwner();
+      final model = _DraftChat(owner);
+      final key = MessageKey('incoming-peer', 7);
+      final prior = ChatMessage(
+        user: ChatUser(id: 'incoming-peer'),
+        text: 'Retained history',
+        createdAt: DateTime.utc(2026),
+      );
+      model.insertMessage(key, prior);
+      final body = model.messages[key]!;
+      if (caseName == 'missing client') {
+        owner.serverModel.clients.clear();
+      } else if (caseName == 'reused id') {
+        owner.serverModel.clients[0] = _incomingClient(20)
+          ..peerId = 'replacement-peer';
+      } else if (caseName == 'invalid generation') {
+        owner.serverModel.clients[0].registryGeneration = 0;
+      } else {
+        owner.serverModel.clients[0].disconnected = true;
+      }
+      try {
+        await _mountDraftToolbar(tester, model);
+        const draft = '  Unsent draft  ';
+        await tester.enterText(find.byType(TextField), draft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        final afterKeyboard = model.textController.text;
+        await tester.enterText(find.byType(TextField), draft);
+        await tester.tap(find.byIcon(Icons.send));
+        await tester.pump();
+        final afterButton = model.textController.text;
+
+        expect(afterKeyboard, draft, reason: 'Enter must retain a refused draft');
+        expect(afterButton, draft, reason: 'Send must retain a refused draft');
+        expect(model.messages[key], same(body));
+        expect(body.chatMessages, [prior]);
+        expect(model.currentKey, same(key));
+        expect(model.submitted, isEmpty);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        model.inputNode.dispose();
+        model.dispose();
+        owner.serverModel.tabController.state.value.pageController.dispose();
+      }
+    });
+
     test('chat send refuses $caseName before bridge dispatch', () {
       final delivery = _ChatDelivery();
       final key = MessageKey('incoming-peer', 7);
@@ -295,6 +379,43 @@ void main() {
       expect(delivery.notifications, 0);
       expect(delivery.model.inputNode.hasFocus, isFalse);
       expect(delivery.windowCalls, isEmpty);
+    });
+  }
+
+  for (final direction in ['incoming', 'outgoing']) {
+    testWidgets('chat draft clears accepted $direction sends at both inputs',
+        (tester) async {
+      final owner = _ChatOwner();
+      final model = _DraftChat(owner, interceptSubmission: true);
+      final key = MessageKey(
+          direction == 'incoming' ? 'incoming-peer' : 'outgoing-peer',
+          direction == 'incoming' ? 7 : ChatModel.clientModeID);
+      model.insertMessage(
+          key,
+          ChatMessage(
+            user: ChatUser(id: key.peerId),
+            text: 'Retained history',
+            createdAt: DateTime.utc(2026),
+          ));
+      try {
+        await _mountDraftToolbar(tester, model);
+        await tester.enterText(find.byType(TextField), 'Keyboard draft');
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        expect(model.textController.text, isEmpty);
+        expect(model.submitted, ['Keyboard draft']);
+
+        await tester.enterText(find.byType(TextField), 'Button draft');
+        await tester.tap(find.byIcon(Icons.send));
+        await tester.pump();
+        expect(model.textController.text, isEmpty);
+        expect(model.submitted, ['Keyboard draft', 'Button draft']);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        model.inputNode.dispose();
+        model.dispose();
+        owner.serverModel.tabController.state.value.pageController.dispose();
+      }
     });
   }
 

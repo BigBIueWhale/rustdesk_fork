@@ -710,6 +710,12 @@ FILE_NAVIGATION_SUITES = {
     },
 }
 PEER_DATA_TESTS = {
+    "chat draft survives missing client at both send inputs",
+    "chat draft survives reused id at both send inputs",
+    "chat draft survives invalid generation at both send inputs",
+    "chat draft survives disconnected client at both send inputs",
+    "chat draft clears accepted incoming sends at both inputs",
+    "chat draft clears accepted outgoing sends at both inputs",
     "chat send refuses missing client before bridge dispatch",
     "chat send refuses reused id before bridge dispatch",
     "chat send refuses invalid generation before bridge dispatch",

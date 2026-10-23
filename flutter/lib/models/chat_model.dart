@@ -461,10 +461,10 @@ class ChatModel with ChangeNotifier {
     notifyListeners();
   }
 
-  send(ChatMessage message) {
+  bool send(ChatMessage message) {
     String trimmedText = message.text.trim();
     if (trimmedText.isEmpty) {
-      return;
+      return false;
     }
     final client = _currentKey.isOut
         ? null
@@ -474,7 +474,7 @@ class ChatModel with ChangeNotifier {
                 client.peerId == _currentKey.peerId &&
                 client.registryGeneration > 0 &&
                 !client.disconnected);
-    if (!_currentKey.isOut && client == null) return;
+    if (!_currentKey.isOut && client == null) return false;
     message.text = trimmedText;
     insertMessage(_currentKey, message);
     if (_currentKey.connId == clientModeID && parent.target != null) {
@@ -488,6 +488,7 @@ class ChatModel with ChangeNotifier {
 
     notifyListeners();
     inputNode.requestFocus();
+    return true;
   }
 
   insertMessage(MessageKey key, ChatMessage message) {

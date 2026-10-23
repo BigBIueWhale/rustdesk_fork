@@ -12,6 +12,14 @@ enum ChatPageType {
   desktopCM,
 }
 
+Widget Function(void Function()) chatSendButtonBuilder(ChatModel model,
+        {required Color color}) =>
+    defaultSendButton(
+      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+      color: color,
+      icon: Icons.send_rounded,
+    );
+
 class ChatPage extends StatelessWidget implements PageShape {
   late final ChatModel chatModel;
   final ChatPageType? type;
@@ -123,11 +131,9 @@ class ChatPage extends StatelessWidget implements PageShape {
                           ),
                         ),
                       ),
-                      sendButtonBuilder: defaultSendButton(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                      sendButtonBuilder: chatSendButtonBuilder(
+                        chatModel,
                         color: MyTheme.accent,
-                        icon: Icons.send_rounded,
                       ),
                     ),
                     messageOptions: MessageOptions(

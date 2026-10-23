@@ -4237,6 +4237,7 @@ run_focused_rust_tests() {
                 clipboard_non_file::tests::codec_phase_limits_preserve_buffered_frame_order
                 clipboard_non_file::tests::producer_and_receiver_preserve_inline_and_raw_entries
                 clipboard_non_file::tests::producer_refuses_out_of_policy_metadata
+                clipboard_non_file::tests::producer_allocation_refusal_preserves_exact_retry
                 bytes_codec::tests::test_codec1
                 bytes_codec::tests::test_codec2
                 bytes_codec::tests::test_codec3
@@ -6149,7 +6150,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
         printf 'CLIPRDR_READ_PROFILE=cliprdr-read stage=container-start tests=12 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
-        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=34 bridge=absent windows=unexecuted\n'
+        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=35 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=28 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
@@ -6437,9 +6438,12 @@ for item in (old,new): assert re.fullmatch('[0-9a-f]{64}',item['sha256'])
 PY
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'CM clipboard response summary count differs'
-        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=34 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=35 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CM_CLIPBOARD_RESPONSE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'CM clipboard response artifact receipt differs'
+        [ "$(grep -Fxc 'CLIPBOARD_PREPARE_ALLOC=pass refusal_points=5 refusals=5 controls=4 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^CLIPBOARD_PREPARE_ALLOC_CASE=observed fail_at=[1-5] allocations=[1-5] error=OutOfMemory retry_exact=true$' "$output")" -eq 5 ] \
+            || fail 'clipboard producer allocation recovery differs'
         [ "$(grep -Fxc 'BYTES_CODEC_HEADER=pass cases=18 widths=4 cap_contexts=2 partial_payload=preserved eof=refused' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^BYTES_CODEC_HEADER_CASE=observed .* correct=true$' "$output")" -eq 18 ] \
             && [ "$(grep -Fxc 'BYTES_CODEC_TCP=pass frames=8 widths=4 fragmented_writes=true coalesced=true eof=clean sender=joined' "$output")" -eq 1 ] \
@@ -7152,7 +7156,7 @@ PY
             printf 'CLIPRDR_READ_VM=pass commit=%s tree=%s tests=%s baseline_failed=7 baseline_controls=5 target=linux-x86_64 scope=portable-production-C-reader windows=unexecuted concurrency=unexecuted uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed"
         elif [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
-            grep -E '^test (clipboard_non_file|bytes_codec)::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT(_BEFORE|_AFTER)?|DEPENDENCIES|INPUT)=|^BYTES_CODEC_' "$output"
+            grep -E '^test (clipboard_non_file|bytes_codec)::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT(_BEFORE|_AFTER)?|DEPENDENCIES|INPUT)=|^CLIPBOARD_PREPARE_ALLOC|^BYTES_CODEC_' "$output"
             printf 'CM_CLIPBOARD_RESPONSE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-response-type-and-assembly windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

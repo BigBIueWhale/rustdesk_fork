@@ -142,6 +142,140 @@ impl ClipboardNonFile {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
+    mod allocations {
+        use std::{alloc::{GlobalAlloc, Layout, System}, cell::Cell};
+
+        thread_local! {
+            static STATE: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
+        }
+
+        fn refuse() -> bool {
+            STATE.try_with(|state| {
+                let (target, count) = state.get();
+                if target == 0 {
+                    return false;
+                }
+                state.set((target, count + 1));
+                count + 1 == target
+            }).unwrap_or(false)
+        }
+
+        struct Allocator;
+
+        unsafe impl GlobalAlloc for Allocator {
+            unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+                if refuse() { std::ptr::null_mut() } else { System.alloc(layout) }
+            }
+
+            unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+                if refuse() { std::ptr::null_mut() } else { System.alloc_zeroed(layout) }
+            }
+
+            unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+                if refuse() { std::ptr::null_mut() } else { System.realloc(pointer, layout, size) }
+            }
+
+            unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+                System.dealloc(pointer, layout)
+            }
+        }
+
+        #[global_allocator]
+        static ALLOCATOR: Allocator = Allocator;
+
+        pub(super) fn observe<T>(target: usize, action: impl FnOnce() -> T) -> (T, usize) {
+            struct Reset;
+            impl Drop for Reset {
+                fn drop(&mut self) { STATE.with(|state| state.set((0, 0))); }
+            }
+            STATE.with(|state| {
+                assert_eq!(state.get(), (0, 0));
+                state.set((target, 0));
+            });
+            let reset = Reset;
+            let result = action();
+            let count = STATE.with(|state| state.get().1);
+            drop(reset);
+            (result, count)
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn producer_allocation_refusal_preserves_exact_retry() {
+        use std::{os::unix::process::ExitStatusExt, process::Command};
+        use allocations::observe;
+
+        const RAW: &[u8] = &[b'x'; ClipboardNonFile::INLINE_CONTENT_BYTES + 1];
+        fn source(count: usize, raw: bool) -> Vec<Clipboard> {
+            (0..count).map(|index| Clipboard {
+                content: Bytes::from_static(if raw { RAW } else { b"inline" }),
+                compress: index % 2 == 0,
+                width: index as i32,
+                height: -(index as i32),
+                format: ClipboardFormat::Html.into(),
+                special_name: format!("format-{index}"),
+                ..Default::default()
+            }).collect()
+        }
+
+        if let Ok(case) = std::env::var("RD_CLIPBOARD_PREPARE_ALLOC_CASE") {
+            if case == "probe" {
+                observe(1, || std::hint::black_box(Vec::<u8>::with_capacity(64)));
+                panic!("allocation-refusal probe did not abort");
+            }
+            let target: usize = case.parse().unwrap();
+            assert!((1..=5).contains(&target));
+            let input = source(MAX_NATIVE_CLIPBOARD_ITEMS, true);
+            let expected = input.clone();
+            let (result, count) = observe(target, || ClipboardNonFile::prepare_contents(input));
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::OutOfMemory);
+            assert_eq!(count, target);
+            let (metadata, raw) = ClipboardNonFile::prepare_contents(expected.clone()).unwrap();
+            assert_eq!(ClipboardNonFile::restore_raw_contents(metadata, raw.into()).unwrap(), expected);
+            println!("CLIPBOARD_PREPARE_ALLOC_CASE=observed fail_at={target} allocations={count} error=OutOfMemory retry_exact=true");
+            return;
+        }
+
+        for (items, raw) in [(0, false), (1, false), (1, true), (MAX_NATIVE_CLIPBOARD_ITEMS, true)] {
+            let input = source(items, raw);
+            let expected = input.clone();
+            let (result, count) = observe(usize::MAX, || ClipboardNonFile::prepare_contents(input));
+            let (metadata, raw_bytes) = result.unwrap();
+            let expected_count = match (items, raw) { (0, _) => 0, (_, false) => 1, (1, true) => 3, _ => 5 };
+            assert_eq!(count, expected_count);
+            assert_eq!(ClipboardNonFile::restore_raw_contents(metadata, raw_bytes.into()).unwrap(), expected);
+            println!("CLIPBOARD_PREPARE_ALLOC_CONTROL=observed items={items} raw={raw} allocations={count} exact=true");
+        }
+
+        let thread = std::thread::current();
+        let name = thread.name().unwrap();
+        let run = |case: &str| Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture", "--test-threads=1"])
+            .env("RD_CLIPBOARD_PREPARE_ALLOC_CASE", case)
+            .output().unwrap();
+        let probe = run("probe");
+        let probe_ok = probe.status.signal() == Some(6)
+            && String::from_utf8_lossy(&probe.stderr).contains("memory allocation of");
+        println!("CLIPBOARD_PREPARE_ALLOC_PROBE=observed signal={:?} passed={probe_ok}", probe.status.signal());
+        let mut all_ok = probe_ok;
+        for target in 1..=5 {
+            let output = run(&target.to_string());
+            let records: Vec<_> = String::from_utf8_lossy(&output.stdout).lines()
+                .filter_map(|line| line.split_once("CLIPBOARD_PREPARE_ALLOC_CASE=").map(|(_, value)| value.to_owned())).collect();
+            for record in &records { println!("CLIPBOARD_PREPARE_ALLOC_CASE={record}"); }
+            let expected = format!("observed fail_at={target} allocations={target} error=OutOfMemory retry_exact=true");
+            let correct = output.status.success() && records == [expected];
+            print!("{}", String::from_utf8_lossy(&output.stderr));
+            println!("CLIPBOARD_PREPARE_ALLOC_CHILD=observed fail_at={target} success={} signal={:?} correct={correct}",
+                output.status.success(), output.status.signal());
+            all_ok &= correct;
+        }
+        assert!(all_ok, "clipboard response allocation failure must be recoverable");
+        println!("CLIPBOARD_PREPARE_ALLOC=pass refusal_points=5 refusals=5 controls=4 probe=SIGABRT children=joined");
+    }
+
     fn item(content: &'static [u8], content_len: usize, next_raw: bool) -> ClipboardNonFile {
         ClipboardNonFile {
             compress: false,

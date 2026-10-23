@@ -8126,6 +8126,26 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   authorized production-pair capture remain retained; they do not establish installed
   principals or current release behavior.
 
+  **Whole-process liveness (`45d290f3`).** The shared kernel identity factory owns a
+  pidfd before reading the existing UID/start-time metadata and polls process-exit
+  readiness before returning. Acquisition/poll errors and observed exit refuse;
+  normal, stopped and resumed processes remain eligible. An exited main thread with
+  a live worker remains a live process. The UID reader, general start-time reader,
+  serialized identity and connection/role/parent capabilities are unchanged.
+  With identical fixtures, the original factory fails both exited-group assertions
+  while eleven controls pass; the correction passes all thirteen component tests.
+  Four native C peers exercise real Unix socket credentials, normal/nondumpable UID,
+  stop/resume, unreaped exit and leader-exit/live-worker transitions. Both live and
+  terminal phases retain equal descriptor counts across 128 repeated identity reads.
+  `linux-kernel-identity-81ecf18f.json` binds source/artifacts, original/corrected
+  observations and joined bounded-RAM cleanup. The extracted production bodies use
+  a boxed-error context and a C-header-checked Linux x86_64 syscall ABI adapter;
+  serialization, full IPC and installed authorization did not run. Kernel/API
+  availability, injected acquisition/poll failures, PID reuse, descriptor handoff,
+  exclusive frame authorship and installed helper functionality remain unproved.
+  This closes the demonstrated metadata-only exited-group liveness error; all
+  fifteen credential actions, R-S0 and broader installed acceptance remain OPEN.
+
 - **R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent
   authority — SOURCE IMPLEMENTED; INSTALLED-ARTIFACT EVIDENCE OPEN.** The helper binds
   its connected Unix peer's PID/UID/start time to its exact current kernel parent and

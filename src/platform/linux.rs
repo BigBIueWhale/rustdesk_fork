@@ -1242,13 +1242,14 @@ fn read_bounded_service_proc_file(path: &Path, max_bytes: usize) -> ResultType<V
 }
 
 fn service_child_cmdline_has_exact_role(cmdline: &[u8]) -> bool {
-    let args: Vec<_> = cmdline
-        .split(|byte| *byte == 0)
-        .filter(|arg| !arg.is_empty())
-        .collect();
-    args.len() == 3
-        && args[1] == b"--server"
-        && args[2] == crate::common::SERVICE_OWNED_SERVER_ARG.as_bytes()
+    let mut args = cmdline
+        .strip_suffix(&[0])
+        .unwrap_or(cmdline)
+        .split(|byte| *byte == 0);
+    args.next().is_some()
+        && args.next() == Some(b"--server".as_slice())
+        && args.next() == Some(crate::common::SERVICE_OWNED_SERVER_ARG.as_bytes())
+        && args.next().is_none()
 }
 
 fn service_child_environment_has_generation(environ: &[u8], generation: &str) -> bool {

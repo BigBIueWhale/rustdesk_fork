@@ -3033,6 +3033,22 @@ is demonstrated; existing icon-cache files are not read, migrated or deleted.
 Parent/UI compilation, rendered file-manager/other-platform/installed behavior,
 R-S0/R-F5 and release acceptance remain OPEN.
 
+**Recent connection markers (`e553f7cc`).** The active Windows
+`Session::handle_peer_info` caller now uses atomic create-only marker creation.
+It never opens or truncates an existing leaf; an existing marker still permits
+repeat recent-document registration. Other creation errors are logged and skip
+Shell registration. The Rust/C++ Shell bridges, MSI association and `--play`
+connection launch handling remain unchanged. In the isolated Linux component
+test, the old file operation passes new/repeat controls but fails six cases:
+ordinary/hard/symbolic/dangling-object preservation and permission/missing-parent
+refusal. The corrected production expression passes all eight; all 45 existing
+queue/framing/allocation tests also pass unchanged. This executes real portable
+filesystem operations, not the Windows handler or Shell. Retained evidence:
+`recent-document-markers-571ee664.json`. Current Windows-native NTFS/Shell,
+installed/elevated principals, parent/reparse races, marker namespace/path authority,
+full connection/settings functionality and R-S0 acceptance remain OPEN.
+No installed Windows exploit or complete privilege-boundary closure is claimed.
+
 **Retired heartbeat status storage (`44281c4f`).** The unused shared `Status`
 model, lazy cache, `_status` reader/writer, public `common_store`, private
 `Config::store_` wrapper and now-unreferenced tolerant map decoder are deleted.

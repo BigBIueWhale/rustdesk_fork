@@ -68,8 +68,7 @@ impl FrameRaw {
                 self.release();
                 return None;
             }
-            dst.clear();
-            dst.extend_from_slice(&self.data);
+            std::mem::swap(dst, &mut self.data);
             self.release();
             Some(())
         }

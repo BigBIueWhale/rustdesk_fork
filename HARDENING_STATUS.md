@@ -8161,9 +8161,30 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `linux-empty-argv-1d860d84.json` binds sources, artifacts, kernel observations,
   unchanged endpoint inventories and bounded-RAM retirement. Role predicates,
   serialized types and other identity checks are unchanged. This accepts argument
-  positions only; byte-faithful non-UTF8 identity, mutable-procfs/exec races, full
+  positions only; raw-byte identity is covered below. Mutable-procfs/exec races, full
   privileged receivers, all fifteen credential actions, R-S0/R-F5 and release
   acceptance remain OPEN. All separately parked work remains parked.
+
+  **Linux argv bytes (`8b4a2159`).** The shared reader and retained local
+  `PeerProcessIdentity` now own each argument as bytes. Exact role predicates
+  compare borrowed bytes; the existing macOS text adapter preserves its UTF8
+  content. Empty-field positions and final-terminator handling remain intact.
+  The local snapshot's unused serialization derives are deleted; the serialized
+  kernel identity and IPC wire schemas are unchanged. At API preparation
+  `3d5f8875`, fourteen controls pass but all14 new observations fail: seven live
+  C children change argv0 from byte80 to81 without changing PID, UID, start time
+  or other snapshot fields, yet the lossy snapshot stays equal and aliases a
+  genuine Unicode replacement character. The identical fixture passes all15
+  component tests after correction, including35 argument-position cases,
+  seven detected same-process mutations and seven distinct Unicode controls.
+  Twenty-one full snapshots and53 native C child joins are observed per run;
+  the C peer artifact is identical across A/B. An earlier stale source-gate
+  refusal is retained separately from native evidence.
+  `linux-argv-bytes-3e6b2f00.json` binds source/API changes, exact compiled
+  constructor/predicates, kernel observations, artifacts and bounded-RAM cleanup.
+  These bodies run with boxed-error/kernel-ABI adapters; complete parents,
+  installed receivers, concurrent mutation/exec races, all fifteen credential
+  actions, R-S0/R-F5 and release acceptance remain OPEN. Every user park persists.
 
 - **R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent
   authority — SOURCE IMPLEMENTED; INSTALLED-ARTIFACT EVIDENCE OPEN.** The helper binds

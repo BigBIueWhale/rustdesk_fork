@@ -62,7 +62,11 @@ static int64_t viewer_state(Display *display, const ViewerWindow *viewer,
     if (mode >= 12U && mode <= 15U && sample_index == 74U) {
         clock_ms += mode == 12U ? 39U : mode == 14U ? 41U : 40U;
     }
+    if ((mode == 20U && sample_index == 74U) ||
+        ((mode == 21U || mode == 23U) && sample_index == 51U) ||
+        (mode == 22U && sample_index == 50U)) clock_ms += 2000U;
     *captured_us = clock_ms * 1000U;
+    if (mode == 23U) return sample_index >= 51U ? 2 : sample_index >= 26U ? 1 : 0;
     if (mode >= 12U && mode <= 14U) {
         return sample_index >= 74U ? 2 : sample_index >= 38U ? 1 : 0;
     }
@@ -263,6 +267,37 @@ int main(void) {
         REQUIRE(tails_passed);
     }
     puts("X11_OBSERVER_TAIL=pass cases=4 scope=controller-aggregation inputs=synthetic window_end=checked boundary_ms=1000 qualified=preserved");
+    {
+        const struct {
+            const char *name;
+            unsigned int mode, expected_sample, expected_distinct;
+            int expected_status;
+            uint64_t expected_gap;
+        } cases[] = {
+            {"qualified-read-overrun", 20U, 75U, 74U, 0, 80U},
+            {"boundary-read-overrun", 21U, 52U, 51U, 0, 1000U},
+            {"over-boundary-read-overrun", 22U, 50U, 50U, -1, 1040U},
+            {"insufficient-progress-read-overrun", 23U, 52U, 2U, -1, 1000U},
+        };
+        int overruns_passed = 1;
+        for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+            mode = cases[index].mode; clock_ms = 0U; sample_index = 0U;
+            history = (SourceHistory){0};
+            status = observe_current_frames_for_duration(NULL, NULL, &viewer, &history,
+                3000U, &maximum_gap, &maximum_age, &distinct);
+            int passed = status == cases[index].expected_status &&
+                sample_index == cases[index].expected_sample &&
+                distinct == cases[index].expected_distinct &&
+                maximum_gap == cases[index].expected_gap && maximum_age == 30U;
+            printf("X11_OBSERVER_OVERRUN_CASE name=%s status=%d expected=%d sample=%u "
+                   "distinct=%u maximum_gap_ms=%llu passed=%s\n", cases[index].name,
+                   status, cases[index].expected_status, sample_index, distinct,
+                   (unsigned long long)maximum_gap, passed ? "true" : "false");
+            overruns_passed = overruns_passed && passed;
+        }
+        REQUIRE(overruns_passed);
+    }
+    puts("X11_OBSERVER_OVERRUN=pass cases=4 scope=controller-aggregation inputs=synthetic window_end=bounded late_progress=refused");
     return 0;
 }
 '''

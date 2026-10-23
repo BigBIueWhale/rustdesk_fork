@@ -12872,17 +12872,21 @@ Reservation refusal closes admission and clears pending work under the state mut
 then wakes receivers and returns `ResourceUnavailable` for explicit caller reporting.
 The closed owner keeps its first-format key and refuses further admission.
 
-Non-Linux PCM playback uses private `src/client/audio_buffer.rs`; each producer owns its histogram and
-monotonic shrink window; the callback shares only its ring. First observation
+Non-Linux PCM playback uses private `src/client/audio_buffer.rs`; each output
+attempt creates one immutable rate/channel geometry with checked dimensions and
+fallible ring-storage reservation. `AudioHandler` starts without a PCM ring,
+publishes it only after output activation, and retires it on terminal failure.
+There is no eager default ring or in-place resize. Each producer owns its histogram
+and monotonic shrink window; the callback shares only its ring. First observation
 arms twelve seconds, a due observation affects only that buffer, and a backwards
-observation logs and restarts without trimming. Format/ring replacement retires
-PCM, statistics and clock, including equal-capacity channel changes; no-op resize
-preserves them. Trimming drops complete interleaved frames. The existing capacity,
-newest-PCM retention and shrink heuristic remain. Callback filling uses
-`try_lock`, converts directly into the output slice and pads short or contended
-quanta with converted silence. Contention preserves queued PCM; poison is fatal.
-The old shared mutable clock, callback sleep, blocking readiness/ring acquisition
-and temporary output vector are absent.
+observation logs and restarts without trimming. Replacing an output gives it fresh
+PCM, statistics and clock, including equal-capacity or equal-format attempts.
+Trimming drops complete interleaved frames. The existing capacity, newest-PCM
+retention and shrink heuristic remain. Callback filling uses `try_lock`, converts
+directly into the output slice and pads short or contended quanta with converted
+silence. Contention preserves queued PCM; poison is fatal. The old shared mutable
+clock, callback sleep, blocking readiness/ring acquisition and temporary output
+vector are absent.
 
 Each CPAL output attempt owns separate readiness, failure and PCM state. Pending
 failure refuses activation while preserving setup fallback; retired callbacks
@@ -12901,6 +12905,7 @@ Counts refer to their named historical sources, not fresh current-tree execution
 
 | Surface | Executed evidence and limit | Capsule |
 | --- | --- | --- |
+| Output PCM storage — `451d28c8` | Preparation `ecca736f` preserves the old allocator behind the new constructor API: 22 controls pass, while all four refused-ring cases and all five zero/overflow geometry cases panic; three healthy formats also allocate an unnecessary default ring. The identical 24-case fixture passes after correction: reservation refusal returns `OutOfMemory`, invalid geometry returns `InvalidInput` before ring allocation, another buffer retains its queued samples, and four fresh outputs preserve exact samples/silence with one configured ring each. The 35-case mailbox component also passes and typechecks the complete CPAL setup method against the locked dependency. An initial corrected component pass had a stale outer count label; its raw result is retained separately from the corrected export. This is controlled calling-thread Rust ring-storage refusal, not global exhaustion, Arc/decoder/backend allocation, a physical device or complete target-parent acceptance. | `audio-buffer-allocation-5229777b.json` |
 | Frame-storage refusal — `d6fefa11` | At API preparation `c6dbf459`, 34 controls and six healthy child cases pass; all ten refused-allocation children abort on packet or deque storage, so the new regression fails. The identical 35-case fixture passes after correction. Refusal at empty, growing and full queues returns `ResourceUnavailable`, clears pending format/frames, closes replay admission and leaves a fresh mailbox functional. Six finite-budget healthy cases preserve exact bytes, FIFO and oldest replacement at one and 4,096 bytes. The positive 31-byte refusal probe aborts as required; all seventeen children join. Artifact hashes remain stable. This is controlled Rust-allocation refusal and mailbox state evidence, not whole-runtime/C-heap exhaustion, native decoder/device or installed acceptance; stalled Linux playback cancellation remains OPEN/PARKED. | `audio-mailbox-allocation-bb158770.json` |
 | Format-first admission — `847f5566` | Twelve actual mailbox tests with production-generated protobuf cover ordering, fixed format, count/age limits, oversized refusal with state preservation, exact packet bound, parsed unknown-field stripping, backing-owner release, native receiver wake/join on sender loss and admission closure after receiver loss. Every fixture dependency matches the root lock. No decoder/device ran. | `audio-mailbox-accepted-847f5566.json` |
 | Per-buffer clock — `a30df600` | Eight production-buffer cases cover exact interval, independent owners, backwards time, resize/no-op, bounded retention and four joined workers over 200 injected intervals. Linux executes the real locked ring with controlled Instants; it does not measure device timing. The first resumed poll was terminal, so no live manual source observation is claimed. | `audio-buffer-accepted-a30df600.json` |

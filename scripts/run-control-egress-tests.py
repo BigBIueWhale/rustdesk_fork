@@ -131,8 +131,16 @@ def main():
                                ("CM_EGRESS_LIMIT", "cm-limits.rs")):
             os.environ[variable] = str(fixture / name)
 
+        roots = [p for p in packages if p["name"] == "rustdesk" and "source" not in p]
+        if len(roots) != 1:
+            raise ValueError("controlled-egress root application is absent or ambiguous")
+
         def version(name):
             versions = {p["version"] for p in packages if p["name"] == name}
+            qualified = {parts[1] for dependency in roots[0]["dependencies"]
+                         if (parts := dependency.split())[0] == name and len(parts) > 1}
+            if qualified:
+                versions &= qualified
             if len(versions) != 1:
                 raise ValueError(f"controlled-egress dependency version is ambiguous: {name}")
             return versions.pop()

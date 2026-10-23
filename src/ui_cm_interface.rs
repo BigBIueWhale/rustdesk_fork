@@ -873,7 +873,9 @@ fn cm_file_entry_type(entry_type: FileType) -> ipc::CmFileEntryType {
 
 #[cfg(not(any(target_os = "ios")))]
 fn cm_file_directory(directory: FileDirectory) -> Result<ipc::CmFileDirectory, String> {
-    let mut entries = Vec::with_capacity(directory.entries.len());
+    let mut entries = Vec::new();
+    entries.try_reserve_exact(directory.entries.len())
+        .map_err(|_| "Not enough memory for directory entries".to_owned())?;
     for entry in directory.entries {
         let entry_type = entry
             .entry_type

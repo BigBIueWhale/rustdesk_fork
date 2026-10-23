@@ -12217,6 +12217,23 @@ bridge generation and joined cleanup. `cursor-elapsed-time-0635f406.json` binds
 the evidence. Controlled clocks/fixture parents do not exercise physical clock
 changes, native input or the checkpoint/take path.
 
+**Server cursor echo timing (R-F5).** `afcd9e90` replaces the private wall-clock
+input timestamp with `Option<Instant>` across the refresh, absolute and relative
+input-state writers. The sender measures its existing 300 ms exclusion window by
+elapsed time; default state excludes nobody. At unchanged-production preparation
+`a9b7b5d4`, the new native Rust clock case fails both injected ten-minute jumps:
+backward time still excludes the owner at 350 ms, while forward time excludes
+nobody immediately. The same case passes after correction, with the owner excluded
+only inside the window. Writer/coordinate/default, unchanged/invalid position and
+protobuf/snapshot controls also pass; all 46 earlier component cases are unchanged
+and pass. `cursor-echo-clock-2b2aaacb.json` retains the 48-case A/B, 22 input and
+25 source-part receipts, dependencies and joined bounded-RAM cleanup. The fixture
+executes the actual sender/state and successful assignment expressions with a
+recording service and injected wall-clock provider; native `Instant` and waits run.
+OS clock changes, complete input/Enigo dispatch, physical devices, real peers,
+other platforms and installed services remain OPEN. This does not establish the
+cause or recovery of displayed-frame latency under R-F5.
+
 Three retained `r_s11gu_` Rust regressions cover bounds, refusal/promotion,
 topology, re-arm, stale predecessors and exhaustion. Exact Dart checkpoint/take/
 invalidation, web-lane execution and native owner/token round trips remain OPEN;
@@ -12280,14 +12297,15 @@ despite stale sender clones. R-S11gw / Appendix C #358 is the normative contract
 
 **Current evidence shared with R-S11gy/R-S11gz.** The focused command is
 `bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
-At `e553f7cc`, all 46 named native Rust cases pass with actual Tokio channels,
-OS threads and production-generated protobufs. All 20 input receipts were rechecked
-against the `d2a102e6` source checkpoint. The 45 queue/framing/allocation tests are
-unchanged; the added case exercises portable recent-marker file operations on Linux, with Windows Shell
-unexecuted. `recent-document-markers-571ee664.json` binds the exact source/artifact,
-cases, dependencies, bounded-RAM storage and joined cleanup. The earlier growth-refusal
-A/B remains in `file-clipboard-growth-fc23970f.json`; its 19-input source snapshot
-is historical. `control-egress-evidence-d2a102e6.json` retains the current input
+At `008a31ea`, all 48 named native Rust cases pass with actual Tokio channels,
+OS threads and production-generated protobufs. All 22 input receipts match that
+source; the prior 46 cases and their 19 extracted parts are unchanged. The two new
+cursor cases execute the portable sender/state timing and writer controls described
+above. `cursor-echo-clock-2b2aaacb.json` binds this current source/artifact cohort,
+dependencies, bounded-RAM storage and joined cleanup. Earlier recent-marker and
+growth-refusal A/B evidence remains in `recent-document-markers-571ee664.json` and
+`file-clipboard-growth-fc23970f.json`; Windows Shell is unexecuted.
+`control-egress-evidence-d2a102e6.json` retains the historical 20-input checkpoint
 comparison and ledger correction. Capsule names resolve under `.harness-state/verifier-vm/`.
 
 | Surface | Component coverage and retained failure/design provenance |
@@ -12302,7 +12320,7 @@ clipboard, complete service producers, connection loops and CM IPC do not.
 Owner/deallocation flags establish lifetime, not RSS or whole-process memory bounds;
 error formatting and surrounding allocations remain available during selective faults.
 The older raw-backing baseline has test/artifact receipts but lacks full input/source
-receipts; its corrected run and the retained 46-case run supply those bindings.
+receipts; its corrected run and the current 48-case run supply those bindings.
 Script wiring, source patterns and historical string mutations do not establish behavior.
 The profile remains 2 GiB guest / 6 GiB RAM scratch / 4 GiB overlay / 6 GiB host
 headroom / 1 GiB overhead, with no disk fallback and joined retirement.

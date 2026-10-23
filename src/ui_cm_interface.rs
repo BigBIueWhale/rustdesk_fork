@@ -92,6 +92,7 @@ pub(crate) enum CmEgressFailure {
     ByteCapacity,
     Encoding,
     AccountingOverflow,
+    StorageUnavailable,
 }
 
 impl fmt::Display for CmEgressFailure {
@@ -103,6 +104,7 @@ impl fmt::Display for CmEgressFailure {
             Self::ByteCapacity => "retained-byte capacity reached",
             Self::Encoding => "message size could not be encoded",
             Self::AccountingOverflow => "resource accounting overflowed",
+            Self::StorageUnavailable => "queue storage is unavailable",
         };
         write!(f, "connection-manager egress {reason}")
     }
@@ -348,6 +350,9 @@ impl CmEgressSender {
             };
             if next_bytes > self.limits.max_queued_bytes {
                 return self.fail_with_state(state, CmEgressFailure::ByteCapacity);
+            }
+            if state.queue.try_reserve(1).is_err() {
+                return self.fail_with_state(state, CmEgressFailure::StorageUnavailable);
             }
             state.queue.push_back(QueuedCmEgress {
                 data,

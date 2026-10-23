@@ -281,6 +281,60 @@ mod linux_process_identity_tests {
     }
 
     #[test]
+    fn kernel_role_environment_rejects_duplicate_keys() {
+        let mut failures = 0;
+        for (label, key, first, second) in [
+            ("cm", crate::common::CM_LAUNCH_TOKEN_ENV,
+                format!("{}=", "A".repeat(43)), format!("{}A=", "B".repeat(42))),
+            ("generation", crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV,
+                "11111111-1111-4111-8111-111111111111".to_owned(),
+                "22222222-2222-4222-8222-222222222222".to_owned()),
+        ] {
+            let prefix = format!("{key}=");
+            let mut healthy = Owner::spawn_with_environment(1, false, None, &[(key, OsString::from(&first))]);
+            assert_eq!(healthy.credentials().uid, unsafe { geteuid() });
+            let raw = fs::read(format!("/proc/{}/environ", healthy.pid())).unwrap();
+            let values: Vec<_> = raw.split(|byte| *byte == 0)
+                .filter_map(|entry| entry.strip_prefix(prefix.as_bytes())).collect();
+            assert_eq!(values, [first.as_bytes()]);
+            assert_eq!(linux_proc_environ_value(healthy.pid(), key).unwrap(), first);
+            assert!(linux_process_identity_fields_by_pid(healthy.pid()).is_ok());
+            if label == "generation" { assert!(service_child_environment_has_generation(&raw, &first)); }
+            healthy.request_exit();
+            healthy.join();
+            println!("LINUX_KERNEL_ENV_DUP_CASE=observed key={label} kind=unique entries=1 exact=true snapshot=accepted correct=true");
+            for (kind, left, right) in [
+                ("same", first.as_str(), first.as_str()),
+                ("conflict", first.as_str(), second.as_str()),
+                ("reversed", second.as_str(), first.as_str()),
+                ("empty", "", ""), ("empty-first", "", first.as_str()),
+            ] {
+                let mut owner = Owner::spawn_with_environment(1, false, None, &[
+                    (key, OsString::from(left)),
+                    ("LINUX_IDENTITY_DUP_ENV_KEY", OsString::from(key)),
+                    ("LINUX_IDENTITY_DUP_ENV_VALUE", OsString::from(right)),
+                ]);
+                assert_eq!(owner.credentials().uid, unsafe { geteuid() });
+                let raw = fs::read(format!("/proc/{}/environ", owner.pid())).unwrap();
+                let values: Vec<_> = raw.split(|byte| *byte == 0)
+                    .filter_map(|entry| entry.strip_prefix(prefix.as_bytes())).collect();
+                assert_eq!(values, [left.as_bytes(), right.as_bytes()]);
+                let refused = linux_proc_environ_value(owner.pid(), key).is_err();
+                let snapshot = linux_process_identity_fields_by_pid(owner.pid());
+                let snapshot_expected = if label == "cm" { snapshot.is_err() } else { snapshot.is_ok() };
+                let supervisor_refused = label != "generation" || !service_child_environment_has_generation(&raw, &first);
+                let correct = refused && snapshot_expected && supervisor_refused;
+                println!("LINUX_KERNEL_ENV_DUP_CASE=observed key={label} kind={kind} entries=2 value_refused={refused} snapshot_expected={snapshot_expected} supervisor_consistent={supervisor_refused} correct={correct}");
+                owner.request_exit();
+                owner.join();
+                failures += usize::from(!correct);
+            }
+        }
+        assert_eq!(failures, 0, "selected authority environment keys must be unique");
+        println!("LINUX_KERNEL_ENV_DUP=pass duplicate_cases=10 healthy=2 children=12 entries=kernel-observed selected_only=true children_state=joined");
+    }
+
+    #[test]
     fn kernel_role_environment_rejects_invalid_utf8_without_rewriting_values() {
         let key = crate::common::CM_LAUNCH_TOKEN_ENV;
         let raw_value = |pid| {

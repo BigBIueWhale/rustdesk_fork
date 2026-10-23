@@ -16,6 +16,44 @@ _Static_assert(sizeof(struct pollfd) == 8 && offsetof(struct pollfd, events) == 
 
 struct settings { char path[108]; int dumpable; char *mutable_argument; char *mutable_environment; };
 
+static int exec_duplicate_environment(char **argv) {
+    extern char **environ;
+    const char *key = getenv("LINUX_IDENTITY_DUP_ENV_KEY");
+    if (!key)
+        return 0;
+    const char *value = getenv("LINUX_IDENTITY_DUP_ENV_VALUE");
+    size_t key_length = strlen(key);
+    if (!value || !key_length || key_length > 128 || strchr(key, '=') || strlen(value) > 1024)
+        return 11;
+    size_t count = 0;
+    while (environ[count]) {
+        if (++count >= 4096)
+            return 11;
+    }
+    char **next = calloc(count + 2, sizeof(*next));
+    char *entry = malloc(key_length + strlen(value) + 2);
+    if (!next || !entry) {
+        free(next);
+        free(entry);
+        return 12;
+    }
+    size_t index = 0;
+    for (size_t i = 0; i < count; i++) {
+        if (!strncmp(environ[i], "LINUX_IDENTITY_DUP_ENV_KEY=", sizeof("LINUX_IDENTITY_DUP_ENV_KEY=") - 1) ||
+            !strncmp(environ[i], "LINUX_IDENTITY_DUP_ENV_VALUE=", sizeof("LINUX_IDENTITY_DUP_ENV_VALUE=") - 1))
+            continue;
+        next[index++] = environ[i];
+    }
+    memcpy(entry, key, key_length);
+    entry[key_length] = '=';
+    memcpy(entry + key_length + 1, value, strlen(value) + 1);
+    next[index] = entry;
+    execve("/proc/self/exe", argv, next);
+    free(entry);
+    free(next);
+    return 13;
+}
+
 static void *serve(void *argument) {
     const struct settings *settings = argument;
     if (prctl(PR_SET_DUMPABLE, settings->dumpable) != 0 ||
@@ -54,6 +92,9 @@ static void *serve(void *argument) {
 }
 
 int main(int argc, char **argv) {
+    int result = exec_duplicate_environment(argv);
+    if (result)
+        return result;
     const char *argv_path = getenv("LINUX_IDENTITY_ARGV_SOCKET");
     if (!argv_path && (argc != 4 || (strcmp(argv[2], "0") && strcmp(argv[2], "1"))))
         return 7;

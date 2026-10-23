@@ -105,7 +105,8 @@ def main():
     common = inputs["src/common.rs"].decode("utf-8")
     constants = [next(line for line in common.splitlines()
                       if line.startswith("pub const " + name + ": &str = "))
-                 for name in ("SERVICE_OWNED_SERVER_ARG", "CM_LAUNCH_TOKEN_ENV", "CM_LAUNCH_PARENT_ENV")]
+                 for name in ("SERVICE_OWNED_SERVER_ARG", "CM_LAUNCH_TOKEN_ENV", "CM_LAUNCH_PARENT_ENV",
+                              "SERVICE_OWNED_SERVER_GENERATION_ENV")]
     generated += "mod common { " + "\n".join(constants) + " }\n"
     # The exact metadata bodies use the error and kernel ABI adapters below. Serialization and anyhow's
     # error representation are outside this component; Result/refusal behavior is retained.
@@ -126,6 +127,10 @@ def main():
     generated += child_role
     print(f"LINUX_KERNEL_CHILD_ROLE_SOURCE=sha256={digest(inputs['src/platform/linux.rs'])} "
           f"fragment_sha256={digest(child_role.encode())}", flush=True)
+    child_environment = function(inputs["src/platform/linux.rs"].decode("utf-8"), "service_child_environment_has_generation")
+    generated += child_environment
+    print(f"LINUX_KERNEL_CHILD_ENV_SOURCE=sha256={digest(inputs['src/platform/linux.rs'])} "
+          f"fragment_sha256={digest(child_environment.encode())}", flush=True)
     generated += f'include!("{repo}/scripts/test-linux-service-uid-policy.rs");\n'
     generated += f'include!("{repo}/scripts/test-trusted-executable.rs");\n'
     generated += f'include!("{repo}/scripts/test-linux-process-identity.rs");\n'
@@ -141,7 +146,7 @@ def main():
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=17", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=18", flush=True)
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("LINUX_IDENTITY_")}
     environment["LINUX_IDENTITY_PEER_PROBE"] = str(peer)

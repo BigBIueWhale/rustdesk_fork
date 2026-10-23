@@ -6038,7 +6038,7 @@ elif [ "$MODE" = linux-systemd-notification-tests ]; then
 elif [ "$MODE" = linux-service-uid-tests ]; then
     mapfile -t uid_policy_artifacts < <(
         /usr/bin/grep -Eo \
-            "LINUX_SERVICE_UID_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=17 artifact_sha256=[0-9a-f]{64}" \
+            "LINUX_SERVICE_UID_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=18 artifact_sha256=[0-9a-f]{64}" \
             "$SERIAL_LOG" || true
     )
     [ "${#uid_policy_artifacts[@]}" -eq 1 ] \
@@ -6068,6 +6068,9 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
     require_exact_fixed_receipt \
         'LINUX_KERNEL_CHILD_ROLE=pass cases=8 ordinary=1 empty_name=1 extra_empty=4 wrong_role=2 children=joined' \
         'Linux retained service child exact argument positions'
+    require_exact_fixed_receipt \
+        'LINUX_KERNEL_ENV_DUP=pass duplicate_cases=10 healthy=2 children=12 entries=kernel-observed selected_only=true children_state=joined' \
+        'Linux unique authority environment values'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Linux UID-policy cloud-init completion marker'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = input-lifetime ]; then

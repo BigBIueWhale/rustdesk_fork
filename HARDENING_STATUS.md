@@ -3506,7 +3506,8 @@ full viewer recovery, a CPace handshake run or native execution on other platfor
 **Frame-header capacity — Linux codec/TCP component PASS; installed/platform acceptance OPEN.**
 `a709aa44` removes the speculative payload reserve and its private 256 KiB constant from
 `BytesCodec::decode_head`; header validation, frame caps, wire format and EOF behavior remain
-unchanged. Payload storage grows through the existing reader as bytes arrive. With the same
+unchanged. R-T16 and the transport documentation require header parsing to leave missing payload
+storage unreserved; the existing reader grows it as bytes arrive. With the same
 fixture and pinned dependencies, unchanged-product `ee93ff6a` fails the capacity test in
 16 of 18 header/partial-payload cases; the correction passes all 18, including repeated waits
 and truncated EOF refusal. All 34 component tests pass in 0.33 seconds (97 seconds including

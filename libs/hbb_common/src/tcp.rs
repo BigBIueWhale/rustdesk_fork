@@ -157,12 +157,9 @@ impl Encoder<Bytes> for SecretboxCodec {
 /// before `next` yields plaintext. The protobuf decoder (`connection.rs`) parses only that
 /// authenticated plaintext. A partial frame does not invoke the cipher; a complete authentication
 /// failure poisons the stream. No application parse runs on a partial frame, and no `.await` sits
-/// between a frame leaving the read buffer and the secretbox `open`. The frame-length cap
-/// (`max_packet_length`, R-S7) and the speculative-allocation cap
-/// (`MAX_PREALLOCATED_PAYLOAD_LEN`, decoupled from the declared length) are
-/// enforced at the framing layer *before* reassembly completes, so an
-/// attacker-advertised huge length is rejected — and its allocation bounded —
-/// before any payload is buffered.
+/// between a frame leaving the read buffer and the secretbox `open`. The framing codec checks
+/// `max_packet_length` (R-S7) before consuming the header and does not reserve storage for missing
+/// payload bytes. The retained input reader grows its buffer as more bytes arrive.
 ///
 /// The same `Framed` owner preserves partial input across cancelled pending reads; cancellation
 /// does not imply that no socket bytes were read. The documented frame-preservation contract and
@@ -787,9 +784,8 @@ impl FramedStream {
         };
         // R-A5: a keyed session stream MUST carry a BOUNDED frame cap before any keyed byte flows.
         // The handshake (cpace.rs) sets MAX_SESSION_PACKET before handing the keys here, so the cap
-        // is never the BytesCodec `usize::MAX` default at this choke-point. Assert it fail-closed —
-        // an unbounded keyed read would be a speculative-allocation DoS (R-S7), and the assertion is
-        // what R-A5 mandates ("max_packet_length is set, not usize::MAX, on every connection").
+        // is never the BytesCodec `usize::MAX` default here. Enforce R-A5's bounded-frame invariant
+        // before either the keyed reader or writer can accept a frame.
         assert!(
             framed.codec().max_packet_length() != usize::MAX,
             "R-A5: keyed stream has an unbounded frame cap (usize::MAX) — the handshake must set MAX_SESSION_PACKET first"

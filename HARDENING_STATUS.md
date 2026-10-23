@@ -3901,15 +3901,25 @@ ceiling, 6 GiB host headroom and 1 GiB overhead. Runtime and RAM roots retire.
 native results and cleanup; earlier profile provenance remains in
 `file-block-profile-efee13e6.json`.
 
-`36dd7a57` also reserves the shared compressor's output fallibly before writing
-through the pinned zstd buffer API. Its context, level, format and callers remain
-unchanged. At unchanged-product preparation `fa877156`, the extended allocation
-regression aborts its native child on a refused 64-byte compressed-output buffer;
-the seven other cases pass. The identical eight-case shard passes after correction
-in 73 reported VM seconds: three compression refusals return `OutOfMemory`, each
-same-context retry matches upstream bytes for empty, one-byte and 128-KiB inputs,
-and the existing three decoder refusals/retries still pass. Source/artifacts, exact
-native outcomes and joined cleanup are retained in `compression-allocation-cc6460e0.json`.
+`4d39d8bd` keeps the shared compressor's fallible worst-case reservation and
+returns payload-sized storage when encoded length differs from capacity. The
+packing allocation also returns `OutOfMemory`; context, level, API, wire bytes
+and caller propagation are unchanged. Earlier initial-reservation refusal
+evidence remains in `compression-allocation-cc6460e0.json`.
+
+The same twelve-test fixture passes ten tests and fails the two new storage/
+packing cases at unchanged-product `2a04266f`. A 4-MiB repeated input produces
+147 wire bytes but retains capacity 4,210,688; four empty/one-byte/128-KiB repeated
+or deterministic mixed controls also retain excess capacity. Corrected outputs
+have capacity equal to wire length in all five cases, match upstream bytes and
+decode exactly. Three forced packing refusals return `OutOfMemory`, preserve
+input and allow the same context's next call to return exact compact output.
+All twelve tests pass in 0.08s (78s outer); 26 child invocations, including the
+existing two allocation probes, join, and both A/B RAM/run roots retire.
+Evidence: `compressed-output-storage-8c3876a9.json`. This adds an allocation
+and copy; full caller/throughput/resource acceptance remains OPEN. Returned
+vector capacity is not allocator usable size or RSS. Complete cursor/clipboard/
+file/terminal, other-platform/installed and release evidence remain required.
 
 `cc88308c` replaces the shared receive decoder's Rust 1.75 `read_to_end` growth
 with 8-KiB stack reads and fallible output reservation before each append;

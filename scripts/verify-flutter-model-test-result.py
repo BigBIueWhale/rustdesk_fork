@@ -710,6 +710,10 @@ FILE_NAVIGATION_SUITES = {
     },
 }
 PEER_DATA_TESTS = {
+    "chat send refuses missing client before bridge dispatch",
+    "chat send refuses reused id before bridge dispatch",
+    "chat send refuses invalid generation before bridge dispatch",
+    "chat send refuses disconnected client before bridge dispatch",
     "chat panel completes repeated open and close transitions",
     "chat panel preserves closed state and retries show failure",
     "chat panel preserves closed state and retries resize failure",

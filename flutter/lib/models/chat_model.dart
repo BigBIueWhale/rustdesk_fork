@@ -466,12 +466,20 @@ class ChatModel with ChangeNotifier {
     if (trimmedText.isEmpty) {
       return;
     }
+    final client = _currentKey.isOut
+        ? null
+        : parent.target?.serverModel.clients
+            .firstWhereOrNull((client) => client.id == _currentKey.connId);
+    if (!_currentKey.isOut && client == null) return;
     message.text = trimmedText;
     insertMessage(_currentKey, message);
     if (_currentKey.connId == clientModeID && parent.target != null) {
       bind.sessionSendChat(sessionId: sessionId, text: message.text);
-    } else {
-      bind.cmSendChat(connId: _currentKey.connId, msg: message.text);
+    } else if (client != null) {
+      bind.cmSendChat(
+          connId: client.id,
+          registryGeneration: client.registryGeneration,
+          msg: message.text);
     }
 
     notifyListeners();

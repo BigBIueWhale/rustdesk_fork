@@ -1434,7 +1434,10 @@ class RustdeskImpl {
   }
 
   Future<void> cmSendChat(
-      {required int connId, required String msg, dynamic hint}) {
+      {required int connId,
+      required int registryGeneration,
+      required String msg,
+      dynamic hint}) {
     throw UnimplementedError("cmSendChat");
   }
 

@@ -1923,9 +1923,9 @@ pub fn main_create_shortcut(_id: String) {
     create_shortcut(_id);
 }
 
-pub fn cm_send_chat(conn_id: i32, msg: String) {
+pub fn cm_send_chat(conn_id: i32, registry_generation: i64, msg: String) {
     #[cfg(not(any(target_os = "ios")))]
-    crate::ui_cm_interface::send_chat(conn_id, msg);
+    crate::ui_cm_interface::send_chat(conn_id, registry_generation, msg);
 }
 
 pub fn cm_close_connection(conn_id: i32) {

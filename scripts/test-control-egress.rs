@@ -7,6 +7,9 @@ pub use lazy_static;
 pub use anyhow::{self, bail};
 pub use libc;
 
+include!(env!("CM_CHAT_LOG"));
+include!(env!("CM_CHAT_FFI"));
+
 #[path = "test-cursor-echo.rs"]
 mod cursor_echo;
 
@@ -66,8 +69,15 @@ mod config {
 }
 include!(env!("CM_PROTO_GETTER"));
 mod ui_cm_interface {
-    use crate::{config::keys::OPTION_FILE_TRANSFER_MAX_FILES, fs};
+    use crate::{config::keys::OPTION_FILE_TRANSFER_MAX_FILES, fs, ipc, CmEgressSender};
+    use serde_derive::Serialize;
+    use std::{collections::HashMap, fmt, sync::RwLock};
     include!(env!("CM_PROTO_COUNT"));
+    include!(env!("CM_CHAT_REGISTRY"));
+    include!(env!("CM_CHAT_GLOBALS"));
+    include!(env!("CM_CHAT_SENDER"));
+    include!(env!("CM_CHAT_SEND"));
+    include!(env!("CM_CHAT_TESTS"));
 }
 include!(env!("CM_PROTO_CONVERSION"));
 include!(env!("CM_READ_BLOCK_SOURCE"));

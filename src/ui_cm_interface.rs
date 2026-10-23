@@ -1315,7 +1315,7 @@ pub fn remove(id: i32) {
 // server mode send chat to peer
 #[inline]
 #[cfg(not(any(target_os = "ios")))]
-pub fn send_chat(id: i32, text: String) {
+pub fn send_chat(id: i32, _registry_generation: i64, text: String) {
     if let Some(tx) = cm_egress_sender(id) {
         allow_err!(tx.send(Data::ChatMessage { text }));
     }

@@ -254,6 +254,50 @@ void main() {
     peers.dispose();
   });
 
+  for (final caseName in [
+    'missing client',
+    'reused id',
+    'invalid generation',
+    'disconnected client'
+  ]) {
+    test('chat send refuses $caseName before bridge dispatch', () {
+      final delivery = _ChatDelivery();
+      final key = MessageKey('incoming-peer', 7);
+      final prior = ChatMessage(
+        user: ChatUser(id: 'incoming-peer'),
+        text: 'Retained history',
+        createdAt: DateTime.utc(2026),
+      );
+      delivery.model.insertMessage(key, prior);
+      final body = delivery.model.messages[key]!;
+      if (caseName == 'missing client') {
+        delivery.owner.serverModel.clients.clear();
+      } else if (caseName == 'reused id') {
+        delivery.owner.serverModel.clients[0] = _incomingClient(20)
+          ..peerId = 'replacement-peer';
+      } else if (caseName == 'invalid generation') {
+        delivery.owner.serverModel.clients[0].registryGeneration = 0;
+      } else {
+        delivery.owner.serverModel.clients[0].disconnected = true;
+      }
+      final message = ChatMessage(
+        user: ChatUser(id: 'local'),
+        text: '  Unsent draft  ',
+        createdAt: DateTime.utc(2026),
+      );
+
+      expect(() => delivery.model.send(message), returnsNormally);
+
+      expect(message.text, '  Unsent draft  ');
+      expect(delivery.model.messages[key], same(body));
+      expect(body.chatMessages, [prior]);
+      expect(delivery.model.currentKey, same(key));
+      expect(delivery.notifications, 0);
+      expect(delivery.model.inputNode.hasFocus, isFalse);
+      expect(delivery.windowCalls, isEmpty);
+    });
+  }
+
   test('chat panel completes repeated open and close transitions', () async {
     final panel = _ChatPanel();
     for (var cycle = 0; cycle < 3; cycle++) {

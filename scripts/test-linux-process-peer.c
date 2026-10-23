@@ -14,7 +14,7 @@ _Static_assert(SYS_pidfd_open == 434, "fixture requires the Linux x86_64 pidfd A
 _Static_assert(sizeof(struct pollfd) == 8 && offsetof(struct pollfd, events) == 4 &&
                offsetof(struct pollfd, revents) == 6 && POLLIN == 1, "poll ABI differs");
 
-struct settings { char path[108]; int dumpable; char *mutable_argument; };
+struct settings { char path[108]; int dumpable; char *mutable_argument; char *mutable_environment; };
 
 static void *serve(void *argument) {
     const struct settings *settings = argument;
@@ -35,15 +35,17 @@ static void *serve(void *argument) {
             _exit(5);
         if (command == 'x')
             break;
-        if (command != 'm' || !settings->mutable_argument)
+        char *mutable = command == 'm' ? settings->mutable_argument :
+                        command == 'e' ? settings->mutable_environment : NULL;
+        if (!mutable)
             _exit(5);
-        unsigned char *argument = (unsigned char *)settings->mutable_argument;
+        unsigned char *argument = (unsigned char *)mutable;
         while (*argument && *argument != 0x80)
             argument++;
         if (*argument != 0x80)
             _exit(5);
         *argument = 0x81;
-        if (write(fd, "m", 1) != 1)
+        if (write(fd, &command, 1) != 1)
             _exit(6);
     }
     if (close(fd) != 0)
@@ -63,6 +65,8 @@ int main(int argc, char **argv) {
     memcpy(settings.path, path, length + 1);
     settings.dumpable = argv_path ? 1 : argv[2][0] - '0';
     settings.mutable_argument = argv_path ? argv[0] : NULL;
+    const char *environment_key = getenv("LINUX_IDENTITY_ENV_KEY");
+    settings.mutable_environment = environment_key ? getenv(environment_key) : NULL;
     if (argv_path) {
         serve(&settings);
         return 0;

@@ -29,6 +29,11 @@ mod linux_process_identity_tests {
         }
 
         fn spawn_with_argv(dumpable: u32, leader_exit: bool, argv: Option<&[OsString]>) -> Self {
+            Self::spawn_with_environment(dumpable, leader_exit, argv, &[])
+        }
+
+        fn spawn_with_environment(dumpable: u32, leader_exit: bool, argv: Option<&[OsString]>,
+                                  environment: &[(&str, OsString)]) -> Self {
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let root = std::env::temp_dir().join(format!("linux-identity-{}-{}",
                 std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
@@ -36,6 +41,9 @@ mod linux_process_identity_tests {
             let listener = UnixListener::bind(root.join("peer")).unwrap();
             listener.set_nonblocking(true).unwrap();
             let mut command = Command::new(std::env::var_os("LINUX_IDENTITY_PEER_PROBE").unwrap());
+            command.env_remove(crate::common::CM_LAUNCH_TOKEN_ENV)
+                .env_remove(crate::common::CM_LAUNCH_PARENT_ENV)
+                .envs(environment.iter().map(|(key, value)| (*key, value)));
             if let Some(argv) = argv {
                 command.arg0(&argv[0]).args(&argv[1..])
                     .env("LINUX_IDENTITY_ARGV_SOCKET", root.join("peer"));
@@ -93,12 +101,16 @@ mod linux_process_identity_tests {
         }
 
         fn mutate_argument(&mut self) {
-            self.child.as_mut().unwrap().stdin.as_mut().unwrap().write_all(b"m").unwrap();
+            self.mutate(b'm');
+        }
+
+        fn mutate(&mut self, command: u8) {
+            self.child.as_mut().unwrap().stdin.as_mut().unwrap().write_all(&[command]).unwrap();
             let peer = self.peer.as_mut().unwrap();
             peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
             let mut acknowledgement = [0];
             peer.read_exact(&mut acknowledgement).unwrap();
-            assert_eq!(acknowledgement, *b"m");
+            assert_eq!(acknowledgement, [command]);
         }
 
         fn join(&mut self) {
@@ -227,6 +239,75 @@ mod linux_process_identity_tests {
         }
         assert_eq!(failures, 0, "argv identity must preserve raw bytes and detect same-process changes");
         println!("LINUX_KERNEL_ARGV_BYTES=pass layouts=7 children=14 mutations=7 snapshots=21 invalid_bytes=preserved unicode=distinct children_state=joined");
+    }
+
+    #[test]
+    fn kernel_role_environment_rejects_invalid_utf8_without_rewriting_values() {
+        let key = crate::common::CM_LAUNCH_TOKEN_ENV;
+        let raw_value = |pid| {
+            let raw = fs::read(format!("/proc/{pid}/environ")).unwrap();
+            let prefix = format!("{key}=");
+            let values: Vec<_> = raw.split(|byte| *byte == 0)
+                .filter_map(|entry| entry.strip_prefix(prefix.as_bytes())).collect();
+            assert!(values.len() <= 1);
+            values.first().map(|value| value.to_vec())
+        };
+        let mut invalid = Owner::spawn_with_environment(1, false, None, &[
+            (key, OsString::from_vec(b"role-\x80".to_vec())),
+            ("LINUX_IDENTITY_ENV_KEY", OsString::from(key)),
+        ]);
+        let principal = linux_kernel_process_identity_by_pid(invalid.pid()).unwrap();
+        assert_eq!(principal.uid, invalid.credentials().uid);
+        let argv = linux_proc_cmdline_args(invalid.pid()).unwrap();
+        assert_eq!(raw_value(invalid.pid()), Some(b"role-\x80".to_vec()));
+        let first = linux_proc_environ_value(invalid.pid(), key);
+        let first_snapshot = linux_process_identity_fields_by_pid(invalid.pid());
+        invalid.mutate(b'e');
+        assert_eq!(raw_value(invalid.pid()), Some(b"role-\x81".to_vec()));
+        let second = linux_proc_environ_value(invalid.pid(), key);
+        let second_snapshot = linux_process_identity_fields_by_pid(invalid.pid());
+        assert_eq!(linux_kernel_process_identity_by_pid(invalid.pid()).unwrap(), principal);
+        assert_eq!(linux_proc_cmdline_args(invalid.pid()).unwrap(), argv);
+        let correct = first.is_err() && second.is_err()
+            && first_snapshot.is_err() && second_snapshot.is_err();
+        let aliases = matches!((&first, &second), (Ok(a), Ok(b)) if a == b);
+        println!("LINUX_KERNEL_ENV_CASE=observed kind=invalid-mutation first_refused={} second_refused={} snapshots_refused={} rewritten_values_alias={aliases} kernel_changed=true principal=preserved correct={correct}",
+            first.is_err(), second.is_err(), first_snapshot.is_err() && second_snapshot.is_err());
+        invalid.request_exit();
+        invalid.join();
+        let mut failures = usize::from(!correct);
+        let ascii = format!("{}=", "A".repeat(43));
+        let unicode = "role-\u{fffd}".to_owned();
+        for (kind, value) in [
+            ("ascii", Some(ascii.as_str())), ("unicode", Some(unicode.as_str())),
+            ("empty", Some("")), ("missing", None), ("unrelated-invalid", Some(ascii.as_str())),
+        ] {
+            let mut environment = Vec::new();
+            if let Some(value) = value { environment.push((key, OsString::from(value))); }
+            if kind == "unrelated-invalid" {
+                environment.push(("LINUX_IDENTITY_OTHER_RAW", OsString::from_vec(vec![0xff])));
+            }
+            let mut control = Owner::spawn_with_environment(1, false, None, &environment);
+            assert_eq!(control.credentials().uid, principal.uid);
+            assert_eq!(raw_value(control.pid()), value.map(|value| value.as_bytes().to_vec()));
+            if kind == "unrelated-invalid" {
+                let raw = fs::read(format!("/proc/{}/environ", control.pid())).unwrap();
+                assert!(raw.split(|byte| *byte == 0).any(|entry| entry == b"LINUX_IDENTITY_OTHER_RAW=\xff"));
+            }
+            let actual = linux_proc_environ_value(control.pid(), key).unwrap();
+            let snapshot = linux_process_identity_fields_by_pid(control.pid()).unwrap();
+            let correct = actual == value.unwrap_or_default() && snapshot.cm_launch_token == actual;
+            if kind == "unicode" {
+                assert_ne!(actual.as_bytes(), b"role-\x80");
+                assert_ne!(actual.as_bytes(), b"role-\x81");
+            }
+            println!("LINUX_KERNEL_ENV_CASE=observed kind={kind} exact_value={} snapshot=accepted correct={correct}", actual == value.unwrap_or_default());
+            control.request_exit();
+            control.join();
+            failures += usize::from(!correct);
+        }
+        assert_eq!(failures, 0, "role environment values must be validated before entering identity snapshots");
+        println!("LINUX_KERNEL_ENV=pass invalid_reads=2 snapshots_refused=2 controls=5 children=6 mutation=kernel-observed children_state=joined");
     }
 
     #[test]

@@ -137,7 +137,7 @@ def main():
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=15", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=16", flush=True)
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("LINUX_IDENTITY_")}
     environment["LINUX_IDENTITY_PEER_PROBE"] = str(peer)

@@ -62,7 +62,7 @@ class _ChatOwner implements FFI {
   @override
   final ffiModel = _ChatPeer();
   @override
-  final serverModel = _ChatServer();
+  final _ChatServer serverModel = _ChatServer();
 
   @override
   bool isCurrentSessionOwner(UuidValue session, UuidValue owner) =>

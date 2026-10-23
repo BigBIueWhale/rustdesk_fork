@@ -8172,7 +8172,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   The local snapshot's unused serialization derives are deleted; the serialized
   kernel identity and IPC wire schemas are unchanged. At API preparation
   `3d5f8875`, fourteen controls pass but all14 new observations fail: seven live
-  C children change argv0 from byte80 to81 without changing PID, UID, start time
+  C children change argv0 from `0x80` to `0x81` without changing PID, UID, start time
   or other snapshot fields, yet the lossy snapshot stays equal and aliases a
   genuine Unicode replacement character. The identical fixture passes all15
   component tests after correction, including35 argument-position cases,

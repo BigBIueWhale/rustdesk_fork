@@ -60,7 +60,7 @@ def storage_limits(profile, memory_mib):
         # Retained-app, single-lifecycle replay: one GiB beside the bounded overlay.
         return 6 * GIB, 5 * GIB
     if profile in ('linux-resolution-lifetime', 'fusermount-process', 'linux-service-uid-tests',
-                   'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress'):
+                   'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
         return 6 * GIB, 4 * GIB
     if profile == 'xrandr-acquisition':
@@ -427,7 +427,7 @@ def main():
                                  'flutter-credential-dialog', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'x11-focus', 'linux-parent-libtest',
                                  'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
-                                 'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress',
+                                 'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
                                  'android-storage-key', 'linux-flutter-suspend'),
                         default='standard')

@@ -74,6 +74,8 @@ elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:control
     readonly VM_STORAGE_PROFILE=control-egress
 elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:file-block ]; then
     readonly VM_STORAGE_PROFILE=file-block
+elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:clipboard-response ]; then
+    readonly VM_STORAGE_PROFILE=clipboard-response
 else
     case "${MODE:-}" in
         android-emulator-app|android-emulator-boot|android-emulator-runtime|\

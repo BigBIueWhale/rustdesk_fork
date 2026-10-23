@@ -967,6 +967,7 @@ for profile, memory, scratch, overlay in (
         ('audio-mailbox', 2048, 6, 4),
         ('file-block', 2048, 6, 4),
         ('control-egress', 2048, 6, 4),
+        ('clipboard-response', 2048, 6, 4),
         ('xrandr-acquisition', 4096, 6, 4),
         ('authority-smoke', 2048, 4, 1),
         ('ledger-token-count', 2048, 4, 1)):
@@ -990,7 +991,8 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('audio-buffer', 2047), ('audio-buffer', 4096),
                         ('audio-mailbox', 2047), ('audio-mailbox', 4096),
                         ('file-block', 2047), ('file-block', 4096),
-                        ('control-egress', 2047), ('control-egress', 4096)):
+                        ('control-egress', 2047), ('control-egress', 4096),
+                        ('clipboard-response', 2047), ('clipboard-response', 4096)):
     try:
         limits(profile, memory)
     except ValueError:
@@ -999,7 +1001,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=22 refusals=38 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=23 refusals=40 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 cli = subprocess.run([sys.executable, '-B', '-I', '-S', sys.argv[1], 'preflight',
                       '--memory-mib', '10240', '--storage-profile', 'linux-flutter-suspend'],
                      capture_output=True, text=True, timeout=5, check=False)
@@ -1023,6 +1025,7 @@ special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'a
 cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]
 cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'standard'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'video-vpx'}, 'linux-parent-libtest'),
+              ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'clipboard-response'}, 'clipboard-response'),
               ('hbb-common-fs', {'HBB_FUSE_READ_TESTS': '1'}, 'standard'),
               ('flutter-peer-presentation', {'FLUTTER_APP_REPLAY': '1'}, 'linux-flutter-replay'),
               ('flutter-peer-presentation', {'FLUTTER_APP_REPLAY': '1',
@@ -1057,9 +1060,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (41, 5):
+if (controls, refusals) != (42, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=36 controls=41 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=36 controls=42 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0

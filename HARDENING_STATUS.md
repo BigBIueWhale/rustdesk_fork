@@ -3554,6 +3554,19 @@ RAM workspaces retire. Source, artifacts and receipts are retained in
 `clipboard-prepare-allocation-6770f25a.json`; earlier format/assembly provenance remains
 in `cm-clipboard-format-accepted-828e1224.json`.
 
+`a8ce5150` reserves the restored clipboard list fallibly before splitting payloads,
+replacing infallible iterator collection. It preserves zero-copy raw storage, validation,
+fields and frame ordering. With the same 36-test fixture, unchanged-product `3aa2ce49`
+aborts on a refused output allocation for inline, raw, mixed and sixteen-item responses;
+the empty response needs no allocation. The correction returns `OutOfMemory` for all four
+nonempty cases, and exact healthy retries preserve payload pointers and the following
+coalesced frame where raw input is present. All 36 tests pass in 0.34s (94s outer),
+including the prior producer refusals; twelve child invocations, including two positive
+abort probes, join. Both A/B VM and RAM roots retire. Evidence:
+`clipboard-restore-allocation-5c7d4fbb.json`. This covers production-codec raw frames and
+the empty-raw branch; decoder/serde allocations, arbitrary unshared buffers and whole-
+process memory pressure are outside this result.
+
 This executes production response preparation/assembly on Linux with targeted Rust
 allocator refusals. It does not exercise whole-process memory pressure or the CM handler.
 Windows handler/parent compilation, real

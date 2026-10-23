@@ -23,6 +23,7 @@ INPUTS = (
     "libs/hbb_common/build.rs", "libs/hbb_common/src/protos/mod.rs",
     "libs/hbb_common/protos/message.proto", "libs/hbb_common/protos/rendezvous.proto",
     "scripts/test-control-egress.rs", "scripts/run-control-egress-tests.py",
+    "libs/hbb_common/src/fs.rs",
 )
 
 
@@ -95,6 +96,15 @@ def main():
     snippets["cm-directory.rs"] = between(
         cm, '#[cfg(not(any(target_os = "ios")))]\nfn cm_file_entry_type(',
         'lazy_static::lazy_static! {\n    static ref CLIENTS:')
+    snippets["cm-directory-size.rs"] = (
+        "fn cm_directory_size(directory: FileDirectory) -> Result<FileDirectory, String> {\n"
+        + between(connection, "        let serialized_len = directory",
+                  "\n    fn active_cm_write_generation("))
+    enum_limits = re.findall(r"^pub const MAX_FILE_ENUM_SERIALIZED_BYTES: usize = [0-9 *]+;\n",
+                             inputs["libs/hbb_common/src/fs.rs"].decode("utf-8"), re.MULTILINE)
+    if len(enum_limits) != 1:
+        raise ValueError("CM directory serialization limit is ambiguous")
+    snippets["cm-directory-enum-limit.rs"] = enum_limits[0]
     snippets["cm-tests.rs"] = between(
         cm, '    #[tokio::test(flavor = "current_thread")]\n    async fn r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive()',
         '    #[tokio::test(flavor = "current_thread")]\n    async fn r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner()')
@@ -133,7 +143,9 @@ def main():
         for variable, name in (("CM_EGRESS_SOURCE", "cm-queue.rs"), ("CM_EGRESS_TESTS", "cm-tests.rs"),
                                ("CM_IPC_TYPES", "cm-ipc.rs"), ("CM_ENIGO_TYPES", "enigo-types.rs"),
                                ("CM_EGRESS_LIMIT", "cm-limits.rs"),
-                               ("CM_DIRECTORY_SOURCE", "cm-directory.rs")):
+                               ("CM_DIRECTORY_SOURCE", "cm-directory.rs"),
+                               ("CM_DIRECTORY_SIZE_SOURCE", "cm-directory-size.rs"),
+                               ("CM_DIRECTORY_ENUM_LIMIT", "cm-directory-enum-limit.rs")):
             os.environ[variable] = str(fixture / name)
 
         roots = [p for p in packages if p["name"] == "rustdesk" and "source" not in p]
@@ -201,13 +213,13 @@ def main():
         artifact_sha = digest(artifact.read_bytes())
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=32", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=34", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=32 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=34 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -217,7 +229,7 @@ def main():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=32 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=34 unchanged=before-after",
               flush=True)
 
 

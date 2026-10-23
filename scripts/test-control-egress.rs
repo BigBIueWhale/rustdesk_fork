@@ -45,6 +45,10 @@ pub mod ipc {
 use ipc::Data;
 include!(env!("CM_EGRESS_SOURCE"));
 include!(env!("CM_DIRECTORY_SOURCE"));
+mod fs {
+    include!(env!("CM_DIRECTORY_ENUM_LIMIT"));
+}
+include!(env!("CM_DIRECTORY_SIZE_SOURCE"));
 
 mod cm_egress_tests {
     use super::*;
@@ -59,9 +63,17 @@ thread_local! {
     static CM_BACKING_RETIRED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CM_DIRECTORY_TARGET: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
     static CM_BATCH_REFUSAL: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    static CM_SIZE_ALLOCATION: std::cell::Cell<(usize, usize, usize, usize, bool)> = const { std::cell::Cell::new((0, 0, 0, 0, false)) };
 }
 
 fn refuse_queue_allocation(size: usize) -> bool {
+    if CM_SIZE_ALLOCATION.try_with(|state| {
+        let (target, matching, total, largest, deny) = state.get();
+        if target == 0 { return false; }
+        let matches = target == size;
+        state.set((target, matching + usize::from(matches), total + 1, largest.max(size), deny));
+        matches && deny
+    }).unwrap_or(false) { return true; }
     if CM_BATCH_REFUSAL.try_with(|state| {
         if state.get() == Some(0) {
             state.set(Some(size));
@@ -354,6 +366,106 @@ fn cm_directory_batch_allocation_refusal_reports_error_and_retries() {
     }
     assert_eq!(passed, 3, "directory batch refusal must report an error without aborting its process");
     println!("CM_BATCH_ALLOC=pass refusals=3 retries=exact queue_identity=preserved probe=SIGABRT children=joined");
+}
+
+fn cm_size_input(wire_bytes: usize) -> FileDirectory {
+    let mut directory = FileDirectory::new();
+    if wire_bytes != 0 {
+        let overhead = if wire_bytes < 128 { 2 } else if wire_bytes < 16_384 { 3 }
+            else if wire_bytes < 2_097_152 { 4 } else { 5 };
+        directory.path = "x".repeat(wire_bytes - overhead);
+    }
+    assert_eq!(directory.compute_size(), wire_bytes as u64);
+    directory
+}
+
+fn observe_cm_size<T>(wire_bytes: usize, deny: bool, action: impl FnOnce() -> T) -> (T, usize, usize, usize) {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) { CM_SIZE_ALLOCATION.with(|state| state.set((0, 0, 0, 0, false))); }
+    }
+    CM_SIZE_ALLOCATION.with(|state| {
+        assert_eq!(state.get(), (0, 0, 0, 0, false));
+        state.set((wire_bytes.max(1), 0, 0, 0, deny));
+    });
+    let reset = Reset;
+    let result = action();
+    let (_, matching, total, largest, _) = CM_SIZE_ALLOCATION.with(|state| state.get());
+    drop(reset);
+    (result, matching, total, largest)
+}
+
+fn assert_cm_size_result(result: Result<FileDirectory, String>, expected: &FileDirectory, wire_bytes: usize, path_pointer: *const u8) {
+    if wire_bytes <= fs::MAX_FILE_ENUM_SERIALIZED_BYTES {
+        let actual = result.unwrap();
+        assert_eq!(&actual, expected);
+        assert_eq!(actual.path.as_ptr(), path_pointer);
+        assert_eq!(actual.write_to_bytes().unwrap(), expected.write_to_bytes().unwrap());
+    } else {
+        assert_eq!(result.unwrap_err(), format!("connection manager directory exceeds {} serialized bytes", fs::MAX_FILE_ENUM_SERIALIZED_BYTES));
+    }
+}
+
+#[test]
+fn cm_directory_size_matches_wire_and_preserves_limit_and_fields() {
+    let limit = fs::MAX_FILE_ENUM_SERIALIZED_BYTES;
+    for wire_bytes in [0, 2048, limit - 1, limit, limit + 1] {
+        let directory = cm_size_input(wire_bytes);
+        assert_eq!(directory.write_to_bytes().unwrap().len(), wire_bytes);
+        let expected = directory.clone();
+        let pointer = directory.path.as_ptr();
+        let (result, matching, total, largest) = observe_cm_size(wire_bytes, false, || cm_directory_size(directory));
+        assert_cm_size_result(result, &expected, wire_bytes, pointer);
+        println!("CM_SIZE_CONTROL_CASE=observed bytes={wire_bytes} copy_allocations={matching} allocations={total} largest={largest} result={} wire=exact owner=preserved", if wire_bytes <= limit { "accepted" } else { "refused" });
+    }
+    let directory = cm_directory_input(5);
+    let wire_bytes = directory.write_to_bytes().unwrap().len();
+    let expected = directory.clone();
+    let pointer = directory.path.as_ptr();
+    assert_cm_size_result(cm_directory_size(directory), &expected, wire_bytes, pointer);
+    println!("CM_SIZE_CONTROL=pass boundaries=5 nested_entries=5 fields=exact wire=exact owner=preserved");
+}
+
+#[test]
+fn cm_directory_size_does_not_allocate_a_serialized_copy() {
+    use std::os::unix::process::ExitStatusExt;
+    if let Ok(case) = std::env::var("CM_SIZE_ALLOC_CASE") {
+        if case == "probe" {
+            observe_cm_size(31, true, || std::hint::black_box(Vec::<u8>::with_capacity(31)));
+            panic!("directory size allocation-refusal probe returned");
+        }
+        let wire_bytes: usize = case.parse().unwrap();
+        let limit = fs::MAX_FILE_ENUM_SERIALIZED_BYTES;
+        assert!([2048, limit - 1, limit, limit + 1].contains(&wire_bytes));
+        let directory = cm_size_input(wire_bytes);
+        let expected = directory.clone();
+        let pointer = directory.path.as_ptr();
+        let (result, matching, total, largest) = observe_cm_size(wire_bytes, true, || cm_directory_size(directory));
+        assert_eq!(matching, 0, "size guard allocated an encoded directory copy");
+        assert!(largest < 1024);
+        if wire_bytes <= limit { assert_eq!(total, 0); }
+        assert_cm_size_result(result, &expected, wire_bytes, pointer);
+        println!("CM_SIZE_ALLOC_CASE=pass bytes={wire_bytes} copy_allocations=0 allocations={total} largest={largest} result={} wire=exact owner=preserved", if wire_bytes <= limit { "accepted" } else { "refused" });
+        return;
+    }
+    let run = |case: &str| run_allocation_child(
+        "cm_directory_size_does_not_allocate_a_serialized_copy", "CM_SIZE_ALLOC_CASE", case);
+    let probe = run("probe");
+    assert_eq!(probe.status.signal(), Some(6));
+    assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+    println!("CM_SIZE_ALLOC_PROBE=observed bytes=31 signal=6");
+    let mut passed = 0;
+    for bytes in [2048, fs::MAX_FILE_ENUM_SERIALIZED_BYTES - 1, fs::MAX_FILE_ENUM_SERIALIZED_BYTES, fs::MAX_FILE_ENUM_SERIALIZED_BYTES + 1] {
+        let output = run(&bytes.to_string());
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if line.starts_with("CM_SIZE_ALLOC_CASE=") { println!("{line}"); }
+        }
+        print!("{}", String::from_utf8_lossy(&output.stderr));
+        println!("CM_SIZE_ALLOC_CHILD=observed bytes={bytes} success={} signal={:?}", output.status.success(), output.status.signal());
+        passed += usize::from(output.status.success());
+    }
+    assert_eq!(passed, 4, "size admission must succeed without allocating an encoded copy");
+    println!("CM_SIZE_ALLOC=pass cases=4 copy_allocations=0 wire=exact owner=preserved probe=SIGABRT children=joined");
 }
 
 fn queue_allocation_case(case: &str) {

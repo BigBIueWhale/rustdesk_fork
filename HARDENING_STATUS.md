@@ -13193,6 +13193,30 @@ Already-started native window effects, cancellation/drain, message ordering/reso
 desktop/mobile event and lifecycle integration, installed behavior and R-S0/R-F5/release
 acceptance remain OPEN. Every user park remains unchanged.
 
+**CM side-page failure recovery — model correction verified; native integration OPEN.**
+`bd906c6f` makes `ChatModel.toggleCMSidePage` one serialized transition:
+show, size and position must complete before its visibility flag, opening unread
+reset, focus request or notification commits. A `finally` releases the busy latch
+while propagating failures, allowing an explicit retry. Selected-tab/client lookup
+uses the model's owning server instead of combining global selection with parent
+client state. The duplicated open/close native-call branches are removed; existing
+dimensions, alignment and concurrent-toggle refusal remain.
+At owning-server lookup preparation `a0acfd8a`, all eight new failure/pending
+assertions fail while the repeated healthy transition control and twenty prior
+peer/chat cases pass. With only the transition method changed, the identical
+twenty-nine-case production Dart cohort and three parser controls pass. Cases cover
+show, resize and positioning errors in both directions, unchanged visibility/unread/
+focus/notification state before completion, exact retry calls and layouts, overlapping
+requests and three healthy open/close cycles. The prior twenty test bodies and
+fixtures are byte-identical. One earlier run stopped at the pinned formatter and
+executed no behavior. Evidence: `.harness-state/verifier-vm/chat-panel-retry-f742b8c5.json`.
+These tests execute the production model and vendored window-manager Dart methods
+with controlled window/screen method-channel replies and recorded focus requests.
+Native geometry or partial effects after failure, cancellation/owner drain, real
+chat/file UI and peer operation, other-platform/installed behavior and R-S0/R-F5/
+release acceptance remain OPEN. No LPE closure or displayed-lag cause is claimed;
+all user parks remain unchanged.
+
 Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests
 on `6dfedef7` passed eight cases and failed the two live-metadata privacy cases, exposing synthetic

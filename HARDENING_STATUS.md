@@ -12928,6 +12928,11 @@ silence. Contention preserves queued PCM; poison is fatal. The old shared mutabl
 clock, callback sleep, blocking readiness/ring acquisition and temporary output
 vector are absent.
 
+Decoder setup fallibly reserves its existing one-second `f32` PCM capacity before
+native Opus construction. Refusal retires the failed handler without starting
+playback. After dispatch, `new_audio_thread` exits on terminal handler failure;
+receiver destruction closes admission and clears pending work before worker completion.
+
 Each CPAL output attempt owns separate readiness, failure and PCM state. Pending
 failure refuses activation while preserving setup fallback; retired callbacks
 cannot ready or close a successor. Active failure closes the mailbox and wakes
@@ -12945,6 +12950,7 @@ Counts refer to their named historical sources, not fresh current-tree execution
 
 | Surface | Executed evidence and limit | Capsule |
 | --- | --- | --- |
+| Decoder PCM storage and worker failure — `04c07a0f` | With unchanged production code at `19f93281`, 35 controls pass; ten refused PCM allocations abort their child processes, and malformed native Opus leaves its worker parked with admission open. The identical fixture passes all 36 cases after correction: ten supported rate/channel pairs preserve real encoded/decoded PCM, ten storage refusals naturally close/join only the failed worker while existing and fresh workers decode, and a native decode error closes without sender-drop cleanup. All 22 new child processes, including the positive allocation-abort probe, join. The exact format/frame/failure/worker methods execute with the root-locked wrapper and pinned VM's Opus 1.3.1; playback uses a controlled PCM sink. Behavior takes 1.18s, outer run 103s. This is targeted Rust PCM-storage refusal and native codec/worker evidence, not global/C-heap exhaustion, physical output, full-parent or installed acceptance. Stalled playback cancellation remains OPEN/PARKED. | `audio-decoder-storage-9a7b4ddb.json` |
 | Output PCM storage — `451d28c8` | Preparation `ecca736f` preserves the old allocator behind the new constructor API: 22 controls pass, while all four refused-ring cases and all five zero/overflow geometry cases panic; three healthy formats also allocate an unnecessary default ring. The identical 24-case fixture passes after correction: reservation refusal returns `OutOfMemory`, invalid geometry returns `InvalidInput` before ring allocation, another buffer retains its queued samples, and four fresh outputs preserve exact samples/silence with one configured ring each. The 35-case mailbox component also passes and typechecks the complete CPAL setup method against the locked dependency. An initial corrected component pass had a stale outer count label; its raw result is retained separately from the corrected export. This is controlled calling-thread Rust ring-storage refusal, not global exhaustion, Arc/decoder/backend allocation, a physical device or complete target-parent acceptance. | `audio-buffer-allocation-5229777b.json` |
 | Frame-storage refusal — `d6fefa11` | At API preparation `c6dbf459`, 34 controls and six healthy child cases pass; all ten refused-allocation children abort on packet or deque storage, so the new regression fails. The identical 35-case fixture passes after correction. Refusal at empty, growing and full queues returns `ResourceUnavailable`, clears pending format/frames, closes replay admission and leaves a fresh mailbox functional. Six finite-budget healthy cases preserve exact bytes, FIFO and oldest replacement at one and 4,096 bytes. The positive 31-byte refusal probe aborts as required; all seventeen children join. Artifact hashes remain stable. This is controlled Rust-allocation refusal and mailbox state evidence, not whole-runtime/C-heap exhaustion, native decoder/device or installed acceptance; stalled Linux playback cancellation remains OPEN/PARKED. | `audio-mailbox-allocation-bb158770.json` |
 | Format-first admission — `847f5566` | Twelve actual mailbox tests with production-generated protobuf cover ordering, fixed format, count/age limits, oversized refusal with state preservation, exact packet bound, parsed unknown-field stripping, backing-owner release, native receiver wake/join on sender loss and admission closure after receiver loss. Every fixture dependency matches the root lock. No decoder/device ran. | `audio-mailbox-accepted-847f5566.json` |
@@ -12955,13 +12961,13 @@ Counts refer to their named historical sources, not fresh current-tree execution
 | Linux playback failure — `fac93f54` | The complete Linux parent test artifact and private PulseAudio 16.1 null sink execute two identical old/current handler tests. Old `c3114e43` fails both. Current playback drains, exact native stream removal causes failure, decoder/output retire, malformed Opus and replay refuse, a fresh owner recovers and native task-ID sets return to baseline. Build 246s, behavior 11s, outer 326s. This accepts that parent build and output-error finality, not stalled-call cancellation. | `audio-playback-native-fac93f54.json` |
 
 `--audio-mailbox-tests` imports the real mailbox and buffer, production proto/build
-script and exact extracted setup/error callback, with root-locked dependencies.
+script, exact setup/error callback and decoder/worker methods, with root-locked dependencies.
 All 34 cases passed at `15ed3f4d` in 106 outer seconds under the dedicated
 `audio-mailbox` RAM profile. CPAL setup typechecking is not a complete non-Linux
 parent build or physical stream execution. `audio-mailbox-profile-15ed3f4d.json`
 binds the source/artifact, sixteen channel-format observations, old/current
 callback wake/retirement controls, storage limits and joined cleanup. The current
-export retains all 35 named outcomes, allocation cases and callback observations;
+export retains all 36 named outcomes, allocation/codec cases and callback observations;
 the guest checks that same inventory before export.
 `--audio-buffer-tests` passed all eighteen cases at `87dbc335` in 73 outer seconds:
 sixteen production-buffer cases and two real conversion/allocation fixtures.

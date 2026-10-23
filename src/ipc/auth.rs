@@ -3119,12 +3119,16 @@ fn linux_proc_environ_value(pid: u32, name: &str) -> ResultType<String> {
     }
     let environ = fs::read(format!("/proc/{pid}/environ"))?;
     let prefix = format!("{name}=");
-    for part in environ.split(|byte| *byte == 0) {
-        if part.starts_with(prefix.as_bytes()) {
-            return Ok(std::str::from_utf8(&part[prefix.len()..])?.to_owned());
-        }
+    let mut values = environ
+        .split(|byte| *byte == 0)
+        .filter_map(|part| part.strip_prefix(prefix.as_bytes()));
+    let Some(value) = values.next() else {
+        return Ok(String::new());
+    };
+    if values.next().is_some() {
+        bail!("duplicate environment key {name}");
     }
-    Ok(String::new())
+    Ok(std::str::from_utf8(value)?.to_owned())
 }
 
 #[cfg(target_os = "linux")]

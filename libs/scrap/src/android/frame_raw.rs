@@ -44,6 +44,10 @@ impl FrameRaw {
             );
             return;
         }
+        if let Err(err) = self.data.try_reserve_exact(len.saturating_sub(self.data.len())) {
+            log::warn!("dropping Android {} raw buffer: {err}", self.name);
+            return;
+        }
         let slice = unsafe { std::slice::from_raw_parts(data, len) };
         self.data.clear();
         self.data.extend_from_slice(slice);

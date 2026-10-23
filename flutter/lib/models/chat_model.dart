@@ -510,7 +510,11 @@ class ChatModel with ChangeNotifier {
   }
 
   resetClientMode() {
-    _messages[clientModeID]?.clear();
+    for (final entry in _messages.entries) {
+      if (entry.key.isOut) {
+        entry.value.clear();
+      }
+    }
   }
 
   void requestChatInputFocus() {

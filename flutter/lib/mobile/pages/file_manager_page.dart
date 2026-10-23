@@ -579,7 +579,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                 subtitle: entries[index].isDrive
                     ? null
                     : Text(
-                        "${entries[index].lastModified().toString().replaceAll(".000", "")}   $sizeStr",
+                        "${entries[index].lastModifiedText()}   $sizeStr",
                         style: TextStyle(fontSize: 12, color: MyTheme.darkGray),
                       ),
                 trailing: entries[index].isDrive

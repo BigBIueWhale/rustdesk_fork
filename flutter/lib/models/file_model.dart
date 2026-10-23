@@ -2538,10 +2538,6 @@ class Entry {
 
   bool get isDrive => entryType == 3;
 
-  DateTime lastModified() {
-    return DateTime.fromMillisecondsSinceEpoch(modifiedTime * 1000);
-  }
-
   String lastModifiedText() => formatFileModifiedTime(modifiedTime);
 }
 
@@ -2688,9 +2684,9 @@ class JobProgress {
 
 class _PathStat {
   final String path;
-  final DateTime dateTime;
+  final int modifiedTime;
 
-  _PathStat(this.path, this.dateTime);
+  _PathStat(this.path, this.modifiedTime);
 }
 
 class PathUtil {
@@ -2831,14 +2827,14 @@ List<Entry> _sortList(List<Entry> list, SortBy sortType, bool ascending) {
         ? [...dirs, ...files]
         : [...dirs.reversed.toList(), ...files.reversed.toList()];
   } else if (sortType == SortBy.modified) {
-    // making the list of Path & DateTime
+    // making the list of Path & modified time
     List<_PathStat> pathStat = [];
     for (Entry e in list) {
-      pathStat.add(_PathStat(e.name, e.lastModified()));
+      pathStat.add(_PathStat(e.name, e.modifiedTime));
     }
 
     // sort _pathStat according to date
-    pathStat.sort((b, a) => a.dateTime.compareTo(b.dateTime));
+    pathStat.sort((b, a) => a.modifiedTime.compareTo(b.modifiedTime));
 
     // sorting [list] according to [_pathStat]
     list.sort((a, b) => pathStat

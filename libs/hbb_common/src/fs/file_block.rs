@@ -42,6 +42,7 @@ pub(super) mod tests {
         static EXACT_ALLOCATION: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
         static REFUSE_ALL_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
         static DECODER_INPUT_ALLOCATION: Cell<(usize, usize, bool)> = const { Cell::new((0, 0, false)) };
+        static SHARED_OUTPUT_ALLOCATION: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
     }
 
     struct OutputAllocator;
@@ -70,6 +71,16 @@ pub(super) mod tests {
     }
 
     fn refuse_allocation(size: usize) -> bool {
+        if SHARED_OUTPUT_ALLOCATION.try_with(|state| {
+            let (target, count) = state.get();
+            if target == 0 {
+                return false;
+            }
+            state.set((target, count + 1));
+            count + 1 == target
+        }).unwrap_or(false) {
+            return true;
+        }
         if DECODER_INPUT_ALLOCATION.try_with(|state| {
             let (target, count, refuse) = state.get();
             if target != 0 && target == size {
@@ -133,6 +144,97 @@ pub(super) mod tests {
 
     #[global_allocator]
     static OUTPUT_ALLOCATOR: OutputAllocator = OutputAllocator;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn shared_decompression_allocation_refusal_preserves_retry() {
+        use std::os::unix::process::ExitStatusExt;
+
+        fn observe<T>(target: usize, action: impl FnOnce() -> T) -> (T, usize) {
+            struct Reset;
+            impl Drop for Reset {
+                fn drop(&mut self) {
+                    SHARED_OUTPUT_ALLOCATION.with(|state| state.set((0, 0)));
+                }
+            }
+            SHARED_OUTPUT_ALLOCATION.with(|state| {
+                assert_eq!(state.get(), (0, 0));
+                state.set((target, 0));
+            });
+            let reset = Reset;
+            let result = action();
+            let count = SHARED_OUTPUT_ALLOCATION.with(|state| state.get().1);
+            drop(reset);
+            (result, count)
+        }
+
+        fn decode_shared(path: &str, input: &[u8], limit: usize) -> io::Result<Vec<u8>> {
+            match path {
+                "default" => crate::compress::try_decompress(input),
+                "limited" => try_decompress_with_limit(input, limit),
+                _ => panic!("unknown shared decoder path"),
+            }
+        }
+
+        if let Ok(case) = std::env::var("RD_FILE_BLOCK_ALLOC_SHARED_CASE") {
+            if case == "probe" {
+                observe(1, || std::hint::black_box(Vec::<u8>::with_capacity(64)));
+                panic!("positive allocation-refusal probe did not abort");
+            }
+            let (path, target) = case.split_once(':').unwrap();
+            let target: usize = target.parse().unwrap();
+            assert!((1..=4).contains(&target));
+            let input = vec![0x5a; SIZE];
+            let encoded = compress(&input).unwrap();
+            let original = encoded.clone();
+            let (result, allocations) = observe(target, || decode_shared(path, &encoded, input.len()));
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::OutOfMemory);
+            assert_eq!(allocations, target);
+            assert_eq!(decode_shared(path, &encoded, input.len()).unwrap(), input);
+            assert_eq!(encoded, original);
+            assert_eq!(try_decompress_with_limit(&encoded, input.len() - 1).unwrap_err().kind(),
+                io::ErrorKind::InvalidData);
+            println!("SHARED_DECODE_ALLOC_CASE=observed path={path} fail_at={target} allocations={allocations} error=OutOfMemory retry_exact=true input_preserved=true limit_preserved=true");
+            return;
+        }
+
+        for path in ["default", "limited"] {
+            for size in [0, 1, 8192, 8193, SIZE] {
+                let input = vec![0x5a; size];
+                let encoded = compress(&input).unwrap();
+                assert_eq!(decode_shared(path, &encoded, size).unwrap(), input);
+            }
+        }
+        println!("SHARED_DECODE_ALLOC_CONTROL=pass paths=2 sizes=5 exact=true");
+        let thread = std::thread::current();
+        let name = thread.name().unwrap();
+        let run = |case: &str| Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture", "--test-threads=1"])
+            .env("RD_FILE_BLOCK_ALLOC_SHARED_CASE", case)
+            .output().unwrap();
+        let probe = run("probe");
+        let probe_ok = probe.status.signal() == Some(6)
+            && String::from_utf8_lossy(&probe.stderr).contains("memory allocation of");
+        println!("SHARED_DECODE_ALLOC_PROBE=observed signal={:?} passed={probe_ok}", probe.status.signal());
+        let mut all_ok = probe_ok;
+        for path in ["default", "limited"] {
+            for target in 1..=4 {
+                let output = run(&format!("{path}:{target}"));
+                let records: Vec<_> = String::from_utf8_lossy(&output.stdout).lines()
+                    .filter_map(|line| line.split_once("SHARED_DECODE_ALLOC_CASE=")
+                        .map(|(_, value)| value.to_owned())).collect();
+                for record in &records { println!("SHARED_DECODE_ALLOC_CASE={record}"); }
+                let expected = format!("observed path={path} fail_at={target} allocations={target} error=OutOfMemory retry_exact=true input_preserved=true limit_preserved=true");
+                let correct = output.status.success() && records == [expected];
+                print!("{}", String::from_utf8_lossy(&output.stderr));
+                println!("SHARED_DECODE_ALLOC_CHILD=observed path={path} fail_at={target} success={} signal={:?} correct={correct}",
+                    output.status.success(), output.status.signal());
+                all_ok &= correct;
+            }
+        }
+        assert!(all_ok, "shared decoder allocation failure must be recoverable at every growth point");
+        println!("SHARED_DECODE_ALLOC=pass paths=2 refusal_points=4 refusals=8 controls=10 probe=SIGABRT children=joined");
+    }
 
     #[cfg(target_os = "linux")]
     #[test]

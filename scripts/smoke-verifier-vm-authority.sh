@@ -6337,7 +6337,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cont
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
     mapfile -t block_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=9 unchanged=before-after$'
+            'FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=10 unchanged=before-after$'
     )
     [ "${#block_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'FILE_BLOCK_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -6349,7 +6349,10 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file
         'DECOMPRESSION_INPUT=pass paths=2 sizes=3 healthy=6 refused=6 probe=SIGABRT children=joined' \
         'slice decoder existing input storage'
     require_exact_fixed_receipt \
-        "FILE_BLOCK_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=9 target=linux-x86_64 scope=production-file-block-decoder-and-compressor rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'SHARED_DECODE_ALLOC=pass paths=2 refusal_points=4 refusals=8 controls=10 probe=SIGABRT children=joined' \
+        'shared decoder output allocation refusal and exact retry'
+    require_exact_fixed_receipt \
+        "FILE_BLOCK_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=10 target=linux-x86_64 scope=production-file-block-decoder-and-compressor rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused file-block receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'file-block cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -8199,7 +8202,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'CONTROL_EGRESS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=5 scope=production-control-egress-and-generated-protobuf network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = file-block ]; then
-        printf 'FILE_BLOCK_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=9 scope=production-file-block-decoder-and-compressor network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'FILE_BLOCK_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=10 scope=production-file-block-decoder-and-compressor network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
         printf 'FUSE_PROCESS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=43 scope=production-helper-and-root-dispatch network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

@@ -4280,6 +4280,7 @@ run_focused_rust_tests() {
                 file_block::tests::malformed_and_truncated_frames_refuse
                 file_block::tests::allocation_refusal_returns_error_and_preserves_retry
                 file_block::tests::slice_decoding_uses_existing_input_storage
+                file_block::tests::shared_decompression_allocation_refusal_preserves_retry
             )
         elif [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
             container_name=rustdesk-fusermount-process-tests
@@ -6116,7 +6117,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=5 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
-        printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=9 bridge=absent\n'
+        printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=10 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
         printf 'FUSE_PROCESS_PROFILE=fusermount-process stage=container-start tests=43 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
@@ -6410,7 +6411,7 @@ PY
             || fail 'control-egress artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'file-block summary count differs'
-        [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=9 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=10 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FILE_BLOCK_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'file-block artifact receipt differs'
         [ "$(grep -Fxc 'FILE_COMPRESSION_ALLOCATION=pass cases=3 refusals=3 retries=exact wire=unchanged' "$output")" -eq 1 ] \
@@ -6418,6 +6419,9 @@ PY
         [ "$(grep -Fxc 'DECOMPRESSION_INPUT=pass paths=2 sizes=3 healthy=6 refused=6 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^DECOMPRESSION_INPUT_CHILD=observed .* success=true signal=None$' "$output")" -eq 12 ] \
             || fail 'slice decoder input-storage outcomes differ'
+        [ "$(grep -Fxc 'SHARED_DECODE_ALLOC=pass paths=2 refusal_points=4 refusals=8 controls=10 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^SHARED_DECODE_ALLOC_CHILD=observed .* success=true signal=None correct=true$' "$output")" -eq 8 ] \
+            || fail 'shared decoder output allocation refusal or retry differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
         [ "${#result_lines[@]}" -eq 3 ] || fail 'FUSE process summary count differs'
         [ "$(grep -Ec '^FUSE_PROCESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=18 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -7100,7 +7104,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then
-            grep -E '^test (file_block|compress)::tests::.* \.\.\. ok$|^FILE_BLOCK_(ARTIFACT(_BEFORE|_AFTER)?|DEPENDENCIES|INPUT)=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^DECOMPRESSION_INPUT' "$output"
+            grep -E '^test (file_block|compress)::tests::.* \.\.\. ok$|^FILE_BLOCK_(ARTIFACT(_BEFORE|_AFTER)?|DEPENDENCIES|INPUT)=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^DECOMPRESSION_INPUT|^SHARED_DECODE_ALLOC' "$output"
             printf 'FILE_BLOCK_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-file-block-decoder-and-compressor rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

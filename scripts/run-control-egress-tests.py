@@ -18,6 +18,7 @@ import tomllib
 PACKAGE = "rustdesk-control-egress"
 INPUTS = (
     "Cargo.lock", "src/server/connection.rs", "libs/hbb_common/src/cpace.rs",
+    "src/ui_cm_interface.rs", "src/ipc.rs", "libs/enigo/src/lib.rs",
     "libs/hbb_common/build.rs", "libs/hbb_common/src/protos/mod.rs",
     "libs/hbb_common/protos/message.proto", "libs/hbb_common/protos/rendezvous.proto",
     "scripts/test-control-egress.rs", "scripts/run-control-egress-tests.py",
@@ -49,6 +50,16 @@ def between(source, start, end):
     return source[first:last]
 
 
+def enum_declaration(source, name):
+    marker = f"\npub enum {name} {{"
+    if source.count(marker) != 1:
+        raise ValueError(f"egress enum declaration is absent or ambiguous: {name}")
+    declaration = source.index(marker)
+    first = source.rfind("\n\n", 0, declaration) + 2
+    last = source.index("\n}", declaration) + 2
+    return source[first:last] + "\n"
+
+
 def main():
     if (len(sys.argv) != 3 or (os.geteuid(), os.getegid()) != (1000, 1000)
             or Path.cwd() != Path("/source")
@@ -75,6 +86,24 @@ def main():
     if len(limits) != 1:
         raise ValueError("controlled-egress production packet limit is ambiguous")
     snippets["packet-limit.rs"] = limits[0]
+    cm = inputs["src/ui_cm_interface.rs"].decode("utf-8")
+    ipc = inputs["src/ipc.rs"].decode("utf-8")
+    enigo = inputs["libs/enigo/src/lib.rs"].decode("utf-8")
+    snippets["cm-queue.rs"] = between(cm, "const CM_EGRESS_WAKE_CAPACITY:",
+                                    "/// Default maximum number of files allowed per transfer request.")
+    snippets["cm-tests.rs"] = between(
+        cm, '    #[tokio::test(flavor = "current_thread")]\n    async fn r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive()',
+        '    #[tokio::test(flavor = "current_thread")]\n    async fn r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner()')
+    snippets["cm-ipc.rs"] = between(
+        ipc, "#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]\npub enum CmFileEntryType {",
+        '#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]\n#[serde(tag = "t")]\npub enum CmAuthConnType {')
+    snippets["cm-ipc.rs"] += enum_declaration(ipc, "CmAuthConnType") + enum_declaration(ipc, "Data")
+    snippets["enigo-types.rs"] = enum_declaration(enigo, "MouseButton") + enum_declaration(enigo, "Key")
+    cm_limits = re.findall(r"^pub\(crate\) const CM_(?:IPC|FILE_BLOCK)_MAX_FRAME_BYTES: usize = [0-9 *]+;\n",
+                           ipc, re.MULTILINE)
+    if len(cm_limits) != 2:
+        raise ValueError("CM egress production frame limits are ambiguous")
+    snippets["cm-limits.rs"] = "".join(cm_limits)
     with socket.socket() as canary:
         try:
             canary.connect(("192.0.2.1", 9))
@@ -97,6 +126,10 @@ def main():
         os.environ["CONTROL_EGRESS_SOURCE"] = str(fixture / "queue.rs")
         os.environ["CONTROL_EGRESS_TESTS"] = str(fixture / "tests.rs")
         os.environ["CONTROL_EGRESS_LIMIT"] = str(fixture / "packet-limit.rs")
+        for variable, name in (("CM_EGRESS_SOURCE", "cm-queue.rs"), ("CM_EGRESS_TESTS", "cm-tests.rs"),
+                               ("CM_IPC_TYPES", "cm-ipc.rs"), ("CM_ENIGO_TYPES", "enigo-types.rs"),
+                               ("CM_EGRESS_LIMIT", "cm-limits.rs")):
+            os.environ[variable] = str(fixture / name)
 
         def version(name):
             versions = {p["version"] for p in packages if p["name"] == name}
@@ -106,8 +139,11 @@ def main():
 
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
+            '[features]\ndefault = ["with_serde"]\nwith_serde = []\n'
             '[dependencies]\n'
-            f'bytes = "={version("bytes")}"\nlog = "={version("log")}"\n'
+            f'bytes = {{ version = "={version("bytes")}", features = ["serde"] }}\nlog = "={version("log")}"\n'
+            f'serde = "={version("serde")}"\nserde_derive = "={version("serde_derive")}"\n'
+            f'serde_json = "={version("serde_json")}"\n'
             f'sodiumoxide = "={version("sodiumoxide")}"\n'
             f'protobuf = {{ version = "={version("protobuf")}", features = ["with-bytes"] }}\n'
             f'tokio = {{ version = "={version("tokio")}", features = ["full"] }}\n'
@@ -150,13 +186,13 @@ def main():
         artifact_sha = digest(artifact.read_bytes())
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=6", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=12", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=6 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=12 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -166,7 +202,7 @@ def main():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=6 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=12 unchanged=before-after",
               flush=True)
 
 

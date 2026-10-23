@@ -8206,6 +8206,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   receivers, installed settings/credential actions, R-S0/R-F5 and release
   acceptance remain OPEN. All user parks remain untouched.
 
+  **Linux supervisor child argv (`c709c756`).** Retained service-child record
+  revalidation preserves every argument position: it removes only one final NUL
+  and consumes exactly the program-name slot plus the two existing role flags,
+  without an argument-vector allocation. PID/start/UID/executable/generation and
+  signalling/recovery ownership are unchanged. At unchanged-product `08bcaa2a`,
+  sixteen controls pass and the new native regression fails: all four extra-empty
+  layouts wrongly match, while an empty program-name slot wrongly refuses. The
+  identical fixture passes all seventeen component tests after correction.
+  Eight real C-peer command lines cover ordinary/empty-name acceptance, refusal
+  at all four added-empty positions, wrong marker and extra nonempty argument.
+  Raw procfs bytes match each exec argument vector. All sixty-seven C peers join
+  per cohort; their binary is identical across A/B. Behavior takes 0.13s and the
+  corrected outer run 30s. `linux-child-argv-b0b4a836.json` binds source/artifacts,
+  observations, export limits and bounded-RAM cleanup. This is the exact predicate
+  on real kernel command lines, with the existing identity component adapters;
+  complete supervisor/recovery/signalling transactions, installed privilege and
+  settings/credential effects, concurrent mutation/exec races, R-S0/R-F5 and
+  release acceptance remain OPEN. Parked producers remain parked.
+
 - **R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent
   authority — SOURCE IMPLEMENTED; INSTALLED-ARTIFACT EVIDENCE OPEN.** The helper binds
   its connected Unix peer's PID/UID/start time to its exact current kernel parent and

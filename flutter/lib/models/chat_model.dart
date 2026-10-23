@@ -350,20 +350,37 @@ class ChatModel with ChangeNotifier {
       return;
     }
     if (text.isEmpty) return;
-    if (desktopType == DesktopType.cm) {
-      await showCmWindow();
-    }
-    String? peerId;
-    if (id == clientModeID) {
-      peerId = session.id;
-    } else {
-      peerId = session.serverModel.clients
-          .firstWhereOrNull((e) => e.id == id)
-          ?.peerId;
-    }
+    final expectedSessionId = session.sessionId;
+    final expectedClientOwnerId = session.clientOwnerId;
+    final client = id == clientModeID
+        ? null
+        : session.serverModel.clients.firstWhereOrNull((e) => e.id == id);
+    final registryGeneration = client?.registryGeneration;
+    final peerId = id == clientModeID ? session.id : client?.peerId;
     if (peerId == null) {
       debugPrint("Failed to receive msg, peerId is null");
       return;
+    }
+
+    bool isCurrent() {
+      if (!identical(parent.target, session)) return false;
+      if (id == clientModeID) {
+        return session.isCurrentSessionOwner(
+                expectedSessionId, expectedClientOwnerId) &&
+            session.id == peerId;
+      }
+      return registryGeneration != null &&
+          registryGeneration > 0 &&
+          session.serverModel.clients.any((candidate) =>
+              candidate.id == id &&
+              candidate.registryGeneration == registryGeneration &&
+              candidate.peerId == peerId);
+    }
+
+    if (!isCurrent()) return;
+    if (desktopType == DesktopType.cm) {
+      await showCmWindow();
+      if (!isCurrent()) return;
     }
 
     final messagekey = MessageKey(peerId, id);
@@ -374,6 +391,7 @@ class ChatModel with ChangeNotifier {
     }
     // show chat page
     await showChatPage(messagekey);
+    if (!isCurrent()) return;
     late final ChatUser chatUser;
     if (id == clientModeID) {
       chatUser = ChatUser(
@@ -390,8 +408,11 @@ class ChatModel with ChangeNotifier {
               index >= 0 && tabController.state.value.selected != index;
           // minisized: top and switch tab
           // not minisized: add count
-          if (await WindowController.fromWindowId(stateGlobal.windowId)
-              .isMinimized()) {
+          final minimized =
+              await WindowController.fromWindowId(stateGlobal.windowId)
+                  .isMinimized();
+          if (!isCurrent()) return;
+          if (minimized) {
             windowOnTop(stateGlobal.windowId);
             if (notSelected) {
               tabController.jumpTo(index);
@@ -404,8 +425,6 @@ class ChatModel with ChangeNotifier {
         }
       }
     } else {
-      final client = session.serverModel.clients
-          .firstWhereOrNull((client) => client.id == id);
       if (client == null) {
         debugPrint("Failed to receive msg, client is null");
         return;
@@ -429,6 +448,7 @@ class ChatModel with ChangeNotifier {
       }
       chatUser = ChatUser(id: client.peerId, firstName: client.name);
     }
+    if (!isCurrent()) return;
     insertMessage(messagekey,
         ChatMessage(text: text, user: chatUser, createdAt: DateTime.now()));
     if (id == clientModeID || _currentKey.peerId.isEmpty) {

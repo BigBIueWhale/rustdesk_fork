@@ -12297,13 +12297,16 @@ despite stale sender clones. R-S11gw / Appendix C #358 is the normative contract
 
 **Current evidence shared with R-S11gy/R-S11gz.** The focused command is
 `bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
-At `008a31ea`, all 48 named native Rust cases pass with actual Tokio channels,
-OS threads and production-generated protobufs. All 22 input receipts match that
-source; the prior 46 cases and their 19 extracted parts are unchanged. The two new
-cursor cases execute the portable sender/state timing and writer controls described
-above. `cursor-echo-clock-2b2aaacb.json` binds this current source/artifact cohort,
-dependencies, bounded-RAM storage and joined cleanup. Earlier recent-marker and
-growth-refusal A/B evidence remains in `recent-document-markers-571ee664.json` and
+At `8ec0bd83`, all 51 named native Rust cases pass with actual Tokio channels,
+OS threads and production-generated protobufs. All 24 input receipts match that
+source and are rechecked against current tracked inputs. The prior 48 cases and
+their 25 extracted parts are unchanged. Three new CM-chat cases execute the actual
+registry, FFI forwarding and chat sender over real CM mailboxes: five session types,
+ten exact payloads, invalid/pending/disconnected/reused owners and a delayed old
+command during registry replacement. `chat-send-owner-6c616053.json` binds this
+current cohort's 31 source parts, artifacts, dependencies, bounded-RAM storage and
+joined cleanup. Earlier cursor, recent-marker and growth-refusal A/B evidence remains
+in `cursor-echo-clock-2b2aaacb.json`, `recent-document-markers-571ee664.json` and
 `file-clipboard-growth-fc23970f.json`; Windows Shell is unexecuted.
 `control-egress-evidence-d2a102e6.json` retains the historical 20-input checkpoint
 comparison and ledger correction. Capsule names resolve under `.harness-state/verifier-vm/`.
@@ -12320,7 +12323,7 @@ clipboard, complete service producers, connection loops and CM IPC do not.
 Owner/deallocation flags establish lifetime, not RSS or whole-process memory bounds;
 error formatting and surrounding allocations remain available during selective faults.
 The older raw-backing baseline has test/artifact receipts but lacks full input/source
-receipts; its corrected run and the current 48-case run supply those bindings.
+receipts; its corrected run and the current 51-case run supply those bindings.
 Script wiring, source patterns and historical string mutations do not establish behavior.
 The profile remains 2 GiB guest / 6 GiB RAM scratch / 4 GiB overlay / 6 GiB host
 headroom / 1 GiB overhead, with no disk fallback and joined retirement.
@@ -13216,6 +13219,44 @@ Native geometry or partial effects after failure, cancellation/owner drain, real
 chat/file UI and peer operation, other-platform/installed behavior and R-S0/R-F5/
 release acceptance remain OPEN. No LPE closure or displayed-lag cause is claimed;
 all user parks remain unchanged.
+
+**CM chat recipient binding and refused drafts — component/widget corrections verified;
+complete bridge/peer integration OPEN.** `8ec0bd83` validates numeric ID and requested
+registry generation under one registry read guard, including pending admission and
+disconnected state, then retains only that owner's sender. Chat cannot use a bare-ID
+lookup to select a successor. The FFI requires the generation; the existing unimplemented
+web signature mirrors it without adding a web CM mode. `3b6aa100` checks the selected
+peer, ID and live positive generation before the Dart CM producer changes message/history
+state or invokes the CM bridge. `9b12a6c9` makes Enter and the actual toolbar button share
+`sendDraft`: only local acceptance clears the composer. The toolbar bypasses Dash Chat's
+unconditional post-callback clear. The producer retains its parent through submission.
+Normal chat remains optimistic; local acceptance is not a peer-delivery acknowledgement.
+
+At parameter preparation `dda842bc`, 49 native controls pass and two owner cases fail;
+the replacement mailbox receives stale messages in reused-ID and delayed-thread schedules.
+The same corrected cohort passes all 51 cases, including six owner/refusal/recovery
+schedules, all five supported session types and ten exact payloads. Only the sender part
+changes across 24 input/31 part receipts; prior 48 test bodies remain unchanged.
+The prepared Dart baseline `8ec0bd83` passes thirty cases and fails three stale-target
+assertions; `3b6aa100` passes all thirty-three. At input preparation `9261a9a9`,
+thirty-five controls pass and four draft-retention cases fail. The identical corrected
+thirty-nine-case inventory and three parser controls pass. Actual model refusal and
+the pinned Dash `InputToolbar` execute at Enter/button inputs for missing, reused,
+invalid-generation and disconnected clients. Two valid submission controls double native
+I/O and verify one submission plus clearing at each input. Prior thirty-three bodies stay
+unchanged; fresh bridge/import compilation runs. Candidate Dart evidence retains strict
+summary receipts, not per-case JSON or a compiled test image. The first native fixture compile stopped
+at a missing import without executing behavior. Two early UI runs stopped at formatting
+or a shared debug-print fixture invariant; their diagnostics are retained separately.
+
+Evidence: `.harness-state/verifier-vm/chat-send-owner-6c616053.json`; source/artifact
+bindings, A/B observations and joined bounded-RAM cleanup are retained. Passed native
+evidence is reused only after all 24 inputs are rechecked unchanged. Native execution
+uses the actual registry/FFI sender and real queues with controlled schedules; widget
+tests use a fixture parent. Generated bridge transport, complete native CM IPC,
+authenticated peer/UI delivery, full Rust parent, installed/other-platform behavior,
+all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
+Every user park remains unchanged.
 
 Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests

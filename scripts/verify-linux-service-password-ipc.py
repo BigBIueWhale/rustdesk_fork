@@ -999,8 +999,8 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         auth.all().forbid(("fn", name), "duplicate inline UID policy")
     peer_identity_record = auth.item("struct", "PeerProcessIdentity")
     peer_identity_record.require(
-        ("argv", ":", "Vec", "<", "String", ">"),
-        "complete retained process argv",
+        ("argv", ":", "Vec", "<", "Vec", "<", "u8", ">>"),
+        "complete retained process argv bytes",
         unique=True,
     )
     peer_identity_record.forbid(("first_arg",), "first-argument-only process role identity")
@@ -1145,7 +1145,8 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     expected_exact_argv = [
         "args", ".", "len", "(", ")", "==", "expected_args", ".", "len", "(", ")", "+", "1",
         "&&", "expected_args", ".", "iter", "(", ")", ".", "enumerate", "(", ")", ".", "all", "(",
-        "|", "(", "index", ",", "expected", ")", "|", "args", "[", "index", "+", "1", "]", "==", "*", "expected", ")",
+        "|", "(", "index", ",", "expected", ")", "|", "args", "[", "index", "+", "1", "]", ".", "as_ref", "(", ")",
+        "==", "expected", ".", "as_bytes", "(", ")", ")",
     ]
     if exact_argv.values != expected_exact_argv:
         raise VerificationError(

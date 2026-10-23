@@ -3908,6 +3908,7 @@ run_focused_rust_tests() {
             linux_process_identity_tests::exited_unreaped_peer_is_not_live
             linux_process_identity_tests::exited_leader_with_live_worker_keeps_process_identity
             linux_process_identity_tests::kernel_cmdline_preserves_empty_argument_positions
+            linux_process_identity_tests::kernel_process_identity_preserves_non_utf8_argv_bytes
         )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \

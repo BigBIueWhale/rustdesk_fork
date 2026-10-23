@@ -14,7 +14,7 @@ _Static_assert(SYS_pidfd_open == 434, "fixture requires the Linux x86_64 pidfd A
 _Static_assert(sizeof(struct pollfd) == 8 && offsetof(struct pollfd, events) == 4 &&
                offsetof(struct pollfd, revents) == 6 && POLLIN == 1, "poll ABI differs");
 
-struct settings { char path[108]; int dumpable; };
+struct settings { char path[108]; int dumpable; char *mutable_argument; };
 
 static void *serve(void *argument) {
     const struct settings *settings = argument;
@@ -30,8 +30,22 @@ static void *serve(void *argument) {
     if (connect(fd, (struct sockaddr *)&address, sizeof(address)) != 0)
         _exit(4);
     char command;
-    if (read(STDIN_FILENO, &command, 1) != 1 || command != 'x')
-        _exit(5);
+    for (;;) {
+        if (read(STDIN_FILENO, &command, 1) != 1)
+            _exit(5);
+        if (command == 'x')
+            break;
+        if (command != 'm' || !settings->mutable_argument)
+            _exit(5);
+        unsigned char *argument = (unsigned char *)settings->mutable_argument;
+        while (*argument && *argument != 0x80)
+            argument++;
+        if (*argument != 0x80)
+            _exit(5);
+        *argument = 0x81;
+        if (write(fd, "m", 1) != 1)
+            _exit(6);
+    }
     if (close(fd) != 0)
         _exit(6);
     _exit(0);
@@ -48,6 +62,7 @@ int main(int argc, char **argv) {
         return 10;
     memcpy(settings.path, path, length + 1);
     settings.dumpable = argv_path ? 1 : argv[2][0] - '0';
+    settings.mutable_argument = argv_path ? argv[0] : NULL;
     if (argv_path) {
         serve(&settings);
         return 0;

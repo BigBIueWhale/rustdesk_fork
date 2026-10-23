@@ -86,22 +86,35 @@ def main():
     structure_start = identity_source.index("pub struct LinuxProcessIdentity {")
     structure_end = identity_source.index("\n}", structure_start) + 2
     identity_body = identity_source[structure_start:structure_end] + "\n"
+    peer_start = identity_source.index("pub struct PeerProcessIdentity {")
+    peer_end = identity_source.index("\n}", peer_start) + 2
+    debug_start = identity_source.index("impl fmt::Debug for PeerProcessIdentity {")
+    debug_end = identity_source.index("\n}", debug_start) + 2
+    identity_body += ("#[derive(Clone, Eq, PartialEq)]\n" +
+                      identity_source[peer_start:peer_end] + "\n" +
+                      identity_source[debug_start:debug_end] + "\n")
     for name in ("linux_proc_stat_start_time", "linux_proc_start_time", "linux_proc_uid",
                  "linux_kernel_process_identity_by_pid", "linux_process_identity_is_live",
                  "linux_proc_cmdline_args", "user_owned_main_server_argv_is_expected",
                  "linux_service_owned_server_argv_is_expected", "process_argv_is_exact",
                  "linux_service_owned_password_client_argv_is_expected",
-                 "cm_process_argv_is_expected", "helper_server_argv_is_expected"):
+                 "cm_process_argv_is_expected", "helper_server_argv_is_expected",
+                 "main_server_cmdline_args", "linux_proc_environ_value",
+                 "linux_proc_u32_env", "linux_process_identity_fields_by_pid"):
         identity_body += function(identity_source, name)
     common = inputs["src/common.rs"].decode("utf-8")
-    constant = next(line for line in common.splitlines()
-                    if line.startswith("pub const SERVICE_OWNED_SERVER_ARG: &str = "))
-    generated += "mod common { " + constant + " }\n"
+    constants = [next(line for line in common.splitlines()
+                      if line.startswith("pub const " + name + ": &str = "))
+                 for name in ("SERVICE_OWNED_SERVER_ARG", "CM_LAUNCH_TOKEN_ENV", "CM_LAUNCH_PARENT_ENV")]
+    generated += "mod common { " + "\n".join(constants) + " }\n"
     # The exact metadata bodies use the error and kernel ABI adapters below. Serialization and anyhow's
     # error representation are outside this component; Result/refusal behavior is retained.
-    generated += ('use std::{fs, os::unix::fs::MetadataExt};\n'
+    generated += ('use std::{fmt, fs, os::unix::fs::MetadataExt};\n'
                   'type ResultType<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;\n'
                   'macro_rules! bail { ($($arg:tt)*) => { return Err(format!($($arg)*).into()) }; }\n'
+                  'extern crate self as anyhow;\n'
+                  '#[macro_export] macro_rules! anyhow { ($($arg:tt)*) => { '
+                  'Box::<dyn std::error::Error + Send + Sync>::from(format!($($arg)*)) }; }\n'
                   'mod libc { pub const SYS_pidfd_open: i64 = 434; pub const POLLIN: i16 = 1;\n'
                   '#[repr(C)] pub struct pollfd { pub fd: i32, pub events: i16, pub revents: i16 }\n'
                   'extern "C" { pub fn syscall(number: i64, ...) -> i64; '
@@ -124,7 +137,7 @@ def main():
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=14", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=15", flush=True)
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("LINUX_IDENTITY_")}
     environment["LINUX_IDENTITY_PEER_PROBE"] = str(peer)

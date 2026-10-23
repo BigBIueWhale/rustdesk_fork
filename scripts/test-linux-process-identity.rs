@@ -1,7 +1,9 @@
 mod linux_process_identity_tests {
     use super::*;
     use std::{
-        io::Write,
+        ffi::OsString,
+        io::{Read, Write},
+        os::unix::ffi::OsStringExt,
         os::unix::{fs::DirBuilderExt, io::AsRawFd, net::{UnixListener, UnixStream}},
         os::unix::process::CommandExt,
         path::PathBuf,
@@ -26,7 +28,7 @@ mod linux_process_identity_tests {
             Self::spawn_with_argv(dumpable, leader_exit, None)
         }
 
-        fn spawn_with_argv(dumpable: u32, leader_exit: bool, argv: Option<&[String]>) -> Self {
+        fn spawn_with_argv(dumpable: u32, leader_exit: bool, argv: Option<&[OsString]>) -> Self {
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let root = std::env::temp_dir().join(format!("linux-identity-{}-{}",
                 std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
@@ -90,6 +92,15 @@ mod linux_process_identity_tests {
             self.child.as_mut().unwrap().stdin.take().unwrap().write_all(b"x").unwrap();
         }
 
+        fn mutate_argument(&mut self) {
+            self.child.as_mut().unwrap().stdin.as_mut().unwrap().write_all(b"m").unwrap();
+            let peer = self.peer.as_mut().unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut acknowledgement = [0];
+            peer.read_exact(&mut acknowledgement).unwrap();
+            assert_eq!(acknowledgement, *b"m");
+        }
+
         fn join(&mut self) {
             assert!(self.child.take().unwrap().wait().unwrap().success());
         }
@@ -143,7 +154,8 @@ mod linux_process_identity_tests {
                 variants.push(("extra-empty", Some(position), extra));
             }
             for (kind, position, expected) in variants {
-                let mut owner = Owner::spawn_with_argv(1, false, Some(&expected));
+                let argv: Vec<_> = expected.iter().map(OsString::from).collect();
+                let mut owner = Owner::spawn_with_argv(1, false, Some(&argv));
                 assert_eq!(owner.credentials().uid, unsafe { geteuid() });
                 let kernel = fs::read(format!("/proc/{}/cmdline", owner.pid())).unwrap();
                 let mut expected_bytes = Vec::new();
@@ -152,7 +164,8 @@ mod linux_process_identity_tests {
                     expected_bytes.push(0);
                 }
                 assert_eq!(kernel, expected_bytes, "exec argv and actual kernel data differ");
-                let actual = linux_proc_cmdline_args(owner.pid()).unwrap();
+                let actual: Vec<String> = linux_proc_cmdline_args(owner.pid()).unwrap()
+                    .into_iter().map(String::from_utf8).collect::<Result<_, _>>().unwrap();
                 let admitted = roles(&actual);
                 let expected_admission = if kind == "extra-empty" { [false; 6] } else { expected_roles };
                 let correct = actual == expected && admitted == expected_admission;
@@ -166,6 +179,54 @@ mod linux_process_identity_tests {
         assert_eq!(cases, 35);
         assert_eq!(failures, 0, "empty arguments must not disappear before exact role admission");
         println!("LINUX_KERNEL_ARGV=pass cases=35 layouts=7 ordinary=7 empty_name=7 extra_empty=21 source=procfs children=joined");
+    }
+
+    #[test]
+    fn kernel_process_identity_preserves_non_utf8_argv_bytes() {
+        let layouts: &[&[&str]] = &[
+            &[], &["--password"], &["--password-stdin"], &["--server"],
+            &["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
+            &["--cm"], &["--cm-no-ui"],
+        ];
+        let mut failures = 0;
+        for (layout, tail) in layouts.iter().enumerate() {
+            let mut initial = vec![b"/kernel/argv-\x80".to_vec()];
+            initial.extend(tail.iter().map(|argument| argument.as_bytes().to_vec()));
+            let argv: Vec<_> = initial.iter().cloned().map(OsString::from_vec).collect();
+            let mut owner = Owner::spawn_with_argv(1, false, Some(&argv));
+            assert_eq!(owner.credentials().uid, unsafe { geteuid() });
+            let before = linux_process_identity_fields_by_pid(owner.pid()).unwrap();
+            owner.mutate_argument();
+            let after = linux_process_identity_fields_by_pid(owner.pid()).unwrap();
+            let mut changed = initial.clone();
+            changed[0] = b"/kernel/argv-\x81".to_vec();
+            let kernel = fs::read(format!("/proc/{}/cmdline", owner.pid())).unwrap();
+            let expected_kernel: Vec<_> = changed.iter().flat_map(|argument|
+                argument.iter().copied().chain(std::iter::once(0))).collect();
+            assert_eq!(kernel, expected_kernel);
+            assert_eq!((before.pid, before.uid, &before.start_time, &before.cm_launch_token, before.cm_launch_parent),
+                (after.pid, after.uid, &after.start_time, &after.cm_launch_token, after.cm_launch_parent));
+            let correct = before.argv == initial && after.argv == changed && before != after;
+            println!("LINUX_KERNEL_ARGV_BYTES_CASE=observed layout={layout} kind=mutation first_preserved={} second_preserved={} identity_changed={} correct={correct}",
+                before.argv == initial, after.argv == changed, before != after);
+            owner.request_exit();
+            owner.join();
+            failures += usize::from(!correct);
+
+            let mut unicode = initial;
+            unicode[0] = "/kernel/argv-\u{fffd}".as_bytes().to_vec();
+            let argv: Vec<_> = unicode.iter().cloned().map(OsString::from_vec).collect();
+            let mut control = Owner::spawn_with_argv(1, false, Some(&argv));
+            let identity = linux_process_identity_fields_by_pid(control.pid()).unwrap();
+            let correct = identity.argv == unicode && before.argv != identity.argv && after.argv != identity.argv;
+            println!("LINUX_KERNEL_ARGV_BYTES_CASE=observed layout={layout} kind=utf8_control preserved={} distinct_from_invalid={} correct={correct}",
+                identity.argv == unicode, before.argv != identity.argv && after.argv != identity.argv);
+            control.request_exit();
+            control.join();
+            failures += usize::from(!correct);
+        }
+        assert_eq!(failures, 0, "argv identity must preserve raw bytes and detect same-process changes");
+        println!("LINUX_KERNEL_ARGV_BYTES=pass layouts=7 children=14 mutations=7 snapshots=21 invalid_bytes=preserved unicode=distinct children_state=joined");
     }
 
     #[test]

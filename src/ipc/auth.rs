@@ -2575,12 +2575,12 @@ fn peer_cred_from_fd(fd: RawFd) -> Option<libc::ucred> {
 }
 
 #[cfg(target_os = "linux")]
-#[derive(Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct PeerProcessIdentity {
     pid: u32,
     uid: u32,
     start_time: String,
-    argv: Vec<String>,
+    argv: Vec<Vec<u8>>,
     cm_launch_token: String,
     cm_launch_parent: u32,
 }
@@ -2633,7 +2633,7 @@ impl PeerProcessIdentity {
             pid,
             uid,
             start_time,
-            argv,
+            argv: argv.into_iter().map(String::into_bytes).collect(),
             cm_launch_token: String::new(),
             cm_launch_parent: 0,
         }
@@ -2926,17 +2926,17 @@ fn linux_process_has_ancestor(pid: u32, ancestor_pid: u32) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn linux_proc_cmdline_args(pid: u32) -> ResultType<Vec<String>> {
+fn linux_proc_cmdline_args(pid: u32) -> ResultType<Vec<Vec<u8>>> {
     let cmdline = fs::read(format!("/proc/{pid}/cmdline"))?;
     Ok(String::from_utf8_lossy(&cmdline)
         .split_terminator('\0')
-        .map(str::to_owned)
+        .map(|argument| argument.as_bytes().to_vec())
         .collect())
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn user_owned_main_server_argv_is_expected(args: &[String]) -> bool {
-    args.len() == 2 && args.get(1).map(String::as_str) == Some("--server")
+fn user_owned_main_server_argv_is_expected(args: &[impl AsRef<[u8]>]) -> bool {
+    process_argv_is_exact(args, &["--server"])
 }
 
 #[cfg(target_os = "linux")]
@@ -3003,14 +3003,14 @@ fn macos_process_cmdline_args(pid: u32) -> ResultType<Vec<String>> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn main_server_cmdline_args(pid: u32) -> ResultType<Vec<String>> {
+fn main_server_cmdline_args(pid: u32) -> ResultType<Vec<Vec<u8>>> {
     #[cfg(target_os = "linux")]
     {
         linux_proc_cmdline_args(pid)
     }
     #[cfg(target_os = "macos")]
     {
-        macos_process_cmdline_args(pid)
+        Ok(macos_process_cmdline_args(pid)?.into_iter().map(String::into_bytes).collect())
     }
 }
 
@@ -3326,10 +3326,8 @@ where
 }
 
 #[cfg(target_os = "linux")]
-fn linux_service_owned_server_argv_is_expected(args: &[String]) -> bool {
-    args.len() == 3
-        && args.get(1).map(String::as_str) == Some("--server")
-        && args.get(2).map(String::as_str) == Some(crate::common::SERVICE_OWNED_SERVER_ARG)
+fn linux_service_owned_server_argv_is_expected(args: &[impl AsRef<[u8]>]) -> bool {
+    process_argv_is_exact(args, &["--server", crate::common::SERVICE_OWNED_SERVER_ARG])
 }
 
 #[cfg(target_os = "linux")]
@@ -4663,12 +4661,12 @@ pub(crate) fn authorize_windows_url_ipc_connection(stream: &Connection, postfix:
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", test))]
-fn process_argv_is_exact(args: &[String], expected_args: &[&str]) -> bool {
+fn process_argv_is_exact(args: &[impl AsRef<[u8]>], expected_args: &[&str]) -> bool {
     args.len() == expected_args.len() + 1
         && expected_args
             .iter()
             .enumerate()
-            .all(|(index, expected)| args[index + 1] == *expected)
+            .all(|(index, expected)| args[index + 1].as_ref() == expected.as_bytes())
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -4679,19 +4677,19 @@ fn macos_service_owned_password_client_argv_is_expected(args: &[String]) -> bool
 }
 
 #[cfg(target_os = "linux")]
-fn linux_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {
+fn linux_service_owned_password_client_argv_is_expected(args: &[impl AsRef<[u8]>]) -> bool {
     process_argv_is_exact(args, &[])
         || process_argv_is_exact(args, &["--password"])
         || process_argv_is_exact(args, &["--password-stdin"])
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn cm_process_argv_is_expected(args: &[String], expected_arg: &str) -> bool {
+fn cm_process_argv_is_expected(args: &[impl AsRef<[u8]>], expected_arg: &str) -> bool {
     process_argv_is_exact(args, &[expected_arg])
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn helper_server_argv_is_expected(args: &[String]) -> bool {
+fn helper_server_argv_is_expected(args: &[impl AsRef<[u8]>]) -> bool {
     process_argv_is_exact(args, &["--server"])
         || process_argv_is_exact(args, &["--server", crate::common::SERVICE_OWNED_SERVER_ARG])
 }

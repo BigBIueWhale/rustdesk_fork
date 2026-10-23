@@ -3,6 +3,7 @@ extern crate self as hbb_common;
 pub use log;
 pub use sodiumoxide;
 pub use tokio;
+pub use lazy_static;
 pub use anyhow::{self, bail};
 pub use libc;
 
@@ -65,6 +66,113 @@ mod ui_cm_interface {
 }
 include!(env!("CM_PROTO_CONVERSION"));
 include!(env!("CM_READ_BLOCK_SOURCE"));
+
+mod file_clipboard {
+    include!(env!("FILE_CLIPBOARD_SOURCE"));
+
+    #[cfg(test)]
+    mod allocation_tests {
+        use super::*;
+
+        #[test]
+        fn queue_growth_refusal_retires_exact_mailbox_and_payloads() {
+            use std::os::unix::process::ExitStatusExt;
+            if let Ok(case) = std::env::var("FILE_CLIP_QUEUE_ALLOC_CASE") {
+                if case == "probe" {
+                    crate::with_queue_budget(0, || std::hint::black_box(Vec::<u8>::with_capacity(31)));
+                    panic!("file-clipboard allocation-refusal probe returned");
+                }
+                let parts: Vec<_> = case.split(':').collect();
+                let queued: usize = parts[1].parse().unwrap();
+                let budget: usize = parts[2].parse().unwrap();
+                let refuse = parts[0] == "refuse";
+                let (sender, mut receiver) = clipboard_file_egress_channel_with_limits(ClipboardFileEgressLimits {
+                    max_messages: 32, max_message_heap_bytes: 64,
+                    max_queued_bytes: 32 * (64 + std::mem::size_of::<QueuedClipboardFile>()),
+                });
+                let stale = sender.clone();
+                let payload = |id: usize| ClipboardFile::FormatDataResponse {
+                    msg_flags: id as i32, format_data: vec![id as u8; 64],
+                };
+                let first = payload(0);
+                let first_pointer = match &first {
+                    ClipboardFile::FormatDataResponse { format_data, .. } => format_data.as_ptr(),
+                    _ => unreachable!(),
+                };
+                if queued > 0 {
+                    sender.send(first).unwrap();
+                    for id in 1..queued { sender.send(payload(id)).unwrap(); }
+                } else { drop(first); }
+                let pending = payload(queued);
+                let pending_pointer = match &pending {
+                    ClipboardFile::FormatDataResponse { format_data, .. } => format_data.as_ptr(),
+                    _ => unreachable!(),
+                };
+                let capacity = lock_clipboard_file_egress(&sender.state).queue.capacity();
+                if parts[0] == "spare" { assert!(capacity > queued); }
+                else { assert_eq!(capacity, queued); }
+                crate::CM_BACKING_RETIRED.with(|retired| retired.set(false));
+                crate::CM_BACKING_TARGET.with(|target| target.set(
+                    if queued == 4 { first_pointer as usize } else { pending_pointer as usize }));
+                let (result, refusals) = crate::with_queue_budget(budget, || sender.send(pending));
+                if refuse {
+                    assert_eq!(refusals, 1);
+                    assert_eq!(result.unwrap_err().to_string(), "file-clipboard egress queue storage is unavailable");
+                    let state = lock_clipboard_file_egress(&sender.state);
+                    assert!(state.queue.is_empty());
+                    assert_eq!(state.queued_bytes, 0);
+                    drop(state);
+                    assert!(crate::CM_BACKING_RETIRED.with(std::cell::Cell::get));
+                    assert_eq!(stale.send(payload(99)).unwrap_err().to_string(), "file-clipboard egress queue storage is unavailable");
+                    match receiver.blocking_recv() {
+                        Some(ClipboardFileEgressItem::Failed(failure)) => assert_eq!(failure.to_string(), "file-clipboard egress queue storage is unavailable"),
+                        _ => panic!("storage refusal must produce one exact terminal event"),
+                    }
+                    assert!(receiver.blocking_recv().is_none());
+                    assert_eq!(sender.send(payload(99)), Err(ClipboardFileEgressAdmissionError::ReceiverGone));
+                } else {
+                    assert_eq!(refusals, 0);
+                    result.unwrap();
+                    assert!(!crate::CM_BACKING_RETIRED.with(std::cell::Cell::get));
+                    for id in 0..=queued {
+                        match receiver.blocking_recv() {
+                            Some(ClipboardFileEgressItem::Message(ClipboardFile::FormatDataResponse { msg_flags, format_data })) => {
+                                assert_eq!(msg_flags, id as i32); assert_eq!(format_data, vec![id as u8; 64]);
+                            }
+                            _ => panic!("file-clipboard FIFO changed"),
+                        }
+                    }
+                    assert!(crate::CM_BACKING_RETIRED.with(std::cell::Cell::get));
+                    assert_eq!(lock_clipboard_file_egress(&sender.state).queued_bytes, 0);
+                }
+                crate::CM_BACKING_TARGET.with(|target| target.set(0));
+                let (fresh, mut fresh_receiver) = clipboard_file_egress_channel();
+                fresh.send(payload(7)).unwrap();
+                assert!(matches!(fresh_receiver.blocking_recv(), Some(ClipboardFileEgressItem::Message(_))));
+                println!("FILE_CLIP_QUEUE_ALLOC_CASE=pass case={case} refusals={refusals} payloads=released fresh=usable");
+                return;
+            }
+            let run = |case: &str| crate::run_allocation_child(
+                "file_clipboard::allocation_tests::queue_growth_refusal_retires_exact_mailbox_and_payloads", "FILE_CLIP_QUEUE_ALLOC_CASE", case);
+            let probe = run("probe");
+            assert_eq!(probe.status.signal(), Some(6));
+            assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+            println!("FILE_CLIP_QUEUE_ALLOC_PROBE=observed bytes=31 signal=6");
+            let mut passed = 0;
+            for case in ["refuse:0:0", "healthy:0:1", "refuse:4:0", "healthy:4:1", "refuse:8:0", "healthy:8:1", "spare:1:0"] {
+                let output = run(case);
+                for line in String::from_utf8_lossy(&output.stdout).lines() {
+                    if line.starts_with("FILE_CLIP_QUEUE_ALLOC_CASE=") { println!("{line}"); }
+                }
+                print!("{}", String::from_utf8_lossy(&output.stderr));
+                println!("FILE_CLIP_QUEUE_ALLOC_CHILD=observed case={case} success={} signal={:?}", output.status.success(), output.status.signal());
+                passed += usize::from(output.status.success());
+            }
+            assert_eq!(passed, 7, "file-clipboard storage refusal must retire only its exact mailbox");
+            println!("FILE_CLIP_QUEUE_ALLOC=pass refusals=3 healthy=4 payloads=released terminal=once fresh=usable probe=SIGABRT children=joined");
+        }
+    }
+}
 
 mod cm_egress_tests {
     use super::*;

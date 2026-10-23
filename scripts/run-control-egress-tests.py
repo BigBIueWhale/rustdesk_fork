@@ -25,6 +25,7 @@ INPUTS = (
     "scripts/test-control-egress.rs", "scripts/run-control-egress-tests.py",
     "libs/hbb_common/src/fs.rs",
     "libs/hbb_common/src/config.rs", "libs/hbb_common/src/lib.rs", "src/common.rs",
+    "libs/clipboard/src/lib.rs", "libs/clipboard/Cargo.toml",
 )
 
 
@@ -78,7 +79,16 @@ def main():
     records = {(p["name"], p["version"], p["source"]): p
                for p in packages if "source" in p}
     connection = inputs["src/server/connection.rs"].decode("utf-8")
+    file_clipboard = inputs["libs/clipboard/src/lib.rs"].decode("utf-8")
+    file_clipboard_start = "pub struct ProgressPercent {"
+    if file_clipboard.count(file_clipboard_start) != 1:
+        raise ValueError("file-clipboard common implementation boundary is ambiguous")
     snippets = {
+        "file-clipboard.rs": (
+            "use std::{collections::VecDeque, fmt, sync::{Arc, Mutex, RwLock}};\n"
+            "use hbb_common::{lazy_static, tokio::sync::mpsc};\n"
+            "use serde_derive::{Deserialize, Serialize};\nuse thiserror::Error;\n"
+            + file_clipboard[file_clipboard.index(file_clipboard_start):]),
         "queue.rs": between(connection, "const CONTROL_EGRESS_WAKE_CAPACITY:",
                             "#[derive(Default)]\nstruct AudioEgressState"),
         "tests.rs": between(connection, "#[cfg(test)]\nmod control_egress_tests {",
@@ -181,6 +191,7 @@ def main():
         os.environ["CONTROL_EGRESS_SOURCE"] = str(fixture / "queue.rs")
         os.environ["CONTROL_EGRESS_TESTS"] = str(fixture / "tests.rs")
         os.environ["CONTROL_EGRESS_LIMIT"] = str(fixture / "packet-limit.rs")
+        os.environ["FILE_CLIPBOARD_SOURCE"] = str(fixture / "file-clipboard.rs")
         for variable, name in (("CM_EGRESS_SOURCE", "cm-queue.rs"), ("CM_EGRESS_TESTS", "cm-tests.rs"),
                                ("CM_IPC_TYPES", "cm-ipc.rs"), ("CM_ENIGO_TYPES", "enigo-types.rs"),
                                ("CM_EGRESS_LIMIT", "cm-limits.rs"),
@@ -199,9 +210,9 @@ def main():
         if len(roots) != 1:
             raise ValueError("controlled-egress root application is absent or ambiguous")
 
-        def version(name):
+        def version(name, consumer=roots[0]):
             versions = {p["version"] for p in packages if p["name"] == name}
-            qualified = {parts[1] for dependency in roots[0]["dependencies"]
+            qualified = {parts[1] for dependency in consumer["dependencies"]
                          if (parts := dependency.split())[0] == name and len(parts) > 1}
             if qualified:
                 versions &= qualified
@@ -209,6 +220,9 @@ def main():
                 raise ValueError(f"controlled-egress dependency version is ambiguous: {name}")
             return versions.pop()
 
+        clipboard_roots = [p for p in packages if p["name"] == "clipboard" and "source" not in p]
+        if len(clipboard_roots) != 1:
+            raise ValueError("file-clipboard package lock authority is ambiguous")
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
             '[features]\ndefault = ["with_serde"]\nwith_serde = []\n'
@@ -216,6 +230,7 @@ def main():
             f'bytes = {{ version = "={version("bytes")}", features = ["serde"] }}\nlog = "={version("log")}"\n'
             f'serde = "={version("serde")}"\nserde_derive = "={version("serde_derive")}"\n'
             f'serde_json = "={version("serde_json")}"\n'
+            f'thiserror = "={version("thiserror", clipboard_roots[0])}"\n'
             f'sodiumoxide = "={version("sodiumoxide")}"\n'
             f'anyhow = "={version("anyhow")}"\nfiletime = "={version("filetime")}"\n'
             f'libc = "={version("libc")}"\nlazy_static = "={version("lazy_static")}"\n'
@@ -266,13 +281,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=38", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=45", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=38 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=45 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -281,7 +296,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=38 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=45 unchanged=before-after",
               flush=True)
 
 

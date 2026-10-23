@@ -4262,6 +4262,7 @@ run_focused_rust_tests() {
                 libs/hbb_common/protos/message.proto libs/hbb_common/protos/rendezvous.proto
                 scripts/test-control-egress.rs scripts/run-control-egress-tests.py
                 src/ui_cm_interface.rs src/ipc.rs libs/enigo/src/lib.rs
+                libs/hbb_common/src/bytes_codec.rs
             )
             required_tests=(
                 control_egress_tests::r_s11gw_cursor_positions_replace_only_the_trailing_cursor
@@ -4276,6 +4277,20 @@ run_focused_rust_tests() {
                 cm_egress_tests::r_s11gy_cm_egress_accounts_serde_skipped_raw_blocks_and_receiver_retirement
                 cm_egress_tests::r_s11gy_cm_egress_wakes_without_polling_and_sender_retirement_closes
                 cm_queue_growth_failure_is_terminal_and_releases_payloads
+                cm_queue_admission_owns_only_raw_payload_bytes
+                bytes_codec::tests::test_codec1
+                bytes_codec::tests::test_codec2
+                bytes_codec::tests::test_codec3
+                bytes_codec::tests::test_codec4
+                bytes_codec::tests::test_codec5
+                bytes_codec::tests::test_codec6
+                bytes_codec::tests::decode_headers_preserve_input_capacity_until_payload_arrives
+                bytes_codec::tests::decode_rejects_oversized_frame_before_consuming_header
+                bytes_codec::tests::fragmented_tcp_frames_grow_from_received_payload_and_finish_cleanly
+                bytes_codec::tests::eof_rejects_partial_headers
+                bytes_codec::tests::eof_rejects_partial_payloads_after_consuming_each_header_width
+                bytes_codec::tests::eof_preserves_complete_empty_coalesced_frames
+                bytes_codec::tests::eof_preserves_oversized_frame_refusal
             )
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then
             container_name=rustdesk-file-block-tests
@@ -6132,7 +6147,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=34 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=12 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=26 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=10 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6427,15 +6442,18 @@ PY
             || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=12 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=26 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
         [ "$(grep -Fxc 'CONTROL_QUEUE_ALLOC=pass refusals=3 healthy=5 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^CONTROL_QUEUE_ALLOC_CHILD=observed .* success=true signal=None$' "$output")" -eq 8 ] \
             || fail 'control queue allocation refusal or healthy controls differ'
-        [ "$(grep -Fxc 'CM_QUEUE_ALLOC=pass refusals=3 healthy=4 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^CM_QUEUE_ALLOC_CHILD=observed .* success=true signal=None$' "$output")" -eq 7 ] \
+        [ "$(grep -Fxc 'CM_QUEUE_ALLOC=pass refusals=7 healthy=4 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^CM_QUEUE_ALLOC_CHILD=observed .* success=true signal=None$' "$output")" -eq 11 ] \
             || fail 'CM result queue allocation refusal or healthy controls differ'
+        [ "$(grep -Fxc 'CM_RAW_BACKING=pass cases=5 original_allocation=retired-at-admission payload=exact' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^CM_RAW_BACKING_CASE=observed .* released_at_admission=true released_after_drain=true payload_exact=true$' "$output")" -eq 5 ] \
+            || fail 'CM raw payload backing allocation retirement differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'file-block summary count differs'
         [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=10 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -7126,8 +7144,8 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
-            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^(CONTROL|CM)_QUEUE_ALLOC' "$output"
-            printf 'CONTROL_EGRESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-control-and-cm-egress rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^(CONTROL|CM)_QUEUE_ALLOC|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
+            printf 'CONTROL_EGRESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then

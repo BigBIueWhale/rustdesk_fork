@@ -4,6 +4,9 @@ pub use log;
 pub use sodiumoxide;
 pub use tokio;
 
+#[path = "../libs/hbb_common/src/bytes_codec.rs"]
+pub mod bytes_codec;
+
 #[path = "../libs/hbb_common/src/protos/mod.rs"]
 pub mod protos;
 pub use protos::message as message_proto;
@@ -51,6 +54,8 @@ struct QueueAllocator;
 thread_local! {
     static QUEUE_BUDGET: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
     static QUEUE_REFUSALS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static CM_BACKING_TARGET: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static CM_BACKING_RETIRED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 fn refuse_queue_allocation() -> bool {
@@ -78,6 +83,9 @@ unsafe impl std::alloc::GlobalAlloc for QueueAllocator {
         else { std::alloc::GlobalAlloc::realloc(&std::alloc::System, pointer, layout, size) }
     }
     unsafe fn dealloc(&self, pointer: *mut u8, layout: std::alloc::Layout) {
+        if CM_BACKING_TARGET.try_with(|target| target.get() == pointer as usize).unwrap_or(false) {
+            CM_BACKING_RETIRED.with(|retired| retired.set(true));
+        }
         std::alloc::GlobalAlloc::dealloc(&std::alloc::System, pointer, layout);
     }
 }
@@ -245,7 +253,7 @@ fn cm_queue_allocation_case(case: &str) {
     let stale = sender.clone();
     for id in 0..queued { sender.send(response(id as i32, &retired)).unwrap(); }
     let capacity = lock_cm_egress(&sender.state).queue.capacity();
-    if kind == "spare" { assert!(capacity > queued); }
+    if queued == 1 { assert!(capacity > queued); }
     else { assert_eq!(capacity, queued); }
     let pending = response(999, &retired);
     let (outcome, refusals) = with_queue_budget(budget, || sender.send(pending));
@@ -297,8 +305,10 @@ fn cm_queue_growth_failure_is_terminal_and_releases_payloads() {
     assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
     println!("CM_QUEUE_ALLOC_PROBE=observed bytes=31 signal=6");
     let mut passed = 0;
-    for case in ["refuse:0:0", "healthy:0:1", "refuse:4:0", "healthy:4:1",
-                 "refuse:8:0", "healthy:8:1", "spare:1:0"] {
+    for case in ["refuse:0:0", "refuse:0:1", "healthy:0:2",
+                 "refuse:4:0", "refuse:4:1", "healthy:4:2",
+                 "refuse:8:0", "refuse:8:1", "healthy:8:2",
+                 "refuse:1:0", "spare:1:1"] {
         let output = run(case);
         for line in String::from_utf8_lossy(&output.stdout).lines() {
             if line.starts_with("CM_QUEUE_ALLOC_CASE=") { println!("{line}"); }
@@ -307,6 +317,74 @@ fn cm_queue_growth_failure_is_terminal_and_releases_payloads() {
         println!("CM_QUEUE_ALLOC_CHILD=observed case={case} success={} signal={:?}", output.status.success(), output.status.signal());
         passed += usize::from(output.status.success());
     }
-    assert_eq!(passed, 7, "CM allocation refusal must retire its queue; healthy responses must preserve exact bytes");
-    println!("CM_QUEUE_ALLOC=pass refusals=3 healthy=4 probe=SIGABRT children=joined");
+    assert_eq!(passed, 11, "CM queue and payload allocation refusal must retire its queue; healthy responses must preserve exact bytes");
+    println!("CM_QUEUE_ALLOC=pass refusals=7 healthy=4 probe=SIGABRT children=joined");
+}
+
+#[test]
+fn cm_queue_admission_owns_only_raw_payload_bytes() {
+    use tokio_util::codec::{Decoder, Encoder};
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) { CM_BACKING_TARGET.with(|target| target.set(0)); }
+    }
+    let mut failures = 0;
+    for length in [0, 1, 64, 65_536, ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES] {
+        let (sender, mut receiver) = cm_egress_channel();
+        let mut wire = bytes::BytesMut::with_capacity(8 * 1024 * 1024);
+        let pointer = wire.as_ptr() as usize;
+        let capacity = wire.capacity();
+        wire.resize(capacity, 0x7d);
+        wire.clear();
+        CM_BACKING_RETIRED.with(|retired| retired.set(false));
+        CM_BACKING_TARGET.with(|target| { assert_eq!(target.get(), 0); target.set(pointer); });
+        let reset = Reset;
+        let mut codec = bytes_codec::BytesCodec::new();
+        codec.set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);
+        codec.encode(bytes::Bytes::from(serde_json::to_vec(&Data::ChatMessage {
+            text: "x".repeat(4 * 1024 * 1024),
+        }).unwrap()), &mut wire).unwrap();
+        codec.encode(bytes::Bytes::from(serde_json::to_vec(&Data::CmFileResponse(ipc::CmFileResponse {
+            conn_id: 7, cm_auth_token: "token".to_owned(),
+            response: Box::new(ipc::CmFileResponseKind::ReadBlock {
+                id: 41, generation: 2, file_num: 3, compressed: false, data: bytes::Bytes::new(),
+            }),
+        })).unwrap()), &mut wire).unwrap();
+        codec.encode(bytes::Bytes::from(vec![0xa5; length]), &mut wire).unwrap();
+        assert_eq!(wire.as_ptr() as usize, pointer);
+        let previous = codec.decode(&mut wire).unwrap().unwrap();
+        assert!(matches!(serde_json::from_slice::<Data>(&previous).unwrap(), Data::ChatMessage { text } if text.len() == 4 * 1024 * 1024));
+        drop(previous);
+        let metadata = codec.decode(&mut wire).unwrap().unwrap();
+        let mut response = serde_json::from_slice::<Data>(&metadata).unwrap();
+        drop(metadata);
+        codec.set_max_packet_length(ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES);
+        let raw = codec.decode(&mut wire).unwrap().unwrap().freeze();
+        assert_eq!(raw.len(), length);
+        assert!(codec.decode_eof(&mut wire).unwrap().is_none());
+        drop(wire);
+        let Data::CmFileResponse(envelope) = &mut response else { panic!("CM metadata changed"); };
+        let ipc::CmFileResponseKind::ReadBlock { data, .. } = envelope.response.as_mut() else { panic!("CM response kind changed"); };
+        *data = raw;
+        sender.send(response).unwrap();
+        let released_at_admission = CM_BACKING_RETIRED.with(std::cell::Cell::get);
+        let item = receiver.take_next().unwrap().unwrap();
+        let exact = match &item {
+            CmEgressItem::Data(Data::CmFileResponse(response)) => {
+                response.conn_id == 7 && response.cm_auth_token == "token"
+                    && matches!(response.response.as_ref(), ipc::CmFileResponseKind::ReadBlock {
+                        id: 41, generation: 2, file_num: 3, compressed: false, data,
+                    } if data.len() == length && data.iter().all(|byte| *byte == 0xa5))
+            }
+            _ => false,
+        };
+        drop(item);
+        let released_after_drain = CM_BACKING_RETIRED.with(std::cell::Cell::get);
+        assert!(released_after_drain, "deallocation observer must see the original buffer retire");
+        failures += usize::from(!released_at_admission || !exact);
+        println!("CM_RAW_BACKING_CASE=observed length={length} backing_capacity={capacity} released_at_admission={released_at_admission} released_after_drain={released_after_drain} payload_exact={exact}");
+        drop(reset);
+    }
+    assert_eq!(failures, 0, "a queued raw payload must not pin unrelated transport-buffer capacity");
+    println!("CM_RAW_BACKING=pass cases=5 original_allocation=retired-at-admission payload=exact");
 }

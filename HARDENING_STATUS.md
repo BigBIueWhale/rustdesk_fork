@@ -12661,6 +12661,21 @@ Earlier queue-entry refusal evidence remains in `cm-queue-allocation-ed4e0911.js
 Complete desktop hops, real CM IPC, Android execution, whole-process allocation bounds,
 installed-service/LPE and displayed latency remain OPEN.
 
+**Concurrent raw-result admission — Linux component PASS.** `be96a1be` adds two
+actual OS-thread scenarios against the same production queue, without changing product
+code or its resource limits. Eight producers each submit sixteen raw responses while
+the consumer is held: all 128 original source owners retire at admission, and the drain
+preserves exact metadata, payload bytes and each producer's order. Separately, barriers
+hold eight admitted responses in an eight-entry queue before eight concurrent additional
+offers; every offer reports `MessageCapacity`, pending work/accounting clear, one terminal
+result is observed, stale senders refuse and a fresh queue remains usable. All sixteen
+producer threads join before successful verdicts. Source-owner flags establish lifetime,
+not RSS or allocator-wide release. The unchanged 26 tests and these two cases pass;
+the existing 21 allocation-child processes are joined. Evidence:
+`.harness-state/verifier-vm/cm-concurrent-egress-afdda092.json`.
+These controlled schedules do not establish all interleavings, real CM producer/IPC hops,
+installed/mobile behavior, latency or soak acceptance.
+
 Desktop response-write lifetime now has the named Linux socket-backpressure A/B
 evidence under R-S11is below. A single private send operation owns JSON plus its
 optional raw payload under one five-second initiating deadline; error retires the

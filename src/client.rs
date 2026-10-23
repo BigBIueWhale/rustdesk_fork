@@ -981,7 +981,7 @@ pub struct AudioHandler {
     #[cfg(not(target_os = "linux"))]
     output_owner: Option<AudioOutputOwner>,
     #[cfg(not(target_os = "linux"))]
-    audio_buffer: AudioBuffer,
+    audio_buffer: Option<AudioBuffer>,
     sample_rate: (u32, u32),
     #[cfg(not(target_os = "linux"))]
     audio_stream: Option<Box<dyn StreamTrait>>,
@@ -1003,6 +1003,7 @@ impl AudioHandler {
         {
             self.output_owner = None;
             self.audio_stream = None;
+            self.audio_buffer = None;
         }
     }
 
@@ -1187,7 +1188,12 @@ impl AudioHandler {
                                 self.device_channel,
                             );
                         }
-                        self.audio_buffer.append_pcm(&buffer);
+                        if let Some(audio_buffer) = self.audio_buffer.as_mut() {
+                            audio_buffer.append_pcm(&buffer);
+                        } else {
+                            log::warn!("Audio output has no PCM buffer; closing playback");
+                            self.fail_audio();
+                        }
                     }
                     #[cfg(target_os = "linux")]
                     {
@@ -1229,8 +1235,7 @@ impl AudioHandler {
             failure.fail();
             log::warn!("Audio output failed; closing playback: {err}");
         };
-        let mut buffer = AudioBuffer::default();
-        buffer.resize(config.sample_rate.0 as _, config.channels as _);
+        let buffer = AudioBuffer::new(config.sample_rate.0 as _, config.channels as _)?;
         let audio_buffer = Arc::clone(&buffer.samples);
         let ready = output_owner.callback();
         let timeout = None;
@@ -1255,7 +1260,7 @@ impl AudioHandler {
             return Err(err.into());
         }
         self.device_channel = config.channels;
-        self.audio_buffer = buffer;
+        self.audio_buffer = Some(buffer);
         self.output_owner = Some(output_owner);
         self.audio_stream = Some(Box::new(stream));
         Ok(())

@@ -16,38 +16,25 @@ pub(super) struct AudioBuffer {
     last_shrink: Option<Instant>,
 }
 
-impl Default for AudioBuffer {
-    fn default() -> Self {
-        Self {
-            samples: Arc::new(Mutex::new(
-                ringbuf::HeapRb::<f32>::new(48000 * 2 * AUDIO_BUFFER_MS / 1000),
-            )),
-            sample_rate_channels: 48000 * 2,
-            channels: 2,
-            occupancy_samples: [0; 30],
-            last_shrink: None,
-        }
-    }
-}
-
 impl AudioBuffer {
     pub(super) fn new(sample_rate: usize, channels: usize) -> std::io::Result<Self> {
-        let mut buffer = Self::default();
-        buffer.resize(sample_rate, channels);
-        Ok(buffer)
-    }
-
-    pub(super) fn resize(&mut self, sample_rate: usize, channels: usize) {
-        let capacity = sample_rate * channels * AUDIO_BUFFER_MS / 1000;
-        let old_capacity = self.samples.lock().unwrap().capacity();
-        if capacity != old_capacity || channels != self.channels {
-            *self.samples.lock().unwrap() = ringbuf::HeapRb::<f32>::new(capacity);
-            self.sample_rate_channels = sample_rate * channels;
-            self.channels = channels;
-            self.occupancy_samples = [0; 30];
-            self.last_shrink = None;
-            log::info!("Audio buffer resized from {old_capacity} to {capacity}");
-        }
+        let invalid_geometry = || std::io::Error::from(std::io::ErrorKind::InvalidInput);
+        let sample_rate_channels = sample_rate.checked_mul(channels)
+            .filter(|&samples| samples > 0).ok_or_else(invalid_geometry)?;
+        let capacity = sample_rate_channels.checked_mul(AUDIO_BUFFER_MS)
+            .map(|samples| samples / 1000)
+            .filter(|&samples| samples > 0
+                && samples <= isize::MAX as usize / std::mem::size_of::<f32>())
+            .ok_or_else(invalid_geometry)?;
+        let samples = ringbuf::HeapRb::<f32>::try_new(capacity)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
+        Ok(Self {
+            samples: Arc::new(Mutex::new(samples)),
+            sample_rate_channels,
+            channels,
+            occupancy_samples: [0; 30],
+            last_shrink: None,
+        })
     }
 
     fn try_shrink(&mut self, having: usize, now: Instant) {

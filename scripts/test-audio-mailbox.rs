@@ -26,7 +26,7 @@ use anyhow::anyhow;
 struct AudioHandler {
     output_factory: Option<AudioOutputFactory>,
     output_owner: Option<AudioOutputOwner>,
-    audio_buffer: AudioBuffer,
+    audio_buffer: Option<AudioBuffer>,
     audio_stream: Option<Box<dyn StreamTrait>>,
     device_channel: u16,
 }

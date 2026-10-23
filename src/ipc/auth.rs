@@ -2710,14 +2710,34 @@ fn linux_proc_parent_pid(pid: u32) -> ResultType<u32> {
 
 #[cfg(target_os = "linux")]
 fn linux_kernel_process_identity_by_pid(pid: u32) -> ResultType<LinuxProcessIdentity> {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+
     if pid == 0 {
         bail!("invalid Linux process pid");
     }
-    Ok(LinuxProcessIdentity {
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let process = unsafe { OwnedFd::from_raw_fd(fd as RawFd) };
+    let identity = LinuxProcessIdentity {
         pid,
         uid: linux_proc_uid(pid)?,
         start_time: linux_proc_start_time(pid)?,
-    })
+    };
+    let mut readiness = libc::pollfd {
+        fd: process.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let result = unsafe { libc::poll(&mut readiness, 1, 0) };
+    if result < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if result != 0 {
+        bail!("Linux process {pid} exited while proving its identity");
+    }
+    Ok(identity)
 }
 
 #[cfg(target_os = "linux")]

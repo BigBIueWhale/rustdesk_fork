@@ -26,10 +26,9 @@ class _ChatPeer implements FfiModel {
       throw UnsupportedError('Unexpected peer access');
 }
 
-Client _incomingClient(int generation) =>
-    Client(7, true, false, false, 'Incoming peer', 'incoming-peer', true, true,
-        true)
-      ..registryGeneration = generation;
+Client _incomingClient(int generation) => Client(
+    7, true, false, false, 'Incoming peer', 'incoming-peer', true, true, true)
+  ..registryGeneration = generation;
 
 class _ChatServer implements ServerModel {
   @override

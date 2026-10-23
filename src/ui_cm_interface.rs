@@ -307,7 +307,7 @@ impl CmEgressSender {
         self.fail_with_state(lock_cm_egress(&self.state), failure)
     }
 
-    pub(crate) fn send(&self, data: Data) -> Result<(), CmEgressAdmissionError> {
+    pub(crate) fn send(&self, mut data: Data) -> Result<(), CmEgressAdmissionError> {
         // Exact responses have no coalescing semantics. Any refusal retires the complete mailbox;
         // continuing after one response disappeared would make CM and Connection state diverge.
         if !is_cm_egress_data(&data) {
@@ -353,6 +353,17 @@ impl CmEgressSender {
             }
             if state.queue.try_reserve(1).is_err() {
                 return self.fail_with_state(state, CmEgressFailure::StorageUnavailable);
+            }
+            if let Data::CmFileResponse(envelope) = &mut data {
+                if let ipc::CmFileResponseKind::ReadBlock { data, .. } = envelope.response.as_mut() {
+                    // A raw view can otherwise keep an unrelated, much larger IPC buffer alive.
+                    let mut owned = Vec::new();
+                    if owned.try_reserve_exact(data.len()).is_err() {
+                        return self.fail_with_state(state, CmEgressFailure::StorageUnavailable);
+                    }
+                    owned.extend_from_slice(data.as_ref());
+                    *data = owned.into();
+                }
             }
             state.queue.push_back(QueuedCmEgress {
                 data,

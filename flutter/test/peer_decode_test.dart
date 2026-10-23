@@ -99,7 +99,7 @@ class _ChatDelivery {
     const windowChannel = MethodChannel('window_manager');
     messenger.setMockMethodCallHandler(windowChannel, (call) async {
       windowCalls.add(call.method);
-      return null;
+      return call.method == 'isMinimized' ? false : null;
     });
     messenger.setMockMethodCallHandler(miltiWindowChannel, (call) async {
       windowCalls.add('multi.${call.method}');
@@ -260,7 +260,7 @@ void main() {
     expect(delivery.model.latestReceivedKey, key);
     expect(delivery.notifications, 1);
     expect(delivery.owner.serverModel.jumps, 1);
-    expect(delivery.windowCalls, ['show', 'focus']);
+    expect(delivery.windowCalls, ['isMinimized', 'show', 'focus']);
   });
 
   test('chat delivery refuses replaced incoming generation after page wait',

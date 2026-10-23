@@ -102,7 +102,10 @@ class ResultTests(unittest.TestCase):
             self.parse(self.events("models"), "models"),
             (len(result.EXPECTED_SUITES), result.model_test_count()),
         )
-        self.assertEqual(self.parse(self.events("frame-queue"), "frame-queue"), (1, 24))
+        self.assertEqual(
+            self.parse(self.events("frame-queue"), "frame-queue"),
+            (1, len(result.FRAME_QUEUE_TESTS)),
+        )
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
         self.assertEqual(self.parse(self.events("share-rdp"), "share-rdp"), (1, 4))

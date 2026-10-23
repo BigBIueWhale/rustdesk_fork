@@ -6459,14 +6459,20 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audi
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
     mapfile -t audio_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=36 unchanged=before-after$'
+            'AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=46 unchanged=before-after$'
     )
     [ "${#audio_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'AUDIO_MAILBOX_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'audio-mailbox artifact receipt differs'
     require_exact_fixed_receipt \
-        "AUDIO_MAILBOX_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=36 target=linux-x86_64 scope=production-mailbox-and-generated-protobuf rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "AUDIO_MAILBOX_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=46 target=linux-x86_64 scope=production-mailbox-and-generated-protobuf rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused audio-mailbox receipt'
+    require_exact_fixed_receipt \
+        'ANDROID_RAW_TRANSFER=pass cases=4 rounds=3 copy_allocations=0 pointer=transferred producer_storage=reused payload=exact probe=SIGABRT children=joined scope=portable-linux' \
+        'Android owned raw-buffer transfer without allocation'
+    require_exact_fixed_receipt \
+        'ANDROID_RAW_SEMANTICS=pass cases=8 disabled=refused empty=refused single_use=true equal=refused changed=exact expired=retired stale=refused successor=usable scope=portable-linux' \
+        'Android raw-buffer terminal and generation semantics'
     require_exact_fixed_receipt \
         'AUDIO_MAILBOX_ALLOC=pass refusals=10 healthy=6 probe=SIGABRT children=joined' \
         'audio admission allocation refusal and healthy packet preservation'
@@ -8278,7 +8284,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'AUDIO_BUFFER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=24 scope=production-portable-pcm-buffer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-        printf 'AUDIO_MAILBOX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=36 scope=production-mailbox-and-generated-protobuf network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'AUDIO_MAILBOX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=46 scope=production-mailbox-and-generated-protobuf network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
         printf 'RESOLUTION_RESTORATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=6 scope=production-record-identity-with-callback-fixtures network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

@@ -4476,6 +4476,8 @@ run_focused_rust_tests() {
                 libs/hbb_common/build.rs libs/hbb_common/src/protos/mod.rs
                 libs/hbb_common/protos/message.proto libs/hbb_common/protos/rendezvous.proto
                 scripts/test-audio-mailbox.rs scripts/run-audio-mailbox-tests.py
+                libs/scrap/src/android/frame_raw.rs libs/scrap/src/android/frame_raw_generation.rs
+                libs/scrap/src/common/frame_compare.rs
             )
             required_tests=(
                 audio_mailbox::tests::r_s11hi_audio_mailbox_requires_and_prioritizes_the_first_format
@@ -4498,6 +4500,16 @@ run_focused_rust_tests() {
                 output_error_callback_wakes_the_idle_owner_and_joins_off_callback
                 frame_admission_allocation_failure_is_terminal_and_recoverable
                 decoder_storage_failure_closes_worker_and_preserves_native_opus
+                android_raw::take_moves_owned_storage_without_allocation
+                android_raw::take_preserves_terminal_and_generation_semantics
+                frame_compare::tests::changed_frames_replace_the_complete_cache
+                frame_compare::tests::equal_frames_preserve_the_cache_and_allocation
+                frame_compare::tests::empty_frames_follow_the_same_equality_and_replacement_rules
+                frame_raw_generation::tests::successor_cannot_bypass_exact_generation_retirement
+                frame_raw_generation::tests::exact_retirement_prevents_same_generation_reactivation
+                frame_raw_generation::tests::retired_or_superseded_generations_never_regress
+                frame_raw_generation::tests::screen_size_is_visible_only_to_its_exact_active_generation
+                frame_raw_generation::tests::screen_size_retirement_and_reactivation_fail_closed
                 audio_buffer::tests::first_observation_arms_only_its_own_window
                 audio_buffer::tests::exact_interval_trims_without_early_retirement
                 audio_buffer::tests::independently_started_buffers_do_not_postpone_each_other
@@ -6185,7 +6197,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
         printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=24 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=36 bridge=absent\n'
+        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=46 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
         printf 'WHITEBOARD_CLIENT_STATE_PROFILE=whiteboard-client stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
@@ -6279,6 +6291,14 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                     print
                 }
             ' "$output" >&2 || fail 'controlled-egress runtime failure records exceed their bound'
+        elif [ "$RUST_TEST_PROFILE" = audio-mailbox ] \
+            && grep -Eq '^AUDIO_MAILBOX_BUILD=sha256=[0-9a-f]{64} tests=[0-9]+$' "$output"; then
+            awk '
+                /^(AUDIO_|ANDROID_RAW_|test |memory allocation of )/ {
+                    if (++records > 512) exit 1
+                    print
+                }
+            ' "$output" >&2 || fail 'audio-mailbox runtime failure records exceed their bound'
         else
             tail -n "$failure_lines" "$output" >&2
         fi
@@ -6579,9 +6599,13 @@ PY
             || fail 'audio-buffer reservation or geometry outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-mailbox summary count differs'
-        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=36 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=46 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'AUDIO_MAILBOX_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'audio-mailbox artifact receipt differs'
+        [ "$(grep -Fxc 'ANDROID_RAW_TRANSFER=pass cases=4 rounds=3 copy_allocations=0 pointer=transferred producer_storage=reused payload=exact probe=SIGABRT children=joined scope=portable-linux' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^ANDROID_RAW_TRANSFER_CHILD=observed case=(empty|short|spare|reused) success=true signal=None$' "$output")" -eq 4 ] \
+            && [ "$(grep -Fxc 'ANDROID_RAW_SEMANTICS=pass cases=8 disabled=refused empty=refused single_use=true equal=refused changed=exact expired=retired stale=refused successor=usable scope=portable-linux' "$output")" -eq 1 ] \
+            || fail 'Android raw-buffer transfer or retirement semantics differ'
         [ "$(grep -Fxc 'AUDIO_MAILBOX_ALLOC=pass refusals=10 healthy=6 probe=SIGABRT children=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^AUDIO_MAILBOX_ALLOC_CHILD=observed .* success=true signal=None$' "$output")" -eq 16 ] \
             || fail 'audio-mailbox allocation outcomes differ'
@@ -7246,7 +7270,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-            grep -E '^test ((audio_mailbox|audio_buffer)::tests::.*|output_error_callback_wakes_the_idle_owner_and_joins_off_callback|frame_admission_allocation_failure_is_terminal_and_recoverable|decoder_storage_failure_closes_worker_and_preserves_native_opus) \.\.\. ok$|^AUDIO_MAILBOX_(ARTIFACT(_AFTER)?|BUILD|DEPENDENCIES|INPUT|METHOD|ALLOC(_CASE|_CHILD|_PROBE)?)=|^AUDIO_(DECODE_(METHOD|CASE|CHILD|PROBE|FAILURE|STORAGE)|OPUS_RUNTIME|OUTPUT_ERROR|FRAME_ALIGNMENT|GEOMETRY_RESET)=' "$output"
+            grep -E '^test ((audio_mailbox|audio_buffer|frame_compare|frame_raw_generation)::tests::.*|android_raw::.*|output_error_callback_wakes_the_idle_owner_and_joins_off_callback|frame_admission_allocation_failure_is_terminal_and_recoverable|decoder_storage_failure_closes_worker_and_preserves_native_opus) \.\.\. ok$|^ANDROID_RAW_|^AUDIO_MAILBOX_(ARTIFACT(_AFTER)?|BUILD|DEPENDENCIES|INPUT|METHOD|ALLOC(_CASE|_CHILD|_PROBE)?)=|^AUDIO_(DECODE_(METHOD|CASE|CHILD|PROBE|FAILURE|STORAGE)|OPUS_RUNTIME|OUTPUT_ERROR|FRAME_ALIGNMENT|GEOMETRY_RESET)=' "$output"
             printf 'AUDIO_MAILBOX_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-mailbox-and-generated-protobuf rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

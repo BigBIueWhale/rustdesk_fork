@@ -21,6 +21,8 @@ INPUTS = (
     "libs/hbb_common/build.rs", "libs/hbb_common/src/protos/mod.rs",
     "libs/hbb_common/protos/message.proto", "libs/hbb_common/protos/rendezvous.proto",
     "scripts/test-audio-mailbox.rs", "scripts/run-audio-mailbox-tests.py",
+    "libs/scrap/src/android/frame_raw.rs", "libs/scrap/src/android/frame_raw_generation.rs",
+    "libs/scrap/src/common/frame_compare.rs",
 )
 
 
@@ -137,13 +139,17 @@ def main():
             raise ValueError("native Opus runtime identity differs")
         opus_sha = digest(opus.read_bytes())
         print(f"AUDIO_OPUS_RUNTIME=observed version={version} path={opus} sha256={opus_sha} wrapper=5cd2bf989c148662fa3a2d9d539a71d71fd1d256 backend=controlled-pcm-sink", flush=True)
-        print(f"AUDIO_MAILBOX_BUILD=sha256={artifact_sha} tests=36", flush=True)
+        for name, data in inputs.items():
+            if (repo / name).read_bytes() != data:
+                raise ValueError(f"mailbox test source changed before execution: {name}")
+            print(f"AUDIO_MAILBOX_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
+        print(f"AUDIO_MAILBOX_BUILD=sha256={artifact_sha} tests=46", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, timeout=30)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("mailbox artifact changed during execution")
-            print(f"AUDIO_MAILBOX_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=36 unchanged=before-after", flush=True)
+            print(f"AUDIO_MAILBOX_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=46 unchanged=before-after", flush=True)
             if digest(opus.read_bytes()) != opus_sha:
                 raise ValueError("native Opus runtime changed during execution")
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
@@ -151,10 +157,9 @@ def main():
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"mailbox test source changed: {name}")
-            print(f"AUDIO_MAILBOX_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
         if (fixture / "output-method.rs").read_bytes() != generated:
             raise ValueError("extracted output method changed")
-        print(f"AUDIO_MAILBOX_ARTIFACT=pass sha256={artifact_sha} tests=36 unchanged=before-after", flush=True)
+        print(f"AUDIO_MAILBOX_ARTIFACT=pass sha256={artifact_sha} tests=46 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

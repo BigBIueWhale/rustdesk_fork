@@ -8,6 +8,119 @@ pub mod protos {
 }
 pub use protos::message as message_proto;
 
+#[path = "../libs/scrap/src/android/frame_raw_generation.rs"]
+mod frame_raw_generation;
+#[path = "../libs/scrap/src/common/frame_compare.rs"]
+mod frame_compare;
+pub use frame_compare::would_block_if_equal;
+
+mod android_raw {
+    include!("../libs/scrap/src/android/frame_raw.rs");
+
+    #[test]
+    fn take_moves_owned_storage_without_allocation() {
+        use std::{os::unix::process::ExitStatusExt, process::Command};
+        if let Ok(case) = std::env::var("ANDROID_RAW_TRANSFER_CASE") {
+            if case == "probe" {
+                crate::with_allocation_budget(0, || std::hint::black_box(Vec::<u8>::with_capacity(31)));
+                panic!("allocation-refusal probe returned");
+            }
+            let mut dst = Vec::with_capacity(match case.as_str() {
+                "empty" => 0, "short" => 1, "spare" => 131072, "reused" => 65536,
+                _ => panic!("unknown raw-buffer case"),
+            });
+            let mut last = Vec::new();
+            let mut raw = FrameRaw::new("test", Duration::from_secs(60));
+            raw.set_enable(true);
+            for round in 1..=3 {
+                let mut payload = vec![round as u8; 65536];
+                raw.update_from_jni_buffer(payload.as_mut_ptr(), payload.len(), payload.len());
+                let source = raw.data.as_ptr();
+                let reusable = dst.as_ptr();
+                let reusable_capacity = dst.capacity();
+                let (result, refusals) = crate::with_allocation_budget(0, || raw.take(&mut dst, &mut last));
+                let transferred = dst.as_ptr() == source;
+                let reused = raw.data.as_ptr() == reusable && raw.data.capacity() == reusable_capacity;
+                let exact = dst == payload && raw.data.is_empty();
+                println!("ANDROID_RAW_TRANSFER_CASE=observed case={case} round={round} admitted={} refusals={refusals} transferred={transferred} reused={reused} exact={exact}", result.is_some());
+                assert!(result.is_some() && refusals == 0 && transferred && reused && exact);
+            }
+            return;
+        }
+        let executable = std::env::current_exe().unwrap();
+        let run = |case: &str| Command::new(&executable)
+            .args(["--exact", "android_raw::take_moves_owned_storage_without_allocation", "--nocapture"])
+            .env("ANDROID_RAW_TRANSFER_CASE", case).output().unwrap();
+        let probe = run("probe");
+        assert_eq!(probe.status.signal(), Some(6));
+        assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+        println!("ANDROID_RAW_TRANSFER_PROBE=observed bytes=31 signal=Some(6)");
+        let mut passed = 0;
+        for case in ["empty", "short", "spare", "reused"] {
+            let output = run(case);
+            assert!(output.stdout.len() + output.stderr.len() <= 65536);
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if line.starts_with("ANDROID_RAW_TRANSFER_CASE=") { println!("{line}"); }
+            }
+            print!("{}", String::from_utf8_lossy(&output.stderr));
+            println!("ANDROID_RAW_TRANSFER_CHILD=observed case={case} success={} signal={:?}", output.status.success(), output.status.signal());
+            passed += usize::from(output.status.success());
+        }
+        assert_eq!(passed, 4, "raw handoff must transfer storage without allocating or copying");
+        println!("ANDROID_RAW_TRANSFER=pass cases=4 rounds=3 copy_allocations=0 pointer=transferred producer_storage=reused payload=exact probe=SIGABRT children=joined scope=portable-linux");
+    }
+
+    #[test]
+    fn take_preserves_terminal_and_generation_semantics() {
+        let mut raw = FrameRaw::new("test", Duration::from_secs(60));
+        let mut payload = [1, 2, 3, 4];
+        let mut dst = vec![9; 3];
+        let mut last = Vec::new();
+        raw.update_from_jni_buffer(payload.as_mut_ptr(), payload.len(), payload.len());
+        assert!(raw.take(&mut dst, &mut last).is_none());
+        assert_eq!(dst, [9; 3]);
+        raw.set_enable(true);
+        assert!(raw.take(&mut dst, &mut last).is_none());
+        raw.update_from_jni_buffer(payload.as_mut_ptr(), payload.len(), payload.len());
+        assert!(raw.take(&mut dst, &mut last).is_some());
+        assert_eq!(dst, payload);
+        assert!(raw.take(&mut dst, &mut last).is_none());
+        last = payload.to_vec();
+        raw.update_from_jni_buffer(payload.as_mut_ptr(), payload.len(), payload.len());
+        assert!(raw.take(&mut dst, &mut last).is_none());
+        assert_eq!(dst, payload);
+        assert!(raw.data.is_empty());
+        payload[0] = 5;
+        raw.update_from_jni_buffer(payload.as_mut_ptr(), payload.len(), payload.len());
+        assert!(raw.take(&mut dst, &mut last).is_some());
+        assert_eq!(dst, payload);
+        assert_eq!(last, payload);
+        raw.update_from_jni_buffer(payload.as_mut_ptr(), payload.len(), payload.len());
+        raw.last_update = Instant::now().checked_sub(raw.timeout + Duration::from_secs(1)).unwrap();
+        assert!(raw.take(&mut dst, &mut last).is_none());
+        assert!(raw.data.is_empty());
+        assert_eq!(dst, payload);
+
+        let mut owned = GenerationOwnedFrameRaw::new("test", Duration::from_secs(60));
+        assert!(owned.begin_generation(1) && owned.set_enable(1, true));
+        owned.update_from_jni_buffer(1, payload.as_mut_ptr(), payload.len(), payload.len());
+        assert!(owned.take(2, &mut dst, &mut Vec::new()).is_none());
+        assert!(owned.take(1, &mut dst, &mut Vec::new()).is_some());
+        assert_eq!(dst, payload);
+        owned.update_from_jni_buffer(1, payload.as_mut_ptr(), payload.len(), payload.len());
+        assert!(owned.retire_generation(1));
+        assert!(owned.take(1, &mut dst, &mut Vec::new()).is_none());
+        assert!(owned.begin_generation(2) && owned.set_enable(2, true));
+        owned.update_from_jni_buffer(1, payload.as_mut_ptr(), payload.len(), payload.len());
+        assert!(owned.take(2, &mut dst, &mut Vec::new()).is_none());
+        payload[0] = 6;
+        owned.update_from_jni_buffer(2, payload.as_mut_ptr(), payload.len(), payload.len());
+        assert!(owned.take(2, &mut dst, &mut Vec::new()).is_some());
+        assert_eq!(dst, payload);
+        println!("ANDROID_RAW_SEMANTICS=pass cases=8 disabled=refused empty=refused single_use=true equal=refused changed=exact expired=retired stale=refused successor=usable scope=portable-linux");
+    }
+}
+
 #[path = "../src/client/audio_mailbox.rs"]
 mod audio_mailbox;
 

@@ -3536,16 +3536,27 @@ and exact received-frame length before splitting. There is no unknown-format-to-
 timeout, accepts at most one MonitorReady prelude, and retains the cached stream only after a
 successful complete response. Errors/timeouts discard the stream; failed/empty CM reads
 cannot substitute the service process's own clipboard or retry an uncertain request.
-Exact source `828e1224` passed `--cm-clipboard-response-tests` in 115 VM seconds:
-eleven production-type/Bytes/serde/generated-protobuf tests cover mixed exact zero-copy bytes,
-short and trailing replies, overflow, inline mismatch, conflicting placement, empty/inline-only
-replies, unchanged JSON shape, whole-reply unknown-format refusal, all seven declared formats
-and JSON/raw-to-protobuf encode/decode. The exact common build script, both schemas and
-generated-module facade use root-locked dependencies. Stable artifact, frozen source and
-joined zero-NIC VM cleanup are bound in
-`.harness-state/verifier-vm/cm-clipboard-format-accepted-828e1224.json`.
-Artifact SHA-256 `abb26e972f79046a98d831ac0ae608d711980b15607b38b90da4f755914bfe98`.
-This executes the response component on Linux. Windows handler/parent compilation, real
+`fb8fdce9` makes clipboard response preparation's metadata reservation, raw-chunk
+index growth and aggregate raw-payload reservation fallible. Allocation refusal returns
+`OutOfMemory` through the existing clipboard-read error path. The API, validation,
+metadata, bytes and receiver logic are unchanged.
+
+The same 35-test fixture fails only its new allocation test at unchanged-product
+`aee55b38`: all five refused allocation events abort their native child. The correction
+returns `OutOfMemory` at all five events and each child then completes an exact retry.
+Four healthy controls retain exact empty, inline, raw and sixteen-item responses;
+the positive abort probe and five refusal children all join. All 35 tests pass in
+0.32 seconds (100 seconds outer), including the existing production Bytes/serde/
+protobuf, malformed/unknown-format, framing and eight real-loopback-frame controls.
+The bounded zero-NIC VM uses the existing 2 GiB guest/6 GiB RAM scratch/4 GiB overlay
+profile with admission, ceilings, monitoring and 6 GiB host headroom. Both A/B VM and
+RAM workspaces retire. Source, artifacts and receipts are retained in
+`clipboard-prepare-allocation-6770f25a.json`; earlier format/assembly provenance remains
+in `cm-clipboard-format-accepted-828e1224.json`.
+
+This executes production response preparation/assembly on Linux with targeted Rust
+allocator refusals. It does not exercise whole-process memory pressure or the CM handler.
+Windows handler/parent compilation, real
 named-pipe malformed/stalled/error replies, deadline and stream retirement, native/peer
 clipboard nonpublication, fresh authorized reconnect and live/stale/disabled/wrong-type/
 principal transactions remain OPEN. The expected pinned Windows golden image and ISO are

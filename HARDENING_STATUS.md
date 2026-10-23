@@ -3887,6 +3887,27 @@ in 73 reported VM seconds: three compression refusals return `OutOfMemory`, each
 same-context retry matches upstream bytes for empty, one-byte and 128-KiB inputs,
 and the existing three decoder refusals/retries still pass. Source/artifacts, exact
 native outcomes and joined cleanup are retained in `compression-allocation-cc6460e0.json`.
+
+`cc88308c` replaces the shared receive decoder's Rust 1.75 `read_to_end` growth
+with 8-KiB stack reads and fallible output reservation before each append;
+allocation refusal returns `OutOfMemory` without reserving the entire caller
+limit upfront. Max-plus-one output detection, history limits, interrupted-read
+handling, codec errors, public APIs and caller propagation remain unchanged.
+At unchanged-product `ebebd4ef`, nine controls pass but all eight allocation
+children abort: the first four allocation positions in each default/tight-bound
+API. The identical fixture passes all ten component tests after correction.
+Each refusal returns the expected error, followed by an exact successful decode,
+unchanged compressed input and an over-limit refusal. Ten healthy controls cover
+empty, one-byte, 8-KiB boundaries and full blocks across both APIs. The positive
+allocation probe still aborts as required; all nine new children join. The old
+compressor, file-block, malformed/truncated, concatenation, history and input-
+storage controls pass. Corrected behavior takes 0.04s and the outer receipt 82s.
+`shared-decode-allocation-0d48a3d4.json` binds exact sources/artifacts, identical
+locked dependencies, observations, export limits and joined bounded-RAM cleanup.
+These are real Rust/C codec components, not full receive/caller or installed
+application acceptance. All fifteen credential actions, R-S0/R-F5, release
+obligations and every separately parked task remain OPEN/PARKED.
+
 Faults target only the Rust output vectors;
 C codec allocations, persistent/global memory pressure, full receive/filesystem
 effects, other platforms, installed and release acceptance remain OPEN.
@@ -14943,10 +14964,10 @@ join. Existing malformed/truncated/concatenated, output/history bounds and outpu
 allocation failure/retry controls pass. The artifact is unchanged before/after.
 `decompression-input-8c9ed120.json` binds original/corrected source, actual native
 outcomes, the excluded initial output-filter failure and joined bounded-RAM cleanup.
-Both focused inventories now contain nine cases; this slice executes the component
-lane, not the complete-library or parent/application lane. Limits, dependencies,
+That source's two focused inventories contain nine cases; its slice executes the
+component lane, not the complete-library or parent/application lane. Limits, dependencies,
 wire bytes and public return types are unchanged. This removes redundant Rust input
-storage and its allocation-abort path; native C-heap, output and whole-process memory
+storage and its allocation-abort path; native C-heap and whole-process memory
 exhaustion, throughput and native caller/platform acceptance remain unproved.
 
 These are Rust1.75/Linux codec observations, not whole-process allocation measurements,

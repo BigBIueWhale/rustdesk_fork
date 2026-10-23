@@ -298,6 +298,7 @@ void main() {
   ]) {
     testWidgets('chat draft survives $caseName at both send inputs',
         (tester) async {
+      debugPrint = tester.binding.debugPrintOverride;
       final owner = _ChatOwner();
       final model = _DraftChat(owner);
       final key = MessageKey('incoming-peer', 7);
@@ -331,9 +332,8 @@ void main() {
         await tester.pump();
         final afterButton = model.textController.text;
 
-        expect(afterKeyboard, draft,
-            reason: 'Enter must retain a refused draft');
-        expect(afterButton, draft, reason: 'Send must retain a refused draft');
+        expect([afterKeyboard, afterButton], [draft, draft],
+            reason: 'Both send inputs must retain a refused draft');
         expect(model.messages[key], same(body));
         expect(body.chatMessages, [prior]);
         expect(model.currentKey, same(key));
@@ -388,6 +388,7 @@ void main() {
   for (final direction in ['incoming', 'outgoing']) {
     testWidgets('chat draft clears accepted $direction sends at both inputs',
         (tester) async {
+      debugPrint = tester.binding.debugPrintOverride;
       final owner = _ChatOwner();
       final model = _DraftChat(owner, interceptSubmission: true);
       final key = MessageKey(

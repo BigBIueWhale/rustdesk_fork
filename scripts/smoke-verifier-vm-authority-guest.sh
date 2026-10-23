@@ -1025,6 +1025,7 @@ special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'a
 cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]
 cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'standard'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-metadata'}, 'flutter-credential-dialog'),
+              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'frame-queue'}, 'flutter-credential-dialog'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'video-vpx'}, 'linux-parent-libtest'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'clipboard-response'}, 'clipboard-response'),
               ('hbb-common-fs', {'HBB_FUSE_READ_TESTS': '1'}, 'standard'),
@@ -1061,9 +1062,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (43, 5):
+if (controls, refusals) != (44, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=36 controls=43 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=36 controls=44 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0

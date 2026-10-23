@@ -5263,7 +5263,7 @@ elif [ "$MODE" = ledger-token-count ]; then
         'VM storage profile limits and guest binding'
     require_exact_fixed_receipt 'VM_TRANSIENT_SUSPEND_CLI=pass profile=linux-flutter-suspend guest_mib=10240 required_mib=23552 insufficient_ram=refused allocation=not-entered' \
         'actual suspension profile CLI and RAM refusal'
-    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=36 controls=43 refusals=5 allocation=not-entered' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=36 controls=44 refusals=5 allocation=not-entered' \
         'VM workload class selection and unconfigured workload refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'

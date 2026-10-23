@@ -1,11 +1,29 @@
 import 'dart:convert';
 
+import 'package:dash_chat_2/dash_chat_2.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+class _UnusedChatOwner implements FFI {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnsupportedError('Chat history must not access its session');
+}
+
+ChatModel _chatModel() {
+  final model = ChatModel(WeakReference<FFI>(_UnusedChatOwner()));
+  addTearDown(() {
+    model.inputNode.dispose();
+    model.dispose();
+  });
+  return model;
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late Peers peers;
   late DebugPrintCallback previousDebugPrint;
   final diagnostics = <String?>[];
@@ -27,6 +45,84 @@ void main() {
   tearDown(() {
     debugPrint = previousDebugPrint;
     peers.dispose();
+  });
+
+  test('chat reset clears outgoing bodies and preserves incoming history', () {
+    final model = _chatModel();
+    final keys = [
+      MessageKey('same-peer', 7),
+      MessageKey('other-incoming-peer', 8),
+      MessageKey('same-peer', ChatModel.clientModeID),
+      MessageKey('other-outgoing-peer', ChatModel.clientModeID),
+    ];
+    final messages = <ChatMessage>[];
+    for (final key in keys) {
+      final message = ChatMessage(
+        user: ChatUser(id: key.peerId, firstName: 'Retained name'),
+        text: 'Prior session ${key.connId}',
+        createdAt: DateTime.utc(2026),
+      );
+      messages.add(message);
+      model.insertMessage(key, message);
+    }
+    final bodies = keys.map((key) => model.messages[key]!).toList();
+    final lists = bodies.map((body) => body.chatMessages).toList();
+    expect(model.currentKey, same(keys.first));
+
+    model.resetClientMode();
+
+    expect(model.messages.keys, orderedEquals(keys));
+    expect(model.currentKey, same(keys.first));
+    for (var i = 0; i < keys.length; i++) {
+      expect(model.messages[keys[i]], same(bodies[i]));
+      expect(bodies[i].chatMessages, same(lists[i]));
+      expect(bodies[i].chatUser, same(messages[i].user));
+      expect(bodies[i].chatUser.firstName, 'Retained name');
+      if (!keys[i].isOut) {
+        expect(lists[i], [messages[i]]);
+      }
+    }
+    expect(lists[2], isEmpty);
+    expect(lists[3], isEmpty);
+  });
+
+  test('chat reset supports empty repeated and reused session histories', () {
+    final model = _chatModel();
+    final invalidSelection = model.currentKey;
+    model.resetClientMode();
+    expect(model.messages, isEmpty);
+    expect(model.currentKey, same(invalidSelection));
+
+    final outgoing = MessageKey('same-peer', ChatModel.clientModeID);
+    final incoming = MessageKey('same-peer', 7);
+    final received = ChatMessage(
+      user: ChatUser(id: 'same-peer'),
+      text: 'Incoming retained across reconnect',
+      createdAt: DateTime.utc(2026),
+    );
+    model.insertMessage(incoming, received);
+    final incomingBody = model.messages[incoming]!;
+    for (var cycle = 0; cycle < 3; cycle++) {
+      final sent = ChatMessage(
+        user: ChatUser(id: 'local'),
+        text: 'Outgoing session $cycle',
+        createdAt: DateTime.utc(2026),
+      );
+      model.insertMessage(outgoing, sent);
+      expect(model.messages[outgoing]!.chatMessages, [sent]);
+      model.resetClientMode();
+      model.resetClientMode();
+      expect(model.messages[outgoing]!.chatMessages, isEmpty);
+      expect(model.messages[incoming], same(incomingBody));
+      expect(incomingBody.chatMessages, [received]);
+    }
+    final reconnected = MessageKey('same-peer', 19);
+    model.updateConnIdOfKey(reconnected);
+    expect(model.messages[reconnected], same(incomingBody));
+    expect(model.messages.keys.where((key) => !key.isOut).single,
+        same(reconnected));
+    model.resetClientMode();
+    expect(incomingBody.chatMessages, [received]);
   });
 
   test('peer decode redacts malformed JSON exception content', () {

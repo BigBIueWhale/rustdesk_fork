@@ -13134,7 +13134,16 @@ metadata decoding with fixed diagnostics. Refused input preserves its exact prio
 platform input, both resolution encodings, positive-dimension filtering, ordering and recovery
 remain covered. Session/type checks stay at the callers; incremental platform merging is separate.
 
-Current `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
+**Outgoing chat reset — OPEN, regression preparation.** `ChatModel.resetClientMode()`
+looks up an integer in its `MessageKey` map, so starting a new outgoing Remote session
+does not clear its old chat bodies. The focused peer-data cohort now includes two actual
+ChatModel regressions for outgoing reset, incoming preservation, repeated reuse and incoming
+reconnect. Local chat-user creation is lazy so history-only operations do not require native
+translation startup. Existing peer decoding tests are unchanged. The intended reset clears
+outgoing bodies in place, preserving incoming history, keys, peer metadata and list identity.
+Behavioral A/B execution and mobile/desktop session integration remain OPEN.
+
+Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests
 on `6dfedef7` passed eight cases and failed the two live-metadata privacy cases, exposing synthetic
 private values in actual Dart exception diagnostics. That whole baseline transaction remains

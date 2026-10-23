@@ -710,6 +710,8 @@ FILE_NAVIGATION_SUITES = {
     },
 }
 PEER_DATA_TESTS = {
+    "chat reset clears outgoing bodies and preserves incoming history",
+    "chat reset supports empty repeated and reused session histories",
     "peer decode redacts malformed JSON exception content",
     "peer decode redacts invalid shapes and field values",
     "peer decode preserves valid metadata and recovers after refusal",

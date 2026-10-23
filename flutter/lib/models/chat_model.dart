@@ -84,7 +84,7 @@ class ChatModel with ChangeNotifier {
     super.dispose();
   }
 
-  final ChatUser me = ChatUser(
+  late final ChatUser me = ChatUser(
     id: Uuid().v4().toString(),
     firstName: translate("Me"),
   );

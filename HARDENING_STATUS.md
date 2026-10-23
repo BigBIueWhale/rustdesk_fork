@@ -3018,6 +3018,21 @@ classification, reused baseline, fresh artifact and joined bounded-RAM cleanup.
 This retires a dormant API; it does not establish a new runtime or LPE correction.
 Full app/listener, installed/other-platform, R-S0/R-F5 and release acceptance remain OPEN.
 
+**Retired Sciter icon storage (`ad5adb7c`).** The unused session
+`get_icon_path`, its exclusive import and shared `Config::icon_path` helper are
+deleted. Their Sciter binding and file-row caller were removed by `0d2c8825`;
+current source has no caller. This removes dormant placeholder-file/symlink
+creation and the system-temporary-directory fallback without a replacement API.
+Flutter desktop SVG/drive assets and mobile framework/drive icons are unchanged.
+The real shared library compiles and all 201 existing configuration/encryption
+tests pass in the 154-second isolated transaction, with stable artifact and joined
+bounded-RAM cleanup. No new tests or verifier changes were needed.
+`retired-icon-actuator-820357c5.json` binds history, exact 61-line deletion,
+current UI source/asset equality and the native result. No live invocation or LPE
+is demonstrated; existing icon-cache files are not read, migrated or deleted.
+Parent/UI compilation, rendered file-manager/other-platform/installed behavior,
+R-S0/R-F5 and release acceptance remain OPEN.
+
 **Retired heartbeat status storage (`44281c4f`).** The unused shared `Status`
 model, lazy cache, `_status` reader/writer, public `common_store`, private
 `Config::store_` wrapper and now-unreferenced tolerant map decoder are deleted.

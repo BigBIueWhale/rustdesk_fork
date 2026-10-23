@@ -300,10 +300,10 @@ class ChatModel with ChangeNotifier {
       await windowManager.setSizeAlignment(
           kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
     } else {
-      final currentSelectedTab =
-          gFFI.serverModel.tabController.state.value.selectedTabInfo;
-      final client = parent.target?.serverModel.clients.firstWhereOrNull(
-          (client) => client.id.toString() == currentSelectedTab.key);
+      final server = parent.target?.serverModel;
+      final currentSelectedTab = server?.tabController.state.value.selectedTabInfo;
+      final client = server?.clients.firstWhereOrNull(
+          (client) => client.id.toString() == currentSelectedTab?.key);
       if (client != null) {
         client.unreadChatMessageCount.value = 0;
       }

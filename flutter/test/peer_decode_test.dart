@@ -124,6 +124,94 @@ class _ChatDelivery {
   }
 }
 
+class _PanelChat extends ChatModel {
+  _PanelChat(_ChatOwner owner) : super(WeakReference<FFI>(owner));
+
+  var focusRequests = 0;
+
+  @override
+  void requestChatInputFocus() => focusRequests += 1;
+}
+
+class _ChatPanel {
+  final owner = _ChatOwner();
+  late final model = _PanelChat(owner);
+  final calls = <MethodCall>[];
+  var notifications = 0;
+  String? failAt;
+  String? holdAt;
+  final started = Completer<void>();
+  final released = Completer<void>();
+
+  String stage(MethodCall call) => call.method == 'setBounds'
+      ? (call.arguments.containsKey('width') ? 'resize' : 'position')
+      : call.method;
+
+  _ChatPanel() {
+    model.addListener(() => notifications += 1);
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    const window = MethodChannel('window_manager');
+    const screen = MethodChannel('screen_retriever');
+    messenger.setMockMethodCallHandler(window, (call) async {
+      calls.add(call);
+      final currentStage = stage(call);
+      if (currentStage == failAt) {
+        failAt = null;
+        throw PlatformException(code: 'panel-window-fault');
+      }
+      if (currentStage == holdAt) {
+        holdAt = null;
+        started.complete();
+        await released.future;
+      }
+      if (call.method == 'isMinimized') return false;
+      if (call.method == 'show' || call.method == 'setBounds') return null;
+      throw StateError('Unexpected panel window call: ${call.method}');
+    });
+    messenger.setMockMethodCallHandler(screen, (call) async {
+      const display = {
+        'id': 1,
+        'size': {'width': 1920.0, 'height': 1080.0},
+        'visiblePosition': {'x': 0.0, 'y': 0.0},
+      };
+      switch (call.method) {
+        case 'getPrimaryDisplay':
+          return display;
+        case 'getAllDisplays':
+          return {'displays': [display]};
+        case 'getCursorScreenPoint':
+          return {'x': 100.0, 'y': 100.0};
+        default:
+          throw StateError('Unexpected panel screen call: ${call.method}');
+      }
+    });
+    addTearDown(() {
+      if (!released.isCompleted) released.complete();
+      messenger.setMockMethodCallHandler(window, null);
+      messenger.setMockMethodCallHandler(screen, null);
+      model.inputNode.dispose();
+      model.dispose();
+      owner.serverModel.tabController.state.value.pageController.dispose();
+    });
+  }
+
+  void clearObservations() {
+    calls.clear();
+    notifications = 0;
+    model.focusRequests = 0;
+  }
+
+  void expectLayout(bool open, {int start = 0}) {
+    final completed = calls.skip(start).toList();
+    expect(completed.map(stage), ['isMinimized', 'show', 'resize', 'position']);
+    expect(completed[2].arguments['width'], open ? 700.0 : 300.0);
+    expect(completed[2].arguments['height'], 490.0);
+    expect(completed[3].arguments['x'], open ? 1220.0 : 1620.0);
+    expect(completed[3].arguments['y'], 0.0);
+  }
+}
+
 class _UnusedChatOwner implements FFI {
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -163,6 +251,91 @@ void main() {
     debugPrint = previousDebugPrint;
     peers.dispose();
   });
+
+  test('chat panel completes repeated open and close transitions', () async {
+    final panel = _ChatPanel();
+    for (var cycle = 0; cycle < 3; cycle++) {
+      for (final open in [true, false]) {
+        panel.clearObservations();
+        panel.owner.serverModel.clients.single.unreadChatMessageCount.value = 9;
+        await panel.model.toggleCMSidePage();
+        expect(panel.model.isShowCMSidePage, open);
+        expect(panel.notifications, 1);
+        expect(panel.model.focusRequests, open ? 1 : 0);
+        expect(panel.owner.serverModel.clients.single.unreadChatMessageCount.value,
+            open ? 0 : 9);
+        panel.expectLayout(open);
+      }
+    }
+  });
+
+  for (final wasOpen in [false, true]) {
+    final priorState = wasOpen ? 'open' : 'closed';
+    for (final failure in ['show', 'resize', 'position']) {
+      test('chat panel preserves $priorState state and retries $failure failure',
+          () async {
+        final panel = _ChatPanel();
+        if (wasOpen) await panel.model.toggleCMSidePage();
+        panel.clearObservations();
+        final client = panel.owner.serverModel.clients.single;
+        client.unreadChatMessageCount.value = 9;
+        panel.failAt = failure;
+
+        final errorMatcher = isA<PlatformException>().having(
+            (error) => error.code, 'code', 'panel-window-fault');
+        await expectLater(panel.model.toggleCMSidePage(), throwsA(errorMatcher));
+        final stateAfterFailure = panel.model.isShowCMSidePage;
+        final unreadAfterFailure = client.unreadChatMessageCount.value;
+        final focusAfterFailure = panel.model.focusRequests;
+        final notificationsAfterFailure = panel.notifications;
+        final failedCalls = panel.calls.length;
+        await panel.model.toggleCMSidePage();
+
+        expect(stateAfterFailure, wasOpen);
+        expect(unreadAfterFailure, 9);
+        expect(focusAfterFailure, 0);
+        expect(notificationsAfterFailure, 0);
+        expect(panel.model.isShowCMSidePage, !wasOpen);
+        expect(client.unreadChatMessageCount.value, wasOpen ? 9 : 0);
+        expect(panel.model.focusRequests, wasOpen ? 0 : 1);
+        expect(panel.notifications, 1);
+        panel.expectLayout(!wasOpen, start: failedCalls);
+      });
+    }
+
+    test('chat panel serializes $priorState transition until native completion',
+        () async {
+      final panel = _ChatPanel();
+      if (wasOpen) await panel.model.toggleCMSidePage();
+      panel.clearObservations();
+      panel.owner.serverModel.clients.single.unreadChatMessageCount.value = 9;
+      panel.holdAt = 'resize';
+      final first = panel.model.toggleCMSidePage();
+      await panel.started.future.timeout(const Duration(seconds: 2));
+      final pendingState = panel.model.isShowCMSidePage;
+      final pendingUnread =
+          panel.owner.serverModel.clients.single.unreadChatMessageCount.value;
+      final pendingNotifications = panel.notifications;
+      final pendingFocus = panel.model.focusRequests;
+      final pendingCalls = panel.calls.length;
+      try {
+        await panel.model.toggleCMSidePage();
+        expect(panel.calls.length, pendingCalls);
+      } finally {
+        panel.released.complete();
+        await first;
+      }
+
+      expect(pendingState, wasOpen);
+      expect(pendingUnread, 9);
+      expect(pendingNotifications, 0);
+      expect(pendingFocus, 0);
+      expect(panel.model.isShowCMSidePage, !wasOpen);
+      expect(panel.notifications, 1);
+      expect(panel.model.focusRequests, wasOpen ? 0 : 1);
+      panel.expectLayout(!wasOpen);
+    });
+  }
 
   test('chat delivery keeps a live outgoing owner', () async {
     final delivery = _ChatDelivery();

@@ -710,6 +710,15 @@ FILE_NAVIGATION_SUITES = {
     },
 }
 PEER_DATA_TESTS = {
+    "chat panel completes repeated open and close transitions",
+    "chat panel preserves closed state and retries show failure",
+    "chat panel preserves closed state and retries resize failure",
+    "chat panel preserves closed state and retries position failure",
+    "chat panel preserves open state and retries show failure",
+    "chat panel preserves open state and retries resize failure",
+    "chat panel preserves open state and retries position failure",
+    "chat panel serializes closed transition until native completion",
+    "chat panel serializes open transition until native completion",
     "chat delivery keeps a live outgoing owner",
     "chat delivery refuses outgoing close after page wait",
     "chat delivery refuses outgoing session after page wait",

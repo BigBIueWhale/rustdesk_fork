@@ -8228,6 +8228,26 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   credential/settings acceptance. Concurrent procfs/exec races, R-S0/R-F5,
   platform/release acceptance and all user parks remain OPEN/PARKED.
 
+  **Linux task-name bytes (`35def286`).** Numeric procfs identity/parent readers
+  read bytes, skip the final command terminator, and decode only the suffix;
+  arbitrary task-title bytes cannot invalidate unchanged PID/UID/start-time or
+  parentage. Field positions and pidfd, executable, argv, environment, role and
+  action checks remain unchanged. At unchanged-product `67554cd3`, eighteen
+  controls pass but the new native regression fails: three malformed-byte names
+  and one valid Unicode name truncated mid-character by Linux each cause false
+  identity/snapshot/parent/liveness refusal. ASCII, spaces/parentheses, newline
+  and intact Unicode controls pass. The identical fixture passes all nineteen
+  component tests after correction, comparing actual kernel task-name bytes,
+  AF_UNIX credentials, minimal/full identities and parent PID across each
+  acknowledged `PR_SET_NAME` change. All eighty-seven C peers join per cohort;
+  their binary is identical across A/B. Corrected behavior takes 0.17s and the
+  outer receipt reports 34s. `linux-task-name-827ee35f.json` binds exact source,
+  artifacts, observations, export limits and joined bounded-RAM retirement.
+  These extracted bodies use the existing error/kernel-ABI adapters; this
+  establishes numeric-metadata correctness, not installed IPC/service or full
+  application acceptance. Concurrent procfs/exec races, all fifteen credential
+  actions, R-S0/R-F5, platform/release acceptance and all user parks remain OPEN.
+
   **Linux supervisor child argv (`c709c756`).** Retained service-child record
   revalidation preserves every argument position: it removes only one final NUL
   and consumes exactly the program-name slot plus the two existing role flags,

@@ -7,7 +7,6 @@ use dispatch::Queue;
 use enigo::{Enigo, Key, KeyboardState, ModifierKey, NumLockState,
             KeyboardControllable, MouseButton, MouseControllable};
 use hbb_common::{
-    get_time,
     message_proto::{pointer_device_event::Union::TouchEvent, touch_event::Union::ScaleUpdate},
     protobuf::EnumOrUnknown,
 };
@@ -827,7 +826,7 @@ impl StateWindowFocus {
 #[derive(Default, Clone, Copy)]
 struct Input {
     conn: i32,
-    time: i64,
+    time: Option<Instant>,
     x: i32,
     y: i32,
 }
@@ -1067,9 +1066,11 @@ fn run_pos(sp: EmptyExtraFieldService, state: &mut StatePos) -> ResultType<()> {
             ..Default::default()
         });
         let exclude = {
-            let now = get_time();
             let lock = LATEST_PEER_INPUT_CURSOR.lock().unwrap();
-            if now - lock.time < 300 {
+            if lock.time
+                .map(|time| time.elapsed() < Duration::from_millis(300))
+                .unwrap_or(false)
+            {
                 lock.conn
             } else {
                 0
@@ -1675,7 +1676,7 @@ fn fix_modifiers(
 pub fn update_latest_input_cursor_time(conn: i32) {
     let mut lock = LATEST_PEER_INPUT_CURSOR.lock().unwrap();
     lock.conn = conn;
-    lock.time = get_time();
+    lock.time = Some(Instant::now());
 }
 
 #[inline]
@@ -1867,7 +1868,7 @@ fn handle_mouse_simulation_(
                     .map_err(|err| hbb_common::anyhow::anyhow!(err.to_string()))?;
                 *LATEST_PEER_INPUT_CURSOR.lock().unwrap() = Input {
                     conn,
-                    time: get_time(),
+                    time: Some(Instant::now()),
                     x: evt.x,
                     y: evt.y,
                 };
@@ -1893,7 +1894,7 @@ fn handle_mouse_simulation_(
                 if let Some((x, y)) = crate::get_cursor_pos() {
                     *LATEST_PEER_INPUT_CURSOR.lock().unwrap() = Input {
                         conn,
-                        time: get_time(),
+                        time: Some(Instant::now()),
                         x,
                         y,
                     };

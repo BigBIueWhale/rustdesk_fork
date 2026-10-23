@@ -5658,6 +5658,9 @@ elif [ "$MODE" = android-frame-tests ]; then
         'X11_OBSERVER_GAP=pass cases=4 scope=controller-aggregation inputs=synthetic observation_gap=retained boundary_ms=1000' \
         'actual controller loop preserves gaps before a fresh sample'
     require_exact_fixed_receipt \
+        'X11_OBSERVER_DEADLINE=pass cases=4 scope=controller-aggregation inputs=synthetic completion=inside-window-only qualified=preserved' \
+        'actual controller loop excludes samples completed outside its observation window'
+    require_exact_fixed_receipt \
         'ANDROID_FRAME_NATIVE_X11_CASES=pass full_bits=32 reordered=refused incomplete=refused ambiguous=refused unknown=refused clock=refused mode=refused link=refused fifo=refused history=bounded uncertainty=sticky cleanup=joined' \
         'shared C frame-oracle identity/authority cases'
     require_exact_fixed_receipt \

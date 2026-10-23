@@ -13011,8 +13011,26 @@ successor behavior is preserved. Eight existing comparison/generation tests and
 all 36 prior audio cases remain. `android-raw-handoff-fbdc88de.json` binds the exact
 sources/artifacts, child outcomes and joined bounded-RAM cleanup. This executes
 complete portable Rust modules in Linux. JNI/JVM, Android OS audio/video,
-producer-copy allocation failure, full application and native latency/lifecycle
+Android-native producer-copy failure, full application and native latency/lifecycle
 acceptance remain OPEN.
+
+**Android raw publication storage (`cdb032e7`).** `FrameRaw` reserves the
+incoming copy's storage before borrowing JNI bytes or changing pending data.
+Reservation refusal logs a dropped update and preserves pending bytes, pointer,
+capacity, original freshness timestamp and generation. An expired pending frame
+still expires; a later successful update publishes fresh bytes normally. At
+`f620bdf8`, all 47 other cases pass, while four allocation-refusal children
+abort: empty storage, growth, expired pending data and a successor generation.
+The identical corrected 48-case cohort passes all six publication children:
+four handled storage refusals and two allocation-free reuse controls. Five input/
+owner guards preserve state and clock, and source-buffer mutation after publication
+does not alter the owned copy. The prior 46 tests, including allocation-free consumer
+handoff, remain unchanged. `android-raw-publication-85b6d1e6.json` binds the
+exact sources/artifacts, state observations and joined bounded-RAM cleanup.
+This is portable Rust execution on Linux with selective payload-allocation faults;
+JNI/JVM and Android device execution, logging/runtime allocation failure under
+persistent global exhaustion, native latency/lifecycle, full-app, R-S0/R-F5 and
+installed/release acceptance remain OPEN.
 
 **Retained evidence.** Capsules below are under `.harness-state/verifier-vm/`.
 Counts refer to their named historical sources, not fresh current-tree execution.
@@ -13037,7 +13055,7 @@ All 34 cases passed at `15ed3f4d` in 106 outer seconds under the dedicated
 parent build or physical stream execution. `audio-mailbox-profile-15ed3f4d.json`
 binds the source/artifact, sixteen channel-format observations, old/current
 callback wake/retirement controls, storage limits and joined cleanup. The current
-export at `35082dd6` retains all 46 named outcomes, including the 36 prior audio
+export at `cdb032e7` retains all 48 named outcomes, including the 46 prior audio/raw
 cases, allocation/codec cases and callback observations; the guest checks that
 same inventory before export.
 `--audio-buffer-tests` passed all eighteen cases at `87dbc335` in 73 outer seconds:

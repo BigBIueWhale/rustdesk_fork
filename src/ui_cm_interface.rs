@@ -898,7 +898,13 @@ fn cm_file_directory(directory: FileDirectory) -> Result<ipc::CmFileDirectory, S
 
 #[cfg(not(any(target_os = "ios")))]
 fn cm_file_directories(directories: Vec<FileDirectory>) -> Result<Vec<ipc::CmFileDirectory>, String> {
-    directories.into_iter().map(cm_file_directory).collect()
+    let mut converted = Vec::new();
+    converted.try_reserve_exact(directories.len())
+        .map_err(|_| "Not enough memory for directories".to_owned())?;
+    for directory in directories {
+        converted.push(cm_file_directory(directory)?);
+    }
+    Ok(converted)
 }
 
 lazy_static::lazy_static! {

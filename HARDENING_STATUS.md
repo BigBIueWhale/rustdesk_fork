@@ -3503,6 +3503,24 @@ are retained in `.harness-state/verifier-vm/framed-eof-corrected-c809dacd.json`.
 This component result does not establish a new LPE closure, installed IPC/helper behavior,
 full viewer recovery, a CPace handshake run or native execution on other platforms.
 
+**Frame-header capacity — Linux codec/TCP component PASS; installed/platform acceptance OPEN.**
+`a709aa44` removes the speculative payload reserve and its private 256 KiB constant from
+`BytesCodec::decode_head`; header validation, frame caps, wire format and EOF behavior remain
+unchanged. Payload storage grows through the existing reader as bytes arrive. With the same
+fixture and pinned dependencies, unchanged-product `ee93ff6a` fails the capacity test in
+16 of 18 header/partial-payload cases; the correction passes all 18, including repeated waits
+and truncated EOF refusal. All 34 component tests pass in 0.33 seconds (97 seconds including
+VM setup/build), covering exact contents of eight real loopback TCP frames through pinned
+Tokio `FramedRead`, fragmented writes, coalesced frames, clean EOF and a joined sender.
+The focused inventory now includes four previously omitted existing EOF controls and that
+new TCP test. Its named `clipboard-response` profile uses a 2 GiB guest, 6 GiB RAM scratch
+and 4 GiB overlay ceiling instead of standard scratch sizing; admission, 6 GiB host headroom,
+monitoring, hard limits and joined retirement remain enforced. Both A/B RAM workspaces are
+retired. Source/artifact/raw bindings and the profile checks are retained in
+`.harness-state/verifier-vm/frame-header-capacity-9ace55c5.json`.
+Capacity observations establish no total-allocation or whole-service memory bound, installed
+IPC/Windows clipboard acceptance, new LPE closure or R-F5 presentation/latency result.
+
 **Windows CM clipboard replies (R-S11c-22): source corrected; response-component tests PASS;
 Windows integration OPEN.** `src/ipc/clipboard_non_file.rs` converts the existing numeric/tagged
 helper response into typed `Clipboard` entries. It checks recognized production formats
@@ -7218,7 +7236,7 @@ shared response/request identity and lifetime, installed contexts and packaged a
 | [CVE-2026-100388](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/100xxx/CVE-2026-100388.json) | Linux/macOS incoming file-clipboard authorization. The Unix receiver checks `can_sub_file_clipboard_service` before processing; exact current peer/platform refusal evidence and full path review remain OPEN. |
 | [CVE-2026-100417](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/100xxx/CVE-2026-100417.json) | Windows one-way file-clipboard request bypass. Current policy applicability, all CM/native request sinks and exact-artifact behavior require review; OPEN. |
 | [CVE-2026-73102](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/73xxx/CVE-2026-73102.json) | macOS clipboard-paste traversal. `paste_task.rs` normalizes descriptor names and opens destination components relative to retained descriptors without following links. Native macOS/peer/package acceptance remains OPEN. |
-| [CVE-2026-73108](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/73xxx/CVE-2026-73108.json) | Header-driven allocation. `BytesCodec::decode_head` checks the engaged packet ceiling and caps speculative payload reservation at 256 KiB. This source disposition does not establish whole-service memory bounds or current-artifact acceptance. |
+| [CVE-2026-73108](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/73xxx/CVE-2026-73108.json) | Header-driven allocation. `BytesCodec::decode_head` validates the engaged packet ceiling without explicitly reserving missing payload storage. The Linux frame-header capacity/TCP component result above strengthens the fork's previous 256 KiB cap; whole-service memory bounds and installed/platform artifact acceptance remain OPEN. |
 | [CVE-2026-57850](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/57xxx/CVE-2026-57850.json) | Broader session-scope bypass, alongside CVE-2026-58056. R-S19 owns type confinement and its named evidence; authentication alone does not grant Remote capabilities. Current native/platform/artifact matrix remains OPEN. |
 | [CVE-2026-30796](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/30xxx/CVE-2026-30796.json) | The current record describes the **client** heartbeat's preset address-book password disclosure, not a Server Pro-only issue. The fork removes that heartbeat/address-book path under R-D4/R-SV6; artifact absence remains separate evidence. |
 | [CVE-2026-30784](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/30xxx/CVE-2026-30784.json) | CNA **REJECTED** on 2026-06-22. It is not counted as a covered vulnerability. |

@@ -680,7 +680,8 @@ void main() {
     final pool =
         LatestFrameDrainPool(maxConcurrentDrains: 2, maxWaitingDrains: 0);
     final queue = LatestFrameQueue<String, int, String>('old', drainPool: pool);
-    final fresh = LatestFrameQueue<String, int, String>('fresh', drainPool: pool);
+    final fresh =
+        LatestFrameQueue<String, int, String>('fresh', drainPool: pool);
     final releaseFailed = Completer<void>();
     final releaseEscaped = Completer<void>();
     final releaseFresh = Completer<void>();
@@ -698,13 +699,13 @@ void main() {
         }, onError: (error, stackTrace) {
           errors.add(error);
           admission['recovered'] = queue.recover('old');
-          admission['old'] = queue.submitObserved('old', 1, 'escaped',
-              (frame) async {
+          admission['old'] =
+              queue.submitObserved('old', 1, 'escaped', (frame) async {
             presented.add(frame);
             await releaseEscaped.future;
           }, onError: (error, stackTrace) => errors.add(error));
-          admission['fresh'] = fresh.submitObserved('fresh', 0, 'fresh',
-              (frame) async {
+          admission['fresh'] =
+              fresh.submitObserved('fresh', 0, 'fresh', (frame) async {
             presented.add(frame);
             await releaseFresh.future;
           }, onError: (error, stackTrace) => freshErrors.add(error));

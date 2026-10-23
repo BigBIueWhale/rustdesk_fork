@@ -164,6 +164,7 @@ pub enum ClipboardFileEgressFailure {
     MessageCapacity,
     ByteCapacity,
     AccountingOverflow,
+    StorageUnavailable,
 }
 
 impl fmt::Display for ClipboardFileEgressFailure {
@@ -173,6 +174,7 @@ impl fmt::Display for ClipboardFileEgressFailure {
             Self::MessageCapacity => "message-count capacity reached",
             Self::ByteCapacity => "retained-byte capacity reached",
             Self::AccountingOverflow => "resource accounting overflowed",
+            Self::StorageUnavailable => "queue storage is unavailable",
         };
         write!(f, "file-clipboard egress {reason}")
     }
@@ -413,6 +415,9 @@ impl ClipboardFileEgressSender {
             };
             if next_bytes > self.limits.max_queued_bytes {
                 return self.fail_with_state(state, ClipboardFileEgressFailure::ByteCapacity);
+            }
+            if state.queue.try_reserve(1).is_err() {
+                return self.fail_with_state(state, ClipboardFileEgressFailure::StorageUnavailable);
             }
             state.queue.push_back(QueuedClipboardFile {
                 data,

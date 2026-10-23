@@ -89,7 +89,7 @@ def main():
     for name in ("linux_proc_stat_start_time", "linux_proc_start_time", "linux_proc_uid",
                  "linux_kernel_process_identity_by_pid", "linux_process_identity_is_live"):
         identity_body += function(identity_source, name)
-    # The exact metadata bodies use only std operations. Serialization and anyhow's
+    # The exact metadata bodies use the error and kernel ABI adapters below. Serialization and anyhow's
     # error representation are outside this component; Result/refusal behavior is retained.
     generated += ('use std::{fs, os::unix::fs::MetadataExt};\n'
                   'type ResultType<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;\n'

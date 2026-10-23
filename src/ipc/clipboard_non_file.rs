@@ -32,12 +32,16 @@ impl ClipboardNonFile {
         if clipboards.len() > MAX_NATIVE_CLIPBOARD_ITEMS {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "too many CM clipboard items"));
         }
-        let mut contents = Vec::with_capacity(clipboards.len());
+        let mut contents = Vec::new();
+        contents.try_reserve_exact(clipboards.len())
+            .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
         let mut raw_chunks = Vec::new();
         for clipboard in clipboards {
             let content_len = clipboard.content.len();
             let next_raw = content_len > Self::INLINE_CONTENT_BYTES;
             let content = if next_raw {
+                raw_chunks.try_reserve(1)
+                    .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
                 raw_chunks.push(clipboard.content);
                 Bytes::new()
             } else {
@@ -55,11 +59,13 @@ impl ClipboardNonFile {
             });
         }
         let raw_len = Self::raw_content_len(&contents)?;
-        let mut raw = BytesMut::with_capacity(raw_len);
+        let mut raw = Vec::new();
+        raw.try_reserve_exact(raw_len)
+            .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
         for chunk in raw_chunks {
             raw.extend_from_slice(&chunk);
         }
-        Ok((contents, raw.freeze()))
+        Ok((contents, raw.into()))
     }
 
     fn format(&self) -> io::Result<ClipboardFormat> {

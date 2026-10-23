@@ -92,6 +92,9 @@ def main():
     enigo = inputs["libs/enigo/src/lib.rs"].decode("utf-8")
     snippets["cm-queue.rs"] = between(cm, "const CM_EGRESS_WAKE_CAPACITY:",
                                     "/// Default maximum number of files allowed per transfer request.")
+    snippets["cm-directory.rs"] = between(
+        cm, '#[cfg(not(any(target_os = "ios")))]\nfn cm_file_entry_type(',
+        'lazy_static::lazy_static! {\n    static ref CLIENTS:')
     snippets["cm-tests.rs"] = between(
         cm, '    #[tokio::test(flavor = "current_thread")]\n    async fn r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive()',
         '    #[tokio::test(flavor = "current_thread")]\n    async fn r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner()')
@@ -129,7 +132,8 @@ def main():
         os.environ["CONTROL_EGRESS_LIMIT"] = str(fixture / "packet-limit.rs")
         for variable, name in (("CM_EGRESS_SOURCE", "cm-queue.rs"), ("CM_EGRESS_TESTS", "cm-tests.rs"),
                                ("CM_IPC_TYPES", "cm-ipc.rs"), ("CM_ENIGO_TYPES", "enigo-types.rs"),
-                               ("CM_EGRESS_LIMIT", "cm-limits.rs")):
+                               ("CM_EGRESS_LIMIT", "cm-limits.rs"),
+                               ("CM_DIRECTORY_SOURCE", "cm-directory.rs")):
             os.environ[variable] = str(fixture / name)
 
         roots = [p for p in packages if p["name"] == "rustdesk" and "source" not in p]
@@ -197,13 +201,13 @@ def main():
         artifact_sha = digest(artifact.read_bytes())
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=28", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=30", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=28 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=30 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -213,7 +217,7 @@ def main():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=28 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=30 unchanged=before-after",
               flush=True)
 
 

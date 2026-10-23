@@ -44,6 +44,7 @@ pub mod ipc {
 
 use ipc::Data;
 include!(env!("CM_EGRESS_SOURCE"));
+include!(env!("CM_DIRECTORY_SOURCE"));
 
 mod cm_egress_tests {
     use super::*;
@@ -56,9 +57,17 @@ thread_local! {
     static QUEUE_REFUSALS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static CM_BACKING_TARGET: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static CM_BACKING_RETIRED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static CM_DIRECTORY_TARGET: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
 }
 
-fn refuse_queue_allocation() -> bool {
+fn refuse_queue_allocation(size: usize) -> bool {
+    if CM_DIRECTORY_TARGET.try_with(|state| {
+        let (target, refusals) = state.get();
+        if target != 0 && target == size {
+            state.set((0, refusals + 1));
+            true
+        } else { false }
+    }).unwrap_or(false) { return true; }
     QUEUE_BUDGET.try_with(|budget| match budget.get() {
         None => false,
         Some(0) => {
@@ -71,15 +80,15 @@ fn refuse_queue_allocation() -> bool {
 
 unsafe impl std::alloc::GlobalAlloc for QueueAllocator {
     unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
-        if refuse_queue_allocation() { std::ptr::null_mut() }
+        if refuse_queue_allocation(layout.size()) { std::ptr::null_mut() }
         else { std::alloc::GlobalAlloc::alloc(&std::alloc::System, layout) }
     }
     unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
-        if refuse_queue_allocation() { std::ptr::null_mut() }
+        if refuse_queue_allocation(layout.size()) { std::ptr::null_mut() }
         else { std::alloc::GlobalAlloc::alloc_zeroed(&std::alloc::System, layout) }
     }
     unsafe fn realloc(&self, pointer: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
-        if refuse_queue_allocation() { std::ptr::null_mut() }
+        if refuse_queue_allocation(size) { std::ptr::null_mut() }
         else { std::alloc::GlobalAlloc::realloc(&std::alloc::System, pointer, layout, size) }
     }
     unsafe fn dealloc(&self, pointer: *mut u8, layout: std::alloc::Layout) {
@@ -104,6 +113,128 @@ fn with_queue_budget<T>(budget: usize, action: impl FnOnce() -> T) -> (T, usize)
     let result = action();
     drop(reset);
     (result, QUEUE_REFUSALS.with(std::cell::Cell::get))
+}
+
+fn cm_directory_input(count: usize) -> FileDirectory {
+    let kinds = [FileType::Dir, FileType::DirLink, FileType::DirDrive, FileType::File, FileType::FileLink];
+    FileDirectory {
+        id: 41,
+        path: "fixture/目录".into(),
+        entries: (0..count).map(|index| FileEntry {
+            entry_type: kinds[index % kinds.len()].into(),
+            name: format!("entry-{index}-é"),
+            is_hidden: index % 2 == 0,
+            size: index as u64 * 123,
+            modified_time: 1000 + index as u64,
+            ..Default::default()
+        }).collect(),
+        ..Default::default()
+    }
+}
+
+fn assert_cm_directory(directory: &ipc::CmFileDirectory, count: usize) {
+    let kinds = [ipc::CmFileEntryType::Directory, ipc::CmFileEntryType::DirectoryLink,
+        ipc::CmFileEntryType::DirectoryDrive, ipc::CmFileEntryType::File, ipc::CmFileEntryType::FileLink];
+    assert_eq!(directory.id, 41);
+    assert_eq!(directory.path, "fixture/目录");
+    assert_eq!(directory.entries.len(), count);
+    for (index, entry) in directory.entries.iter().enumerate() {
+        assert_eq!(entry.entry_type, kinds[index % kinds.len()]);
+        assert_eq!(entry.name, format!("entry-{index}-é"));
+        assert_eq!(entry.is_hidden, index % 2 == 0);
+        assert_eq!(entry.size, index as u64 * 123);
+        assert_eq!(entry.modified_time, 1000 + index as u64);
+    }
+}
+
+fn cm_directory_roundtrip(result: Result<ipc::CmFileDirectory, String>) -> Result<ipc::CmFileDirectory, String> {
+    let response = ipc::CmFileResponse {
+        conn_id: 17,
+        cm_auth_token: "owned-token".into(),
+        response: Box::new(ipc::CmFileResponseKind::ReadDirectory {
+            request_id: 93, path: "requested-path".into(), result,
+        }),
+    };
+    let decoded: ipc::CmFileResponse = serde_json::from_slice(&serde_json::to_vec(&response).unwrap()).unwrap();
+    assert_eq!(decoded, response);
+    let (sender, mut receiver) = cm_egress_channel();
+    sender.send(Data::CmFileResponse(decoded)).unwrap();
+    let Some(CmEgressItem::Data(Data::CmFileResponse(actual))) = receiver.take_next().unwrap() else {
+        panic!("directory response was not retained");
+    };
+    assert_eq!(actual.conn_id, 17);
+    assert_eq!(actual.cm_auth_token, "owned-token");
+    let ipc::CmFileResponseKind::ReadDirectory { request_id, path, result } = *actual.response else {
+        panic!("directory response changed class");
+    };
+    assert_eq!(request_id, 93);
+    assert_eq!(path, "requested-path");
+    assert!(receiver.take_next().unwrap().is_none());
+    result
+}
+
+#[test]
+fn cm_directory_conversion_preserves_fields_and_queue_identity() {
+    for count in [0, 1, 5, 64] {
+        let result = cm_directory_roundtrip(cm_file_directory(cm_directory_input(count))).unwrap();
+        assert_cm_directory(&result, count);
+    }
+    let mut invalid = cm_directory_input(1);
+    invalid.entries[0].entry_type = protobuf::EnumOrUnknown::from_i32(-9);
+    assert_eq!(cm_directory_roundtrip(cm_file_directory(invalid)).unwrap_err(), "unknown file entry type -9");
+    println!("CM_DIRECTORY_CONTROL=pass counts=4 kinds=5 fields=exact unknown=refused json=exact queue_identity=preserved");
+}
+
+#[test]
+fn cm_directory_output_allocation_refusal_reports_error_and_retries() {
+    use std::os::unix::process::ExitStatusExt;
+    fn observe<T>(target: usize, action: impl FnOnce() -> T) -> (T, usize) {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) { CM_DIRECTORY_TARGET.with(|state| state.set((0, 0))); }
+        }
+        CM_DIRECTORY_TARGET.with(|state| { assert_eq!(state.get(), (0, 0)); state.set((target, 0)); });
+        let reset = Reset;
+        let result = action();
+        let refusals = CM_DIRECTORY_TARGET.with(|state| state.get().1);
+        drop(reset);
+        (result, refusals)
+    }
+    if let Ok(case) = std::env::var("CM_DIRECTORY_ALLOC_CASE") {
+        if case == "probe" {
+            observe(31, || std::hint::black_box(Vec::<u8>::with_capacity(31)));
+            panic!("directory allocation-refusal probe returned");
+        }
+        let count: usize = case.parse().unwrap();
+        assert!([1, 5, 64].contains(&count));
+        let input = cm_directory_input(count);
+        let target = count * std::mem::size_of::<ipc::CmFileEntry>();
+        let (result, refusals) = observe(target, || cm_file_directory(input));
+        assert_eq!(refusals, 1);
+        assert_eq!(cm_directory_roundtrip(result).unwrap_err(), "Not enough memory for directory entries");
+        let retry = cm_directory_roundtrip(cm_file_directory(cm_directory_input(count))).unwrap();
+        assert_cm_directory(&retry, count);
+        println!("CM_DIRECTORY_ALLOC_CASE=pass entries={count} refusals={refusals} error=reported retry=exact queue_identity=preserved");
+        return;
+    }
+    let run = |case: &str| run_allocation_child(
+        "cm_directory_output_allocation_refusal_reports_error_and_retries", "CM_DIRECTORY_ALLOC_CASE", case);
+    let probe = run("probe");
+    assert_eq!(probe.status.signal(), Some(6));
+    assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+    println!("CM_DIRECTORY_ALLOC_PROBE=observed bytes=31 signal=6");
+    let mut passed = 0;
+    for count in [1, 5, 64] {
+        let output = run(&count.to_string());
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if line.starts_with("CM_DIRECTORY_ALLOC_CASE=") { println!("{line}"); }
+        }
+        print!("{}", String::from_utf8_lossy(&output.stderr));
+        println!("CM_DIRECTORY_ALLOC_CHILD=observed entries={count} success={} signal={:?}", output.status.success(), output.status.signal());
+        passed += usize::from(output.status.success());
+    }
+    assert_eq!(passed, 3, "directory output refusal must report an error without aborting its process");
+    println!("CM_DIRECTORY_ALLOC=pass refusals=3 retries=exact queue_identity=preserved probe=SIGABRT children=joined");
 }
 
 fn queue_allocation_case(case: &str) {

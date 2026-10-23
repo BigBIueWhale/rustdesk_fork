@@ -122,6 +122,10 @@ def main():
                   '#[derive(Clone, Debug, Eq, PartialEq)]\n' + identity_body)
     print(f"LINUX_KERNEL_IDENTITY_SOURCE=sha256={digest(inputs['src/ipc/auth.rs'])} "
           f"fragment_sha256={digest(identity_body.encode())} error_context=std-boxed libc_abi=linux-x86_64 serialization=unexecuted", flush=True)
+    child_role = function(inputs["src/platform/linux.rs"].decode("utf-8"), "service_child_cmdline_has_exact_role")
+    generated += child_role
+    print(f"LINUX_KERNEL_CHILD_ROLE_SOURCE=sha256={digest(inputs['src/platform/linux.rs'])} "
+          f"fragment_sha256={digest(child_role.encode())}", flush=True)
     generated += f'include!("{repo}/scripts/test-linux-service-uid-policy.rs");\n'
     generated += f'include!("{repo}/scripts/test-trusted-executable.rs");\n'
     generated += f'include!("{repo}/scripts/test-linux-process-identity.rs");\n'
@@ -137,7 +141,7 @@ def main():
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=16", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=17", flush=True)
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("LINUX_IDENTITY_")}
     environment["LINUX_IDENTITY_PEER_PROBE"] = str(peer)

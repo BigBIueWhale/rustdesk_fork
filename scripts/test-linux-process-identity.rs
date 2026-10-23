@@ -242,6 +242,45 @@ mod linux_process_identity_tests {
     }
 
     #[test]
+    fn kernel_service_child_role_preserves_exact_argument_positions() {
+        let base: Vec<String> = ["/kernel/service-child", "--server", crate::common::SERVICE_OWNED_SERVER_ARG]
+            .into_iter().map(str::to_owned).collect();
+        let mut variants = vec![("ordinary", None, base.clone(), true)];
+        let mut empty_name = base.clone();
+        empty_name[0].clear();
+        variants.push(("empty-name", None, empty_name, true));
+        for position in 0..=base.len() {
+            let mut extra = base.clone();
+            extra.insert(position, String::new());
+            variants.push(("extra-empty", Some(position), extra, false));
+        }
+        let mut wrong_role = base.clone();
+        wrong_role[2].push_str("-extra");
+        variants.push(("wrong-marker", None, wrong_role, false));
+        let mut extra = base;
+        extra.push("extra".to_owned());
+        variants.push(("extra-argument", None, extra, false));
+        let mut failures = 0;
+        for (kind, position, expected_argv, expected) in variants {
+            let argv: Vec<_> = expected_argv.iter().map(OsString::from).collect();
+            let mut owner = Owner::spawn_with_argv(1, false, Some(&argv));
+            assert_eq!(owner.credentials().uid, unsafe { geteuid() });
+            let kernel = fs::read(format!("/proc/{}/cmdline", owner.pid())).unwrap();
+            let expected_kernel: Vec<_> = expected_argv.iter().flat_map(|argument|
+                argument.as_bytes().iter().copied().chain(std::iter::once(0))).collect();
+            assert_eq!(kernel, expected_kernel);
+            let actual = service_child_cmdline_has_exact_role(&kernel);
+            let correct = actual == expected;
+            println!("LINUX_KERNEL_CHILD_ROLE_CASE=observed kind={kind} position={position:?} argc={} expected={expected} actual={actual} correct={correct}", expected_argv.len());
+            owner.request_exit();
+            owner.join();
+            failures += usize::from(!correct);
+        }
+        assert_eq!(failures, 0, "service supervisor role checks must preserve every argument position");
+        println!("LINUX_KERNEL_CHILD_ROLE=pass cases=8 ordinary=1 empty_name=1 extra_empty=4 wrong_role=2 children=joined");
+    }
+
+    #[test]
     fn kernel_role_environment_rejects_invalid_utf8_without_rewriting_values() {
         let key = crate::common::CM_LAUNCH_TOKEN_ENV;
         let raw_value = |pid| {

@@ -3910,6 +3910,7 @@ run_focused_rust_tests() {
             linux_process_identity_tests::kernel_cmdline_preserves_empty_argument_positions
             linux_process_identity_tests::kernel_process_identity_preserves_non_utf8_argv_bytes
             linux_process_identity_tests::kernel_role_environment_rejects_invalid_utf8_without_rewriting_values
+            linux_process_identity_tests::kernel_service_child_role_preserves_exact_argument_positions
         )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -6366,6 +6367,8 @@ PY
             || fail 'Linux kernel identity behavior differs'
         grep -Fxq 'LINUX_KERNEL_ENV=pass invalid_reads=2 snapshots_refused=2 controls=5 children=6 mutation=kernel-observed children_state=joined' "$output" \
             || fail 'Linux role environment validation differs'
+        grep -Fxq 'LINUX_KERNEL_CHILD_ROLE=pass cases=8 ordinary=1 empty_name=1 extra_empty=4 wrong_role=2 children=joined' "$output" \
+            || fail 'Linux supervisor child role argument positions differ'
         grep -Fxq 'verify-linux-service-password-ipc: source checks passed' "$output" \
             || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
         [ -f "$target_root/uid-policy-tests" ] && [ ! -L "$target_root/uid-policy-tests" ] \

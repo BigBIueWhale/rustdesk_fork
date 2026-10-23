@@ -8147,6 +8147,23 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   This closes the demonstrated metadata-only exited-group liveness error; all
   fifteen credential actions, R-S0 and broader installed acceptance remain OPEN.
 
+  **Linux role argument positions (`74ec414a`).** The shared procfs reader preserves
+  empty arguments and removes only the final NUL terminator; it no longer filters
+  empty entries before role checks or identity comparison. At unchanged-product
+  preparation `80f291e5`, real kernel command lines reproduce all21 extra-empty
+  role admissions and all7 lost empty executable-name fields; thirteen controls
+  pass. With the same fixture, all14 component tests and all35 argv cases pass:
+  seven ordinary layouts, seven empty-name layouts and21 refused extra-empty
+  layouts across user/service server, password and CM roles. Native C children
+  expose exactly the requested argv through procfs and Unix peer credentials;
+  every child joins, and the peer binary is identical across both runs.
+  `linux-empty-argv-1d860d84.json` binds sources, artifacts, kernel observations,
+  unchanged endpoint inventories and bounded-RAM retirement. Role predicates,
+  serialized types and other identity checks are unchanged. This accepts argument
+  positions only; byte-faithful non-UTF8 identity, mutable-procfs/exec races, full
+  privileged receivers, all fifteen credential actions, R-S0/R-F5 and release
+  acceptance remain OPEN. All separately parked work remains parked.
+
 - **R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent
   authority — SOURCE IMPLEMENTED; INSTALLED-ARTIFACT EVIDENCE OPEN.** The helper binds
   its connected Unix peer's PID/UID/start time to its exact current kernel parent and

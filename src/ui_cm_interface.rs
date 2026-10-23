@@ -1293,22 +1293,51 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
 
 #[inline]
 #[cfg(not(any(target_os = "ios")))]
-pub fn close(id: i32, _registry_generation: i64) {
-    if let Some(tx) = cm_egress_sender(id) {
-        allow_err!(tx.send(Data::Close));
+pub fn close(id: i32, registry_generation: i64) {
+    let owner = CmClientOwner {
+        id,
+        generation: registry_generation,
     };
+    let tx = {
+        let clients = CLIENTS.read().unwrap();
+        clients
+            .clients
+            .get(&id)
+            .filter(|client| clients.is_current(owner) && !client.disconnected)
+            .map(|client| client.tx.clone())
+    };
+    if let Some(tx) = tx {
+        allow_err!(tx.send(Data::Close));
+    } else {
+        log::debug!(
+            "ignored stale CM disconnect for {}:{}",
+            id,
+            registry_generation
+        );
+    }
 }
 
 #[inline]
-pub fn remove(id: i32, _registry_generation: i64) {
+pub fn remove(id: i32, registry_generation: i64) {
+    let owner = CmClientOwner {
+        id,
+        generation: registry_generation,
+    };
     let mut clients = CLIENTS.write().unwrap();
-    if clients
-        .clients
-        .get(&id)
-        .map(|client| client.disconnected)
-        .unwrap_or(false)
+    if clients.is_current(owner)
+        && clients
+            .clients
+            .get(&id)
+            .map(|client| client.disconnected)
+            .unwrap_or(false)
     {
         clients.clients.remove(&id);
+    } else {
+        log::debug!(
+            "ignored stale or active CM history dismissal for {}:{}",
+            id,
+            registry_generation
+        );
     }
 }
 

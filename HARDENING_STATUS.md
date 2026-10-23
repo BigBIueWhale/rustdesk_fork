@@ -7594,9 +7594,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
 ## Open residuals (tracked, not regressions)
 
-- **UPCOMING RELEASES — Linux service-child lifecycle ownership — OPEN.** Historical ledger
-  disposition: SOURCE/RUNTIME/RELEASE-GATE IMPLEMENTED THROUGH R-S11c-27s; EXACT COLD
-  ARTIFACT EXECUTION PENDING. The current source uses one init-independent ownership protocol:
+- **Linux service-child lifecycle ownership — OPEN.** Source topology and release-gate
+  wiring are implemented; exact-current installed/cold-artifact acceptance remains OPEN.
+  The current source uses one init-independent ownership protocol:
   the installed `--service` supervisor owns the exact `--server --service-owned-server` child
   it launched; no process-name, path-text, argv-text, or current-image sweep is lifecycle
   authority. This remains explicitly **not authorization to inspect, signal, stop, restart,
@@ -7626,98 +7626,45 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   - The final-debian-artifact lifecycle gate is wired after cold A==B comparison and before
     publication. Wiring is not execution evidence.
 
-  Evidence boundary:
+  **Evidence limit.** Older debug-binary and constructed-package runs establish only
+  their named source/fixture observations. They do not prove current master, the final
+  `.deb`, cold equality, independent reproduction, performance/resource bounds or release
+  readiness. Root or added-capability container runs are diagnostic history under the
+  current policy: root-required reruns use disposable networkless VMs; containers remain
+  unprivileged and capability-free. Git at `cb37144b` retains the former dated diary and
+  per-item narratives. `service-lifecycle-ledger-cb37144b.json` retains the classification
+  and exact comparison; no new product or installed execution is claimed.
 
-  - Git history retains the detailed 2026-07-16 through 2026-07-23 development diary, fixture
-    transcripts, run identifiers, timings, hashes, mutation counts, and superseded designs
-    formerly copied here. Those receipts are provenance, not current-release proof.
-  - Historical isolated runs exercised the actual debug binary or constructed package
-    transactions for manual, SysV, systemd, OpenRC, and runit lifecycle; parent death; hostile
-    records; executable replacement/deletion; cross-namespace identity; actual numeric-PID reuse;
-    and unrelated portable/container survival. They establish that those fixtures once observed
-    the intended behavior at their named source states.
-  - Several historical service-manager runs used root or added capabilities inside containers.
-    Under the current isolation policy they are diagnostic historical evidence only, not an
-    acceptable current privilege-boundary rerun. Current root-required service testing must occur
-    inside a disposable networkless VM; unprivileged containers remain rootless and
-    capability-free.
-  - The named systemd VM result and other historical runs predate current `master`; none proves
-    the exact final `.deb`, all current source, cold reproducibility, independent reproduction,
-    performance/resource bounds, or release readiness.
+  All current installed/artifact acceptance remains OPEN. The index distinguishes source
+  disposition, historical observations, superseded behavior and missing execution:
 
-  Current closure index:
+  | ID | Disposition and evidence boundary |
+  | --- | --- |
+  | R-S11c-27a | Source: retained direct child and supervisor-death binding. |
+  | R-S11c-27b | Source: root-only lease, durable identity record and pidfd-first recovery. |
+  | R-S11c-27c | Source: bounded retained-child TERM/KILL/reap; uncertainty preserves ownership and record. |
+  | R-S11c-27d | Historical focused behavior: parent death, lease release, stale-record removal and exact live-record recovery. |
+  | R-S11c-27e | Historical focused behavior: executed-inode identity across rename/unlink, without pathname/argv authority. |
+  | R-S11c-27f | Historical debug/container: manual/non-systemd restart, graceful/forced stop and unrelated portable survival. |
+  | R-S11c-27g | Historical debug behavior: supervisor crash, parent-death exit, preserved evidence and fresh recovered generation. |
+  | R-S11c-27h | Source plus historical elevated-container behavior: descriptor-bound UID/GID/groups, bounded environment, empty live capabilities and no-new-privileges. |
+  | R-S11c-27i | Historical runtime: seven malformed/ambiguous record classes refused without signal or replacement authority. |
+  | R-S11c-27j | Historical separate-Docker behavior: the unrelated sibling survived until its own harness drained it. |
+  | R-S11c-27k | SUPERSEDED: the numeric-PID recovery fallback was deleted by R-S11c-27u/R-S11ca; it is unavailable. |
+  | R-S11c-27l | Source/package plus historical constructed-package SysV lifecycle; current package execution remains OPEN. |
+  | R-S11c-27m | Source/package plus historical no-NIC systemd VM: restart/stop/start, crash, non-root child/cgroup identity, portable survival, removal and purge. Current final-artifact execution remains OPEN. |
+  | R-S11c-27n | Historical runtime: identical path/bytes in distinct mount/PID namespaces retained distinct executable identity. |
+  | R-S11c-27o | Historical elevated-container behavior: actual kernel PID reuse refused the stale identity without signaling the replacement. |
+  | R-S11c-27p | Source/package: OpenRC/runit/manual templates own only the foreground supervisor, with no competing child or discovery authority. |
+  | R-S11c-27q | Source/package plus historical native OpenRC manager/stale-state behavior; exact-artifact VM reproduction remains OPEN. |
+  | R-S11c-27r | Source/package plus historical runsvdir/runsv/supervisor/child ownership and recovery; exact-artifact VM reproduction remains OPEN. |
+  | R-S11c-27s | Release wiring only; execution OPEN. The gate binds cold A==B pass-A `.deb`, commit/package identity, authenticated devcheck archive, installed systemd lifecycle and stable post-run inputs before publication, through the common no-NIC VM after Docker is joined. No current final `.deb` has passed. |
+  | R-S11c-27t/R-T4 | Source/gate: owner loss remains selectable throughout headless CM bootstrap; post-bootstrap completion is bounded and terminal-first. Native/package/device lifecycle remains OPEN. |
+  | R-S11c-27u | Source: pidfd-unavailable live/mismatched/unverifiable recovery refuses before IPC or replacement and preserves the record. Updated exact-binary refusal and installed execution remain OPEN. |
 
-  - **R-S11c-27a — direct Linux service-child ownership and supervisor-death binding — SOURCE IMPLEMENTED.**
-    The supervisor retains the final child; credential-drop exec carries kernel parent-death and
-    no-new-privileges authority; global server sweeps are absent.
-  - **R-S11c-27b — durable Linux service-child record and pidfd-first crash recovery — SOURCE IMPLEMENTED.**
-    Root-only lease/record publication and full pidfd identity revalidation are the recovery
-    authority.
-  - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED.**
-    TERM, KILL, and reap remain bound to the retained child with explicit deadlines and
-    fail-closed uncertain-state preservation.
-  - **R-S11c-27d — isolated Linux supervisor-crash/restart recovery behavior — HISTORICAL FOCUSED BEHAVIOR.**
-    The fixture crossed parent death, lease release, stale-record removal, and exact live-record
-    recovery; it is not current installed-artifact evidence.
-  - **R-S11c-27e — executable-object replacement/deletion recovery behavior — HISTORICAL FOCUSED BEHAVIOR.**
-    The fixture distinguished live executed inodes across rename and unlink rather than trusting
-    path or argv text.
-  - **R-S11c-27f — actual-binary manual/non-systemd supervisor lifecycle behavior — HISTORICAL RUNTIME.**
-    The debug binary exercised graceful restart/stop, bounded forced reap, and unrelated portable
-    survival; the old container run is not a current-policy installed-service proof.
-  - **R-S11c-27g — actual-binary manual supervisor crash/restart recovery behavior — HISTORICAL RUNTIME.**
-    The debug fixture observed parent-death exit, preserved crash evidence, and a fresh recovered
-    generation.
-  - **R-S11c-27h — actual-binary non-root active-desktop privilege-drop/exec behavior — SOURCE IMPLEMENTED;
-    HISTORICAL RUNTIME.** The descriptor-bound active-seat launch was exercised with exact
-    UID/GID/groups, bounded environment, empty live capabilities, and no-new-privileges. The old
-    capability-added container is not an acceptable current rerun.
-  - **R-S11c-27i — actual-binary hostile service-child record rejection behavior — HISTORICAL RUNTIME.**
-    Seven malformed or ambiguous record classes were refused without granting signal or
-    replacement authority.
-  - **R-S11c-27j — concurrent separate-Docker service noninterference behavior — HISTORICAL RUNTIME.**
-    An isolated sibling RustDesk process survived lifecycle operations until its own harness
-    explicitly drained it.
-  - **R-S11c-27k — pre-pidfd fallback recovery behavior — SUPERSEDED.** Its historical
-    revalidate-then-numeric-signal design retained an irreducible PID-reuse race and was deleted
-    by R-S11c-27u/R-S11ca; it is not a supported mode.
-  - **R-S11c-27u — pidfd-unavailable live recovery refusal — SOURCE IMPLEMENTED; CURRENT RUNTIME OPEN.**
-    Current source performs classification only and fails closed for live, mismatched, or
-    unverifiable records. The updated exact-binary refusal fixture was not executed at that slice,
-    and current installed-artifact behavior remains unproven.
-  - **R-S11c-27l — installed Debian SysV lifecycle — SOURCE/PACKAGE IMPLEMENTED; HISTORICAL RUNTIME.**
-    The package adapter and lifecycle fixture bind one exact supervisor and preserve unrelated
-    processes. Its earlier constructed-package run predates current packaging and is not current
-    artifact proof.
-  - **R-S11c-27m — installed Debian systemd lifecycle — SOURCE/PACKAGE IMPLEMENTED; HISTORICAL NATIVE VM.**
-    A networkless Debian VM once exercised installed restart, stop/start, supervisor crash,
-    non-root child identity, cgroup ownership, portable survival, removal, and purge; it does not
-    prove current `master` or the final artifact. The lifecycle now exists only as a release-only
-    scenario of the common no-NIC verifier VM; its exact numeric-nonroot library-staging profile
-    has current real-VM evidence, but the installed package transaction does not.
-  - **R-S11c-27n — cross-container executable identity — HISTORICAL RUNTIME.** Distinct
-    mount/PID namespaces using identical path and bytes remained distinct executable identities.
-  - **R-S11c-27o — actual kernel numeric-PID reuse — HISTORICAL RUNTIME.** A private PID namespace
-    forced reuse and recovery rejected the stale start identity without signaling the replacement.
-    Its elevated container fixture is historical only under the current VM-only privilege policy.
-  - **R-S11c-27p — packaged OpenRC/runit/manual supervisor templates — SOURCE/PACKAGE IMPLEMENTED.**
-    Templates invoke only the foreground service supervisor and create no competing child or
-    process-discovery authority.
-  - **R-S11c-27q — native OpenRC lifecycle authority — SOURCE/PACKAGE IMPLEMENTED; HISTORICAL RUNTIME.**
-    The old container transaction exercised native manager behavior and stale state, but requires
-    current exact-artifact VM reproduction.
-  - **R-S11c-27r — native runit lifecycle authority — SOURCE/PACKAGE IMPLEMENTED; HISTORICAL RUNTIME.**
-    The old container transaction exercised exact runsvdir/runsv/supervisor/child ownership and
-    recovery, but requires current exact-artifact VM reproduction.
-  - **R-S11c-27s — final Debian artifact lifecycle gate — SOURCE/RELEASE-TRANSACTION IMPLEMENTED;
-    EXECUTION OPEN.** The gate binds the cold A==B pass-A `.deb`, commit, package identity,
-    authenticated devcheck archive, installed systemd lifecycle, post-run input identities, and
-    pre-publication order through the common no-NIC verifier VM after its Docker daemon is joined.
-    No current final `.deb` has passed it.
-  - **R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership — SOURCE IMPLEMENTED/GATED;
-    NATIVE OPEN.** Owner loss is selectable throughout bootstrap and post-bootstrap work has
-    bounded terminal-first completion. Current native/package/device lifecycle execution remains
-    open.
+  The systemd installed lifecycle is a release-only common-VM scenario. Named real-VM
+  evidence for its numeric-nonroot library-staging profile covers staging only; it does
+  not establish the installed package transaction.
 
   Required closure before this parent item may close:
 

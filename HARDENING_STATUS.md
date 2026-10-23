@@ -12383,89 +12383,68 @@ R-S0 immunity with complete functionality and R-F5 recovery/freshness remain OPE
 
 ### R-S11gw/R-S11e-235 — bounded controlled-side service-to-connection egress (2026-08-16)
 
-**Source implemented; five Linux component regressions pass in the focused lane.
-Exact-current installed, full-peer, other-platform, performance, artifact and external
-acceptance remain OPEN.**
-
-Each controlled connection owns one short-mutex `ControlEgressState` and a one-slot
-wake before the keyed writer. Admission bounds retention to 256 messages and two
+**Linux component PASS; installed/full-peer, other-platform and release acceptance OPEN.**
+`ControlEgressState` in `src/server/connection.rs` owns one short-mutex FIFO and one
+wake token before the keyed writer. It bounds retention to 256 messages and two
 maximum session packets plus checked entry accounting; each protobuf fits the
-post-secretbox payload ceiling. Only a FIFO-tail `CursorPosition` may be replaced.
-Every other message is an exact ordering barrier and remains FIFO. Audio/video
-frames, audio formats and display-switch generation state use their media mailboxes
-and are refused here.
+post-secretbox ceiling. Only a trailing `CursorPosition` is replaceable; intervening
+messages are ordering barriers. Audio/video frames, formats and display-switch
+state stay on their media mailboxes. Wrong class, oversize, count/byte/accounting
+failure or fallible queue-storage refusal clears work, latches one terminal cause,
+wakes the owner and ends that connection. Receiver retirement closes admission
+despite stale sender clones. R-S11gw / Appendix C #358 is the normative contract.
 
-Wrong class, oversize, count/byte exhaustion, queue storage refusal or accounting failure
-clears retained work, latches one typed terminal cause, wakes the receiver and terminates the exact
-connection. Receiver retirement closes admission and releases retained messages
-despite stale sender clones. This introduces no alternate queue, timer, retry,
-reconnect, worker, runtime, listener, dependency, privilege transition, service restart
-or change to Android's persistent service. R-S11gw and Appendix C #358 own the
-normative contract.
+**Current evidence shared with R-S11gy/R-S11gz.** The focused command is
+`bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
+At `91cf0b41`, all 45 named native Rust cases pass with actual Tokio channels,
+OS threads and production-generated protobufs. The 19 executed source inputs still
+match the current source; later changes are documentation only. Source/artifact,
+case, dependency, bounded-RAM and joined-cleanup bindings are in
+`file-clipboard-growth-fc23970f.json`. Capsule names here resolve under
+`.harness-state/verifier-vm/`.
 
-The five regressions in `src/server/connection.rs` remain:
+| Surface | Component coverage and retained failure/design provenance |
+| --- | --- |
+| Controlled egress | FIFO/tail-cursor barriers, packet/class/count/byte bounds, wake and owner retirement; default-capacity and bounded multi-producer ordering/saturation; three handled storage refusals and five healthy/spare/cursor controls. `control-egress-concurrency-d3954366.json`, `control-queue-allocation-aefa628e.json`. |
+| CM results | Structured/raw accounting, raw backing-owner retirement, queue/payload allocation refusal, controlled concurrent admission, directory conversion/size validation and owned read-block forwarding. `cm-raw-backing-dab9f731.json`, `cm-queue-allocation-ed4e0911.json`, `cm-concurrent-egress-afdda092.json`, `cm-proto-allocation-920a4229.json`, `cm-read-block-move-a6599f3a.json`. |
+| File clipboard | Six common mailbox/route controls, including duplicate controlled-ID refusal without minting a generation/channel; three handled queue-growth refusals and four healthy/spare controls. `file-clipboard-growth-fc23970f.json`. |
 
-- `r_s11gw_cursor_positions_replace_only_the_trailing_cursor`
-- `r_s11gw_count_saturation_is_terminal_and_releases_exact_messages`
-- `r_s11gw_byte_and_wire_bounds_fail_the_exact_round_closed`
-- `r_s11gw_media_bypass_and_receiver_retirement_are_visible`
-- `r_s11gw_async_receiver_waits_without_polling_and_closes`
+These are common component observations with controlled payloads, schedules and
+capacity/allocator faults. Some production methods execute in wrappers; native
+clipboard, complete service producers, connection loops and CM IPC do not.
+Owner/deallocation flags establish lifetime, not RSS or whole-process memory bounds;
+error formatting and surrounding allocations remain available during selective faults.
+The older raw-backing baseline has test/artifact receipts but lacks full input/source
+receipts; its corrected run and the current 45-case run supply those bindings.
+Script wiring, source patterns and historical string mutations do not establish behavior.
+The profile remains 2 GiB guest / 6 GiB RAM scratch / 4 GiB overlay / 6 GiB host
+headroom / 1 GiB overhead, with no disk fallback and joined retirement.
 
-The focused `smoke-verifier-vm-authority.sh --control-egress-tests` path passes all
-five extended cases at `9c931b52` in 112 outer seconds, including 38.451 compilation
-seconds. The literal default admits 256 messages, refuses the 257th, releases the
-queued message owners and publishes its terminal cause once. Eight producer tasks
-on a four-worker Tokio runtime deliver all 128 responses once and in per-producer
-order while the receiver drains. With the receiver held, 512 offers admit 256 and
-refuse 256 with the same terminal cause; no queued response survives. Every producer
-task joins before result assertions, and all message `Arc` owners retire.
+The broader integration commands remain in `scripts/verify.sh`:
+`cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never`,
+`cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never`, and
+`cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never`.
+Their presence does not prove execution or authorize resuming a parked producer.
 
-For that run, the production queue, packet limit, fixture lock and dependency records matched the
-initial focused run. Original assertions remain; only coverage and the test runtime
-configuration expand. Protobuf types are generated by the production build script,
-and the fixture uses real Tokio and sodiumoxide's MAC size. These are Linux component
-observations with small controlled payloads and bounded tasks, not exhaustive
-interleavings, live service producers, keyed socket/connection-loop behavior or
-physical-allocation/whole-process bounds. Other byte/wire checks use capacity
-overrides. The source-bound artifact stays unchanged through execution; the bounded
-RAM workspace retires without host endpoint changes. The profile retains its 2 GiB
-guest, 6 GiB scratch, 4 GiB hard file ceiling, 6 GiB headroom and 1 GiB overhead.
-That concurrency-only change left product implementation, lockfile and authenticated inputs unchanged.
-Concurrency evidence: `control-egress-concurrency-d3954366.json`; initial runner evidence:
-`control-egress-focused-82578fe4.json`.
+**Shared acceptance remains OPEN/STOP-SHIP for all three surfaces:**
 
-**Queue storage refusal — Linux component PASS; full integration OPEN.** `6d41f27b`
-checks `VecDeque::try_reserve(1)` before publishing a new control entry. Failure uses
-the existing terminal-clear/wake path with typed `StorageUnavailable`; trailing cursor
-replacement reuses its slot. The identical native fixture at unchanged-product `d158a247`
-reproduces three aborting allocation-refusal children with five healthy controls passing.
-The correction passes all six component tests in 0.05 seconds (106 seconds including VM
-setup/build): three handled initial/growth refusals, five healthy allocation/spare/cursor
-controls, exact queued-message release, one terminal result, stale-sender refusal and a
-functional independent fresh queue. All nine child processes, including the allocation
-probe, are reaped. The five existing FIFO/bounds/wake/concurrent-producer tests pass in both
-artifacts; packet/count/byte limits, dependencies and profile are unchanged. Both A/B RAM
-workspaces are retired. Source/artifact/raw bindings are retained in
-`.harness-state/verifier-vm/control-queue-allocation-aefa628e.json`.
-This covers queue-entry storage refusal, with no whole-process allocation, installed
-service/LPE, full connection-loop or display-latency acceptance claim.
-
-The shared gate retains
-`cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never`
-for broader integration. Historical parser/source-mutation receipts do not establish
-execution. Prior ledger classification and its superseded inspection report remain
-in `control-egress-ledger-8aeba95f.json`; Git history and the audit preserve provenance.
-
-**Remaining acceptance:** real synchronous cursor, clipboard, topology, stop-service,
-input-response and screenshot producers through mailbox/connection-loop backpressure,
-refusal, disconnect and replacement; FIFO, freshness, latency, retained payload,
-task and handle finality. Exact-current Android task-swipe/reopen/Force-Stop, Windows
-focus/minimize, Linux/macOS/iOS and cross-version behavior, capture-through-compositor
-timestamps and explicit latency budgets, sustained reconnect/focus/resource/performance
-soak, cold R-B2/R-B10 equality, installed artifacts, independent reproduction,
-R-V3 external review, reported-delay causation and complete connection-flow correctness
-and performance remain OPEN. The global release/authority matrices and all user parks
-remain authoritative.
+- Drive real synchronous cursor, clipboard, topology, stop-service, input-response
+  and screenshot producers; both desktop CM hops and Android's in-process hop after
+  Login; viewer, Unix-controlled, Windows-CM and FUSE clipboard routes. Cover
+  backpressure/saturation, terminal-first refusal, stale generations and senders,
+  abrupt owner loss, reconnect/replacement, exact ordering, payload/task/handle
+  finality and complete file-operation correctness.
+- Execute exact current installed artifacts on supported Linux/macOS/Windows,
+  Android/iOS and cross-version combinations. Reproduce physical Android
+  task-swipe/reopen/Force-Stop and Windows focus/minimize/background symptoms.
+  Measure capture-through-compositor and input-visible latency with explicit
+  budgets, cursor freshness, CPU/memory/handles/threads and cleanup during sustained
+  connection/reconnect/focus/background/file-control coexistence soak. Controlled
+  schedules do not exhaust interleavings or establish reported-delay causation.
+- Prove full connection-flow correctness/performance, R-S0 functionality with LPE
+  immunity, R-F5 impairment recovery and long-session freshness, cold R-B2/R-B10
+  equality, installed-service behavior, independent reproduction and R-V3 external
+  review. The global release/authority matrices and every user park remain binding.
 
 ### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership (2026-08-17)
 
@@ -12576,178 +12555,96 @@ Classification and the preserved evidence inventory are retained in
 
 ### R-S11gy/R-S11e-237 — bounded connection-manager result ownership (2026-08-17)
 
-**SOURCE IMPLEMENTED; LINUX QUEUE COMPONENT PASS; INSTALLED CM/PLATFORM ACCEPTANCE OPEN.**
-Platforms: Windows, Linux, and macOS desktop CM result hops plus Android's direct in-process hop.
-Surface: synchronous UI, clipboard, voice, and file-result producers -> bounded CM egress -> exact
-connection owner.
+**Linux queue/converter component PASS; complete desktop/Android CM and installed
+acceptance OPEN.** `CmEgressSender` / `CmEgressReceiver` in
+`src/ui_cm_interface.rs` provide the common ownership primitive for desktop CM
+producer-to-IPC and bridge-to-connection hops and Android's direct in-process hop.
+Each mailbox has one wake token, at most 256 entries, a 128 MiB structured ceiling,
+a separate 256 KiB raw-block ceiling and two maximum complete messages plus checked
+entry accounting. Serde-skipped raw bytes count explicitly. The closed result
+vocabulary excludes ambient filesystem requests. Class/encoding/storage/size/count/
+accounting failure clears queued work, retains one typed terminal cause and wakes
+the exact bridge/connection; stale senders cannot keep a retired receiver usable.
+R-S11gy / Appendix C #360 owns the normative contract.
 
-The inherited problem was two consecutive unbounded desktop `Data` queues and the same unbounded
-connection-facing shape on Android. The live traffic includes chat, privacy, voice, Windows file
-clipboard, and typed CM file responses; raw read blocks carry bytes outside their JSON envelope.
-A blocked CM writer or connection loop could retain arbitrary count and bytes until reconnect/drop
-destroyed the queue. The unused click-time request/response, server-side CM timestamps, FFI exports,
-and CM global replica are deleted rather than consuming a result variant. This is a cleanup-mediated
-recovery mechanism, not proof about an unidentified deployed artifact or causation for a reported
-display delay.
+Admission measures without allocating a second encoded message, then fallibly
+copies only the admitted raw payload so a shared view cannot pin unrelated IPC
+backing. The connection subsequently moves that bounded owner into its outgoing
+protobuf. Queue-entry/payload refusal uses `StorageUnavailable`; FIFO, exact
+response fields and connection/token authority are unchanged. The current cohort
+covers five coalesced-wire backing sizes, seven selective allocation refusals and
+four healthy controls. Two eight-producer schedules cover exact per-producer FIFO
+and terminal saturation; all sixteen producer threads join. Owner flags establish
+lifetime rather than RSS, and these schedules do not prove every interleaving.
+Current coverage, A/B provenance and shared limitations are recorded under R-S11gw.
 
-The current `CmEgressSender`/`CmEgressReceiver` owner has one wake token, at most 256 entries, a
-128 MiB structured ceiling, a separately enforced 256 KiB raw-block ceiling, and a checked aggregate
-budget of two maximum complete messages plus fixed entry accounting. Its closed vocabulary excludes
-ambient filesystem data. Wrong class, encoding failure, queue storage refusal, individual or aggregate oversize, count or
-accounting failure atomically clears retained work, records one typed terminal cause, wakes the
-owner, and terminates the exact bridge/connection. Receiver retirement closes admission and releases
-payloads despite stale senders. No coalescing, retry, reconnect, alternate route, task, runtime,
-listener, privilege transition, service restart, or Android persistent-service weakening was added.
+**Directory conversion and size admission.** All four shared-CM and connection-side
+entry/batch output vectors reserve fallibly and report errors. Mapping, ordering,
+count/name/time validation and protocol fields are preserved. The full computed
+`u64` encoded size is checked against the 16 MiB ceiling without a disposable
+serialized copy. The fixture executes the complete production single-directory
+converter and exact batch body with real name/list/time validators, count getters,
+the default-empty builtin map and generated messages. Ten single and five batch
+controls reach the 10,000-entry/directory boundaries; eighteen refusals cover names,
+Linux drive entries, timestamps/count/size overflow, empty-name rules and
+first/middle/last batch failures. Legitimate single-empty-name transfers remain
+accepted, with exact fields and wire bytes. Nine selected output-allocation
+refusals report errors and permit fresh successful conversions.
 
-Five executable Tokio regressions remain in `src/ui_cm_interface.rs`:
+`cm-proto-allocation-920a4229.json` retains the complete converter A/B.
+Earlier isolated entry/batch/size evidence remains in
+`cm-directory-allocation-77d5ab6a.json`,
+`cm-directory-batch-allocation-26af6d15.json` and
+`cm-directory-size-d023a678.json`; their raw timings, intermediate failures and
+per-run receipts belong in those capsules and Git history. The current 45-case
+cohort retains these checks. Error/diagnostic allocations remain available during
+selective refusal. Filesystem enumeration/jobs, complete handlers, native CM IPC
+authority, settings and installed/root/platform behavior are unproven here.
 
-- `r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive`
-- `r_s11gy_cm_egress_capacity_and_wrong_class_are_terminal`
-- `r_s11gy_cm_egress_encoded_byte_limits_are_terminal`
-- `r_s11gy_cm_egress_accounts_serde_skipped_raw_blocks_and_receiver_retirement`
-- `r_s11gy_cm_egress_wakes_without_polling_and_sender_retirement_closes`
-
-The shared verifier retains the direct command
-`cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never`. Its execution—not its
-presence—is the relevant regression evidence.
-
-**Raw payload storage and allocation refusal — Linux component PASS.** `ecfb25f3`
-copies an admitted raw read block into fallibly reserved payload-sized storage before
-queue publication. A small or empty shared `Bytes` view can no longer make this mailbox
-retain an unrelated transport allocation. The 256 KiB raw ceiling and all count/byte
-checks precede the copy. Queue-entry or payload allocation failure uses the existing typed
-`StorageUnavailable` terminal clear/wake path. Wire types, connection/token authority,
-FIFO, limits and caller behavior are unchanged.
-
-The same isolated fixture fails two tests at unchanged-product `af711fd5` and passes
-all 26 after correction. It executes the production codec, serializer and shared queues
-with complete Linux IPC/file/enigo declarations. Five valid coalesced-wire cases use a
-fully touched 8 MiB buffer, a preceding 4 MiB chat, CM metadata and raw lengths
-0/1/64/65536/262144. After releasing the remaining decoder buffer, an exact allocation
-deallocation observer sees the old mailbox pin all five original buffers until drain;
-the corrected mailbox releases each at admission and preserves every payload byte and
-metadata field. This isolates queue ownership; a live decoder can retain its own buffer,
-and deallocation is not an RSS measurement.
-
-Seven forced CM queue/payload allocation refusals clear accounting, release payloads,
-publish one terminal result, wake the receiver, refuse stale senders and leave a fresh
-queue usable; four healthy controls preserve exact responses. The five CM queue, six
-control and thirteen codec regressions
-also pass. All 21 child processes, including two deliberate allocation probes, are reaped.
-Both A/B RAM workspaces and run roots are retired. The fixture, root dependency lock and
-bounded profile are identical across A/B. Baseline diagnostics export all test names and
-stable before/after artifact hashes, but no dependency, full-input or source-part receipts;
-the successful run exports those. Evidence:
-`.harness-state/verifier-vm/cm-raw-backing-dab9f731.json`.
-Earlier queue-entry refusal evidence remains in `cm-queue-allocation-ed4e0911.json`.
-Complete desktop hops, real CM IPC, Android execution, whole-process allocation bounds,
-installed-service/LPE and displayed latency remain OPEN.
-
-**Concurrent raw-result admission — Linux component PASS.** `be96a1be` adds two
-actual OS-thread scenarios against the same production queue, without changing product
-code or its resource limits. Eight producers each submit sixteen raw responses while
-the consumer is held: all 128 original source owners retire at admission, and the drain
-preserves exact metadata, payload bytes and each producer's order. Separately, barriers
-hold eight admitted responses in an eight-entry queue before eight concurrent additional
-offers; every offer reports `MessageCapacity`, pending work/accounting clear, one terminal
-result is observed, stale senders refuse and a fresh queue remains usable. All sixteen
-producer threads join before successful verdicts. Source-owner flags establish lifetime,
-not RSS or allocator-wide release. The unchanged 26 tests and these two cases pass;
-the existing 21 allocation-child processes are joined. Evidence:
-`.harness-state/verifier-vm/cm-concurrent-egress-afdda092.json`.
-These controlled schedules do not establish all interleavings, real CM producer/IPC hops,
-installed/mobile behavior, latency or soak acceptance.
-
-**Directory conversions — source corrected; Linux component PASS; handler integration OPEN.**
-The four output vectors used by shared CM-to-DTO entry/batch conversion and
-connection-side DTO-to-protobuf entry/batch conversion reserve fallibly. The latest
-correction `a17203df` adds explicit entry/batch errors to the connection side.
-Field/kind mapping, ordering, count/name/time validation, result propagation and the
-protocol are preserved. Its size guard uses the full computed `u64` encoded length
-against the same 16 MiB limit without allocating a disposable encoded copy.
-
-The focused Linux artifact executes the complete production
-`cm_file_directory_to_proto` method and exact batch conversion body in wrappers,
-with actual filesystem name/list/time validators, count getters, the production
-default-empty builtin settings map and generated messages. Ten single-directory
-controls exercise both flag branches through the 10,000-entry boundary; five batch
-controls reach the same directory-count boundary. Eighteen refusals cover invalid
-names, Linux drive entries, timestamp/count/size overflow, empty-name rules and
-first/middle/last batch failures. Legitimate single-empty-name transfer is retained;
-all fields, ordering and actual protobuf wire bytes match.
-
-At unchanged-product `3aa57606`, thirty-five tests pass and the new refusal test
-fails: six entry-vector cases (both flag branches, one/five/sixty-four entries) and
-three batch-vector cases abort their native children. Corrected source passes all
-thirty-six tests in 1.30s (106s outer); all nine selected refusals report errors and
-fresh conversions then succeed in the same children. Existing shared-CM refusal,
-queue, concurrent-producer, codec and size-boundary tests remain green. The size
-guard allocates nothing through the exact limit and uses one 108-byte diagnostic
-allocation for limit-plus-one. Forty-four child invocations, including six positive
-allocation probes, and sixteen existing producer threads join. Both A/B artifact
-hashes, seventeen source-input and sixteen source-part receipts and dependency
-records are retained; successful completion rechecks source inputs. Runtime failure
-records are bounded rather than discarded by a generic tail. VM/RAM roots retire
-under the unchanged 2 GiB guest/6 GiB scratch/4 GiB overlay/6 GiB headroom profile.
-
-Current evidence: `cm-proto-allocation-920a4229.json`. Earlier isolated entry,
-batch and size evidence remains in `cm-directory-allocation-77d5ab6a.json`,
-`cm-directory-batch-allocation-26af6d15.json` and `cm-directory-size-d023a678.json`.
-Faults are selective; error strings and surrounding allocations remain available.
-Complete connection handlers, filesystem enumeration/jobs, native CM IPC authority,
-installed services/settings, Windows/mobile/other-platform behavior, blanket memory
-pressure, R-S0 and R-F5 acceptance remain OPEN.
-
-
-Desktop response-write lifetime now has the named Linux socket-backpressure A/B
-evidence under R-S11is below. A single private send operation owns JSON plus its
-optional raw payload under one five-second initiating deadline; error retires the
-exact runner and stream. Other queue interleavings and broader installed/platform obligations remain.
-
-Remaining STOP-SHIP evidence is the current installed/native transaction itself: complete desktop
-and Android CM/file operations after Login, both hops, saturation and terminal-first refusal, stale
-generation, abrupt owner loss, reconnect, ordering, latency, memory, task/handle finality, and cleanup;
-plus platform lifecycle/presentation/soak, cold R-B2/R-B10 equality, independent reproduction, and
-external review.
+The R-S11is section below retains the separate Linux socket-backpressure A/B for
+response-write lifetime: one private operation owns JSON plus optional raw bytes
+under one five-second initiating deadline, and failure retires the exact runner
+and stream. Complete post-Login CM/file transactions through both desktop hops and
+Android, terminal-first refusal, stale generation, abrupt loss, reconnect, ordering,
+latency, resources and cleanup remain OPEN. The R-S11gw shared acceptance list and
+global release/authority matrices remain authoritative.
 
 ### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership (2026-08-17)
 
-**SOURCE IMPLEMENTED; FIVE EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
-SOURCE/MUTATION THEATER DELETED; EXACT CURRENT NATIVE, PERFORMANCE, ARTIFACT,
-AND RELEASE EVIDENCE OPEN.** The inherited registry retained receivers across viewer
-rounds, used overlapping positive viewer/controlled IDs, removed routes without a
-generation, admitted payloads through unbounded channels, and could create competing
-Windows controlled consumers. Those are source-proven ownership, resource, and finality
-defects consistent with cleanup-mediated recovery—not proof about the weeks-old deployed
-artifacts or causation for the reported display-only delay.
+**Common Linux mailbox/registry PASS; native clipboard, full route lifecycle and
+installed/platform acceptance OPEN.** `libs/clipboard/src/lib.rs` retains clonable
+senders only. Each viewer round owns a fresh receiver, checked negative identity
+and exact monotonic-generation lease. Controlled identities are unique and positive;
+zero is the Unix broadcast sentinel. Source confines Windows controlled callbacks
+to the CM-owned consumer and the direct controlled route to Unix; Windows opaque
+identity-bit round trips still require native ABI evidence.
 
-The current registry retains only clonable senders. Every viewer round owns a fresh
-receiver, checked negative ID, and exact generation lease; controlled IDs are unique and
-positive, with zero reserved for Unix broadcast. Windows preserves the opaque ID bit
-pattern, has only the CM-owned controlled consumer, and Unix alone owns the direct
-controlled route. Each route uses one nonblocking wake token, a 256-message FIFO ceiling,
-an individual heap ceiling of `MAX_SESSION_PACKET`, a two-maximum-payload aggregate
-budget plus fixed entry accounting, and checked capacity-based nested allocation sizing.
-Admission/accounting failure is terminal and clears payloads; receiver and final-producer
-retirement are visible; point/broadcast sends snapshot senders before admission.
+Each route has one nonblocking wake token, a 256-message FIFO ceiling, individual
+retained-heap ceiling `MAX_SESSION_PACKET`, and two maximum payloads plus fixed
+entry accounting. Nested allocation capacity, element-size multiplication and
+accounting are checked. Slot reservation is fallible. Admission/storage/accounting
+failure clears retained payloads and accounting, publishes one terminal cause and
+wakes the exact owner; receiver and final-producer retirement remain visible.
+Point/broadcast producers release the registry lock before admission. No exact
+payload is coalesced. R-S11gz / Appendix C #361 owns the normative contract.
 
-Five Rust tests exercise FIFO recovery, terminal count/byte failure and payload release,
-allocation-capacity accounting, wake and receiver/producer finality, fresh role-disjoint
-routes, duplicate controlled-route refusal, generation-safe cleanup, and exact delivery.
-Existing FUSE tests exercise exact controlled-route acquisition. The shared runner retains
-`cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never`.
-These are executable in-process state-machine tests, not native clipboard, Windows ABI,
-viewer/CM/FUSE lifecycle, or installed-artifact evidence.
+The current focused cohort executes all six original common tests plus the
+allocation fixture: FIFO/drain, retained-capacity and count/byte limits, wake and
+producer/receiver finality, fresh role-disjoint routes, generation-safe lease cleanup,
+exact delivery and duplicate controlled-ID refusal without minting a generation or
+channel. Three refused growth cases and four healthy/spare controls also pass.
+Current source/artifact bindings and the earlier diagnostic omission are retained
+in `file-clipboard-growth-fc23970f.json`; shared evidence and limits are under
+R-S11gw. These common tests exclude OS clipboard backends and do not establish
+Windows ABI, viewer/CM/FUSE lifecycle or installed behavior.
 
-Exact current Windows/Linux/macOS execution must still cover native ABI identity, viewer,
-Unix-controlled, Windows-CM, and FUSE routes through connection/reconnect, refusal,
-replacement, and cleanup, with file correctness, latency, backpressure, CPU, memory,
-handles, and thread finality. Physical Android/Windows symptom reproduction,
-cross-version/platform behavior, capture-to-present timing, sustained coexistence soak,
-cold R-B2/R-B10 equality, installed artifacts/services, independent reproduction, R-V3
-external review, causation, and the complete connection flow remaining correct and
-performant are open. The earlier verifier deletion changed no product source or Android
-persistent-service behavior.
+Native viewer, Unix-controlled, Windows-CM and mounted-FUSE routes still require
+connection/reconnect, refusal/replacement and cleanup with file correctness,
+backpressure, latency, CPU/memory/handle/thread finality. The complete R-S11gw shared
+acceptance list remains OPEN, including physical symptoms, cross-version behavior,
+capture-to-present timing, coexistence soak, cold equality, installed artifacts,
+independent reproduction, review, causation and full connection correctness.
+The separate Unix-offset transaction below is retained unchanged.
 
 **Unix clipboard file offsets — source corrected; named Linux library transaction ACCEPTED;
 OS clipboard and installed integration OPEN.** `1a862b6d` converts both signed protobuf

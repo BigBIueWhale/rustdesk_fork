@@ -1168,7 +1168,11 @@ static int observe_current_frames_for_duration(Display *source, Display *display
             return -1;
         }
     }
-    return *distinct_states >= duration_ms / 1000U ? 0 : -1;
+    uint64_t final_gap = deadline - last_fresh;
+    if (final_gap > *maximum_gap_ms) {
+        *maximum_gap_ms = final_gap;
+    }
+    return final_gap <= FRESH_LIMIT_MS && *distinct_states >= duration_ms / 1000U ? 0 : -1;
 }
 
 static int read_connection_identity(ConnectionIdentity *identity) {

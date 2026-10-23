@@ -12656,21 +12656,28 @@ These controlled schedules do not establish all interleavings, real CM producer/
 installed/mobile behavior, latency or soak acceptance.
 
 **Directory-response conversion — Linux component PASS; caller integration OPEN.**
-`8b02008d` makes the shared directory entry-vector reservation fallible and returns
-an explicit listing error. API, file-kind mapping, fields, ordering and callers are
-unchanged. With the same fixture at unchanged-product `11a675a5`, refusing the
-output allocation for one/five/sixty-four entries aborts all three native children;
-twenty-nine tests pass and the new allocation test fails. The correction passes all
-thirty tests in 1.14s (107s outer). All three errors retain their response identity
-through actual closed-response JSON and the production CM queue; fresh conversions
-then preserve exact entries. Four healthy counts cover all five kinds, UTF-8 names/
-paths, hidden flags, sizes/timestamps and unknown-kind refusal. Twenty-five child
-invocations, including three positive allocation probes, and sixteen existing producer
-threads join; both A/B VM/RAM roots retire. Source, artifacts and receipts:
-`cm-directory-allocation-77d5ab6a.json`. Refusal is selective and one-time; small error
-strings, encoding and caller/job allocations remain available. This does not exercise
-full filesystem enumeration, file-job handlers, native IPC authorization, installed
-services, other platforms or blanket memory pressure. Those obligations remain OPEN.
+`8b02008d` makes each directory's entry-vector reservation fallible;
+`c6a79d50` also reserves the outer directory batch fallibly before converting entries.
+Both return explicit errors through the existing result path. File-kind mapping,
+fields, ordering and protocol are preserved. The batch helper's test-preparation
+commit `565e0dd8` extracts the exact former collect expression and changes only
+its call site before the A/B correction. Native refusal of the old output allocation
+aborts three children for one/five/sixty-four entries and, separately, three for
+one/five/sixty-four directories. The batch baseline passes thirty-one tests and fails
+the new refusal test; its retained artifact record has the terminal hash only.
+Corrected source passes all thirty-two tests in 1.14s (105s outer). Both refusal
+families retain exact response identity through actual closed-response JSON and the
+production CM queue; fresh conversions then preserve exact contents. Healthy controls
+cover empty/single/multiple results, all five kinds, UTF-8 names/paths, hidden flags,
+sizes/timestamps and order. Unknown kinds refuse, including first/middle/last batch
+positions. Twenty-nine child invocations, including four positive allocation probes,
+and sixteen existing producer threads join; A/B VM/RAM roots retire.
+Source, artifacts and receipts: `cm-directory-allocation-77d5ab6a.json` and
+`cm-directory-batch-allocation-26af6d15.json`. Refusal is selective and one-time;
+small error strings, encoding and caller/job allocations remain available.
+Complete filesystem enumeration/handlers, connection-side DTO-to-protobuf allocation
+and validation/serialization, native IPC authorization, installed services, other
+platforms and blanket memory pressure remain OPEN.
 
 Desktop response-write lifetime now has the named Linux socket-backpressure A/B
 evidence under R-S11is below. A single private send operation owns JSON plus its

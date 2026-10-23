@@ -11600,27 +11600,26 @@ impl Connection {
         allow_windows_virtual_drives: bool,
     ) -> Result<FileDirectory, String> {
         crate::ui_cm_interface::check_file_count_limit(directory.entries.len())?;
-        let entries: Vec<FileEntry> = directory
-            .entries
-            .into_iter()
-            .map(|entry| {
-                let entry_type = match entry.entry_type {
-                    ipc::CmFileEntryType::Directory => FileType::Dir,
-                    ipc::CmFileEntryType::DirectoryLink => FileType::DirLink,
-                    ipc::CmFileEntryType::DirectoryDrive => FileType::DirDrive,
-                    ipc::CmFileEntryType::File => FileType::File,
-                    ipc::CmFileEntryType::FileLink => FileType::FileLink,
-                };
-                FileEntry {
-                    entry_type: entry_type.into(),
-                    name: entry.name,
-                    is_hidden: entry.is_hidden,
-                    size: entry.size,
-                    modified_time: entry.modified_time,
-                    ..Default::default()
-                }
-            })
-            .collect();
+        let mut entries = Vec::new();
+        entries.try_reserve_exact(directory.entries.len())
+            .map_err(|_| "Not enough memory for directory entries".to_owned())?;
+        for entry in directory.entries {
+            let entry_type = match entry.entry_type {
+                ipc::CmFileEntryType::Directory => FileType::Dir,
+                ipc::CmFileEntryType::DirectoryLink => FileType::DirLink,
+                ipc::CmFileEntryType::DirectoryDrive => FileType::DirDrive,
+                ipc::CmFileEntryType::File => FileType::File,
+                ipc::CmFileEntryType::FileLink => FileType::FileLink,
+            };
+            entries.push(FileEntry {
+                entry_type: entry_type.into(),
+                name: entry.name,
+                is_hidden: entry.is_hidden,
+                size: entry.size,
+                modified_time: entry.modified_time,
+                ..Default::default()
+            });
+        }
         if allow_windows_virtual_drives {
             for entry in &entries {
                 let entry_type = entry
@@ -11854,10 +11853,13 @@ impl Connection {
                 }
                 match result.and_then(|directories| {
                     crate::ui_cm_interface::check_file_count_limit(directories.len())?;
-                    directories
-                        .into_iter()
-                        .map(|directory| Self::cm_file_directory_to_proto(directory, false))
-                        .collect::<Result<Vec<_>, _>>()
+                    let mut converted = Vec::new();
+                    converted.try_reserve_exact(directories.len())
+                        .map_err(|_| "Not enough memory for directories".to_owned())?;
+                    for directory in directories {
+                        converted.push(Self::cm_file_directory_to_proto(directory, false)?);
+                    }
+                    Ok(converted)
                 }) {
                     Ok(empty_dirs) => {
                         let mut response = FileResponse::new();

@@ -1119,9 +1119,16 @@ impl AudioHandler {
             }
         }
         self.audio_format = Some(native_opus_format_key(f.sample_rate, f.channels));
+        let samples = f.sample_rate as usize * f.channels as usize;
+        let mut buffer = Vec::new();
+        if let Err(err) = buffer.try_reserve_exact(samples) {
+            log::error!("Failed to reserve audio decoder PCM storage: {err}");
+            self.fail_audio();
+            return;
+        }
+        buffer.resize(samples, 0.);
         match AudioDecoder::new(f.sample_rate, if f.channels > 1 { Stereo } else { Mono }) {
             Ok(d) => {
-                let buffer = vec![0.; f.sample_rate as usize * f.channels as usize];
                 self.audio_decoder = Some((d, buffer));
                 self.channels = f.channels as _;
                 if let Err(err) = self.start_audio(f) {
@@ -3290,6 +3297,9 @@ fn new_audio_thread() -> (AudioMailboxSender, std::thread::JoinHandle<()>) {
                     );
                     audio_handler.handle_format(format);
                 }
+            }
+            if audio_handler.audio_failed {
+                break;
             }
         }
         log::info!("Audio decoder loop exits");

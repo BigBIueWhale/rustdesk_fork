@@ -6120,7 +6120,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
         printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=24 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=35 bridge=absent\n'
+        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=36 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
         printf 'WHITEBOARD_CLIENT_STATE_PROFILE=whiteboard-client stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then

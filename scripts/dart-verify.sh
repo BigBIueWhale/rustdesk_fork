@@ -973,12 +973,9 @@ dg_clean 'showDeployDialog|showDeployPromptDialog|deploy_dialog|android_needs_de
 # loginDialog/UserModel/toolbar+mobile account entry points are the rest of the account sweep. No
 # desktop Account tab may reappear.
 dg_clean 'SettingsTabKey\.account' 'R-G4 desktop Account settings tab'
-# R-X2 / R-G4 / §19: the desktop "Plugin" settings tab is deleted — the native-plugin loader is
-# excised (R-X2: mod plugin / plugin_framework absent) and plugin_feature_is_enabled() is pinned
-# SyncReturn(false), so the tab was always hidden + dead. Removed the _Plugin/_PluginState classes
-# (incl. the "login to use plugins" loginDialog button) + the SettingsTabKey.plugin enum value +
-# its tabKeys include + both switch cases. (The plugin_feature_is_enabled FFI stub stays — a
-# flutter-verify trim follow-on.) No desktop Plugin tab may reappear.
+# R-X2 / R-G4 / §19: the RustDesk native-extension framework has no Plugin settings
+# tab, class, bridge stub or hidden feature gate. Required packaged Flutter/platform
+# components are separate fixed application dependencies.
 dg_clean 'SettingsTabKey\.plugin|class _Plugin\b' 'R-X2/R-G4 dead Plugin settings tab'
 # R-SV6c / R-G / R-D: no authored or generated Dart surface may carry rendezvous peer-presence
 # state, queries, callbacks, timers, sorting, or the retired generic connect-status bridge.

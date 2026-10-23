@@ -12679,6 +12679,25 @@ Complete filesystem enumeration/handlers, connection-side DTO-to-protobuf alloca
 and validation/serialization, native IPC authorization, installed services, other
 platforms and blanket memory pressure remain OPEN.
 
+**Connection-side directory size admission — Linux component PASS; complete caller OPEN.**
+`18affc13` compares protobuf's full `u64` computed size with the same 16 MiB limit
+without first serializing a disposable copy. The exact final admission block runs in
+a function wrapper with generated production messages and the actual limit; it does
+not execute the enclosing validation/connection method. At unchanged-product
+`8c7854d2`, the new refusal test fails and thirty-three tests pass: all four native
+children abort when their encoded-copy allocation is denied. Healthy observations
+show one full-size copy for each nonempty message, including oversize before rejection.
+Corrected source passes all thirty-four tests in 1.00s (103s outer). Empty, 2 KiB,
+limit-minus-one and exact-limit guards allocate nothing; limit-plus-one keeps its
+explicit refusal using one 108-byte diagnostic allocation. Actual serialized bytes,
+nested entry fields and retained path ownership match. Thirty-four child invocations,
+five positive allocator probes and sixteen existing producer threads join; A/B VM/RAM
+roots retire. `cm-directory-size-d023a678.json` retains the evidence and the baseline's
+failure-tail limits (terminal artifact hash, summary and ten test names; no before hash
+or dependency/input-part receipts). Complete DTO conversion, file validation, handlers,
+native IPC/installed behavior, other platforms and broad OOM acceptance remain OPEN.
+
+
 Desktop response-write lifetime now has the named Linux socket-backpressure A/B
 evidence under R-S11is below. A single private send operation owns JSON plus its
 optional raw payload under one five-second initiating deadline; error retires the

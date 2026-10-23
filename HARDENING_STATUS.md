@@ -12628,23 +12628,37 @@ The shared verifier retains the direct command
 `cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never`. Its execution—not its
 presence—is the relevant regression evidence.
 
-**Queue storage refusal — Linux component PASS.** `62f658eb` reserves a queue entry
-with `try_reserve(1)` before publication; allocation failure uses the existing terminal
-clear/wake path with typed `StorageUnavailable`. At unchanged-product `c04468c1`, three
-forced initial/growth allocation failures abort their child processes while four healthy
-CM controls and the other eleven tests pass. The same fixture passes all twelve tests
-after correction in 0.07 seconds (119 seconds including VM setup/build). It executes the
-five existing CM queue tests with the complete production Linux `Data`, file-response and
-keyboard/mouse declarations, actual JSON serialization and root-resolved dependencies.
-Three refusal cases release every queued and newly offered raw payload, clear accounting,
-publish one terminal result, refuse stale senders and leave a fresh independent queue
-functional. Four healthy cases preserve exact response metadata, raw bytes and FIFO order.
-All seventeen child processes, including two allocation probes and the existing control
-queue cases, are reaped; both A/B RAM workspaces are retired. Limits, wire types, dependencies
-and the bounded profile are unchanged across A/B. Evidence:
-`.harness-state/verifier-vm/cm-queue-allocation-ed4e0911.json`.
-This covers the shared mailbox component; complete desktop hops, Android execution,
-whole-process allocation bounds, installed-service/LPE and display latency remain OPEN.
+**Raw payload storage and allocation refusal — Linux component PASS.** `ecfb25f3`
+copies an admitted raw read block into fallibly reserved payload-sized storage before
+queue publication. A small or empty shared `Bytes` view can no longer make this mailbox
+retain an unrelated transport allocation. The 256 KiB raw ceiling and all count/byte
+checks precede the copy. Queue-entry or payload allocation failure uses the existing typed
+`StorageUnavailable` terminal clear/wake path. Wire types, connection/token authority,
+FIFO, limits and caller behavior are unchanged.
+
+The same isolated fixture fails two tests at unchanged-product `af711fd5` and passes
+all 26 after correction. It executes the production codec, serializer and shared queues
+with complete Linux IPC/file/enigo declarations. Five valid coalesced-wire cases use a
+fully touched 8 MiB buffer, a preceding 4 MiB chat, CM metadata and raw lengths
+0/1/64/65536/262144. After releasing the remaining decoder buffer, an exact allocation
+deallocation observer sees the old mailbox pin all five original buffers until drain;
+the corrected mailbox releases each at admission and preserves every payload byte and
+metadata field. This isolates queue ownership; a live decoder can retain its own buffer,
+and deallocation is not an RSS measurement.
+
+Seven forced CM queue/payload allocation refusals clear accounting, release payloads,
+publish one terminal result, wake the receiver, refuse stale senders and leave a fresh
+queue usable; four healthy controls preserve exact responses. The five CM queue, six
+control and thirteen codec regressions
+also pass. All 21 child processes, including two deliberate allocation probes, are reaped.
+Both A/B RAM workspaces and run roots are retired. The fixture, root dependency lock and
+bounded profile are identical across A/B. Baseline diagnostics export all test names and
+stable before/after artifact hashes, but no dependency, full-input or source-part receipts;
+the successful run exports those. Evidence:
+`.harness-state/verifier-vm/cm-raw-backing-dab9f731.json`.
+Earlier queue-entry refusal evidence remains in `cm-queue-allocation-ed4e0911.json`.
+Complete desktop hops, real CM IPC, Android execution, whole-process allocation bounds,
+installed-service/LPE and displayed latency remain OPEN.
 
 Desktop response-write lifetime now has the named Linux socket-backpressure A/B
 evidence under R-S11is below. A single private send operation owns JSON plus its

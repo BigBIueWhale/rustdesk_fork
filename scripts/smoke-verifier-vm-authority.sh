@@ -8187,7 +8187,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'FUSE_FD_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=9 scope=production-descriptor-transfer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
-        printf 'AUDIO_BUFFER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=22 scope=production-portable-pcm-buffer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'AUDIO_BUFFER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=24 scope=production-portable-pcm-buffer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         printf 'AUDIO_MAILBOX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=35 scope=production-mailbox-and-generated-protobuf network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

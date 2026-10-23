@@ -27,6 +27,7 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-d
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:auto-disconnect \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:directory-ordering \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:direct-address \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-metadata \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:share-rdp \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:window-dispatch ]]; then
     readonly VM_STORAGE_PROFILE=flutter-credential-dialog

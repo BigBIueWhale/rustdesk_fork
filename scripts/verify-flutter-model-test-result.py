@@ -855,8 +855,20 @@ def model_test_count(path=None):
     return count
 
 
+FILE_METADATA_TESTS = {
+    *(f"ordinary timestamp {value} keeps its date" for value in
+      (0, 1, -1, 1700000000, -2147483648, 2147483647, 8640000000000, -8640000000000)),
+    *(f"unsupported timestamp {value} is unavailable without data loss" for value in
+      (8640000000001, -8640000000001, 2305843009213693952, -2305843009213693952)),
+    "drive row retains its blank timestamp",
+    "timestamp rendering preserves the remaining entry fields",
+    "modified ordering uses raw seconds ascending=false",
+    "modified ordering uses raw seconds ascending=true",
+}
+
+
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -867,6 +879,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"address_validator_test.dart"}
         expected_tests = len(DIRECT_ADDRESS_TESTS)
         expected_names = DIRECT_ADDRESS_TESTS
+    elif profile == "file-metadata":
+        expected_suites = {"file_metadata_probe_test.dart"}
+        expected_tests = len(FILE_METADATA_TESTS)
+        expected_names = FILE_METADATA_TESTS
     elif profile == "share-rdp":
         expected_suites = {"share_rdp_change_lifecycle_test.dart"}
         expected_tests = len(SHARE_RDP_TESTS)
@@ -1023,7 +1039,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1035,6 +1051,7 @@ def main():
         "models": "FLUTTER_MODEL_TEST_JSON",
         "frame-queue": "FLUTTER_FRAME_QUEUE_TEST_JSON",
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
+        "file-metadata": "FLUTTER_FILE_METADATA_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
         "share-rdp": "FLUTTER_SHARE_RDP_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",

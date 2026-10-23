@@ -306,7 +306,7 @@ case "$#:${1:-}" in
         MODE=flutter-model-tests
         ;;
     2:--flutter-model-tests)
-        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --window-dispatch || "$2" = --peer-data || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
+        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --window-dispatch || "$2" = --peer-data || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Flutter shard or input/run authority differs' >&2; exit 2; }
@@ -7664,6 +7664,10 @@ else
         require_exact_fixed_receipt \
             "FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=19 flutter=$FLUTTER_VERSION validator=$address_sha256 tests_source=$address_tests_sha256 vectors=$address_vectors_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined" \
             'focused Flutter direct-address receipt'
+    elif [ "$FLUTTER_TEST_PROFILE" = file-metadata ]; then
+        require_exact_fixed_receipt \
+            "FLUTTER_FILE_METADATA_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=16 flutter=$FLUTTER_VERSION bridge=absent source=readonly network=none cleanup=joined" \
+            'file timestamp formatting and raw metadata ordering'
     elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
         lifecycle_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/share_rdp_change_lifecycle.dart" | /usr/bin/awk '{print $1}')"
         lifecycle_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/share_rdp_change_lifecycle_test.dart" | /usr/bin/awk '{print $1}')"
@@ -8445,6 +8449,9 @@ else
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
         printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-address-tests cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$FLUTTER_TEST_PROFILE" = file-metadata ]; then
+        printf 'FLUTTER_FILE_METADATA_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-file-metadata-functions cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
         printf 'FLUTTER_SHARE_RDP_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-rdp-sharing-lifecycle-tests cleanup=joined elapsed_seconds=%s\n' \

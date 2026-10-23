@@ -1199,7 +1199,7 @@ class _FileManagerViewState extends State<FileManagerView> {
               entry.isFile ? readableFileSize(entry.size.toDouble()) : "";
           final lastModifiedStr = entry.isDrive
               ? " "
-              : "${entry.lastModified().toString().replaceAll(".000", "")}   ";
+              : "${entry.lastModifiedText()}   ";
           var secondaryPosition = RelativeRect.fromLTRB(0, 0, 0, 0);
           onTap() {
             if (!isCurrentSession) return;

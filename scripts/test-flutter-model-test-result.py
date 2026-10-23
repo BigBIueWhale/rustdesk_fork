@@ -27,6 +27,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "frame-queue":
             suites = ["latest_frame_queue_test.dart"]
             names = sorted(result.FRAME_QUEUE_TESTS)
+        elif profile == "file-metadata":
+            suites = ["file_metadata_probe_test.dart"]
+            names = sorted(result.FILE_METADATA_TESTS)
         elif profile == "share-rdp":
             suites = ["share_rdp_change_lifecycle_test.dart"]
             names = sorted(result.SHARE_RDP_TESTS)
@@ -142,7 +145,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "modifier-release"):
+        for profile in ("frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "modifier-release"):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
@@ -166,7 +169,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_and_incomplete_are_rejected(self):
-        for profile in ("models", "frame-queue", "direct-address", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "modifier-release"):
+        for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "modifier-release"):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

@@ -13,6 +13,7 @@ import 'package:flutter_hbb/web/dummy.dart'
 import '../consts.dart';
 import 'model.dart';
 import 'platform_model.dart';
+import 'file_timestamp.dart';
 
 enum SortBy {
   name,
@@ -2540,6 +2541,8 @@ class Entry {
   DateTime lastModified() {
     return DateTime.fromMillisecondsSinceEpoch(modifiedTime * 1000);
   }
+
+  String lastModifiedText() => formatFileModifiedTime(modifiedTime);
 }
 
 enum JobState { none, inProgress, done, error, paused }

@@ -335,9 +335,9 @@ class LatestFrameQueue<Owner, Key, Frame> {
     lane.pending = pending;
     if (!_ensurePoolWaiter(key, lane)) {
       lane.pending = null;
+      _retireAll();
       pending.completeError(StateError('frame drain pool capacity exhausted'),
           StackTrace.current);
-      _retireAll();
     }
   }
 
@@ -354,8 +354,10 @@ class LatestFrameQueue<Owner, Key, Frame> {
         if (_retired || drain.detached) {
           entry.complete(LatestFrameDisposition.retired);
         } else {
-          entry.completeError(error, stackTrace);
+          // Keep the failed entry out of peer retirement so it retains its error.
+          lane.running.remove(drain);
           _retireAll();
+          entry.completeError(error, stackTrace);
         }
       }
     } finally {

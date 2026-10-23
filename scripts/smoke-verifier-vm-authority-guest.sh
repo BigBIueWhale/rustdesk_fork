@@ -4268,6 +4268,7 @@ run_focused_rust_tests() {
                 src/ui_cm_interface.rs src/ipc.rs libs/enigo/src/lib.rs
                 libs/hbb_common/src/bytes_codec.rs libs/hbb_common/src/fs.rs
                 libs/hbb_common/src/config.rs libs/hbb_common/src/lib.rs src/common.rs
+                src/ui_session_interface.rs
             )
             required_tests=(
                 control_egress_tests::r_s11gw_cursor_positions_replace_only_the_trailing_cursor
@@ -4295,6 +4296,7 @@ run_focused_rust_tests() {
                 cm_directory_proto_allocation_refusal_reports_error_and_retries
                 cm_read_block_preserves_metadata_and_wire
                 cm_read_block_forwarding_reuses_owned_payload_without_allocation
+                recent_document_markers_preserve_existing_objects_and_refuse_creation_failure
                 file_clipboard::tests::r_s11gz_file_clipboard_egress_is_fifo_and_releases_capacity
                 file_clipboard::tests::r_s11gz_file_clipboard_egress_capacity_failure_is_terminal_and_clears_payloads
                 file_clipboard::tests::r_s11gz_file_clipboard_egress_counts_retained_capacity_and_total_bytes
@@ -6173,7 +6175,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=45 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=46 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6272,7 +6274,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$RUST_TEST_PROFILE" = control-egress ] \
             && grep -Eq '^CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256=[0-9a-f]{64} tests=[0-9]+$' "$output"; then
             awk '
-                /^(CONTROL_EGRESS_|test |CM_|CONTROL_QUEUE_|FILE_CLIP_QUEUE_|BYTES_CODEC_|memory allocation of )/ {
+                /^(CONTROL_EGRESS_|RECENT_DOCUMENT_|test |CM_|CONTROL_QUEUE_|FILE_CLIP_QUEUE_|BYTES_CODEC_|memory allocation of )/ {
                     if (++records > 512) exit 1
                     print
                 }
@@ -6484,9 +6486,11 @@ PY
             || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=45 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=46 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
+        [ "$(grep -Fxc 'RECENT_DOCUMENT_MARKER=pass cases=8 source=production-file-operation existing=preserved failures=refused scope=linux-filesystem-only shell=unexecuted cleanup=joined' "$output")" -eq 1 ] \
+            || fail 'recent-document marker preservation or creation refusal differs'
         [ "$(grep -Fxc 'CM_DIRECTORY_ALLOC=pass refusals=3 retries=exact queue_identity=preserved probe=SIGABRT children=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'CM_DIRECTORY_CONTROL=pass counts=4 kinds=5 fields=exact unknown=refused json=exact queue_identity=preserved' "$output")" -eq 1 ] \
             || fail 'directory conversion allocation recovery or exact response differs'
@@ -7217,7 +7221,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
-            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|file_clipboard::(tests|allocation_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+|cm_read_block_[a-z_]+) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_PROTO_|^CM_READ_BLOCK_|^FILE_CLIP_QUEUE_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
+            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|file_clipboard::(tests|allocation_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+|cm_read_block_[a-z_]+|recent_document_markers_preserve_existing_objects_and_refuse_creation_failure) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^RECENT_DOCUMENT_|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_PROTO_|^CM_READ_BLOCK_|^FILE_CLIP_QUEUE_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
             printf 'CONTROL_EGRESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

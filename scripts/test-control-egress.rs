@@ -7,6 +7,8 @@ pub use lazy_static;
 pub use anyhow::{self, bail};
 pub use libc;
 
+include!(env!("RECENT_DOCUMENT_MARKER_SOURCE"));
+
 #[path = "../libs/hbb_common/src/bytes_codec.rs"]
 pub mod bytes_codec;
 
@@ -1275,4 +1277,63 @@ fn cm_queue_concurrent_saturation_is_terminal() {
     assert!(matches!(fresh_receiver.take_next(), Ok(Some(CmEgressItem::Data(Data::CmFileResponse(_))))));
     assert!(fresh_receiver.take_next().unwrap().is_none());
     println!("CM_QUEUE_CONCURRENT=pass case=saturation producers=8 admitted=8 refused=8 terminal=once stale=refused fresh=usable threads=joined");
+}
+
+#[test]
+fn recent_document_markers_preserve_existing_objects_and_refuse_creation_failure() {
+    use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
+    let root = std::env::temp_dir().join(format!("recent-marker-{}-{}", std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    std::fs::create_dir(&root).unwrap();
+    let mut passed = true;
+    let mut record = |name: &str, ready: bool, preserved: bool, expected_ready: bool| {
+        let good = ready == expected_ready && preserved;
+        println!("RECENT_DOCUMENT_MARKER_CASE case={name} ready={ready} preserved={preserved} expected_ready={expected_ready} passed={good}");
+        passed &= good;
+    };
+    let marker = root.join("new.marker");
+    let ready = recent_document_marker(&marker);
+    record("new", ready, marker.is_file() && std::fs::metadata(&marker).unwrap().len() == 0, true);
+    let inode = std::fs::metadata(&marker).unwrap().ino();
+    let ready = recent_document_marker(&marker);
+    record("repeat", ready, std::fs::metadata(&marker).unwrap().ino() == inode && std::fs::read(&marker).unwrap().is_empty(), true);
+
+    let existing = root.join("existing.marker");
+    std::fs::write(&existing, b"existing-file-payload").unwrap();
+    let inode = std::fs::metadata(&existing).unwrap().ino();
+    let ready = recent_document_marker(&existing);
+    record("existing", ready, std::fs::read(&existing).unwrap() == b"existing-file-payload" && std::fs::metadata(&existing).unwrap().ino() == inode, true);
+
+    let target = root.join("hard-target");
+    let alias = root.join("hard.marker");
+    std::fs::write(&target, b"hard-link-payload").unwrap();
+    std::fs::hard_link(&target, &alias).unwrap();
+    let ready = recent_document_marker(&alias);
+    record("hard-link", ready, std::fs::read(&target).unwrap() == b"hard-link-payload" && std::fs::read(&alias).unwrap() == b"hard-link-payload" && std::fs::metadata(&target).unwrap().nlink() == 2, true);
+
+    let target = root.join("symbolic-target");
+    let alias = root.join("symbolic.marker");
+    std::fs::write(&target, b"symbolic-link-payload").unwrap();
+    symlink(&target, &alias).unwrap();
+    let ready = recent_document_marker(&alias);
+    record("symbolic-link", ready, std::fs::read(&target).unwrap() == b"symbolic-link-payload" && std::fs::symlink_metadata(&alias).unwrap().file_type().is_symlink(), true);
+
+    let target = root.join("absent-target");
+    let alias = root.join("dangling.marker");
+    symlink(&target, &alias).unwrap();
+    let ready = recent_document_marker(&alias);
+    record("dangling-link", ready, !target.exists() && std::fs::symlink_metadata(&alias).unwrap().file_type().is_symlink(), true);
+
+    let denied = root.join("denied");
+    std::fs::create_dir(&denied).unwrap();
+    std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let ready = recent_document_marker(&denied.join("denied.marker"));
+    record("denied-parent", ready, !denied.join("denied.marker").exists(), false);
+    std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let ready = recent_document_marker(&root.join("missing/marker"));
+    record("missing-parent", ready, !root.join("missing").exists(), false);
+    std::fs::remove_dir_all(&root).unwrap();
+    assert!(!root.exists());
+    assert!(passed, "recent-document marker changed an existing object or admitted failed creation");
+    println!("RECENT_DOCUMENT_MARKER=pass cases=8 source=production-file-operation existing=preserved failures=refused scope=linux-filesystem-only shell=unexecuted cleanup=joined");
 }

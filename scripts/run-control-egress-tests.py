@@ -26,6 +26,7 @@ INPUTS = (
     "libs/hbb_common/src/fs.rs",
     "libs/hbb_common/src/config.rs", "libs/hbb_common/src/lib.rs", "src/common.rs",
     "libs/clipboard/src/lib.rs", "libs/clipboard/Cargo.toml",
+    "src/ui_session_interface.rs",
 )
 
 
@@ -99,6 +100,26 @@ def main():
     if len(limits) != 1:
         raise ValueError("controlled-egress production packet limit is ambiguous")
     snippets["packet-limit.rs"] = limits[0]
+    session = inputs["src/ui_session_interface.rs"].decode("utf-8")
+    legacy_marker = "            std::fs::File::create(&path).ok();\n"
+    marker_start = "            let marker_ready = "
+    marker_end = "            if marker_ready {"
+    if session.count(legacy_marker) == 1 and marker_start not in session:
+        marker_body = legacy_marker + "    true\n"
+        marker_shape = "legacy-create-before-shell"
+    elif session.count(marker_start) == 1 and legacy_marker not in session:
+        marker_body = between(session, marker_start, marker_end)[len(marker_start):].strip()
+        if not marker_body.endswith(";"):
+            raise ValueError("recent-document marker expression is incomplete")
+        marker_body = marker_body[:-1] + "\n"
+        marker_shape = "production-create-only-match"
+    else:
+        raise ValueError("recent-document marker source is absent or ambiguous")
+    snippets["recent-document-marker.rs"] = (
+        "fn recent_document_marker(path: &std::path::Path) -> bool {\n"
+        + marker_body + "}\n")
+    print(f"RECENT_DOCUMENT_EXTRACTION=pass shape={marker_shape} "
+          "scope=portable-file-operation shell=unexecuted", flush=True)
     cm = inputs["src/ui_cm_interface.rs"].decode("utf-8")
     ipc = inputs["src/ipc.rs"].decode("utf-8")
     enigo = inputs["libs/enigo/src/lib.rs"].decode("utf-8")
@@ -192,6 +213,7 @@ def main():
         os.environ["CONTROL_EGRESS_TESTS"] = str(fixture / "tests.rs")
         os.environ["CONTROL_EGRESS_LIMIT"] = str(fixture / "packet-limit.rs")
         os.environ["FILE_CLIPBOARD_SOURCE"] = str(fixture / "file-clipboard.rs")
+        os.environ["RECENT_DOCUMENT_MARKER_SOURCE"] = str(fixture / "recent-document-marker.rs")
         for variable, name in (("CM_EGRESS_SOURCE", "cm-queue.rs"), ("CM_EGRESS_TESTS", "cm-tests.rs"),
                                ("CM_IPC_TYPES", "cm-ipc.rs"), ("CM_ENIGO_TYPES", "enigo-types.rs"),
                                ("CM_EGRESS_LIMIT", "cm-limits.rs"),
@@ -281,13 +303,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=45", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=46", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=45 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=46 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -296,7 +318,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=45 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=46 unchanged=before-after",
               flush=True)
 
 

@@ -48,6 +48,7 @@ target OS has executed them or that every in-flight helper operation drains on c
 
 | Retained evidence | What it establishes—and does not establish |
 | --- | --- |
+| Frame-queue error finality (`272afc3c`) | Fatal retirement precedes synchronous observed-error notification at running-presentation and pending-capacity failure sites. The failed running entry is excluded from peer retirement so its original error survives; pool limits and finalizer-owned releases are unchanged. At unchanged-product `be8b6ac7`, both new regressions fail while all 24 existing queue cases pass: callbacks can recover the failing queue, and one can admit old work while preventing a fresh queue from using the shared pool. The corrected 26-case shard and three parser methods pass in 100 outer seconds. Current FFI error handlers already retire their owner before UI effects; this establishes the queue's intrinsic reentrant-callback contract, not current-app symptom causation. `frame-error-finality-57028a75.json` retains source/strict-validator bindings, setup/parser rejections, the standalone shard's explicit lightweight storage mapping and bounded-RAM joined cleanup. Held-Future Dart tests do not execute FFI, browser/native rendering, real pixels/peers, installed services or latency; full models, R-S0/R-F5 and release acceptance remain OPEN. |
 | File-clipboard mailbox storage (`91cf0b41`) | Queue growth reserves fallibly after existing count/retained-byte admission. Storage refusal uses the existing exact-mailbox teardown: retained and pending payloads release, accounting clears, one terminal event is delivered, stale senders refuse and fresh mailboxes remain usable. At unchanged-product `7ab4373b`, 44 tests pass and one fails: initial insertion and growth after four/eight queued items abort under deliberate allocation refusal; all four healthy/spare controls pass. The identical corrected 45-case native cohort passes in 103 outer seconds, including six existing common clipboard tests and the previously unexecuted duplicate-route generation/channel control. Existing bounds, registry and authority paths are unchanged. `file-clipboard-growth-fc23970f.json` binds exact common-source extraction, locked dependencies, A/B artifacts, the first run's omitted diagnostics and joined bounded-RAM cleanup. This proves common mailbox/channel/registry behavior with controlled allocation faults; OS clipboard, Windows whole-stream runner/IPC, installed/root and full-app behavior, R-S0/R-F5 and release acceptance remain OPEN. |
 | CM read-block payload ownership (`fecb67ed`) | The connection moves its admitted `Bytes` into the outgoing protobuf, removing a redundant infallible allocation/copy. The earlier fallible queue-admission copy still releases unrelated IPC backing; session/job/generation checks, block limits, queue accounting and wire fields are unchanged. At unchanged-product preparation `8e844252`, 37 tests pass and one fails: all five nonempty storage forms abort under allocation refusal, while the empty case and twelve wire/metadata controls pass. The identical corrected 38-case native Rust cohort passes; six storage forms each complete two allocation-denied rounds with no forwarding allocation, exact pointer/bytes/metadata/wire results, and owned backing retained until block drop. All 36 existing egress/framing/directory tests remain. `cm-read-block-move-a6599f3a.json` binds exact production-constructor extraction, generated protobuf, locked dependencies, A/B artifacts and joined bounded-RAM cleanup. These are component tests with synthetic allocation faults; complete authenticated-handler/IPC/filesystem/peer, installed/root and other-platform behavior, R-S0/R-F5 and release acceptance remain OPEN. |
 | File timestamp representation (`534488f3`) | Desktop and mobile rows share a formatter that checks the supported seconds range before multiplication; unavailable dates display `—` while raw timestamps and file metadata remain intact. Modified-date sorting compares the original seconds, preserving its existing direction, ties and navigation behavior. At prepared old behavior `b0cb31a1`, the isolated Dart cohort passes ten controls and fails six cases: two range errors, two false 1970 dates from integer wrap, and two sorting errors. The corrected cohort passes the strict sixteen-case inventory and three result-parser self-tests in 113 outer seconds. Normal/pre-epoch/2038 dates, both representable limits, unsupported positive/negative values, drive rows and metadata retention are covered. The actual formatter and exact Entry/sort/desktop-row computations compile and execute; mobile delegation is source-reviewed. `file-timestamps-fe769b80.json` retains source/receipt bindings and bounded-RAM joined cleanup. Candidate success retains the strict-validator summary rather than per-case JSON or a compiled test image. No widget, mobile-device, native-filesystem, installed-service or full-app execution is claimed. Directory-ordering/Home parks, R-S0/R-F5 and release acceptance remain OPEN. |
@@ -4196,8 +4197,8 @@ The model checkpoint's test total is one reviewed data file,
 `scripts/flutter-model-test-count.txt`, shared by the parser, parser fixtures, guest
 summary and outer receipt check. The guest copies it beside the immutable validator
 before giving the test process its source workspace; both receive read-only mounts.
-The current 25-suite/283-case inventory, successful non-skipped completion and terminal checks remain
-mandatory; the fixed queue shard still requires its exact 24 named tests. This removes
+The configured 26-suite/310-case inventory, successful non-skipped completion and terminal checks remain
+mandatory; the fixed queue shard requires its exact 26 named tests. This removes
 the stale-summary duplication that rejected an otherwise successful native run.
 At `1b9f1d0c` (tree `3b573a19`), both source-bound zero-NIC transactions passed:
 the queue shard's 24 named tests in 107 VM seconds and the model checkpoint's 23 suites/
@@ -12187,8 +12188,8 @@ caller/renderer path.
 
 ### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership (2026-08-14)
 
-**CROSS-SESSION DRAIN ACCOUNTING SOURCE CORRECTED; CURRENT DART QUEUE/MODEL CHECKPOINT PASSED;
-BROWSER/END-TO-END/RELEASE EVIDENCE OPEN.**
+**CROSS-SESSION DRAIN ACCOUNTING AND ERROR FINALITY HAVE NAMED DART COMPONENT EVIDENCE;
+FULL MODEL/BROWSER/END-TO-END/RELEASE ACCEPTANCE REMAINS OPEN.**
 
 The live web RGBA callback copies its caller-owned `Uint8List` synchronously before any await.
 The exact session/UI-owner `LatestFrameQueue` retains one current running frame and at most the
@@ -12201,11 +12202,12 @@ late old work remains unable to commit through session/topology/presentation-rev
 The growable backlog and alternate web helper are absent. This path neither duplicates the native
 software-RGBA mailbox nor adds cross-display decode serialization, a service restart, timer,
 poller, retry, reconnect, worker, isolate, runtime or native transport queue. Named frame-queue
-tests cover latest-wins, independent displays, capacity/failure, exact retirement and replacement;
-they execute the prior production queue class, not the new nonwaiting pool policy,
-JS/Wasm callback detachment or browser
-presentation. Browser and concurrent-feature behavior plus every shared OPEN obligation above
-remain required.
+tests cover latest-wins, independent displays, capacity/failure, exact retirement and replacement,
+including the nonwaiting pool and retirement before error observers. They execute the production
+Dart class with controlled Futures, not JS/Wasm callback detachment, browser presentation or the
+complete caller/renderer path. Browser and concurrent-feature behavior plus every shared OPEN
+obligation above remain required. The current focused 26-case result is recorded under frame-queue
+error finality; the configured 310-case full model checkpoint has not run for that change.
 
 **Cross-session drain accounting has executable Dart queue evidence.** Every web queue
 uses one isolate-shared pool with at most 64 unfinished presentations: enough for a full 32-display

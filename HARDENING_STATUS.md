@@ -8187,6 +8187,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   installed receivers, concurrent mutation/exec races, all fifteen credential
   actions, R-S0/R-F5 and release acceptance remain OPEN. Every user park persists.
 
+  **Linux role environment text (`963fe9bb`).** The shared procfs value reader
+  validates the selected value as UTF-8 before returning text; malformed bytes
+  cannot be rewritten into a retained CM-token snapshot or service-generation
+  check. At unchanged-product preparation `ddcb2aa0`, fifteen controls pass but
+  the new regression fails: one live C peer changes its initial environment
+  storage from `0x80` to `0x81`, procfs observes the change, yet both rewritten
+  values and full peer snapshots stay equal. The identical fixture passes all
+  sixteen component tests after correction: both malformed reads/snapshots refuse;
+  ASCII, actual Unicode replacement-character, empty, missing and unrelated-invalid
+  controls preserve selected values and snapshot construction. Valid UTF-8 text is
+  not itself capability authority. All fifty-nine C peers join per run, and their
+  artifact is identical across A/B; behavior takes 0.12s and the corrected outer
+  run 31s. `linux-environment-utf8-b07f1136.json` binds exact source/artifacts,
+  kernel observations and joined bounded-RAM cleanup. These extracted bodies use
+  the existing boxed-error/kernel-ABI adapters. This accepts selected-value
+  decoding only; duplicate entries, concurrent procfs/exec races, full privileged
+  receivers, installed settings/credential actions, R-S0/R-F5 and release
+  acceptance remain OPEN. All user parks remain untouched.
+
 - **R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent
   authority — SOURCE IMPLEMENTED; INSTALLED-ARTIFACT EVIDENCE OPEN.** The helper binds
   its connected Unix peer's PID/UID/start time to its exact current kernel parent and

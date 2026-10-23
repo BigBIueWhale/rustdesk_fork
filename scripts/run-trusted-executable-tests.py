@@ -79,14 +79,14 @@ def main():
               f"fragment_sha256={digest(body.encode())}", flush=True)
     for path in ("scripts/test-linux-service-uid-policy.rs", "scripts/test-trusted-executable.rs",
                  "scripts/run-trusted-executable-tests.py", "src/ipc/uid_policy.rs",
-                 "scripts/test-linux-process-identity.rs", "src/ipc/auth.rs"):
+                 "scripts/test-linux-process-identity.rs", "scripts/test-linux-process-peer.c",
+                 "src/ipc/auth.rs"):
         inputs[path] = (repo / path).read_bytes()
     identity_source = inputs["src/ipc/auth.rs"].decode("utf-8")
     structure_start = identity_source.index("pub struct LinuxProcessIdentity {")
     structure_end = identity_source.index("\n}", structure_start) + 2
     identity_body = identity_source[structure_start:structure_end] + "\n"
     for name in ("linux_proc_stat_start_time", "linux_proc_start_time", "linux_proc_uid",
-                 "linux_proc_live_stat_start_time", "linux_proc_status_uid",
                  "linux_kernel_process_identity_by_pid", "linux_process_identity_is_live"):
         identity_body += function(identity_source, name)
     # The exact metadata bodies use only std operations. Serialization and anyhow's
@@ -94,33 +94,47 @@ def main():
     generated += ('use std::{fs, os::unix::fs::MetadataExt};\n'
                   'type ResultType<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;\n'
                   'macro_rules! bail { ($($arg:tt)*) => { return Err(format!($($arg)*).into()) }; }\n'
+                  'mod libc { pub const SYS_pidfd_open: i64 = 434; pub const POLLIN: i16 = 1;\n'
+                  '#[repr(C)] pub struct pollfd { pub fd: i32, pub events: i16, pub revents: i16 }\n'
+                  'extern "C" { pub fn syscall(number: i64, ...) -> i64; '
+                  'pub fn poll(fds: *mut pollfd, count: usize, timeout: i32) -> i32; } }\n'
                   '#[derive(Clone, Debug, Eq, PartialEq)]\n' + identity_body)
     print(f"LINUX_KERNEL_IDENTITY_SOURCE=sha256={digest(inputs['src/ipc/auth.rs'])} "
-          f"fragment_sha256={digest(identity_body.encode())} error_context=std-boxed serialization=unexecuted", flush=True)
+          f"fragment_sha256={digest(identity_body.encode())} error_context=std-boxed libc_abi=linux-x86_64 serialization=unexecuted", flush=True)
     generated += f'include!("{repo}/scripts/test-linux-service-uid-policy.rs");\n'
     generated += f'include!("{repo}/scripts/test-trusted-executable.rs");\n'
     generated += f'include!("{repo}/scripts/test-linux-process-identity.rs");\n'
     source = Path("/cargo-target/trusted-executable-tests.rs")
     source.write_text(generated)
+    peer = Path("/cargo-target/linux-process-peer")
+    subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pthread",
+                    str(repo / "scripts/test-linux-process-peer.c"), "-o", str(peer)],
+                   check=True, timeout=20)
+    peer_identity = digest(peer.read_bytes())
+    print(f"LINUX_KERNEL_PEER_BUILD=sha256={peer_identity} abi=linux-x86_64", flush=True)
     artifact = Path("/cargo-target/uid-policy-tests")
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=14", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=13", flush=True)
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith("LINUX_IDENTITY_")}
+    environment["LINUX_IDENTITY_PEER_PROBE"] = str(peer)
     result = subprocess.run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20,
-                            env={key: value for key, value in os.environ.items()
-                                 if not key.startswith("LINUX_IDENTITY_")})
+                            env=environment)
     if len(result.stdout) > 65536:
         raise ValueError("selector test output exceeds 64 KiB")
     print(result.stdout.decode("utf-8"), end="", flush=True)
-    if digest(artifact.read_bytes()) != identity or source.read_text() != generated:
+    if (digest(artifact.read_bytes()) != identity or source.read_text() != generated
+            or digest(peer.read_bytes()) != peer_identity):
         raise ValueError("selector fixture changed during execution")
     for path, data in inputs.items():
         if (repo / path).read_bytes() != data:
             raise ValueError(f"selector input changed: {path}")
         print(f"TRUSTED_EXECUTABLE_INPUT=path={path} bytes={len(data)} sha256={digest(data)}", flush=True)
     print(f"TRUSTED_EXECUTABLE_ARTIFACT=status={result.returncode} sha256={identity} unchanged=before-after", flush=True)
+    print(f"LINUX_KERNEL_PEER_ARTIFACT=status={result.returncode} sha256={peer_identity} unchanged=before-after", flush=True)
     if result.returncode != 0:
         raise ValueError(f"native selector tests failed: {result.returncode}")
 

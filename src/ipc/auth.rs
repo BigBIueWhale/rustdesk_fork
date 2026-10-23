@@ -2695,16 +2695,6 @@ pub(crate) fn linux_proc_start_time(pid: u32) -> ResultType<String> {
 }
 
 #[cfg(target_os = "linux")]
-fn linux_proc_live_stat_start_time(pid: u32, stat: &str) -> ResultType<String> {
-    let state = stat.rsplit_once(") ")
-        .and_then(|(_, fields)| fields.split_whitespace().next());
-    if !matches!(state, Some("R" | "S" | "D" | "T" | "t" | "K" | "W" | "P" | "I")) {
-        bail!("Linux process {pid} has no live process state");
-    }
-    linux_proc_stat_start_time(pid, stat)
-}
-
-#[cfg(target_os = "linux")]
 fn linux_proc_parent_pid(pid: u32) -> ResultType<u32> {
     let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
     let Some((_, after_comm)) = stat.rsplit_once(") ") else {
@@ -3116,41 +3106,6 @@ fn linux_proc_environ_value(pid: u32, name: &str) -> ResultType<String> {
 fn linux_proc_uid(pid: u32) -> ResultType<u32> {
     let metadata = fs::metadata(format!("/proc/{pid}"))?;
     Ok(metadata.uid())
-}
-
-#[cfg(target_os = "linux")]
-fn linux_proc_status_uid(pid: u32, status: &str) -> ResultType<u32> {
-    let mut uid = None;
-    for line in status.lines() {
-        let Some(values) = line.strip_prefix("Uid:") else {
-            continue;
-        };
-        if uid.is_some() {
-            bail!("Duplicate /proc/{pid}/status Uid field");
-        }
-        let mut fields = values.split_whitespace();
-        let mut parsed = [0; 4];
-        for value in &mut parsed {
-            let Some(field) = fields.next() else {
-                bail!("Incomplete /proc/{pid}/status Uid field");
-            };
-            if !field.bytes().all(|byte| byte.is_ascii_digit())
-                || (field.len() > 1 && field.starts_with('0'))
-            {
-                bail!("Invalid /proc/{pid}/status Uid value");
-            }
-            *value = field.parse::<u32>()?;
-        }
-        if fields.next().is_some() {
-            bail!("Excess /proc/{pid}/status Uid fields");
-        }
-        uid = Some(parsed[1]);
-    }
-    if let Some(uid) = uid {
-        Ok(uid)
-    } else {
-        bail!("Missing /proc/{pid}/status Uid field");
-    }
 }
 
 #[cfg(target_os = "linux")]

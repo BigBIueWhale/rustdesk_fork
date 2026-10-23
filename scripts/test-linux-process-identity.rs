@@ -1,7 +1,7 @@
 mod linux_process_identity_tests {
     use super::*;
     use std::{
-        io::{Read, Write},
+        io::Write,
         os::unix::{fs::DirBuilderExt, io::AsRawFd, net::{UnixListener, UnixStream}},
         path::PathBuf,
         process::{Child, Command, Stdio},
@@ -10,7 +10,6 @@ mod linux_process_identity_tests {
     };
 
     extern "C" {
-        fn prctl(option: i32, ...) -> i32;
         fn geteuid() -> u32;
         fn kill(pid: i32, signal: i32) -> i32;
         fn getsockopt(fd: i32, level: i32, option: i32, value: *mut u8, len: *mut u32) -> i32;
@@ -22,17 +21,16 @@ mod linux_process_identity_tests {
     struct Owner { child: Option<Child>, root: PathBuf, peer: Option<UnixStream> }
 
     impl Owner {
-        fn spawn(dumpable: u32) -> Self {
+        fn spawn(dumpable: u32, leader_exit: bool) -> Self {
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let root = std::env::temp_dir().join(format!("linux-identity-{}-{}",
                 std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
             fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
             let listener = UnixListener::bind(root.join("peer")).unwrap();
             listener.set_nonblocking(true).unwrap();
-            let child = Command::new(std::env::current_exe().unwrap())
-                .args(["--exact", "linux_process_identity_tests::nondumpable_peer_keeps_its_effective_uid", "--nocapture"])
-                .env("LINUX_IDENTITY_CHILD", &root)
-                .env("LINUX_IDENTITY_DUMPABLE", dumpable.to_string())
+            let child = Command::new(std::env::var_os("LINUX_IDENTITY_PEER_PROBE").unwrap())
+                .arg(root.join("peer")).arg(dumpable.to_string())
+                .arg(if leader_exit { "leader-exit" } else { "normal" })
                 .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::inherit())
                 .spawn().unwrap();
             let mut owner = Self { child: Some(child), root, peer: None };
@@ -102,24 +100,18 @@ mod linux_process_identity_tests {
 
     #[test]
     fn nondumpable_peer_keeps_its_effective_uid() {
-        if let Some(root) = std::env::var_os("LINUX_IDENTITY_CHILD") {
-            let dumpable: usize = std::env::var("LINUX_IDENTITY_DUMPABLE").unwrap().parse().unwrap();
-            assert_eq!(unsafe { prctl(4, dumpable, 0usize, 0usize, 0usize) }, 0);
-            let _peer = UnixStream::connect(PathBuf::from(root).join("peer")).unwrap();
-            let mut command = [0];
-            std::io::stdin().read_exact(&mut command).unwrap();
-            return;
-        }
         let mut all_correct = true;
         for dumpable in [1, 0] {
-            let mut owner = Owner::spawn(dumpable);
+            let mut owner = Owner::spawn(dumpable, false);
             let peer = owner.credentials();
             assert_eq!(peer.uid, unsafe { geteuid() });
             let inode_uid = fs::metadata(format!("/proc/{}", owner.pid())).unwrap().uid();
-            assert_eq!(inode_uid, if dumpable == 1 { peer.uid } else { 0 });
+            assert_eq!(inode_uid, peer.uid);
+            let file_uid = fs::metadata(format!("/proc/{}/status", owner.pid())).unwrap().uid();
+            assert_eq!(file_uid, if dumpable == 1 { peer.uid } else { 0 });
             let identity = linux_kernel_process_identity_by_pid(owner.pid()).unwrap();
             let correct = identity.uid == peer.uid;
-            println!("LINUX_KERNEL_UID_CASE=observed dumpable={dumpable} socket_uid={} inode_uid={inode_uid} identity_uid={} correct={correct}", peer.uid, identity.uid);
+            println!("LINUX_KERNEL_UID_CASE=observed dumpable={dumpable} socket_uid={} inode_uid={inode_uid} file_uid={file_uid} identity_uid={} correct={correct}", peer.uid, identity.uid);
             all_correct &= correct;
             owner.request_exit();
             owner.join();
@@ -130,7 +122,7 @@ mod linux_process_identity_tests {
 
     #[test]
     fn exited_unreaped_peer_is_not_live() {
-        let mut owner = Owner::spawn(1);
+        let mut owner = Owner::spawn(1, false);
         let identity = linux_kernel_process_identity_by_pid(owner.pid()).unwrap();
         assert_eq!(identity.uid, owner.credentials().uid);
         assert!(linux_process_identity_is_live(&identity));
@@ -160,32 +152,35 @@ mod linux_process_identity_tests {
     }
 
     #[test]
-    fn status_uid_requires_one_complete_canonical_record() {
-        let valid = [("Uid:\t1\t2\t3\t4\n", 2), ("Uid: 0 0 0 0\n", 0),
-            ("Name:\tpeer\nUid: 7 1000 8 9\nState: S\n", 1000),
-            ("Uid: 1 4294967295 2 3\n", u32::MAX)];
-        let invalid = ["", "Uid= 1 2 3 4\n", "Uid: 1 2 3\n", "Uid: 1 2 3 4 5\n",
-            "Uid: 1 2 3 4\nUid: 1 2 3 4\n", "Uid: x 2 3 4\n", "Uid: 1 +2 3 4\n",
-            "Uid: 1 02 3 4\n", "Uid: 1 -2 3 4\n", "Uid: 1 4294967296 3 4\n"];
-        for (status, expected) in valid { assert_eq!(linux_proc_status_uid(123, status).unwrap(), expected); }
-        for status in invalid { assert!(linux_proc_status_uid(123, status).is_err(), "admitted {status:?}"); }
-        println!("LINUX_KERNEL_UID_PARSE=pass valid=4 invalid=10");
-    }
-
-    #[test]
-    fn stat_liveness_preserves_stopped_and_rejects_terminal_states() {
-        let stat = |state: &str| {
-            let mut fields = vec!["0"; 20]; fields[0] = state; fields[19] = "1234";
-            format!("123 (peer ) with spaces) {}", fields.join(" "))
-        };
-        for state in ["R", "S", "D", "T", "t", "K", "W", "P", "I"] {
-            assert_eq!(linux_proc_live_stat_start_time(123, &stat(state)).unwrap(), "1234");
+    fn exited_leader_with_live_worker_keeps_process_identity() {
+        fn descriptors() -> usize {
+            fs::read_dir("/proc/thread-self/fd").unwrap().map(Result::unwrap).count()
         }
-        for state in ["Z", "X", "x", "?", "RR", ""] {
-            assert!(linux_proc_live_stat_start_time(123, &stat(state)).is_err());
+        let mut owner = Owner::spawn(1, true);
+        owner.await_state('Z');
+        let identity = linux_kernel_process_identity_by_pid(owner.pid()).unwrap();
+        assert_eq!(identity.uid, owner.credentials().uid);
+        let before = descriptors();
+        for _ in 0..128 { assert!(linux_process_identity_is_live(&identity)); }
+        let after_live = descriptors();
+        assert_eq!(before, after_live);
+        println!("LINUX_KERNEL_GROUP_CASE=observed leader=Z worker=alive live=true reads=128 fds_before={before} fds_after={after_live}");
+        owner.request_exit();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let status = fs::read_to_string(format!("/proc/{}/status", owner.pid())).unwrap();
+            if status.lines().find_map(|line| line.strip_prefix("Threads:")).unwrap().trim() == "1" { break; }
+            assert!(Instant::now() < deadline, "worker did not retire");
+            std::thread::sleep(Duration::from_millis(1));
         }
-        assert!(linux_proc_live_stat_start_time(123, "123 (peer) S 1").is_err());
-        assert!(linux_proc_live_stat_start_time(123, "malformed").is_err());
-        println!("LINUX_KERNEL_STATE_PARSE=pass live=9 refused=8");
+        let retired = linux_process_identity_is_live(&identity);
+        let terminal_before = descriptors();
+        for _ in 0..128 { assert_eq!(linux_process_identity_is_live(&identity), retired); }
+        let terminal_after = descriptors();
+        assert_eq!(terminal_before, terminal_after);
+        println!("LINUX_KERNEL_GROUP_CASE=observed leader=Z worker=exited live={retired} reads=128 fds_before={terminal_before} fds_after={terminal_after}");
+        owner.join();
+        assert!(!retired, "an exited thread group is not live");
+        println!("LINUX_KERNEL_GROUP=pass exited_leader=preserved exited_group=refused children=joined descriptors=retired");
     }
 }

@@ -3885,6 +3885,7 @@ run_focused_rust_tests() {
             src/ipc/uid_policy.rs
             scripts/test-linux-service-uid-policy.rs
             scripts/test-linux-process-identity.rs
+            scripts/test-linux-process-peer.c
             scripts/verify-linux-service-password-ipc.py
             scripts/run-trusted-executable-tests.py scripts/test-trusted-executable.rs
             scripts/prepare-trusted-executable-fixture.py scripts/fixtures/trusted-executable-before.rs
@@ -3904,8 +3905,7 @@ run_focused_rust_tests() {
             trusted_executable_tests::trusted_link_semantics_and_kernel_write_refusal_preserve_functionality
             linux_process_identity_tests::nondumpable_peer_keeps_its_effective_uid
             linux_process_identity_tests::exited_unreaped_peer_is_not_live
-            linux_process_identity_tests::status_uid_requires_one_complete_canonical_record
-            linux_process_identity_tests::stat_liveness_preserves_stopped_and_rejects_terminal_states
+            linux_process_identity_tests::exited_leader_with_live_worker_keeps_process_identity
         )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -6355,6 +6355,7 @@ PY
             || fail 'Linux UID-policy named test count differs'
         grep -Fxq 'LINUX_KERNEL_UID=pass cases=2 children=joined principal=effective' "$output" \
             && grep -Fxq 'LINUX_KERNEL_LIFETIME=pass live=preserved stopped=preserved zombie=refused reaped=refused children=joined' "$output" \
+            && grep -Fxq 'LINUX_KERNEL_GROUP=pass exited_leader=preserved exited_group=refused children=joined descriptors=retired' "$output" \
             || fail 'Linux kernel identity behavior differs'
         grep -Fxq 'verify-linux-service-password-ipc: source checks passed' "$output" \
             || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }

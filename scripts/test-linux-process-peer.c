@@ -1,0 +1,58 @@
+#define _GNU_SOURCE
+#include <poll.h>
+#include <pthread.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/prctl.h>
+#include <sys/socket.h>
+#include <sys/syscall.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+_Static_assert(SYS_pidfd_open == 434, "fixture requires the Linux x86_64 pidfd ABI");
+_Static_assert(sizeof(struct pollfd) == 8 && offsetof(struct pollfd, events) == 4 &&
+               offsetof(struct pollfd, revents) == 6 && POLLIN == 1, "poll ABI differs");
+
+struct settings { char path[108]; int dumpable; };
+
+static void *serve(void *argument) {
+    const struct settings *settings = argument;
+    if (prctl(PR_SET_DUMPABLE, settings->dumpable) != 0 ||
+        prctl(PR_GET_DUMPABLE) != settings->dumpable)
+        _exit(2);
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    struct sockaddr_un address = { .sun_family = AF_UNIX };
+    size_t length = strlen(settings->path);
+    if (fd < 0 || length >= sizeof(address.sun_path))
+        _exit(3);
+    memcpy(address.sun_path, settings->path, length + 1);
+    if (connect(fd, (struct sockaddr *)&address, sizeof(address)) != 0)
+        _exit(4);
+    char command;
+    if (read(STDIN_FILENO, &command, 1) != 1 || command != 'x')
+        _exit(5);
+    if (close(fd) != 0)
+        _exit(6);
+    _exit(0);
+}
+
+int main(int argc, char **argv) {
+    if (argc != 4 || (strcmp(argv[2], "0") && strcmp(argv[2], "1")))
+        return 7;
+    static struct settings settings;
+    size_t length = strlen(argv[1]);
+    if (length >= sizeof(settings.path))
+        return 10;
+    memcpy(settings.path, argv[1], length + 1);
+    settings.dumpable = argv[2][0] - '0';
+    if (!strcmp(argv[3], "leader-exit")) {
+        pthread_t worker;
+        if (pthread_create(&worker, NULL, serve, &settings) != 0)
+            return 8;
+        pthread_exit(NULL);
+    }
+    if (strcmp(argv[3], "normal"))
+        return 9;
+    serve(&settings);
+}

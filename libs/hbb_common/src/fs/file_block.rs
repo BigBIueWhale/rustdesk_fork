@@ -410,6 +410,82 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn compressed_outputs_own_only_wire_bytes() {
+        let mut excess = 0;
+        for (size, mixed) in [(0, false), (1, false), (SIZE, false),
+                              (4 * 1024 * 1024, false), (SIZE, true)] {
+            let mut random = 0x1234_5678u32;
+            let input: Vec<u8> = (0..size).map(|_| {
+                if mixed {
+                    random ^= random << 13;
+                    random ^= random >> 17;
+                    random ^= random << 5;
+                    random as u8
+                } else { 0x5a }
+            }).collect();
+            let encoded = compress(&input).unwrap();
+            let reference = zstd::bulk::compress(&input, crate::config::COMPRESS_LEVEL).unwrap();
+            assert_eq!(encoded, reference);
+            assert_eq!(try_decompress_with_limit(&encoded, input.len()).unwrap(), input);
+            let packed = encoded.capacity() == encoded.len();
+            excess += usize::from(!packed);
+            println!("FILE_COMPRESSION_STORAGE_CASE=observed bytes={size} mixed={mixed} wire_bytes={} capacity={} packed={packed} wire_exact=true decode_exact=true", encoded.len(), encoded.capacity());
+        }
+        assert_eq!(excess, 0, "returned compressed output must not retain its worst-case workspace");
+        println!("FILE_COMPRESSION_STORAGE=pass cases=5 capacity=wire wire=unchanged decode=exact");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn compression_packing_allocation_refusal_preserves_retry() {
+        use std::os::unix::process::ExitStatusExt;
+        if let Ok(size) = std::env::var("RD_FILE_BLOCK_ALLOC_PACKING_CASE") {
+            let size: usize = size.parse().unwrap();
+            assert!([0, 1, SIZE].contains(&size));
+            let input = vec![0x5a; size];
+            let reference = zstd::bulk::compress(&input, crate::config::COMPRESS_LEVEL).unwrap();
+            let target = reference.len();
+            assert!(target > 0 && target < zstd::zstd_safe::compress_bound(size));
+            fail_next_exact_allocation(target);
+            let outcome = compress(&input);
+            // Disarm even on the old successful path before assertions or diagnostic allocation.
+            let (remaining, refusals) = EXACT_ALLOCATION.with(|state| state.replace((0, 0)));
+            let kind = outcome.as_ref().err().map(io::Error::kind);
+            let retry = compress(&input).unwrap();
+            let exact = retry == reference;
+            let packed = retry.capacity() == retry.len();
+            let unchanged = input.iter().all(|byte| *byte == 0x5a);
+            println!("FILE_COMPRESSION_PACKING_CASE=observed bytes={size} target={target} refusals={refusals} error={kind:?} retry_exact={exact} capacity_exact={packed} input_unchanged={unchanged}");
+            assert_eq!(kind, Some(io::ErrorKind::OutOfMemory));
+            assert_eq!((remaining, refusals), (0, 1));
+            assert!(exact && packed && unchanged);
+            return;
+        }
+        let thread = std::thread::current();
+        let name = thread.name().unwrap();
+        let mut passed = 0;
+        for size in [0, 1, SIZE] {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", name, "--nocapture", "--test-threads=1"])
+                .env("RD_FILE_BLOCK_ALLOC_PACKING_CASE", size.to_string())
+                .output().unwrap();
+            let mut records = 0;
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if let Some((_, record)) = line.split_once("FILE_COMPRESSION_PACKING_CASE=") {
+                    println!("FILE_COMPRESSION_PACKING_CASE={record}");
+                    records += 1;
+                }
+            }
+            print!("{}", String::from_utf8_lossy(&output.stderr));
+            println!("FILE_COMPRESSION_PACKING_CHILD=observed bytes={size} success={} signal={:?}", output.status.success(), output.status.signal());
+            passed += usize::from(output.status.success() && records == 1);
+        }
+        assert_eq!(passed, 3, "packing refusal must remain fallible and preserve the compressor's next call");
+        println!("FILE_COMPRESSION_PACKING=pass cases=3 refusals=3 retries=exact capacity=wire children=joined");
+    }
+
+
+    #[test]
     fn concatenated_frames_obey_one_total_output_limit() {
         let input = vec![0x5a; 128 * 1024];
         let mut encoded = compress(&input).expect("encode exact boundary");

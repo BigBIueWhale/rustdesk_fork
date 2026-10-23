@@ -64,6 +64,7 @@ mod ui_cm_interface {
     include!(env!("CM_PROTO_COUNT"));
 }
 include!(env!("CM_PROTO_CONVERSION"));
+include!(env!("CM_READ_BLOCK_SOURCE"));
 
 mod cm_egress_tests {
     use super::*;
@@ -147,6 +148,93 @@ fn with_queue_budget<T>(budget: usize, action: impl FnOnce() -> T) -> (T, usize)
     let result = action();
     drop(reset);
     (result, QUEUE_REFUSALS.with(std::cell::Cell::get))
+}
+
+fn cm_read_block_payload(case: &str) -> bytes::Bytes {
+    match case {
+        "empty" => bytes::Bytes::new(),
+        "static" => bytes::Bytes::from_static(b"unchanged file payload"),
+        "one" => vec![0x7f].into(),
+        "owned" => vec![0x93; 31].into(),
+        "sliced" => bytes::Bytes::from(vec![0x64; 128]).slice(17..81),
+        "maximum" => vec![0xa5; ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES].into(),
+        _ => panic!("unknown read block case"),
+    }
+}
+
+#[test]
+fn cm_read_block_preserves_metadata_and_wire() {
+    for case in ["empty", "static", "one", "owned", "sliced", "maximum"] {
+        for compressed in [false, true] {
+            let data = cm_read_block_payload(case);
+            let expected = FileTransferBlock {
+                id: i32::MIN,
+                file_num: i32::MAX,
+                data: data.clone(),
+                compressed,
+                ..Default::default()
+            };
+            let actual = cm_read_block_to_proto(i32::MIN, i32::MAX, data, compressed);
+            assert_eq!(actual, expected);
+            assert_eq!(actual.write_to_bytes().unwrap(), expected.write_to_bytes().unwrap());
+        }
+    }
+    println!("CM_READ_BLOCK_CONTROL=pass cases=12 fields=exact wire=exact");
+}
+
+#[test]
+fn cm_read_block_forwarding_reuses_owned_payload_without_allocation() {
+    use std::os::unix::process::ExitStatusExt;
+    if let Ok(case) = std::env::var("CM_READ_BLOCK_ALLOC_CASE") {
+        if case == "probe" {
+            with_queue_budget(0, || std::hint::black_box(Vec::<u8>::with_capacity(31)));
+            panic!("read block allocation-refusal probe returned");
+        }
+        for compressed in [false, true] {
+            let data = cm_read_block_payload(&case);
+            let pointer = data.as_ptr();
+            let expected = data.to_vec();
+            let track_backing = matches!(case.as_str(), "one" | "owned" | "maximum");
+            CM_BACKING_RETIRED.with(|retired| retired.set(false));
+            CM_BACKING_TARGET.with(|target| target.set(if track_backing { pointer as usize } else { 0 }));
+            let (block, refusals) = with_queue_budget(0, || cm_read_block_to_proto(17, 3, data, compressed));
+            assert_eq!(refusals, 0);
+            assert_eq!(block.id, 17);
+            assert_eq!(block.file_num, 3);
+            assert_eq!(block.compressed, compressed);
+            assert_eq!(block.blk_id, 0);
+            assert_eq!(block.data.as_ref(), expected.as_slice());
+            if !block.data.is_empty() { assert_eq!(block.data.as_ptr(), pointer); }
+            assert!(!CM_BACKING_RETIRED.with(std::cell::Cell::get));
+            let wire = block.write_to_bytes().unwrap();
+            let decoded = FileTransferBlock::parse_from_bytes(&wire).unwrap();
+            assert_eq!(decoded, block);
+            drop(decoded);
+            drop(block);
+            assert_eq!(CM_BACKING_RETIRED.with(std::cell::Cell::get), track_backing);
+            CM_BACKING_TARGET.with(|target| target.set(0));
+        }
+        println!("CM_READ_BLOCK_ALLOC_CASE=pass case={case} rounds=2 refusals=0 pointer=preserved fields=exact wire=exact backing=retired-after-block");
+        return;
+    }
+    let run = |case: &str| run_allocation_child(
+        "cm_read_block_forwarding_reuses_owned_payload_without_allocation", "CM_READ_BLOCK_ALLOC_CASE", case);
+    let probe = run("probe");
+    assert_eq!(probe.status.signal(), Some(6));
+    assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+    println!("CM_READ_BLOCK_ALLOC_PROBE=observed bytes=31 signal=6");
+    let mut passed = 0;
+    for case in ["empty", "static", "one", "owned", "sliced", "maximum"] {
+        let output = run(case);
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if line.starts_with("CM_READ_BLOCK_ALLOC_CASE=") { println!("{line}"); }
+        }
+        print!("{}", String::from_utf8_lossy(&output.stderr));
+        println!("CM_READ_BLOCK_ALLOC_CHILD=observed case={case} success={} signal={:?}", output.status.success(), output.status.signal());
+        passed += usize::from(output.status.success());
+    }
+    assert_eq!(passed, 6, "forwarding an owned block must not allocate or replace its backing");
+    println!("CM_READ_BLOCK_ALLOC=pass cases=6 rounds=2 allocations=0 fields=exact wire=exact probe=SIGABRT children=joined");
 }
 
 fn cm_directory_input(count: usize) -> FileDirectory {

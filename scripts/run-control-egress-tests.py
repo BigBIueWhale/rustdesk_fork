@@ -106,6 +106,11 @@ def main():
     if len(enum_limits) != 1:
         raise ValueError("CM directory serialization limit is ambiguous")
     snippets["cm-directory-enum-limit.rs"] = enum_limits[0]
+    snippets["cm-read-block.rs"] = (
+        "fn cm_read_block_to_proto(id: i32, file_num: i32, data: bytes::Bytes, compressed: bool) -> FileTransferBlock {\n"
+        + between(connection, "                let mut block = FileTransferBlock::new();\n",
+                  "                self.send(fs::new_block(block)).await;")
+        + "    block\n}\n")
     fs_source = inputs["libs/hbb_common/src/fs.rs"].decode("utf-8")
     config_source = inputs["libs/hbb_common/src/config.rs"].decode("utf-8")
     common = inputs["src/common.rs"].decode("utf-8")
@@ -182,6 +187,7 @@ def main():
                                ("CM_DIRECTORY_SOURCE", "cm-directory.rs"),
                                ("CM_DIRECTORY_SIZE_SOURCE", "cm-directory-size.rs"),
                                ("CM_DIRECTORY_ENUM_LIMIT", "cm-directory-enum-limit.rs"),
+                               ("CM_READ_BLOCK_SOURCE", "cm-read-block.rs"),
                                ("CM_PROTO_FS", "cm-proto-fs.rs"),
                                ("CM_PROTO_CONFIG", "cm-proto-config.rs"),
                                ("CM_PROTO_COUNT", "cm-proto-count.rs"),
@@ -260,13 +266,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=36", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=38", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=36 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=38 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -275,7 +281,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=36 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=38 unchanged=before-after",
               flush=True)
 
 

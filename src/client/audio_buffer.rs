@@ -31,6 +31,12 @@ impl Default for AudioBuffer {
 }
 
 impl AudioBuffer {
+    pub(super) fn new(sample_rate: usize, channels: usize) -> std::io::Result<Self> {
+        let mut buffer = Self::default();
+        buffer.resize(sample_rate, channels);
+        Ok(buffer)
+    }
+
     pub(super) fn resize(&mut self, sample_rate: usize, channels: usize) {
         let capacity = sample_rate * channels * AUDIO_BUFFER_MS / 1000;
         let old_capacity = self.samples.lock().unwrap().capacity();
@@ -158,8 +164,7 @@ mod tests {
     use super::*;
 
     fn full_buffer() -> AudioBuffer {
-        let mut buffer = AudioBuffer::default();
-        buffer.resize(4, 1);
+        let mut buffer = AudioBuffer::new(4, 1).unwrap();
         assert_eq!(buffer.append_pcm2(&[0., 1., 2., 3., 4., 5., 6., 7.]), 8);
         buffer
     }
@@ -229,7 +234,7 @@ mod tests {
         let start = Instant::now();
         let mut buffer = full_buffer();
         buffer.try_shrink(8, start);
-        buffer.resize(8, 1);
+        buffer = AudioBuffer::new(8, 1).unwrap();
         assert_eq!(queued(&buffer), 0);
         assert_eq!(buffer.last_shrink, None);
         assert!(buffer.occupancy_samples.iter().all(|&count| count == 0));
@@ -240,11 +245,14 @@ mod tests {
     }
 
     #[test]
-    fn no_op_resize_preserves_the_current_window() {
+    fn equal_format_buffers_keep_independent_observation_windows() {
         let start = Instant::now();
         let mut buffer = full_buffer();
         buffer.try_shrink(8, start);
-        buffer.resize(4, 1);
+        let other = AudioBuffer::new(4, 1).unwrap();
+        assert!(!Arc::ptr_eq(&buffer.samples, &other.samples));
+        assert_eq!(queued(&other), 0);
+        assert_eq!(other.last_shrink, None);
         assert_eq!(queued(&buffer), 8);
         assert_eq!(buffer.last_shrink, Some(start));
         assert_eq!(buffer.occupancy_samples[20], 1);
@@ -254,8 +262,7 @@ mod tests {
     fn trimming_preserves_complete_interleaved_frames() {
         for sample_rate in [44100, 48000] {
             for channels in 1..=8 {
-                let mut buffer = AudioBuffer::default();
-                buffer.resize(sample_rate, channels);
+                let mut buffer = AudioBuffer::new(sample_rate, channels).unwrap();
                 let capacity = buffer.samples.lock().unwrap().capacity();
                 let input: Vec<f32> = (0..capacity)
                     .map(|index| (index % channels) as f32)
@@ -286,11 +293,11 @@ mod tests {
 
     #[test]
     fn same_capacity_channel_change_retires_pcm() {
-        let mut buffer = AudioBuffer::default();
+        let mut buffer = AudioBuffer::new(48000, 2).unwrap();
         let capacity = buffer.samples.lock().unwrap().capacity();
         assert_eq!(buffer.append_pcm2(&[1., 2., 3., 4.]), 4);
         buffer.try_shrink(4, Instant::now());
-        buffer.resize(96000, 1);
+        buffer = AudioBuffer::new(96000, 1).unwrap();
         assert_eq!(buffer.samples.lock().unwrap().capacity(), capacity);
         println!(
             "AUDIO_GEOMETRY_RESET=observed old_rate=48000 old_channels=2 rate=96000 channels=1 capacity={capacity} queued={} observations={} clock_armed={}",
@@ -310,8 +317,7 @@ mod tests {
 
     #[test]
     fn bounded_append_preserves_the_newest_pcm() {
-        let mut buffer = AudioBuffer::default();
-        buffer.resize(4, 1);
+        let mut buffer = AudioBuffer::new(4, 1).unwrap();
         buffer.append_pcm(&[0., 1., 2., 3., 4., 5., 6., 7., 8., 9.]);
         buffer.append_pcm(&[10., 11., 12., 13.]);
         assert_eq!(queued(&buffer), 12);
@@ -355,8 +361,7 @@ mod tests {
 
     #[test]
     fn output_fill_consumes_fifo_and_pads_a_short_quantum() {
-        let mut buffer = AudioBuffer::default();
-        buffer.resize(4, 1);
+        let mut buffer = AudioBuffer::new(4, 1).unwrap();
         buffer.append_pcm2(&[0.5, -0.25, 0.75]);
         let mut output = [9.; 5];
         fill_output(&buffer.samples, &mut output, |sample| sample);
@@ -366,7 +371,7 @@ mod tests {
 
     #[test]
     fn empty_output_fill_is_all_silence() {
-        let buffer = AudioBuffer::default();
+        let buffer = AudioBuffer::new(48000, 2).unwrap();
         let mut output = [9.; 64];
         fill_output(&buffer.samples, &mut output, |sample| sample);
         assert_eq!(output, [0.; 64]);
@@ -391,8 +396,7 @@ mod tests {
 
     #[test]
     fn output_fill_passes_silence_through_the_converter() {
-        let mut buffer = AudioBuffer::default();
-        buffer.resize(4, 1);
+        let mut buffer = AudioBuffer::new(4, 1).unwrap();
         buffer.append_pcm2(&[1., 2.]);
         let mut output = [0.; 4];
         fill_output(&buffer.samples, &mut output, |sample| sample + 10.);

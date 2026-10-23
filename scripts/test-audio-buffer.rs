@@ -27,6 +27,40 @@ thread_local! {
     static LAYOUT_TRACKING: Cell<bool> = const { Cell::new(false) };
     static TRACKED_LAYOUT: Cell<Option<(*mut u8, Layout)>> = const { Cell::new(None) };
     static LAYOUT_MISMATCHES: Cell<usize> = const { Cell::new(0) };
+    static RING_TRACKING: Cell<bool> = const { Cell::new(false) };
+    static RING_REFUSE_BYTES: Cell<usize> = const { Cell::new(0) };
+    static RING_REFUSALS: Cell<usize> = const { Cell::new(0) };
+    static RING_LARGE_ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
+}
+
+fn ring_allocation_refused(bytes: usize, alignment: usize) -> bool {
+    if !RING_TRACKING.try_with(Cell::get).unwrap_or(false) || alignment != 4 {
+        return false;
+    }
+    if bytes >= 4096 {
+        RING_LARGE_ALLOCATIONS.with(|count| count.set(count.get() + 1));
+    }
+    if RING_REFUSE_BYTES.with(Cell::get) == bytes {
+        RING_REFUSALS.with(|count| count.set(count.get() + 1));
+        true
+    } else {
+        false
+    }
+}
+
+fn ring_allocations_during<T>(refuse_bytes: usize, action: impl FnOnce() -> T) -> (T, usize, usize) {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) { RING_TRACKING.with(|tracking| tracking.set(false)); }
+    }
+    RING_REFUSALS.with(|count| count.set(0));
+    RING_LARGE_ALLOCATIONS.with(|count| count.set(0));
+    RING_REFUSE_BYTES.with(|bytes| bytes.set(refuse_bytes));
+    RING_TRACKING.with(|tracking| assert!(!tracking.replace(true)));
+    let reset = Reset;
+    let value = action();
+    drop(reset);
+    (value, RING_REFUSALS.with(Cell::get), RING_LARGE_ALLOCATIONS.with(Cell::get))
 }
 
 fn record_layout(pointer: *mut u8, layout: Layout) {
@@ -48,6 +82,7 @@ fn record_allocation() {
 
 unsafe impl GlobalAlloc for AllocationCounter {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if ring_allocation_refused(layout.size(), layout.align()) { return std::ptr::null_mut(); }
         record_allocation();
         let pointer = System.alloc(layout);
         record_layout(pointer, layout);
@@ -55,11 +90,13 @@ unsafe impl GlobalAlloc for AllocationCounter {
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        if ring_allocation_refused(layout.size(), layout.align()) { return std::ptr::null_mut(); }
         record_allocation();
         System.alloc_zeroed(layout)
     }
 
     unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+        if ring_allocation_refused(size, layout.align()) { return std::ptr::null_mut(); }
         record_allocation();
         System.realloc(pointer, layout, size)
     }
@@ -254,4 +291,69 @@ fn capture_pcm_reuses_warmed_storage_without_allocating() {
     }
     println!("CAPTURE_PCM_REUSE=observed frames=1000 samples_per_frame=960 allocations={allocations}");
     assert_eq!(allocations, 0);
+}
+
+#[test]
+fn configured_pcm_reservation_refusal_returns_error_and_preserves_recovery() {
+    let (probe, refusals, _) = ring_allocations_during(17 * 4, || {
+        std::panic::catch_unwind(|| ringbuf::HeapRb::<f32>::new(17))
+    });
+    assert!(probe.is_err());
+    assert_eq!(refusals, 1, "allocator must refuse its positive control");
+    println!("AUDIO_BUFFER_RESERVATION=probe bytes=68 panic=true refusals=1");
+
+    let mut survivor = audio_buffer::AudioBuffer::new(4, 1).unwrap();
+    survivor.append_pcm(&[0.25, -0.5, 0.75]);
+    let survivor_samples = std::sync::Arc::clone(&survivor.samples);
+    let mut failures = 0;
+    for (rate, channels) in [(48000, 2), (44100, 3), (96000, 1), (96000, 8)] {
+        let capacity = rate * channels * audio_buffer::AUDIO_BUFFER_MS / 1000;
+        let (outcome, refusals, _) = ring_allocations_during(capacity * 4, || {
+            std::panic::catch_unwind(|| audio_buffer::AudioBuffer::new(rate, channels))
+        });
+        let panicked = outcome.is_err();
+        let refused = matches!(outcome, Ok(Err(ref error))
+            if error.kind() == std::io::ErrorKind::OutOfMemory);
+        let preserved = std::sync::Arc::ptr_eq(&survivor.samples, &survivor_samples)
+            && survivor.samples.lock().unwrap().occupied_len() == 3;
+        println!("AUDIO_BUFFER_RESERVATION=observed rate={rate} channels={channels} stage=refused panicked={panicked} returned_error={refused} refusals={refusals} survivor={preserved}");
+        failures += usize::from(!(refused && refusals == 1 && preserved));
+
+        let (fresh, refused, allocations) = ring_allocations_during(0, || {
+            audio_buffer::AudioBuffer::new(rate, channels)
+        });
+        let mut fresh = fresh.unwrap();
+        assert_eq!(fresh.samples.lock().unwrap().capacity(), capacity);
+        assert_eq!(fresh.samples.lock().unwrap().occupied_len(), 0);
+        let input: Vec<f32> = (0..channels * 2).map(|index| index as f32 / 16.).collect();
+        fresh.append_pcm(&input);
+        let mut output = vec![-1.; input.len() + channels];
+        audio_buffer::fill_output(&fresh.samples, &mut output, convert::<f32>);
+        let functional = output[..input.len()] == input && output[input.len()..].iter().all(|&v| v == 0.);
+        println!("AUDIO_BUFFER_RESERVATION=observed rate={rate} channels={channels} stage=recovered large_allocations={allocations} refusals={refused} functional={functional}");
+        failures += usize::from(!(refused == 0 && allocations == 1 && functional));
+    }
+    let mut output = [-1.; 4];
+    audio_buffer::fill_output(&survivor.samples, &mut output, convert::<f32>);
+    assert_eq!(output, [0.25, -0.5, 0.75, 0.]);
+    assert_eq!(failures, 0, "PCM allocation must return an error and preserve independent playback");
+    println!("AUDIO_BUFFER_RESERVATION=pass cases=4 probe=panic survivor=preserved recovery=pass");
+}
+
+#[test]
+fn invalid_pcm_geometry_refuses_before_storage_allocation() {
+    let mut failures = 0;
+    for (rate, channels) in [(0, 1), (48000, 0), (usize::MAX, 2),
+        (usize::MAX / 2, 3), (usize::MAX / audio_buffer::AUDIO_BUFFER_MS + 1, 1)] {
+        let (outcome, refusals, allocations) = ring_allocations_during(0, || {
+            std::panic::catch_unwind(|| audio_buffer::AudioBuffer::new(rate, channels))
+        });
+        let panicked = outcome.is_err();
+        let refused = matches!(outcome, Ok(Err(ref error))
+            if error.kind() == std::io::ErrorKind::InvalidInput);
+        println!("AUDIO_BUFFER_GEOMETRY=observed rate={rate} channels={channels} panicked={panicked} returned_error={refused} large_allocations={allocations} refusals={refusals}");
+        failures += usize::from(!(refused && allocations == 0 && refusals == 0));
+    }
+    assert_eq!(failures, 0, "invalid output geometry must refuse before allocating a ring");
+    println!("AUDIO_BUFFER_GEOMETRY=pass cases=5 allocations=0 panics=0");
 }

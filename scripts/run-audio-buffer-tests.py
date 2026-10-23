@@ -87,20 +87,21 @@ def main():
         artifact = artifacts[0]
         artifact_sha = digest(artifact.read_bytes())
         print(f"AUDIO_BUFFER_ARTIFACT_START=observed sha256={artifact_sha}", flush=True)
+        execution_error = None
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, timeout=30)
-        except ValueError:
-            if digest(artifact.read_bytes()) != artifact_sha:
-                raise ValueError("failed audio-buffer artifact changed")
-            print(f"AUDIO_BUFFER_ARTIFACT_STOP=observed sha256={artifact_sha} unchanged=before-after", flush=True)
-            raise
+        except ValueError as error:
+            execution_error = error
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("audio-buffer artifact or dependencies changed")
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"audio-buffer source changed: {name}")
             print(f"AUDIO_BUFFER_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"AUDIO_BUFFER_ARTIFACT=pass sha256={artifact_sha} tests=22 unchanged=before-after", flush=True)
+        print(f"AUDIO_BUFFER_ARTIFACT_STOP=observed sha256={artifact_sha} unchanged=before-after", flush=True)
+        if execution_error is not None:
+            raise execution_error
+        print(f"AUDIO_BUFFER_ARTIFACT=pass sha256={artifact_sha} tests=24 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

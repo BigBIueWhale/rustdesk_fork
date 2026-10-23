@@ -4376,6 +4376,8 @@ run_focused_rust_tests() {
                 capture_pcm_preserves_bits_at_every_byte_alignment
                 capture_pcm_refuses_partial_samples_before_output_changes
                 capture_pcm_reuses_warmed_storage_without_allocating
+                configured_pcm_reservation_refusal_returns_error_and_preserves_recovery
+                invalid_pcm_geometry_refuses_before_storage_allocation
                 audio_buffer::tests::output_fill_consumes_fifo_and_pads_a_short_quantum
                 audio_buffer::tests::empty_output_fill_is_all_silence
                 audio_buffer::tests::output_fill_preserves_next_quantum_order
@@ -4389,7 +4391,7 @@ run_focused_rust_tests() {
                 audio_buffer::tests::independently_started_buffers_do_not_postpone_each_other
                 audio_buffer::tests::backwards_clock_preserves_pcm_and_restarts_observation
                 audio_buffer::tests::ring_replacement_retires_old_statistics_and_clock
-                audio_buffer::tests::no_op_resize_preserves_the_current_window
+                audio_buffer::tests::equal_format_buffers_keep_independent_observation_windows
                 audio_buffer::tests::trimming_preserves_complete_interleaved_frames
                 audio_buffer::tests::same_capacity_channel_change_retires_pcm
                 audio_buffer::tests::bounded_append_preserves_the_newest_pcm
@@ -4432,7 +4434,7 @@ run_focused_rust_tests() {
                 audio_buffer::tests::independently_started_buffers_do_not_postpone_each_other
                 audio_buffer::tests::backwards_clock_preserves_pcm_and_restarts_observation
                 audio_buffer::tests::ring_replacement_retires_old_statistics_and_clock
-                audio_buffer::tests::no_op_resize_preserves_the_current_window
+                audio_buffer::tests::equal_format_buffers_keep_independent_observation_windows
                 audio_buffer::tests::trimming_preserves_complete_interleaved_frames
                 audio_buffer::tests::same_capacity_channel_change_retires_pcm
                 audio_buffer::tests::bounded_append_preserves_the_newest_pcm
@@ -6112,7 +6114,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
         printf 'FUSE_FD_PROFILE=fusermount-fd stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
-        printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=22 bridge=absent\n'
+        printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=24 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=35 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
@@ -6427,9 +6429,12 @@ PY
             || fail 'FUSE fd baseline case count differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-buffer summary count differs'
-        [ "$(grep -Ec '^AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=22 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=24 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'AUDIO_BUFFER_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'audio-buffer artifact receipt differs'
+        grep -Fxq 'AUDIO_BUFFER_RESERVATION=pass cases=4 probe=panic survivor=preserved recovery=pass' "$output" \
+            && grep -Fxq 'AUDIO_BUFFER_GEOMETRY=pass cases=5 allocations=0 panics=0' "$output" \
+            || fail 'audio-buffer reservation or geometry outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-mailbox summary count differs'
         [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=35 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -7089,7 +7094,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
-            grep -E '^test .* \.\.\. ok$|^AUDIO_BUFFER_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            grep -E '^test .* \.\.\. ok$|^AUDIO_BUFFER_(ARTIFACT(_START|_STOP)?|DEPENDENCIES|INPUT|RESERVATION|GEOMETRY)=' "$output"
             printf 'AUDIO_BUFFER_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-portable-pcm-buffer rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

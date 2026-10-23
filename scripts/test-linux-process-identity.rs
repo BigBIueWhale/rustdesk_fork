@@ -133,6 +133,57 @@ mod linux_process_identity_tests {
     }
 
     #[test]
+    fn kernel_task_name_bytes_do_not_change_process_identity() {
+        let names: &[(&str, &[u8])] = &[
+            ("ascii", b"renamed-peer"),
+            ("parentheses", b"space ) ) name"),
+            ("newline", b"line\nname"),
+            ("unicode", "name-\u{e9}".as_bytes()),
+            ("invalid-ff", b"name-\xff"),
+            ("invalid-80", b"name-\x80"),
+            ("incomplete", b"name-\xc3"),
+            ("unicode-truncated", "abcdefghijklmn\u{e9}".as_bytes()),
+        ];
+        let mut failures = 0;
+        let mut invalid_names = 0;
+        for &(kind, name) in names {
+            let mut owner = Owner::spawn_with_environment(1, false, None, &[
+                ("LINUX_IDENTITY_NEXT_COMM", OsString::from_vec(name.to_vec())),
+            ]);
+            let principal = linux_kernel_process_identity_by_pid(owner.pid()).unwrap();
+            assert_eq!(principal.uid, owner.credentials().uid);
+            let snapshot = linux_process_identity_fields_by_pid(owner.pid()).unwrap();
+            let parent = linux_proc_parent_pid(owner.pid()).unwrap();
+            assert_eq!(parent, std::process::id());
+            owner.mutate(b'n');
+            let kernel_name = &name[..name.len().min(15)];
+            let invalid = std::str::from_utf8(kernel_name).is_err();
+            invalid_names += usize::from(invalid);
+            let raw = fs::read(format!("/proc/{}/stat", owner.pid())).unwrap();
+            let mut prefix = format!("{} (", owner.pid()).into_bytes();
+            prefix.extend_from_slice(kernel_name);
+            prefix.extend_from_slice(b") ");
+            assert!(raw.starts_with(&prefix), "actual kernel task name differs: {kind}");
+            let identity_preserved = matches!(linux_kernel_process_identity_by_pid(owner.pid()),
+                Ok(actual) if actual == principal);
+            let snapshot_preserved = matches!(linux_process_identity_fields_by_pid(owner.pid()),
+                Ok(actual) if actual == snapshot);
+            let parent_preserved = matches!(linux_proc_parent_pid(owner.pid()), Ok(actual) if actual == parent);
+            let live = linux_process_identity_is_live(&principal);
+            assert_eq!(owner.credentials().uid, principal.uid);
+            let correct = identity_preserved && snapshot_preserved && parent_preserved && live;
+            println!("LINUX_KERNEL_COMM_CASE=observed kind={kind} kernel_name_exact=true invalid_utf8={invalid} identity_preserved={identity_preserved} snapshot_preserved={snapshot_preserved} parent_preserved={parent_preserved} live={live} correct={correct}");
+            owner.request_exit();
+            owner.join();
+            failures += usize::from(!correct);
+        }
+        assert_eq!(names.len(), 8);
+        assert_eq!(invalid_names, 4);
+        assert_eq!(failures, 0, "numeric process identity must be independent of task-name encoding");
+        println!("LINUX_KERNEL_COMM=pass cases=8 healthy=4 invalid_utf8=4 unicode_truncation=observed identity=preserved parent=preserved children=joined");
+    }
+
+    #[test]
     fn kernel_cmdline_preserves_empty_argument_positions() {
         fn roles(args: &[String]) -> [bool; 6] {
             [

@@ -59,6 +59,9 @@ static void *serve(void *argument) {
     if (prctl(PR_SET_DUMPABLE, settings->dumpable) != 0 ||
         prctl(PR_GET_DUMPABLE) != settings->dumpable)
         _exit(2);
+    const char *next_name = getenv("LINUX_IDENTITY_NEXT_COMM");
+    if (next_name && prctl(PR_SET_NAME, "identity-peer") != 0)
+        _exit(2);
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     size_t length = strlen(settings->path);
@@ -73,6 +76,13 @@ static void *serve(void *argument) {
             _exit(5);
         if (command == 'x')
             break;
+        if (command == 'n') {
+            if (!next_name || prctl(PR_SET_NAME, next_name) != 0)
+                _exit(5);
+            if (write(fd, &command, 1) != 1)
+                _exit(6);
+            continue;
+        }
         char *mutable = command == 'm' ? settings->mutable_argument :
                         command == 'e' ? settings->mutable_environment : NULL;
         if (!mutable)

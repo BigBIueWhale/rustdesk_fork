@@ -93,7 +93,7 @@ def main():
     identity_body += ("#[derive(Clone, Eq, PartialEq)]\n" +
                       identity_source[peer_start:peer_end] + "\n" +
                       identity_source[debug_start:debug_end] + "\n")
-    for name in ("linux_proc_stat_start_time", "linux_proc_start_time", "linux_proc_uid",
+    for name in ("linux_proc_stat_start_time", "linux_proc_start_time", "linux_proc_parent_pid", "linux_proc_uid",
                  "linux_kernel_process_identity_by_pid", "linux_process_identity_is_live",
                  "linux_proc_cmdline_args", "user_owned_main_server_argv_is_expected",
                  "linux_service_owned_server_argv_is_expected", "process_argv_is_exact",
@@ -146,7 +146,7 @@ def main():
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=18", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=19", flush=True)
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("LINUX_IDENTITY_")}
     environment["LINUX_IDENTITY_PEER_PROBE"] = str(peer)

@@ -3912,6 +3912,7 @@ run_focused_rust_tests() {
             linux_process_identity_tests::kernel_role_environment_rejects_invalid_utf8_without_rewriting_values
             linux_process_identity_tests::kernel_service_child_role_preserves_exact_argument_positions
             linux_process_identity_tests::kernel_role_environment_rejects_duplicate_keys
+            linux_process_identity_tests::kernel_task_name_bytes_do_not_change_process_identity
         )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -6372,6 +6373,8 @@ PY
             || fail 'Linux supervisor child role argument positions differ'
         grep -Fxq 'LINUX_KERNEL_ENV_DUP=pass duplicate_cases=10 healthy=2 children=12 entries=kernel-observed selected_only=true children_state=joined' "$output" \
             || fail 'Linux duplicate authority environment validation differs'
+        grep -Fxq 'LINUX_KERNEL_COMM=pass cases=8 healthy=4 invalid_utf8=4 unicode_truncation=observed identity=preserved parent=preserved children=joined' "$output" \
+            || fail 'Linux task-name encoding changed numeric process identity'
         grep -Fxq 'verify-linux-service-password-ipc: source checks passed' "$output" \
             || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
         [ -f "$target_root/uid-policy-tests" ] && [ ! -L "$target_root/uid-policy-tests" ] \

@@ -1144,6 +1144,7 @@ static int observe_current_frames_for_duration(Display *source, Display *display
         if (history->failed) {
             return -1;
         }
+        gap = now - last_fresh;
         fresh = age_valid && age <= FRESH_LIMIT_MS;
         if (fresh) {
             last_fresh = now;
@@ -1152,7 +1153,6 @@ static int observe_current_frames_for_duration(Display *source, Display *display
                 *distinct_states += 1U;
             }
         }
-        gap = now - last_fresh;
         if (gap > *maximum_gap_ms) {
             *maximum_gap_ms = gap;
         }

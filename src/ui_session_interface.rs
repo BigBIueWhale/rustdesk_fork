@@ -2193,9 +2193,22 @@ impl<T: InvokeUiSession> Interface for Session<T> {
             let mut path = std::env::temp_dir();
             path.push(self.get_id());
             let path = path.with_extension(crate::get_app_name().to_lowercase());
-            std::fs::File::create(&path).ok();
-            if let Some(path) = path.to_str() {
-                crate::platform::windows::add_recent_document(&path);
+            let marker_ready = match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(_) => true,
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => true,
+                Err(err) => {
+                    log::warn!("Failed to create recent connection marker: {err}");
+                    false
+                }
+            };
+            if marker_ready {
+                if let Some(path) = path.to_str() {
+                    crate::platform::windows::add_recent_document(&path);
+                }
             }
         }
         if !pi.windows_sessions.sessions.is_empty() {

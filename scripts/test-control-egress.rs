@@ -7,6 +7,9 @@ pub use lazy_static;
 pub use anyhow::{self, bail};
 pub use libc;
 
+#[path = "test-cursor-echo.rs"]
+mod cursor_echo;
+
 include!(env!("RECENT_DOCUMENT_MARKER_SOURCE"));
 
 #[path = "../libs/hbb_common/src/bytes_codec.rs"]

@@ -27,6 +27,7 @@ INPUTS = (
     "libs/hbb_common/src/config.rs", "libs/hbb_common/src/lib.rs", "src/common.rs",
     "libs/clipboard/src/lib.rs", "libs/clipboard/Cargo.toml",
     "src/ui_session_interface.rs",
+    "src/server/input_service.rs", "scripts/test-cursor-echo.rs",
 )
 
 
@@ -100,6 +101,35 @@ def main():
     if len(limits) != 1:
         raise ValueError("controlled-egress production packet limit is ambiguous")
     snippets["packet-limit.rs"] = limits[0]
+    input_source = inputs["src/server/input_service.rs"].decode("utf-8")
+    snippets["cursor-state.rs"] = between(
+        input_source, "struct StatePos {", "#[derive(Default)]\nstruct StateWindowFocus {")
+    snippets["cursor-input.rs"] = between(
+        input_source, "#[derive(Default, Clone, Copy)]\nstruct Input {",
+        "#[derive(Clone, Default)]\npub struct MouseCursorSub {")
+    snippets["cursor-clock.rs"] = between(
+        input_source, "#[inline]\npub fn update_latest_input_cursor_time(",
+        "// check if mouse is moved by the controlled side user")
+    snippets["cursor-sender.rs"] = between(input_source, "fn run_pos(", "fn run_cursor(")
+    declarations = [re.findall(expression, input_source, re.MULTILINE) for expression in (
+        r"^const INVALID_CURSOR_POS: i32 = [^;]+;\n",
+        r"^    static ref LATEST_PEER_INPUT_CURSOR: [^;]+;\n",
+        r"^    static ref LATEST_SYS_CURSOR_POS: [^;]+;\n",
+    )]
+    if any(len(matches) != 1 for matches in declarations):
+        raise ValueError("cursor echo state declaration is absent or ambiguous")
+    snippets["cursor-globals.rs"] = (
+        declarations[0][0] + "lazy_static::lazy_static! {\n"
+        + declarations[1][0] + declarations[2][0] + "}\n")
+    writers = re.findall(
+        r"\*LATEST_PEER_INPUT_CURSOR\.lock\(\)\.unwrap\(\) = Input \{[^}]+};",
+        input_source)
+    if len(writers) != 2 or "x: evt.x" not in writers[0] or "x: evt.x" in writers[1]:
+        raise ValueError("cursor echo input assignment is absent or ambiguous")
+    snippets["cursor-writers.rs"] = (
+        "fn record_absolute(conn: i32, evt: &MouseEvent) {\n" + writers[0]
+        + "\n}\nfn record_relative(conn: i32, x: i32, y: i32) {\n"
+        + writers[1] + "\n}\n")
     session = inputs["src/ui_session_interface.rs"].decode("utf-8")
     legacy_marker = "            std::fs::File::create(&path).ok();\n"
     marker_start = "            let marker_ready = "
@@ -225,7 +255,13 @@ def main():
                                ("CM_PROTO_CONFIG", "cm-proto-config.rs"),
                                ("CM_PROTO_COUNT", "cm-proto-count.rs"),
                                ("CM_PROTO_GETTER", "cm-proto-getter.rs"),
-                               ("CM_PROTO_CONVERSION", "cm-proto-conversion.rs")):
+                               ("CM_PROTO_CONVERSION", "cm-proto-conversion.rs"),
+                               ("CURSOR_ECHO_STATE", "cursor-state.rs"),
+                               ("CURSOR_ECHO_INPUT", "cursor-input.rs"),
+                               ("CURSOR_ECHO_CLOCK", "cursor-clock.rs"),
+                               ("CURSOR_ECHO_SENDER", "cursor-sender.rs"),
+                               ("CURSOR_ECHO_GLOBALS", "cursor-globals.rs"),
+                               ("CURSOR_ECHO_WRITERS", "cursor-writers.rs")):
             os.environ[variable] = str(fixture / name)
 
         roots = [p for p in packages if p["name"] == "rustdesk" and "source" not in p]
@@ -303,13 +339,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=46", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=48", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=46 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=48 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -318,7 +354,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=46 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=48 unchanged=before-after",
               flush=True)
 
 

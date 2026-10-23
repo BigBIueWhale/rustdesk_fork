@@ -4269,8 +4269,11 @@ run_focused_rust_tests() {
                 libs/hbb_common/src/bytes_codec.rs libs/hbb_common/src/fs.rs
                 libs/hbb_common/src/config.rs libs/hbb_common/src/lib.rs src/common.rs
                 src/ui_session_interface.rs
+                src/server/input_service.rs scripts/test-cursor-echo.rs
             )
             required_tests=(
+                cursor_echo::sender::cursor_echo_clock_adjustments_preserve_elapsed_window
+                cursor_echo::sender::cursor_echo_input_writers_preserve_owner_position_and_defaults
                 control_egress_tests::r_s11gw_cursor_positions_replace_only_the_trailing_cursor
                 control_egress_tests::r_s11gw_count_saturation_is_terminal_and_releases_exact_messages
                 control_egress_tests::r_s11gw_byte_and_wire_bounds_fail_the_exact_round_closed
@@ -6189,7 +6192,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=46 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=48 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6508,9 +6511,13 @@ PY
             || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=46 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=48 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
+        [ "$(grep -Fxc 'CURSOR_ECHO_CLOCK=pass cases=2 wall_fault_ms=600000 window_ms=300 elapsed=native source=production-sender' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^CURSOR_ECHO_CLOCK_CASE=observed case=(backward|forward) delta_ms=-?600000 wall_ms=[0-9]+ fresh=7 expired=0 fresh_us=[0-9]+ expired_ms=[0-9]+ correct=true$' "$output")" -eq 2 ] \
+            && [ "$(grep -Fxc 'CURSOR_ECHO_WRITERS=pass paths=3 owner=exact position=preserved default=none movement=unchanged snapshots=exact' "$output")" -eq 1 ] \
+            || fail 'cursor echo elapsed-time or writer observations differ'
         [ "$(grep -Fxc 'RECENT_DOCUMENT_MARKER=pass cases=8 source=production-file-operation existing=preserved failures=refused scope=linux-filesystem-only shell=unexecuted cleanup=joined' "$output")" -eq 1 ] \
             || fail 'recent-document marker preservation or creation refusal differs'
         [ "$(grep -Fxc 'CM_DIRECTORY_ALLOC=pass refusals=3 retries=exact queue_identity=preserved probe=SIGABRT children=joined' "$output")" -eq 1 ] \

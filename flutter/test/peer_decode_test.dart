@@ -179,7 +179,9 @@ class _ChatPanel {
         case 'getPrimaryDisplay':
           return display;
         case 'getAllDisplays':
-          return {'displays': [display]};
+          return {
+            'displays': [display]
+          };
         case 'getCursorScreenPoint':
           return {'x': 100.0, 'y': 100.0};
         default:
@@ -262,7 +264,8 @@ void main() {
         expect(panel.model.isShowCMSidePage, open);
         expect(panel.notifications, 1);
         expect(panel.model.focusRequests, open ? 1 : 0);
-        expect(panel.owner.serverModel.clients.single.unreadChatMessageCount.value,
+        expect(
+            panel.owner.serverModel.clients.single.unreadChatMessageCount.value,
             open ? 0 : 9);
         panel.expectLayout(open);
       }
@@ -272,7 +275,8 @@ void main() {
   for (final wasOpen in [false, true]) {
     final priorState = wasOpen ? 'open' : 'closed';
     for (final failure in ['show', 'resize', 'position']) {
-      test('chat panel preserves $priorState state and retries $failure failure',
+      test(
+          'chat panel preserves $priorState state and retries $failure failure',
           () async {
         final panel = _ChatPanel();
         if (wasOpen) await panel.model.toggleCMSidePage();
@@ -281,9 +285,10 @@ void main() {
         client.unreadChatMessageCount.value = 9;
         panel.failAt = failure;
 
-        final errorMatcher = isA<PlatformException>().having(
-            (error) => error.code, 'code', 'panel-window-fault');
-        await expectLater(panel.model.toggleCMSidePage(), throwsA(errorMatcher));
+        final errorMatcher = isA<PlatformException>()
+            .having((error) => error.code, 'code', 'panel-window-fault');
+        await expectLater(
+            panel.model.toggleCMSidePage(), throwsA(errorMatcher));
         final stateAfterFailure = panel.model.isShowCMSidePage;
         final unreadAfterFailure = client.unreadChatMessageCount.value;
         final focusAfterFailure = panel.model.focusRequests;

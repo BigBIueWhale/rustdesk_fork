@@ -58,9 +58,16 @@ thread_local! {
     static CM_BACKING_TARGET: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static CM_BACKING_RETIRED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CM_DIRECTORY_TARGET: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
+    static CM_BATCH_REFUSAL: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
 }
 
 fn refuse_queue_allocation(size: usize) -> bool {
+    if CM_BATCH_REFUSAL.try_with(|state| {
+        if state.get() == Some(0) {
+            state.set(Some(size));
+            true
+        } else { false }
+    }).unwrap_or(false) { return true; }
     if CM_DIRECTORY_TARGET.try_with(|state| {
         let (target, refusals) = state.get();
         if target != 0 && target == size {
@@ -235,6 +242,118 @@ fn cm_directory_output_allocation_refusal_reports_error_and_retries() {
     }
     assert_eq!(passed, 3, "directory output refusal must report an error without aborting its process");
     println!("CM_DIRECTORY_ALLOC=pass refusals=3 retries=exact queue_identity=preserved probe=SIGABRT children=joined");
+}
+
+fn cm_batch_input(count: usize, entries: usize) -> Vec<FileDirectory> {
+    (0..count).map(|index| {
+        let mut directory = cm_directory_input(entries);
+        directory.id += index as i32;
+        directory.path.push_str(&format!("/{index}"));
+        directory
+    }).collect()
+}
+
+fn assert_cm_batch(directories: &[ipc::CmFileDirectory], count: usize, entries: usize) {
+    assert_eq!(directories.len(), count);
+    for (index, directory) in directories.iter().enumerate() {
+        assert_eq!(directory.id, 41 + index as i32);
+        assert_eq!(directory.path, format!("fixture/目录/{index}"));
+        let mut expected = cm_file_directory(cm_directory_input(entries)).unwrap();
+        expected.id = directory.id;
+        expected.path = directory.path.clone();
+        assert_eq!(directory, &expected);
+    }
+}
+
+fn cm_batch_roundtrip(result: Result<Vec<ipc::CmFileDirectory>, String>) -> Result<Vec<ipc::CmFileDirectory>, String> {
+    let response = ipc::CmFileResponse {
+        conn_id: 17,
+        cm_auth_token: "owned-token".into(),
+        response: Box::new(ipc::CmFileResponseKind::ReadEmptyDirectories {
+            request_id: 93, path: "requested-path".into(), result,
+        }),
+    };
+    let decoded: ipc::CmFileResponse = serde_json::from_slice(&serde_json::to_vec(&response).unwrap()).unwrap();
+    assert_eq!(decoded, response);
+    let (sender, mut receiver) = cm_egress_channel();
+    sender.send(Data::CmFileResponse(decoded)).unwrap();
+    let Some(CmEgressItem::Data(Data::CmFileResponse(actual))) = receiver.take_next().unwrap() else {
+        panic!("directory batch response was not retained");
+    };
+    assert_eq!(actual.conn_id, 17);
+    assert_eq!(actual.cm_auth_token, "owned-token");
+    let ipc::CmFileResponseKind::ReadEmptyDirectories { request_id, path, result } = *actual.response else {
+        panic!("directory batch response changed class");
+    };
+    assert_eq!(request_id, 93);
+    assert_eq!(path, "requested-path");
+    assert!(receiver.take_next().unwrap().is_none());
+    result
+}
+
+#[test]
+fn cm_directory_batches_preserve_fields_and_refuse_invalid_entries() {
+    for (count, entries) in [(0, 0), (1, 0), (5, 5), (64, 1)] {
+        let result = cm_batch_roundtrip(cm_file_directories(cm_batch_input(count, entries))).unwrap();
+        assert_cm_batch(&result, count, entries);
+    }
+    for index in [0, 2, 4] {
+        let mut input = cm_batch_input(5, 1);
+        input[index].entries[0].entry_type = protobuf::EnumOrUnknown::from_i32(-9);
+        assert_eq!(cm_batch_roundtrip(cm_file_directories(input)).unwrap_err(), "unknown file entry type -9");
+    }
+    println!("CM_BATCH_CONTROL=pass counts=4 fields=exact invalid_positions=3 json=exact queue_identity=preserved");
+}
+
+#[test]
+fn cm_directory_batch_allocation_refusal_reports_error_and_retries() {
+    use std::os::unix::process::ExitStatusExt;
+    fn observe<T>(action: impl FnOnce() -> T) -> (T, usize) {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) { CM_BATCH_REFUSAL.with(|state| state.set(None)); }
+        }
+        CM_BATCH_REFUSAL.with(|state| { assert!(state.get().is_none()); state.set(Some(0)); });
+        let reset = Reset;
+        let result = action();
+        let bytes = CM_BATCH_REFUSAL.with(|state| state.get().unwrap());
+        drop(reset);
+        (result, bytes)
+    }
+    if let Ok(case) = std::env::var("CM_BATCH_ALLOC_CASE") {
+        if case == "probe" {
+            observe(|| std::hint::black_box(Vec::<u8>::with_capacity(31)));
+            panic!("directory batch allocation-refusal probe returned");
+        }
+        let count: usize = case.parse().unwrap();
+        assert!([1, 5, 64].contains(&count));
+        let input = cm_batch_input(count, 0);
+        let (result, bytes) = observe(|| cm_file_directories(input));
+        assert_eq!(bytes, count * std::mem::size_of::<ipc::CmFileDirectory>());
+        assert_eq!(cm_batch_roundtrip(result).unwrap_err(), "Not enough memory for directories");
+        let retry = cm_batch_roundtrip(cm_file_directories(cm_batch_input(count, 5))).unwrap();
+        assert_cm_batch(&retry, count, 5);
+        println!("CM_BATCH_ALLOC_CASE=pass directories={count} bytes={bytes} refusals=1 error=reported retry=exact queue_identity=preserved");
+        return;
+    }
+    let run = |case: &str| run_allocation_child(
+        "cm_directory_batch_allocation_refusal_reports_error_and_retries", "CM_BATCH_ALLOC_CASE", case);
+    let probe = run("probe");
+    assert_eq!(probe.status.signal(), Some(6));
+    assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+    println!("CM_BATCH_ALLOC_PROBE=observed bytes=31 signal=6");
+    let mut passed = 0;
+    for count in [1, 5, 64] {
+        let output = run(&count.to_string());
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if line.starts_with("CM_BATCH_ALLOC_CASE=") { println!("{line}"); }
+        }
+        print!("{}", String::from_utf8_lossy(&output.stderr));
+        println!("CM_BATCH_ALLOC_CHILD=observed directories={count} success={} signal={:?}", output.status.success(), output.status.signal());
+        passed += usize::from(output.status.success());
+    }
+    assert_eq!(passed, 3, "directory batch refusal must report an error without aborting its process");
+    println!("CM_BATCH_ALLOC=pass refusals=3 retries=exact queue_identity=preserved probe=SIGABRT children=joined");
 }
 
 fn queue_allocation_case(case: &str) {

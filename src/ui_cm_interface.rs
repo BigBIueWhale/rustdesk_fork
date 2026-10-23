@@ -896,6 +896,11 @@ fn cm_file_directory(directory: FileDirectory) -> Result<ipc::CmFileDirectory, S
     })
 }
 
+#[cfg(not(any(target_os = "ios")))]
+fn cm_file_directories(directories: Vec<FileDirectory>) -> Result<Vec<ipc::CmFileDirectory>, String> {
+    directories.into_iter().map(cm_file_directory).collect()
+}
+
 lazy_static::lazy_static! {
     static ref CLIENTS: RwLock<CmClientRegistry> = Default::default();
     static ref CM_ADMISSION: StdMutex<()> = StdMutex::new(());
@@ -3366,7 +3371,7 @@ async fn read_empty_dirs(
     })
     .await
     {
-        Ok(Ok(fds)) => fds.into_iter().map(cm_file_directory).collect(),
+        Ok(Ok(fds)) => cm_file_directories(fds),
         Ok(Err(error)) => Err(error.to_string()),
         Err(error) => Err(format!("metadata task failed: {}", error)),
     };

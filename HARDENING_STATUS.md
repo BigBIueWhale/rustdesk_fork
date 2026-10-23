@@ -12842,9 +12842,11 @@ stop Android's persistent foreground service.
 `ServerModel._refreshStatus` fetches one complete CM client snapshot where applicable, reconciles
 it against the captured client-state revision, awaits resulting window operations, then awaits both
 password-status option reads. It does not rely on a count mismatch or discard the returned
-snapshot for another query. Current source and tests are unchanged from accepted
-`d0a13c7a22c1a45f780ad081e4c8606a6091f5d7`; the exact 21-suite/175-test generated-bridge
-checkpoint and retained raw receipt are recorded under R-S11gr.
+snapshot for another query. The scheduler and its test file still match source
+`d0a13c7a22c1a45f780ad081e4c8606a6091f5d7`, whose generated-bridge checkpoint passed
+21 suites/175 tests. Its retained raw receipt is
+`flutter-model-tests-run.rZ23u5R9mT.serial.log`; this historical result does not
+execute later ServerModel integration or establish current native CM/window behavior.
 
 `flutter/test/server_status_refresh_loop_test.dart` executes slow-turn nonoverlap/full interval,
 one-time readiness, visible refresh failure/later progress, close/drain/no-rearm, cancellation
@@ -12881,8 +12883,14 @@ Session teardown retires only its fallback capability, not the persistent proces
 exact retirement, count/byte bounds, registered binding ownership, route separation, synchronous
 cursor handoff, malformed input, visible failure, and recovery. It and
 `flutter/test/latest_frame_queue_test.dart` retain real `flutter test --no-pub` calls in
-`scripts/dart-verify.sh` and passed in R-S11gr's accepted 21-suite/175-test checkpoint; their current
-source/test bytes are unchanged. Model route selection is not actual native/JavaScript bridge routing.
+`scripts/dart-verify.sh`. The dispatcher and its test file still match the historical
+`d0a13c7a` 21-suite/175-test checkpoint, retained in
+`flutter-model-tests-run.rZ23u5R9mT.serial.log`. The frame queue has changed since
+that checkpoint; its current 26-case shard and three parser methods pass as bound
+in `frame-error-finality-57028a75.json`. No full current-model checkpoint ran for
+that queue change. Model route selection is not actual native/JavaScript bridge routing.
+`display-contract-appendix-8adca8e5.json` retains the source comparisons and the
+four Appendix C display-row classification records; primary contracts are unchanged.
 
 STOP-SHIP: Android task-swipe/reopen/Force-Stop; native desktop/web routing; Windows
 focus/minimize/reconnect; other-platform/cross-version operation; capture-through-presentation

@@ -3121,7 +3121,7 @@ fn linux_proc_environ_value(pid: u32, name: &str) -> ResultType<String> {
     let prefix = format!("{name}=");
     for part in environ.split(|byte| *byte == 0) {
         if part.starts_with(prefix.as_bytes()) {
-            return Ok(String::from_utf8_lossy(&part[prefix.len()..]).into_owned());
+            return Ok(std::str::from_utf8(&part[prefix.len()..])?.to_owned());
         }
     }
     Ok(String::new())

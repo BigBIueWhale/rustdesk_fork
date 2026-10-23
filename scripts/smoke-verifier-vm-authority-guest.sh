@@ -3884,6 +3884,7 @@ run_focused_rust_tests() {
             src/ipc/auth.rs
             src/ipc/uid_policy.rs
             scripts/test-linux-service-uid-policy.rs
+            scripts/test-linux-process-identity.rs
             scripts/verify-linux-service-password-ipc.py
             scripts/run-trusted-executable-tests.py scripts/test-trusted-executable.rs
             scripts/prepare-trusted-executable-fixture.py scripts/fixtures/trusted-executable-before.rs
@@ -3901,6 +3902,10 @@ run_focused_rust_tests() {
             trusted_executable_tests::writable_canonical_ancestors_refuse_before_path_replacement
             trusted_executable_tests::hidden_symlink_targets_cannot_choose_authority_images
             trusted_executable_tests::trusted_link_semantics_and_kernel_write_refusal_preserve_functionality
+            linux_process_identity_tests::nondumpable_peer_keeps_its_effective_uid
+            linux_process_identity_tests::exited_unreaped_peer_is_not_live
+            linux_process_identity_tests::status_uid_requires_one_complete_canonical_record
+            linux_process_identity_tests::stat_liveness_preserves_stopped_and_rejects_terminal_states
         )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -6346,8 +6351,11 @@ PY
     elif [ "$MODE" = linux-service-uid-tests ]; then
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'Linux UID-policy summary count differs'; }
-        [ "$(grep -Ec '^test (uid_policy::tests|trusted_executable_tests)::.* \.\.\. ok$' "$output")" -eq "${#required_tests[@]}" ] \
+        [ "$(grep -Ec '^test (uid_policy::tests|trusted_executable_tests|linux_process_identity_tests)::.* \.\.\. ok$' "$output")" -eq "${#required_tests[@]}" ] \
             || fail 'Linux UID-policy named test count differs'
+        grep -Fxq 'LINUX_KERNEL_UID=pass cases=2 children=joined principal=effective' "$output" \
+            && grep -Fxq 'LINUX_KERNEL_LIFETIME=pass live=preserved stopped=preserved zombie=refused reaped=refused children=joined' "$output" \
+            || fail 'Linux kernel identity behavior differs'
         grep -Fxq 'verify-linux-service-password-ipc: source checks passed' "$output" \
             || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
         [ -f "$target_root/uid-policy-tests" ] && [ ! -L "$target_root/uid-policy-tests" ] \
@@ -6924,7 +6932,7 @@ PY
     elif [ "$MODE" = linux-systemd-notification-tests ]; then
         grep -E '^test systemd::tests::.* \.\.\. ok$' "$output"
     elif [ "$MODE" = linux-service-uid-tests ]; then
-        grep -E '^test (uid_policy::tests|trusted_executable_tests)::.* \.\.\. ok$|^TRUSTED_EXECUTABLE_|^verify-linux-service-password-ipc: source checks passed$' "$output"
+        grep -E '^test (uid_policy::tests|trusted_executable_tests|linux_process_identity_tests)::.* \.\.\. ok$|^TRUSTED_EXECUTABLE_|^LINUX_KERNEL_|^verify-linux-service-password-ipc: source checks passed$' "$output"
     fi
     if [ "$HBB_FUSE_READ_TESTS" -eq 0 ]; then printf '%s\n' "${result_lines[@]}"; fi
     if [ "$MODE" = hbb-common-fs ]; then
@@ -7040,7 +7048,7 @@ PY
     elif [ "$MODE" = linux-service-uid-tests ]; then
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Linux UID-policy test count differs: $tests_passed"
-        printf 'LINUX_SERVICE_UID_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s target=linux-x86_64 scope=production-uid-policy-and-extracted-helper-selectors rust=1.75.0 edition=2021 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'LINUX_SERVICE_UID_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s target=linux-x86_64 scope=production-uid-policy-and-extracted-helper-selectors-and-kernel-identity rust=1.75.0 edition=2021 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$uid_test_artifact_sha" "$image_index" "$image_config"
     else

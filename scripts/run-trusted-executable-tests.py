@@ -78,19 +78,39 @@ def main():
         print(f"TRUSTED_EXECUTABLE_SELECTOR=source module={module} path={path} sha256={digest(data)} "
               f"fragment_sha256={digest(body.encode())}", flush=True)
     for path in ("scripts/test-linux-service-uid-policy.rs", "scripts/test-trusted-executable.rs",
-                 "scripts/run-trusted-executable-tests.py", "src/ipc/uid_policy.rs"):
+                 "scripts/run-trusted-executable-tests.py", "src/ipc/uid_policy.rs",
+                 "scripts/test-linux-process-identity.rs", "src/ipc/auth.rs"):
         inputs[path] = (repo / path).read_bytes()
+    identity_source = inputs["src/ipc/auth.rs"].decode("utf-8")
+    structure_start = identity_source.index("pub struct LinuxProcessIdentity {")
+    structure_end = identity_source.index("\n}", structure_start) + 2
+    identity_body = identity_source[structure_start:structure_end] + "\n"
+    for name in ("linux_proc_stat_start_time", "linux_proc_start_time", "linux_proc_uid",
+                 "linux_proc_live_stat_start_time", "linux_proc_status_uid",
+                 "linux_kernel_process_identity_by_pid", "linux_process_identity_is_live"):
+        identity_body += function(identity_source, name)
+    # The exact metadata bodies use only std operations. Serialization and anyhow's
+    # error representation are outside this component; Result/refusal behavior is retained.
+    generated += ('use std::{fs, os::unix::fs::MetadataExt};\n'
+                  'type ResultType<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;\n'
+                  'macro_rules! bail { ($($arg:tt)*) => { return Err(format!($($arg)*).into()) }; }\n'
+                  '#[derive(Clone, Debug, Eq, PartialEq)]\n' + identity_body)
+    print(f"LINUX_KERNEL_IDENTITY_SOURCE=sha256={digest(inputs['src/ipc/auth.rs'])} "
+          f"fragment_sha256={digest(identity_body.encode())} error_context=std-boxed serialization=unexecuted", flush=True)
     generated += f'include!("{repo}/scripts/test-linux-service-uid-policy.rs");\n'
     generated += f'include!("{repo}/scripts/test-trusted-executable.rs");\n'
+    generated += f'include!("{repo}/scripts/test-linux-process-identity.rs");\n'
     source = Path("/cargo-target/trusted-executable-tests.rs")
     source.write_text(generated)
     artifact = Path("/cargo-target/uid-policy-tests")
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=10", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=14", flush=True)
     result = subprocess.run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"],
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20,
+                            env={key: value for key, value in os.environ.items()
+                                 if not key.startswith("LINUX_IDENTITY_")})
     if len(result.stdout) > 65536:
         raise ValueError("selector test output exceeds 64 KiB")
     print(result.stdout.decode("utf-8"), end="", flush=True)

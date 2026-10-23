@@ -27,6 +27,14 @@ pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
         output.try_reserve_exact(zstd::zstd_safe::compress_bound(data.len()))
             .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
         compressor.compress_to_buffer(data, &mut output)?;
+        // Queued compressed payloads must not retain the worst-case workspace.
+        if output.capacity() != output.len() {
+            let mut packed = Vec::new();
+            packed.try_reserve_exact(output.len())
+                .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+            packed.extend_from_slice(&output);
+            output = packed;
+        }
         Ok(output)
     })
 }

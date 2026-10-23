@@ -107,7 +107,7 @@ def main():
         raise ValueError("CM directory serialization limit is ambiguous")
     snippets["cm-directory-enum-limit.rs"] = enum_limits[0]
     fs_source = inputs["libs/hbb_common/src/fs.rs"].decode("utf-8")
-    config = inputs["libs/hbb_common/src/config.rs"].decode("utf-8")
+    config_source = inputs["libs/hbb_common/src/config.rs"].decode("utf-8")
     common = inputs["src/common.rs"].decode("utf-8")
     shared = inputs["libs/hbb_common/src/lib.rs"].decode("utf-8")
     def declaration(source, expression):
@@ -122,9 +122,9 @@ def main():
         + between(fs_source, "fn is_symlink_or_reparse_point(", "fn join_validated_path("))
     snippets["cm-proto-config.rs"] = (
         "lazy_static::lazy_static! {\n"
-        + declaration(config, r"^    pub static ref BUILTIN_SETTINGS: RwLock<HashMap<String, String>> = Default::default\(\);$")
+        + declaration(config_source, r"^    pub static ref BUILTIN_SETTINGS: RwLock<HashMap<String, String>> = Default::default\(\);$")
         + "}\npub mod keys {\n"
-        + declaration(config, r'^    pub const OPTION_FILE_TRANSFER_MAX_FILES: &str = "file-transfer-max-files";$')
+        + declaration(config_source, r'^    pub const OPTION_FILE_TRANSFER_MAX_FILES: &str = "file-transfer-max-files";$')
         + "}\n")
     snippets["cm-proto-count.rs"] = (
         declaration(cm, r"^const DEFAULT_MAX_VALIDATED_FILES: usize = fs::DEFAULT_FILE_TRANSFER_MAX_FILES;$")

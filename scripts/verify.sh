@@ -2449,7 +2449,7 @@ if [ -n "$r_s11d29" ]; then echo "  FAIL R-S11d-29 Windows service-adjacent path
 # `_service_sas` use closed directional protocols. Password mutation exists only on raw
 # `_service_password`.
 echo "== (3b-iii-b) privileged service IPC is closed and directionally typed (R-S11b-1/R-S11dx) =="
-"${RUN[@]}" cargo test -p hbb_common --lib bytes_codec::tests::decode_rejects_frame_over_max_packet_length_before_reserve --color never
+"${RUN[@]}" cargo test -p hbb_common --lib bytes_codec::tests::decode_rejects_oversized_frame_before_consuming_header --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_channel_uses_closed_directional_protocol --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::windows_service_sas_channel_uses_closed_directional_protocol --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::privileged_and_main_connections_use_bounded_frame_codecs --color never

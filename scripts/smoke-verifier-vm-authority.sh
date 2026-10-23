@@ -6313,14 +6313,20 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clip
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
     mapfile -t clipboard_response_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=29 unchanged=before-after$'
+            'CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=34 unchanged=before-after$'
     )
     [ "${#clipboard_response_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'CM_CLIPBOARD_RESPONSE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'CM clipboard response artifact receipt differs'
     require_exact_fixed_receipt \
-        "CM_CLIPBOARD_RESPONSE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=29 target=linux-x86_64 scope=production-response-type-and-assembly windows=unexecuted rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "CM_CLIPBOARD_RESPONSE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=34 target=linux-x86_64 scope=production-response-type-and-assembly windows=unexecuted rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused CM clipboard response receipt'
+    require_exact_fixed_receipt \
+        'BYTES_CODEC_HEADER=pass cases=18 widths=4 cap_contexts=2 partial_payload=preserved eof=refused' \
+        'frame headers preserve actual input capacity'
+    require_exact_fixed_receipt \
+        'BYTES_CODEC_TCP=pass frames=8 widths=4 fragmented_writes=true coalesced=true eof=clean sender=joined' \
+        'actual fragmented and coalesced TCP frame progress'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'CM clipboard response cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
     mapfile -t control_artifacts < <(
@@ -8196,7 +8202,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'CLIPRDR_READ_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=12 baseline_failed=7 baseline_controls=5 scope=portable-production-C-reader windows=unexecuted concurrency=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
-        printf 'CM_CLIPBOARD_RESPONSE_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=29 scope=production-response-type-and-assembly windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'CM_CLIPBOARD_RESPONSE_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=34 scope=production-response-type-and-assembly windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
         printf 'CONTROL_EGRESS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=5 scope=production-control-egress-and-generated-protobuf network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

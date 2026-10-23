@@ -64,6 +64,8 @@ def main():
             'serde = "=1.0.228"\nserde_derive = "=1.0.228"\n'
             'protobuf = { version = "=3.7.2", features = ["with-bytes"] }\n'
             'tokio-util = { version = "=0.7.15", features = ["codec"] }\n'
+            'tokio = { version = "=1.44.2", features = ["rt", "macros", "net", "io-util", "time"] }\n'
+            'futures = "=0.3.30"\n'
             '[build-dependencies]\nprotobuf-codegen = "=3.7.2"\n'
             '[dev-dependencies]\nserde_json = "=1.0.118"\n'
             '[lib]\nname = "rustdesk_cm_clipboard_response"\npath = "lib.rs"\n')
@@ -101,14 +103,20 @@ def main():
             raise ValueError("CM clipboard response artifact is absent or ambiguous")
         artifact = candidates[0]
         artifact_sha = digest(artifact.read_bytes())
-        run([str(artifact), "--test-threads=1", "--color", "never"], fixture, 20)
+        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=34", flush=True)
+        try:
+            run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, 20)
+        finally:
+            if digest(artifact.read_bytes()) != artifact_sha:
+                raise ValueError("CM clipboard response artifact changed during execution")
+            print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=34 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("CM clipboard response artifact or lock changed")
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"CM clipboard response source changed: {name}")
             print(f"CM_CLIPBOARD_RESPONSE_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256={artifact_sha} tests=29 unchanged=before-after", flush=True)
+        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256={artifact_sha} tests=34 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

@@ -3695,8 +3695,9 @@ run_focused_rust_tests() {
                 bytes_codec::tests::test_codec4
                 bytes_codec::tests::test_codec5
                 bytes_codec::tests::test_codec6
-                bytes_codec::tests::decode_large_frame_header_caps_preallocation
-                bytes_codec::tests::decode_rejects_frame_over_max_packet_length_before_reserve
+                bytes_codec::tests::decode_headers_preserve_input_capacity_until_payload_arrives
+                bytes_codec::tests::decode_rejects_oversized_frame_before_consuming_header
+                bytes_codec::tests::fragmented_tcp_frames_grow_from_received_payload_and_finish_cleanly
                 bytes_codec::tests::eof_rejects_partial_headers
                 bytes_codec::tests::eof_rejects_partial_payloads_after_consuming_each_header_width
                 bytes_codec::tests::eof_preserves_complete_empty_coalesced_frames
@@ -4239,8 +4240,13 @@ run_focused_rust_tests() {
                 bytes_codec::tests::test_codec4
                 bytes_codec::tests::test_codec5
                 bytes_codec::tests::test_codec6
-                bytes_codec::tests::decode_large_frame_header_caps_preallocation
-                bytes_codec::tests::decode_rejects_frame_over_max_packet_length_before_reserve
+                bytes_codec::tests::decode_headers_preserve_input_capacity_until_payload_arrives
+                bytes_codec::tests::decode_rejects_oversized_frame_before_consuming_header
+                bytes_codec::tests::fragmented_tcp_frames_grow_from_received_payload_and_finish_cleanly
+                bytes_codec::tests::eof_rejects_partial_headers
+                bytes_codec::tests::eof_rejects_partial_payloads_after_consuming_each_header_width
+                bytes_codec::tests::eof_preserves_complete_empty_coalesced_frames
+                bytes_codec::tests::eof_preserves_oversized_frame_refusal
             )
         elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
             container_name=rustdesk-control-egress-tests
@@ -6113,7 +6119,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
         printf 'CLIPRDR_READ_PROFILE=cliprdr-read stage=container-start tests=12 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
-        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=29 bridge=absent windows=unexecuted\n'
+        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=34 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=5 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
@@ -6401,9 +6407,13 @@ for item in (old,new): assert re.fullmatch('[0-9a-f]{64}',item['sha256'])
 PY
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'CM clipboard response summary count differs'
-        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=29 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=34 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CM_CLIPBOARD_RESPONSE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'CM clipboard response artifact receipt differs'
+        [ "$(grep -Fxc 'BYTES_CODEC_HEADER=pass cases=18 widths=4 cap_contexts=2 partial_payload=preserved eof=refused' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^BYTES_CODEC_HEADER_CASE=observed .* correct=true$' "$output")" -eq 18 ] \
+            && [ "$(grep -Fxc 'BYTES_CODEC_TCP=pass frames=8 widths=4 fragmented_writes=true coalesced=true eof=clean sender=joined' "$output")" -eq 1 ] \
+            || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
         [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=5 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -7094,7 +7104,7 @@ PY
             printf 'CLIPRDR_READ_VM=pass commit=%s tree=%s tests=%s baseline_failed=7 baseline_controls=5 target=linux-x86_64 scope=portable-production-C-reader windows=unexecuted concurrency=unexecuted uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed"
         elif [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
-            grep -E '^test (clipboard_non_file|bytes_codec)::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            grep -E '^test (clipboard_non_file|bytes_codec)::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT(_BEFORE|_AFTER)?|DEPENDENCIES|INPUT)=|^BYTES_CODEC_' "$output"
             printf 'CM_CLIPBOARD_RESPONSE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-response-type-and-assembly windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

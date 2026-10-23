@@ -288,30 +288,112 @@ mod tests {
     }
 
     #[test]
-    fn decode_large_frame_header_caps_preallocation() {
-        let mut codec = BytesCodec::new();
-        let mut buf = BytesMut::new();
-        let n = 0x3FFFFFFFusize;
-        const MAX_REASONABLE_CAPACITY: usize = MAX_PREALLOCATED_PAYLOAD_LEN * 4;
-
-        buf.put_u32_le((n << 2) as u32 | 0x3);
-
-        assert!(matches!(codec.decode(&mut buf), Ok(None)));
-        assert!(buf.capacity() <= MAX_REASONABLE_CAPACITY);
+    fn decode_headers_preserve_input_capacity_until_payload_arrives() {
+        let mut cases = 0;
+        let mut failures = 0;
+        for (length, width) in [(1usize, 1), (64, 2), (16_384, 3), (4_194_304, 4), (0x3fff_ffff, 4)] {
+            for limit in [length, usize::MAX] {
+                for received in 0..length.min(2) {
+                    let mut codec = BytesCodec::new();
+                    codec.set_max_packet_length(limit);
+                    let header = ((length << 2) as u32 | (width - 1) as u32).to_le_bytes();
+                    let mut buf = BytesMut::from(&header[..width]);
+                    let payload = vec![0x5a; received];
+                    buf.extend_from_slice(&payload);
+                    let before = buf.capacity();
+                    let waiting = matches!(codec.decode(&mut buf), Ok(None));
+                    let after = buf.capacity();
+                    let repeated = (0..3).all(|_| matches!(codec.decode(&mut buf), Ok(None)));
+                    let preserved = buf.as_ref() == payload.as_slice();
+                    let bounded = after <= before && buf.capacity() == after;
+                    let eof_refused = matches!(codec.decode_eof(&mut buf), Err(err)
+                        if err.kind() == io::ErrorKind::UnexpectedEof);
+                    let correct = waiting && repeated && preserved && bounded && eof_refused;
+                    println!("BYTES_CODEC_HEADER_CASE=observed length={length} width={width} received={received} exact_limit={} capacity_before={before} capacity_after={after} waiting={waiting} repeated={repeated} payload_preserved={preserved} eof_refused={eof_refused} correct={correct}", limit == length);
+                    failures += usize::from(!correct);
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 18);
+        assert_eq!(failures, 0, "headers must not grow storage for absent payload bytes");
+        println!("BYTES_CODEC_HEADER=pass cases=18 widths=4 cap_contexts=2 partial_payload=preserved eof=refused");
     }
 
     #[test]
-    fn decode_rejects_frame_over_max_packet_length_before_reserve() {
+    fn decode_rejects_oversized_frame_before_consuming_header() {
         let mut codec = BytesCodec::new();
         let mut buf = BytesMut::new();
 
         codec.set_max_packet_length(8);
         buf.put_u8(9 << 2);
+        let capacity = buf.capacity();
 
         let err = codec.decode(&mut buf).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
         assert_eq!(err.to_string(), "Too big packet");
-        assert!(buf.capacity() < MAX_PREALLOCATED_PAYLOAD_LEN);
+        assert_eq!(buf.as_ref(), &[9 << 2]);
+        assert_eq!(buf.capacity(), capacity);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn fragmented_tcp_frames_grow_from_received_payload_and_finish_cleanly() {
+        use futures::TryStreamExt;
+        use tokio::{
+            io::AsyncWriteExt,
+            net::{TcpListener, TcpStream},
+            time::{timeout, Duration},
+        };
+        let expected = [
+            Bytes::new(), Bytes::from_static(b"x"), Bytes::from(vec![0x42; 64]),
+            Bytes::from(vec![0x43; 16_384]), Bytes::from(vec![0x44; 4_194_304]),
+            Bytes::new(), Bytes::from_static(b"tail"), Bytes::new(),
+        ];
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut sender = TcpStream::connect(listener.local_addr().unwrap()).await.unwrap();
+        sender.set_nodelay(true).unwrap();
+        let (receiver, _) = listener.accept().await.unwrap();
+        drop(listener);
+        let payloads = expected.clone();
+        let mut writer = tokio::spawn(async move {
+            let mut codec = BytesCodec::new();
+            for payload in &payloads[..5] {
+                let mut wire = BytesMut::new();
+                codec.encode(payload.clone(), &mut wire)?;
+                let width = ((wire[0] & 3) + 1) as usize;
+                for byte in &wire[..width] {
+                    sender.write_all(std::slice::from_ref(byte)).await?;
+                    tokio::task::yield_now().await;
+                }
+                for chunk in wire[width..].chunks(8191) {
+                    sender.write_all(chunk).await?;
+                    tokio::task::yield_now().await;
+                }
+            }
+            let mut coalesced = BytesMut::new();
+            for payload in &payloads[5..] { codec.encode(payload.clone(), &mut coalesced)?; }
+            sender.write_all(&coalesced).await?;
+            sender.shutdown().await
+        });
+        let mut codec = BytesCodec::new();
+        codec.set_max_packet_length(8 * 1024 * 1024);
+        let read = timeout(Duration::from_secs(4),
+            tokio_util::codec::FramedRead::new(receiver, codec).try_collect::<Vec<_>>()).await;
+        let joined = match timeout(Duration::from_secs(4), &mut writer).await {
+            Ok(joined) => joined,
+            Err(_) => {
+                writer.abort();
+                let terminal = writer.await;
+                panic!("fragmented frame sender exceeded its deadline: {terminal:?}");
+            }
+        };
+        joined.unwrap().unwrap();
+        let received = read.unwrap().unwrap();
+        assert_eq!(received.len(), expected.len());
+        for (actual, expected) in received.iter().zip(&expected) {
+            assert_eq!(actual.as_ref(), expected.as_ref());
+        }
+        println!("BYTES_CODEC_TCP=pass frames=8 widths=4 fragmented_writes=true coalesced=true eof=clean sender=joined");
     }
 
     #[test]

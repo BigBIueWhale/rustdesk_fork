@@ -58,7 +58,18 @@ pub fn try_decompress_with_limit(data: &[u8], max_decompressed: usize) -> io::Re
     // rather than truncated; at most MAX+1 decoded bytes are appended.
     let mut limited = decoder.take(read_limit);
     let mut out = Vec::new();
-    limited.read_to_end(&mut out)?;
+    let mut chunk = [0u8; 8192];
+    loop {
+        let count = match limited.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(count) => count,
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(err) => return Err(err),
+        };
+        out.try_reserve(count)
+            .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+        out.extend_from_slice(&chunk[..count]);
+    }
     let length = u64::try_from(out.len()).map_err(|_| {
         io::Error::new(
             io::ErrorKind::InvalidData,

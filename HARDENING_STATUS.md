@@ -12998,6 +12998,22 @@ handle; the bounded completion pool owns joining after close or hard Drop.
 Controlled playback retains accepted-call input authority and a separate pinned
 format; refused fresh decoders close and join.
 
+**Android raw capture handoff (`35082dd6`).** `FrameRaw::take` swaps the
+already-owned frame into the consumer and clears the returned storage for producer
+reuse. JNI ingress still copies Java-owned memory synchronously; timeout, comparison,
+enable and generation checks are unchanged. At `42968093`, all 45 other cases pass,
+while refused consumer allocation aborts empty/undersized-buffer children and
+preallocated-buffer children fail ownership-transfer checks. The identical corrected
+46-case cohort passes: four destination geometries over three rounds transfer the
+exact source pointer and bytes with zero calling-thread Rust allocations and reuse
+the old destination allocation. Disabled/empty/equal/changed/expired/stale/retired/
+successor behavior is preserved. Eight existing comparison/generation tests and
+all 36 prior audio cases remain. `android-raw-handoff-fbdc88de.json` binds the exact
+sources/artifacts, child outcomes and joined bounded-RAM cleanup. This executes
+complete portable Rust modules in Linux. JNI/JVM, Android OS audio/video,
+producer-copy allocation failure, full application and native latency/lifecycle
+acceptance remain OPEN.
+
 **Retained evidence.** Capsules below are under `.harness-state/verifier-vm/`.
 Counts refer to their named historical sources, not fresh current-tree execution.
 
@@ -13014,14 +13030,16 @@ Counts refer to their named historical sources, not fresh current-tree execution
 | Linux playback failure — `fac93f54` | The complete Linux parent test artifact and private PulseAudio 16.1 null sink execute two identical old/current handler tests. Old `c3114e43` fails both. Current playback drains, exact native stream removal causes failure, decoder/output retire, malformed Opus and replay refuse, a fresh owner recovers and native task-ID sets return to baseline. Build 246s, behavior 11s, outer 326s. This accepts that parent build and output-error finality, not stalled-call cancellation. | `audio-playback-native-fac93f54.json` |
 
 `--audio-mailbox-tests` imports the real mailbox and buffer, production proto/build
-script, exact setup/error callback and decoder/worker methods, with root-locked dependencies.
+script, exact setup/error callback and decoder/worker methods, and portable Android
+raw/generation/comparison modules with root-locked dependencies.
 All 34 cases passed at `15ed3f4d` in 106 outer seconds under the dedicated
 `audio-mailbox` RAM profile. CPAL setup typechecking is not a complete non-Linux
 parent build or physical stream execution. `audio-mailbox-profile-15ed3f4d.json`
 binds the source/artifact, sixteen channel-format observations, old/current
 callback wake/retirement controls, storage limits and joined cleanup. The current
-export retains all 36 named outcomes, allocation/codec cases and callback observations;
-the guest checks that same inventory before export.
+export at `35082dd6` retains all 46 named outcomes, including the 36 prior audio
+cases, allocation/codec cases and callback observations; the guest checks that
+same inventory before export.
 `--audio-buffer-tests` passed all eighteen cases at `87dbc335` in 73 outer seconds:
 sixteen production-buffer cases and two real conversion/allocation fixtures.
 Both audio profiles retain the 2 GiB guest and admit 6 GiB RAM scratch,

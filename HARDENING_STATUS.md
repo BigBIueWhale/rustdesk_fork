@@ -8203,9 +8203,30 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   run 31s. `linux-environment-utf8-b07f1136.json` binds exact source/artifacts,
   kernel observations and joined bounded-RAM cleanup. These extracted bodies use
   the existing boxed-error/kernel-ABI adapters. This accepts selected-value
-  decoding only; duplicate entries, concurrent procfs/exec races, full privileged
+  decoding only; concurrent procfs/exec races, full privileged
   receivers, installed settings/credential actions, R-S0/R-F5 and release
   acceptance remain OPEN. All user parks remain untouched.
+
+  **Linux launch-marker uniqueness (`7fbf0cf6`).** The shared procfs reader
+  requires exactly one selected entry before returning its checked UTF-8 value;
+  duplicates, including identical or empty values, return an error naming only
+  the key. Missing/unique values and unrelated entries retain their semantics.
+  At unchanged-product `71a1cd42`, seventeen controls pass but all ten new
+  duplicate cases wrongly return a value; duplicated CM tokens also enter full
+  peer snapshots. The identical fixture passes all eighteen component tests
+  after correction. Actual C `execve` environments cover CM-token and service
+  generation keys with identical, conflicting, reversed, empty and empty-first
+  pairs plus two unique-value controls. Procfs preserves each expected pair/order.
+  Selected CM duplicates refuse snapshot construction; unrelated generation
+  duplicates preserve that snapshot, and the existing supervisor-generation
+  predicate continues to reject duplicates and accept its unique control.
+  All seventy-nine C peers join per cohort with an identical C binary across A/B;
+  the corrected outer run takes 31s. `linux-environment-duplicates-44f1f66a.json`
+  binds exact source/artifacts, observations, export limits and bounded-RAM
+  retirement. This is selected-marker/identity component evidence using the
+  existing error/kernel-ABI adapters, not complete IPC, supervisor or installed
+  credential/settings acceptance. Concurrent procfs/exec races, R-S0/R-F5,
+  platform/release acceptance and all user parks remain OPEN/PARKED.
 
   **Linux supervisor child argv (`c709c756`).** Retained service-child record
   revalidation preserves every argument position: it removes only one final NUL

@@ -293,28 +293,29 @@ class ChatModel with ChangeNotifier {
   toggleCMSidePage() async {
     if (_togglingCMSidePage) return false;
     _togglingCMSidePage = true;
-    if (_isShowCMSidePage) {
-      _isShowCMSidePage = !_isShowCMSidePage;
-      notifyListeners();
-      await windowManager.show();
-      await windowManager.setSizeAlignment(
-          kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
-    } else {
-      final server = parent.target?.serverModel;
+    try {
+      final show = !_isShowCMSidePage;
+      final server = show ? parent.target?.serverModel : null;
       final currentSelectedTab = server?.tabController.state.value.selectedTabInfo;
       final client = server?.clients.firstWhereOrNull(
           (client) => client.id.toString() == currentSelectedTab?.key);
-      if (client != null) {
-        client.unreadChatMessageCount.value = 0;
-      }
-      requestChatInputFocus();
       await windowManager.show();
       await windowManager.setSizeAlignment(
-          kConnectionManagerWindowSizeOpenChat, Alignment.topRight);
-      _isShowCMSidePage = !_isShowCMSidePage;
+          show
+              ? kConnectionManagerWindowSizeOpenChat
+              : kConnectionManagerWindowSizeClosedChat,
+          Alignment.topRight);
+      _isShowCMSidePage = show;
+      if (show) {
+        if (client != null) {
+          client.unreadChatMessageCount.value = 0;
+        }
+        requestChatInputFocus();
+      }
       notifyListeners();
+    } finally {
+      _togglingCMSidePage = false;
     }
-    _togglingCMSidePage = false;
   }
 
   changeCurrentKey(MessageKey key) {

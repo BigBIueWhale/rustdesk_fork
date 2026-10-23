@@ -12655,47 +12655,45 @@ the existing 21 allocation-child processes are joined. Evidence:
 These controlled schedules do not establish all interleavings, real CM producer/IPC hops,
 installed/mobile behavior, latency or soak acceptance.
 
-**Directory-response conversion — Linux component PASS; caller integration OPEN.**
-`8b02008d` makes each directory's entry-vector reservation fallible;
-`c6a79d50` also reserves the outer directory batch fallibly before converting entries.
-Both return explicit errors through the existing result path. File-kind mapping,
-fields, ordering and protocol are preserved. The batch helper's test-preparation
-commit `565e0dd8` extracts the exact former collect expression and changes only
-its call site before the A/B correction. Native refusal of the old output allocation
-aborts three children for one/five/sixty-four entries and, separately, three for
-one/five/sixty-four directories. The batch baseline passes thirty-one tests and fails
-the new refusal test; its retained artifact record has the terminal hash only.
-Corrected source passes all thirty-two tests in 1.14s (105s outer). Both refusal
-families retain exact response identity through actual closed-response JSON and the
-production CM queue; fresh conversions then preserve exact contents. Healthy controls
-cover empty/single/multiple results, all five kinds, UTF-8 names/paths, hidden flags,
-sizes/timestamps and order. Unknown kinds refuse, including first/middle/last batch
-positions. Twenty-nine child invocations, including four positive allocation probes,
-and sixteen existing producer threads join; A/B VM/RAM roots retire.
-Source, artifacts and receipts: `cm-directory-allocation-77d5ab6a.json` and
-`cm-directory-batch-allocation-26af6d15.json`. Refusal is selective and one-time;
-small error strings, encoding and caller/job allocations remain available.
-Complete filesystem enumeration/handlers, connection-side DTO-to-protobuf allocation
-and validation/serialization, native IPC authorization, installed services, other
-platforms and blanket memory pressure remain OPEN.
+**Directory conversions — source corrected; Linux component PASS; handler integration OPEN.**
+The four output vectors used by shared CM-to-DTO entry/batch conversion and
+connection-side DTO-to-protobuf entry/batch conversion reserve fallibly. The latest
+correction `a17203df` adds explicit entry/batch errors to the connection side.
+Field/kind mapping, ordering, count/name/time validation, result propagation and the
+protocol are preserved. Its size guard uses the full computed `u64` encoded length
+against the same 16 MiB limit without allocating a disposable encoded copy.
 
-**Connection-side directory size admission — Linux component PASS; complete caller OPEN.**
-`18affc13` compares protobuf's full `u64` computed size with the same 16 MiB limit
-without first serializing a disposable copy. The exact final admission block runs in
-a function wrapper with generated production messages and the actual limit; it does
-not execute the enclosing validation/connection method. At unchanged-product
-`8c7854d2`, the new refusal test fails and thirty-three tests pass: all four native
-children abort when their encoded-copy allocation is denied. Healthy observations
-show one full-size copy for each nonempty message, including oversize before rejection.
-Corrected source passes all thirty-four tests in 1.00s (103s outer). Empty, 2 KiB,
-limit-minus-one and exact-limit guards allocate nothing; limit-plus-one keeps its
-explicit refusal using one 108-byte diagnostic allocation. Actual serialized bytes,
-nested entry fields and retained path ownership match. Thirty-four child invocations,
-five positive allocator probes and sixteen existing producer threads join; A/B VM/RAM
-roots retire. `cm-directory-size-d023a678.json` retains the evidence and the baseline's
-failure-tail limits (terminal artifact hash, summary and ten test names; no before hash
-or dependency/input-part receipts). Complete DTO conversion, file validation, handlers,
-native IPC/installed behavior, other platforms and broad OOM acceptance remain OPEN.
+The focused Linux artifact executes the complete production
+`cm_file_directory_to_proto` method and exact batch conversion body in wrappers,
+with actual filesystem name/list/time validators, count getters, the production
+default-empty builtin settings map and generated messages. Ten single-directory
+controls exercise both flag branches through the 10,000-entry boundary; five batch
+controls reach the same directory-count boundary. Eighteen refusals cover invalid
+names, Linux drive entries, timestamp/count/size overflow, empty-name rules and
+first/middle/last batch failures. Legitimate single-empty-name transfer is retained;
+all fields, ordering and actual protobuf wire bytes match.
+
+At unchanged-product `3aa57606`, thirty-five tests pass and the new refusal test
+fails: six entry-vector cases (both flag branches, one/five/sixty-four entries) and
+three batch-vector cases abort their native children. Corrected source passes all
+thirty-six tests in 1.30s (106s outer); all nine selected refusals report errors and
+fresh conversions then succeed in the same children. Existing shared-CM refusal,
+queue, concurrent-producer, codec and size-boundary tests remain green. The size
+guard allocates nothing through the exact limit and uses one 108-byte diagnostic
+allocation for limit-plus-one. Forty-four child invocations, including six positive
+allocation probes, and sixteen existing producer threads join. Both A/B artifact
+hashes, seventeen source-input and sixteen source-part receipts and dependency
+records are retained; successful completion rechecks source inputs. Runtime failure
+records are bounded rather than discarded by a generic tail. VM/RAM roots retire
+under the unchanged 2 GiB guest/6 GiB scratch/4 GiB overlay/6 GiB headroom profile.
+
+Current evidence: `cm-proto-allocation-920a4229.json`. Earlier isolated entry,
+batch and size evidence remains in `cm-directory-allocation-77d5ab6a.json`,
+`cm-directory-batch-allocation-26af6d15.json` and `cm-directory-size-d023a678.json`.
+Faults are selective; error strings and surrounding allocations remain available.
+Complete connection handlers, filesystem enumeration/jobs, native CM IPC authority,
+installed services/settings, Windows/mobile/other-platform behavior, blanket memory
+pressure, R-S0 and R-F5 acceptance remain OPEN.
 
 
 Desktop response-write lifetime now has the named Linux socket-backpressure A/B

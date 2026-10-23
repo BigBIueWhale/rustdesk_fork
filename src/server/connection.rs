@@ -11666,11 +11666,8 @@ impl Connection {
             entries,
             ..Default::default()
         };
-        let serialized_len = directory
-            .write_to_bytes()
-            .map_err(|error| format!("invalid connection manager directory: {}", error))?
-            .len();
-        if serialized_len > fs::MAX_FILE_ENUM_SERIALIZED_BYTES {
+        let serialized_len = directory.compute_size();
+        if serialized_len > fs::MAX_FILE_ENUM_SERIALIZED_BYTES as u64 {
             return Err(format!(
                 "connection manager directory exceeds {} serialized bytes",
                 fs::MAX_FILE_ENUM_SERIALIZED_BYTES

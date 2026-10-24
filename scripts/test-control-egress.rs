@@ -24,7 +24,7 @@ mod controlled_voice;
 #[path = "test-port-forward-settings.rs"]
 mod port_forward_settings;
 
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 mod port_forward {
     pub(crate) use crate::port_forward_settings::listen_admitted;
 }

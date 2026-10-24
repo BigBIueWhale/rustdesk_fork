@@ -139,8 +139,8 @@ def main():
     session = inputs["src/ui_session_interface.rs"].decode("utf-8")
     client = inputs["src/client.rs"].decode("utf-8")
     peer_config_source = inputs["libs/hbb_common/src/config.rs"].decode("utf-8")
-    asynchronous_settings = "pub async fn add_port_forward(" in session
-    method_prefix = "pub async fn" if asynchronous_settings else "pub fn"
+    transactional_settings = "pub struct SavedPortForwardRequest {" in session
+    method_prefix = "pub fn"
     snippets["pf-settings-producer.rs"] = (
         "impl<T: InvokeUiSession> Session<T> {\n" + between(
             session, f"    {method_prefix} remove_port_forward(",
@@ -168,9 +168,14 @@ def main():
     snippets["pf-settings-request.rs"] = (between(
         session, "#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\npub struct SavedPortForwardRequest {",
         "#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\nstruct OwnedPortForwardMapping {")
-        if asynchronous_settings else "// The baseline has no result-bearing mapping request.\n")
-    if asynchronous_settings:
-        os.environ["RUSTFLAGS"] = os.environ.get("RUSTFLAGS", "") + " --cfg pf_settings_async"
+        if transactional_settings else "// The baseline has no result-bearing mapping request.\n")
+    ffi_source = inputs["src/flutter_ffi.rs"].decode("utf-8")
+    ffi_start = re.findall(r"(?m)^pub (?:async )?fn session_add_port_forward\(", ffi_source)
+    if len(ffi_start) != 1:
+        raise ValueError("tunnel FFI declaration is absent or ambiguous")
+    snippets["pf-settings-ffi.rs"] = between(ffi_source, ffi_start[0], "pub fn session_new_rdp(")
+    if transactional_settings:
+        os.environ["RUSTFLAGS"] = os.environ.get("RUSTFLAGS", "") + " --cfg pf_settings_results"
         port_forward = inputs["src/port_forward.rs"].decode("utf-8")
         tcp = inputs["libs/hbb_common/src/tcp.rs"].decode("utf-8")
         snippets["pf-settings-owner.rs"] = between(
@@ -440,9 +445,9 @@ def main():
                                ("CONTROLLED_VOICE_SEND", "controlled-voice-send.rs"),
                                ("CONTROLLED_VOICE_COMMAND", "controlled-voice-command.rs")):
             os.environ[variable] = str(fixture / name)
-        for part in ("producer", "send", "cache", "peer-mutation", "data", "queue", "target", "request"):
+        for part in ("producer", "send", "cache", "peer-mutation", "data", "queue", "target", "request", "ffi"):
             os.environ["PF_SETTINGS_" + part.replace("-", "_").upper()] = str(fixture / ("pf-settings-" + part + ".rs"))
-        if asynchronous_settings:
+        if transactional_settings:
             for part in ("owner", "port-owner", "listener", "listen-wait", "native-bind"):
                 os.environ["PF_SETTINGS_" + part.replace("-", "_").upper()] = str(fixture / ("pf-settings-" + part + ".rs"))
         os.environ["CM_CHAT_TESTS"] = str(repo / "scripts/test-cm-chat.rs")

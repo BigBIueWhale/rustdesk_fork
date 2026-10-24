@@ -1100,10 +1100,10 @@ if grep -qE '\bcm_get_config\b|\bcmGetConfig\b' src/flutter_ffi.rs flutter/lib/c
 fi
 grep -qF 'pub fn cm_should_hide() -> Result<bool>' src/flutter_ffi.rs \
   || mobile_authority_bad="$mobile_authority_bad typed-cm-visibility-missing"
-grep -A5 -F 'pub async fn session_add_port_forward(' src/flutter_ffi.rs \
+grep -A5 -F 'pub fn session_add_port_forward(' src/flutter_ffi.rs \
   | grep -Fq ') -> Result<()> {' \
   || mobile_authority_bad="$mobile_authority_bad port-forward-add-not-fallible"
-grep -qF 'pub async fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> Result<()> {' src/flutter_ffi.rs \
+grep -qF 'pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> Result<()> {' src/flutter_ffi.rs \
   || mobile_authority_bad="$mobile_authority_bad port-forward-remove-not-fallible"
 grep -qF 'pub fn session_new_rdp(session_id: SessionID) -> Result<()> {' src/flutter_ffi.rs \
   || mobile_authority_bad="$mobile_authority_bad rdp-constructor-not-fallible"

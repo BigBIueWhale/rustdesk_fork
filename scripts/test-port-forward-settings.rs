@@ -5,11 +5,11 @@ use crate::{anyhow::{anyhow, bail}, message_proto::*, ResultType, tokio, log};
 use protobuf::Message as _;
 use std::{path::PathBuf, sync::{Arc, Mutex, RwLock}, time::Duration};
 use tokio::time::Duration as TokioDuration;
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 use std::{collections::HashMap, net::SocketAddr, sync::atomic::{AtomicUsize, Ordering}};
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 use tokio::sync::{mpsc, Semaphore, OwnedSemaphorePermit};
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 use tokio_util::sync::CancellationToken;
 
 type JobType = ();
@@ -55,7 +55,7 @@ struct Session<T: InvokeUiSession = TestHandler> {
     sender: Arc<RwLock<Option<ViewerCommandSender>>>,
     args: Vec<String>,
     ui_handler: T,
-    #[cfg(pf_settings_async)]
+    #[cfg(pf_settings_results)]
     listener_starts: Arc<AtomicUsize>,
 }
 impl<T: InvokeUiSession> Session<T> {
@@ -78,7 +78,7 @@ impl Fixture {
             sender: Arc::new(RwLock::new(sender)),
             args: Vec::new(),
             ui_handler: TestHandler,
-            #[cfg(pf_settings_async)]
+            #[cfg(pf_settings_results)]
             listener_starts: Arc::new(AtomicUsize::new(0)),
         } }
     }
@@ -88,13 +88,13 @@ impl Fixture {
     }
 }
 
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 include!(env!("PF_SETTINGS_OWNER"));
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 include!(env!("PF_SETTINGS_PORT_OWNER"));
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 include!(env!("PF_SETTINGS_LISTENER"));
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 mod tcp {
     use crate::{anyhow::Context, ResultType, tokio::net::{lookup_host, TcpListener, TcpSocket, ToSocketAddrs}};
     include!(env!("PF_SETTINGS_NATIVE_BIND"));
@@ -102,36 +102,36 @@ mod tcp {
 
 // The production listener's preparation runs, including its native exclusive
 // loopback bind. The peer authentication/relay loop is a close-waiting double.
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 trait Interface: Clone + Send + 'static { fn listener_started(&self); }
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 impl<T: InvokeUiSession> Interface for Session<T> {
     fn listener_started(&self) { self.listener_starts.fetch_add(1, Ordering::SeqCst); }
 }
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 include!(env!("PF_SETTINGS_LISTEN_WAIT"));
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 fn run_rdp(_port: u16) -> ResultType<()> { Ok(()) }
 
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 async fn selected(
     session: &Session,
     receiver: &mut ViewerCommandReceiver,
     supervisor: &PortForwardSupervisorOwner,
-) {
+) -> bool {
     let command = tokio::time::timeout(Duration::from_secs(2), receiver.recv()).await.unwrap();
     let Some(Ok(Data::SavedPortForward(request))) = command else { panic!("missing owned mapping request") };
     let result = session.apply_saved_port_forward(request.change, supervisor).await;
-    let _ = request.completed.send(result);
+    request.completed.try_send(result).is_ok()
 }
 
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 async fn request_add(session: &Session, port: i32) -> tokio::task::JoinHandle<ResultType<()>> {
     let session = session.clone();
     tokio::spawn(async move { add(&session, port).await })
 }
 
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 #[tokio::test(flavor = "current_thread")]
 async fn mapping_bind_failure_retries_the_saved_target() {
     let (sender, mut receiver) = viewer_command_channel();
@@ -170,7 +170,7 @@ async fn mapping_bind_failure_retries_the_saved_target() {
     println!("PF_SETTINGS_BIND=pass collision=reported saved=retained retry=listening repeat=not-restarted remove=joined socket=rebindable");
 }
 
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 #[tokio::test(flavor = "current_thread")]
 async fn mapping_operations_wait_for_selection_and_keep_fifo_order() {
     let (sender, mut receiver) = viewer_command_channel();
@@ -181,7 +181,9 @@ async fn mapping_operations_wait_for_selection_and_keep_fifo_order() {
     drop(port_owner);
     let port = i32::from(address.port());
     let addition = request_add(&fixture.session, port).await;
-    tokio::task::yield_now().await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while receiver.commands.len() == 0 { tokio::task::yield_now().await; }
+    }).await.unwrap();
     assert!(!addition.is_finished());
     assert!(fixture.bytes().is_none());
     let session = fixture.session.clone();
@@ -198,28 +200,17 @@ async fn mapping_operations_wait_for_selection_and_keep_fifo_order() {
     println!("PF_SETTINGS_ORDER=pass before-selection=unchanged reply=waits fifo=add-remove effects=file-and-socket cleanup=joined");
 }
 
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 #[tokio::test(flavor = "current_thread")]
-async fn selected_mapping_operation_finishes_after_requester_exit() {
-    let (sender, mut receiver) = viewer_command_channel();
-    let fixture = Fixture::new(Some(sender));
-    let supervisor = PortForwardSupervisorOwner::start(fixture.session.clone()).unwrap();
-    let port_owner = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
-    let address = port_owner.local_addr().unwrap(); drop(port_owner);
-    let operation = request_add(&fixture.session, i32::from(address.port())).await;
-    let Some(Ok(Data::SavedPortForward(request))) = receiver.recv().await else { panic!("no request") };
-    operation.abort(); assert!(operation.await.unwrap_err().is_cancelled());
-    let result = fixture.session.apply_saved_port_forward(request.change, &supervisor).await;
-    assert!(result.is_ok());
-    assert!(request.completed.send(result).is_err());
-    assert!(fixture.bytes().is_some());
-    assert!(tcp::new_exclusive_listener(address).await.is_err());
-    supervisor.close_and_join().await.unwrap();
-    drop(tcp::new_exclusive_listener(address).await.unwrap());
-    println!("PF_SETTINGS_FINALITY=pass requester=cancelled selected=completed saved=present listener=owned shutdown=joined socket=rebindable");
+async fn bridge_exports_return_worker_results() {
+    let _: fn(ffi::SessionID, i32, String, i32) -> ResultType<()> = ffi::session_add_port_forward;
+    let _: fn(ffi::SessionID, i32) -> ResultType<()> = ffi::session_remove_port_forward;
+    assert!(ffi::session_add_port_forward(uuid::Uuid::new_v4(), 31000, "localhost".into(), 22).is_err());
+    assert!(ffi::session_remove_port_forward(uuid::Uuid::new_v4(), 31000).is_err());
+    println!("PF_SETTINGS_BRIDGE=pass exports=2 mode=worker-results unknown-session=refused futures=absent");
 }
 
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 #[tokio::test(flavor = "current_thread")]
 async fn mapping_write_refusal_precedes_listener_and_recovers() {
     use std::os::unix::fs::PermissionsExt;
@@ -246,7 +237,7 @@ async fn mapping_write_refusal_precedes_listener_and_recovers() {
     println!("PF_SETTINGS_WRITE=pass permission=refused cache=preserved listener=not-started retry=applied shutdown=joined");
 }
 
-#[cfg(pf_settings_async)]
+#[cfg(pf_settings_results)]
 #[tokio::test(flavor = "current_thread")]
 async fn mapping_result_deadline_reports_uncertainty_without_cancelling_owned_work() {
     let (sender, mut receiver) = viewer_command_channel();
@@ -261,7 +252,7 @@ async fn mapping_result_deadline_reports_uncertainty_without_cancelling_owned_wo
     assert!(error.contains("not yet known") && error.contains("may still finish"), "{error}");
     assert!(start.elapsed() >= Duration::from_millis(4500));
     assert!(fixture.bytes().is_none());
-    selected(&fixture.session, &mut receiver, &supervisor).await;
+    assert!(!selected(&fixture.session, &mut receiver, &supervisor).await);
     assert!(fixture.bytes().is_some());
     assert!(tcp::new_exclusive_listener(address).await.is_err());
     supervisor.close_and_join().await.unwrap();
@@ -271,15 +262,15 @@ async fn mapping_result_deadline_reports_uncertainty_without_cancelling_owned_wo
 impl Drop for Fixture { fn drop(&mut self) { std::fs::remove_dir_all(&self.root).unwrap(); } }
 
 async fn add(session: &Session, port: i32) -> ResultType<()> {
-    #[cfg(pf_settings_async)]
-    { session.add_port_forward(port, "localhost".into(), 22).await }
-    #[cfg(not(pf_settings_async))]
+    #[cfg(pf_settings_results)]
+    { let session = session.clone(); tokio::task::spawn_blocking(move || session.add_port_forward(port, "localhost".into(), 22)).await? }
+    #[cfg(not(pf_settings_results))]
     { session.add_port_forward(port, "localhost".into(), 22) }
 }
 async fn remove(session: &Session, port: i32) -> ResultType<()> {
-    #[cfg(pf_settings_async)]
-    { session.remove_port_forward(port).await }
-    #[cfg(not(pf_settings_async))]
+    #[cfg(pf_settings_results)]
+    { let session = session.clone(); tokio::task::spawn_blocking(move || session.remove_port_forward(port)).await? }
+    #[cfg(not(pf_settings_results))]
     { session.remove_port_forward(port) }
 }
 
@@ -320,13 +311,13 @@ async fn identical_saved_mapping_still_requests_runtime_application() {
     let before = fixture.bytes();
     let session = fixture.session.clone();
     let operation = tokio::spawn(async move { add(&session, 31002).await });
-    let command = tokio::time::timeout(Duration::from_millis(200), receiver.recv()).await;
+    let command = tokio::time::timeout(Duration::from_secs(2), receiver.recv()).await;
     let queued = match command {
-        #[cfg(pf_settings_async)]
+        #[cfg(pf_settings_results)]
         Ok(Some(Ok(Data::SavedPortForward(request)))) => {
-            request.completed.send(Ok(())).unwrap(); true
+            request.completed.try_send(Ok(())).unwrap(); true
         }
-        #[cfg(not(pf_settings_async))]
+        #[cfg(not(pf_settings_results))]
         Ok(Some(Ok(Data::AddPortForward(_)))) => true,
         _ => false,
     };
@@ -335,4 +326,14 @@ async fn identical_saved_mapping_still_requests_runtime_application() {
     let preserved = fixture.bytes() == before;
     println!("PF_SETTINGS_RETRY=observed queued={queued} succeeded={succeeded} file_unchanged={preserved}");
     assert!(queued && succeeded && preserved, "an identical durable mapping suppressed its runtime retry");
+}
+
+#[cfg(pf_settings_results)]
+mod ffi {
+    use crate::anyhow::Result;
+    pub(super) type SessionID = uuid::Uuid;
+    mod sessions {
+        pub(super) fn get_session_by_session_id(_id: &super::SessionID) -> Option<super::super::Session> { None }
+    }
+    include!(env!("PF_SETTINGS_FFI"));
 }

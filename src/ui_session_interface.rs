@@ -819,13 +819,12 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub async fn remove_port_forward(&self, port: i32) -> ResultType<()> {
+    pub fn remove_port_forward(&self, port: i32) -> ResultType<()> {
         self.change_saved_port_forward(SavedPortForwardChange::Remove(port))
-            .await
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub async fn add_port_forward(
+    pub fn add_port_forward(
         &self,
         port: i32,
         remote_host: String,
@@ -840,23 +839,29 @@ impl<T: InvokeUiSession> Session<T> {
             remote_host,
             remote_port,
         )))
-        .await
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    async fn change_saved_port_forward(&self, change: SavedPortForwardChange) -> ResultType<()> {
+    fn change_saved_port_forward(&self, change: SavedPortForwardChange) -> ResultType<()> {
         if !self.is_port_forward() || self.is_rdp() || !self.args.is_empty() {
             bail!("Saved tunnel settings require their port-forward session");
         }
-        let (completed, result) = tokio::sync::oneshot::channel();
+        let (completed, result) = std::sync::mpsc::sync_channel(1);
         self.try_send(Data::SavedPortForward(SavedPortForwardRequest {
             change,
             completed,
         }))?;
-        tokio::time::timeout(TokioDuration::from_secs(5), result)
-            .await
-            .map_err(|_| anyhow!("Tunnel setting outcome is not yet known; the operation may still finish"))?
-            .map_err(|_| anyhow!("Tunnel setting outcome is unavailable"))?
+        // These synchronous FFI operations run on the bridge worker pool. Only
+        // the reply wait belongs here; the async owner performs and drains I/O.
+        match result.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(outcome) => outcome,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(anyhow!(
+                "Tunnel setting outcome is not yet known; the operation may still finish"
+            )),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err(anyhow!("Tunnel setting outcome is unavailable"))
+            }
+        }
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2417,8 +2422,8 @@ async fn run_io_runtime<T: InvokeUiSession>(
                         let result = handler
                             .apply_saved_port_forward(request.change, &supervisor)
                             .await;
-                        if request.completed.send(result).is_err() {
-                            log::debug!("tunnel setting requester closed before completion");
+                        if let Err(err) = request.completed.try_send(result) {
+                            log::debug!("tunnel setting result could not be delivered: {err}");
                         }
                     }
                     Some(Ok(Data::Close)) | None => {
@@ -2476,7 +2481,7 @@ async fn run_io_runtime<T: InvokeUiSession>(
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub struct SavedPortForwardRequest {
     change: SavedPortForwardChange,
-    completed: tokio::sync::oneshot::Sender<ResultType<()>>,
+    completed: std::sync::mpsc::SyncSender<ResultType<()>>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

@@ -4281,7 +4281,7 @@ run_focused_rust_tests() {
                 port_forward_settings::unavailable_mapping_round_refuses_before_persistence
                 port_forward_settings::identical_saved_mapping_still_requests_runtime_application
                 port_forward_settings::mapping_bind_failure_retries_the_saved_target
-                port_forward_settings::selected_mapping_operation_finishes_after_requester_exit
+                port_forward_settings::bridge_exports_return_worker_results
                 port_forward_settings::mapping_operations_wait_for_selection_and_keep_fifo_order
                 port_forward_settings::mapping_write_refusal_precedes_listener_and_recovers
                 port_forward_settings::mapping_result_deadline_reports_uncertainty_without_cancelling_owned_work

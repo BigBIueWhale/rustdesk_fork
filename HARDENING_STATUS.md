@@ -3434,48 +3434,40 @@ directory-writer final exchange races remain OPEN. Unix identity checks do not
 make a by-name rename/unlink conditional on the checked inode. No whole-product
 LPE closure follows; all user parks and broader release obligations remain intact.
 
-**Receive digest/manifest binding and next-file handshake — Linux native component corrected; integration/platform acceptance OPEN.**
-`TransferJob::admit_receive_digest` (`05c1a5e4`) consumes the complete typed digest
-and validates receive role, exact job ID, current or immediately succeeding index,
-admitted entry and matching declared size before mutation. A succeeding digest
-finishes the previous file through its retained claim before publishing the next
-index, resetting confirmation state and replacing the cached digest. An incomplete
-predecessor refuses. This preserves the size bound from `dac08e5a` while allowing
-the sender's next-file digest to precede its first block. The implicit scalar setter
-and duplicated receiver equality guards are removed; viewer and CM callers await
-the same admission before destination inspection. Existing connection/generation,
-error/cancellation cleanup and terminal Done authority remain. No dependency,
-policy mode, protocol or required feature is added.
+**Receive digest inspection and next-file handshake — Linux native component corrected; integration/platform acceptance OPEN.**
+`TransferJob::inspect_receive_digest` (`9ed8e979`) owns validation, destination inspection
+and cache publication. It checks receive role, exact job ID, current or immediate-successor
+manifest index and declared size, and derives the bound destination before side effects.
+A successor must complete the previous file through its retained claim before the next
+inspection. The existing leased, regular-file, no-follow inspection runs on the existing
+Tokio blocking pool; only its successful result, including lease retirement, publishes
+the incoming digest cache. A completed predecessor remains published if the next inspection
+fails. The old admission-only method and facade-local inspection are removed; viewer and CM
+await the same operation and retain their connection/generation and terminal-failure owners.
+No dependency, policy mode, protocol or required feature is added. R-S11fj and Appendix C #318
+now allow that validated successor while requiring failed inspection to preserve cached state
+and inspected objects; blanket rejection of every non-current digest is removed.
 
-At test baseline `3e5de21b`, the shared setter accepted zero, smaller, larger and
-`u64::MAX` sizes against a three-byte manifest; the new regression failed while
-43 controls passed. The identical regression passes at `dac08e5a`, preserving
-cached state and destination/sidecars on each conflicting size, with a matching-size
-control that commits exact bytes and retires its sidecars. All **124 required names
-and 33 groups** pass in the existing `--file-metadata-tests` profile (187 outer
-seconds). The old overlong-resume test still injects a corrupt private cache to
-exercise the sink's independent manifest bound. Exact sources, artifacts, raw
-results, endpoint observations and joined RAM/private-root retirement are retained
-in `.harness-state/verifier-vm/receive-digest-2cfaac0d.json`.
-API preparation `6d54a854` moves the existing receiver ID/index checks into the
-typed method while retaining its old equality rule and role/size setter body.
-It reproduces rejection of file 1's digest in all three real-file sender/receiver
-sequences, with 45 controls passing. At `05c1a5e4`, the identical two new tests
-pass: three-file transfers cover different/equal lengths and empty files, exact
-publication/accounting and sidecar retirement; eleven wrong-job, negative,
-out-of-list, skipped-index, wrong-size and short-predecessor requests preserve the
-current claim, staged bytes, index, cached digest and counters. All **126 required
-names and 33 groups** pass in 190 outer seconds with joined bounded-RAM cleanup.
-Successful case-level diagnostics are filtered by the existing guest whitelist;
-retained exact test names, summaries, artifact identity and source-bound assertions
-establish those checks. `.harness-state/verifier-vm/receive-next-digest-14f24f57.json`
-binds the A/B sources/results, artifacts, failure-root reconciliation, endpoint
-observations and cleanup. Subsequent changes outside the ledger only correct a
-test comment and rename the unlisted-file caller test; no behavior changes.
-This executes the Linux shared library and real files, not the complete CM/viewer,
-an installed privileged service or another target OS. Their compilation/integration,
-authorized/refused principal, UI, resource/latency and release acceptance remain
-OPEN; all existing parks remain in force. No complete LPE-immunity claim follows.
+| Named evidence | Executed distinction and limits |
+| --- | --- |
+| `dac08e5a`; `receive-digest-2cfaac0d.json` | At `3e5de21b`, the scalar setter accepted zero, smaller, larger and `u64::MAX` sizes against a three-byte manifest: one regression failed with 43 controls passing. Correction passes all 124 required names/33 groups in 187 seconds, preserving cached fields and objects on size refusal and committing matching-size exact bytes. The overlong-resume regression deliberately injects a corrupt private cache to exercise the sink’s independent manifest bound. |
+| `05c1a5e4`; `receive-next-digest-14f24f57.json` | API preparation `6d54a854` preserves the old equality rule and role/size body: all three next-file sequences reject file 1’s digest, with 45 controls passing. The identical two new tests then pass with all 126 required names/33 groups in 190 seconds. They cover different/equal lengths, empty files, exact publication/accounting/cleanup and eleven wrong-job/index/size/short-predecessor refusals. Successful individual diagnostics were filtered; exact names, summaries, source-bound assertions and artifact identity are retained. |
+| `9ed8e979`, harness `f7ab8afa`; `receive-inspection-cache-9a4ff02e.json` | Preparation `575104af` centralizes the old operation order: two regressions fail with 46 tests passing. Malformed resume JSON, a linked destination, pre-epoch metadata and failed next-file inspection all change the cache despite returning errors; three healthy controls pass. The identical new tests pass after correction, with all 129 required names/34 groups in 190 seconds. Failure preserves cached fields, inspected objects and unconfirmed state; next-file failure preserves the completed predecessor and unrelated partial/digest. Missing/existing/resume controls commit exact bytes and retire sidecars. The existing cross-process lease control also proves contender refusal, joined abrupt-owner termination and exact resume. Seven individual observations, every required name and stable common/socket-policy/descriptor artifact receipts are retained. |
+
+The first corrected attempt is rejected: the newly added lease group produced 34 summaries
+while the harness still expected 33. Its bounded failure tail retains later controls and
+artifact receipts, not complete scenario output. `f7ab8afa` corrects the count and exports
+the lease test name; the accepted rerun uses the identical common executable digest.
+The capsule binds all sources, rejected/accepted results, exact failed-root reconciliation,
+complete endpoint observations and joined bounded-RAM/private-root cleanup. Evidence paths
+above are relative to `.harness-state/verifier-vm/`.
+
+This executes the Linux shared library and real files, not complete CM/viewer applications,
+native peer/IPC or an installed privileged service. Full parent/caller compilation and
+integration, authorized/refused installed principals, other target OS, cancellation/worker
+drain, further namespace/ACL/mount races, power-loss durability, UI, resource/latency soaks,
+R-S0/R-F5 and release/independent/external acceptance remain OPEN. All user parks, including
+the three generic receive pre-I/O cases, remain in force. No complete LPE-immunity claim follows.
 
 **Receive resume-length admission — Linux native component corrected; installed/platform acceptance OPEN.**
 Product `ad57ba2a` checks the opened partial file's length both before offering a

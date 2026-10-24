@@ -694,11 +694,12 @@ class ServerModel with ChangeNotifier {
         .updateConnIdOfKey(MessageKey(client.peerId, client.id));
   }
 
-  Future<void> handleVoiceCall(Client client, bool accept) async {
+  Future<void> handleVoiceCall(CmVoiceCallOwner owner, bool accept) async {
     try {
       if (!await bind.cmHandleIncomingVoiceCall(
-          id: client.id,
-          registryGeneration: client.registryGeneration,
+          id: owner.id,
+          registryGeneration: owner.registryGeneration,
+          callId: owner.callId,
           accept: accept)) {
         showToast(translate('Failed'));
       }
@@ -709,13 +710,14 @@ class ServerModel with ChangeNotifier {
   }
 
   showVoiceCallDialog(Client client) {
+    final owner = CmVoiceCallOwner(client);
     showClientDialog(
       client,
       'Voice call',
       'Do you accept?',
       'android_new_voice_call_tip',
-      () => handleVoiceCall(client, false),
-      () => handleVoiceCall(client, true),
+      () => handleVoiceCall(owner, false),
+      () => handleVoiceCall(owner, true),
     );
   }
 
@@ -832,14 +834,18 @@ class ServerModel with ChangeNotifier {
       if (index != -1) {
         final current = _clients[index];
         final wasIncoming = current.incomingVoiceCall;
+        final previousCallId = current.voiceCallId;
         if (current.inVoiceCall == client.inVoiceCall &&
-            current.incomingVoiceCall == client.incomingVoiceCall) {
+            current.incomingVoiceCall == client.incomingVoiceCall &&
+            current.voiceCallId == client.voiceCallId) {
           return;
         }
+        current.voiceCallId = client.voiceCallId;
         current.inVoiceCall = client.inVoiceCall;
         current.incomingVoiceCall = client.incomingVoiceCall;
         _commitClientStateMutation();
-        if (current.incomingVoiceCall && !wasIncoming) {
+        if (current.incomingVoiceCall &&
+            (!wasIncoming || previousCallId != current.voiceCallId)) {
           if (isAndroid) {
             showVoiceCallDialog(current);
           } else {
@@ -887,6 +893,17 @@ enum ClientType {
   terminal,
 }
 
+class CmVoiceCallOwner {
+  final int id;
+  final int registryGeneration;
+  final int callId;
+
+  CmVoiceCallOwner(Client client)
+      : id = client.id,
+        registryGeneration = client.registryGeneration,
+        callId = client.voiceCallId;
+}
+
 class Client {
   int id = 0; // client connections inner count id
   int registryGeneration = 0;
@@ -906,6 +923,7 @@ class Client {
   bool disconnected = false;
   bool inVoiceCall = false;
   bool incomingVoiceCall = false;
+  int voiceCallId = 0;
 
   RxInt unreadChatMessageCount = 0.obs;
 
@@ -932,6 +950,7 @@ class Client {
     disconnected = json['disconnected'];
     inVoiceCall = json['in_voice_call'];
     incomingVoiceCall = json['incoming_voice_call'];
+    voiceCallId = json['voice_call_id'];
   }
 
   Map<String, dynamic> toJson() {
@@ -954,6 +973,7 @@ class Client {
     data['disconnected'] = disconnected;
     data['in_voice_call'] = inVoiceCall;
     data['incoming_voice_call'] = incomingVoiceCall;
+    data['voice_call_id'] = voiceCallId;
     return data;
   }
 
@@ -977,7 +997,8 @@ class Client {
       privacyMode == other.privacyMode &&
       disconnected == other.disconnected &&
       inVoiceCall == other.inVoiceCall &&
-      incomingVoiceCall == other.incomingVoiceCall;
+      incomingVoiceCall == other.incomingVoiceCall &&
+      voiceCallId == other.voiceCallId;
 
   bool hasSameTabIdentity(Client other) =>
       hasSameOwner(other) && name == other.name && peerId == other.peerId;
@@ -1001,6 +1022,7 @@ class Client {
     disconnected = other.disconnected;
     inVoiceCall = other.inVoiceCall;
     incomingVoiceCall = other.incomingVoiceCall;
+    voiceCallId = other.voiceCallId;
   }
 
   ClientType type_() {

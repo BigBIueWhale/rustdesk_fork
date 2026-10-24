@@ -710,6 +710,8 @@ FILE_NAVIGATION_SUITES = {
     },
 }
 PEER_DATA_TESTS = {
+    "CM voice callback retains its exact owner across client mutation",
+    "CM voice identity changes update retained native client state",
     "CM close batch retains rows after accepted submissions",
     "CM close batch refuses a false native result",
     "CM close batch waits for all mixed results",

@@ -2666,12 +2666,25 @@ pub enum Data {
     Control(DataControl),
     Empty,
     Disconnected,
-    VoiceCallIncoming,
-    StartVoiceCall,
-    VoiceCallResponse(bool),
-    CloseVoiceCall(String),
+    VoiceCallEvent(CmVoiceCallEvent),
+    VoiceCallCommand(CmVoiceCallCommand),
     FileTransferLog((String, String)),
     CmErr(String),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub enum CmVoiceCallEvent {
+    Incoming { call_id: i64 },
+    Started { call_id: i64 },
+    Closed { call_id: i64, reason: String },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub enum CmVoiceCallCommand {
+    Respond { call_id: i64, accept: bool },
+    Stop { call_id: i64 },
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

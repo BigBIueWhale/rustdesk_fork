@@ -1626,12 +1626,17 @@ pub fn session_get_conn_token(session_id: SessionID) -> SyncReturn<Option<String
     }
 }
 
-pub fn cm_handle_incoming_voice_call(id: i32, registry_generation: i64, accept: bool) -> bool {
-    crate::ui_cm_interface::handle_incoming_voice_call(id, registry_generation, accept)
+pub fn cm_handle_incoming_voice_call(
+    id: i32,
+    registry_generation: i64,
+    call_id: i64,
+    accept: bool,
+) -> bool {
+    crate::ui_cm_interface::handle_incoming_voice_call(id, registry_generation, call_id, accept)
 }
 
-pub fn cm_close_voice_call(id: i32, registry_generation: i64) -> bool {
-    crate::ui_cm_interface::close_voice_call(id, registry_generation)
+pub fn cm_close_voice_call(id: i32, registry_generation: i64, call_id: i64) -> bool {
+    crate::ui_cm_interface::close_voice_call(id, registry_generation, call_id)
 }
 
 pub fn set_voice_call_input_device(_is_cm: bool, _device: String) -> Result<()> {

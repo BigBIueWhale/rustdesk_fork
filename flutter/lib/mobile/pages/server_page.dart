@@ -482,6 +482,7 @@ class ConnectionManager extends StatelessWidget {
   }
 
   Widget _buildDisconnectButton(Client client) {
+    final voiceOwner = CmVoiceCallOwner(client);
     final disconnectButton = ElevatedButton.icon(
       style: ButtonStyle(backgroundColor: MaterialStatePropertyAll(Colors.red)),
       icon: const Icon(Icons.close),
@@ -510,8 +511,9 @@ class ConnectionManager extends StatelessWidget {
           onPressed: () async {
             try {
               if (!await bind.cmCloseVoiceCall(
-                  id: client.id,
-                  registryGeneration: client.registryGeneration)) {
+                  id: voiceOwner.id,
+                  registryGeneration: voiceOwner.registryGeneration,
+                  callId: voiceOwner.callId)) {
                 showToast(translate('Failed'));
               }
             } catch (error) {
@@ -538,18 +540,17 @@ class ConnectionManager extends StatelessWidget {
 
   List<Widget> _buildNewVoiceCallHint(
       BuildContext context, ServerModel serverModel, Client client) {
+    final voiceOwner = CmVoiceCallOwner(client);
     return [
       Text(
         translate("android_new_voice_call_tip"),
         style: Theme.of(context).textTheme.bodyMedium,
       ).marginOnly(bottom: 5),
-      // R-G7 / R-S9 (§19): the click-to-accept "Accept" button is removed — approve-mode is
-      // pinned 'password', so acceptance is automatic; only "Dismiss" (reject) survives.
       Row(mainAxisAlignment: MainAxisAlignment.end, children: [
         TextButton(
             child: Text(translate("Dismiss")),
             onPressed: () {
-              serverModel.handleVoiceCall(client, false);
+              serverModel.handleVoiceCall(voiceOwner, false);
             }).marginOnly(right: 15),
       ])
     ];

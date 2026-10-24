@@ -681,6 +681,7 @@ class _CmControlPanel extends StatelessWidget {
   }
 
   buildAuthorized(BuildContext context) {
+    final voiceOwner = CmVoiceCallOwner(client);
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
@@ -776,7 +777,7 @@ class _CmControlPanel extends StatelessWidget {
                 child: buildButton(
                   context,
                   color: Colors.red,
-                  onClick: () => closeVoiceCall(),
+                  onClick: () => closeVoiceCall(voiceOwner),
                   icon: Icon(
                     Icons.call_end_rounded,
                     color: Colors.white,
@@ -796,7 +797,7 @@ class _CmControlPanel extends StatelessWidget {
               Expanded(
                 child: buildButton(context,
                     color: MyTheme.accent,
-                    onClick: () => handleVoiceCall(true),
+                    onClick: () => handleVoiceCall(voiceOwner, true),
                     icon: Icon(
                       Icons.call_rounded,
                       color: Colors.white,
@@ -809,7 +810,7 @@ class _CmControlPanel extends StatelessWidget {
                 child: buildButton(
                   context,
                   color: Colors.red,
-                  onClick: () => handleVoiceCall(false),
+                  onClick: () => handleVoiceCall(voiceOwner, false),
                   icon: Icon(
                     Icons.phone_disabled_rounded,
                     color: Colors.white,
@@ -947,11 +948,12 @@ class _CmControlPanel extends StatelessWidget {
     }
   }
 
-  Future<void> handleVoiceCall(bool accept) async {
+  Future<void> handleVoiceCall(CmVoiceCallOwner owner, bool accept) async {
     try {
       if (!await bind.cmHandleIncomingVoiceCall(
-          id: client.id,
-          registryGeneration: client.registryGeneration,
+          id: owner.id,
+          registryGeneration: owner.registryGeneration,
+          callId: owner.callId,
           accept: accept)) {
         showToast(translate('Failed'));
       }
@@ -961,10 +963,12 @@ class _CmControlPanel extends StatelessWidget {
     }
   }
 
-  Future<void> closeVoiceCall() async {
+  Future<void> closeVoiceCall(CmVoiceCallOwner owner) async {
     try {
       if (!await bind.cmCloseVoiceCall(
-          id: client.id, registryGeneration: client.registryGeneration)) {
+          id: owner.id,
+          registryGeneration: owner.registryGeneration,
+          callId: owner.callId)) {
         showToast(translate('Failed'));
       }
     } catch (error) {

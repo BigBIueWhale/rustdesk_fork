@@ -1319,13 +1319,17 @@ class RustdeskImpl {
   Future<bool> cmHandleIncomingVoiceCall(
       {required int id,
       required int registryGeneration,
+      required int callId,
       required bool accept,
       dynamic hint}) {
     throw UnimplementedError("cmHandleIncomingVoiceCall");
   }
 
   Future<bool> cmCloseVoiceCall(
-      {required int id, required int registryGeneration, dynamic hint}) {
+      {required int id,
+      required int registryGeneration,
+      required int callId,
+      dynamic hint}) {
     throw UnimplementedError("cmCloseVoiceCall");
   }
 

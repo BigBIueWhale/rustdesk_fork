@@ -2,6 +2,7 @@
 // presence and clock are explicit doubles. No full server, CPace, IPC or audio runs.
 use crate::{ipc::{self, Data}, message_proto::{message, Message, VoiceCallRequest}};
 use futures::FutureExt;
+use crate::viewer_voice::new_voice_call_close;
 use std::{num::NonZeroI64, panic::AssertUnwindSafe, sync::atomic::{AtomicI64, Ordering}};
 use tokio::{sync::mpsc, time::{self, Duration}};
 
@@ -19,6 +20,10 @@ struct ControlledVoice {
     authed_conn_id: Option<TestAuthedConnId>,
     voice_call_request_timestamp: Option<NonZeroI64>,
     voice_call_input: Option<()>,
+    voice_call_id: i64,
+    voice_call_generation: i64,
+    responses: usize,
+    sent: Vec<Message>,
     tx_to_cm: mpsc::Sender<Data>,
     cm_command_failure: Option<String>,
     inner: TestInner,
@@ -31,10 +36,26 @@ impl ControlledVoice {
             authed_conn_id: kind.map(TestAuthedConnId),
             voice_call_request_timestamp: None, voice_call_input: None,
             tx_to_cm, cm_command_failure: None, inner: TestInner, close_calls: 0,
+            voice_call_id: 0, voice_call_generation: 0, responses: 0, sent: Vec::new(),
         }, rx)
     }
-    // Close requests are outside this admission fixture; assert this double stays unused.
-    async fn close_voice_call(&mut self) { self.close_calls += 1; }
+    // Effect doubles model state changes; no audio lease, native cleanup or transport runs.
+    async fn close_voice_call(&mut self) -> bool {
+        self.close_calls += 1;
+        let owned = self.voice_call_input.is_some() || self.voice_call_request_timestamp.is_some();
+        self.voice_call_input = None;
+        self.voice_call_request_timestamp = None;
+        self.voice_call_id = 0;
+        owned
+    }
+    async fn handle_voice_call(&mut self, accepted: bool) {
+        self.responses += 1;
+        if self.voice_call_request_timestamp.take().is_some() {
+            self.voice_call_input = accepted.then_some(());
+            if !accepted { self.voice_call_id = 0; }
+        }
+    }
+    async fn send(&mut self, message: Message) { self.sent.push(message); }
     // Cleanup effects remain outside the component; check the actual caller's policy.
     async fn on_close(&mut self, reason: &str, lock: bool) {
         assert_eq!(reason, "connection-manager voice request publication failed");
@@ -44,6 +65,7 @@ impl ControlledVoice {
 include!(env!("CONTROLLED_VOICE_TYPES"));
 include!(env!("CONTROLLED_VOICE_RECEIVE"));
 include!(env!("CONTROLLED_VOICE_SEND"));
+include!(env!("CONTROLLED_VOICE_COMMAND"));
 
 #[cfg(test)]
 mod tests {
@@ -68,6 +90,80 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn controlled_voice_cm_commands_require_current_call_and_phase() {
+        let mut all_correct = true;
+        for action in ["accept", "dismiss", "stop"] {
+            let mut calls = 0;
+            let mut correct_cases = 0;
+            for kind in [AuthConnType::Remote, AuthConnType::ViewCamera] {
+                for phase in ["idle", "incoming", "active"] {
+                    for call_id in [0, -1, 1, 2, 3, i64::MAX] {
+                        let (mut voice, _rx) = ControlledVoice::fixture(Some(kind));
+                        voice.voice_call_id = if phase == "idle" { 0 } else { 2 };
+                        voice.voice_call_generation = 2;
+                        voice.voice_call_request_timestamp = if phase == "incoming" { NonZeroI64::new(42) } else { None };
+                        voice.voice_call_input = (phase == "active").then_some(());
+                        let before = (voice.voice_call_id, voice.voice_call_request_timestamp, voice.voice_call_input);
+                        let command = match action {
+                            "stop" => ipc::CmVoiceCallCommand::Stop { call_id },
+                            _ => ipc::CmVoiceCallCommand::Respond { call_id, accept: action == "accept" },
+                        };
+                        voice.handle_cm_voice_call(command).await;
+                        let expected = call_id == 2 && phase == if action == "stop" { "active" } else { "incoming" };
+                        let selected = voice.responses + voice.close_calls;
+                        calls += selected;
+                        let effects = if expected {
+                            match action {
+                                "accept" => voice.voice_call_input.is_some() && voice.voice_call_request_timestamp.is_none() && voice.voice_call_id == 2 && voice.sent.is_empty(),
+                                "dismiss" => voice.voice_call_input.is_none() && voice.voice_call_request_timestamp.is_none() && voice.voice_call_id == 0 && voice.sent.is_empty(),
+                                _ => voice.voice_call_input.is_none() && voice.voice_call_request_timestamp.is_none() && voice.voice_call_id == 0 && matches!(voice.sent.as_slice(), [Message { union: Some(message::Union::VoiceCallRequest(request)), .. }] if !request.is_connect),
+                            }
+                        } else {
+                            (voice.voice_call_id, voice.voice_call_request_timestamp, voice.voice_call_input) == before && voice.sent.is_empty()
+                        };
+                        let correct = selected == usize::from(expected) && effects;
+                        correct_cases += usize::from(correct);
+                        all_correct &= correct;
+                    }
+                }
+            }
+            println!("CONTROLLED_VOICE_CALL_COMMAND_CASE=observed action={action} cases=36 selected={calls} expected=2 correct_cases={correct_cases}");
+        }
+        assert!(all_correct);
+        println!("CONTROLLED_VOICE_CALL_COMMAND=pass cases=108 identity=exact phase=exact retired=quiet current=usable effects=doubles");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn controlled_voice_call_ids_are_connection_owned_and_never_wrap() {
+        TEST_CLOCK.store(1234, Ordering::Relaxed);
+        for kind in [AuthConnType::Remote, AuthConnType::ViewCamera] {
+            let (mut voice, mut rx) = ControlledVoice::fixture(Some(kind));
+            for call_id in [1, 2, 3] {
+                assert!(voice.receive(request(42)).await);
+                assert_eq!(voice.voice_call_id, call_id);
+                assert_eq!(voice.voice_call_request_timestamp, NonZeroI64::new(42));
+                assert!(matches!(drain(&mut rx).as_slice(), [Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Incoming { call_id: observed })] if *observed == call_id));
+                assert!(voice.close_voice_call().await);
+            }
+            voice.voice_call_generation = i64::MAX - 1;
+            assert!(voice.receive(request(42)).await);
+            assert_eq!(voice.voice_call_id, i64::MAX);
+            assert!(matches!(drain(&mut rx).as_slice(), [Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Incoming { call_id: i64::MAX })]));
+            assert!(voice.close_voice_call().await);
+            for counter in [i64::MAX, -1, i64::MIN] {
+                voice.voice_call_generation = counter;
+                assert!(voice.receive(request(42)).await);
+                assert_eq!(voice.voice_call_generation, counter);
+                assert_eq!(voice.voice_call_id, 0);
+                assert!(voice.voice_call_request_timestamp.is_none());
+                assert!(voice.voice_call_input.is_none());
+                assert!(drain(&mut rx).is_empty());
+            }
+        }
+        println!("CONTROLLED_VOICE_CALL_IDS=pass types=2 repeated_peer_ids=6 last_positive=usable exhaustion=refused negative=refused namespace=connection-owned");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn controlled_voice_admission_preserves_positive_and_confined_controls() {
         TEST_CLOCK.store(1234, Ordering::Relaxed);
         for kind in [AuthConnType::Remote, AuthConnType::ViewCamera] {
@@ -75,7 +171,7 @@ mod tests {
                 let (mut voice, mut rx) = ControlledVoice::fixture(Some(kind));
                 assert!(voice.receive(request(id)).await);
                 assert!(unchanged(&voice, id, false));
-                assert!(matches!(drain(&mut rx).as_slice(), [Data::VoiceCallIncoming]));
+                assert!(matches!(drain(&mut rx).as_slice(), [Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Incoming { call_id: 1 })]));
             }
         }
         for kind in [None, Some(AuthConnType::FileTransfer), Some(AuthConnType::Terminal),
@@ -142,7 +238,7 @@ mod tests {
                 let messages = drain(&mut rx);
                 let pending = voice.voice_call_request_timestamp.map(NonZeroI64::get).unwrap_or(0);
                 let correct = completed && round && unchanged(&voice, id, false)
-                    && matches!(messages.as_slice(), [Data::VoiceCallIncoming]);
+                    && matches!(messages.as_slice(), [Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Incoming { call_id: 1 })]);
                 println!("CONTROLLED_VOICE_CLOCK_CASE=observed kind={kind:?} id={id} clock=0 completed={completed} round={round} pending={pending} queued={} correct={correct}", messages.len());
                 all_correct &= correct;
             }

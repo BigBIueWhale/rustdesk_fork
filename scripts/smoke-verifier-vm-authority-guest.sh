@@ -4276,6 +4276,10 @@ run_focused_rust_tests() {
                 scripts/test-controlled-voice.rs
             )
             required_tests=(
+                controlled_voice::tests::controlled_voice_cm_commands_require_current_call_and_phase
+                controlled_voice::tests::controlled_voice_call_ids_are_connection_owned_and_never_wrap
+                ui_cm_interface::voice_tests::cm_voice_actions_require_current_call_and_phase
+                ui_cm_interface::voice_tests::cm_voice_events_require_current_call_and_transition
                 controlled_voice::tests::controlled_voice_admission_preserves_positive_and_confined_controls
                 controlled_voice::tests::controlled_voice_nonpositive_ids_never_invent_an_owner
                 controlled_voice::tests::controlled_voice_positive_ids_ignore_wall_clock
@@ -6221,7 +6225,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=73 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=77 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6320,6 +6324,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$RUST_TEST_PROFILE" = control-egress ] \
             && grep -Eq '^CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256=[0-9a-f]{64} tests=[0-9]+$' "$output"; then
             awk '
+                /^VIEWER_VOICE_MISMATCH_CASE=/ { next }
                 /^(CONTROL_EGRESS_|RECENT_DOCUMENT_|CURSOR_ECHO_|VIEWER_VOICE_|CONTROLLED_VOICE_|test |CM_|CONTROL_QUEUE_|FILE_CLIP_QUEUE_|BYTES_CODEC_|memory allocation of )/ {
                     if (++records > 512) exit 1
                     print
@@ -6540,9 +6545,17 @@ PY
             || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=73 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=77 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
+        [ "$(grep -Fxc 'CM_VOICE_CALL_ACTION=pass cases=108 identity=exact phase=exact invalid=refused queues=real' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'CM_VOICE_CALL_EVENT=pass cases=108 incoming=fresh started=matching-pending closed=matching replay=refused state=preserved' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'CONTROLLED_VOICE_CALL_COMMAND=pass cases=108 identity=exact phase=exact retired=quiet current=usable effects=doubles' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'CONTROLLED_VOICE_CALL_IDS=pass types=2 repeated_peer_ids=6 last_positive=usable exhaustion=refused negative=refused namespace=connection-owned' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^CM_VOICE_CALL_ACTION_CASE=.* correct_cases=36$' "$output")" -eq 3 ] \
+            && [ "$(grep -Ec '^CM_VOICE_CALL_EVENT_CASE=.* correct_cases=36$' "$output")" -eq 3 ] \
+            && [ "$(grep -Ec '^CONTROLLED_VOICE_CALL_COMMAND_CASE=.* correct_cases=36$' "$output")" -eq 3 ] \
+            || fail 'voice call identity or phase admission differs'
         [ "$(grep -Fxc 'CONTROLLED_VOICE_CONTROLS=pass positive=6 type_refusals=16 overlap=8 exact_id=preserved queues=real' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'CONTROLLED_VOICE_INVALID=pass cases=12 nonpositive=refused pending=absent notice=absent clock=irrelevant' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'CONTROLLED_VOICE_CLOCK=pass cases=6 positive=exact zero_clock=usable notice=once' "$output")" -eq 1 ] \
@@ -10168,7 +10181,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_PEER_DATA_TEST_JSON
-            expected_result='suites=1 tests=45'
+            expected_result='suites=1 tests=47'
         elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
             memory=3g
             memory_bytes=3221225472
@@ -11113,7 +11126,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
-        printf 'FLUTTER_PEER_DATA_TESTS_VM=pass commit=%s tree=%s suites=1 tests=45 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-peer-decode-tests cleanup=joined\n' \
+        printf 'FLUTTER_PEER_DATA_TESTS_VM=pass commit=%s tree=%s suites=1 tests=47 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-peer-decode-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

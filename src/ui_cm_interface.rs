@@ -164,8 +164,7 @@ fn is_cm_egress_data(data: &Data) -> bool {
         | Data::CmErr(_)
         | Data::ChatMessage { .. }
         | Data::CmFileResponse(_)
-        | Data::VoiceCallResponse(_)
-        | Data::CloseVoiceCall(_) => true,
+        | Data::VoiceCallCommand(_) => true,
         #[cfg(target_os = "windows")]
         Data::PrivacyModeState(_) => true,
         #[cfg(target_os = "windows")]
@@ -544,6 +543,9 @@ pub struct Client {
     pub privacy_mode: bool,
     pub in_voice_call: bool,
     pub incoming_voice_call: bool,
+    pub voice_call_id: i64,
+    #[serde(skip)]
+    last_voice_call_id: i64,
     #[serde(skip)]
     source_generation: u64,
     #[serde(skip)]
@@ -703,6 +705,35 @@ impl CmClientRegistry {
         self.clients
             .get_mut(&owner.id)
             .filter(|client| client.registry_generation == owner.generation)
+    }
+
+    fn update_voice_call(
+        &mut self,
+        owner: CmClientOwner,
+        event: ipc::CmVoiceCallEvent,
+    ) -> Option<Client> {
+        let client = self
+            .current_mut(owner)
+            .filter(|client| client.conn_type.allows_voice_call())?;
+        match event {
+            ipc::CmVoiceCallEvent::Incoming { call_id } => {
+                client.voice_call_id = call_id;
+                client.last_voice_call_id = client.last_voice_call_id.max(call_id);
+                client.incoming_voice_call = true;
+                client.in_voice_call = false;
+            }
+            ipc::CmVoiceCallEvent::Started { call_id } => {
+                client.voice_call_id = call_id;
+                client.incoming_voice_call = false;
+                client.in_voice_call = true;
+            }
+            ipc::CmVoiceCallEvent::Closed { .. } => {
+                client.voice_call_id = 0;
+                client.incoming_voice_call = false;
+                client.in_voice_call = false;
+            }
+        }
+        Some(client.clone())
     }
 
     fn retire(&mut self, owner: CmClientOwner, close: bool) -> bool {
@@ -1017,7 +1048,12 @@ impl Drop for CmFileOperationTask {
 static EXIT_ON_IDLE: AtomicBool = AtomicBool::new(false);
 
 #[cfg(not(any(target_os = "ios")))]
-fn cm_voice_call_sender(id: i32, registry_generation: i64) -> Option<CmEgressSender> {
+fn cm_voice_call_sender(
+    id: i32,
+    registry_generation: i64,
+    _call_id: i64,
+    _incoming: bool,
+) -> Option<CmEgressSender> {
     let owner = CmClientOwner {
         id,
         generation: registry_generation,
@@ -1165,6 +1201,8 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             tx,
             in_voice_call: false,
             incoming_voice_call: false,
+            voice_call_id: 0,
+            last_voice_call_id: 0,
             source_generation: 0,
             cm_auth_token,
         };
@@ -1264,38 +1302,14 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         true
     }
 
-    fn update_voice_call(&self, owner: CmClientOwner, incoming: bool, active: bool) -> bool {
-        let client = CLIENTS
-            .write()
-            .unwrap()
-            .current_mut(owner)
-            .filter(|client| client.conn_type.allows_voice_call())
-            .map(|client| {
-                client.incoming_voice_call = incoming;
-                client.in_voice_call = active;
-                client.clone()
-            });
+    fn update_voice_call(&self, owner: CmClientOwner, event: ipc::CmVoiceCallEvent) -> bool {
+        let client = CLIENTS.write().unwrap().update_voice_call(owner, event);
         if let Some(client) = client {
             self.ui_handler.update_voice_call_state(&client);
             true
         } else {
             false
         }
-    }
-
-    #[cfg(not(target_os = "ios"))]
-    fn voice_call_started(&self, owner: CmClientOwner) -> bool {
-        self.update_voice_call(owner, false, true)
-    }
-
-    #[cfg(not(target_os = "ios"))]
-    fn voice_call_incoming(&self, owner: CmClientOwner) -> bool {
-        self.update_voice_call(owner, true, false)
-    }
-
-    #[cfg(not(target_os = "ios"))]
-    fn voice_call_closed(&self, owner: CmClientOwner, _reason: &str) -> bool {
-        self.update_voice_call(owner, false, false)
     }
 }
 
@@ -1865,33 +1879,13 @@ where
                                         self.file_transfer_enabled_peer = _enabled;
                                     }
                                 }
-                                Data::StartVoiceCall => {
+                                Data::VoiceCallEvent(event) => {
                                     let Some(owner) = self.client_owner else {
-                                        log::warn!("Rejected CM voice-call start before client-registry admission");
+                                        log::warn!("Rejected CM voice event before client-registry admission");
                                         break;
                                     };
-                                    if !self.cm.voice_call_started(owner) {
-                                        log::warn!("Rejected CM voice-call start without current voice-capable owner");
-                                        break;
-                                    }
-                                }
-                                Data::VoiceCallIncoming => {
-                                    let Some(owner) = self.client_owner else {
-                                        log::warn!("Rejected CM incoming voice call before client-registry admission");
-                                        break;
-                                    };
-                                    if !self.cm.voice_call_incoming(owner) {
-                                        log::warn!("Rejected CM incoming voice call without current voice-capable owner");
-                                        break;
-                                    }
-                                }
-                                Data::CloseVoiceCall(reason) => {
-                                    let Some(owner) = self.client_owner else {
-                                        log::warn!("Rejected CM voice-call close before client-registry admission");
-                                        break;
-                                    };
-                                    if !self.cm.voice_call_closed(owner, reason.as_str()) {
-                                        log::warn!("Rejected CM voice-call close without current voice-capable owner");
+                                    if !self.cm.update_voice_call(owner, event) {
+                                        log::warn!("Rejected CM voice event without current call authority");
                                         break;
                                     }
                                 }
@@ -2515,39 +2509,13 @@ pub async fn start_listen<T: InvokeUiCM>(
             Some(Data::Close) => {
                 break;
             }
-            Some(Data::StartVoiceCall) => {
+            Some(Data::VoiceCallEvent(event)) => {
                 let Some(owner) = current_owner.as_ref().map(CmClientTaskOwner::owner) else {
-                    log::warn!(
-                        "Rejected Android CM voice-call start before client-registry admission"
-                    );
+                    log::warn!("Rejected Android CM voice event before client-registry admission");
                     break;
                 };
-                if !cm.voice_call_started(owner) {
-                    log::warn!("Rejected Android CM voice-call start without current voice-capable owner");
-                    break;
-                }
-            }
-            Some(Data::VoiceCallIncoming) => {
-                let Some(owner) = current_owner.as_ref().map(CmClientTaskOwner::owner) else {
-                    log::warn!(
-                        "Rejected Android CM incoming voice call before client-registry admission"
-                    );
-                    break;
-                };
-                if !cm.voice_call_incoming(owner) {
-                    log::warn!("Rejected Android CM incoming voice call without current voice-capable owner");
-                    break;
-                }
-            }
-            Some(Data::CloseVoiceCall(reason)) => {
-                let Some(owner) = current_owner.as_ref().map(CmClientTaskOwner::owner) else {
-                    log::warn!(
-                        "Rejected Android CM voice-call close before client-registry admission"
-                    );
-                    break;
-                };
-                if !cm.voice_call_closed(owner, reason.as_str()) {
-                    log::warn!("Rejected Android CM voice-call close without current voice-capable owner");
+                if !cm.update_voice_call(owner, event) {
+                    log::warn!("Rejected Android CM voice event without current call authority");
                     break;
                 }
             }
@@ -3695,10 +3663,18 @@ fn send_privacy_mode_state_to_current_owner(
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]
-pub fn handle_incoming_voice_call(id: i32, registry_generation: i64, accept: bool) -> bool {
+pub fn handle_incoming_voice_call(
+    id: i32,
+    registry_generation: i64,
+    call_id: i64,
+    accept: bool,
+) -> bool {
     #[cfg(not(any(target_os = "ios")))]
-    if let Some(tx) = cm_voice_call_sender(id, registry_generation) {
-        return match tx.send(Data::VoiceCallResponse(accept)) {
+    if let Some(tx) = cm_voice_call_sender(id, registry_generation, call_id, true) {
+        return match tx.send(Data::VoiceCallCommand(ipc::CmVoiceCallCommand::Respond {
+            call_id,
+            accept,
+        })) {
             Ok(()) => true,
             Err(error) => {
                 log::error!("CM voice response admission failed: {}", error);
@@ -3711,10 +3687,12 @@ pub fn handle_incoming_voice_call(id: i32, registry_generation: i64, accept: boo
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]
-pub fn close_voice_call(id: i32, registry_generation: i64) -> bool {
+pub fn close_voice_call(id: i32, registry_generation: i64, call_id: i64) -> bool {
     #[cfg(not(any(target_os = "ios")))]
-    if let Some(tx) = cm_voice_call_sender(id, registry_generation) {
-        return match tx.send(Data::CloseVoiceCall(String::new())) {
+    if let Some(tx) = cm_voice_call_sender(id, registry_generation, call_id, false) {
+        return match tx.send(Data::VoiceCallCommand(ipc::CmVoiceCallCommand::Stop {
+            call_id,
+        })) {
             Ok(()) => true,
             Err(error) => {
                 log::error!("CM voice close admission failed: {}", error);
@@ -4748,13 +4726,13 @@ mod tests {
             (
                 0,
                 ipc::CmAuthConnType::FileTransfer,
-                Data::VoiceCallIncoming,
+                Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Incoming { call_id: 1 }),
             ),
-            (1, ipc::CmAuthConnType::Terminal, Data::StartVoiceCall),
+            (1, ipc::CmAuthConnType::Terminal, Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Started { call_id: 1 })),
             (
                 2,
                 ipc::CmAuthConnType::PortForward,
-                Data::CloseVoiceCall(String::new()),
+                Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Closed { call_id: 1, reason: String::new() }),
             ),
         ] {
             let id = 2_000_200_004 + offset;
@@ -4779,9 +4757,9 @@ mod tests {
         {
             let id = 2_000_200_007 + offset as i32;
             let (task, mut peer, ui) = admitted_cm_raw_test(id, conn_type).await;
-            peer.send(&Data::VoiceCallIncoming).await.unwrap();
-            peer.send(&Data::StartVoiceCall).await.unwrap();
-            peer.send(&Data::CloseVoiceCall(String::new()))
+            peer.send(&Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Incoming { call_id: 1 })).await.unwrap();
+            peer.send(&Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Started { call_id: 1 })).await.unwrap();
+            peer.send(&Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Closed { call_id: 1, reason: String::new() }))
                 .await
                 .unwrap();
             tokio::time::timeout(std::time::Duration::from_secs(2), async {
@@ -5254,13 +5232,13 @@ mod tests {
             (
                 0,
                 ipc::CmAuthConnType::FileTransfer,
-                Data::VoiceCallIncoming,
+                Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Incoming { call_id: 1 }),
             ),
-            (1, ipc::CmAuthConnType::Terminal, Data::StartVoiceCall),
+            (1, ipc::CmAuthConnType::Terminal, Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Started { call_id: 1 })),
             (
                 2,
                 ipc::CmAuthConnType::PortForward,
-                Data::CloseVoiceCall(String::new()),
+                Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Closed { call_id: 1, reason: String::new() }),
             ),
         ] {
             let id = 2_000_000_010 + offset;
@@ -5306,10 +5284,10 @@ mod tests {
                 .unwrap();
             let mut future = Box::pin(start_listen(manager, command_rx, terminal_rx, egress_tx));
             wait_for_cm_test_admission(&mut future, &ui.added).await;
-            command_tx.send(Data::VoiceCallIncoming).await.unwrap();
-            command_tx.send(Data::StartVoiceCall).await.unwrap();
+            command_tx.send(Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Incoming { call_id: 1 })).await.unwrap();
+            command_tx.send(Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Started { call_id: 1 })).await.unwrap();
             command_tx
-                .send(Data::CloseVoiceCall(String::new()))
+                .send(Data::VoiceCallEvent(ipc::CmVoiceCallEvent::Closed { call_id: 1, reason: String::new() }))
                 .await
                 .unwrap();
             tokio::time::timeout(std::time::Duration::from_secs(1), async {
@@ -7414,6 +7392,8 @@ mod tests {
             privacy_mode: true,
             in_voice_call: false,
             incoming_voice_call: false,
+            voice_call_id: 0,
+            last_voice_call_id: 0,
             source_generation: 0,
             cm_auth_token: "token".to_owned(),
             tx,
@@ -7466,6 +7446,8 @@ mod tests {
             privacy_mode: true,
             in_voice_call: false,
             incoming_voice_call: false,
+            voice_call_id: 0,
+            last_voice_call_id: 0,
             source_generation: 0,
             cm_auth_token: format!("token-{peer_id}"),
             tx,

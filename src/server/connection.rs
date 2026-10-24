@@ -5114,6 +5114,8 @@ pub struct Connection {
     #[cfg(windows)]
     portable: PortableState,
     voice_call_request_timestamp: Option<NonZeroI64>,
+    voice_call_id: i64,
+    voice_call_generation: i64,
     voice_call_input: Option<audio_service::VoiceCallInputLease>,
     options_in_login: Option<OptionMessage>,
     #[cfg(target_os = "android")]
@@ -6545,6 +6547,8 @@ impl Connection {
             portable: Default::default(),
             controlled_audio: None,
             voice_call_request_timestamp: None,
+            voice_call_id: 0,
+            voice_call_generation: 0,
             voice_call_input: None,
             options_in_login: None,
             #[cfg(target_os = "android")]
@@ -6838,15 +6842,8 @@ impl Connection {
                         // start_portable_service handler is excised — the portable SYSTEM
                         // helper is gone. Such a message now falls through to the catch-all
                         // `_ => {}` below and is ignored (no portable process is ever started).
-                        ipc::Data::VoiceCallResponse(accepted) => {
-                            conn.handle_voice_call(accepted).await;
-                        }
-                        ipc::Data::CloseVoiceCall(_reason) => {
-                            log::debug!("Close the voice call from the ipc.");
-                            if conn.close_voice_call().await {
-                                let msg = new_voice_call_close();
-                                conn.send(msg).await;
-                            }
+                        ipc::Data::VoiceCallCommand(command) => {
+                            conn.handle_cm_voice_call(command).await;
                         }
                         _ => {}
                     }
@@ -10274,9 +10271,20 @@ impl Connection {
                             );
                             return true;
                         }
+                        let Some(call_id) = self.voice_call_generation.checked_add(1)
+                            .filter(|id| *id > 0)
+                        else {
+                            log::error!("Controlled voice-call identity exhausted");
+                            return true;
+                        };
+                        self.voice_call_generation = call_id;
+                        self.voice_call_id = call_id;
                         self.voice_call_request_timestamp = Some(request_id);
-                        if !self.send_to_cm(Data::VoiceCallIncoming).await {
+                        if !self.send_to_cm(Data::VoiceCallEvent(
+                            ipc::CmVoiceCallEvent::Incoming { call_id },
+                        )).await {
                             self.voice_call_request_timestamp = None;
+                            self.voice_call_id = 0;
                             self.on_close("connection-manager voice request publication failed", false)
                                 .await;
                             return false;
@@ -10896,7 +10904,20 @@ impl Connection {
         crate::platform::change_resolution(&name, width as _, height as _)
     }
 
-    pub async fn handle_voice_call(&mut self, accepted: bool) {
+    async fn handle_cm_voice_call(&mut self, command: ipc::CmVoiceCallCommand) {
+        match command {
+            ipc::CmVoiceCallCommand::Respond { call_id: _, accept } => {
+                self.handle_voice_call(accept).await;
+            }
+            ipc::CmVoiceCallCommand::Stop { call_id: _ } => {
+                if self.close_voice_call().await {
+                    self.send(new_voice_call_close()).await;
+                }
+            }
+        }
+    }
+
+    async fn handle_voice_call(&mut self, accepted: bool) {
         if !self.can_drive_voice_call() {
             return;
         }
@@ -10921,10 +10942,16 @@ impl Connection {
                 false
             };
             let msg = new_voice_call_response(ts.get(), accepted);
+            let call_id = self.voice_call_id;
             if accepted {
-                self.send_to_cm(Data::StartVoiceCall).await;
+                self.send_to_cm(Data::VoiceCallEvent(
+                    ipc::CmVoiceCallEvent::Started { call_id },
+                )).await;
             } else {
-                self.send_to_cm(Data::CloseVoiceCall("".to_owned())).await;
+                self.voice_call_id = 0;
+                self.send_to_cm(Data::VoiceCallEvent(
+                    ipc::CmVoiceCallEvent::Closed { call_id, reason: String::new() },
+                )).await;
             }
             self.send(msg).await;
             if self.is_authed_view_camera_conn() {
@@ -10947,7 +10974,7 @@ impl Connection {
         }
     }
 
-    pub async fn close_voice_call(&mut self) -> bool {
+    async fn close_voice_call(&mut self) -> bool {
         if !self.can_drive_voice_call()
             || (self.voice_call_input.is_none() && self.voice_call_request_timestamp.is_none())
         {
@@ -10955,7 +10982,10 @@ impl Connection {
         }
         drop(self.voice_call_input.take());
         self.voice_call_request_timestamp = None;
-        self.send_to_cm(Data::CloseVoiceCall("".to_owned())).await;
+        let call_id = std::mem::replace(&mut self.voice_call_id, 0);
+        self.send_to_cm(Data::VoiceCallEvent(
+            ipc::CmVoiceCallEvent::Closed { call_id, reason: String::new() },
+        )).await;
         if self.is_authed_view_camera_conn() {
             if let Some(s) = self.server.upgrade() {
                 s.write()
@@ -11510,6 +11540,7 @@ impl Connection {
             self.resolution_work.take();
         }
         self.voice_call_request_timestamp = None;
+        self.voice_call_id = 0;
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         self.stop_input_worker().await;
         self.stop_controlled_audio().await;

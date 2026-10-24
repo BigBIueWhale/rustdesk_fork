@@ -13187,16 +13187,14 @@ grep -q '!self.disable_audio && self.voice_call_input.is_some()' "$conn" || rs19
 grep -q 'q == BoolOption::Yes && self.is_authed_remote_conn()' "$conn" || rs19="$rs19 cursor-window-not-remote-gated"
 grep -q 'fn can_drive_voice_call(&self) -> bool' "$conn"               || rs19="$rs19 voice-call-authority-helper-missing"
 grep -q 'self.is_authed_remote_conn() || self.is_authed_view_camera_conn()' "$conn" || rs19="$rs19 voice-call-not-remote-viewcamera-gated"
-handle_voice_body=$(awk '/pub async fn handle_voice_call/,/^    }/' "$conn")
+handle_voice_body=$(awk '/    async fn handle_voice_call/,/^    }/' "$conn")
 echo "$handle_voice_body" | grep -q 'if !self.can_drive_voice_call()'  || rs19="$rs19 voice-accept-not-authtype-gated"
-voice_close_body=$(awk '/pub async fn close_voice_call/,/^    }/' "$conn")
-echo "$voice_close_body" | grep -q 'pub async fn close_voice_call(&mut self) -> bool' || rs19="$rs19 voice-close-not-result-bearing"
+voice_close_body=$(awk '/    async fn close_voice_call/,/^    }/' "$conn")
+echo "$voice_close_body" | grep -q 'async fn close_voice_call(&mut self) -> bool' || rs19="$rs19 voice-close-not-result-bearing"
 echo "$voice_close_body" | grep -q 'if !self.can_drive_voice_call()'    || rs19="$rs19 voice-close-not-authtype-gated"
 echo "$voice_close_body" | grep -q 'self.voice_call_request_timestamp.is_none()' || rs19="$rs19 voice-close-not-state-owned"
 echo "$voice_close_body" | grep -q 'self.voice_call_input.is_none()'    || rs19="$rs19 voice-close-not-lease-state-owned"
 echo "$voice_close_body" | grep -q 'drop(self.voice_call_input.take())' || rs19="$rs19 voice-close-exact-owner-release-missing"
-ipc_voice_close_body=$(awk '/ipc::Data::CloseVoiceCall\(_reason\)/,/_ => \{\}/' "$conn")
-echo "$ipc_voice_close_body" | grep -q 'if conn.close_voice_call().await' || rs19="$rs19 cm-voice-close-not-result-gated"
 on_close_voice_reset=$(awk '/async fn on_close/,/log::info!/' "$conn")
 echo "$on_close_voice_reset" | grep -q 'drop(self.voice_call_input.take())' || rs19="$rs19 connection-close-exact-owner-release-missing"
 if grep -q 'voice_calling' "$conn"; then rs19="$rs19 parallel-voice-owner-state-remains"; fi

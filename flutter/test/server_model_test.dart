@@ -12,6 +12,7 @@ Map<String, dynamic> _clientState({
   bool disconnected = false,
   bool inVoiceCall = false,
   bool incomingVoiceCall = false,
+  int voiceCallId = 42,
 }) =>
     <String, dynamic>{
       'id': id,
@@ -31,6 +32,7 @@ Map<String, dynamic> _clientState({
       'disconnected': disconnected,
       'in_voice_call': inVoiceCall,
       'incoming_voice_call': incomingVoiceCall,
+      'voice_call_id': inVoiceCall || incomingVoiceCall ? voiceCallId : 0,
     };
 
 void main() {
@@ -54,6 +56,7 @@ void main() {
       'from_switch': true,
       'in_voice_call': false,
       'incoming_voice_call': false,
+      'voice_call_id': 0,
     });
 
     final serialized = client.toJson();

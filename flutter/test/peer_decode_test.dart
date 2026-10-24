@@ -19,6 +19,46 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 
+void _voiceOwnerTests() {
+  test('CM voice callback retains its exact owner across client mutation', () {
+    final client = _incomingClient(19)
+      ..voiceCallId = 42
+      ..incomingVoiceCall = true;
+    final owner = CmVoiceCallOwner(client);
+    final callback = () => <int>[owner.id, owner.registryGeneration, owner.callId];
+    client
+      ..voiceCallId = 43
+      ..incomingVoiceCall = false
+      ..inVoiceCall = true;
+    expect(callback(), <int>[7, 19, 42]);
+    final current = CmVoiceCallOwner(client);
+    expect(current.callId, 43);
+    client
+      ..id = 8
+      ..registryGeneration = 20
+      ..voiceCallId = 44;
+    expect(callback(), <int>[7, 19, 42]);
+    expect(<int>[current.id, current.registryGeneration, current.callId],
+        <int>[7, 19, 43]);
+  });
+
+  test('CM voice identity changes update retained native client state', () {
+    final first = _incomingClient(19)
+      ..voiceCallId = 42
+      ..incomingVoiceCall = true;
+    final next = Client.fromJson(first.toJson()..['voice_call_id'] = 43);
+    expect(first.hasSameNativeState(next), isFalse);
+    expect(first.hasSameOwner(next), isTrue);
+    expect(first.hasSameTabIdentity(next), isTrue);
+    final owner = CmVoiceCallOwner(first);
+    first.copyNativeStateFrom(next);
+    expect(first.voiceCallId, 43);
+    expect(first.hasSameNativeState(next), isTrue);
+    expect(first.toJson()['voice_call_id'], 43);
+    expect(owner.callId, 42);
+  });
+}
+
 class _ChatPeer implements FfiModel {
   @override
   final pi = PeerInfo()..username = 'Outgoing peer';
@@ -266,6 +306,7 @@ ChatModel _chatModel() {
 }
 
 void main() {
+  _voiceOwnerTests();
   TestWidgetsFlutterBinding.ensureInitialized();
   late Peers peers;
   late DebugPrintCallback previousDebugPrint;

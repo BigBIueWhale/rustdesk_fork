@@ -27,6 +27,8 @@ mod chat_tests {
             privacy_mode: false,
             in_voice_call: false,
             incoming_voice_call: false,
+            voice_call_id: 0,
+            last_voice_call_id: 0,
             source_generation: 0,
             cm_auth_token: "synthetic-owned-chat".to_owned(),
             tx,

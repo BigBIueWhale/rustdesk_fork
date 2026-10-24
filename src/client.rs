@@ -1,7 +1,7 @@
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::clipboard::clipboard_listener;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::ui_session_interface::SavedPortForwardRequest;
+use crate::ui_session_interface::{RdpLaunchCommand, SavedPortForwardRequest};
 use async_trait::async_trait;
 #[cfg(target_os = "windows")]
 use clipboard::ContextSend;
@@ -4069,7 +4069,7 @@ pub enum Data {
     #[cfg(all(target_os = "windows", not(feature = "flutter")))]
     ToggleClipboardFile,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    NewRDP,
+    RequestRdpLaunch(RdpLaunchCommand),
     SetConfirmOverrideFile((i32, i32, bool, bool, bool)),
     AddJob((i32, JobType, String, String, i32, bool, bool)),
     ResumeJob((i32, bool)),
@@ -4295,7 +4295,7 @@ impl Data {
             | Self::CloseVoiceCall
             | Self::ResetDecoder(_) => Some(0),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            Self::NewRDP => Some(0),
+            Self::RequestRdpLaunch(_) => Some(0),
             #[cfg(all(target_os = "windows", not(feature = "flutter")))]
             Self::ToggleClipboardFile => Some(0),
             Self::Login((password, _)) => checked_string_bytes(&[password]),

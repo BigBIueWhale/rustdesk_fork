@@ -1587,7 +1587,7 @@ pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> Re
     }
 }
 
-pub fn session_new_rdp(session_id: SessionID) -> Result<()> {
+pub fn session_request_rdp_launch(session_id: SessionID) -> Result<()> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         let _ = session_id;
@@ -1598,8 +1598,7 @@ pub fn session_new_rdp(session_id: SessionID) -> Result<()> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-            session.new_rdp();
-            Ok(())
+            session.request_rdp_launch().map(|_| ())
         } else {
             Err(hbb_common::anyhow::anyhow!("Unknown session"))
         }

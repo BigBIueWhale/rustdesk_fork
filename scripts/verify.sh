@@ -1105,8 +1105,8 @@ grep -A5 -F 'pub fn session_add_port_forward(' src/flutter_ffi.rs \
   || mobile_authority_bad="$mobile_authority_bad port-forward-add-not-fallible"
 grep -qF 'pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> Result<()> {' src/flutter_ffi.rs \
   || mobile_authority_bad="$mobile_authority_bad port-forward-remove-not-fallible"
-grep -qF 'pub fn session_new_rdp(session_id: SessionID) -> Result<()> {' src/flutter_ffi.rs \
-  || mobile_authority_bad="$mobile_authority_bad rdp-constructor-not-fallible"
+grep -qF 'pub fn session_request_rdp_launch(session_id: SessionID) -> Result<()> {' src/flutter_ffi.rs \
+  || mobile_authority_bad="$mobile_authority_bad rdp-launch-request-not-fallible"
 grep -qF 'crate::ipc::get_config("hide_cm")?' src/flutter_ffi.rs \
   || mobile_authority_bad="$mobile_authority_bad desktop-cm-visibility-not-fixed-key"
 grep -qF 'crate::common::is_custom_client() && hbb_common::password_security::hide_cm()' src/flutter_ffi.rs \

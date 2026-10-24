@@ -353,8 +353,16 @@ class _PortForwardPageState extends State<PortForwardPage>
                       child: SizedBox(
                         width: 120,
                         child: ElevatedButton(
-                          onPressed: () =>
-                              bind.sessionNewRdp(sessionId: _ffi.sessionId),
+                          onPressed: () async {
+                            if (!mounted) return;
+                            try {
+                              await bind.sessionRequestRdpLaunch(
+                                  sessionId: _ffi.sessionId);
+                            } catch (e) {
+                              debugPrint("Failed to request RDP launch:$e");
+                              if (mounted) showToast(e.toString());
+                            }
+                          },
                           child: Text(
                             translate('New RDP'),
                           ),

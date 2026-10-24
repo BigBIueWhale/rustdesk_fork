@@ -1302,8 +1302,9 @@ class RustdeskImpl {
     throw UnimplementedError("sessionRemovePortForward");
   }
 
-  Future<void> sessionNewRdp({required UuidValue sessionId, dynamic hint}) {
-    throw UnimplementedError("sessionNewRdp");
+  Future<void> sessionRequestRdpLaunch(
+      {required UuidValue sessionId, dynamic hint}) {
+    throw UnimplementedError("sessionRequestRdpLaunch");
   }
 
   Future<void> sessionRequestVoiceCall(

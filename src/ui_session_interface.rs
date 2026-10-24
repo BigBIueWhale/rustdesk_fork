@@ -1769,8 +1769,38 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn new_rdp(&self) {
-        self.send(Data::NewRDP);
+    pub(crate) fn request_rdp_launch(&self) -> ResultType<RdpLaunchRequest> {
+        if !self.is_rdp() {
+            bail!("RDP launch requests require their RDP session");
+        }
+        // The bridge worker waits for the owning async manager's admission result.
+        let (completed, result) = std::sync::mpsc::sync_channel(1);
+        self.try_send(Data::RequestRdpLaunch(RdpLaunchCommand { completed }))?;
+        match result.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(outcome) => outcome,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(anyhow!(
+                "RDP launch request outcome is not yet known; the request may still be admitted"
+            )),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err(anyhow!("RDP launch request outcome is unavailable"))
+            }
+        }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn handle_rdp_launch_request(
+        &self,
+        request: RdpLaunchCommand,
+        supervisor: &PortForwardSupervisorOwner,
+    ) {
+        let result = if self.is_rdp() {
+            supervisor.launch_rdp(0).await.map_err(|err| anyhow!(err))
+        } else {
+            Err(anyhow!("RDP launch requests require their RDP session"))
+        };
+        if let Err(err) = request.completed.try_send(result) {
+            log::debug!("RDP launch request result could not be delivered: {err}");
+        }
     }
 
     pub fn close(&self) {
@@ -2393,10 +2423,9 @@ async fn run_io_runtime<T: InvokeUiSession>(
             } else {
                 loop {
                     match receiver.recv().await {
-                        Some(Ok(Data::NewRDP)) => match supervisor.launch_rdp(0).await {
-                            Ok(RdpLaunchRequest::Queued | RdpLaunchRequest::Coalesced) => {}
-                            Err(err) => handler.on_error(&err),
-                        },
+                        Some(Ok(Data::RequestRdpLaunch(request))) => {
+                            handler.handle_rdp_launch_request(request, &supervisor).await;
+                        }
                         Some(Ok(Data::Close)) | None => break,
                         Some(Ok(_)) => {}
                         Some(Err(err)) => {
@@ -2498,6 +2527,11 @@ impl SavedPortForwardRequest {
             SavedPortForwardChange::Remove(_) => 0,
         }
     }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub struct RdpLaunchCommand {
+    completed: std::sync::mpsc::SyncSender<ResultType<RdpLaunchRequest>>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

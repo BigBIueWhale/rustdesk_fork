@@ -957,7 +957,7 @@ impl AsyncWrite for DynTcpStream {
 impl<R: AsyncRead + AsyncWrite + Unpin> TcpStreamTrait for R {}
 
 #[cfg(test)]
-async fn join_test_writer(
+pub(crate) async fn join_test_writer(
     stream: &mut FramedStream,
     abort: bool,
 ) -> Option<Result<(), tokio::task::JoinError>> {

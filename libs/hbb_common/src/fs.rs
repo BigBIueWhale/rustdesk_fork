@@ -6656,11 +6656,11 @@ mod tests {
         (crate::Stream::Tcp(sender), crate::Stream::Tcp(receiver))
     }
 
-    async fn read_job_tcp_step(
+    async fn optional_read_job_tcp_step(
         jobs: &mut Vec<TransferJob>,
         sender: &mut crate::Stream,
         receiver: &mut crate::Stream,
-    ) -> (String, FileResponse) {
+    ) -> (String, Option<FileResponse>) {
         let (log, receipt) = tokio::time::timeout(
             Duration::from_secs(5),
             handle_read_jobs(jobs, sender),
@@ -6668,7 +6668,10 @@ mod tests {
         .await
         .expect("read-step deadline")
         .expect("admit the production read-step result");
-        let receipt = receipt.expect("one exact frame receipt");
+        let Some(receipt) = receipt else {
+            assert!(log.is_empty(), "idle step must not complete a job");
+            return (log, None);
+        };
         let encoded = tokio::time::timeout(Duration::from_secs(5), receiver.next())
             .await
             .expect("peer frame deadline")
@@ -6683,7 +6686,156 @@ mod tests {
         let Some(message::Union::FileResponse(response)) = message.union else {
             panic!("read step did not produce a file response");
         };
-        (log, response)
+        (log, Some(response))
+    }
+
+    async fn read_job_tcp_step(
+        jobs: &mut Vec<TransferJob>,
+        sender: &mut crate::Stream,
+        receiver: &mut crate::Stream,
+    ) -> (String, FileResponse) {
+        let (log, response) = optional_read_job_tcp_step(jobs, sender, receiver).await;
+        (log, response.expect("one exact file response"))
+    }
+
+    async fn join_read_job_tcp_pair(sender: &mut crate::Stream, receiver: &mut crate::Stream) {
+        for stream in [sender, receiver] {
+            let result = crate::tcp::join_test_writer(
+                stream.as_framed_tcp_mut().expect("keyed TCP stream"), true,
+            ).await.expect("owned TCP writer");
+            assert!(result.is_ok() || result.as_ref().is_err_and(|error| error.is_cancelled()));
+        }
+    }
+
+    #[tokio::test]
+    async fn read_step_confirmation_resumes_and_disabled_flags_do_not_pause() {
+        for overwrite in [true, false] {
+            let tmp = TestTempDir::new("rustdesk_read_confirmation_controls");
+            std::fs::create_dir_all(&tmp.path).expect("create source directory");
+            let source = tmp.join("source.zip");
+            let content = b"confirmed";
+            std::fs::write(&source, content).expect("create source");
+            let mut jobs = vec![TransferJob::new_read(
+                701, JobType::Generic, "control".to_owned(), source.clone(),
+                0, false, overwrite, false,
+            ).expect("admit source")];
+            let (mut sender, mut receiver) = keyed_read_job_tcp_pair(8 * 1024).await;
+            if overwrite {
+                let (_, digest) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+                assert!(matches!(digest.union, Some(file_response::Union::Digest(digest))
+                    if digest.id == 701 && digest.file_num == 0
+                        && digest.file_size == content.len() as u64));
+                assert!(jobs[0].file_is_waiting && !jobs[0].file_confirmed);
+                let (_, response) = optional_read_job_tcp_step(
+                    &mut jobs, &mut sender, &mut receiver,
+                ).await;
+                assert!(response.is_none(), "unconfirmed job must wait");
+                jobs[0].confirm_with_offset(0, 0).await.expect("confirm exact source");
+                assert!(jobs[0].file_is_waiting && jobs[0].file_confirmed);
+            } else {
+                assert!(!jobs[0].open_data_stream().await.expect("open source"));
+                jobs[0].set_file_is_waiting(true);
+                assert!(jobs[0].file_is_waiting && !jobs[0].file_confirmed);
+            }
+            // A real pause takes precedence even over a confirmed or overwrite-disabled file.
+            jobs[0].is_last_job = true;
+            let (_, response) = optional_read_job_tcp_step(
+                &mut jobs, &mut sender, &mut receiver,
+            ).await;
+            assert!(response.is_none(), "paused job must not publish");
+            assert!(tokio::time::timeout(Duration::from_millis(20), receiver.next()).await.is_err());
+            jobs[0].is_last_job = false;
+            let (_, response) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+            assert!(matches!(response.union, Some(file_response::Union::Block(block))
+                if block.id == 701 && block.file_num == 0 && !block.compressed
+                    && block.data.as_ref() == content));
+            let (_, eof) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+            assert!(matches!(eof.union, Some(file_response::Union::Block(block))
+                if block.id == 701 && block.file_num == 0 && block.data.is_empty()));
+            let (_, done) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+            assert!(matches!(done.union, Some(file_response::Union::Done(done))
+                if done.id == 701 && done.file_num == 1));
+            assert!(jobs.is_empty());
+            assert_eq!(std::fs::read(&source).expect("read source"), content);
+            join_read_job_tcp_pair(&mut sender, &mut receiver).await;
+            println!("READ_CONFIRMATION_READY=control overwrite={} pause=preserved bytes=exact eof=exact done=exact writers_joined=true", overwrite);
+        }
+        println!("READ_CONFIRMATION_READY=pass confirmation_controls=2");
+    }
+
+    #[tokio::test]
+    async fn read_step_waiting_confirmation_does_not_block_other_jobs() {
+        let mut results = Vec::new();
+        for waiting_count in [1, 2] {
+            let tmp = TestTempDir::new("rustdesk_read_confirmation_queue");
+            std::fs::create_dir_all(&tmp.path).expect("create source directory");
+            let (mut sender, mut receiver) = keyed_read_job_tcp_pair(8 * 1024).await;
+            let mut jobs = Vec::new();
+            let mut waiting_sources = Vec::new();
+            for index in 0..waiting_count {
+                let source = tmp.join(&format!("waiting-{index}.zip"));
+                std::fs::write(&source, b"waiting").expect("create waiting source");
+                let id = 710 + index;
+                let mut one_job = vec![TransferJob::new_read(
+                    id, JobType::Generic, id.to_string(), source.clone(),
+                    0, false, true, false,
+                ).expect("admit waiting source")];
+                let (_, digest) = read_job_tcp_step(&mut one_job, &mut sender, &mut receiver).await;
+                assert!(matches!(digest.union, Some(file_response::Union::Digest(digest))
+                    if digest.id == id && digest.file_num == 0 && digest.file_size == 7));
+                jobs.push(one_job.remove(0));
+                waiting_sources.push(source);
+            }
+            let source = tmp.join("runnable.zip");
+            let content = b"runnable";
+            std::fs::write(&source, content).expect("create runnable source");
+            jobs.push(TransferJob::new_read(
+                900, JobType::Generic, "runnable".to_owned(), source.clone(),
+                0, false, false, false,
+            ).expect("admit runnable source"));
+
+            let (_, response) = optional_read_job_tcp_step(
+                &mut jobs, &mut sender, &mut receiver,
+            ).await;
+            let selected_runnable = matches!(response.and_then(|response| response.union),
+                Some(file_response::Union::Block(block))
+                    if block.id == 900 && block.file_num == 0 && !block.compressed
+                        && block.data.as_ref() == content);
+            let mut completed = false;
+            if selected_runnable {
+                let (_, eof) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+                assert!(matches!(eof.union, Some(file_response::Union::Block(block))
+                    if block.id == 900 && block.file_num == 0 && block.data.is_empty()));
+                let (_, done) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+                completed = matches!(done.union, Some(file_response::Union::Done(done))
+                    if done.id == 900 && done.file_num == 1)
+                    && jobs.len() == waiting_count as usize;
+                let (_, response) = optional_read_job_tcp_step(
+                    &mut jobs, &mut sender, &mut receiver,
+                ).await;
+                assert!(response.is_none(), "all remaining jobs are waiting");
+            }
+            let waiters_unchanged = jobs.iter().take(waiting_count as usize)
+                .enumerate().all(|(index, job)| {
+                    job.id == 710 + index as i32 && job.file_num == 0
+                        && job.file_is_waiting && !job.file_confirmed && !job.is_last_job
+                        && job.data_stream.is_some() && job.send_file_offset == 0
+                        && job.finished_size == 0 && job.transferred == 0
+                });
+            for waiting_source in waiting_sources {
+                assert_eq!(std::fs::read(waiting_source).expect("read waiting source"), b"waiting");
+            }
+            assert_eq!(std::fs::read(&source).expect("read runnable source"), content);
+            assert!(tokio::time::timeout(Duration::from_millis(20), receiver.next()).await.is_err());
+            drop(jobs);
+            join_read_job_tcp_pair(&mut sender, &mut receiver).await;
+            println!("READ_CONFIRMATION_READY=observed waiters={} selected_runnable={} waiters_unchanged={} completed={} writers_joined=true",
+                waiting_count, selected_runnable, waiters_unchanged, completed);
+            results.push(selected_runnable && waiters_unchanged && completed);
+        }
+        assert!(results.iter().all(|passed| *passed),
+            "waiting overwrite confirmation must not starve another owned job");
+        println!("READ_CONFIRMATION_READY=pass waiting_cases=2");
     }
 
     #[tokio::test]

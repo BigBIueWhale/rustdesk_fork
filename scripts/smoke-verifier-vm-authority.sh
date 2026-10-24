@@ -8314,8 +8314,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
-        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test fs::(tests::(send_(digest_|read_buffer_)|read_step_)|file_block::tests::allocation_refusal_)[a-z_]+ \.\.\. ok|test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok|SEND_DIGEST_(BEFORE|SIZE)=.*|SEND_READ_ALLOCATION(_CASE)?=.*|FILE_COMPRESSION_(ALLOCATION|CASE)=.*|READ_TERMINAL_RETIREMENT(_CASE)?=.*|READ_NONTERMINAL_RETIREMENT=.*|READ_JOB_BACKPRESSURE(_CASE)?=.*'
-        printf 'FILE_SEND_DIGEST_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=10 artifact_sha256=%s scope=send-digest-and-read-admission network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test fs::(tests::(send_(digest_|read_buffer_)|read_step_)|file_block::tests::allocation_refusal_)[a-z_]+ \.\.\. ok|test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok|SEND_DIGEST_(BEFORE|SIZE)=.*|SEND_READ_ALLOCATION(_CASE)?=.*|FILE_COMPRESSION_(ALLOCATION|CASE)=.*|READ_TERMINAL_RETIREMENT(_CASE)?=.*|READ_NONTERMINAL_RETIREMENT=.*|READ_JOB_BACKPRESSURE(_CASE)?=.*|READ_CONFIRMATION_READY=.*'
+        printf 'FILE_SEND_DIGEST_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=12 artifact_sha256=%s scope=send-digest-and-read-admission network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = config-options ]; then

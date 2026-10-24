@@ -3239,6 +3239,29 @@ fn release_receive_path_lock(file: &std::fs::File) -> std::io::Result<()> {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ReceiveOwnedArtifact {
+    Payload,
+    Digest,
+}
+
+impl ReceiveOwnedArtifact {
+    fn validate(self, file: &std::fs::File) -> std::io::Result<()> {
+        validate_recv_file_authority(file)?;
+        #[cfg(unix)]
+        if matches!(self, Self::Payload) {
+            use std::os::unix::fs::MetadataExt;
+            if file.metadata()?.mode() & 0o077 != 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "receive payload must have private permissions",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct ReceivePathLease {
     path: PathBuf,
@@ -3296,14 +3319,15 @@ impl ReceivePathLease {
         &self,
         path: &Path,
         creation: ReceiveFileCreation,
-        readable: bool,
+        artifact: ReceiveOwnedArtifact,
     ) -> std::io::Result<std::fs::File> {
+        let readable = matches!(artifact, ReceiveOwnedArtifact::Digest);
         #[cfg(unix)]
         {
             let name = self.child_name(path)?;
             let access = if readable { RegularFileAccess::ReadWrite } else { RegularFileAccess::Write };
             let file = open_regular_child_no_follow(&self.parent, &name, access, creation)?;
-            if let Err(error) = validate_recv_file_authority(&file) {
+            if let Err(error) = artifact.validate(&file) {
                 if matches!(creation, ReceiveFileCreation::CreateNew) {
                     let cleanup = remove_recv_child_at(&self.parent, &name, &file)
                         .and_then(|()| sync_recv_directory(&self.parent));
@@ -3326,7 +3350,7 @@ impl ReceivePathLease {
     fn open_inspection_file(
         &self,
         path: &Path,
-        owned: bool,
+        artifact: Option<ReceiveOwnedArtifact>,
     ) -> std::io::Result<std::fs::File> {
         #[cfg(unix)]
         let file = open_regular_child_no_follow(
@@ -3335,8 +3359,8 @@ impl ReceivePathLease {
         )?;
         #[cfg(not(unix))]
         let file = open_recv_inspection_file_no_follow(path)?;
-        if owned {
-            validate_recv_file_authority(&file)?;
+        if let Some(artifact) = artifact {
+            artifact.validate(&file)?;
         }
         Ok(file)
     }
@@ -3349,7 +3373,7 @@ impl ReceivePathLease {
         #[cfg(not(windows))]
         {
             use std::io::Read;
-            let file = self.open_inspection_file(path, true)?;
+            let file = self.open_inspection_file(path, Some(ReceiveOwnedArtifact::Digest))?;
             let mut content = String::new();
             file.take(max_bytes.saturating_add(1)).read_to_string(&mut content)?;
             if content.len() as u64 > max_bytes {
@@ -3405,7 +3429,7 @@ impl ReceiveWriteClaim {
         let download_path = recv_sidecar_path(&final_path, ".download");
         let digest_path = recv_sidecar_path(&final_path, ".digest");
         let download_file =
-            match lease.open_receive_file(&download_path, ReceiveFileCreation::CreateNew, false) {
+            match lease.open_receive_file(&download_path, ReceiveFileCreation::CreateNew, ReceiveOwnedArtifact::Payload) {
                 Ok(file) => file,
                 Err(err) => {
                     if let Err(cleanup_err) = lease.retire() {
@@ -3417,7 +3441,7 @@ impl ReceiveWriteClaim {
                 }
             };
         let mut digest_file =
-            match lease.open_receive_file(&digest_path, ReceiveFileCreation::CreateNew, true) {
+            match lease.open_receive_file(&digest_path, ReceiveFileCreation::CreateNew, ReceiveOwnedArtifact::Digest) {
                 Ok(file) => file,
                 Err(err) => {
                     let cleanup_result = remove_receive_artifacts_and_sync_parent(
@@ -3494,7 +3518,7 @@ impl ReceiveWriteClaim {
             let download_path = recv_sidecar_path(&final_path, ".download");
             let digest_path = recv_sidecar_path(&final_path, ".digest");
             let mut digest_file =
-                lease.open_receive_file(&digest_path, ReceiveFileCreation::Existing, true)?;
+                lease.open_receive_file(&digest_path, ReceiveFileCreation::Existing, ReceiveOwnedArtifact::Digest)?;
             let mut content = String::new();
             (&mut digest_file).take(4097).read_to_string(&mut content)?;
             if content.len() > 4096 {
@@ -3505,7 +3529,7 @@ impl ReceiveWriteClaim {
                 bail!("resume digest does not match the active transfer");
             }
             let download_file =
-                lease.open_receive_file(&download_path, ReceiveFileCreation::Existing, false)?;
+                lease.open_receive_file(&download_path, ReceiveFileCreation::Existing, ReceiveOwnedArtifact::Payload)?;
             let available = download_file.metadata()?.len();
             validate_resume_file_length(available, expected_size)?;
             if offset > available {
@@ -4868,7 +4892,7 @@ pub fn inspect_write_destination<P: AsRef<Path>>(
                 Err(error) => return Err(error.into()),
             };
             let download_path = recv_sidecar_path(path, ".download");
-            let download_file = match lease.open_inspection_file(&download_path, true) {
+            let download_file = match lease.open_inspection_file(&download_path, Some(ReceiveOwnedArtifact::Payload)) {
                 Ok(file) => Some(file),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
                 Err(error) => return Err(error.into()),
@@ -4892,7 +4916,7 @@ pub fn inspect_write_destination<P: AsRef<Path>>(
             }
         }
 
-        let destination = match lease.open_inspection_file(path, false) {
+        let destination = match lease.open_inspection_file(path, None) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(DigestCheckResult::NoSuchFile)

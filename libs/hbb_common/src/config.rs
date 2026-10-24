@@ -4098,21 +4098,36 @@ impl PeerConfig {
             return Err(anyhow!("Invalid local port-forward port"));
         }
         let mut config = Self::load_for_write(id)?;
-        if let Some(entry) = config.port_forwards.iter_mut().find(|entry| entry.0 == mapping.0) {
-            if *entry == *mapping {
-                return Ok((config.port_forwards, false));
+        let mut present = false;
+        let mut changed = false;
+        config.port_forwards.retain_mut(|entry| {
+            if entry.0 != mapping.0 {
+                return true;
             }
-            *entry = mapping.clone();
-        } else {
+            if present {
+                changed = true;
+                return false;
+            }
+            present = true;
+            if *entry != *mapping {
+                *entry = mapping.clone();
+                changed = true;
+            }
+            true
+        });
+        if !present {
             if config.port_forwards.len() >= MAX_OWNED_PORT_FORWARD_MAPPINGS {
                 return Err(anyhow!(
                     "Port-forward mapping limit ({MAX_OWNED_PORT_FORWARD_MAPPINGS}) reached"
                 ));
             }
             config.port_forwards.push(mapping.clone());
+            changed = true;
         }
-        config.store(id)?;
-        Ok((config.port_forwards, true))
+        if changed {
+            config.store(id)?;
+        }
+        Ok((config.port_forwards, changed))
     }
 
     pub fn remove_port_forward(id: &str, port: i32) -> crate::ResultType<Vec<(i32, String, i32)>> {

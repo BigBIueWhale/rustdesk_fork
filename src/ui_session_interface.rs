@@ -61,7 +61,7 @@ use crate::port_forward::{
 };
 use crate::{client::Data, client::Interface};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 const CHANGE_RESOLUTION_VALID_TIMEOUT_SECS: u64 = 15;
 
@@ -2438,14 +2438,34 @@ async fn run_io_runtime<T: InvokeUiSession>(
                 }
             }
         } else if handler.args.len() == 0 {
-            let pfs = handler.lc.read().unwrap().port_forwards.clone();
-            for d in pfs {
-                let port = d.0;
-                if let Err(err) = supervisor.add(d.into()).await {
-                    handler.on_error(&format!(
-                        "Failed to start tunnel on local port {port}: {err}"
-                    ));
+            let pfs = {
+                let lc = handler.lc.read().unwrap();
+                (lc.port_forwards.len() <= MAX_OWNED_PORT_FORWARD_MAPPINGS)
+                    .then(|| lc.port_forwards.clone())
+            };
+            if let Some(pfs) = pfs {
+                let mut seen = HashSet::new();
+                let duplicates: HashSet<_> = pfs
+                    .iter()
+                    .filter_map(|entry| (!seen.insert(entry.0)).then_some(entry.0))
+                    .collect();
+                for d in pfs {
+                    let port = d.0;
+                    let result = if duplicates.contains(&port) {
+                        Err("Duplicate saved tunnel mapping".to_owned())
+                    } else {
+                        supervisor.add(d.into()).await
+                    };
+                    if let Err(err) = result {
+                        handler.on_error(&format!(
+                            "Failed to start tunnel on local port {port}: {err}"
+                        ));
+                    }
                 }
+            } else {
+                handler.on_error(&format!(
+                    "Saved tunnel mapping limit ({MAX_OWNED_PORT_FORWARD_MAPPINGS}) exceeded"
+                ));
             }
             loop {
                 match receiver.recv().await {

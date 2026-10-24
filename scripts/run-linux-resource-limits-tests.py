@@ -90,6 +90,7 @@ def main():
             raise ValueError("resource-limit artifact is absent or ambiguous")
         artifact = artifacts[0]
         artifact_sha = digest(artifact.read_bytes())
+        print(f"LINUX_RESOURCE_LIMITS_ARTIFACT_BEFORE=sha256={artifact_sha} tests=1 cases=16", flush=True)
         output = run([str(artifact), "--exact", "tests::native_matrix", "--show-output",
                       "--test-threads=1", "--color", "never"], fixture, 45)
         lines = output.decode().splitlines()

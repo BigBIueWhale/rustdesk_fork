@@ -5473,6 +5473,10 @@ run_focused_rust_tests() {
         credential_mounts=(--mount "type=bind,source=$ROOT/viewer.machine-id,target=/etc/machine-id,readonly,bind-recursive=disabled")
     fi
 
+    local focused_nofile=4096:4096
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resource-limits ]; then
+        focused_nofile=16384:32768
+    fi
     CONTAINER_ID="$(
         "$CLIENT" --host "unix://$SOCK" create \
             --name "$container_name" \
@@ -5483,7 +5487,7 @@ run_focused_rust_tests() {
             --memory="$memory" \
             --memory-swap="$memory" \
             --cpus=4 \
-            --ulimit nofile=4096:4096 \
+            --ulimit "nofile=$focused_nofile" \
             --ulimit core=0:0 \
             --cap-drop=ALL \
             --security-opt=no-new-privileges \
@@ -6300,6 +6304,13 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     [ "$inspect" = \
       "none|true|1000:1000|$memory_bytes|$memory_bytes|4000000000|1024|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]" ] \
         || fail "focused Rust-test container authority differs: $inspect"
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resource-limits ]; then
+        inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+            '{{range .HostConfig.Ulimits}}{{printf "%s=%d:%d\n" .Name .Soft .Hard}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
+        [ "$inspect" = "$(printf 'core=0:0\nnofile=16384:32768')" ] \
+            || fail 'resource-limit fixture ulimit envelope differs'
+        printf 'LINUX_RESOURCE_LIMITS_ENVELOPE=pass nofile=16384:32768 core=0:0 uid=1000 caps=none nnp=on\n'
+    fi
     namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' \
         "$CONTAINER_ID")"
@@ -7689,7 +7700,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = linux-resource-limits ]; then
-            grep -E '^RESOURCE_LIMIT_CASE |^LINUX_RESOURCE_LIMITS_(NATIVE|ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            grep -E '^RESOURCE_LIMIT_CASE |^LINUX_RESOURCE_LIMITS_(NATIVE|ARTIFACT_BEFORE|ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'LINUX_RESOURCE_LIMITS_VM=pass commit=%s tree=%s tests=%s cases=16 before_failed=5 before_controls=3 child_raises=10 target=linux-x86_64 scope=production-linux-fd-initializer app=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

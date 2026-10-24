@@ -112,7 +112,8 @@ mod tests {
             assert_eq!(u64::from_str_radix(value, 16).unwrap(), 0);
         }
         assert_eq!(unsafe { libc::prctl(libc::PR_GET_NO_NEW_PRIVS, 0 as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong) }, 1);
-        assert!(limits().unwrap().rlim_max >= 32768, "fixture needs its declared initial hard limit");
+        let inherited = limits().unwrap();
+        assert!(inherited.rlim_max >= 32768, "fixture needs hard limit 32768, observed {}", inherited.rlim_max);
         let (soft, hard) = match case.as_str() {
             "below" | "noop_set_denied" => (64, 32768),
             "zero" => (0, 32768), "at" => (8192, 32768),

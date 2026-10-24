@@ -5854,6 +5854,136 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
+    fn file_metadata_finalization_authority_case(
+        artifact: &str, change: &str, mode: u32, should_refuse: bool,
+    ) -> serde_json::Value {
+        use std::{io::Write, os::unix::fs::{MetadataExt, PermissionsExt}};
+        let root = TestTempDir::new("rustdesk_receive_finalization_authority");
+        std::fs::create_dir_all(&root.path).unwrap();
+        let final_path = root.join("incoming.bin");
+        let download = root.join("incoming.bin.download");
+        let digest_path = root.join("incoming.bin.digest");
+        let lock = root.join("incoming.bin.download.lock");
+        let alias = root.join("alias");
+        std::fs::write(&final_path, b"original").unwrap();
+        let (mut stream, mut claim) = ReceiveWriteClaim::start_new(
+            final_path.clone(), FileDigest { size: 6, modified: 31 },
+        ).unwrap();
+        stream.write_all(b"abcdef").unwrap();
+        stream.sync_all().unwrap();
+        drop(stream);
+        filetime::set_file_handle_times(&claim.download_file, None,
+            Some(filetime::FileTime::from_unix_time(17, 0))).unwrap();
+        let selected = match artifact {
+            "payload" => &download, "digest" => &digest_path,
+            _ => panic!("unknown fixture artifact"),
+        };
+        match change {
+            "mode" => {
+                std::fs::set_permissions(selected, std::fs::Permissions::from_mode(mode)).unwrap();
+                assert_eq!(std::fs::metadata(selected).unwrap().mode() & 0o7777, mode);
+            }
+            "alias" | "retired-alias" => {
+                std::fs::hard_link(selected, &alias).unwrap();
+                assert_eq!(std::fs::metadata(selected).unwrap().nlink(), 2);
+                if change == "retired-alias" { std::fs::remove_file(&alias).unwrap(); }
+            }
+            "target-alias" => {
+                std::fs::remove_file(&final_path).unwrap();
+                std::fs::hard_link(selected, &final_path).unwrap();
+                assert_eq!(std::fs::metadata(selected).unwrap().nlink(), 2);
+            }
+            "none" => {}
+            _ => panic!("unknown fixture change"),
+        }
+        let snapshot = |path: &Path| std::fs::symlink_metadata(path).ok().map(|m| (
+            m.dev(), m.ino(), m.mode(), m.len(), m.mtime(), m.mtime_nsec(),
+            std::fs::read(path).unwrap(),
+        ));
+        let before = [snapshot(&final_path), snapshot(&download),
+            snapshot(&digest_path), snapshot(&lock), snapshot(&alias)];
+        let result = claim.finish(6, 31);
+        let refused = result.is_err();
+        let permission_refusal = result.as_ref().err()
+            .map(|e| e.kind() == std::io::ErrorKind::PermissionDenied).unwrap_or(false);
+        let published = claim.published;
+        let after = [snapshot(&final_path), snapshot(&download),
+            snapshot(&digest_path), snapshot(&lock), snapshot(&alias)];
+        let state_correct = if should_refuse {
+            before == after && !published
+        } else {
+            let data = after[0].as_ref().unwrap();
+            let original = before[1].as_ref().unwrap();
+            data.0 == original.0 && data.1 == original.1 && data.2 & 0o7777 == 0o600
+                && data.4 == 31 && data.6 == b"abcdef" && published
+                && after[1..].iter().all(Option::is_none)
+        };
+        // Observe finalization first, then exercise ordinary consuming claim cancellation.
+        let cleanup_ok = claim.cleanup().is_ok();
+        let target_preserved = if should_refuse {
+            snapshot(&final_path) == before[0]
+        } else { snapshot(&final_path) == after[0] };
+        let cleanup_correct = cleanup_ok == !matches!(change, "alias" | "target-alias");
+        serde_json::json!({
+            "artifact": artifact, "change": change, "mode": mode,
+            "should_refuse": should_refuse, "refused": refused,
+            "permission_refusal": permission_refusal, "published": published,
+            "state_correct": state_correct, "cleanup_ok": cleanup_ok,
+            "cleanup_correct": cleanup_correct, "target_preserved": target_preserved,
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn file_metadata_receive_finalization_modes() {
+        let mut passed = true;
+        let mut cases = 0;
+        for artifact in ["payload", "digest"] {
+            for mode in [0o600, 0o640, 0o644, 0o601, 0o610, 0o602, 0o620, 0o666,
+                0o1600, 0o2600, 0o4600, 0o7600] {
+                let should_refuse = mode & 0o7022 != 0
+                    || artifact == "payload" && mode & 0o077 != 0;
+                let observation = file_metadata_finalization_authority_case(
+                    artifact, "mode", mode, should_refuse,
+                );
+                passed &= observation["refused"] == should_refuse
+                    && observation["permission_refusal"] == should_refuse
+                    && observation["state_correct"] == true
+                    && observation["cleanup_correct"] == true
+                    && observation["target_preserved"] == true;
+                println!("FILE_METADATA_FINALIZATION_AUTHORITY={observation}");
+                cases += 1;
+            }
+        }
+        assert_eq!(cases, 24);
+        assert!(passed, "finalization must revalidate the retained artifact permissions");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn file_metadata_receive_finalization_links() {
+        let mut passed = true;
+        let mut cases = 0;
+        for artifact in ["payload", "digest"] {
+            for change in ["none", "alias", "target-alias", "retired-alias"] {
+                let should_refuse = matches!(change, "alias" | "target-alias");
+                let observation = file_metadata_finalization_authority_case(
+                    artifact, change, 0o600, should_refuse,
+                );
+                passed &= observation["refused"] == should_refuse
+                    && observation["permission_refusal"] == should_refuse
+                    && observation["state_correct"] == true
+                    && observation["cleanup_correct"] == true
+                    && observation["target_preserved"] == true;
+                println!("FILE_METADATA_FINALIZATION_AUTHORITY={observation}");
+                cases += 1;
+            }
+        }
+        assert_eq!(cases, 8);
+        assert!(passed, "finalization must revalidate retained single-link authority");
+    }
+
+    #[cfg(target_os = "linux")]
     fn file_metadata_receive_mode_case(
         action: &str, artifact: &str, mode: u32, should_refuse: bool,
     ) -> serde_json::Value {

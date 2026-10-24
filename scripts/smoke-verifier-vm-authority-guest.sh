@@ -3392,6 +3392,8 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_receive_native_path_resume_inspection_keeps_partial_identity
                 fs::tests::file_metadata_receive_modes_gate_inspection
                 fs::tests::file_metadata_receive_modes_gate_resume
+                fs::tests::file_metadata_receive_finalization_modes
+                fs::tests::file_metadata_receive_finalization_links
                 fs::tests::file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct
                 fs::tests::recursive_owner_files_retain_the_listed_parent
                 fs::tests::recursive_owner_empty_dirs_retain_the_listed_parent

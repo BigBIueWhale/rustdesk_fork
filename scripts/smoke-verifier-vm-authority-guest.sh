@@ -3359,6 +3359,9 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_receive_digest_stays_bound_to_admitted_size
                 fs::tests::file_metadata_next_digest_completes_the_previous_file
                 fs::tests::file_metadata_next_digest_refusal_preserves_the_current_claim
+                fs::tests::file_metadata_inspection_failure_preserves_digest_cache
+                fs::tests::file_metadata_inspection_cache_success_and_next_failure
+                fs::tests::receive_destination_lease_is_cross_process_and_crash_resumable
                 fs::tests::file_metadata_digest_matching_subseconds_keep_overwrite_hint
                 fs::tests::file_metadata_rename_existing_targets_are_preserved
                 fs::tests::file_metadata_rename_late_collision_is_atomic
@@ -5594,7 +5597,8 @@ run_focused_rust_tests() {
                                 fs::tests::recv_finish_renameat_replaces_symlink_final_without_touching_target \
                                 fs::tests::recv_finish_reports_visible_but_uncertain_after_parent_sync_failure \
                                 fs::tests::recv_digest_read_no_follow_refuses_symlink_sidecar \
-                                fs::tests::receive_file_list_replacement_cannot_authorize_early_done; do
+                                fs::tests::receive_file_list_replacement_cannot_authorize_early_done \
+                                fs::tests::receive_destination_lease_is_cross_process_and_crash_resumable; do
                                 receive_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" --exact "$receive_case" --color never --test-threads=1 --show-output \

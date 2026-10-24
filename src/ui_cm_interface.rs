@@ -17,7 +17,7 @@ use hbb_common::fs::serialize_transfer_job;
 use hbb_common::{
     allow_err, bail,
     config::{keys::OPTION_FILE_TRANSFER_MAX_FILES, Config},
-    fs::{self, get_string, inspect_write_destination, DigestCheckResult},
+    fs::{self, get_string, DigestCheckResult},
     log,
     message_proto::*,
     tokio::{
@@ -2937,32 +2937,19 @@ async fn handle_fs(
                     file_size,
                     ..Default::default()
                 };
-                if let Err(error) = job.job.admit_receive_digest(&digest).await {
-                    ipc::CmWriteDigestResult::Error(error.to_string())
-                } else {
-                    match job.job.files().get(file_num as usize) {
-                        Some(file) => {
-                            let path = get_string(&fs::TransferJob::join(job.job.path(), &file.name));
-                            match inspect_write_destination(is_resume, &path, &digest) {
-                                Ok(DigestCheckResult::NoSuchFile) => {
-                                    ipc::CmWriteDigestResult::SendConfirm { skip: false }
-                                }
-                                Ok(DigestCheckResult::NeedConfirm(digest)) => {
-                                    ipc::CmWriteDigestResult::Digest {
-                                        last_modified: digest.last_modified,
-                                        file_size: digest.file_size,
-                                        is_identical: digest.is_identical,
-                                        transferred_size: digest.transferred_size,
-                                    }
-                                }
-                                Err(error) => ipc::CmWriteDigestResult::Error(error.to_string()),
-                            }
-                        }
-                        _ => ipc::CmWriteDigestResult::Error(format!(
-                            "invalid write job file {}",
-                            file_num
-                        )),
+                match job.job.inspect_receive_digest(&digest, is_resume).await {
+                    Ok((DigestCheckResult::NoSuchFile, _)) => {
+                        ipc::CmWriteDigestResult::SendConfirm { skip: false }
                     }
+                    Ok((DigestCheckResult::NeedConfirm(digest), _)) => {
+                        ipc::CmWriteDigestResult::Digest {
+                            last_modified: digest.last_modified,
+                            file_size: digest.file_size,
+                            is_identical: digest.is_identical,
+                            transferred_size: digest.transferred_size,
+                        }
+                    }
+                    Err(error) => ipc::CmWriteDigestResult::Error(error.to_string()),
                 }
             } else {
                 ipc::CmWriteDigestResult::Error(format!(

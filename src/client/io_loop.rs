@@ -535,19 +535,8 @@ async fn inspect_viewer_download_digest(
     digest: &FileTransferDigest,
     peer_supports_resume: bool,
 ) -> Result<(DigestCheckResult, String), String> {
-    job.admit_receive_digest(digest).await
-        .map_err(|error| error.to_string())?;
-    let file_num = usize::try_from(digest.file_num)
-        .map_err(|_| format!("digest file number {} is negative", digest.file_num))?;
-    let file = job
-        .files()
-        .get(file_num)
-        .ok_or_else(|| format!("digest file number {} is out of range", digest.file_num))?;
-    let write_path = get_string(&fs::TransferJob::join(job.path(), &file.name));
-    let result =
-        fs::inspect_write_destination(peer_supports_resume && job.is_resume, &write_path, digest)
-            .map_err(|error| error.to_string())?;
-    Ok((result, write_path))
+    job.inspect_receive_digest(digest, peer_supports_resume && job.is_resume).await
+        .map_err(|error| error.to_string())
 }
 
 struct ViewerFileWriteTracker {

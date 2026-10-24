@@ -3744,7 +3744,7 @@ impl TransferJob {
 
     /// Admit the current or immediately succeeding receive-file digest. The sender
     /// requests the next file's decision before it can send that file's first block.
-    pub async fn admit_receive_digest(&mut self, digest: &FileTransferDigest) -> ResultType<()> {
+    async fn admit_receive_digest(&mut self, digest: &FileTransferDigest) -> ResultType<()> {
         if digest.id != self.id {
             bail!("digest job {} does not match active job {}", digest.id, self.id);
         }
@@ -3781,6 +3781,30 @@ impl TransferJob {
         }
         self.digest = FileDigest { size, modified };
         Ok(())
+    }
+
+    pub async fn inspect_receive_digest(
+        &mut self,
+        digest: &FileTransferDigest,
+        is_resume: bool,
+    ) -> ResultType<(DigestCheckResult, String)> {
+        self.admit_receive_digest(digest).await?;
+        let file_num = usize::try_from(digest.file_num)
+            .map_err(|_| anyhow!("invalid digest file number {}", digest.file_num))?;
+        let file = self.files.get(file_num)
+            .ok_or_else(|| anyhow!("invalid digest file number {}", digest.file_num))?;
+        let path = get_string(&Self::join(&self.path, &file.name));
+        let request = FileTransferDigest {
+            id: digest.id,
+            file_num: digest.file_num,
+            file_size: digest.file_size,
+            last_modified: digest.last_modified,
+            ..Default::default()
+        };
+        tokio::task::spawn_blocking(move || {
+            inspect_write_destination(is_resume, &path, &request)
+                .map(|result| (result, path))
+        }).await?
     }
 
     #[inline]
@@ -5913,19 +5937,20 @@ mod tests {
                     id: 83, file_num: index as i32, file_size: size, last_modified: modified,
                     ..Default::default()
                 };
-                if let Err(error) = receiver.admit_receive_digest(&digest).await {
-                    println!("RECEIVE_NEXT_DIGEST=refused case={case} file={index} error={error}");
-                    admitted = false;
-                    break;
-                }
+                let inspected = match receiver.inspect_receive_digest(&digest, false).await {
+                    Ok((result, _)) => result,
+                    Err(error) => {
+                        println!("RECEIVE_NEXT_DIGEST=refused case={case} file={index} error={error}");
+                        admitted = false;
+                        break;
+                    }
+                };
                 assert_eq!(receiver.file_num(), index as i32);
                 for previous in &files[..index] {
                     assert_eq!(std::fs::read(target.join(&previous.name)).unwrap(),
                                std::fs::read(source.join(&previous.name)).unwrap());
                 }
-                let path = target.join(&entry.name);
-                assert!(matches!(inspect_write_destination(false, path.to_str().unwrap(), &digest)
-                    .unwrap(), DigestCheckResult::NeedConfirm(_)));
+                assert!(matches!(inspected, DigestCheckResult::NeedConfirm(_)));
                 let confirmation = receiver.confirm_with_offset(index as i32, 0).await.unwrap();
                 sender.confirm(&confirmation).await.unwrap();
                 while sender.file_num() == index as i32 {
@@ -5964,10 +5989,10 @@ mod tests {
                 FileEntry { name: "next.zip".into(), size: 3, ..Default::default() },
                 FileEntry { name: "last.zip".into(), size: 1, ..Default::default() },
             ]).unwrap();
-            receiver.admit_receive_digest(&FileTransferDigest {
+            receiver.inspect_receive_digest(&FileTransferDigest {
                 id: 84, file_num: 0, file_size: 4, last_modified: 17,
                 ..Default::default()
-            }).await.unwrap();
+            }, false).await.unwrap();
             receiver.confirm_with_offset(0, 0).await.unwrap();
             receiver.write(FileTransferBlock {
                 id: 84, file_num: 0, data: b"abcd"[..prefix].to_vec().into(),
@@ -5978,9 +6003,9 @@ mod tests {
                 ("wrong-size", 84, 1, 9)];
             if prefix == 2 { cases.push(("short-predecessor", 84, 1, 3)); }
             for (case, id, file_num, file_size) in cases {
-                let result = receiver.admit_receive_digest(&FileTransferDigest {
+                let result = receiver.inspect_receive_digest(&FileTransferDigest {
                     id, file_num, file_size, last_modified: 23, ..Default::default()
-                }).await;
+                }, false).await;
                 let preserved = receiver.file_num() == 0 && receiver.file_confirmed()
                     && receiver.digest == FileDigest { size: 4, modified: 17 }
                     && receiver.receive_file_offset == prefix as u64
@@ -5996,6 +6021,131 @@ mod tests {
             receiver.retire_current_file_state().unwrap();
             assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 0);
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn file_metadata_inspection_failure_preserves_digest_cache() {
+        let mut outcomes = Vec::new();
+        for case in ["malformed-resume", "linked-destination", "pre-epoch"] {
+            let tmp = TestTempDir::new("rustdesk_inspection_cache_failure");
+            std::fs::create_dir_all(&tmp.path).unwrap();
+            let path = tmp.join("incoming.bin");
+            std::fs::write(&path, b"original").unwrap();
+            let mut job = TransferJob::new_write(
+                85, JobType::Generic, String::new(), tmp.path.clone(), 0, false, false, true,
+            ).with_files(vec![FileEntry {
+                name: "incoming.bin".into(), size: 3, ..Default::default()
+            }]).unwrap();
+            job.inspect_receive_digest(&FileTransferDigest {
+                id: 85, file_num: 0, file_size: 3, last_modified: 17,
+                ..Default::default()
+            }, false).await.unwrap();
+            if case == "malformed-resume" {
+                std::fs::write(recv_sidecar_path(&path, ".download"), b"ne").unwrap();
+                std::fs::write(recv_sidecar_path(&path, ".digest"), b"not json").unwrap();
+            } else if case == "linked-destination" {
+                let target = tmp.join("target.bin");
+                std::fs::rename(&path, &target).unwrap();
+                std::os::unix::fs::symlink(&target, &path).unwrap();
+            } else {
+                filetime::set_file_mtime(&path, filetime::FileTime::from_unix_time(-1, 0)).unwrap();
+                assert!(std::fs::metadata(&path).unwrap().modified().unwrap()
+                    .duration_since(UNIX_EPOCH).is_err());
+            }
+            let before_time = std::fs::metadata(&path).unwrap().modified().unwrap();
+            let before_link = std::fs::read_link(&path).ok();
+            let before_download = std::fs::read(recv_sidecar_path(&path, ".download")).ok();
+            let before_digest = std::fs::read(recv_sidecar_path(&path, ".digest")).ok();
+            let result = job.inspect_receive_digest(&FileTransferDigest {
+                id: 85, file_num: 0, file_size: 3, last_modified: 23,
+                ..Default::default()
+            }, case == "malformed-resume").await;
+            let cache_preserved = job.digest == FileDigest { size: 3, modified: 17 };
+            let objects_preserved = std::fs::read(&path).unwrap() == b"original"
+                && std::fs::metadata(&path).unwrap().modified().unwrap() == before_time
+                && std::fs::read_link(&path).ok() == before_link
+                && std::fs::read(recv_sidecar_path(&path, ".download")).ok() == before_download
+                && std::fs::read(recv_sidecar_path(&path, ".digest")).ok() == before_digest
+                && !recv_sidecar_path(&path, ".download.lock").exists();
+            let unconfirmed = job.file_num() == 0 && !job.file_confirmed()
+                && job.data_stream.is_none() && job.receive_write_claim.is_none()
+                && job.finished_size() == 0 && job.transferred() == 0;
+            println!("FILE_METADATA_INSPECTION_CACHE=observed case={case} refused={} cache_preserved={cache_preserved} objects_preserved={objects_preserved} unconfirmed={unconfirmed}", result.is_err());
+            outcomes.push(result.is_err() && cache_preserved && objects_preserved && unconfirmed);
+        }
+        assert!(outcomes.into_iter().all(|passed| passed));
+    }
+
+    #[tokio::test]
+    async fn file_metadata_inspection_cache_success_and_next_failure() {
+        for case in ["missing", "existing", "resume"] {
+            let tmp = TestTempDir::new("rustdesk_inspection_cache_success");
+            std::fs::create_dir_all(&tmp.path).unwrap();
+            let path = tmp.join("incoming.bin");
+            if case != "missing" { std::fs::write(&path, b"original").unwrap(); }
+            if case == "resume" {
+                std::fs::write(recv_sidecar_path(&path, ".download"), b"ne").unwrap();
+                std::fs::write(recv_sidecar_path(&path, ".digest"),
+                    json!(FileDigest { size: 3, modified: 23 }).to_string()).unwrap();
+            }
+            let mut job = TransferJob::new_write(
+                86, JobType::Generic, String::new(), tmp.path.clone(), 0, false, false, true,
+            ).with_files(vec![FileEntry {
+                name: "incoming.bin".into(), size: 3, ..Default::default()
+            }]).unwrap();
+            let (result, inspected_path) = job.inspect_receive_digest(&FileTransferDigest {
+                id: 86, file_num: 0, file_size: 3, last_modified: 23,
+                ..Default::default()
+            }, case == "resume").await.unwrap();
+            let offset = match result {
+                DigestCheckResult::NoSuchFile => { assert_eq!(case, "missing"); 0 }
+                DigestCheckResult::NeedConfirm(digest) => {
+                    assert_ne!(case, "missing");
+                    assert_eq!(digest.transferred_size, if case == "resume" { 2 } else { 0 });
+                    digest.transferred_size
+                }
+            };
+            assert_eq!(Path::new(&inspected_path), path);
+            assert_eq!(job.digest, FileDigest { size: 3, modified: 23 });
+            job.confirm_with_offset(0, offset).await.unwrap();
+            job.write(FileTransferBlock {
+                id: 86, file_num: 0, data: b"new"[offset as usize..].to_vec().into(),
+                ..Default::default()
+            }).await.unwrap();
+            job.finalize_write(1).await.unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), b"new");
+            assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1);
+            println!("FILE_METADATA_INSPECTION_CACHE=control case={case} cached=true committed=true exact_bytes=true sidecars_absent=true");
+        }
+        let tmp = TestTempDir::new("rustdesk_next_inspection_failure");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let mut job = TransferJob::new_write(
+            87, JobType::Generic, String::new(), tmp.path.clone(), 0, false, false, true,
+        ).with_files(vec![
+            FileEntry { name: "first.bin".into(), size: 3, ..Default::default() },
+            FileEntry { name: "next.bin".into(), size: 4, ..Default::default() },
+        ]).unwrap();
+        job.inspect_receive_digest(&FileTransferDigest {
+            id: 87, file_num: 0, file_size: 3, last_modified: 17, ..Default::default()
+        }, false).await.unwrap();
+        job.write(FileTransferBlock {
+            id: 87, file_num: 0, data: b"one".to_vec().into(), ..Default::default()
+        }).await.unwrap();
+        let next = tmp.join("next.bin");
+        std::fs::write(recv_sidecar_path(&next, ".download"), b"ol").unwrap();
+        std::fs::write(recv_sidecar_path(&next, ".digest"), b"not json").unwrap();
+        let result = job.inspect_receive_digest(&FileTransferDigest {
+            id: 87, file_num: 1, file_size: 4, last_modified: 23, ..Default::default()
+        }, true).await;
+        let cache_preserved = job.digest == FileDigest { size: 3, modified: 17 };
+        let previous_committed = std::fs::read(tmp.join("first.bin")).unwrap() == b"one";
+        let next_preserved = !next.exists()
+            && std::fs::read(recv_sidecar_path(&next, ".download")).unwrap() == b"ol"
+            && std::fs::read(recv_sidecar_path(&next, ".digest")).unwrap() == b"not json"
+            && !recv_sidecar_path(&next, ".download.lock").exists();
+        println!("FILE_METADATA_INSPECTION_CACHE=observed case=next-inspection refused={} cache_preserved={cache_preserved} previous_committed={previous_committed} next_preserved={next_preserved}", result.is_err());
+        assert!(result.is_err() && cache_preserved && previous_committed && next_preserved);
     }
 
     #[tokio::test]
@@ -6017,8 +6167,8 @@ mod tests {
             }]).unwrap();
             // Observe cached state independently of the admission result, including refusal
             // that must preserve both fields from the previously admitted digest.
-            let _ = job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: 3, last_modified: 17, ..Default::default() }).await;
-            let _ = job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: incoming_size, last_modified: 23, ..Default::default() }).await;
+            let _ = job.inspect_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: 3, last_modified: 17, ..Default::default() }, false).await;
+            let _ = job.inspect_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: incoming_size, last_modified: 23, ..Default::default() }, false).await;
             let admitted = job.digest.size == 3
                 && job.digest.modified == if incoming_size == 3 { 23 } else { 17 };
             let unchanged = std::fs::read(&path).unwrap() == b"old!"
@@ -6129,7 +6279,7 @@ mod tests {
                 name: "incoming.bin".into(), size: 3, modified_time: 1_600_000_000,
                 ..Default::default()
             }]).unwrap();
-            job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: 3, last_modified: 1_600_000_000, ..Default::default() }).await.unwrap();
+            job.inspect_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: 3, last_modified: 1_600_000_000, ..Default::default() }, false).await.unwrap();
             job.confirm_with_offset(0, available as u64).await.unwrap();
             if available < 3 {
                 job.write(FileTransferBlock {
@@ -8243,7 +8393,7 @@ mod tests {
             .expect("create resumed receive job");
         job.files[0].size = 4;
         job.is_resume = true;
-        job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: 4, last_modified: 17, ..Default::default() }).await.expect("admit the matching resume digest");
+        job.inspect_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: 4, last_modified: 17, ..Default::default() }, false).await.expect("admit the matching resume digest");
         job.confirm(&FileTransferSendConfirmRequest {
             id: 98,
             file_num: 0,
@@ -8503,7 +8653,7 @@ mod tests {
                 let mut job =
                     new_write_job(90, path, "incoming.bin").expect("create owning receive job");
                 job.files[0].size = TOTAL_SIZE;
-                job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: TOTAL_SIZE, last_modified: MODIFIED, ..Default::default() }).await.unwrap();
+                job.inspect_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: TOTAL_SIZE, last_modified: MODIFIED, ..Default::default() }, false).await.unwrap();
                 job.write(FileTransferBlock {
                     id: 90,
                     file_num: 0,
@@ -8522,16 +8672,21 @@ mod tests {
                 let mut job =
                     new_write_job(91, path, "incoming.bin").expect("create competing receive job");
                 job.files[0].size = TOTAL_SIZE;
-                job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: TOTAL_SIZE, last_modified: MODIFIED, ..Default::default() }).await.unwrap();
-                let error = job
-                    .write(FileTransferBlock {
+                let inspected = job.inspect_receive_digest(&FileTransferDigest {
+                    id: job.id(), file_num: job.file_num(), file_size: TOTAL_SIZE,
+                    last_modified: MODIFIED, ..Default::default()
+                }, false).await;
+                let error = match inspected {
+                    Err(error) => error,
+                    Ok(_) => job.write(FileTransferBlock {
                         id: 91,
                         file_num: 0,
                         data: b"must-not-win".to_vec().into(),
                         ..Default::default()
                     })
                     .await
-                    .expect_err("a second process must not acquire the live destination");
+                    .expect_err("a second process must not acquire the live destination"),
+                };
                 assert!(
                     error
                         .to_string()
@@ -8546,7 +8701,7 @@ mod tests {
                     new_write_job(92, path, "incoming.bin").expect("create resumed receive job");
                 job.files[0].size = TOTAL_SIZE;
                 job.is_resume = true;
-                job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: TOTAL_SIZE, last_modified: MODIFIED, ..Default::default() }).await.unwrap();
+                job.inspect_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: TOTAL_SIZE, last_modified: MODIFIED, ..Default::default() }, false).await.unwrap();
                 job.confirm(&FileTransferSendConfirmRequest {
                     id: 92,
                     file_num: 0,

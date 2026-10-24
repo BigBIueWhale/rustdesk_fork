@@ -1557,7 +1557,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                 let context = self
                                     .read_jobs
                                     .iter()
-                                    .find(|job| !job.is_last_job)
+                                    .find(|job| job.is_read_step_ready())
                                     .or_else(|| self.read_jobs.first())
                                     .map(|job| {
                                         ViewerFileWriteContext::transfer_data(

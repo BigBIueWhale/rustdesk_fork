@@ -4377,6 +4377,16 @@ impl TransferJob {
         self.file_confirmed
     }
 
+    /// Whether this send job can take a reader step without waiting for peer confirmation.
+    #[inline]
+    pub fn is_read_step_ready(&self) -> bool {
+        !self.is_last_job
+            && !(self.r#type == JobType::Generic
+                && self.enable_overwrite_detection
+                && self.file_is_waiting
+                && !self.file_confirmed)
+    }
+
     /// Indicating whether the last file is skipped
     #[inline]
     pub fn file_skipped(&self) -> bool {
@@ -4693,7 +4703,7 @@ pub async fn handle_read_jobs(
     stream: &mut crate::Stream,
 ) -> ResultType<(String, Option<crate::tcp::WriterReceipt>)> {
     // One selected entry owns the step through initialization and terminal retirement.
-    let Some(index) = jobs.iter().position(|job| !job.is_last_job) else {
+    let Some(index) = jobs.iter().position(TransferJob::is_read_step_ready) else {
         return Ok((String::new(), None));
     };
     let job = &mut jobs[index];

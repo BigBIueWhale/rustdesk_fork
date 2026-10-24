@@ -3421,6 +3421,31 @@ directory-writer final exchange races remain OPEN. Unix identity checks do not
 make a by-name rename/unlink conditional on the checked inode. No whole-product
 LPE closure follows; all user parks and broader release obligations remain intact.
 
+**Receive digest/manifest binding — Linux native component corrected; integration/platform acceptance OPEN.**
+Product `dac08e5a` makes `TransferJob::set_digest` fallible: only a receive job with
+an active admitted file and an exactly matching declared size may replace its
+cached digest. Refusal leaves both cached fields unchanged. The CM upload receiver
+now consumes this result before destination inspection or an identical/resume hint;
+its existing digest-error path retains cancellation until the exact cleanup reply.
+The viewer uses the same admission and propagates its error before inspection;
+its duplicate size check is removed. Existing connection/generation and file-index
+checks remain. No dependency, policy mode, protocol or required feature is added.
+
+At test baseline `3e5de21b`, the shared setter accepted zero, smaller, larger and
+`u64::MAX` sizes against a three-byte manifest; the new regression failed while
+43 controls passed. The identical regression passes at `dac08e5a`, preserving
+cached state and destination/sidecars on each conflicting size, with a matching-size
+control that commits exact bytes and retires its sidecars. All **124 required names
+and 33 groups** pass in the existing `--file-metadata-tests` profile (187 outer
+seconds). The old overlong-resume test still injects a corrupt private cache to
+exercise the sink's independent manifest bound. Exact sources, artifacts, raw
+results, endpoint observations and joined RAM/private-root retirement are retained
+in `.harness-state/verifier-vm/receive-digest-2cfaac0d.json`.
+This executes the Linux shared library and real files, not the complete CM/viewer,
+an installed privileged service or another target OS. Their compilation/integration,
+authorized/refused principal, UI, resource/latency and release acceptance remain
+OPEN; all existing parks remain in force. No complete LPE-immunity claim follows.
+
 **Receive resume-length admission — Linux native component corrected; installed/platform acceptance OPEN.**
 Product `ad57ba2a` checks the opened partial file's length both before offering a
 resume offset and before publishing resume-stream ownership. The latter bound

@@ -677,6 +677,71 @@ mod tests {
         qos
     }
 
+    fn write_test_display_support(
+        qos: &mut VideoQoS, name: &str, _generation: &DisplayGeneration, support: bool,
+    ) {
+        qos.set_support_changing_quality(name, support);
+    }
+
+    fn write_test_display_activity(
+        qos: &mut VideoQoS, name: &str, _generation: &DisplayGeneration, count: usize,
+    ) {
+        qos.update_display_data(name, count);
+    }
+
+    #[test]
+    fn display_support_and_activity_require_the_exact_generation() {
+        let mut outcomes = Vec::new();
+        for role in ["replaced", "reset", "other-display", "removed", "current"] {
+            for action in ["support", "activity"] {
+                let mut qos = healthy_controller();
+                let mut actor = qos.new_display("monitor".into());
+                match role {
+                    "replaced" => { qos.new_display("monitor".into()); }
+                    "reset" => {
+                        qos = healthy_controller();
+                        qos.new_display("monitor".into());
+                    }
+                    "other-display" => { actor = qos.new_display("other".into()); }
+                    "removed" => qos.remove_display("monitor", &actor),
+                    _ => {}
+                }
+                for display in qos.displays.values_mut() {
+                    display.support_changing_quality = true;
+                    display.send_counter = 1;
+                }
+                qos.ratio = BR_BALANCED / 2.0;
+                qos.adjust_ratio_instant = Instant::now().checked_sub(Duration::from_secs(4)).unwrap();
+                let snapshot = |qos: &VideoQoS| (
+                    qos.fps, qos.ratio, qos.adjust_ratio_instant,
+                    qos.displays.get("monitor").map(|display|
+                        (display.support_changing_quality, display.send_counter, display.bitrate)),
+                );
+                let before = snapshot(&qos);
+                if action == "support" {
+                    write_test_display_support(&mut qos, "monitor", &actor, false);
+                } else {
+                    write_test_display_activity(&mut qos, "monitor", &actor, 2);
+                }
+                let after = snapshot(&qos);
+                let correct = if role != "current" {
+                    before == after
+                } else if action == "support" {
+                    after.3 == Some((false, 1, 0))
+                } else {
+                    after.3 == Some((true, 0, 0)) && after.2 > before.2
+                        && after.0 == before.0 && after.1 == before.1
+                };
+                println!("VIDEO_QOS_ACTIVITY_OWNER=observed role={role} action={action} current={} unchanged={} correct={correct}",
+                    role == "current", before == after);
+                outcomes.push(correct);
+            }
+        }
+        assert!(outcomes.into_iter().all(|correct| correct),
+            "display support and activity updates must retain their exact generation");
+        println!("VIDEO_QOS_ACTIVITY_OWNER=pass cases=10 stale=preserved current=applied missing=inert");
+    }
+
     #[test]
     fn display_activity_is_bounded_and_retires_without_adaptation() {
         let threshold = ADJUST_RATIO_INTERVAL * DYNAMIC_SCREEN_THRESHOLD;

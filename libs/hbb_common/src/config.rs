@@ -4352,51 +4352,6 @@ impl PeerConfig {
         }
     }
 
-    #[inline]
-    async fn preload_file_async(path: PathBuf) {
-        let _ = tokio::fs::File::open(path).await;
-    }
-
-    #[tokio::main(flavor = "current_thread")]
-    async fn preload_peers_async() {
-        let now = std::time::Instant::now();
-        let vec_id_modified_time_path = Self::get_vec_id_modified_time_path(&None);
-        let total_count = vec_id_modified_time_path.len();
-        let mut futs = vec![];
-        for (_, _, path) in vec_id_modified_time_path.into_iter() {
-            futs.push(Self::preload_file_async(path));
-            if futs.len() >= Self::BATCH_LOADING_COUNT {
-                let first_load_start = std::time::Instant::now();
-                futures::future::join_all(futs).await;
-                if first_load_start.elapsed().as_millis() < 10 {
-                    // No need to preload the rest if the first load is fast.
-                    return;
-                }
-                futs = vec![];
-            }
-        }
-        if !futs.is_empty() {
-            futures::future::join_all(futs).await;
-        }
-        log::info!(
-            "Preload peers done in {:?}, batch_count: {}, total: {}",
-            now.elapsed(),
-            Self::BATCH_LOADING_COUNT,
-            total_count
-        );
-    }
-
-    // We have to preload all peers in a background thread.
-    // Because we find that opening files the first time after the system (Windows) booting will be very slow, up to 200~400ms.
-    // The reason is that the Windows has "Microsoft Defender Antivirus Service" running in the background, which will scan the file when it's opened the first time.
-    // So we have to preload all peers in a background thread to avoid the delay when opening the file the first time.
-    // We can temporarily stop "Microsoft Defender Antivirus Service" or add the fold to the white list, to verify this. But don't do this in the release version.
-    pub fn preload_peers() {
-        std::thread::spawn(|| {
-            Self::preload_peers_async();
-        });
-    }
-
     fn load_list_info(path: PathBuf) -> crate::ResultType<PeerListInfo> {
         let file: PeerListFile = Self::read_view(&path)?;
         Ok(PeerListInfo {

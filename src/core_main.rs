@@ -346,10 +346,6 @@ pub fn core_main() -> Option<Vec<String>> {
     // installed-service fork the controlled side is reached only via `--service`
     // (CreateProcessAsUserW -> `--server` -> `--tray`).
     if args.is_empty() || crate::common::is_empty_uni_link(&args[0]) {
-        #[cfg(windows)]
-        {
-            hbb_common::config::PeerConfig::preload_peers();
-        }
         std::thread::spawn(move || crate::start_server(false));
     } else {
         #[cfg(any(target_os = "linux", target_os = "macos"))]

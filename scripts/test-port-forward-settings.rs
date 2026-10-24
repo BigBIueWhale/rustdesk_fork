@@ -78,6 +78,9 @@ include!(env!("PF_SETTINGS_RDP_PRODUCER"));
 
 #[path = "test-rdp-launch.rs"]
 mod rdp_launch_tests;
+#[cfg(pf_settings_results)]
+#[path = "test-tunnel-port-kind.rs"]
+mod tunnel_port_kind_tests;
 
 struct Fixture { root: PathBuf, session: Session }
 impl Fixture {
@@ -125,7 +128,12 @@ impl<T: InvokeUiSession> Interface for Session<T> {
 #[cfg(pf_settings_results)]
 include!(env!("PF_SETTINGS_LISTEN_WAIT"));
 #[cfg(pf_settings_results)]
-fn run_rdp(_port: u16) -> ResultType<()> { Ok(()) }
+static RDP_LAUNCH_PORTS: Mutex<Vec<u16>> = Mutex::new(Vec::new());
+#[cfg(pf_settings_results)]
+fn run_rdp(port: u16) -> ResultType<()> {
+    RDP_LAUNCH_PORTS.lock().unwrap().push(port);
+    Ok(())
+}
 
 
 #[cfg(pf_settings_results)]

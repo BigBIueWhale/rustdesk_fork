@@ -14798,6 +14798,29 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
+**Receive-artifact write admission — Linux component comparison ACCEPTED; complete artifact authority OPEN.**
+`9b907415` adds descriptor-based Unix mode admission to the shared owner/link-count
+check for receive leases, staged data and resume digests. Group/other write and
+set-user-ID, set-group-ID or sticky bits return `PermissionDenied` before resumable
+metadata or stream ownership is accepted. Existing refused artifacts retain their
+bytes, identity and mode; no chmod/chown repair or truncation manufactures authority.
+Ordinary final-destination metadata inspection keeps its existing read-only policy.
+At unchanged-product baseline `6b8361a1`, two new tests fail with 52 other named passes:
+all 42 unsafe-mode cases are admitted, while 18 healthy controls pass. The identical
+test block passes after correction. All 135 required `--file-metadata-tests` cases
+pass in 34 groups/208 VM seconds, retaining all 133 previous tests. The 60-case matrix
+covers lease/download/digest admission during inspection and resume. Refusals preserve
+the unsafe artifact and data; a valid lease retires, while a refused unsafe lease stays
+untouched. Nine healthy metadata inspections and nine complete resumed writes retain
+exact bytes, inode, expected mode/mtime and cleanup. Controls admit `0600`, `0640` and
+`0644` for this write-integrity rule. These read-shared modes are not proof of payload
+confidentiality: private staged-data write authority before resume remains OPEN/STOP-SHIP.
+Evidence: `.harness-state/verifier-vm/receive-file-modes-a0ea097b.json`. R-S8 states the
+standing admission rule and read-only final-target distinction. These are nonroot
+Linux library/filesystem mode-bit observations. Actual foreign-principal/root-service
+execution, ACL and non-local-filesystem behavior, native macOS/iOS/Windows owner/DACL
+acceptance, application/peer effects, R-S0/R-F5 and release acceptance remain OPEN.
+
 **Native receive-path identity — Linux file transactions ACCEPTED; caller/platform acceptance OPEN.**
 `c1df5d00` preserves native bytes when appending receive staging suffixes.
 `e8bb5a19` keeps a native `PathBuf` through digest admission, blocking destination/resume
@@ -14815,8 +14838,8 @@ accepts unrelated cwd partial metadata and commits the incoming cache. Inspected
 identities and bytes are preserved, and UTF-8 controls pass. The identical test block returns exact
 native paths and expected metadata, commits the cache after successful inspection,
 preserves destination/partial/digest identities and bytes, and retires the lease in all
-eight cases. All 133 required `--file-metadata-tests` cases pass in 34 groups/203 VM seconds,
-including all 131 previous tests. The four path tests cover sixteen scenarios in joined
+eight cases. That exact-source comparison passes 133 selected cases in 34 groups/203 VM seconds,
+including all 131 preceding tests. The four path tests cover sixteen scenarios in joined
 children of the same source-bound artifact with private working directories. Writes use
 `TransferJob::write`/`finalize_write`; inspection uses `inspect_receive_digest`; the
 standalone resume cases use production `ReceiveWriteClaim`.
@@ -15641,8 +15664,8 @@ cleanup barrier succeeds. A deterministic same-UID replacement therefore leaves 
 displaced admitted payload untouched and retains a zero-byte lock marker rather than claiming a fully
 retired transaction. The OS lock is released, so the marker does not block a later cooperative owner.
 
-Each destination now acquires a nonblocking OS advisory lease on a stable owner-only
-`<final>.download.lock` inode before any sidecar is opened or truncated. The opened lock pathname is
+Each destination acquires a nonblocking OS advisory lease on a stable receiver-owned,
+single-link, mode-checked `<final>.download.lock` inode before any sidecar is opened or truncated. The opened lock pathname is
 identity-revalidated after acquisition. A live contender fails without modifying the owner's data.
 Kernel lock release on process death leaves the stable inode plus exact `.download`/`.digest` state
 available for explicit resume; successful commit, exact cleanup, failed admission, and read-only
@@ -15650,7 +15673,8 @@ confirmation retire the lock inode. Resume and confirmation never create missing
 directories. Resume reacquires the lease, requires the exact stored digest,
 and retains the exact open download and digest handles. Cleanup checks that each Unix pathname still
 names its admitted device/inode; Windows deletes the admitted handle. Unix validates effective-UID
-ownership and one-link authority, and Windows validates one-link authority, before any truncation, so
+ownership, one-link authority and modes excluding group/other write and special bits.
+Windows validates one-link authority. These checks precede any truncation, so
 a precreated hard link cannot redirect sidecar truncation.
 
 The retained prior Linux-container run passed all 37 `fs::tests` and the complete 147-test `hbb_common` Rust 1.75

@@ -6717,7 +6717,7 @@ mod tests {
             std::fs::write(&source, content).expect("create source");
             let mut jobs = vec![TransferJob::new_read(
                 701, JobType::Generic, "control".to_owned(), source.clone(),
-                0, false, overwrite, false,
+                0, false, false, overwrite,
             ).expect("admit source")];
             let (mut sender, mut receiver) = keyed_read_job_tcp_pair(8 * 1024).await;
             if overwrite {
@@ -6778,7 +6778,7 @@ mod tests {
                 let id = 710 + index;
                 let mut one_job = vec![TransferJob::new_read(
                     id, JobType::Generic, id.to_string(), source.clone(),
-                    0, false, true, false,
+                    0, false, false, true,
                 ).expect("admit waiting source")];
                 let (_, digest) = read_job_tcp_step(&mut one_job, &mut sender, &mut receiver).await;
                 assert!(matches!(digest.union, Some(file_response::Union::Digest(digest))

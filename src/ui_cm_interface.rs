@@ -714,20 +714,40 @@ impl CmClientRegistry {
     ) -> Option<Client> {
         let client = self
             .current_mut(owner)
-            .filter(|client| client.conn_type.allows_voice_call())?;
+            .filter(|client| !client.disconnected && client.conn_type.allows_voice_call())?;
         match event {
             ipc::CmVoiceCallEvent::Incoming { call_id } => {
+                if call_id <= 0
+                    || call_id <= client.last_voice_call_id
+                    || client.voice_call_id != 0
+                    || client.incoming_voice_call
+                    || client.in_voice_call
+                {
+                    return None;
+                }
                 client.voice_call_id = call_id;
-                client.last_voice_call_id = client.last_voice_call_id.max(call_id);
+                client.last_voice_call_id = call_id;
                 client.incoming_voice_call = true;
                 client.in_voice_call = false;
             }
             ipc::CmVoiceCallEvent::Started { call_id } => {
-                client.voice_call_id = call_id;
+                if call_id <= 0
+                    || call_id != client.voice_call_id
+                    || !client.incoming_voice_call
+                    || client.in_voice_call
+                {
+                    return None;
+                }
                 client.incoming_voice_call = false;
                 client.in_voice_call = true;
             }
-            ipc::CmVoiceCallEvent::Closed { .. } => {
+            ipc::CmVoiceCallEvent::Closed { call_id, .. } => {
+                if call_id <= 0
+                    || call_id != client.voice_call_id
+                    || client.incoming_voice_call == client.in_voice_call
+                {
+                    return None;
+                }
                 client.voice_call_id = 0;
                 client.incoming_voice_call = false;
                 client.in_voice_call = false;
@@ -1051,8 +1071,8 @@ static EXIT_ON_IDLE: AtomicBool = AtomicBool::new(false);
 fn cm_voice_call_sender(
     id: i32,
     registry_generation: i64,
-    _call_id: i64,
-    _incoming: bool,
+    call_id: i64,
+    incoming: bool,
 ) -> Option<CmEgressSender> {
     let owner = CmClientOwner {
         id,
@@ -1066,6 +1086,13 @@ fn cm_voice_call_sender(
             clients.is_current(owner)
                 && !client.disconnected
                 && client.conn_type.allows_voice_call()
+                && call_id > 0
+                && client.voice_call_id == call_id
+                && if incoming {
+                    client.incoming_voice_call && !client.in_voice_call
+                } else {
+                    client.in_voice_call && !client.incoming_voice_call
+                }
         })
         .map(|client| client.tx.clone())
 }

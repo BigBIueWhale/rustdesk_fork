@@ -10905,15 +10905,29 @@ impl Connection {
     }
 
     async fn handle_cm_voice_call(&mut self, command: ipc::CmVoiceCallCommand) {
+        if !self.can_drive_voice_call() {
+            return;
+        }
         match command {
-            ipc::CmVoiceCallCommand::Respond { call_id: _, accept } => {
+            ipc::CmVoiceCallCommand::Respond { call_id, accept }
+                if call_id > 0
+                    && call_id == self.voice_call_id
+                    && self.voice_call_request_timestamp.is_some()
+                    && self.voice_call_input.is_none() =>
+            {
                 self.handle_voice_call(accept).await;
             }
-            ipc::CmVoiceCallCommand::Stop { call_id: _ } => {
+            ipc::CmVoiceCallCommand::Stop { call_id }
+                if call_id > 0
+                    && call_id == self.voice_call_id
+                    && self.voice_call_request_timestamp.is_none()
+                    && self.voice_call_input.is_some() =>
+            {
                 if self.close_voice_call().await {
                     self.send(new_voice_call_close()).await;
                 }
             }
+            _ => log::debug!("Ignored CM voice command without current call authority"),
         }
     }
 

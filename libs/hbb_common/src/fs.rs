@@ -3742,12 +3742,15 @@ impl TransferJob {
         Ok(())
     }
 
-    #[inline]
+    /// Admit the current or immediately succeeding receive-file digest. The sender
+    /// requests the next file's decision before it can send that file's first block.
     pub async fn admit_receive_digest(&mut self, digest: &FileTransferDigest) -> ResultType<()> {
         if digest.id != self.id {
             bail!("digest job {} does not match active job {}", digest.id, self.id);
         }
-        if digest.file_num != self.file_num {
+        if digest.file_num != self.file_num
+            && self.file_num.checked_add(1) != Some(digest.file_num)
+        {
             bail!(
                 "digest file number {} does not match active file {}",
                 digest.file_num, self.file_num
@@ -3757,16 +3760,24 @@ impl TransferJob {
         if self.role != TransferRole::Receive {
             bail!("cannot admit an incoming digest into a send job");
         }
-        let file = usize::try_from(self.file_num)
+        let file = usize::try_from(digest.file_num)
             .ok()
             .and_then(|index| self.files.get(index))
-            .ok_or_else(|| anyhow!("invalid digest file number {}", self.file_num))?;
+            .ok_or_else(|| anyhow!("invalid digest file number {}", digest.file_num))?;
         if size != file.size {
             bail!(
                 "receive digest size {} does not match listed file size {}",
                 size,
                 file.size
             );
+        }
+        if digest.file_num != self.file_num {
+            // All incoming metadata is checked before publishing the previous
+            // file. Its exact claim must complete before the next index exists.
+            self.finish_current_write_file().await?;
+            self.file_num = digest.file_num;
+            self.set_file_confirmed(false);
+            self.set_file_is_waiting(false);
         }
         self.digest = FileDigest { size, modified };
         Ok(())

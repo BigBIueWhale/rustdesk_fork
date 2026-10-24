@@ -4858,7 +4858,7 @@ mod tests {
             Ok(_) => panic!("a digest for another file cannot advance the active job"),
             Err(error) => error,
         };
-        assert!(error.contains("does not match active file"));
+        assert!(error.contains("invalid digest file number 1"));
         assert_eq!(job.file_num(), 0);
     }
 

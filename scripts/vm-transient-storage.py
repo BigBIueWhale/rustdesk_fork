@@ -436,7 +436,7 @@ def main():
                         choices=('standard', 'hbb-common-fs', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'x11-focus', 'linux-parent-libtest',
-                                 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
+                                 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
                                  'android-storage-key', 'linux-flutter-suspend'),

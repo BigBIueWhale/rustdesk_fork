@@ -3012,6 +3012,33 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Shared at-rest wrapper write format (`ef025a32`).** The string/vector write APIs
+accept only data and its existing length limit; one fixed `00` envelope replaces the
+caller-selected format and unsupported-format plaintext return. The writes and configuration checks share the prefix constant. Both production callers already selected `00`; stored schemas, the
+native cipher/nonce/key path, required legacy reads and already-wrapped preservation
+remain. This removes a dormant API route, without demonstrating a reachable LPE.
+
+At `0e414d26`, the Linux configuration/at-rest cohort passes all 204 cases on the
+changed shared library. The retained wrapper regression now runs in that cohort and covers real
+string/vector round trips, envelope preservation, malformed/encrypted-like input,
+empty values and Unicode/byte limits. Its unrelated timing loop, which generated up to
+100 MiB without a performance criterion, is deleted. A fresh native child applies a
+kernel filter that returns EACCES for file opens, verifies denial at both pinned key
+paths and failure of the actual uncached key provider, then requires empty results
+from both wrappers. The child is joined and its bounded result is checked. Two
+return-wording checks are replaced by those compiled wrapper tests in `verify.sh`.
+Both cases are required by the configuration profile's inventory, from which its
+accepted total is derived. The common verifier entry/isolation smoke passes at
+`3165e58c`; its gate source is unchanged by that two-entry inventory update. This does
+not execute the full verifier catalog or application. Source/artifact, exact native cases and joined
+bounded-RAM cleanup are retained in `at-rest-format-e808ef79.json`.
+
+Installed/root and other-platform key failures, mobile OS-keystore/package behavior,
+actual provider outage/cache recovery, current full app/settings/credential workflows,
+namespace/ACL and lifecycle races, all fifteen credential actions, R-S0/R-F5, cold/release,
+independent reproduction and external review remain OPEN. All user-parked work remains
+parked.
+
 **Windows peer-file prefetch retired (`90b90157`).** The sole Windows UI-startup
 call and all three optional warmup helpers are deleted. They opened enumerated
 paths outside the validated peer reader, ignored open failures, and ran on a

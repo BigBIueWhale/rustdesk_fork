@@ -1057,7 +1057,9 @@ fn join_validated_path(base: &PathBuf, name: &str) -> ResultType<PathBuf> {
 }
 
 fn recv_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
-    PathBuf::from(format!("{}{}", get_string(path), suffix))
+    let mut sidecar = path.to_path_buf();
+    sidecar.as_mut_os_string().push(suffix);
+    sidecar
 }
 
 #[cfg(unix)]

@@ -12294,301 +12294,226 @@ remains OPEN/PARKED; consolidation changes neither evidence scope nor acceptance
 
 ### R-S11gw/R-S11e-235 — bounded controlled-side service-to-connection egress (2026-08-16)
 
-**Linux component PASS; installed/full-peer, other-platform and release acceptance OPEN.**
-`ControlEgressState` in `src/server/connection.rs` owns one short-mutex FIFO and one
-wake token before the keyed writer. It bounds retention to 256 messages and two
-maximum session packets plus checked entry accounting; each protobuf fits the
-post-secretbox ceiling. Only a trailing `CursorPosition` is replaceable; intervening
-messages are ordering barriers. Audio/video frames, formats and display-switch
-state stay on their media mailboxes. Wrong class, oversize, count/byte/accounting
-failure or fallible queue-storage refusal clears work, latches one terminal cause,
-wakes the owner and ends that connection. Receiver retirement closes admission
-despite stale sender clones. R-S11gw / Appendix C #358 is the normative contract.
+**Named Linux components accepted; current whole-application, installed/native,
+other-platform and release acceptance OPEN.** R-S11gw–R-S11gz below share the
+focused command `bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
+The latest retained run is `91e4a699`: all 92 named component tests, 37 source inputs
+and 62 extracted production parts are bound in `session-tunnel-mode-6e51cedc.json`.
+It predates the later receive-parent correction and is not current whole-app proof.
+The older 69-case `b292e2bf` result, including checked voice-request allocation,
+concurrent requests, owner refusal and cancel/retry controls, remains in
+`viewer-voice-requests-432b6236.json`. Results apply to their named source/artifact.
 
-**Current evidence shared with R-S11gy/R-S11gz.** The focused command is
-`bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
-At `b292e2bf`, all 69 named Rust cases pass in the native Linux component.
-All 29 input receipts and 41 source parts match that source. All prior 64
-assertions remain; one old close-constructor call is adapted. Five new cases
-execute the production ID allocator/constructors and new-request branch: five
-clock inputs, 64 concurrent requests on four joined threads, checked exhaustion,
-four owner states, four cancel/retry schedules and failed-send retirement.
-`viewer-voice-requests-432b6236.json` binds exact A/B source/artifacts, locked
-dependencies, observations and joined bounded-RAM cleanup. Audio, handler,
-transport and clock remain explicit doubles for viewer control-flow checks.
-Earlier cancellation, CM voice, close/history, chat, cursor, marker and queue
-evidence remains in `viewer-voice-finality-77b80354.json`,
+`ControlEgressState` in `src/server/connection.rs` retains a short-mutex FIFO,
+one wake token, at most 256 messages and two maximum session packets plus checked
+entry accounting. Each protobuf fits the post-secretbox ceiling. Only a trailing
+`CursorPosition` is replaceable; intervening messages preserve ordering barriers.
+Audio/video frames, formats and display switches use their media mailboxes.
+Wrong class, size/count/byte/accounting or fallible-storage refusal clears work,
+latches one terminal cause, wakes the owner and ends that exact connection.
+Receiver retirement closes admission despite stale senders. R-S11gw / Appendix C #358
+owns the complete contract.
+
+| Surface | Retained component observations and evidence |
+| --- | --- |
+| Controlled egress | FIFO/cursor barriers, default limits, bounded multi-producer order/saturation, wake/retirement, three handled storage refusals and five healthy/spare/cursor controls. `control-egress-concurrency-d3954366.json`, `control-queue-allocation-aefa628e.json`. |
+| CM results | Structured/raw accounting, backing-owner retirement, queue/payload/converter refusal, concurrent admission and owned read-block forwarding. `cm-raw-backing-dab9f731.json`, `cm-queue-allocation-ed4e0911.json`, `cm-concurrent-egress-afdda092.json`, `cm-proto-allocation-920a4229.json`, `cm-read-block-move-a6599f3a.json`. |
+| File clipboard | Six common route/mailbox controls, duplicate controlled-ID refusal without a new generation/channel, three queue-growth refusals and four healthy/spare controls. `file-clipboard-growth-fc23970f.json`. |
+
+The related viewer/CM cancellation, close/history, voice, chat, cursor-clock and
+marker results remain in `viewer-voice-finality-77b80354.json`,
 `cm-voice-owner-a82d8f2a.json`, `cm-close-admission-073543c5.json`,
 `cm-disconnect-owner-feb8f4cd.json`, `chat-send-owner-6c616053.json`,
-`cursor-echo-clock-2b2aaacb.json`, `recent-document-markers-571ee664.json` and
-`file-clipboard-growth-fc23970f.json`; Windows Shell is unexecuted.
-`control-egress-evidence-d2a102e6.json` retains the historical 20-input checkpoint
-comparison and ledger correction. Capsule names resolve under `.harness-state/verifier-vm/`.
+`cursor-echo-clock-2b2aaacb.json` and `recent-document-markers-571ee664.json`.
+`control-egress-evidence-d2a102e6.json` retains the earlier checkpoint comparison.
+Capsules resolve under `.harness-state/verifier-vm/`; raw histories stay there
+and in Git rather than being repeated in each surface.
 
-| Surface | Component coverage and retained failure/design provenance |
-| --- | --- |
-| Controlled egress | FIFO/tail-cursor barriers, packet/class/count/byte bounds, wake and owner retirement; default-capacity and bounded multi-producer ordering/saturation; three handled storage refusals and five healthy/spare/cursor controls. `control-egress-concurrency-d3954366.json`, `control-queue-allocation-aefa628e.json`. |
-| CM results | Structured/raw accounting, raw backing-owner retirement, queue/payload allocation refusal, controlled concurrent admission, directory conversion/size validation and owned read-block forwarding. `cm-raw-backing-dab9f731.json`, `cm-queue-allocation-ed4e0911.json`, `cm-concurrent-egress-afdda092.json`, `cm-proto-allocation-920a4229.json`, `cm-read-block-move-a6599f3a.json`. |
-| File clipboard | Six common mailbox/route controls, including duplicate controlled-ID refusal without minting a generation/channel; three handled queue-growth refusals and four healthy/spare controls. `file-clipboard-growth-fc23970f.json`. |
-
-These are common component observations with controlled payloads, schedules and
-capacity/allocator faults. Some production methods execute in wrappers; native
-clipboard, complete service producers, connection loops and CM IPC do not.
-Owner/deallocation flags establish lifetime, not RSS or whole-process memory bounds;
-error formatting and surrounding allocations remain available during selective faults.
-The older raw-backing baseline has test/artifact receipts but lacks full input/source
-receipts; its corrected run and the current 69-case run supply those bindings.
-Script wiring, source patterns and historical string mutations do not establish behavior.
-The profile remains 2 GiB guest / 6 GiB RAM scratch / 4 GiB overlay / 6 GiB host
-headroom / 1 GiB overhead, with no disk fallback and joined retirement.
-
-The broader integration commands remain in `scripts/verify.sh`:
+These runs use controlled payloads, schedules and capacity/allocator faults.
+Some production methods run in wrappers; audio, handler, transport and clock
+boundaries have explicit doubles. They do not execute complete service producers,
+connection loops, CM IPC, native clipboard or Windows Shell. Owner/deallocation
+flags prove lifetime, not RSS or whole-process bounds; diagnostic allocations
+remain available during selective refusal. The older raw-backing baseline lacks
+full input/source receipts; its corrected run supplies them. Inspection, source
+matching, mutation and script wiring supply no additional behavioral acceptance.
+The control profile retains 2 GiB guest, 6 GiB RAM scratch, a 4 GiB overlay ceiling,
+6 GiB host headroom and 1 GiB overhead, with no disk fallback and joined retirement.
+Guest integration in `scripts/verify.sh` retains
 `cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never`,
-`cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never`, and
+`cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never` and
 `cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never`.
-Their presence does not prove execution or authorize resuming a parked producer.
+Command presence does not authorize resuming a parked producer.
 
-**Shared acceptance remains OPEN/STOP-SHIP for all three surfaces:**
+**Shared OPEN/STOP-SHIP acceptance for all three surfaces:**
 
 - Drive real synchronous cursor, clipboard, topology, stop-service, input-response
-  and screenshot producers; both desktop CM hops and Android's in-process hop after
-  Login; viewer, Unix-controlled, Windows-CM and FUSE clipboard routes. Cover
-  backpressure/saturation, terminal-first refusal, stale generations and senders,
-  abrupt owner loss, reconnect/replacement, exact ordering, payload/task/handle
-  finality and complete file-operation correctness.
-- Execute exact current installed artifacts on supported Linux/macOS/Windows,
-  Android/iOS and cross-version combinations. Reproduce physical Android
-  task-swipe/reopen/Force-Stop and Windows focus/minimize/background symptoms.
-  Measure capture-through-compositor and input-visible latency with explicit
-  budgets, cursor freshness, CPU/memory/handles/threads and cleanup during sustained
-  connection/reconnect/focus/background/file-control coexistence soak. Controlled
-  schedules do not exhaust interleavings or establish reported-delay causation.
-- Prove full connection-flow correctness/performance, R-S0 functionality with LPE
-  immunity, R-F5 impairment recovery and long-session freshness, cold R-B2/R-B10
+  and screenshot producers; both post-Login desktop CM hops and Android's direct
+  hop; viewer, Unix-controlled, Windows-CM and mounted-FUSE routes. Cover saturation,
+  terminal-first refusal, stale generations/senders, abrupt owner loss,
+  reconnect/replacement, ordering, exact payload/task/handle finality and file effects.
+- Execute exact current installed Linux/macOS/Windows and Android/iOS artifacts
+  across supported versions. Reproduce physical Android task-swipe/reopen/Force Stop
+  and Windows focus/minimize/background behavior. Measure capture-through-compositor
+  and input-visible latency, cursor freshness, CPU/memory/handles/threads and cleanup
+  with numeric budgets during sustained connection/reconnect/focus/background and
+  file/control coexistence soak. Controlled schedules neither exhaust interleavings
+  nor establish reported-delay causation.
+- Prove complete connection-flow correctness/performance, R-S0 functionality with
+  LPE immunity, R-F5 impairment recovery and long-session freshness, cold R-B2/R-B10
   equality, installed-service behavior, independent reproduction and R-V3 external
-  review. The global release/authority matrices and every user park remain binding.
+  review. Global release/authority matrices and every user park remain binding.
 
 ### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership (2026-08-17)
 
-**Evidence boundary for R-S11gx–R-S11hd.** Historical inspection receipts established
-parser/syntax, focused source-gate, and document-size results only; they executed none of the
-Rust regressions or target-native socket/CM/clipboard/tray/power behavior named below.
-The obsolete source-string/mutation verifiers and duplicate workspace dispatches are absent;
-Git history and the audit retain their deletion and inspection provenance. Those receipts
-are not current Rust, native, installed, or release acceptance. Current input availability
-is recorded in the service-owned authority matrix above, not in superseded per-slice
-asset-availability snapshots. Named runtime results elsewhere retain their exact artifact,
-scenario, and evidence-layer scope; this reconciliation adds no behavior verdict.
+**Named Linux transport components accepted; exact-current whole-app, installed,
+other-platform and release acceptance OPEN.** Historical inspection receipts for
+R-S11gx–R-S11hd establish parser/source/document checks only, not Rust or native
+socket/CM/clipboard/tray/power execution. Obsolete string/mutation checkers and
+duplicate dispatches remain deleted. Current input availability comes from the
+authority matrix, not old asset snapshots. `writer-evidence-ledger-8d7e58b2.json`
+retains that classification and the historical evidence inventory.
 
-**Named Linux component and transport results are retained; exact-current native,
-whole-application, other-platform and release acceptance remain OPEN.**
+In `libs/hbb_common/src/tcp.rs`, one producer and one independently owned sink
+writer share a keyed `FramedStream`. Channel capacity is reserved before size
+measurement, protobuf encoding or sealing. Admission counts active and queued
+ciphertext together: 512 frames and at most twice the packet ceiling engaged at
+keying, with checked MAC-size addition. Ordinary, receipt-bearing and byte sends
+share `send_payload`. `SealCipher` fallibly reserves tag/payload before consuming
+a nonce; allocation or exhaustion enters the terminal writer path.
 
-Current source in `libs/hbb_common/src/tcp.rs` gives each keyed `FramedStream` one
-producer and one independently owned sink writer. Channel capacity is reserved
-before measurement, protobuf encoding or sealing. Separate admission counts the
-active frame and queued ciphertext together: 512 frames and exact ciphertext
-bytes up to twice the packet ceiling engaged at keying, with checked MAC-size
-addition. One `send_payload` path serves ordinary, receipt-bearing and byte sends.
-`SealCipher` reserves the complete tag and payload fallibly before consuming its next
-nonce; detached encryption preserves the combined ciphertext bytes. Allocation failure
-or nonce exhaustion returns through the same terminal writer path.
-The writer owns its encoded output, active reservation, queued work and completion;
-failure retires output before permits and completion. Fatal send, receive and
-drain paths close admission, abort and join the retained writer before returning.
-A cancelled join retains its handle for the next poisoned entry to finish.
-Hard synchronous Drop only requests cancellation. Clean EOF retains its semantics.
-The read half preserves its exact receive codec and prefetched bytes independently.
-`OpenCipher` authenticates and decrypts the owned frame in its existing payload storage,
-then advances past the tag after success; it creates no separate plaintext vector or copy.
-The private receive counter belongs solely to `OpenCipher`; stream observation borrows
-its retained codec and returns the value. No shared mutation handle remains.
-Checked advancement refuses exhaustion without wrapping.
-Failed writer flushes are not retried by close.
-The keyed read owner also watches the existing writer channel's permanent closure,
-with priority over input and a closure recheck before returning a frame or EOF.
-Writer exit therefore enters the same poison-and-join path from a pending read;
-it no longer requires another send to discover the failure.
+The writer owns active and queued work through retirement; encoded output retires
+before permits and completion. Fatal send/read/drain closes admission, aborts and
+joins before returning; cancellation retains the join handle for poisoned re-entry.
+Synchronous Drop requests cancellation only; clean EOF keeps its terminal semantics.
+Close does not retry a failed flush. The read owner retains its codec and prefetched
+bytes and watches permanent writer-channel closure
+with priority over input and a pre-return recheck. `OpenCipher` authenticates and
+decrypts in the owned payload storage before advancing past the tag. Its sole private
+checked receive counter cannot wrap or be reset through a shared handle; stream
+observation borrows the retained codec.
 
-The framing-only API has no raw-mode selector or unframed encode/decode branch.
-`send_raw` remains a framed byte-payload send through the engaged cipher.
-Removing the unused mode was API closure, not a reproduced application plaintext
-exposure. R-T2/R-T3/R-T8/R-T9/R-T16/R-T18 and R-A3/R-S5 own the normative contracts;
-R-T5/R-T14 own partial-read frame preservation and receive-counter behavior.
-
-The shared verifier retains
-`cargo test -p hbb_common --lib r_s11gx_ --color never` inside isolation and the
-four executable admission regressions:
+The API is framing-only: `send_raw` still sends a framed encrypted byte payload.
+Deleting raw-mode selection closed an API, without demonstrating application plaintext
+exposure. R-T2/R-T3/R-T5/R-T8/R-T9/R-T14/R-T16/R-T18 and R-A3/R-S5 retain the contracts.
+The isolated `--cpace-recovery-tests` lane selects wire, writer, EOF, codec, lifetime
+and compiler cases. Guest integration in `scripts/verify.sh` retains
+`cargo test -p hbb_common --lib r_s11gx_ --color never` and these admission cases:
 
 - `r_s11gx_writer_admission_checks_size_count_and_bytes_before_ownership`
 - `r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort`
 - `r_s11gx_failed_drain_retires_writer_admission`
 - `r_s11gx_oversized_plaintext_is_rejected_before_peer_delivery`
 
-The focused `--cpace-recovery-tests` profile selects wire, writer, EOF, codec,
-lifetime and compiler cases. The broader `--hbb-common-fs` lane also selects the
-writer module; its historical filesystem failures below are not a transport pass
-for that entire lane.
+The broader `--hbb-common-fs` lane is not wholly accepted by the transport results below.
 
-Evidence filenames below are relative to `.harness-state/verifier-vm/`.
-Each row applies only to its named source and scenarios.
-
-| Source / scope | Accepted observation and limit | Retained evidence |
+| Named source / scope | Accepted observation and material limit | Evidence |
 | --- | --- | --- |
-| `24c524f0`, receive-counter ownership | At unchanged-product preparation `c27ece1c`, sixty controls pass while the new negative compiler case fails because the public counter-reset program compiles. The shared `Arc<AtomicU64>` handle and duplicate transport field are removed; `OpenCipher` alone owns a private checked counter, and stream observation borrows its retained codec. The corrected 46-case component lane and 61-case CPace integration pass, including twenty wire and five API compiler cases on the same transport artifact. The reset program is identical; its expected missing-method diagnostic and the private exhausted-counter fixture reflect the new representation. This closes an API mutation surface, not a demonstrated remote or local privilege escalation. Installed, whole-app, other-platform, presentation/latency and release acceptance remain OPEN. | `receive-counter-authority-cbd435d4.json` |
-| `c5a995ac`, owned receive-frame storage | At API preparation `cdde8139`, 44 controls pass and the new cipher child aborts on a refused one-byte plaintext allocation; its empty-input observation retains the old pointer. The corrected 46-case lane passes. Six owned/shared cipher cases run with Rust allocations refused and verify the exact payload pointer and preserved neighbors; six normal/EOF codec cases authenticate twelve frames while preserving prefetched bytes under the same refusal. The allocator probe rejects a real 31-byte request. Six malformed/tag/payload/key cases, replay and two exhausted-counter attempts refuse without changing ciphertext; the exhausted counter never wraps. The 60-case CPace integration also passes, including twenty wire and four compiler cases on the same transport artifact. This removes one plaintext allocation and copy; framing/parser/C-heap/global exhaustion, whole-app/other-platform, installed, actual presentation/latency and release acceptance remain OPEN. | `cipher-receive-buffer-b5c24c46.json` |
-| `35fe7882` / `2003e8d3`, send-cipher allocation | At API preparation `bcb6b3e6`, 42 transport controls pass and the new cipher child aborts on an exact refused 16-byte allocation. The corrected 44-case lane passes: three primitive allocation refusals preserve the counter and produce exact upstream ciphertext on retry; two exhausted-counter attempts return errors without wrap. Nine real-TCP cases cover byte, protobuf and receipt sends at three sizes, exact healthy traffic, explicit `OutOfMemory`, joined writer and returned permits before error return, poisoned reuse refusal and no failed frame at the peer. The 60-case CPace integration also passes, including twenty wire and four framing compiler cases, with the same transport artifact. Lane counts are reconciled with the existing seven lifetime tests. Controlled allocator refusal does not establish whole-runtime exhaustion handling; receive allocations, whole-app/other-platform, installed and release acceptance remain OPEN. | `cipher-send-allocation-3fe37428.json` |
-| `5b4269fc` / `65596515`, failed-writer read ownership | At unchanged-product preparation `79bf46f2`, 34 controls pass and the extended lifetime test fails: a peer frame is decrypted/yielded after writer failure, and a pending read reaches its test deadline. The byte-identical cases pass in the corrected 40-case focused run. The later 59-case CPace integration also passes, with a strengthened oracle observing the pending read's registered wake before any timer or repoll; no post-failure read, receive-counter advance or frame yield occurs, and the writer is joined before error return. Three real partial-input cancellation stages retain nine socket bytes and authenticate the two expected frames. The new failures are explicitly injected at the write wrapper over real loopback TCP; this is Linux library evidence, with broader acceptance below still OPEN. | `writer-failure-read-03724490.json` |
-| `10ff6494`, Linux transport integration | 59 cases pass: 20 CPace wire, 13 writer-receipt, four EOF, twelve codec, six lifetime and four native compiler cases. Fatal send/read/drain observe joined writer, retired encoded-buffer ownership, returned permits and retired completion before return; cancelling retirement retains ownership and send/read/drain retries finish the join. The transport artifact matches the earlier 35-case `99fa6b07` component result. | `cpace-integration-59-10ff6494.json`; `writer-fatal-retirement-native-99fa6b07.json` |
-| `a9adf6dc`, real TCP output ownership | Both new lifetime cases fail at `56c8ed4f` while 49 controls pass; the unchanged candidate cases pass 51/51. Actual partial writes/backpressure, authenticated reverse traffic, peer reset and reader-side authentication failure exercise buffer-owner retirement while the stream remains retained. | `writer-buffer-ownership-a9adf6dc.json` |
-| `537dcb90`, channel-refusal component | Thirteen writer, four EOF and twelve codec cases pass. The two new tests fail at `9aea38ae`; corrected `4e92169b` reserves the channel before encoding/sealing. Actual sink failure and 512 queued drain commands cover both send APIs, zero encoding, unchanged next nonce, returned permits and exact join. The broader lane exits 1: 136 filesystem cases pass and three parked receive pre-I/O cases fail with `Owner died`. Later address/socket/probe stages do not run and no final whole-lane artifact receipt exists. An earlier candidate omitted writer outcomes and remains incomplete evidence. | `writer-channel-component-537dcb90.json` |
-| `ec94f87b`, protobuf admission | Three new cases fail at `8944cdfa`; 155 candidate library cases pass, including eleven writer cases. Five ordinary-send and six receipt-send refusal states, encoder failure on both APIs and actual TCP ordinary/receipt delivery are covered. The instrumented wrapper delegates to the generated encoder; it does not measure all allocations. | `protobuf-admission-corrected-ec94f87b.json` |
-| `593aff91`, framing-only API | At `44f25b0e` the unchanged compiler fixture accepts all three forbidden raw-mode calls, so three negative cases fail while 51 runtime controls pass. The candidate passes those 51 runtime cases and all four compiler cases: supported setup plus three separate compile refusals. | `framing-only-api-593aff91.json` |
-| `6133c7c7`, pending-read replacement | All 20 wire cases pass. The replacement observes actual one-, two- and nine-byte TCP prefixes before dropping Pending reads; the receive counter stays zero until the retained owner authenticates the two exact frames at counters one and two. This corrects the test/evidence, not a demonstrated product cancellation defect. | `cpace-pending-read-6133c7c7.json` |
-| `c3b1ac6d`, earlier CPace integration | Twenty real-loopback wire cases cover handshake/keying, post-key exchange, malformed/oversized and partial pre-key frames, timeout, wrong-password/guess classification, replay and writer refusal. Its old cancellation case selected an always-ready branch without polling the read; that result does not prove partial-read cancellation safety. The replacement above supplies that observation. | `cpace-transport-current-c3b1ac6d.json` |
+| `24c524f0`, receive-counter authority | Public counter-reset compilation fails after removing the shared mutation handle; checked exhaustion preserves the counter. The corrected 46-case component and 61-case CPace integration pass, including 20 wire/five compiler cases. The identical reset program compiled at preparation `c27ece1c`; fixture diagnostics reflect the private representation. API closure, not an escalation demonstration. | `receive-counter-authority-cbd435d4.json` |
+| `c5a995ac`, receive storage | Corrected 46-case component/60-case CPace integration pass: six owned/shared pointer-and-neighbor cases, twelve authenticated normal/EOF frames with prefetched bytes under refused allocation, malformed/tag/payload/key/replay and counter-exhaustion refusal without changing ciphertext. Preparation `cdde8139` aborts on the refused plaintext allocation. Covers selective Rust allocation, not all parser/C-heap/runtime exhaustion. | `cipher-receive-buffer-b5c24c46.json` |
+| `35fe7882` / `2003e8d3`, send cipher | Corrected 44-case component/60-case integration pass. Three allocation refusals preserve the nonce and exact retry ciphertext; exhaustion refuses without wrap. Nine real-TCP byte/protobuf/receipt scenarios show healthy delivery or explicit OutOfMemory, joined writer, returned permits, poisoned reuse refusal and no failed frame at the peer. Preparation `bcb6b3e6` aborts on tag allocation. | `cipher-send-allocation-3fe37428.json` |
+| `5b4269fc` / `65596515`, failed-writer reads | Corrected 40-case component/59-case integration refuse pending and ready reads after injected writer failure, without decrypt/yield or receive-counter advance, and join before return. The pending oracle observes registered wake without timer/repoll. Three real partial-input stages preserve nine bytes and two authenticated frames. Preparation `79bf46f2` yields a frame and stalls the pending read. | `writer-failure-read-03724490.json` |
+| `10ff6494`, fatal retirement | 59 cases: 20 wire, 13 writer, four EOF, twelve codec, six lifetime and four native compiler. Send/read/drain retire output, permits and completion and join before return; cancelled retirement is completed by later poisoned entry. Same transport artifact as the earlier 35-case `99fa6b07` component. Abort-only baseline `cb575f82` was refused by RAM admission before execution; no native A/B is claimed for it. | `cpace-integration-59-10ff6494.json`, `writer-fatal-retirement-native-99fa6b07.json` |
+| `a9adf6dc`, real TCP output | Two new lifetime cases fail at `56c8ed4f`; unchanged cases pass 51/51 after correction. Partial writes/backpressure, reverse authenticated traffic, reset and read-side authentication failure retire buffer owners while the stream remains retained. | `writer-buffer-ownership-a9adf6dc.json` |
+| `537dcb90`, channel refusal | Thirteen writer, four EOF and twelve codec cases pass; two new cases fail at `9aea38ae` and pass after `4e92169b` reserves the channel before encode/seal. Real sink failure/512 queued drains verify zero encoding, unchanged next nonce, returned permits and exact join for both APIs. The broader run exits 1 after 136 filesystem passes and three user-parked receive pre-I/O failures with Owner died; later address/socket/probe stages and final whole-lane receipt are absent. An earlier writer-output omission remains incomplete evidence. | `writer-channel-component-537dcb90.json` |
+| `ec94f87b`, protobuf admission | Three cases fail at `8944cdfa`; 155 corrected library cases pass, including eleven writer cases. Five ordinary/six receipt refusal states, encoder failure on both APIs and real TCP delivery execute. The wrapper delegates to generated encoding and does not measure every allocation. | `protobuf-admission-corrected-ec94f87b.json` |
+| `593aff91`, framing API | The same three raw-mode programs compile at `44f25b0e`; corrected source passes 51 runtime and four compiler cases: one supported setup and three separate refusals. | `framing-only-api-593aff91.json` |
+| `6133c7c7`, pending-read test correction | Twenty wire cases observe real one-, two- and nine-byte prefixes before dropping Pending reads; only retained-owner authentication advances the counter for the two frames. The older `c3b1ac6d` 20-case wire run covers keying, exchange, malformed/oversize/partial pre-key frames, timeout, wrong-password/guess classification, replay and writer refusal, but its cancellation driver never polled the read. That old cancellation result is not safety evidence; the replacement corrects the test, not a demonstrated product defect. | `cpace-pending-read-6133c7c7.json`, `cpace-transport-current-c3b1ac6d.json` |
 
-The 59-case transport artifact is
-`c1d92cc9c89a61dadd3d9c9708f42f09416baa6b6e10084dec0f886e76dd8c5e`;
-the replacement pending-read artifact is
-`87d9499e6b53f9ee2252cdf1dde0ac1ec6b5c1396b53486a08a8c12d6f22106e`.
-Receipts bind exact sources, artifacts, named results, raw logs, endpoint records,
-resource admission and joined zero-NIC VM/RAM cleanup. The 59-case integration
-has equal before/live/after source snapshots. Buffer-ownership and pending-read
-runs have equal before/after captures without an independent during-file capture.
-The lifetime witness deliberately retains a one-byte alias: it proves retirement
-of stream/task aliases, not physical allocation release or whole-process memory
-bounds. The abort-only baseline `cb575f82` was refused by RAM admission before
-execution; there is no native A/B failure claim for fatal-operation retirement.
-Historical inspection/source-mutation receipts do not extend any native result.
+Capsules bind exact source/artifact identities, results, raw logs, endpoint records,
+admission and joined zero-NIC VM/RAM cleanup. The 59-case run has before/live/after
+equal source snapshots; buffer/pending-read runs have equal before/after captures only. The lifetime
+witness keeps a one-byte alias and proves stream/task alias retirement, not physical
+allocation release. Inspection/mutation receipts add no native acceptance.
 
-**Remaining STOP-SHIP evidence:** exact-current artifacts and authorized/refused
-installed principals on Android, iOS, Windows, Linux and macOS; hard-Drop and
-read-owned socket finality; physical memory, task, handle and whole-process bounds;
-complete real-socket backpressure/failure/drain/abort and nonce/non-delivery
-coverage; Android task-swipe/reopen/Force-Stop and Windows focus/minimize recovery;
-cross-version behavior and sustained reconnect/focus/backpressure/resource/latency
-soaks; R-F5 capture-through-presentation age and input-visible recovery budgets;
-cold R-B2/R-B10 artifacts, independent reproduction and R-V3 external review.
-No component result establishes deployed-symptom causation, full connection-flow
-correctness/performance, local privilege-escalation immunity or release acceptance.
-The three parked filesystem failures and all other user parks remain OPEN/PARKED.
-
-Classification and the preserved evidence inventory are retained in
-`writer-evidence-ledger-8d7e58b2.json`.
+**OPEN/STOP-SHIP:** exact-current installed authorized/refused principals on all five
+platforms; hard-Drop/read-owned socket finality; physical memory/task/handle and whole-
+process bounds; complete real-socket backpressure/failure/drain/abort, nonce and
+non-delivery coverage; Android task-swipe/reopen/Force Stop and Windows focus/minimize
+recovery; cross-version behavior and sustained reconnect/focus/backpressure/resource/
+latency soak; R-F5 capture-to-present and input-visible recovery budgets; cold R-B2/R-B10,
+independent reproduction and R-V3 review. Named components do not establish deployed
+causation, full connection correctness/performance, LPE immunity or release acceptance.
+The three deferred filesystem failures and all other user parks remain OPEN/PARKED.
 
 ### R-S11gy/R-S11e-237 — bounded connection-manager result ownership (2026-08-17)
 
-**Linux queue/converter component PASS; complete desktop/Android CM and installed
-acceptance OPEN.** `CmEgressSender` / `CmEgressReceiver` in
-`src/ui_cm_interface.rs` provide the common ownership primitive for desktop CM
-producer-to-IPC and bridge-to-connection hops and Android's direct in-process hop.
-Each mailbox has one wake token, at most 256 entries, a 128 MiB structured ceiling,
-a separate 256 KiB raw-block ceiling and two maximum complete messages plus checked
-entry accounting. Serde-skipped raw bytes count explicitly. The closed result
-vocabulary excludes ambient filesystem requests. Class/encoding/storage/size/count/
-accounting failure clears queued work, retains one typed terminal cause and wakes
-the exact bridge/connection; stale senders cannot keep a retired receiver usable.
-R-S11gy / Appendix C #360 owns the normative contract.
+**Named Linux queue/converter components accepted; complete CM/installed acceptance
+OPEN.** `CmEgressSender` / `CmEgressReceiver` in `src/ui_cm_interface.rs` implement
+desktop producer-to-IPC and bridge-to-connection hops and Android's direct in-process
+hop. One wake token, 256 entries, the 128 MiB structured and 256 KiB raw-block ceilings,
+and two complete maximum messages plus checked entry accounting bound retention.
+Serde-skipped raw bytes count explicitly; the closed vocabulary excludes ambient
+filesystem requests. Class/encoding/storage/size/count/accounting refusal clears work,
+retains one terminal cause and wakes the exact owner. Stale senders cannot revive it.
+R-S11gy / Appendix C #360 retains the complete contract.
 
-Admission measures without allocating a second encoded message, then fallibly
-copies only the admitted raw payload so a shared view cannot pin unrelated IPC
-backing. The connection subsequently moves that bounded owner into its outgoing
-protobuf. Queue-entry/payload refusal uses `StorageUnavailable`; FIFO, exact
-response fields and connection/token authority are unchanged. The current cohort
-covers five coalesced-wire backing sizes, seven selective allocation refusals and
-four healthy controls. Two eight-producer schedules cover exact per-producer FIFO
-and terminal saturation; all sixteen producer threads join. Owner flags establish
-lifetime rather than RSS, and these schedules do not prove every interleaving.
-Current coverage, A/B provenance and shared limitations are recorded under R-S11gw.
+Sizing creates no second encoded message. Admission fallibly copies only bounded raw
+bytes to release unrelated IPC backing, then the connection moves that owner into its
+protobuf. Queue/payload refusal is StorageUnavailable. R-S11gw's table retains the
+five backing-size, seven selective refusal/four healthy, and two eight-producer FIFO/
+saturation schedules; all sixteen threads join. These lifetime and selected-allocation
+observations do not prove RSS, global exhaustion or every interleaving.
 
-**Directory conversion and size admission.** All four shared-CM and connection-side
-entry/batch output vectors reserve fallibly and report errors. Mapping, ordering,
-count/name/time validation and protocol fields are preserved. The full computed
-`u64` encoded size is checked against the 16 MiB ceiling without a disposable
-serialized copy. The fixture executes the complete production single-directory
-converter and exact batch body with real name/list/time validators, count getters,
-the default-empty builtin map and generated messages. Ten single and five batch
-controls reach the 10,000-entry/directory boundaries; eighteen refusals cover names,
-Linux drive entries, timestamps/count/size overflow, empty-name rules and
-first/middle/last batch failures. Legitimate single-empty-name transfers remain
-accepted, with exact fields and wire bytes. Nine selected output-allocation
-refusals report errors and permit fresh successful conversions.
+All four CM/connection directory entry and batch vectors reserve fallibly. Mapping,
+order, count/name/time validation, protocol fields and the legitimate single-empty-name
+case remain; full u64 encoded size is checked against 16 MiB without serializing a
+disposable copy. Complete converter/batch bodies, real validators and generated messages
+cover ten single/five batch controls at the 10,000-entry/directory limits, eighteen
+name/Linux drive/time/count/size and
+batch-position refusals, and nine output-allocation refusals with fresh recovery.
+`cm-proto-allocation-920a4229.json` retains that A/B. Earlier entry/batch/size evidence
+remains in `cm-directory-allocation-77d5ab6a.json`,
+`cm-directory-batch-allocation-26af6d15.json` and `cm-directory-size-d023a678.json`.
+The named 46-case cohort retains those checks; diagnostic allocations remain available.
 
-`cm-proto-allocation-920a4229.json` retains the complete converter A/B.
-Earlier isolated entry/batch/size evidence remains in
-`cm-directory-allocation-77d5ab6a.json`,
-`cm-directory-batch-allocation-26af6d15.json` and
-`cm-directory-size-d023a678.json`; their raw timings, intermediate failures and
-per-run receipts belong in those capsules and Git history. The retained 46-case
-cohort retains these checks. Error/diagnostic allocations remain available during
-selective refusal. Filesystem enumeration/jobs, complete handlers, native CM IPC
-authority, settings and installed/root/platform behavior are unproven here.
-
-The R-S11is section below retains the separate Linux socket-backpressure A/B for
-response-write lifetime: one private operation owns JSON plus optional raw bytes
-under one five-second initiating deadline, and failure retires the exact runner
-and stream. Complete post-Login CM/file transactions through both desktop hops and
-Android, terminal-first refusal, stale generation, abrupt loss, reconnect, ordering,
-latency, resources and cleanup remain OPEN. The R-S11gw shared acceptance list and
-global release/authority matrices remain authoritative.
+R-S11is separately records the real-socket response-write/backpressure A/B: one operation
+owns JSON/raw bytes under a five-second initiating deadline; failure retires its runner
+and stream. Enumeration/jobs, complete handlers, native CM IPC/authority/settings and
+installed/root/platform behavior are not established here. Full post-Login transactions
+through both desktop hops/Android, terminal-first refusal, stale generations, abrupt
+loss, reconnect, ordering, latency/resources and cleanup remain OPEN under R-S11gw's
+shared checklist and the global matrices.
 
 ### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership (2026-08-17)
 
-**Common Linux mailbox/registry PASS; native clipboard, full route lifecycle and
-installed/platform acceptance OPEN.** `libs/clipboard/src/lib.rs` retains clonable
-senders only. Each viewer round owns a fresh receiver, checked negative identity
-and exact monotonic-generation lease. Controlled identities are unique and positive;
-zero is the Unix broadcast sentinel. Source confines Windows controlled callbacks
-to the CM-owned consumer and the direct controlled route to Unix; Windows opaque
-identity-bit round trips still require native ABI evidence.
+**Named common Linux mailbox/registry components accepted; native route lifecycle
+and installed/platform acceptance OPEN.** `libs/clipboard/src/lib.rs` retains senders
+only. Viewer rounds exclusively own fresh receivers, checked negative IDs and exact
+monotonic-generation leases; controlled IDs are unique/positive and zero is the Unix
+broadcast sentinel. Windows controlled callbacks select the CM consumer; the direct
+controlled route is Unix-only. Opaque Windows identity-bit round trips remain unproved
+on its native ABI. R-S11gz / Appendix C #361 retains the contract.
 
-Each route has one nonblocking wake token, a 256-message FIFO ceiling, individual
-retained-heap ceiling `MAX_SESSION_PACKET`, and two maximum payloads plus fixed
-entry accounting. Nested allocation capacity, element-size multiplication and
-accounting are checked. Slot reservation is fallible. Admission/storage/accounting
-failure clears retained payloads and accounting, publishes one terminal cause and
-wakes the exact owner; receiver and final-producer retirement remain visible.
-Point/broadcast producers release the registry lock before admission. No exact
-payload is coalesced. R-S11gz / Appendix C #361 owns the normative contract.
+One wake token, 256 FIFO entries, MAX_SESSION_PACKET individual retained capacity and
+two maximum payloads plus fixed entry accounting bound each route. Nested capacities,
+element multiplication and accounting are checked; slot reservation is fallible.
+Storage/admission/accounting refusal clears payloads/accounting, latches a terminal
+cause and wakes the exact owner. Receiver/final-producer retirement is visible.
+Point/broadcast admission releases the registry lock; payloads are never coalesced.
 
-The current focused cohort executes all six original common tests plus the
-allocation fixture: FIFO/drain, retained-capacity and count/byte limits, wake and
-producer/receiver finality, fresh role-disjoint routes, generation-safe lease cleanup,
-exact delivery and duplicate controlled-ID refusal without minting a generation or
-channel. Three refused growth cases and four healthy/spare controls also pass.
-Growth-refusal A/B and the earlier diagnostic omission are retained in
-`file-clipboard-growth-fc23970f.json`; source/artifact bindings for the retained run,
-shared evidence and limits are under R-S11gw. These common tests exclude OS clipboard
-backends and do not establish Windows ABI, viewer/CM/FUSE lifecycle or installed behavior.
+The six original common cases and growth fixture cover FIFO/drain, retained capacity,
+count/bytes, wake, producer/receiver finality, fresh role-disjoint routes, exact delivery,
+generation-safe retirement and duplicate controlled-ID refusal without a new channel/
+generation. Three growth refusals and four healthy/spare controls pass. The A/B and
+earlier diagnostic omission are in `file-clipboard-growth-fc23970f.json`; shared bindings
+and limits are under R-S11gw. OS backends, viewer/CM/FUSE lifecycle, mounted-FUSE, Windows
+ABI and installed behavior remain OPEN, together with the complete shared checklist.
 
-Native viewer, Unix-controlled, Windows-CM and mounted-FUSE routes still require
-connection/reconnect, refusal/replacement and cleanup with file correctness,
-backpressure, latency, CPU/memory/handle/thread finality. The complete R-S11gw shared
-acceptance list remains OPEN, including physical symptoms, cross-version behavior,
-capture-to-present timing, coexistence soak, cold equality, installed artifacts,
-independent reproduction, review, causation and full connection correctness.
-The separate Unix-offset transaction below is retained unchanged.
-
-**Unix clipboard file offsets — source corrected; named Linux library transaction ACCEPTED;
-OS clipboard and installed integration OPEN.** `1a862b6d` converts both signed protobuf
-offset words through `u32` before assembling the unsigned 64-bit position in
-`libs/clipboard/src/platform/unix/serv_files.rs::read_file_contents`. The prior low-word
-sign extension rejected valid reads at 2 GiB. Microsoft's MS-RDPECLIP 2.2.5.3 defines
-both words as unsigned. The real sparse-file regression reads seven distinct markers
-around 2/4 GiB and above 8 GiB, checks at most 128 KiB allocated, exact response/stream IDs,
-invalid index/offset refusal, EOF, recovery and cache retirement. Rebuilding the exact old
-production prefix with identical tests fails; corrected source passes. `036163bc` passed
-20 tests (18 FUSE read regressions plus two serving tests) in 229 VM seconds, pinned Rust
-1.75, zero NIC, nonroot networkless container, stable three-artifact digests and joined
-cleanup. The lane now retires its duplicate extracted Rust installer before compilation;
-6 GiB guest/5 GiB container and fixed RAM scratch/headroom guards remain enforced. The
-earlier compiler OOM and two preflight refusals are unaccepted, retained evidence.
-Immutable `.harness-state/verifier-vm/clipboard-offset-accepted-036163bc.json` (32,787 bytes;
-SHA-256 `43ecad885b1ab6d2064bf7607fae92240451964d3d49318d9c2fc197b72785ab`) binds
-source/fixture/artifacts, full raw serial, terminal results, complete endpoint observations,
-storage and source/control freezes. Unknown endpoint changes remain unattributed and
-untouched. This executes the complete production clipboard library and real file reads;
-mounted FUSE, PAKE, native OS clipboard, viewer/CM/installed and other-platform behavior
-remain OPEN. No broader privilege or release closure is claimed.
+**Unix file offsets:** `1a862b6d` assembles both signed protobuf words through u32
+into the unsigned 64-bit position in `platform/unix/serv_files.rs::read_file_contents`,
+matching MS-RDPECLIP 2.2.5.3. The identical old-prefix sparse-file test fails at 2 GiB.
+Corrected source reads seven markers around 2/4 GiB and above 8 GiB with at most
+128 KiB allocated, exact response/stream IDs, index/offset refusal, EOF/recovery and
+cache retirement. At `036163bc`, the complete production clipboard library passes
+20 tests (18 FUSE-read/two serving) with stable three-artifact identities and joined
+nonroot/no-NIC cleanup. The lane removes its duplicate installer and retains 6 GiB
+guest/5 GiB container and fixed scratch/headroom guards. Earlier compiler-OOM and two
+preflight attempts are unaccepted. `clipboard-offset-accepted-036163bc.json` retains
+source/fixtures/artifacts, full serial, endpoint/storage and source/control freezes.
+Unattributed endpoint changes remain untouched. Mounted FUSE, PAKE, native clipboard,
+viewer/CM/installed and other-platform acceptance remain OPEN; no broader privilege
+or release closure follows.
 
 ### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership (2026-08-20)
 

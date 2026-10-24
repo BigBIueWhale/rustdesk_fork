@@ -57,13 +57,12 @@ pub fn try_decompress_with_limit(data: &[u8], max_decompressed: usize) -> io::Re
     use io::Read;
     let mut decoder = zstd::stream::read::Decoder::with_buffer(data)?;
     decoder.window_log_max(MAX_DECOMPRESSED.ilog2())?;
-    let max_decompressed = u64::try_from(max_decompressed)
+    let read_limit = u64::try_from(max_decompressed)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "decompression limit overflow"))?;
-    let read_limit = max_decompressed.checked_add(1).ok_or_else(|| {
+    let read_limit = read_limit.checked_add(1).ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "decompression limit overflow")
     })?;
-    // take(MAX+1) so an over-cap stream is *detected* (len > MAX) and rejected
-    // rather than truncated; at most MAX+1 decoded bytes are appended.
+    // Read one extra byte to detect excess before reserving or appending output.
     let mut limited = decoder.take(read_limit);
     let mut out = Vec::new();
     let mut chunk = [0u8; 8192];
@@ -74,21 +73,18 @@ pub fn try_decompress_with_limit(data: &[u8], max_decompressed: usize) -> io::Re
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
             Err(err) => return Err(err),
         };
-        out.try_reserve(count)
-            .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+        let length = out.len().checked_add(count)
+            .filter(|length| *length <= max_decompressed)
+            .ok_or_else(|| io::Error::new(
+                io::ErrorKind::InvalidData,
+                "decompressed output exceeds limit",
+            ))?;
+        if length > out.capacity() {
+            let capacity = length.max(out.capacity().saturating_mul(2)).min(max_decompressed);
+            out.try_reserve_exact(capacity - out.len())
+                .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+        }
         out.extend_from_slice(&chunk[..count]);
-    }
-    let length = u64::try_from(out.len()).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "decompressed output length overflow",
-        )
-    })?;
-    if length > max_decompressed {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "decompressed output exceeds limit",
-        ));
     }
     Ok(out)
 }

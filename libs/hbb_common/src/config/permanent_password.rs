@@ -3,7 +3,6 @@ use sodiumoxide::base64;
 
 use crate::password_security::symmetric_crypt;
 
-pub(super) const PASSWORD_ENC_VERSION: &str = "00";
 pub(super) const PERMANENT_PASSWORD_ENC_VERSION: &str = "01";
 pub(super) const PERMANENT_PASSWORD_HASH_PREFIX: &str = "00";
 pub(super) const PERMANENT_PASSWORD_H1_LEN: usize = 32;

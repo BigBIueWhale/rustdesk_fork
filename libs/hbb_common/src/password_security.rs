@@ -63,7 +63,8 @@ pub fn hide_cm() -> bool {
         && crate::config::option2bool("allow-hide-cm", &Config::get_option("allow-hide-cm"))
 }
 
-const VERSION_LEN: usize = 2;
+pub(crate) const PASSWORD_ENC_VERSION: &str = "00";
+const VERSION_LEN: usize = PASSWORD_ENC_VERSION.len();
 const FORMAT_V1: u8 = 1;
 
 // Check if data is already encrypted by verifying:
@@ -86,7 +87,7 @@ fn is_encrypted(v: &[u8]) -> bool {
     }
 }
 
-pub fn encrypt_str_or_original(s: &str, version: &str, max_len: usize) -> String {
+pub fn encrypt_str_or_original(s: &str, max_len: usize) -> String {
     if is_encrypted(s.as_bytes()) {
         log::error!("Duplicate encryption!");
         return s.to_owned();
@@ -94,14 +95,11 @@ pub fn encrypt_str_or_original(s: &str, version: &str, max_len: usize) -> String
     if s.chars().count() > max_len {
         return String::default();
     }
-    if version == "00" {
-        if let Ok(s) = encrypt(s.as_bytes()) {
-            return version.to_owned() + &s;
-        }
-        log::error!("At-rest string encryption failed");
-        return String::default();
+    if let Ok(s) = encrypt(s.as_bytes()) {
+        return PASSWORD_ENC_VERSION.to_owned() + &s;
     }
-    s.to_owned()
+    log::error!("At-rest string encryption failed");
+    String::default()
 }
 
 // String: password
@@ -131,7 +129,7 @@ pub fn decrypt_str_or_original(s: &str, current_version: &str) -> (String, bool,
     )
 }
 
-pub fn encrypt_vec_or_original(v: &[u8], version: &str, max_len: usize) -> Vec<u8> {
+pub fn encrypt_vec_or_original(v: &[u8], max_len: usize) -> Vec<u8> {
     if is_encrypted(v) {
         log::error!("Duplicate encryption!");
         return v.to_owned();
@@ -139,16 +137,13 @@ pub fn encrypt_vec_or_original(v: &[u8], version: &str, max_len: usize) -> Vec<u
     if v.len() > max_len {
         return vec![];
     }
-    if version == "00" {
-        if let Ok(s) = encrypt(v) {
-            let mut version = version.to_owned().into_bytes();
-            version.append(&mut s.into_bytes());
-            return version;
-        }
-        log::error!("At-rest vector encryption failed");
-        return Vec::new();
+    if let Ok(s) = encrypt(v) {
+        let mut wrapped = PASSWORD_ENC_VERSION.as_bytes().to_vec();
+        wrapped.extend_from_slice(s.as_bytes());
+        return wrapped;
     }
-    v.to_owned()
+    log::error!("At-rest vector encryption failed");
+    Vec::new()
 }
 
 // Vec<u8>: password
@@ -316,17 +311,22 @@ mod test {
     }
 
     #[test]
-    fn test() {
+    fn test_storage_wrappers() {
         use super::*;
-        use rand::{thread_rng, Rng};
-        use std::time::Instant;
 
         let version = "00";
         let max_len = 128;
+        assert!(encrypt_str_or_original("x", 0).is_empty());
+        assert!(encrypt_vec_or_original(b"x", 0).is_empty());
+        assert!(encrypt_str_or_original(&"ü".repeat(max_len + 1), max_len).is_empty());
+        assert!(encrypt_vec_or_original(&vec![b'x'; max_len + 1], max_len).is_empty());
+        let unicode = "ü".repeat(max_len);
+        let encrypted = encrypt_str_or_original(&unicode, max_len);
+        assert_eq!(decrypt_str_or_original(&encrypted, version).0, unicode);
 
         println!("test str");
         let data = "1ü1111";
-        let encrypted = encrypt_str_or_original(data, version, max_len);
+        let encrypted = encrypt_str_or_original(data, max_len);
         let (decrypted, succ, store) = decrypt_str_or_original(&encrypted, version);
         println!("data: {data}");
         println!("encrypted: {encrypted}");
@@ -339,13 +339,13 @@ mod test {
         assert!(store);
         assert!(!decrypt_str_or_original(&decrypted, version).1);
         assert_eq!(
-            encrypt_str_or_original(&encrypted, version, max_len),
+            encrypt_str_or_original(&encrypted, max_len),
             encrypted
         );
 
         println!("test vec");
         let data: Vec<u8> = "1ü1111".as_bytes().to_vec();
-        let encrypted = encrypt_vec_or_original(&data, version, max_len);
+        let encrypted = encrypt_vec_or_original(&data, max_len);
         let (decrypted, succ, store) = decrypt_vec_or_original(&encrypted, version);
         println!("data: {data:?}");
         println!("encrypted: {encrypted:?}");
@@ -358,7 +358,7 @@ mod test {
         assert!(store);
         assert!(!decrypt_vec_or_original(&decrypted, version).1);
         assert_eq!(
-            encrypt_vec_or_original(&encrypted, version, max_len),
+            encrypt_vec_or_original(&encrypted, max_len),
             encrypted
         );
 
@@ -411,39 +411,65 @@ mod test {
         let (_, succ, store) = decrypt_vec_or_original(&data, version);
         assert!(!succ);
         assert!(!store);
+    }
 
-        println!("test speed");
-        let test_speed = |len: usize, name: &str| {
-            let mut data: Vec<u8> = vec![];
-            let mut rng = thread_rng();
-            for _ in 0..len {
-                data.push(rng.gen_range(0..255));
-            }
-            let start: Instant = Instant::now();
-            let encrypted = encrypt_vec_or_original(&data, version, len);
-            assert_ne!(data, decrypted);
-            let t1 = start.elapsed();
-            let start = Instant::now();
-            let (decrypted, _, _) = decrypt_vec_or_original(&encrypted, version);
-            let t2 = start.elapsed();
-            assert_eq!(data, decrypted);
-            println!("{name}");
-            println!("encrypt:{:?}, decrypt:{:?}", t1, t2);
-
-            let start: Instant = Instant::now();
-            let encrypted = base64::encode(&data, base64::Variant::Original);
-            let t1 = start.elapsed();
-            let start = Instant::now();
-            let decrypted = base64::decode(&encrypted, base64::Variant::Original).unwrap();
-            let t2 = start.elapsed();
-            assert_eq!(data, decrypted);
-            println!("base64, encrypt:{:?}, decrypt:{:?}", t1, t2,);
-        };
-        test_speed(128, "128");
-        test_speed(1024, "1k");
-        test_speed(1024 * 1024, "1M");
-        test_speed(10 * 1024 * 1024, "10M");
-        test_speed(100 * 1024 * 1024, "100M");
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn test_storage_key_lookup_failure_refuses_wrapping() {
+        use crate::libc;
+        const CHILD: &str = "RUSTDESK_STORAGE_KEY_FAILURE_CHILD";
+        const TEST: &str = "password_security::test::test_storage_key_lookup_failure_refuses_wrapping";
+        if std::env::var_os(CHILD).is_none() {
+            assert!(crate::at_rest_storage_key().is_ok());
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([TEST, "--exact", "--nocapture", "--test-threads=1"])
+                .env(CHILD, "1")
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn().unwrap();
+            let output = child.wait_with_output().unwrap();
+            assert!(output.stdout.len() + output.stderr.len() < 8192);
+            assert!(output.status.success(), "key failure child failed: {}", String::from_utf8_lossy(&output.stderr));
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            let observations: Vec<_> = stdout.lines()
+                .filter_map(|line| line.find("STORAGE_WRAPPER_KEY_FAILURE=").map(|start| &line[start..]))
+                .collect();
+            assert_eq!(observations, ["STORAGE_WRAPPER_KEY_FAILURE=pass provider=linux-file errno=13 string=empty vector=empty"]);
+            println!("{}", observations[0]);
+            return;
+        }
+        let statement = |code, k| libc::sock_filter { code: code as u16, jt: 0, jf: 0, k };
+        let jump = |code, k, jt, jf| libc::sock_filter { code: code as u16, jt, jf, k };
+        let load = libc::BPF_LD | libc::BPF_W | libc::BPF_ABS;
+        let equal = libc::BPF_JMP | libc::BPF_JEQ | libc::BPF_K;
+        let bits = libc::BPF_JMP | libc::BPF_JSET | libc::BPF_K;
+        let ret = libc::BPF_RET | libc::BPF_K;
+        let mut filter = [
+            statement(load, 4),
+            jump(equal, 0xc000003e, 1, 0),
+            statement(ret, libc::SECCOMP_RET_KILL_PROCESS),
+            statement(load, 0),
+            jump(bits, 0x40000000, 0, 1),
+            statement(ret, libc::SECCOMP_RET_KILL_PROCESS),
+            jump(equal, libc::SYS_open as u32, 3, 0),
+            jump(equal, libc::SYS_openat as u32, 2, 0),
+            jump(equal, libc::SYS_openat2 as u32, 1, 0),
+            statement(ret, libc::SECCOMP_RET_ALLOW),
+            statement(ret, libc::SECCOMP_RET_ERRNO | libc::EACCES as u32),
+        ];
+        let program = libc::sock_fprog { len: filter.len() as u16, filter: filter.as_mut_ptr() };
+        assert_eq!(unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) }, 0);
+        assert_eq!(unsafe {
+            libc::syscall(libc::SYS_seccomp, libc::SECCOMP_SET_MODE_FILTER,
+                libc::SECCOMP_FILTER_FLAG_TSYNC, &program)
+        }, 0);
+        for path in ["/var/lib/dbus/machine-id", "/etc/machine-id"] {
+            assert_eq!(std::fs::read(path).unwrap_err().kind(), std::io::ErrorKind::PermissionDenied);
+        }
+        assert!(crate::at_rest_storage_key().is_err());
+        assert!(encrypt_str_or_original("key-unavailable-fixture", 128).is_empty());
+        assert!(encrypt_vec_or_original(b"key-unavailable-fixture", 128).is_empty());
+        println!("STORAGE_WRAPPER_KEY_FAILURE=pass provider=linux-file errno=13 string=empty vector=empty");
     }
 
     #[test]
@@ -477,11 +503,10 @@ mod test {
         assert!(is_encrypted(exact_mac_candidate.as_bytes()));
 
         // Real encrypted data should be detected
-        let version = "00";
         let max_len = 128;
-        let encrypted_str = encrypt_str_or_original("1", version, max_len);
+        let encrypted_str = encrypt_str_or_original("1", max_len);
         assert!(is_encrypted(encrypted_str.as_bytes()));
-        let encrypted_vec = encrypt_vec_or_original(b"1", version, max_len);
+        let encrypted_vec = encrypt_vec_or_original(b"1", max_len);
         assert!(is_encrypted(&encrypted_vec));
 
         // Original unencrypted data should not be detected as encrypted
@@ -495,17 +520,16 @@ mod test {
         use sodiumoxide::base64::{decode, Variant};
         use sodiumoxide::crypto::secretbox;
 
-        let version = "00";
         let max_len = 128;
 
-        let encrypted_str = encrypt_str_or_original("1", version, max_len);
+        let encrypted_str = encrypt_str_or_original("1", max_len);
         let decoded = decode(&encrypted_str.as_bytes()[VERSION_LEN..], Variant::Original).unwrap();
         assert!(
             decoded.len() >= secretbox::MACBYTES,
             "decoded encrypted payload must be at least MACBYTES"
         );
 
-        let encrypted_vec = encrypt_vec_or_original(b"1", version, max_len);
+        let encrypted_vec = encrypt_vec_or_original(b"1", max_len);
         let decoded = decode(&encrypted_vec[VERSION_LEN..], Variant::Original).unwrap();
         assert!(
             decoded.len() >= secretbox::MACBYTES,

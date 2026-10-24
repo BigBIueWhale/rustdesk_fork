@@ -1146,8 +1146,7 @@ grep -q 'pub fn at_rest_storage_key() -> ResultType<Vec<u8>>' libs/hbb_common/sr
 grep -q 'let storage_key = crate::at_rest_storage_key()' libs/hbb_common/src/password_security.rs || r_s11b3f="$r_s11b3f symmetric-crypt-not-using-fallible-key"
 grep -q 'fn secretbox_key_from_storage_key' libs/hbb_common/src/password_security.rs || r_s11b3f="$r_s11b3f key-derivation-helper-missing"
 grep -A4 'fn secretbox_key_from_storage_key' libs/hbb_common/src/password_security.rs | grep -q 'storage_key.is_empty()' || r_s11b3f="$r_s11b3f empty-at-rest-key-not-rejected"
-grep -A14 'pub fn encrypt_str_or_original' libs/hbb_common/src/password_security.rs | grep -q 'return String::default()' || r_s11b3f="$r_s11b3f string-encrypt-failure-not-fail-closed"
-grep -A18 'pub fn encrypt_vec_or_original' libs/hbb_common/src/password_security.rs | grep -q 'return Vec::new()' || r_s11b3f="$r_s11b3f vec-encrypt-failure-not-fail-closed"
+"${RUN[@]}" cargo test -p hbb_common --lib password_security::test::test_storage_ --color never -- --test-threads=1
 if [ -n "$r_s11b3f" ]; then echo "  FAIL R-S11b-3f desktop at-rest key/identity boundary:$r_s11b3f"; rc=1; else
   echo "  ok  R-S11b-3f at-rest wrapping uses a fallible key; legacy keypair decrypt remains read-only and device-ID export/generation is absent"; fi
 

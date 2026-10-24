@@ -29,7 +29,7 @@ use permanent_password::compute_permanent_password_h1;
 use permanent_password::{
     decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
     decrypt_permanent_password_str_or_original, derive_permanent_password_storages,
-    DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION, PERMANENT_PASSWORD_H1_LEN,
+    DEFAULT_SALT_LEN, PERMANENT_PASSWORD_H1_LEN,
 };
 pub use permanent_password::{
     decode_permanent_password_h1_from_storage, derive_cpace_prs, ENCRYPT_MAX_LEN,
@@ -39,7 +39,7 @@ use crate::{
     log,
     password_security::{
         decrypt_str_or_original, decrypt_vec_or_original, encrypt_str_or_original,
-        encrypt_vec_or_original,
+        encrypt_vec_or_original, PASSWORD_ENC_VERSION,
     },
 };
 
@@ -1354,7 +1354,7 @@ fn keep_encrypted_storage_if_plaintext_unchanged(plain: &str, stored: &str) -> S
     if encrypted && stored_plain == plain {
         return stored.to_owned();
     }
-    encrypt_str_or_original(plain, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN)
+    encrypt_str_or_original(plain, ENCRYPT_MAX_LEN)
 }
 
 // F1: preserve a present-but-corrupt config for operator recovery instead of letting a
@@ -4018,7 +4018,7 @@ impl PeerConfig {
         let has_prs = !config.password_prs.is_empty();
         let mut config = config.clone();
         config.password_prs =
-            encrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+            encrypt_vec_or_original(&config.password_prs, ENCRYPT_MAX_LEN);
         if has_prs && config.password_prs.is_empty() {
             return Err(anyhow!("Failed to encrypt peer credentials"));
         }
@@ -6089,7 +6089,7 @@ unrelated = "preserved"
     fn test_validate_or_decrypt_decrypts_00_permanent_password_without_forcing_store() {
         let mut cfg = Config::default();
         let legacy_storage =
-            encrypt_str_or_original("legacy-secret", PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+            encrypt_str_or_original("legacy-secret", ENCRYPT_MAX_LEN);
         cfg.password = legacy_storage;
         cfg.salt = "".to_owned();
         Config::validate_or_decrypt_permanent_password_storage(&mut cfg).unwrap();
@@ -6106,7 +6106,7 @@ unrelated = "preserved"
         // an already-dead `00` is harmless: the fork authenticates from config.password_prs, and
         // an undecryptable credential still fails closed at the CPace boundary.)
         let legacy_storage =
-            encrypt_str_or_original("legacy-secret", PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+            encrypt_str_or_original("legacy-secret", ENCRYPT_MAX_LEN);
         let mut payload = base64::decode(
             &legacy_storage.as_bytes()[PASSWORD_ENC_VERSION.len()..],
             base64::Variant::Original,
@@ -6148,7 +6148,7 @@ unrelated = "preserved"
         // option) coincident with a transient machine-UUID failure would permanently wipe the
         // password, salt AND prs.
         let legacy_storage =
-            encrypt_str_or_original("legacy-secret", PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+            encrypt_str_or_original("legacy-secret", ENCRYPT_MAX_LEN);
         let mut payload = base64::decode(
             &legacy_storage.as_bytes()[PASSWORD_ENC_VERSION.len()..],
             base64::Variant::Original,
@@ -6281,7 +6281,7 @@ unrelated = "preserved"
         let file = Config::file_("");
         let _file_guard = ConfigFileRestoreGuard::new(file);
         let mut cfg = Config::default();
-        cfg.enc_id = encrypt_str_or_original("123456789", PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+        cfg.enc_id = encrypt_str_or_original("123456789", ENCRYPT_MAX_LEN);
 
         cfg.store();
 
@@ -6568,7 +6568,7 @@ unrelated = "preserved"
         let _file_guard = ConfigFileRestoreGuard::new(Config::file_(""));
         let mut cfg = Config::default();
         cfg.id = "123456789".to_owned();
-        cfg.enc_id = encrypt_str_or_original(&cfg.id, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+        cfg.enc_id = encrypt_str_or_original(&cfg.id, ENCRYPT_MAX_LEN);
         let original_enc_id = cfg.enc_id.clone();
 
         cfg.store();
@@ -6588,7 +6588,7 @@ unrelated = "preserved"
         let mut cfg = Config::default();
         cfg.id = updated_id.to_owned();
         let original_enc_id =
-            encrypt_str_or_original(original_id, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+            encrypt_str_or_original(original_id, ENCRYPT_MAX_LEN);
         cfg.enc_id = original_enc_id.clone();
 
         cfg.store();

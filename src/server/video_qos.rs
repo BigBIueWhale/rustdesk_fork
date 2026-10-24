@@ -672,6 +672,67 @@ mod tests {
     }
 
     #[test]
+    fn display_activity_is_bounded_and_retires_without_adaptation() {
+        let threshold = ADJUST_RATIO_INTERVAL * DYNAMIC_SCREEN_THRESHOLD;
+        let mut outcomes = Vec::new();
+        for mode in ["disabled", "unsupported", "blocked-sibling"] {
+            let mut qos = healthy_controller();
+            qos.new_display("monitor".into());
+            qos.set_support_changing_quality("monitor", mode != "unsupported");
+            qos.abr_config = mode != "disabled";
+            if mode == "blocked-sibling" {
+                qos.new_display("blocked".into());
+            }
+            qos.adjust_ratio_instant = Instant::now().checked_sub(Duration::from_secs(4)).unwrap();
+            for _ in 0..3 {
+                qos.update_display_data("monitor", 2);
+            }
+            let retired = qos.displays.values().all(|display| display.send_counter == 0);
+            let fixed_quality = qos.ratio() == qos.latest_quality().ratio();
+            qos.abr_config = true;
+            qos.set_support_changing_quality("monitor", true);
+            if mode == "blocked-sibling" {
+                qos.set_support_changing_quality("blocked", true);
+            }
+            qos.ratio = BR_BALANCED / 2.0;
+            let before = qos.ratio();
+            qos.update_display_data("monitor", 0);
+            let fresh_window = qos.ratio() == before;
+            println!("VIDEO_QOS_ACTIVITY=observed case={mode} retired={retired} fixed_quality={fixed_quality} fresh_window={fresh_window}");
+            outcomes.push(retired && fixed_quality && fresh_window);
+        }
+
+        let mut qos = healthy_controller();
+        qos.new_display("monitor".into());
+        qos.set_support_changing_quality("monitor", true);
+        let completed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            qos.update_display_data("monitor", usize::MAX);
+            qos.update_display_data("monitor", 1);
+        })).is_ok();
+        let bounded = qos.displays["monitor"].send_counter <= threshold;
+        println!("VIDEO_QOS_ACTIVITY=observed case=maximum completed={completed} bounded={bounded}");
+        outcomes.push(completed && bounded);
+
+        for count in [0, threshold - 1, threshold] {
+            let mut qos = healthy_controller();
+            qos.new_display("monitor".into());
+            qos.set_support_changing_quality("monitor", true);
+            qos.ratio = BR_BALANCED / 2.0;
+            let before = qos.ratio();
+            qos.adjust_ratio_instant = Instant::now().checked_sub(Duration::from_secs(4)).unwrap();
+            qos.update_display_data("monitor", count);
+            let expected = if count >= threshold { qos.ratio() > before }
+                else { qos.ratio() == before };
+            let retired = qos.displays["monitor"].send_counter == 0;
+            println!("VIDEO_QOS_ACTIVITY=observed case=threshold count={count} expected={expected} retired={retired}");
+            outcomes.push(expected && retired);
+        }
+        assert!(outcomes.into_iter().all(|correct| correct),
+            "only bounded activity from the current adaptation window may affect quality");
+        println!("VIDEO_QOS_ACTIVITY=pass cases=7 counter=bounded unavailable=retired reenable=fresh threshold=preserved clock=controlled");
+    }
+
+    #[test]
     fn bitrate_growth_respects_budget_across_u32_range() {
         let mut cases = 0;
         let mut panics = 0;

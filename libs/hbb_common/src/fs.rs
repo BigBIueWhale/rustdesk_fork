@@ -6015,8 +6015,8 @@ mod tests {
                 name: "incoming.bin".into(), size: 3, modified_time: 17,
                 ..Default::default()
             }]).unwrap();
-            // Observe the admitted state independently of the setter's return type, so this
-            // regression also executes against the former unchecked setter.
+            // Observe cached state independently of the admission result, including refusal
+            // that must preserve both fields from the previously admitted digest.
             let _ = job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: 3, last_modified: 17, ..Default::default() }).await;
             let _ = job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: incoming_size, last_modified: 23, ..Default::default() }).await;
             let admitted = job.digest.size == 3

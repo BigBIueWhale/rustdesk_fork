@@ -4830,7 +4830,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn r_s11fj_download_digest_requires_the_exact_active_file() {
+    async fn r_s11fj_download_digest_refuses_an_unlisted_file() {
         let temp = ViewerFileTestDir::new();
         let mut entry = FileEntry::new();
         entry.name = "incoming.bin".to_owned();

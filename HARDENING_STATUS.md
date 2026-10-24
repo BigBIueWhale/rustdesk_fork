@@ -3434,15 +3434,18 @@ directory-writer final exchange races remain OPEN. Unix identity checks do not
 make a by-name rename/unlink conditional on the checked inode. No whole-product
 LPE closure follows; all user parks and broader release obligations remain intact.
 
-**Receive digest/manifest binding — Linux native component corrected; integration/platform acceptance OPEN.**
-Product `dac08e5a` makes `TransferJob::set_digest` fallible: only a receive job with
-an active admitted file and an exactly matching declared size may replace its
-cached digest. Refusal leaves both cached fields unchanged. The CM upload receiver
-now consumes this result before destination inspection or an identical/resume hint;
-its existing digest-error path retains cancellation until the exact cleanup reply.
-The viewer uses the same admission and propagates its error before inspection;
-its duplicate size check is removed. Existing connection/generation and file-index
-checks remain. No dependency, policy mode, protocol or required feature is added.
+**Receive digest/manifest binding and next-file handshake — Linux native component corrected; integration/platform acceptance OPEN.**
+`TransferJob::admit_receive_digest` (`05c1a5e4`) consumes the complete typed digest
+and validates receive role, exact job ID, current or immediately succeeding index,
+admitted entry and matching declared size before mutation. A succeeding digest
+finishes the previous file through its retained claim before publishing the next
+index, resetting confirmation state and replacing the cached digest. An incomplete
+predecessor refuses. This preserves the size bound from `dac08e5a` while allowing
+the sender's next-file digest to precede its first block. The implicit scalar setter
+and duplicated receiver equality guards are removed; viewer and CM callers await
+the same admission before destination inspection. Existing connection/generation,
+error/cancellation cleanup and terminal Done authority remain. No dependency,
+policy mode, protocol or required feature is added.
 
 At test baseline `3e5de21b`, the shared setter accepted zero, smaller, larger and
 `u64::MAX` sizes against a three-byte manifest; the new regression failed while
@@ -3454,6 +3457,21 @@ seconds). The old overlong-resume test still injects a corrupt private cache to
 exercise the sink's independent manifest bound. Exact sources, artifacts, raw
 results, endpoint observations and joined RAM/private-root retirement are retained
 in `.harness-state/verifier-vm/receive-digest-2cfaac0d.json`.
+API preparation `6d54a854` moves the existing receiver ID/index checks into the
+typed method while retaining its old equality rule and role/size setter body.
+It reproduces rejection of file 1's digest in all three real-file sender/receiver
+sequences, with 45 controls passing. At `05c1a5e4`, the identical two new tests
+pass: three-file transfers cover different/equal lengths and empty files, exact
+publication/accounting and sidecar retirement; eleven wrong-job, negative,
+out-of-list, skipped-index, wrong-size and short-predecessor requests preserve the
+current claim, staged bytes, index, cached digest and counters. All **126 required
+names and 33 groups** pass in 190 outer seconds with joined bounded-RAM cleanup.
+Successful case-level diagnostics are filtered by the existing guest whitelist;
+retained exact test names, summaries, artifact identity and source-bound assertions
+establish those checks. `.harness-state/verifier-vm/receive-next-digest-14f24f57.json`
+binds the A/B sources/results, artifacts, failure-root reconciliation, endpoint
+observations and cleanup. Subsequent changes outside the ledger only correct a
+test comment and rename the unlisted-file caller test; no behavior changes.
 This executes the Linux shared library and real files, not the complete CM/viewer,
 an installed privileged service or another target OS. Their compilation/integration,
 authorized/refused principal, UI, resource/latency and release acceptance remain

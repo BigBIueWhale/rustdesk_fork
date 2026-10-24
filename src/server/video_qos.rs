@@ -191,9 +191,15 @@ impl VideoQoS {
         self.users.iter().any(|u| u.1.record)
     }
 
-    pub fn set_support_changing_quality(&mut self, video_service_name: &str, support: bool) {
-        if let Some(display) = self.displays.get_mut(video_service_name) {
-            display.support_changing_quality = support;
+    pub(super) fn set_support_changing_quality(
+        &mut self, name: &str, generation: &DisplayGeneration, support: bool,
+    ) -> bool {
+        match self.displays.get_mut(name) {
+            Some(display) if Arc::ptr_eq(&display.generation.0, &generation.0) => {
+                display.support_changing_quality = support;
+                true
+            }
+            _ => false,
         }
     }
 
@@ -411,12 +417,18 @@ impl VideoQoS {
         }
     }
 
-    pub fn update_display_data(&mut self, video_service_name: &str, send_counter: usize) {
-        if let Some(display) = self.displays.get_mut(video_service_name) {
-            display.send_counter = display.send_counter
-                .saturating_add(send_counter)
-                .min(ADJUST_RATIO_INTERVAL * DYNAMIC_SCREEN_THRESHOLD);
+    pub(super) fn update_display_data(
+        &mut self, name: &str, generation: &DisplayGeneration, send_counter: usize,
+    ) -> bool {
+        let Some(display) = self.displays.get_mut(name) else {
+            return false;
+        };
+        if !Arc::ptr_eq(&display.generation.0, &generation.0) {
+            return false;
         }
+        display.send_counter = display.send_counter
+            .saturating_add(send_counter)
+            .min(ADJUST_RATIO_INTERVAL * DYNAMIC_SCREEN_THRESHOLD);
         self.adjust_fps();
         let abr_enabled = self.in_vbr_state();
         if abr_enabled {
@@ -437,6 +449,7 @@ impl VideoQoS {
             self.adjust_ratio_instant = Instant::now();
             self.ratio = self.latest_quality().ratio();
         }
+        true
     }
 
     #[inline]
@@ -653,6 +666,18 @@ impl RttCalculator {
 mod tests {
     use super::*;
 
+    impl VideoQoS {
+        fn set_test_support(&mut self, name: &str, support: bool) {
+            let generation = self.displays.get(name).unwrap().generation.clone();
+            assert!(self.set_support_changing_quality(name, &generation, support));
+        }
+
+        fn update_test_display_data(&mut self, name: &str, count: usize) {
+            let generation = self.displays.get(name).unwrap().generation.clone();
+            assert!(self.update_display_data(name, &generation, count));
+        }
+    }
+
     fn publish_test_bitrate(qos: &mut VideoQoS, name: &str, generation: &DisplayGeneration, bitrate: u32) -> bool {
         qos.set_display_bitrate(name, generation, bitrate)
     }
@@ -663,7 +688,7 @@ mod tests {
             None => qos.new_display("monitor".into()),
         };
         assert!(publish_test_bitrate(qos, "monitor", &generation, bitrate));
-        qos.set_support_changing_quality("monitor", true);
+        qos.set_test_support("monitor", true);
     }
 
     fn healthy_controller() -> VideoQoS {
@@ -678,15 +703,15 @@ mod tests {
     }
 
     fn write_test_display_support(
-        qos: &mut VideoQoS, name: &str, _generation: &DisplayGeneration, support: bool,
+        qos: &mut VideoQoS, name: &str, generation: &DisplayGeneration, support: bool,
     ) {
-        qos.set_support_changing_quality(name, support);
+        let _ = qos.set_support_changing_quality(name, generation, support);
     }
 
     fn write_test_display_activity(
-        qos: &mut VideoQoS, name: &str, _generation: &DisplayGeneration, count: usize,
+        qos: &mut VideoQoS, name: &str, generation: &DisplayGeneration, count: usize,
     ) {
-        qos.update_display_data(name, count);
+        let _ = qos.update_display_data(name, generation, count);
     }
 
     #[test]
@@ -749,25 +774,25 @@ mod tests {
         for mode in ["disabled", "unsupported", "blocked-sibling"] {
             let mut qos = healthy_controller();
             qos.new_display("monitor".into());
-            qos.set_support_changing_quality("monitor", mode != "unsupported");
+            qos.set_test_support("monitor", mode != "unsupported");
             qos.abr_config = mode != "disabled";
             if mode == "blocked-sibling" {
                 qos.new_display("blocked".into());
             }
             qos.adjust_ratio_instant = Instant::now().checked_sub(Duration::from_secs(4)).unwrap();
             for _ in 0..3 {
-                qos.update_display_data("monitor", 2);
+                qos.update_test_display_data("monitor", 2);
             }
             let retired = qos.displays.values().all(|display| display.send_counter == 0);
             let fixed_quality = qos.ratio() == qos.latest_quality().ratio();
             qos.abr_config = true;
-            qos.set_support_changing_quality("monitor", true);
+            qos.set_test_support("monitor", true);
             if mode == "blocked-sibling" {
-                qos.set_support_changing_quality("blocked", true);
+                qos.set_test_support("blocked", true);
             }
             qos.ratio = BR_BALANCED / 2.0;
             let before = qos.ratio();
-            qos.update_display_data("monitor", 0);
+            qos.update_test_display_data("monitor", 0);
             let fresh_window = qos.ratio() == before;
             println!("VIDEO_QOS_ACTIVITY=observed case={mode} retired={retired} fixed_quality={fixed_quality} fresh_window={fresh_window}");
             outcomes.push(retired && fixed_quality && fresh_window);
@@ -775,10 +800,10 @@ mod tests {
 
         let mut qos = healthy_controller();
         qos.new_display("monitor".into());
-        qos.set_support_changing_quality("monitor", true);
+        qos.set_test_support("monitor", true);
         let completed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            qos.update_display_data("monitor", usize::MAX);
-            qos.update_display_data("monitor", 1);
+            qos.update_test_display_data("monitor", usize::MAX);
+            qos.update_test_display_data("monitor", 1);
         })).is_ok();
         let bounded = qos.displays["monitor"].send_counter <= threshold;
         println!("VIDEO_QOS_ACTIVITY=observed case=maximum completed={completed} bounded={bounded}");
@@ -787,11 +812,11 @@ mod tests {
         for count in [0, threshold - 1, threshold] {
             let mut qos = healthy_controller();
             qos.new_display("monitor".into());
-            qos.set_support_changing_quality("monitor", true);
+            qos.set_test_support("monitor", true);
             qos.ratio = BR_BALANCED / 2.0;
             let before = qos.ratio();
             qos.adjust_ratio_instant = Instant::now().checked_sub(Duration::from_secs(4)).unwrap();
-            qos.update_display_data("monitor", count);
+            qos.update_test_display_data("monitor", count);
             let expected = if count >= threshold { qos.ratio() > before }
                 else { qos.ratio() == before };
             let retired = qos.displays["monitor"].send_counter == 0;
@@ -866,8 +891,8 @@ mod tests {
             let b = qos.new_display("second".into());
             assert!(publish_test_bitrate(&mut qos, "first", &a, first));
             assert!(publish_test_bitrate(&mut qos, "second", &b, second));
-            qos.set_support_changing_quality("first", true);
-            qos.set_support_changing_quality("second", true);
+            qos.set_test_support("first", true);
+            qos.set_test_support("second", true);
             qos.user_delay_response_elapsed(7, 4000);
             qos.adjust_ratio(true);
             qos.user_network_delay(7, 20);
@@ -997,7 +1022,7 @@ mod tests {
                 for id in [7, 8, 999] {
                     let mut qos = healthy_pair();
                     qos.new_display("quality-continuity".into());
-                    qos.set_support_changing_quality("quality-continuity", true);
+                    qos.set_test_support("quality-continuity", true);
                     qos.user_image_quality(7, quality);
                     qos.user_image_quality(8, quality);
                     let target = qos.latest_quality();
@@ -1158,7 +1183,7 @@ mod tests {
     fn pending_probe_congestion_controls_rate_and_quality() {
         let mut qos = healthy_controller();
         qos.new_display("monitor".to_owned());
-        qos.set_support_changing_quality("monitor", true);
+        qos.set_test_support("monitor", true);
         store_test_bitrate(&mut qos, 2000);
         qos.user_delay_response_elapsed(7, 2000);
         assert_eq!(qos.fps(), FPS);
@@ -1269,7 +1294,7 @@ mod tests {
         qos.on_connection_open(7);
         qos.new_user_instant = Instant::now().checked_sub(Duration::from_secs(2)).unwrap();
         qos.new_display("monitor".to_owned());
-        qos.set_support_changing_quality("monitor", true);
+        qos.set_test_support("monitor", true);
         store_test_bitrate(&mut qos, 2000);
         for _ in 0..120 {
             qos.user_network_delay(7, round_trip);

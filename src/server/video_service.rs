@@ -1157,7 +1157,11 @@ fn run(vs: VideoService) -> ResultType<()> {
         if !video_qos.set_display_bitrate(&_raii.name, &_raii.generation, bitrate) {
             bail!("SWITCH");
         }
-        video_qos.set_support_changing_quality(&_raii.name, support_changing_quality);
+        if !video_qos.set_support_changing_quality(
+            &_raii.name, &_raii.generation, support_changing_quality,
+        ) {
+            bail!("SWITCH");
+        }
     }
     log::info!("initial quality: {quality:?}");
 

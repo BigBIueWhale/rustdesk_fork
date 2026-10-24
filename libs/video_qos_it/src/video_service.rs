@@ -67,7 +67,7 @@ fn reset(supports_quality: bool) -> (f32, DisplayGeneration) {
     *qos = VideoQoS::default();
     qos.on_connection_open(7);
     let generation = qos.new_display("monitor".into());
-    qos.set_support_changing_quality("monitor", supports_quality);
+    assert!(qos.set_support_changing_quality("monitor", &generation, supports_quality));
     publish_test_bitrate(&mut qos, &generation, 2000);
     (qos.ratio(), generation)
 }

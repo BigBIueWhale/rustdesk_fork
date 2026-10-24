@@ -42,8 +42,10 @@ pub(super) fn check_qos(
     }
     *spf = video_qos.spf();
     if second_instant.elapsed() > Duration::from_secs(1) {
+        if !video_qos.update_display_data(name, generation, *send_counter) {
+            bail!("SWITCH");
+        }
         *second_instant = Instant::now();
-        video_qos.update_display_data(&name, *send_counter);
         *send_counter = 0;
     }
     drop(video_qos);

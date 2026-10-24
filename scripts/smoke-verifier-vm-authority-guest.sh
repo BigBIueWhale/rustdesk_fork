@@ -3489,6 +3489,8 @@ run_focused_rust_tests() {
                 libs/hbb_common/src/config/linux_directory.rs
             )
             required_tests=(
+                password_security::test::test_storage_wrappers
+                password_security::test::test_storage_key_lookup_failure_refuses_wrapping
                 password_security::test::test_is_encrypted
                 password_security::test::test_encrypted_payload_min_len_macbytes
                 password_security::test::test_encryption_uses_random_nonce

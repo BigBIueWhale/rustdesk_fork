@@ -7282,6 +7282,8 @@ PY
         [ "$(stat -c '%u:%g:%a:%h' "$authority_work/probe")" = 0:0:555:1 ] \
             && [ "$authority_sha" = "$(sha256sum "$authority_work/probe" | cut -d ' ' -f 1)" ] \
             || fail 'receive authority protected runtime copy differs'
+        printf 'RECEIVE_NATIVE_AUTHORITY_ARTIFACT_START=observed sha256=%s source_sha256=%s executable=protected-guest-copy\n' \
+            "$authority_sha" "$authority_source_sha"
         # Privileged receiver and irreversible UID drop run only inside this disposable VM.
         setpriv --no-new-privs env -i PATH=/usr/bin:/bin HOME="$authority_work/home" \
             LANG=C LC_ALL=C \

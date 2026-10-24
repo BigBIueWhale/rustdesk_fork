@@ -33,19 +33,34 @@ mod linux {
         ensure!(gids.split_whitespace().eq(expected_ids.iter().map(String::as_str)));
         ensure!(field("NoNewPrivs:")? == "1");
         let capabilities = field("CapEff:")?;
+        let mut inherited_fixture_descriptors = 0;
         if expected == ACTOR_UID {
             ensure!(field("Groups:")?.is_empty());
             for key in ["CapEff:", "CapPrm:", "CapInh:", "CapAmb:"] {
                 ensure!(u64::from_str_radix(&field(key)?, 16)? == 0);
             }
+            let executable = std::env::current_exe()?;
+            let fixtures = executable.parent().ok_or_else(|| anyhow!("actor parent absent"))?.join("data");
+            for descriptor in fs::read_dir("/proc/self/fd")? {
+                match fs::read_link(descriptor?.path()) {
+                    Ok(path) if path.starts_with(&fixtures) => inherited_fixture_descriptors += 1,
+                    Ok(_) => {}
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.into()),
+                }
+            }
+            ensure!(inherited_fixture_descriptors == 0, "actor inherited a fixture descriptor");
         }
         Ok(json!({"pid": std::process::id(), "uids": uids, "gids": gids,
-            "effective_capabilities": capabilities, "no_new_privileges": true}))
+            "effective_capabilities": capabilities, "no_new_privileges": true,
+            "inherited_fixture_descriptors":inherited_fixture_descriptors}))
     }
 
     fn create(path: &Path, bytes: &[u8], mode: u32) -> ResultType<()> {
-        OpenOptions::new().write(true).create_new(true).mode(mode).open(path)?
-            .write_all(bytes)?;
+        let mut file = OpenOptions::new().write(true).create_new(true).mode(mode).open(path)?;
+        file.write_all(bytes)?;
+        file.set_permissions(fs::Permissions::from_mode(mode))?;
+        ensure!(file.metadata()?.mode() & 0o7777 == mode, "fixture mode differs");
         Ok(())
     }
 

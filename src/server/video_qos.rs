@@ -106,6 +106,32 @@ impl UserData {
 #[derive(Default, Debug, Clone)]
 pub(super) struct DisplayGeneration(Arc<()>);
 
+#[derive(Debug)]
+/// Encoded frames from one display and one uninterrupted adaptation epoch.
+pub(super) struct DisplayActivity {
+    display: DisplayGeneration,
+    epoch: Arc<()>,
+    send_counter: usize,
+    second_instant: Instant,
+}
+
+impl DisplayActivity {
+    pub(super) fn on_frame(&mut self) {
+        self.send_counter = self.send_counter.saturating_add(1)
+            .min(ADJUST_RATIO_INTERVAL * DYNAMIC_SCREEN_THRESHOLD);
+    }
+
+    #[cfg(test)]
+    pub(super) fn elapse_for_test(&mut self, age: Duration) {
+        self.second_instant = Instant::now().checked_sub(age).unwrap();
+    }
+
+    #[cfg(test)]
+    pub(super) fn pending_for_test(&self) -> (usize, Instant) {
+        (self.send_counter, self.second_instant)
+    }
+}
+
 #[derive(Default, Debug, Clone)]
 struct DisplayData {
     generation: DisplayGeneration,
@@ -122,6 +148,7 @@ pub struct VideoQoS {
     // One current choice per live viewer, ordered by its latest request.
     qualities: Vec<(i32, Quality)>,
     displays: HashMap<String, DisplayData>,
+    activity_epoch: Arc<()>,
     adjust_ratio_instant: Instant,
     abr_config: bool,
     new_user_instant: Instant,
@@ -135,6 +162,7 @@ impl Default for VideoQoS {
             users: Default::default(),
             qualities: Default::default(),
             displays: Default::default(),
+            activity_epoch: Arc::new(()),
             adjust_ratio_instant: Instant::now(),
             abr_config: true,
             new_user_instant: Instant::now(),
@@ -199,13 +227,17 @@ impl VideoQoS {
     pub(super) fn set_support_changing_quality(
         &mut self, name: &str, generation: &DisplayGeneration, support: bool,
     ) -> bool {
+        let was_available = self.in_vbr_state();
         match self.displays.get_mut(name) {
             Some(display) if Arc::ptr_eq(&display.generation.0, &generation.0) => {
                 display.support_changing_quality = support;
-                true
             }
-            _ => false,
+            _ => return false,
         }
+        if was_available != self.in_vbr_state() {
+            self.retire_activity();
+        }
+        true
     }
 
     // Check if variable bitrate encoding is supported and enabled
@@ -220,7 +252,11 @@ impl VideoQoS {
     pub fn on_connection_open(&mut self, id: i32) {
         self.users.insert(id, UserData::default());
         self.retire_quality(id);
+        let was_available = self.in_vbr_state();
         self.abr_config = Config::get_option("enable-abr") != "N";
+        if was_available != self.in_vbr_state() {
+            self.retire_activity();
+        }
         self.new_user_instant = Instant::now();
         self.adjust_fps();
     }
@@ -404,9 +440,13 @@ impl VideoQoS {
 // Common adjust functions
 impl VideoQoS {
     pub(super) fn new_display(&mut self, video_service_name: String) -> DisplayGeneration {
+        let was_available = self.in_vbr_state();
         let display = DisplayData::default();
         let generation = display.generation.clone();
         self.displays.insert(video_service_name, display);
+        if was_available != self.in_vbr_state() {
+            self.retire_activity();
+        }
         generation
     }
 
@@ -418,21 +458,63 @@ impl VideoQoS {
 
     pub(super) fn remove_display(&mut self, name: &str, generation: &DisplayGeneration) {
         if self.is_display_current(name, generation) {
+            let was_available = self.in_vbr_state();
             self.displays.remove(name);
+            if was_available != self.in_vbr_state() {
+                self.retire_activity();
+            }
         }
     }
 
-    pub(super) fn update_display_data(
-        &mut self, name: &str, generation: &DisplayGeneration, send_counter: usize,
+    fn retire_activity(&mut self) {
+        self.activity_epoch = Arc::new(());
+        for display in self.displays.values_mut() {
+            display.send_counter = 0;
+        }
+        self.adjust_ratio_instant = Instant::now();
+    }
+
+    pub(super) fn new_display_activity(
+        &self, name: &str, generation: &DisplayGeneration,
+    ) -> Option<DisplayActivity> {
+        self.is_display_current(name, generation).then(|| DisplayActivity {
+            display: generation.clone(),
+            epoch: self.activity_epoch.clone(),
+            send_counter: 0,
+            second_instant: Instant::now(),
+        })
+    }
+
+    pub(super) fn sync_display_activity(
+        &self, name: &str, generation: &DisplayGeneration, activity: &mut DisplayActivity,
     ) -> bool {
+        if !self.is_display_current(name, generation)
+            || !Arc::ptr_eq(&activity.display.0, &generation.0)
+        {
+            return false;
+        }
+        if !Arc::ptr_eq(&activity.epoch, &self.activity_epoch) {
+            activity.epoch = self.activity_epoch.clone();
+            activity.send_counter = 0;
+            activity.second_instant = Instant::now();
+        }
+        true
+    }
+
+    pub(super) fn update_display_data(
+        &mut self, name: &str, generation: &DisplayGeneration, activity: &mut DisplayActivity,
+    ) -> bool {
+        if !self.sync_display_activity(name, generation, activity) {
+            return false;
+        }
+        if activity.second_instant.elapsed() <= Duration::from_secs(1) {
+            return true;
+        }
         let Some(display) = self.displays.get_mut(name) else {
             return false;
         };
-        if !Arc::ptr_eq(&display.generation.0, &generation.0) {
-            return false;
-        }
         display.send_counter = display.send_counter
-            .saturating_add(send_counter)
+            .saturating_add(activity.send_counter)
             .min(ADJUST_RATIO_INTERVAL * DYNAMIC_SCREEN_THRESHOLD);
         self.adjust_fps();
         let abr_enabled = self.in_vbr_state();
@@ -454,6 +536,8 @@ impl VideoQoS {
             self.adjust_ratio_instant = Instant::now();
             self.ratio = self.latest_quality().ratio();
         }
+        activity.send_counter = 0;
+        activity.second_instant = Instant::now();
         true
     }
 
@@ -679,7 +763,10 @@ mod tests {
 
         fn update_test_display_data(&mut self, name: &str, count: usize) {
             let generation = self.displays.get(name).unwrap().generation.clone();
-            assert!(self.update_display_data(name, &generation, count));
+            let mut activity = self.new_display_activity(name, &generation).unwrap();
+            activity.send_counter = count;
+            activity.elapse_for_test(Duration::from_secs(2));
+            assert!(self.update_display_data(name, &generation, &mut activity));
         }
     }
 
@@ -716,7 +803,11 @@ mod tests {
     fn write_test_display_activity(
         qos: &mut VideoQoS, name: &str, generation: &DisplayGeneration, count: usize,
     ) {
-        let _ = qos.update_display_data(name, generation, count);
+        let mut activity = DisplayActivity {
+            display: generation.clone(), epoch: qos.activity_epoch.clone(),
+            send_counter: count, second_instant: Instant::now() - Duration::from_secs(2),
+        };
+        let _ = qos.update_display_data(name, generation, &mut activity);
     }
 
     #[test]
@@ -767,9 +858,32 @@ mod tests {
                 outcomes.push(correct);
             }
         }
+        let mut qos = healthy_controller();
+        let monitor = qos.new_display("monitor".into());
+        qos.set_test_support("monitor", true);
+        let other = qos.new_display("other".into());
+        qos.set_test_support("other", true);
+        let mut activity = qos.new_display_activity("other", &other).unwrap();
+        activity.send_counter = usize::MAX;
+        activity.on_frame();
+        let bounded = activity.send_counter == ADJUST_RATIO_INTERVAL * DYNAMIC_SCREEN_THRESHOLD;
+        activity.elapse_for_test(Duration::from_secs(2));
+        qos.displays.get_mut("monitor").unwrap().send_counter = 1;
+        let before = (activity.send_counter, activity.second_instant,
+            qos.displays["monitor"].send_counter, qos.adjust_ratio_instant);
+        let epoch = qos.activity_epoch.clone();
+        assert!(qos.set_support_changing_quality("monitor", &monitor, true));
+        let refused = !qos.sync_display_activity("monitor", &monitor, &mut activity)
+            && !qos.update_display_data("monitor", &monitor, &mut activity)
+            && qos.new_display_activity("monitor", &other).is_none();
+        let after = (activity.send_counter, activity.second_instant,
+            qos.displays["monitor"].send_counter, qos.adjust_ratio_instant);
+        let preserved = before == after && Arc::ptr_eq(&epoch, &qos.activity_epoch);
+        println!("VIDEO_QOS_ACTIVITY_OWNER=observed role=incompatible-activity refused={refused} preserved={preserved} bounded={bounded}");
+        outcomes.push(refused && preserved && bounded);
         assert!(outcomes.into_iter().all(|correct| correct),
             "display support and activity updates must retain their exact generation");
-        println!("VIDEO_QOS_ACTIVITY_OWNER=pass cases=10 stale=preserved current=applied missing=inert");
+        println!("VIDEO_QOS_ACTIVITY_OWNER=pass cases=11 stale=preserved current=applied missing=inert");
     }
 
     #[test]
@@ -833,6 +947,9 @@ mod tests {
             let generation = qos.new_display("monitor".into());
             assert!(qos.set_support_changing_quality("monitor", &generation, true));
             qos.displays.get_mut("monitor").unwrap().send_counter = threshold;
+            let mut pending = qos.new_display_activity("monitor", &generation).unwrap();
+            for _ in 0..threshold { pending.on_frame(); }
+            pending.elapse_for_test(Duration::from_secs(2));
             qos.ratio = BR_BALANCED / 2.0;
             let before = qos.ratio;
             qos.adjust_ratio_instant = Instant::now().checked_sub(Duration::from_secs(4)).unwrap();
@@ -846,13 +963,18 @@ mod tests {
             }
             let retired = qos.displays["monitor"].send_counter == 0
                 && qos.adjust_ratio_instant > previous_period;
+            assert!(qos.update_display_data("monitor", &generation, &mut pending));
+            let (pending_count, pending_since) = pending.pending_for_test();
+            let old_batch_retired = pending_count == 0
+                && pending_since.elapsed() < Duration::from_secs(1)
+                && qos.displays["monitor"].send_counter == 0;
             qos.update_test_display_data("monitor", 0);
             let fresh_window = qos.ratio == before;
             qos.adjust_ratio_instant = Instant::now().checked_sub(Duration::from_secs(4)).unwrap();
             qos.update_test_display_data("monitor", threshold);
             let fresh_growth = qos.ratio > before;
-            println!("VIDEO_QOS_ACTIVITY=observed case=transition-{transition} retired={retired} fresh_window={fresh_window} fresh_growth={fresh_growth}");
-            outcomes.push(retired && fresh_window && fresh_growth);
+            println!("VIDEO_QOS_ACTIVITY=observed case=transition-{transition} retired={retired} old_batch_retired={old_batch_retired} fresh_window={fresh_window} fresh_growth={fresh_growth}");
+            outcomes.push(retired && old_batch_retired && fresh_window && fresh_growth);
         }
         assert!(outcomes.into_iter().all(|correct| correct),
             "only bounded activity from the current adaptation window may affect quality");

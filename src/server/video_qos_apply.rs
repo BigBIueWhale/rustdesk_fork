@@ -1,5 +1,5 @@
-use super::{Duration, Encoder, Instant, VIDEO_QOS};
-use crate::server::video_qos::DisplayGeneration;
+use super::{Duration, Encoder, VIDEO_QOS};
+use crate::server::video_qos::{DisplayActivity, DisplayGeneration};
 use hbb_common::{anyhow::bail, log, ResultType};
 
 pub(super) fn check_qos(
@@ -7,14 +7,15 @@ pub(super) fn check_qos(
     ratio: &mut f32,
     spf: &mut Duration,
     client_record: bool,
-    send_counter: &mut usize,
-    second_instant: &mut Instant,
+    activity: &mut DisplayActivity,
     name: &str,
     generation: &DisplayGeneration,
 ) -> ResultType<()> {
     let requested_ratio = {
         let mut video_qos = VIDEO_QOS.lock().unwrap();
-        if !video_qos.is_display_current(name, generation) || client_record != video_qos.record() {
+        if client_record != video_qos.record()
+            || !video_qos.sync_display_activity(name, generation, activity)
+        {
             bail!("SWITCH");
         }
         *spf = video_qos.spf();
@@ -31,7 +32,9 @@ pub(super) fn check_qos(
         None
     };
     let mut video_qos = VIDEO_QOS.lock().unwrap();
-    if !video_qos.is_display_current(name, generation) || client_record != video_qos.record() {
+    if client_record != video_qos.record()
+        || !video_qos.sync_display_activity(name, generation, activity)
+    {
         bail!("SWITCH");
     }
     if let Some(bitrate) = bitrate {
@@ -41,12 +44,8 @@ pub(super) fn check_qos(
         *ratio = requested_ratio;
     }
     *spf = video_qos.spf();
-    if second_instant.elapsed() > Duration::from_secs(1) {
-        if !video_qos.update_display_data(name, generation, *send_counter) {
-            bail!("SWITCH");
-        }
-        *second_instant = Instant::now();
-        *send_counter = 0;
+    if !video_qos.update_display_data(name, generation, activity) {
+        bail!("SWITCH");
     }
     drop(video_qos);
     Ok(())

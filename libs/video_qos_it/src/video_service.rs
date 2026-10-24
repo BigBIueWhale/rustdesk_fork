@@ -1,4 +1,4 @@
-use super::{video_qos::{DisplayGeneration, VideoQoS}, Enum, ImageQuality};
+use super::{video_qos::{DisplayActivity, DisplayGeneration, VideoQoS}, Enum, ImageQuality};
 use hbb_common::{anyhow::anyhow, lazy_static::lazy_static, ResultType};
 use std::{cell::{Cell, RefCell}, sync::{mpsc, Mutex}, time::{Duration, Instant}};
 
@@ -62,35 +62,37 @@ lazy_static! {
 #[path = "../../../src/server/video_qos_apply.rs"]
 mod qos_apply;
 
-fn reset(supports_quality: bool) -> (f32, DisplayGeneration) {
+fn reset(supports_quality: bool) -> (f32, DisplayGeneration, DisplayActivity) {
     let mut qos = VIDEO_QOS.lock().unwrap();
     *qos = VideoQoS::default();
     qos.on_connection_open(7);
     let generation = qos.new_display("monitor".into());
     assert!(qos.set_support_changing_quality("monitor", &generation, supports_quality));
     publish_test_bitrate(&mut qos, &generation, 2000);
-    (qos.ratio(), generation)
+    let activity = qos.new_display_activity("monitor", &generation).unwrap();
+    (qos.ratio(), generation, activity)
 }
 
 fn publish_test_bitrate(qos: &mut VideoQoS, generation: &DisplayGeneration, bitrate: u32) {
     assert!(qos.set_display_bitrate("monitor", generation, bitrate));
 }
 
-fn apply(encoder: &mut Encoder, ratio: &mut f32, generation: &DisplayGeneration) -> ResultType<()> {
+fn apply(encoder: &mut Encoder, ratio: &mut f32, generation: &DisplayGeneration,
+         activity: &mut DisplayActivity) -> ResultType<()> {
     qos_apply::check_qos(encoder, ratio, &mut Duration::ZERO, false,
-        &mut 0, &mut Instant::now(), "monitor", generation)
+        activity, "monitor", generation)
 }
 
 #[test]
 fn failed_quality_change_preserves_confirmation_and_retries() {
-    let (original, generation) = reset(true);
+    let (original, generation, mut activity) = reset(true);
     let mut ratio = original;
     let mut encoder = Encoder::new(true, 2);
     VIDEO_QOS.lock().unwrap().user_image_quality(7, ImageQuality::Best.value());
     let target = VIDEO_QOS.lock().unwrap().ratio();
     let mut observations = Vec::new();
     for attempt in 1..=2 {
-        let result = apply(&mut encoder, &mut ratio, &generation);
+        let result = apply(&mut encoder, &mut ratio, &generation, &mut activity);
         let error = result.as_ref().err().map(ToString::to_string);
         let unchanged = ratio == original && VIDEO_QOS.lock().unwrap().bitrate() == 2000;
         let retried = encoder.requests.len() == attempt;
@@ -98,7 +100,7 @@ fn failed_quality_change_preserves_confirmation_and_retries() {
         observations.push(error.as_deref() == Some("controlled encoder quality failure")
             && unchanged && retried && encoder.bitrate_reads.get() == 0);
     }
-    let retried = apply(&mut encoder, &mut ratio, &generation).is_ok();
+    let retried = apply(&mut encoder, &mut ratio, &generation, &mut activity).is_ok();
     let confirmed = ratio == target && VIDEO_QOS.lock().unwrap().bitrate() == 2500;
     println!("VIDEO_QOS_APPLY=retry success={retried} confirmed={confirmed} requests={} bitrate_reads={}", encoder.requests.len(), encoder.bitrate_reads.get());
     assert!(observations.into_iter().all(|ok| ok) && retried && confirmed
@@ -110,12 +112,12 @@ fn unsupported_quality_changes_require_recreation() {
     let mut observations = Vec::new();
     for registered in [false, true] {
         for quality in [ImageQuality::Best.value(), 150 << 8] {
-            let (original, generation) = reset(false);
+            let (original, generation, mut activity) = reset(false);
             if !registered { VIDEO_QOS.lock().unwrap().remove_display("monitor", &generation); }
             VIDEO_QOS.lock().unwrap().user_image_quality(7, quality);
             let mut ratio = original;
             let mut encoder = Encoder::new(false, 0);
-            let result = apply(&mut encoder, &mut ratio, &generation);
+            let result = apply(&mut encoder, &mut ratio, &generation, &mut activity);
             let error = result.as_ref().err().map(ToString::to_string);
             let expected_bitrate = if registered { 2000 } else { 0 };
             let unchanged = ratio == original && VIDEO_QOS.lock().unwrap().bitrate() == expected_bitrate;
@@ -129,17 +131,17 @@ fn unsupported_quality_changes_require_recreation() {
 
 #[test]
 fn successful_quality_changes_publish_once_per_target() {
-    let (mut ratio, generation) = reset(true);
+    let (mut ratio, generation, mut activity) = reset(true);
     let mut encoder = Encoder::new(true, 0);
     let mut targets = Vec::new();
     for quality in [ImageQuality::Best.value(), 150 << 8] {
         VIDEO_QOS.lock().unwrap().user_image_quality(7, quality);
         let target = VIDEO_QOS.lock().unwrap().ratio();
         targets.push(target);
-        apply(&mut encoder, &mut ratio, &generation).unwrap();
+        apply(&mut encoder, &mut ratio, &generation, &mut activity).unwrap();
         assert_eq!(ratio, target);
         assert_eq!(VIDEO_QOS.lock().unwrap().bitrate(), encoder.bitrate);
-        apply(&mut encoder, &mut ratio, &generation).unwrap();
+        apply(&mut encoder, &mut ratio, &generation, &mut activity).unwrap();
         assert_eq!(encoder.requests, targets);
         assert_eq!(encoder.bitrate_reads.get(), targets.len());
     }
@@ -148,18 +150,19 @@ fn successful_quality_changes_publish_once_per_target() {
 
 #[test]
 fn recording_switch_and_periodic_accounting_remain_active() {
-    let (mut ratio, generation) = reset(true);
+    let (mut ratio, generation, mut activity) = reset(true);
     let mut encoder = Encoder::new(true, 0);
     let mut spf = Duration::ZERO;
-    let mut count = 7;
-    let mut second = Instant::now() - Duration::from_secs(2);
+    for _ in 0..7 { activity.on_frame(); }
+    activity.elapse_for_test(Duration::from_secs(2));
     qos_apply::check_qos(&mut encoder, &mut ratio, &mut spf, false,
-        &mut count, &mut second, "monitor", &generation).unwrap();
-    assert_eq!(count, 0);
+        &mut activity, "monitor", &generation).unwrap();
+    let (pending, second) = activity.pending_for_test();
+    assert_eq!(pending, 0);
     assert!(spf > Duration::ZERO && second.elapsed() < Duration::from_secs(1));
     VIDEO_QOS.lock().unwrap().user_record(7, true);
     let result = qos_apply::check_qos(&mut encoder, &mut ratio, &mut spf, false,
-        &mut count, &mut second, "monitor", &generation);
+        &mut activity, "monitor", &generation);
     assert_eq!(result.unwrap_err().to_string(), "SWITCH");
     assert!(encoder.requests.is_empty() && encoder.bitrate_reads.get() == 0);
     println!("VIDEO_QOS_APPLY=controls accounting=true pacing=true record_switch=true unchanged_target_no_apply=true");
@@ -178,7 +181,7 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
         ("set", "failure", 1),
         ("set", "activity", 0), ("bitrate", "activity", 0),
     ] {
-        let (original, generation) = reset(true);
+        let (original, generation, mut activity) = reset(true);
         assert!(VIDEO_QOS.lock().unwrap().in_vbr_state());
         VIDEO_QOS.lock().unwrap().user_image_quality(7, ImageQuality::Best.value());
         let requested = VIDEO_QOS.lock().unwrap().ratio();
@@ -190,10 +193,13 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
         let worker = std::thread::spawn(move || {
             let mut ratio = original;
             let mut spf = Duration::ZERO;
-            let mut count = if event == "activity" { 6 } else { 0 };
-            let mut second = Instant::now() - Duration::from_secs(2);
+            if event == "activity" {
+                for _ in 0..6 { activity.on_frame(); }
+            }
+            activity.elapse_for_test(Duration::from_secs(2));
             let result = qos_apply::check_qos(&mut encoder, &mut ratio, &mut spf, false,
-                &mut count, &mut second, "monitor", &worker_generation);
+                &mut activity, "monitor", &worker_generation);
+            let (count, second) = activity.pending_for_test();
             (encoder, ratio, spf, result.err().map(|error| error.to_string()), count, second)
         });
         let entered = entered_rx.recv_timeout(Duration::from_secs(2)).is_ok();
@@ -236,7 +242,9 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
                 correct &= error.is_none() && ratio == requested && qos.bitrate() == 2500
                     && qos.fps() == 2 && spf == Duration::from_millis(500) && latest != requested;
                 drop(qos);
-                let retry = apply(&mut encoder, &mut ratio, &generation);
+                let mut retry_activity = VIDEO_QOS.lock().unwrap()
+                    .new_display_activity("monitor", &generation).unwrap();
+                let retry = apply(&mut encoder, &mut ratio, &generation, &mut retry_activity);
                 correct &= retry.is_ok() && ratio == latest && encoder.requests == [requested, latest]
                     && VIDEO_QOS.lock().unwrap().bitrate() == 3000;
             }

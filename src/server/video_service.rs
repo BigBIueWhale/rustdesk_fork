@@ -1191,7 +1191,11 @@ fn run(vs: VideoService) -> ResultType<()> {
     let capture_width = c.width;
     let capture_height = c.height;
     let mut presentation_trace = PresentationVideoTrace::new(codec_format);
-    let (mut second_instant, mut send_counter) = (Instant::now(), 0);
+    let Some(mut activity) = VIDEO_QOS.lock().unwrap()
+        .new_display_activity(&_raii.name, &_raii.generation)
+    else {
+        bail!("SWITCH");
+    };
 
     while sp.ok() {
         #[cfg(windows)]
@@ -1201,8 +1205,7 @@ fn run(vs: VideoService) -> ResultType<()> {
             &mut quality,
             &mut spf,
             client_record,
-            &mut send_counter,
-            &mut second_instant,
+            &mut activity,
             &_raii.name,
             &_raii.generation,
         )?;
@@ -1385,7 +1388,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         capture_height,
                         &mut presentation_trace,
                     )?;
-                    send_counter += 1;
+                    activity.on_frame();
                 }
                 #[cfg(windows)]
                 {
@@ -1445,7 +1448,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                             capture_height,
                             &mut presentation_trace,
                         )?;
-                        send_counter += 1;
+                        activity.on_frame();
                     }
                 }
             }

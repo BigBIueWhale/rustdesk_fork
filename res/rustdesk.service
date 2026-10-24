@@ -2,17 +2,9 @@
 Description=RustDesk (hardened fork — headless controlled-only direct-IP service, §17)
 Requires=network.target
 After=systemd-user-sessions.service network.target
-# ── N3 / R-T1(a) "always recover" ─────────────────────────────────────────────
-# Disable systemd's start-rate limiter. systemd supervises the TOP-LEVEL `rustdesk --service`
-# (ExecStart); a `--server` child crash is self-healed in-process by the `--service` monitor, so this
-# limit bites a `--service` crash loop. With Restart=on-failure + RestartSec=2 (below), a FAST
-# `--service` crash loop (faulting immediately on start) would otherwise exceed systemd's default
-# 5-starts-in-10s ceiling and systemd would latch the unit in a permanent `failed` state — a locked-
-# out, unreachable DMZ box, the exact opposite of R-T1(a)'s "always recover" intent. StartLimit*
-# live in [Unit] (systemd ≥229). Setting the interval to 0 removes the lockout so the supervisor
-# keeps retrying every RestartSec forever (the ~2s gap is not a CPU spin), matching the Windows SCM
-# failure-action retry (windows.rs get_create_service) and macOS launchd KeepAlive. A deliberate
-# `systemctl stop` still stays stopped — Restart=on-failure does not fire on a clean stop.
+# Keep failure recovery available after repeated supervisor exits.
+# StartLimitIntervalSec=0 disables start-rate lockout. RestartSec spaces
+# successive retries; an explicit stop does not request automatic recovery.
 StartLimitIntervalSec=0
 
 [Service]
@@ -30,17 +22,9 @@ User=root
 RuntimeDirectory=rustdesk
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=restart
-# ── R-T1(a) / §20: bound an unauthenticated connection flood's blast radius ───────
-# An unbounded flood must OOM-kill THIS service inside its own cgroup (then auto-
-# restart), never the HOST (R-D3 "defensible without a firewall"). These OS ceilings
-# complement the in-process pre-key handshake bound (R-T1(b), src/server.rs); the
-# semaphore sheds the flood, these cap what slips through. Memory limits are
-# HOST-RELATIVE percentages (R-T1: never an absolute byte count, which is a no-op on a
-# small DMZ VPS) — the invariant is "the service's hard cap is below the host's RAM",
-# sized with headroom for the CPU-only vpx/aom encode path (hwcodec is compiled out,
-# R-R2b). LimitNOFILE was 100000 (a high fd ceiling only serves the attacker); 8192
-# bounds concurrent fds with ample single-user headroom. Restart=on-failure fires on a
-# cgroup OOM-kill but not on a clean `systemctl stop`, so it cannot restart-loop.
+# R-T1: launcher limits supplement in-process fd/session and pre-key bounds.
+# Percentage memory ceilings supplement finite application admission.
+# Failure recovery may repeat while failures persist; a deliberate stop stays stopped.
 LimitNOFILE=8192
 TasksMax=512
 MemoryAccounting=yes

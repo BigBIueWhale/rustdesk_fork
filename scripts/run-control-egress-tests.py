@@ -147,7 +147,7 @@ def main():
     snippets["pf-settings-send.rs"] = (
         "impl Session {\n" + between(
             session, "    fn send(&self, data: Data) {",
-            "    fn require_credential_replacement(&self)") + "}\n")
+            "    fn require_credential_replacement(&self) -> Option<u64> {\n        self.connection_round_owner") + "}\n")
     snippets["pf-settings-cache.rs"] = (
         "impl LoginConfigHandler {\n" + between(
             client, "    pub fn add_port_forward(&mut self, mapping:",

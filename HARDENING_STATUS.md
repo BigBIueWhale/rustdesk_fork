@@ -3012,6 +3012,36 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**PRS value admission (`552c4fef`).** Durable PRS reads previously treated every decrypted
+nonempty string as available, while runtime replica admission already required canonical
+base64 of exactly 32 bytes. One shared validator now governs durable wrapping, decoded
+storage and runtime installation. Invalid data returns unavailable before authentication
+or replica publication; durable writes reject it before encryption. Explicit clear values,
+including an encrypted empty value, retain their empty-state behavior. Runtime error text,
+generation/no-op/publication ordering and protected-action authority remain. Validation
+temporaries and rejected decoded values are wiped; no format migration or repair occurs.
+
+The unchanged new test bodies pass in the 206-case Linux configuration cohort at
+`552c4fef`. Eleven malformed encrypted payloads cover wrong lengths, padding/pad bits,
+whitespace, URL-safe characters, invalid base64, Unicode and invalid UTF-8. Repeated typed
+reads, password availability and snapshots refuse while preserving file bytes/identity,
+directory entries, cache and generation, despite the separate password-storage field
+remaining valid. Valid PRS, ordinary clear and encrypted-empty controls pass, with
+descriptors 4 to 4. Ten invalid write/runtime inputs refuse without replacing the live
+replica or its generation; valid round trip, clear and runtime nonpersistence pass.
+The original baseline execution was refused before allocation for insufficient RAM;
+no empirical before/after failure is claimed.
+
+The 19-case Linux UID/helper-identity cohort and updated supplementary source-order
+checker also pass on that source. The checker now follows shared validation before
+generation/state ownership, retaining no-op, prior-value wiping, publication, generation
+and no-persistence checks. This is unprivileged Linux library/policy evidence, not an
+installed receiver or full application. Exact sources/artifacts, named outcomes and joined
+bounded-RAM cleanup: `canonical-prs-0a6b9a07.json`. Installed/root and other-platform
+credential flows, actual IPC/handshakes/UI, namespace/content/ACL/lifecycle races, physical
+crash and soak, all fifteen credential actions, R-S0/R-F5, cold/release, independent
+reproduction and external review remain OPEN. Every user park remains parked.
+
 **Shared at-rest wrapper write format (`ef025a32`).** The string/vector write APIs
 accept only data and its existing length limit; one fixed `00` envelope replaces the
 caller-selected format and unsupported-format plaintext return. The writes and configuration checks share the prefix constant. Both production callers already selected `00`; stored schemas, the

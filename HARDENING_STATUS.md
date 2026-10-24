@@ -14826,6 +14826,33 @@ root-service transaction. Installed authorized/refused actors, ACL/non-local-fil
 and native other-platform owner/DACL acceptance, application/peer effects, namespace
 races, R-S0/R-F5 and release acceptance remain OPEN.
 
+**Root receive authority — cross-UID Linux library cases ACCEPTED; installed/namespace acceptance OPEN.**
+`dd3ccbd9` adds an opt-in native Cargo target driven by the canonical VM lane.
+It calls the production `TransferJob` API as UID 0, then runs 16 joined UID/GID 4001
+actors with cleared supplementary groups, zero capabilities, no-new-privileges and
+no inherited fixture descriptors. Privileged kernel-read/write controls prove that
+foreign-owned artifact refusals come from receiver admission, rather than ordinary
+root I/O being denied. The same artifact covers authorized fresh/resumed writes,
+foreign-owned final inspection/overwrite, foreign lease/data/digest refusal,
+read-shared payload and writable-digest refusal, data/digest replacement and
+cancellation uncertainty, and retained-parent publication after an actor replaces
+the parent name with a symlink. All 12 cases pass; private root payloads remain
+unreadable/unwritable to the actor and refused/replacement objects are preserved.
+
+All 137 existing nonroot tests also pass in the 214-second VM transaction. Production
+Rust, dependencies/lockfile and requirements are unchanged; the shared unit artifact
+still equals `43a33b95…`. The new root driver artifact is `952ec5ed…`. The first run
+is retained as a rejected fixture attempt: the guest umask masked the intended unsafe
+mode, so that control never existed. Fixture creation now sets and verifies its own
+new file descriptor's exact mode. Evidence: `.harness-state/verifier-vm/receive-root-principals-b52ed4ae.json`.
+
+This exercises actual UID separation through the library API inside the disposable
+VM; no installed service, authenticated peer, GUI or service credential action ran.
+Concurrent changes after the final namespace check, private staging-layout/locking
+replacement, ACL/non-local filesystems, other platforms, R-S0/R-F5 and release
+acceptance remain OPEN. The native cases provide controls for that next correction;
+they do not establish immunity to the remaining namespace race.
+
 **Native receive-path identity — Linux file transactions ACCEPTED; caller/platform acceptance OPEN.**
 `c1df5d00` preserves native bytes when appending receive staging suffixes.
 `e8bb5a19` keeps a native `PathBuf` through digest admission, blocking destination/resume

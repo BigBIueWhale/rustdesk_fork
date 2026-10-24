@@ -56,7 +56,8 @@ use crate::keyboard;
 use crate::port_forward::{
     ensure_port_forward_owner_reaper, join_port_forward_supervisor_off_runtime,
     port_forward_control, reap_port_forward_supervisor, PortForwardControl,
-    PortForwardControlReceiver, PortForwardMappingPermit, RdpLaunchRequest,
+    PortForwardControlReceiver, PortForwardMappingPermit, PreparedPortForwardListener,
+    RdpLaunchRequest,
 };
 use crate::{client::Data, client::Interface};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -818,14 +819,13 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn remove_port_forward(&self, port: i32) -> ResultType<()> {
-        self.lc.write().unwrap().remove_port_forward(port)?;
-        self.send(Data::RemovePortForward(port));
-        Ok(())
+    pub async fn remove_port_forward(&self, port: i32) -> ResultType<()> {
+        self.change_saved_port_forward(SavedPortForwardChange::Remove(port))
+            .await
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn add_port_forward(
+    pub async fn add_port_forward(
         &self,
         port: i32,
         remote_host: String,
@@ -835,12 +835,52 @@ impl<T: InvokeUiSession> Session<T> {
             bail!("Invalid local port-forward port");
         }
         PortForwardTarget::new(remote_host.clone(), remote_port)?;
-        let pf = (port, remote_host, remote_port);
-        let added = self.lc.write().unwrap().add_port_forward(&pf)?;
-        if added {
-            self.send(Data::AddPortForward(pf));
+        self.change_saved_port_forward(SavedPortForwardChange::Add((
+            port,
+            remote_host,
+            remote_port,
+        )))
+        .await
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn change_saved_port_forward(&self, change: SavedPortForwardChange) -> ResultType<()> {
+        if !self.is_port_forward() || self.is_rdp() || !self.args.is_empty() {
+            bail!("Saved tunnel settings require their port-forward session");
         }
-        Ok(())
+        let (completed, result) = tokio::sync::oneshot::channel();
+        self.try_send(Data::SavedPortForward(SavedPortForwardRequest {
+            change,
+            completed,
+        }))?;
+        tokio::time::timeout(TokioDuration::from_secs(5), result)
+            .await
+            .map_err(|_| anyhow!("Tunnel setting outcome is not yet known; the operation may still finish"))?
+            .map_err(|_| anyhow!("Tunnel setting outcome is unavailable"))?
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn apply_saved_port_forward(
+        &self,
+        change: SavedPortForwardChange,
+        supervisor: &PortForwardSupervisorOwner,
+    ) -> ResultType<()> {
+        let lc = Arc::clone(&self.lc);
+        let change = tokio::task::spawn_blocking(move || {
+            let mut lc = lc.write().unwrap();
+            match &change {
+                SavedPortForwardChange::Add(mapping) => lc.add_port_forward(mapping)?,
+                SavedPortForwardChange::Remove(port) => lc.remove_port_forward(*port)?,
+            }
+            Ok::<_, hbb_common::anyhow::Error>(change)
+        })
+        .await
+        .map_err(|err| anyhow!("Tunnel setting writer failed: {err}"))??;
+        let applied = match change {
+            SavedPortForwardChange::Add(mapping) => supervisor.add(mapping.into()).await,
+            SavedPortForwardChange::Remove(port) => supervisor.remove(port).await,
+        };
+        applied.map_err(|err| anyhow!("Tunnel setting was saved but could not be applied: {err}"))
     }
 
     pub fn get_option(&self, k: String) -> String {
@@ -2373,14 +2413,12 @@ async fn run_io_runtime<T: InvokeUiSession>(
             }
             loop {
                 match receiver.recv().await {
-                    Some(Ok(Data::AddPortForward(mapping))) => {
-                        if let Err(err) = supervisor.add(mapping.into()).await {
-                            handler.on_error(&err);
-                        }
-                    }
-                    Some(Ok(Data::RemovePortForward(port))) => {
-                        if let Err(err) = supervisor.remove(port).await {
-                            handler.on_error(&err);
+                    Some(Ok(Data::SavedPortForward(request))) => {
+                        let result = handler
+                            .apply_saved_port_forward(request.change, &supervisor)
+                            .await;
+                        if request.completed.send(result).is_err() {
+                            log::debug!("tunnel setting requester closed before completion");
                         }
                     }
                     Some(Ok(Data::Close)) | None => {
@@ -2436,12 +2474,36 @@ async fn run_io_runtime<T: InvokeUiSession>(
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub struct SavedPortForwardRequest {
+    change: SavedPortForwardChange,
+    completed: tokio::sync::oneshot::Sender<ResultType<()>>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+enum SavedPortForwardChange {
+    Add((i32, String, i32)),
+    Remove(i32),
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl SavedPortForwardRequest {
+    pub(crate) fn payload_bytes(&self) -> usize {
+        match &self.change {
+            SavedPortForwardChange::Add((_, host, _)) => host.len(),
+            SavedPortForwardChange::Remove(_) => 0,
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct OwnedPortForwardMapping {
+    spec: PortForwardMappingSpec,
     control: PortForwardControl,
     task: tokio::task::JoinHandle<()>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Clone, PartialEq, Eq)]
 struct PortForwardMappingSpec {
     port: i32,
     remote_host: String,
@@ -2614,34 +2676,49 @@ async fn add_owned_port_forward<T: InvokeUiSession>(
     handler: &Session<T>,
     mapping: PortForwardMappingSpec,
 ) -> Result<(), String> {
-    let PortForwardMappingSpec {
-        port,
-        remote_host,
-        remote_port,
-    } = mapping;
+    let port = mapping.port;
     if port != 0 && !(1..=u16::MAX as i32).contains(&port) {
         return Err("Invalid local port-forward port".to_owned());
     }
-    PortForwardTarget::new(remote_host.clone(), remote_port).map_err(|err| err.to_string())?;
+    PortForwardTarget::new(mapping.remote_host.clone(), mapping.remote_port)
+        .map_err(|err| err.to_string())?;
     ensure_mapping_capacity(mappings, port)?;
-
-    replace_owned_port_forward(mappings, port, |process_permit| {
-        let (control, mapping_receiver) = port_forward_control();
-        let mapping_handler = handler.clone();
-        let task = tokio::spawn(async move {
-            start_admitted_port_forward(
-                mapping_handler,
-                port,
-                remote_host,
-                remote_port,
-                mapping_receiver,
-                process_permit,
-            )
-            .await;
-        });
-        OwnedPortForwardMapping { control, task }
-    })
+    if mappings
+        .get(&port)
+        .is_some_and(|existing| existing.spec == mapping && !existing.task.is_finished())
+    {
+        return Ok(());
+    }
+    drain_replaced_port_forward(mappings, port).await;
+    let process_permit = PortForwardMappingPermit::try_acquire()?;
+    let listener = PreparedPortForwardListener::bind(
+        port,
+        mapping.remote_host.clone(),
+        mapping.remote_port,
+    )
     .await
+    .map_err(|err| err.to_string())?;
+    let (control, mapping_receiver) = port_forward_control();
+    let mapping_handler = handler.clone();
+    let task = tokio::spawn(async move {
+        start_admitted_port_forward(
+            mapping_handler,
+            port,
+            mapping_receiver,
+            process_permit,
+            listener,
+        )
+        .await;
+    });
+    mappings.insert(
+        port,
+        OwnedPortForwardMapping {
+            spec: mapping,
+            control,
+            task,
+        },
+    );
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2653,21 +2730,6 @@ async fn remove_owned_port_forward(
         mapping.request_close();
         mapping.wait().await;
     }
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-async fn replace_owned_port_forward<F>(
-    mappings: &mut HashMap<i32, OwnedPortForwardMapping>,
-    port: i32,
-    create: F,
-) -> Result<(), String>
-where
-    F: FnOnce(PortForwardMappingPermit) -> OwnedPortForwardMapping,
-{
-    drain_replaced_port_forward(mappings, port).await;
-    let permit = PortForwardMappingPermit::try_acquire()?;
-    mappings.insert(port, create(permit));
-    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2749,7 +2811,11 @@ mod port_forward_mapping_tests {
             receiver.wait_closed().await;
             finished.fetch_add(1, Ordering::SeqCst);
         });
-        OwnedPortForwardMapping { control, task }
+        OwnedPortForwardMapping {
+            spec: (21120, "localhost".to_owned(), 22).into(),
+            control,
+            task,
+        }
     }
 
     #[test]
@@ -2839,18 +2905,15 @@ mod port_forward_mapping_tests {
 async fn start_admitted_port_forward<T: InvokeUiSession>(
     handler: Session<T>,
     port: i32,
-    remote_host: String,
-    remote_port: i32,
     receiver: PortForwardControlReceiver,
     mapping_permit: PortForwardMappingPermit,
+    listener: PreparedPortForwardListener,
 ) {
     if let Err(err) = crate::port_forward::listen_admitted(
         handler.get_id(),
-        port,
         handler.clone(),
         receiver,
-        remote_host,
-        remote_port,
+        listener,
         &mapping_permit,
     )
     .await

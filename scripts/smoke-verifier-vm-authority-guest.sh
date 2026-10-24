@@ -4274,11 +4274,17 @@ run_focused_rust_tests() {
                 scripts/test-cm-voice.rs
                 src/client/io_loop.rs src/client/helper.rs scripts/test-viewer-voice.rs
                 scripts/test-controlled-voice.rs src/client.rs
-                scripts/test-port-forward-settings.rs
+                scripts/test-port-forward-settings.rs src/port_forward.rs
+                libs/hbb_common/src/tcp.rs
             )
             required_tests=(
                 port_forward_settings::unavailable_mapping_round_refuses_before_persistence
                 port_forward_settings::identical_saved_mapping_still_requests_runtime_application
+                port_forward_settings::mapping_bind_failure_retries_the_saved_target
+                port_forward_settings::selected_mapping_operation_finishes_after_requester_exit
+                port_forward_settings::mapping_operations_wait_for_selection_and_keep_fifo_order
+                port_forward_settings::mapping_write_refusal_precedes_listener_and_recovers
+                port_forward_settings::mapping_result_deadline_reports_uncertainty_without_cancelling_owned_work
                 controlled_voice::tests::controlled_voice_cm_commands_require_current_call_and_phase
                 controlled_voice::tests::controlled_voice_call_ids_are_connection_owned_and_never_wrap
                 ui_cm_interface::voice_tests::cm_voice_actions_require_current_call_and_phase
@@ -6228,7 +6234,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=79 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=84 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6548,7 +6554,7 @@ PY
             || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=79 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=84 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
         [ "$(grep -Fxc 'CM_VOICE_CALL_ACTION=pass cases=108 identity=exact phase=exact invalid=refused queues=real' "$output")" -eq 1 ] \

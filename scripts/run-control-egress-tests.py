@@ -33,6 +33,7 @@ INPUTS = (
     "src/client/io_loop.rs", "src/client/helper.rs", "scripts/test-viewer-voice.rs",
     "scripts/test-controlled-voice.rs",
     "src/client.rs", "scripts/test-port-forward-settings.rs",
+    "src/port_forward.rs", "libs/hbb_common/src/tcp.rs",
 )
 
 
@@ -141,11 +142,11 @@ def main():
     asynchronous_settings = "pub async fn add_port_forward(" in session
     method_prefix = "pub async fn" if asynchronous_settings else "pub fn"
     snippets["pf-settings-producer.rs"] = (
-        "impl Session {\n" + between(
+        "impl<T: InvokeUiSession> Session<T> {\n" + between(
             session, f"    {method_prefix} remove_port_forward(",
             "    pub fn get_option(&self, k: String)") + "}\n")
     snippets["pf-settings-send.rs"] = (
-        "impl Session {\n" + between(
+        "impl<T: InvokeUiSession> Session<T> {\n" + between(
             session, "    fn send(&self, data: Data) {",
             "    fn require_credential_replacement(&self) -> Option<u64> {\n        self.connection_round_owner") + "}\n")
     snippets["pf-settings-cache.rs"] = (
@@ -168,6 +169,31 @@ def main():
         if asynchronous_settings else "// The baseline has no result-bearing mapping request.\n")
     if asynchronous_settings:
         os.environ["RUSTFLAGS"] = os.environ.get("RUSTFLAGS", "") + " --cfg pf_settings_async"
+        port_forward = inputs["src/port_forward.rs"].decode("utf-8")
+        tcp = inputs["libs/hbb_common/src/tcp.rs"].decode("utf-8")
+        snippets["pf-settings-owner.rs"] = between(
+            session, '#[cfg(not(any(target_os = "android", target_os = "ios")))]\nstruct OwnedPortForwardMapping {',
+            '#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]\nmod port_forward_mapping_tests {')
+        snippets["pf-settings-owner.rs"] += between(
+            session, '#[cfg(not(any(target_os = "android", target_os = "ios")))]\nasync fn start_admitted_port_forward',
+            '// R-SV6(a)/R-G4: the free `send_note`')
+        snippets["pf-settings-port-owner.rs"] = between(
+            port_forward, 'const MAX_PORT_FORWARD_CONNECTIONS_PER_MAPPING:',
+            '#[cfg(test)]\nstruct TestMappingAdmission {')
+        snippets["pf-settings-listener.rs"] = between(
+            port_forward, 'pub(crate) struct PreparedPortForwardListener {',
+            'pub(crate) async fn listen_admitted(')
+        snippets["pf-settings-listen-wait.rs"] = between(
+            port_forward, 'pub(crate) async fn listen_admitted(',
+            '    let cancellation = CancellationToken::new();\n    let admission = TunnelAdmission::new();\n    let mut tasks = JoinSet::<ConnectionTaskResult>::new();') + (
+            '    interface.listener_started();\n'
+            '    control.wait_closed().await;\n'
+            '    drop(listener);\n    Ok(())\n}\n')
+        snippets["pf-settings-native-bind.rs"] = between(
+            tcp, 'pub(crate) fn new_listener_socket(',
+            '#[cfg(windows)]\nfn set_exclusive_addr_use(') + between(
+            tcp, 'const DEFAULT_BACKLOG:',
+            '/// R-D5: bind the direct listener')
     legacy_marker = "            std::fs::File::create(&path).ok();\n"
     marker_start = "            let marker_ready = "
     marker_end = "            if marker_ready {"
@@ -414,6 +440,9 @@ def main():
             os.environ[variable] = str(fixture / name)
         for part in ("producer", "send", "cache", "peer-mutation", "data", "queue", "target", "request"):
             os.environ["PF_SETTINGS_" + part.replace("-", "_").upper()] = str(fixture / ("pf-settings-" + part + ".rs"))
+        if asynchronous_settings:
+            for part in ("owner", "port-owner", "listener", "listen-wait", "native-bind"):
+                os.environ["PF_SETTINGS_" + part.replace("-", "_").upper()] = str(fixture / ("pf-settings-" + part + ".rs"))
         os.environ["CM_CHAT_TESTS"] = str(repo / "scripts/test-cm-chat.rs")
         os.environ["CM_DISCONNECT_TESTS"] = str(repo / "scripts/test-cm-disconnect.rs")
         os.environ["CM_VOICE_TESTS"] = str(repo / "scripts/test-cm-voice.rs")
@@ -494,13 +523,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=79", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=84", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=79 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=84 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -509,7 +538,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=79 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=84 unchanged=before-after",
               flush=True)
 
 

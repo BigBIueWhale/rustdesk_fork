@@ -24,6 +24,11 @@ mod controlled_voice;
 #[path = "test-port-forward-settings.rs"]
 mod port_forward_settings;
 
+#[cfg(pf_settings_async)]
+mod port_forward {
+    pub(crate) use crate::port_forward_settings::listen_admitted;
+}
+
 include!(env!("RECENT_DOCUMENT_MARKER_SOURCE"));
 
 #[path = "../libs/hbb_common/src/bytes_codec.rs"]

@@ -395,15 +395,11 @@ pub(crate) async fn listen(
                 .enable_all()
                 .build()
                 .map_err(|err| anyhow!("Failed to create port-forward runtime: {err}"))?;
-            runtime.block_on(listen_admitted(
-                id,
-                port,
-                interface,
-                control,
-                remote_host,
-                remote_port,
-                &mapping_permit,
-            ))
+            runtime.block_on(async move {
+                let listener =
+                    PreparedPortForwardListener::bind(port, remote_host, remote_port).await?;
+                listen_admitted(id, interface, control, listener, &mapping_permit).await
+            })
         })
         .map_err(|err| anyhow!("Failed to start port-forward owner thread: {err}"))?;
     join_one_off_owner_off_runtime(thread).await
@@ -419,23 +415,44 @@ async fn join_one_off_owner_off_runtime(
         .map_err(|_| anyhow!("Port-forward owner reaper dropped its result"))?
 }
 
+pub(crate) struct PreparedPortForwardListener {
+    listener: tokio::net::TcpListener,
+    target: PortForwardTarget,
+    addr: SocketAddr,
+    is_rdp: bool,
+}
+
+impl PreparedPortForwardListener {
+    pub(crate) async fn bind(port: i32, remote_host: String, remote_port: i32) -> ResultType<Self> {
+        let target = PortForwardTarget::new(remote_host, remote_port)?;
+        let listener = tcp::new_exclusive_listener(format!("127.0.0.1:{}", port)).await?;
+        let addr = listener.local_addr()?;
+        log::info!("listening on port {:?}", addr);
+        if port == 0 {
+            run_rdp(addr.port())?;
+        }
+        Ok(Self {
+            listener,
+            target,
+            addr,
+            is_rdp: port == 0,
+        })
+    }
+}
+
 pub(crate) async fn listen_admitted(
     id: String,
-    port: i32,
     interface: impl Interface,
     control: PortForwardControlReceiver,
-    remote_host: String,
-    remote_port: i32,
+    listener: PreparedPortForwardListener,
     _mapping_permit: &PortForwardMappingPermit,
 ) -> ResultType<()> {
-    let target = PortForwardTarget::new(remote_host, remote_port)?;
-    let listener = tcp::new_exclusive_listener(format!("127.0.0.1:{}", port)).await?;
-    let addr = listener.local_addr()?;
-    log::info!("listening on port {:?}", addr);
-    let is_rdp = port == 0;
-    if is_rdp {
-        run_rdp(addr.port())?;
-    }
+    let PreparedPortForwardListener {
+        listener,
+        target,
+        addr,
+        is_rdp,
+    } = listener;
     let cancellation = CancellationToken::new();
     let admission = TunnelAdmission::new();
     let mut tasks = JoinSet::<ConnectionTaskResult>::new();

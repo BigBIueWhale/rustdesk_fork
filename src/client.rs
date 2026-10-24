@@ -1,5 +1,7 @@
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::clipboard::clipboard_listener;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::ui_session_interface::SavedPortForwardRequest;
 use async_trait::async_trait;
 #[cfg(target_os = "windows")]
 use clipboard::ContextSend;
@@ -1596,10 +1598,10 @@ impl LoginConfigHandler {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn add_port_forward(&mut self, mapping: &(i32, String, i32)) -> ResultType<bool> {
-        let (mappings, added) = PeerConfig::add_port_forward(&self.id, mapping)?;
+    pub fn add_port_forward(&mut self, mapping: &(i32, String, i32)) -> ResultType<()> {
+        let (mappings, _) = PeerConfig::add_port_forward(&self.id, mapping)?;
         self.config.port_forwards = mappings;
-        Ok(added)
+        Ok(())
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4045,7 +4047,6 @@ impl DisplaySelectionCommand {
     }
 }
 
-#[derive(Clone)]
 pub enum Data {
     Close,
     Login((String, bool)),
@@ -4064,9 +4065,7 @@ pub enum Data {
     CreateDir((i32, String, bool)),
     CancelJob(i32),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    RemovePortForward(i32),
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    AddPortForward((i32, String, i32)),
+    SavedPortForward(SavedPortForwardRequest),
     #[cfg(all(target_os = "windows", not(feature = "flutter")))]
     ToggleClipboardFile,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4296,7 +4295,7 @@ impl Data {
             | Self::CloseVoiceCall
             | Self::ResetDecoder(_) => Some(0),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            Self::RemovePortForward(_) | Self::NewRDP => Some(0),
+            Self::NewRDP => Some(0),
             #[cfg(all(target_os = "windows", not(feature = "flutter")))]
             Self::ToggleClipboardFile => Some(0),
             Self::Login((password, _)) => checked_string_bytes(&[password]),
@@ -4314,7 +4313,7 @@ impl Data {
             | Self::CreateDir((_, path, _))
             | Self::TakeScreenshot((_, path)) => checked_string_bytes(&[path]),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            Self::AddPortForward((_, host, _)) => checked_string_bytes(&[host]),
+            Self::SavedPortForward(request) => Some(request.payload_bytes()),
             Self::RenameFile((_, path, new_name, _)) => checked_string_bytes(&[path, new_name]),
         }
     }

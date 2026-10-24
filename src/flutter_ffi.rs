@@ -1546,7 +1546,7 @@ pub fn main_get_displays() -> SyncReturn<String> {
     SyncReturn(display_info)
 }
 
-pub fn session_add_port_forward(
+pub async fn session_add_port_forward(
     session_id: SessionID,
     local_port: i32,
     remote_host: String,
@@ -1562,14 +1562,16 @@ pub fn session_add_port_forward(
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-            session.add_port_forward(local_port, remote_host, remote_port)
+            session
+                .add_port_forward(local_port, remote_host, remote_port)
+                .await
         } else {
             Err(hbb_common::anyhow::anyhow!("Unknown session"))
         }
     }
 }
 
-pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> Result<()> {
+pub async fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> Result<()> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         let _ = (session_id, local_port);
@@ -1580,7 +1582,7 @@ pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> Re
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-            session.remove_port_forward(local_port)
+            session.remove_port_forward(local_port).await
         } else {
             Err(hbb_common::anyhow::anyhow!("Unknown session"))
         }

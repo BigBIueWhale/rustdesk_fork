@@ -4,6 +4,13 @@
 use crate::{anyhow::{anyhow, bail}, message_proto::*, ResultType, tokio, log};
 use protobuf::Message as _;
 use std::{path::PathBuf, sync::{Arc, Mutex, RwLock}, time::Duration};
+use tokio::time::Duration as TokioDuration;
+#[cfg(pf_settings_async)]
+use std::{collections::HashMap, net::SocketAddr, sync::atomic::{AtomicUsize, Ordering}};
+#[cfg(pf_settings_async)]
+use tokio::sync::{mpsc, Semaphore, OwnedSemaphorePermit};
+#[cfg(pf_settings_async)]
+use tokio_util::sync::CancellationToken;
 
 type JobType = ();
 #[derive(Clone)]
@@ -39,13 +46,23 @@ struct LoginConfigHandler { id: String, config: PeerConfig }
 include!(env!("PF_SETTINGS_CACHE"));
 
 #[derive(Clone)]
-struct Session {
+struct TestHandler;
+trait InvokeUiSession: Clone + Send + Sync + 'static {}
+impl InvokeUiSession for TestHandler {}
+#[derive(Clone)]
+struct Session<T: InvokeUiSession = TestHandler> {
     lc: Arc<RwLock<LoginConfigHandler>>,
     sender: Arc<RwLock<Option<ViewerCommandSender>>>,
+    args: Vec<String>,
+    ui_handler: T,
+    #[cfg(pf_settings_async)]
+    listener_starts: Arc<AtomicUsize>,
 }
-impl Session {
+impl<T: InvokeUiSession> Session<T> {
     fn is_port_forward(&self) -> bool { true }
     fn is_rdp(&self) -> bool { false }
+    fn get_id(&self) -> String { self.lc.read().unwrap().id.clone() }
+    fn on_error(&self, error: &str) { panic!("unexpected mapping task error: {error}"); }
 }
 include!(env!("PF_SETTINGS_PRODUCER"));
 include!(env!("PF_SETTINGS_SEND"));
@@ -59,12 +76,197 @@ impl Fixture {
         Self { root, session: Session {
             lc: Arc::new(RwLock::new(LoginConfigHandler { id, config: PeerConfig::default() })),
             sender: Arc::new(RwLock::new(sender)),
+            args: Vec::new(),
+            ui_handler: TestHandler,
+            #[cfg(pf_settings_async)]
+            listener_starts: Arc::new(AtomicUsize::new(0)),
         } }
     }
     fn bytes(&self) -> Option<Vec<u8>> { std::fs::read(self.root.join("peer.json")).ok() }
     fn seed(&self, port: i32) {
         self.session.lc.write().unwrap().add_port_forward(&(port, "localhost".into(), 22)).unwrap();
     }
+}
+
+#[cfg(pf_settings_async)]
+include!(env!("PF_SETTINGS_OWNER"));
+#[cfg(pf_settings_async)]
+include!(env!("PF_SETTINGS_PORT_OWNER"));
+#[cfg(pf_settings_async)]
+include!(env!("PF_SETTINGS_LISTENER"));
+#[cfg(pf_settings_async)]
+mod tcp {
+    use crate::{anyhow::Context, ResultType, tokio::net::{lookup_host, TcpListener, TcpSocket, ToSocketAddrs}};
+    include!(env!("PF_SETTINGS_NATIVE_BIND"));
+}
+
+// The production listener's preparation runs, including its native exclusive
+// loopback bind. The peer authentication/relay loop is a close-waiting double.
+#[cfg(pf_settings_async)]
+trait Interface: Clone + Send + 'static { fn listener_started(&self); }
+#[cfg(pf_settings_async)]
+impl<T: InvokeUiSession> Interface for Session<T> {
+    fn listener_started(&self) { self.listener_starts.fetch_add(1, Ordering::SeqCst); }
+}
+#[cfg(pf_settings_async)]
+include!(env!("PF_SETTINGS_LISTEN_WAIT"));
+#[cfg(pf_settings_async)]
+fn run_rdp(_port: u16) -> ResultType<()> { Ok(()) }
+
+#[cfg(pf_settings_async)]
+async fn selected(
+    session: &Session,
+    receiver: &mut ViewerCommandReceiver,
+    supervisor: &PortForwardSupervisorOwner,
+) {
+    let command = tokio::time::timeout(Duration::from_secs(2), receiver.recv()).await.unwrap();
+    let Some(Ok(Data::SavedPortForward(request))) = command else { panic!("missing owned mapping request") };
+    let result = session.apply_saved_port_forward(request.change, supervisor).await;
+    let _ = request.completed.send(result);
+}
+
+#[cfg(pf_settings_async)]
+async fn request_add(session: &Session, port: i32) -> tokio::task::JoinHandle<ResultType<()>> {
+    let session = session.clone();
+    tokio::spawn(async move { add(&session, port).await })
+}
+
+#[cfg(pf_settings_async)]
+#[tokio::test(flavor = "current_thread")]
+async fn mapping_bind_failure_retries_the_saved_target() {
+    let (sender, mut receiver) = viewer_command_channel();
+    let fixture = Fixture::new(Some(sender));
+    let supervisor = PortForwardSupervisorOwner::start(fixture.session.clone()).unwrap();
+    let blocker = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+    let address = blocker.local_addr().unwrap();
+    let port = i32::from(address.port());
+    let first = request_add(&fixture.session, port).await;
+    selected(&fixture.session, &mut receiver, &supervisor).await;
+    let error = first.await.unwrap().unwrap_err().to_string();
+    assert!(error.contains("was saved but could not be applied"), "{error}");
+    let saved = fixture.bytes().unwrap();
+    assert_eq!(fixture.session.lc.read().unwrap().config.port_forwards.len(), 1);
+    assert_eq!(blocker.local_addr().unwrap(), address);
+    drop(blocker);
+    let retry = request_add(&fixture.session, port).await;
+    selected(&fixture.session, &mut receiver, &supervisor).await;
+    retry.await.unwrap().unwrap();
+    assert_eq!(fixture.bytes().unwrap(), saved);
+    assert!(tcp::new_exclusive_listener(address).await.is_err());
+    let session = fixture.session.clone();
+    let removal = tokio::spawn(async move { remove(&session, port).await });
+    selected(&fixture.session, &mut receiver, &supervisor).await;
+    removal.await.unwrap().unwrap();
+    let rebound = tcp::new_exclusive_listener(address).await.unwrap();
+    drop(rebound);
+    let mut mappings = HashMap::new();
+    add_owned_port_forward(&mut mappings, &fixture.session, (port, "localhost".into(), 22).into()).await.unwrap();
+    let first_task = mappings.get(&port).unwrap().task.id();
+    add_owned_port_forward(&mut mappings, &fixture.session, (port, "localhost".into(), 22).into()).await.unwrap();
+    assert_eq!(mappings.get(&port).unwrap().task.id(), first_task);
+    drain_owned_port_forwards(&mut mappings).await;
+    drop(tcp::new_exclusive_listener(address).await.unwrap());
+    supervisor.close_and_join().await.unwrap();
+    println!("PF_SETTINGS_BIND=pass collision=reported saved=retained retry=listening repeat=not-restarted remove=joined socket=rebindable");
+}
+
+#[cfg(pf_settings_async)]
+#[tokio::test(flavor = "current_thread")]
+async fn mapping_operations_wait_for_selection_and_keep_fifo_order() {
+    let (sender, mut receiver) = viewer_command_channel();
+    let fixture = Fixture::new(Some(sender));
+    let supervisor = PortForwardSupervisorOwner::start(fixture.session.clone()).unwrap();
+    let port_owner = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+    let address = port_owner.local_addr().unwrap();
+    drop(port_owner);
+    let port = i32::from(address.port());
+    let addition = request_add(&fixture.session, port).await;
+    tokio::task::yield_now().await;
+    assert!(!addition.is_finished());
+    assert!(fixture.bytes().is_none());
+    let session = fixture.session.clone();
+    let removal = tokio::spawn(async move { remove(&session, port).await });
+    selected(&fixture.session, &mut receiver, &supervisor).await;
+    addition.await.unwrap().unwrap();
+    assert!(tcp::new_exclusive_listener(address).await.is_err());
+    assert_eq!(PeerConfig::load_for_write(&fixture.session.get_id()).unwrap().port_forwards.len(), 1);
+    selected(&fixture.session, &mut receiver, &supervisor).await;
+    removal.await.unwrap().unwrap();
+    assert!(PeerConfig::load_for_write(&fixture.session.get_id()).unwrap().port_forwards.is_empty());
+    drop(tcp::new_exclusive_listener(address).await.unwrap());
+    supervisor.close_and_join().await.unwrap();
+    println!("PF_SETTINGS_ORDER=pass before-selection=unchanged reply=waits fifo=add-remove effects=file-and-socket cleanup=joined");
+}
+
+#[cfg(pf_settings_async)]
+#[tokio::test(flavor = "current_thread")]
+async fn selected_mapping_operation_finishes_after_requester_exit() {
+    let (sender, mut receiver) = viewer_command_channel();
+    let fixture = Fixture::new(Some(sender));
+    let supervisor = PortForwardSupervisorOwner::start(fixture.session.clone()).unwrap();
+    let port_owner = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+    let address = port_owner.local_addr().unwrap(); drop(port_owner);
+    let operation = request_add(&fixture.session, i32::from(address.port())).await;
+    let Some(Ok(Data::SavedPortForward(request))) = receiver.recv().await else { panic!("no request") };
+    operation.abort(); assert!(operation.await.unwrap_err().is_cancelled());
+    let result = fixture.session.apply_saved_port_forward(request.change, &supervisor).await;
+    assert!(result.is_ok());
+    assert!(request.completed.send(result).is_err());
+    assert!(fixture.bytes().is_some());
+    assert!(tcp::new_exclusive_listener(address).await.is_err());
+    supervisor.close_and_join().await.unwrap();
+    drop(tcp::new_exclusive_listener(address).await.unwrap());
+    println!("PF_SETTINGS_FINALITY=pass requester=cancelled selected=completed saved=present listener=owned shutdown=joined socket=rebindable");
+}
+
+#[cfg(pf_settings_async)]
+#[tokio::test(flavor = "current_thread")]
+async fn mapping_write_refusal_precedes_listener_and_recovers() {
+    use std::os::unix::fs::PermissionsExt;
+    let (sender, mut receiver) = viewer_command_channel();
+    let fixture = Fixture::new(Some(sender));
+    let supervisor = PortForwardSupervisorOwner::start(fixture.session.clone()).unwrap();
+    let port_owner = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+    let address = port_owner.local_addr().unwrap(); drop(port_owner);
+    let port = i32::from(address.port());
+    std::fs::set_permissions(&fixture.root, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let first = request_add(&fixture.session, port).await;
+    selected(&fixture.session, &mut receiver, &supervisor).await;
+    let refused = first.await.unwrap().is_err();
+    std::fs::set_permissions(&fixture.root, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(refused && fixture.bytes().is_none());
+    assert!(fixture.session.lc.read().unwrap().config.port_forwards.is_empty());
+    assert_eq!(fixture.session.listener_starts.load(Ordering::SeqCst), 0);
+    drop(tcp::new_exclusive_listener(address).await.unwrap());
+    let retry = request_add(&fixture.session, port).await;
+    selected(&fixture.session, &mut receiver, &supervisor).await;
+    retry.await.unwrap().unwrap();
+    supervisor.close_and_join().await.unwrap();
+    drop(tcp::new_exclusive_listener(address).await.unwrap());
+    println!("PF_SETTINGS_WRITE=pass permission=refused cache=preserved listener=not-started retry=applied shutdown=joined");
+}
+
+#[cfg(pf_settings_async)]
+#[tokio::test(flavor = "current_thread")]
+async fn mapping_result_deadline_reports_uncertainty_without_cancelling_owned_work() {
+    let (sender, mut receiver) = viewer_command_channel();
+    let fixture = Fixture::new(Some(sender));
+    let supervisor = PortForwardSupervisorOwner::start(fixture.session.clone()).unwrap();
+    let port_owner = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+    let address = port_owner.local_addr().unwrap(); drop(port_owner);
+    let operation = request_add(&fixture.session, i32::from(address.port())).await;
+    let start = std::time::Instant::now();
+    let error = tokio::time::timeout(Duration::from_secs(7), operation).await.unwrap()
+        .unwrap().unwrap_err().to_string();
+    assert!(error.contains("not yet known") && error.contains("may still finish"), "{error}");
+    assert!(start.elapsed() >= Duration::from_millis(4500));
+    assert!(fixture.bytes().is_none());
+    selected(&fixture.session, &mut receiver, &supervisor).await;
+    assert!(fixture.bytes().is_some());
+    assert!(tcp::new_exclusive_listener(address).await.is_err());
+    supervisor.close_and_join().await.unwrap();
+    drop(tcp::new_exclusive_listener(address).await.unwrap());
+    println!("PF_SETTINGS_DEADLINE=pass result=uncertain wait=bounded saved-before-selection=false admitted-work=retained shutdown=joined");
 }
 impl Drop for Fixture { fn drop(&mut self) { std::fs::remove_dir_all(&self.root).unwrap(); } }
 

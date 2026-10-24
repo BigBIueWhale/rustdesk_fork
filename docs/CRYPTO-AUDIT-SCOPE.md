@@ -192,12 +192,21 @@ retain or reuse a key or nonce after an error.
 - `HARDENING_STATUS.md`, `README.md`, and release disclosure text: check that
   status and limitations agree with the code and with the external findings.
 
-The normal repository assurance run is `scripts/verify.sh`; its focused PAKE
-and wire tests execute in the pinned development-check container. Dependency
-advisory review is `scripts/audit.sh`. The auditor should also use independent
-implementations, vectors, static/dynamic analysis, fuzzing or property tests,
-and platform/runtime checks appropriate to the findings. Passing project tests
-is necessary evidence of the reviewed commit, not the audit conclusion.
+Use the [verification guide](../scripts/README.md) to select the workload through
+the host entrypoint, `scripts/smoke-verifier-vm-authority.sh`. Build, test and
+scanner payloads run only inside its authenticated no-NIC verifier VM; the
+launcher admits bounded RAM storage and retains ownership through cleanup.
+Its default mode exercises authority fixtures, not the complete assurance suite.
+`scripts/verify.sh`, `scripts/audit.sh` and `scripts/dart-audit.sh` are guest-side
+payloads, not host entrypoints. The Rust and Dart advisory workloads use the
+launcher's explicit `--rust-audit` and `--dart-audit` modes.
+
+Record the selected workload and its exact source, artifact and execution evidence;
+a focused pass does not establish unexecuted native, installed or release checks.
+The auditor should also use independent implementations, vectors, static/dynamic
+analysis, fuzzing or property tests, and platform/runtime checks appropriate to
+the findings. Passing project tests is necessary evidence of the reviewed commit,
+not the audit conclusion.
 
 ## 4. Required questions and deliverable
 

@@ -12297,17 +12297,16 @@ despite stale sender clones. R-S11gw / Appendix C #358 is the normative contract
 
 **Current evidence shared with R-S11gy/R-S11gz.** The focused command is
 `bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
-At `98d9f63e`, all 55 named native Rust cases pass with actual Tokio channels,
-OS threads and production-generated protobufs. All 25 input receipts match that
-source. The prior 51 cases and their 31 extracted parts are unchanged; two additional
-parts execute the production close/history receivers and FFI. Four new cases cover
-exact-owner Disconnect and disconnected-history removal, all five session types,
-eight close and seven history schedules, sibling preservation and two joined delayed
-commands across registry replacement. `cm-disconnect-owner-feb8f4cd.json` binds this
-current cohort's 33 source parts, artifacts, dependencies, bounded-RAM storage and
-joined cleanup. Earlier chat A/B evidence is in `chat-send-owner-6c616053.json`;
-cursor, recent-marker and growth-refusal A/B evidence remains
-in `cursor-echo-clock-2b2aaacb.json`, `recent-document-markers-571ee664.json` and
+At `d7489810`, all 57 named native Rust cases pass with actual Tokio channels,
+OS threads and production-generated protobufs. All 25 input receipts and 33 source
+parts match that source. The prior 55 test bodies remain unchanged. Two additional
+cases compare returned close/history results with real queue admission and registry
+effects across eight close and six history schedules, including receiver loss and
+saturation. `cm-close-admission-073543c5.json` binds current source, artifacts,
+dependencies, A/B observations, bounded-RAM storage and joined cleanup. Earlier
+owner, chat, cursor, marker and growth-refusal evidence remains in
+`cm-disconnect-owner-feb8f4cd.json`, `chat-send-owner-6c616053.json`,
+`cursor-echo-clock-2b2aaacb.json`, `recent-document-markers-571ee664.json` and
 `file-clipboard-growth-fc23970f.json`; Windows Shell is unexecuted.
 `control-egress-evidence-d2a102e6.json` retains the historical 20-input checkpoint
 comparison and ledger correction. Capsule names resolve under `.harness-state/verifier-vm/`.
@@ -12324,7 +12323,7 @@ clipboard, complete service producers, connection loops and CM IPC do not.
 Owner/deallocation flags establish lifetime, not RSS or whole-process memory bounds;
 error formatting and surrounding allocations remain available during selective faults.
 The older raw-backing baseline has test/artifact receipts but lacks full input/source
-receipts; its corrected run and the current 55-case run supply those bindings.
+receipts; its corrected run and the current 57-case run supply those bindings.
 Script wiring, source patterns and historical string mutations do not establish behavior.
 The profile remains 2 GiB guest / 6 GiB RAM scratch / 4 GiB overlay / 6 GiB host
 headroom / 1 GiB overhead, with no disk fallback and joined retirement.
@@ -13259,35 +13258,48 @@ authenticated peer/UI delivery, full Rust parent, installed/other-platform behav
 all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
 Every user park remains unchanged.
 
-**CM Disconnect and disconnected-history ownership — native component verified;
-complete CM/peer and UI interaction OPEN.** `98d9f63e` requires the expected
-registry generation in both FFI requests. Desktop/mobile single-close callers pass
-their captured Client generation; `ServerModel.closeAll` passes each captured map
-entry rather than only its ID. The existing unimplemented web signatures mirror the
-mandatory parameter without adding a CM web mode. Native Disconnect validates the
-exact current non-disconnected owner with no pending admission under one read guard,
-then retains its sender before unlocking. History dismissal checks that same owner
-and disconnected state under its consuming write guard. Neither command can select
-or remove a successor by numeric ID alone; active history remains intact.
+**CM close admission and history outcomes — native component and Dart batch verified;
+complete CM/peer and rendered interaction OPEN.** `d7489810` returns a boolean
+through each generation-bound FFI request. Disconnect succeeds only when the exact
+current live owner's real mailbox accepts Close; stale/pending/disconnected owners,
+a missing receiver or queue refusal return false. History dismissal succeeds only
+when its exact current disconnected record is removed. Unsupported iOS entrypoints
+return false; existing web signatures remain unimplemented.
 
-At generation-parameter preparation `3373d07e`, 52 controls pass and three new
-ownership cases fail: stale commands close a successor or remove its disconnected
-record. All 51 earlier cases and five-type close/removal controls pass. The identical
-corrected 55-case native cohort passes eight close schedules, seven history schedules
-and both delayed-command schedules, including fresh-owner recovery and sibling
-preservation. Only the receiver part changes across the 25 input/33 part receipts;
-all test bodies and harness controls are unchanged. Fresh generated bridge/import
-compilation also passes the existing 39-case Dart cohort and three parser controls.
-That Dart run does not execute the close-all or rendered disconnect controls.
+`requestCmClientClosures` captures live ID/generation pairs before waiting, skips
+disconnected history, joins every submitted request and reports false replies or
+bridge errors. `ServerModel.closeAll` delegates to it and has no manual client/tab
+retirement. Existing owner-checked remove events and full snapshots remain the UI
+state owners. Desktop close waits for batch admission before retiring its FFI; failed
+single actions are visible, and history-window closure requires actual removal.
+Mobile Disconnect no longer cancels a notification on submission; existing native
+retirement callbacks own that effect. Admission is not peer-teardown acknowledgement.
 
-Evidence: `.harness-state/verifier-vm/cm-disconnect-owner-feb8f4cd.json`. Actual
-registry state, FFI forwarding and real CM mailboxes execute with controlled schedules
-and joined threads. Complete native CM IPC/peer teardown, window/notification effects,
-admitted command finality, full Rust parent, installed/other-platform behavior, all
-fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN. These void
-bridge calls do not acknowledge receiver admission or peer teardown; close-all still
-optimistically retires only its captured UI owners. Voice-command generation binding
-is separate. All full-parent/bootstrap and other user parks remain unchanged.
+At bool-result preparation `37ab3d27`, 55 controls pass and two new result
+cases fail: replies report success without queue admission or registry removal.
+The identical corrected 57-case native cohort passes eight close-result schedules
+and six history-result schedules, including gone/saturated mailboxes, invalid/pending/
+stale targets, normal admission/removal and repeated dismissal. All prior 55 bodies
+remain unchanged; only the receiver part changes across 25 input/33 part receipts.
+Earlier exact-owner five-type, sibling and delayed-command A/B evidence remains in
+`cm-disconnect-owner-feb8f4cd.json`.
+
+The prepared Dart baseline `3eac7829` passes 42 controls and fails false-result,
+mixed-result and disconnected-history cases. The identical 45-case cohort and three
+parser controls pass after correction, with fresh bridge/import compilation. Tests
+execute the actual production batch function over real Client state and explicit
+request-I/O doubles; accepted/refused/mixed requests, joined bridge errors, captured
+owners across replacement and empty/history-only snapshots are observed. Prior 39
+test bodies remain untouched. One earlier run stopped at pinned formatting without
+executing behavior; its diagnostic is retained separately. Candidate output retains strict summaries and generated
+hashes rather than per-case JSON or a compiled test image.
+
+Evidence: `.harness-state/verifier-vm/cm-close-admission-073543c5.json`. Source/artifact
+bindings and joined bounded-RAM cleanup are retained. Complete native CM IPC and peer
+teardown, full ServerModel/rendered controls, native window/notification effects,
+resource finality/drain, full Rust parent, installed/other-platform behavior, separate
+voice-command generation binding, all fifteen credential actions, R-S0/R-F5 and release
+acceptance remain OPEN. All full-parent/bootstrap and other user parks are unchanged.
 
 Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests

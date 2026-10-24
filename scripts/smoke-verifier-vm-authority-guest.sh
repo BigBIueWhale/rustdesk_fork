@@ -3192,6 +3192,7 @@ run_focused_rust_tests() {
             fs::tests::rename_file_refuses_a_symlink_parent_without_mutating_its_target
             fs::tests::rename_admitted_entry_refuses_a_replaced_source_name
             fs::tests::rename_admitted_entry_stays_with_its_retained_parent_after_path_swap
+            fs::tests::file_metadata_receive_parent_ownership_survives_path_replacement
             fs::tests::abandoned_blocking_receive_result_retires_its_exact_sidecars
             fs::tests::abandoned_blocking_finalize_error_retires_only_its_claim
             fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes
@@ -3354,6 +3355,7 @@ run_focused_rust_tests() {
                 fs::tests::directory_entry_link_file_permission_failure_is_reported
                 fs::tests::directory_entry_link_cycle_preserves_the_link_entry
                 fs::tests::directory_entry_link_nondirectory_target_preserves_the_link_entry
+                fs::tests::file_metadata_receive_parent_ownership_survives_path_replacement
                 fs::tests::file_metadata_digest_matching_subseconds_keep_overwrite_hint
                 fs::tests::file_metadata_rename_existing_targets_are_preserved
                 fs::tests::file_metadata_rename_late_collision_is_atomic

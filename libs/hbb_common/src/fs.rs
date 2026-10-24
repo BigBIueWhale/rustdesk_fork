@@ -4824,6 +4824,88 @@ pub fn serialize_transfer_job(job: &TransferJob, done: bool, cancel: bool, error
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn file_metadata_receive_parent_ownership_survives_path_replacement() {
+        use std::{io::Write, os::unix::fs::{symlink, MetadataExt}};
+        let descriptors = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before = descriptors();
+        let mut all_correct = true;
+        for action in ["finish", "cleanup", "resume-finish"] {
+            for replacement in ["directory", "symlink", "missing", "unchanged"] {
+                let tmp = TestTempDir::new("receive-owned-parent");
+                let parent = tmp.join("parent");
+                let retained = tmp.join("retained");
+                let foreign = tmp.join("foreign");
+                std::fs::create_dir(&parent).unwrap();
+                std::fs::create_dir(&foreign).unwrap();
+                let destination = parent.join("incoming");
+                let digest = FileDigest { size: 7, modified: 1_600_000_000 };
+                let (mut stream, mut claim) =
+                    ReceiveWriteClaim::start_new(destination.clone(), digest).unwrap();
+                stream.write_all(b"pay").unwrap();
+                if action == "resume-finish" {
+                    drop(stream);
+                    claim.cleanup_on_drop = false;
+                    drop(claim);
+                    (stream, claim) = ReceiveWriteClaim::resume(
+                        destination.clone(), digest, 7, 3).unwrap();
+                }
+                stream.write_all(b"load").unwrap();
+                drop(stream);
+                let original = if replacement == "unchanged" {
+                    parent.clone()
+                } else {
+                    std::fs::rename(&parent, &retained).unwrap();
+                    retained.clone()
+                };
+                if replacement == "directory" {
+                    std::fs::create_dir(&parent).unwrap();
+                } else if replacement == "symlink" {
+                    symlink(&foreign, &parent).unwrap();
+                }
+                let protected = if replacement == "directory" { &parent } else { &foreign };
+                let mut sentinels = Vec::new();
+                for suffix in ["", ".download", ".digest", ".download.lock"] {
+                    let path = protected.join(format!("incoming{suffix}"));
+                    std::fs::write(&path, format!("foreign{suffix}")).unwrap();
+                    let m = std::fs::symlink_metadata(&path).unwrap();
+                    sentinels.push((path, m.dev(), m.ino(), m.mode()));
+                }
+                let result = if action == "cleanup" {
+                    claim.cleanup()
+                } else {
+                    let result = claim.finish(7, digest.modified);
+                    drop(claim);
+                    result
+                };
+                let published = std::fs::read(original.join("incoming")).ok();
+                let outcome = if action == "cleanup" {
+                    published.is_none()
+                } else { published.as_deref() == Some(b"payload".as_slice()) };
+                let retired = [".download", ".digest", ".download.lock"].iter()
+                    .all(|suffix| std::fs::symlink_metadata(
+                        original.join(format!("incoming{suffix}"))).is_err());
+                let preserved = sentinels.iter().all(|(path, dev, ino, mode)| {
+                    let m = std::fs::symlink_metadata(path).unwrap();
+                    (m.dev(), m.ino(), m.mode()) == (*dev, *ino, *mode)
+                        && std::fs::read(path).unwrap() ==
+                            format!("foreign{}", path.file_name().unwrap().to_str().unwrap()
+                                .strip_prefix("incoming").unwrap()).as_bytes()
+                });
+                let correct = result.is_ok() && outcome && retired && preserved;
+                println!("FILE_METADATA_RECEIVE_PARENT=observed action={action} replacement={replacement} success={} outcome={outcome} retired={retired} preserved={preserved} correct={correct}", result.is_ok());
+                all_correct &= correct;
+            }
+        }
+        let after = descriptors();
+        println!("FILE_METADATA_RECEIVE_PARENT=handles before={before} after={after}");
+        assert_eq!(before, after);
+        assert!(all_correct, "receive finalization or cleanup lost its admitted parent");
+        println!("FILE_METADATA_RECEIVE_PARENT=pass cases=12 parent=retained replacement=preserved finish=durable cleanup=exact resume=owned");
+    }
+
+
     #[test]
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn file_metadata_removal_reports_native_parent_sync_failure() {

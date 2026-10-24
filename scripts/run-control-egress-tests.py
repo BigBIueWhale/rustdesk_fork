@@ -34,6 +34,7 @@ INPUTS = (
     "scripts/test-controlled-voice.rs",
     "src/client.rs", "scripts/test-port-forward-settings.rs",
     "src/port_forward.rs", "libs/hbb_common/src/tcp.rs",
+    "scripts/test-rdp-launch.rs",
 )
 
 
@@ -149,6 +150,13 @@ def main():
         "impl<T: InvokeUiSession> Session<T> {\n" + between(
             session, "    fn send(&self, data: Data) {",
             "    fn require_credential_replacement(&self) -> Option<u64> {\n        self.connection_round_owner") + "}\n")
+    rdp_results = "pub(crate) fn request_rdp_launch(" in session
+    rdp_start = "    pub(crate) fn request_rdp_launch(" if rdp_results else "    pub fn new_rdp("
+    snippets["pf-settings-rdp-producer.rs"] = (
+        "impl<T: InvokeUiSession> Session<T> {\n" + between(session, rdp_start,
+            "    pub fn close(&self) {") + "}\n")
+    if rdp_results:
+        os.environ["RUSTFLAGS"] = os.environ.get("RUSTFLAGS", "") + " --cfg rdp_launch_results"
     snippets["pf-settings-cache.rs"] = (
         "impl LoginConfigHandler {\n" + between(
             client, "    pub fn add_port_forward(&mut self, mapping:",
@@ -173,7 +181,7 @@ def main():
     ffi_start = re.findall(r"(?m)^pub (?:async )?fn session_add_port_forward\(", ffi_source)
     if len(ffi_start) != 1:
         raise ValueError("tunnel FFI declaration is absent or ambiguous")
-    snippets["pf-settings-ffi.rs"] = between(ffi_source, ffi_start[0], "pub fn session_new_rdp(")
+    snippets["pf-settings-ffi.rs"] = between(ffi_source, ffi_start[0], "pub fn session_request_voice_call(")
     if transactional_settings:
         os.environ["RUSTFLAGS"] = os.environ.get("RUSTFLAGS", "") + " --cfg pf_settings_results"
         port_forward = inputs["src/port_forward.rs"].decode("utf-8")
@@ -194,7 +202,7 @@ def main():
             port_forward, 'pub(crate) async fn listen_admitted(',
             '    let cancellation = CancellationToken::new();\n    let admission = TunnelAdmission::new();\n    let mut tasks = JoinSet::<ConnectionTaskResult>::new();') + (
             '    interface.listener_started();\n'
-            '    control.wait_closed().await;\n'
+            '    control.close.cancelled().await;\n'
             '    drop(listener);\n    Ok(())\n}\n')
         snippets["pf-settings-native-bind.rs"] = between(
             tcp, 'pub(crate) fn new_listener_socket(',
@@ -445,7 +453,7 @@ def main():
                                ("CONTROLLED_VOICE_SEND", "controlled-voice-send.rs"),
                                ("CONTROLLED_VOICE_COMMAND", "controlled-voice-command.rs")):
             os.environ[variable] = str(fixture / name)
-        for part in ("producer", "send", "cache", "peer-mutation", "data", "queue", "target", "request", "ffi"):
+        for part in ("producer", "send", "rdp-producer", "cache", "peer-mutation", "data", "queue", "target", "request", "ffi"):
             os.environ["PF_SETTINGS_" + part.replace("-", "_").upper()] = str(fixture / ("pf-settings-" + part + ".rs"))
         if transactional_settings:
             for part in ("owner", "port-owner", "listener", "listen-wait", "native-bind"):
@@ -530,13 +538,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=84", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=86", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=84 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=86 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -545,7 +553,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=84 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=86 unchanged=before-after",
               flush=True)
 
 

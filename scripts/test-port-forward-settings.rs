@@ -54,18 +54,23 @@ struct Session<T: InvokeUiSession = TestHandler> {
     lc: Arc<RwLock<LoginConfigHandler>>,
     sender: Arc<RwLock<Option<ViewerCommandSender>>>,
     args: Vec<String>,
+    rdp: bool,
     ui_handler: T,
     #[cfg(pf_settings_results)]
     listener_starts: Arc<AtomicUsize>,
 }
 impl<T: InvokeUiSession> Session<T> {
     fn is_port_forward(&self) -> bool { true }
-    fn is_rdp(&self) -> bool { false }
+    fn is_rdp(&self) -> bool { self.rdp }
     fn get_id(&self) -> String { self.lc.read().unwrap().id.clone() }
     fn on_error(&self, error: &str) { panic!("unexpected mapping task error: {error}"); }
 }
 include!(env!("PF_SETTINGS_PRODUCER"));
 include!(env!("PF_SETTINGS_SEND"));
+include!(env!("PF_SETTINGS_RDP_PRODUCER"));
+
+#[path = "test-rdp-launch.rs"]
+mod rdp_launch_tests;
 
 struct Fixture { root: PathBuf, session: Session }
 impl Fixture {
@@ -77,6 +82,7 @@ impl Fixture {
             lc: Arc::new(RwLock::new(LoginConfigHandler { id, config: PeerConfig::default() })),
             sender: Arc::new(RwLock::new(sender)),
             args: Vec::new(),
+            rdp: false,
             ui_handler: TestHandler,
             #[cfg(pf_settings_results)]
             listener_starts: Arc::new(AtomicUsize::new(0)),
@@ -284,7 +290,7 @@ async fn unavailable_mapping_round_refuses_before_persistence() {
             match state {
                 "closed" => { sender.send(Data::Close).unwrap(); }
                 "receiver-gone" => { receiver.take(); }
-                "full" => { for _ in 0..VIEWER_COMMAND_QUEUE_CAPACITY { sender.send(Data::NewRDP).unwrap(); } }
+                "full" => { for _ in 0..VIEWER_COMMAND_QUEUE_CAPACITY { sender.send(Data::CancelJob(1)).unwrap(); } }
                 _ => {}
             }
             let fixture = Fixture::new((state != "unpublished").then_some(sender));

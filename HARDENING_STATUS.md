@@ -14853,6 +14853,36 @@ replacement, ACL/non-local filesystems, other platforms, R-S0/R-F5 and release
 acceptance remain OPEN. The native cases provide controls for that next correction;
 they do not establish immunity to the remaining namespace race.
 
+**Receive namespace syscall windows — Linux failures REPRODUCED; production correction OPEN.**
+`bc81bb84` extends that native driver with three syscall-entry cases. A root
+receiver uses the unchanged production `TransferJob` API; a separate UID/GID 4001
+actor, with zero capabilities, no-new-privileges and no inherited fixture
+file descriptors, replaces the source entry after the last receiver check.
+The controller observes syscall information and memory without changing
+arguments, registers, return values or production source. It runs on one
+blocking thread, follows child threads, and joins every tracee and actor.
+
+All twelve earlier cases pass. Each new case fails its safety oracle: payload
+rename publishes the actor-owned replacement and reports success; digest unlink
+removes the replacement before reporting uncertainty; lease unlink does the same
+after publishing the valid payload. All three actual syscalls return zero.
+The original root-owned objects remain private under the actor-renamed entry.
+The driver completes all fifteen observations/nineteen actors and retires its
+fixtures, then fails with `0/3 safe`. The canonical `--file-metadata-tests`
+lane now requires these cases to pass and correctly fails on current production.
+No new unit-suite pass is claimed: that failure path does not export its unit
+logs or outer success receipt. The first attempt is rejected compile evidence
+(missing Rust 2018 `TryFrom` import), not a behavioral run. Both disposable VMs
+and RAM workspaces are joined and retired. Evidence:
+`.harness-state/verifier-vm/receive-namespace-window-d6cee89c.json`.
+
+This is a reproducible regression, not a production fix or installed-service
+acceptance. Replace the public staging/cleanup namespace with a protected one;
+preserve exact destination ownership, native names, resume/crash recovery,
+concurrent different-file transfers, durable publication and bounded cleanup.
+Other platforms/filesystems, installed/peer integration, R-S0/R-F5 and release
+acceptance remain OPEN.
+
 **Native receive-path identity — Linux file transactions ACCEPTED; caller/platform acceptance OPEN.**
 `c1df5d00` preserves native bytes when appending receive staging suffixes.
 `e8bb5a19` keeps a native `PathBuf` through digest admission, blocking destination/resume

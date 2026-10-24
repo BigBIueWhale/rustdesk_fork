@@ -35,6 +35,11 @@ impl ControlledVoice {
     }
     // Close requests are outside this admission fixture; assert this double stays unused.
     async fn close_voice_call(&mut self) { self.close_calls += 1; }
+    // Cleanup effects remain outside the component; check the actual caller's policy.
+    async fn on_close(&mut self, reason: &str, lock: bool) {
+        assert_eq!(reason, "connection-manager voice request publication failed");
+        assert!(!lock);
+    }
 }
 include!(env!("CONTROLLED_VOICE_TYPES"));
 include!(env!("CONTROLLED_VOICE_RECEIVE"));

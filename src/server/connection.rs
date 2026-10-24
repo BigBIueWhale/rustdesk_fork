@@ -10277,6 +10277,8 @@ impl Connection {
                         self.voice_call_request_timestamp = Some(request_id);
                         if !self.send_to_cm(Data::VoiceCallIncoming).await {
                             self.voice_call_request_timestamp = None;
+                            self.on_close("connection-manager voice request publication failed", false)
+                                .await;
                             return false;
                         }
                     } else {

@@ -715,7 +715,7 @@ PEER_DATA_TESTS = {
     "CM close batch waits for all mixed results",
     "CM close batch joins requests after a bridge error",
     "CM close batch captures owners before replacement",
-    "CM close batch accepts an empty snapshot without dispatch",
+    "CM close batch accepts empty and disconnected snapshots",
     "chat draft survives missing client at both send inputs",
     "chat draft survives reused id at both send inputs",
     "chat draft survives invalid generation at both send inputs",

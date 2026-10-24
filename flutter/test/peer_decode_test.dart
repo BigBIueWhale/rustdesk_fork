@@ -379,13 +379,21 @@ void main() {
     expect(replacement.disconnected, isFalse);
   });
 
-  test('CM close batch accepts an empty snapshot without dispatch', () async {
+  test('CM close batch accepts empty and disconnected snapshots', () async {
     var calls = 0;
     await requestCmClientClosures([], (_, __) async {
       calls += 1;
       return true;
     });
     expect(calls, 0);
+    final history = _incomingClient(19)..disconnected = true;
+    final clients = [history];
+    await requestCmClientClosures(clients, (_, __) async {
+      calls += 1;
+      return false;
+    });
+    expect(calls, 0);
+    expect(clients.single, same(history));
   });
 
   for (final caseName in [

@@ -32,6 +32,7 @@ INPUTS = (
     "scripts/test-cm-voice.rs",
     "src/client/io_loop.rs", "src/client/helper.rs", "scripts/test-viewer-voice.rs",
     "scripts/test-controlled-voice.rs",
+    "src/client.rs", "scripts/test-port-forward-settings.rs",
 )
 
 
@@ -135,6 +136,38 @@ def main():
         + "\n}\nfn record_relative(conn: i32, x: i32, y: i32) {\n"
         + writers[1] + "\n}\n")
     session = inputs["src/ui_session_interface.rs"].decode("utf-8")
+    client = inputs["src/client.rs"].decode("utf-8")
+    peer_config_source = inputs["libs/hbb_common/src/config.rs"].decode("utf-8")
+    asynchronous_settings = "pub async fn add_port_forward(" in session
+    method_prefix = "pub async fn" if asynchronous_settings else "pub fn"
+    snippets["pf-settings-producer.rs"] = (
+        "impl Session {\n" + between(
+            session, f"    {method_prefix} remove_port_forward(",
+            "    pub fn get_option(&self, k: String)") + "}\n")
+    snippets["pf-settings-send.rs"] = (
+        "impl Session {\n" + between(
+            session, "    fn send(&self, data: Data) {",
+            "    fn require_credential_replacement(&self)") + "}\n")
+    snippets["pf-settings-cache.rs"] = (
+        "impl LoginConfigHandler {\n" + between(
+            client, "    pub fn add_port_forward(&mut self, mapping:",
+            "    /// Set an option for handler's") + "}\n")
+    snippets["pf-settings-peer-mutation.rs"] = (
+        "impl PeerConfig {\n" + between(peer_config_source, "    pub fn add_port_forward(\n",
+            "    pub fn credential_status(id:") + "}\n")
+    snippets["pf-settings-data.rs"] = enum_declaration(client, "Data")
+    snippets["pf-settings-queue.rs"] = between(
+        client, "// One outgoing connection round owns this local command plane.",
+        "/// Keycode for key events.")
+    snippets["pf-settings-target.rs"] = between(
+        client, "#[derive(Clone, Debug, PartialEq, Eq)]\npub struct PortForwardTarget {",
+        "/// Login config handler for")
+    snippets["pf-settings-request.rs"] = (between(
+        session, "#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\npub struct SavedPortForwardRequest {",
+        "#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\nstruct OwnedPortForwardMapping {")
+        if asynchronous_settings else "// The baseline has no result-bearing mapping request.\n")
+    if asynchronous_settings:
+        os.environ["RUSTFLAGS"] = os.environ.get("RUSTFLAGS", "") + " --cfg pf_settings_async"
     legacy_marker = "            std::fs::File::create(&path).ok();\n"
     marker_start = "            let marker_ready = "
     marker_end = "            if marker_ready {"
@@ -379,6 +412,8 @@ def main():
                                ("CONTROLLED_VOICE_SEND", "controlled-voice-send.rs"),
                                ("CONTROLLED_VOICE_COMMAND", "controlled-voice-command.rs")):
             os.environ[variable] = str(fixture / name)
+        for part in ("producer", "send", "cache", "peer-mutation", "data", "queue", "target", "request"):
+            os.environ["PF_SETTINGS_" + part.replace("-", "_").upper()] = str(fixture / ("pf-settings-" + part + ".rs"))
         os.environ["CM_CHAT_TESTS"] = str(repo / "scripts/test-cm-chat.rs")
         os.environ["CM_DISCONNECT_TESTS"] = str(repo / "scripts/test-cm-disconnect.rs")
         os.environ["CM_VOICE_TESTS"] = str(repo / "scripts/test-cm-voice.rs")
@@ -415,6 +450,7 @@ def main():
             f'tokio = {{ version = "={version("tokio")}", features = ["full"] }}\n'
             f'tokio-util = {{ version = "={version("tokio-util")}", features = ["codec"] }}\n'
             f'futures = "={version("futures")}"\n'
+            f'uuid = {{ version = "={version("uuid")}", features = ["v4"] }}\n'
             '[build-dependencies]\n'
             f'protobuf-codegen = "={version("protobuf-codegen")}"\n'
             '[[test]]\nname = "control_egress"\n'
@@ -458,13 +494,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=77", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=79", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=77 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=79 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -473,7 +509,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=77 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=79 unchanged=before-after",
               flush=True)
 
 

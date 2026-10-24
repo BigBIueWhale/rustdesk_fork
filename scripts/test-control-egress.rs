@@ -21,6 +21,9 @@ mod viewer_voice;
 #[path = "test-controlled-voice.rs"]
 mod controlled_voice;
 
+#[path = "test-port-forward-settings.rs"]
+mod port_forward_settings;
+
 include!(env!("RECENT_DOCUMENT_MARKER_SOURCE"));
 
 #[path = "../libs/hbb_common/src/bytes_codec.rs"]

@@ -3011,6 +3011,24 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Windows peer-file prefetch retired (`90b90157`).** The sole Windows UI-startup
+call and all three optional warmup helpers are deleted. They opened enumerated
+paths outside the validated peer reader, ignored open failures, and ran on a
+detached thread with a separately created Tokio runtime. Startup now leaves
+peer I/O to the existing listing and settings operations. Their batch limit,
+projections, credential handling and file/parent admission are byte-identical.
+
+The unchanged 202-case configuration/at-rest cohort passes on the changed Linux
+shared library, including ten named peer-listing cases for metadata-only views,
+credential/config non-mutation, corrupt records, denied reads, compact identities,
+long addresses, batch boundaries and replacement preservation. Exact source,
+artifact, observations and joined bounded-RAM cleanup are retained in
+`peer-prefetch-35c5fb86.json`; the initial 19,456-MiB admission refusal created no VM
+or workspace. This retires an optional startup I/O path; it is not a demonstrated
+LPE closure or a Windows startup benchmark. Current Windows compilation,
+UI/startup and cold-Defender timing, installed/other-platform, R-S0/R-F5 and
+release acceptance remain OPEN. Every user-parked task remains parked.
+
 **Configuration-load diagnostics (`544d4b36`).** The core loader returns
 its record without formatting it into trace logs; the three unused generic
 `Debug` bounds are removed. At unchanged-product preparation `cc82c73f`,

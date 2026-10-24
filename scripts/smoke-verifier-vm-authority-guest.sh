@@ -4272,8 +4272,13 @@ run_focused_rust_tests() {
                 src/server/input_service.rs scripts/test-cursor-echo.rs
                 src/flutter_ffi.rs scripts/test-cm-chat.rs scripts/test-cm-disconnect.rs
                 scripts/test-cm-voice.rs
+                src/client/io_loop.rs src/client/helper.rs scripts/test-viewer-voice.rs
             )
             required_tests=(
+                viewer_voice::tests::viewer_voice_matching_replies_complete_once
+                viewer_voice::tests::viewer_voice_mismatch_preserves_pending_for_matching_reply
+                viewer_voice::tests::viewer_voice_manual_close_retires_pending_before_late_reply
+                viewer_voice::tests::viewer_voice_remote_close_retires_pending_before_late_reply
                 ui_cm_interface::voice_tests::cm_voice_current_owners_keep_actions_and_allowed_types
                 ui_cm_interface::voice_tests::cm_voice_requires_exact_live_owner_and_truthful_admission
                 ui_cm_interface::voice_tests::cm_voice_delayed_actions_never_retarget_replacements
@@ -6206,7 +6211,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=60 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=64 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6525,9 +6530,17 @@ PY
             || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=60 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=64 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
+        [ "$(grep -Fxc 'VIEWER_VOICE_CONTROLS=pass cases=4 duplicate_replies=8 matching=once audio_failure=closed replacement=stopped constructors=production' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'VIEWER_VOICE_MISMATCH=pass cases=24 stale=ignored pending=preserved matching=usable' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'VIEWER_VOICE_MANUAL=pass cases=2 pending=retired late_reply=ignored peer_close=once' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'VIEWER_VOICE_REMOTE=pass cases=8 pending=retired active=stopped empty=quiet late_reply=ignored' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^VIEWER_VOICE_MISMATCH_CASE=.* correct=true$' "$output")" -eq 24 ] \
+            && [ "$(grep -Ec '^VIEWER_VOICE_MANUAL_CASE=.* correct=true$' "$output")" -eq 2 ] \
+            && [ "$(grep -Ec '^VIEWER_VOICE_REMOTE_CASE=.* correct=true$' "$output")" -eq 8 ] \
+            || fail 'viewer voice response or cancellation finality evidence differs'
         [ "$(grep -Fxc 'CM_VOICE_CONTROLS=pass actions=3 conn_types=2 messages=6 siblings=preserved registry=production ffi=production queues=real' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'CM_VOICE_OWNER=pass actions=3 cases=42 invalid=refused pending=refused stale=refused disconnected=refused type=confined queue=truthful fresh=usable' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'CM_VOICE_DELAYED=pass actions=3 replacement=observed stale=refused successor=preserved fresh=usable workers=joined' "$output")" -eq 1 ] \
@@ -7293,7 +7306,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
-            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|cursor_echo::sender::.*|ui_cm_interface::(chat_tests|disconnect_tests|voice_tests)::.*|file_clipboard::(tests|allocation_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+|cm_read_block_[a-z_]+|recent_document_markers_preserve_existing_objects_and_refuse_creation_failure) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^RECENT_DOCUMENT_|^CURSOR_ECHO_|^CM_(CHAT|DISCONNECT|HISTORY|CLOSE|VOICE)_|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_PROTO_|^CM_READ_BLOCK_|^FILE_CLIP_QUEUE_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
+            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|cursor_echo::sender::.*|viewer_voice::tests::.*|ui_cm_interface::(chat_tests|disconnect_tests|voice_tests)::.*|file_clipboard::(tests|allocation_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+|cm_read_block_[a-z_]+|recent_document_markers_preserve_existing_objects_and_refuse_creation_failure) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^RECENT_DOCUMENT_|^CURSOR_ECHO_|^VIEWER_VOICE_|^CM_(CHAT|DISCONNECT|HISTORY|CLOSE|VOICE)_|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_PROTO_|^CM_READ_BLOCK_|^FILE_CLIP_QUEUE_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
             printf 'CONTROL_EGRESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

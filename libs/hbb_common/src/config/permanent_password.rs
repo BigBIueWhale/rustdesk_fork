@@ -193,11 +193,26 @@ pub(super) fn derive_permanent_password_storages(password: &str) -> Option<(Stri
     Some((password_storage, prs_storage))
 }
 
+/// Accept an explicit clear or the canonical base64 representation of one PRS.
+pub(super) fn validate_permanent_password_prs(prs: &str) -> Result<(), &'static str> {
+    if prs.is_empty() {
+        return Ok(());
+    }
+    let mut decoded = base64::decode(prs.as_bytes(), base64::Variant::Original)
+        .map_err(|_| "encoding")?;
+    let mut canonical = base64::encode(&decoded, base64::Variant::Original).into_bytes();
+    let valid = decoded.len() == PERMANENT_PASSWORD_H1_LEN && canonical.as_slice() == prs.as_bytes();
+    sodiumoxide::utils::memzero(&mut decoded);
+    sodiumoxide::utils::memzero(&mut canonical);
+    if valid { Ok(()) } else { Err("value") }
+}
+
 /// R-P1: store the memory-hard CPace PRS (the Argon2id base64 string from
 /// `derive_cpace_prs`) at rest — encrypted under the same machine-UUID wrapper as the
 /// hashed storage (R-S9). NOT the plaintext (the wrapper is harmless on a hash). The
 /// CPace handshake reads it live; an empty result means there is no usable credential.
 pub(super) fn encrypt_permanent_password_prs_storage(prs: &str) -> Option<String> {
+    validate_permanent_password_prs(prs).ok()?;
     encrypt_permanent_password_storage(prs)
 }
 
@@ -206,11 +221,14 @@ pub(super) fn decrypt_permanent_password_prs_storage(storage: &str) -> Option<St
         return None;
     }
     let (plaintext, decrypted, _) = decrypt_permanent_password_str_or_original(storage);
-    if decrypted {
-        Some(plaintext)
-    } else {
-        None
+    if !decrypted {
+        return None;
     }
+    if validate_permanent_password_prs(&plaintext).is_err() {
+        sodiumoxide::utils::memzero(&mut plaintext.into_bytes());
+        return None;
+    }
+    Some(plaintext)
 }
 
 pub fn decode_permanent_password_h1_from_storage(

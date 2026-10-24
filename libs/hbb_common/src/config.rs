@@ -3729,17 +3729,8 @@ impl Config {
     /// of exactly one PRS. It deliberately overrides every user-profile at-rest credential,
     /// including with an explicit empty value, without writing the replica back to that profile.
     pub fn set_permanent_password_prs_for_runtime(prs: &str) -> crate::ResultType<bool> {
-        if !prs.is_empty() {
-            let mut decoded = base64::decode(prs.as_bytes(), base64::Variant::Original)
-                .map_err(|_| anyhow!("Invalid runtime permanent-password PRS encoding"))?;
-            let mut canonical = base64::encode(&decoded, base64::Variant::Original);
-            let valid = decoded.len() == PERMANENT_PASSWORD_H1_LEN && canonical == prs;
-            sodiumoxide::utils::memzero(&mut decoded);
-            sodiumoxide::utils::memzero(unsafe { canonical.as_mut_vec() });
-            if !valid {
-                return Err(anyhow!("Invalid runtime permanent-password PRS value"));
-            }
-        }
+        permanent_password::validate_permanent_password_prs(prs)
+            .map_err(|kind| anyhow!("Invalid runtime permanent-password PRS {kind}"))?;
         let mut generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.write().unwrap();
         let mut runtime_prs = RUNTIME_PERMANENT_PASSWORD_PRS.write().unwrap();
         if runtime_prs.as_deref() == Some(prs) {

@@ -3763,12 +3763,8 @@ def verify_linux_credential_replica_bootstrap(rust: Mapping[str, RustSource]) ->
     )
     runtime_prs.require_order(
         (
-            (("if", "!", "prs", ".", "is_empty", "(", ")"), "explicit empty replica support"),
-            (("base64", "::", "decode", "(", "prs", ".", "as_bytes", "(", ")", ",", "base64", "::", "Variant", "::", "Original", ")"), "strict base64 decode"),
-            (("base64", "::", "encode", "(", "&", "decoded", ",", "base64", "::", "Variant", "::", "Original", ")"), "canonical re-encoding"),
-            (("decoded", ".", "len", "(", ")", "==", "PERMANENT_PASSWORD_H1_LEN", "&&", "canonical", "==", "prs"), "exact canonical PRS validation"),
-            (("memzero", "(", "&", "mut", "decoded", ")"), "decoded PRS wipe"),
-            (("memzero", "(", "unsafe", "{", "canonical", ".", "as_mut_vec", "(", ")", "}", ")"), "canonical temporary wipe"),
+            (("permanent_password", "::", "validate_permanent_password_prs", "(", "prs", ")"), "shared PRS value admission"),
+            (("let", "mut", "generation", "=", "PERMANENT_PASSWORD_CREDENTIAL_GENERATION", ".", "write"), "generation ownership after validation"),
             (("runtime_prs", ".", "as_deref", "(", ")", "==", "Some", "(", "prs", ")"), "same-value no-op"),
             (("if", "let", "Some", "(", "previous", ")", "=", "runtime_prs", ".", "as_mut", "(", ")"), "previous replica ownership"),
             (("memzero", "(", "unsafe", "{", "previous", ".", "as_mut_vec", "(", ")", "}", ")"), "previous replica wipe"),

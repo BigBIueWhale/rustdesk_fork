@@ -14798,28 +14798,36 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
-**Receive-artifact write admission — Linux component comparison ACCEPTED; complete artifact authority OPEN.**
-`9b907415` adds descriptor-based Unix mode admission to the shared owner/link-count
-check for receive leases, staged data and resume digests. Group/other write and
-set-user-ID, set-group-ID or sticky bits return `PermissionDenied` before resumable
-metadata or stream ownership is accepted. Existing refused artifacts retain their
-bytes, identity and mode; no chmod/chown repair or truncation manufactures authority.
-Ordinary final-destination metadata inspection keeps its existing read-only policy.
-At unchanged-product baseline `6b8361a1`, two new tests fail with 52 other named passes:
-all 42 unsafe-mode cases are admitted, while 18 healthy controls pass. The identical
-test block passes after correction. All 135 required `--file-metadata-tests` cases
-pass in 34 groups/208 VM seconds, retaining all 133 previous tests. The 60-case matrix
-covers lease/download/digest admission during inspection and resume. Refusals preserve
-the unsafe artifact and data; a valid lease retires, while a refused unsafe lease stays
-untouched. Nine healthy metadata inspections and nine complete resumed writes retain
-exact bytes, inode, expected mode/mtime and cleanup. Controls admit `0600`, `0640` and
-`0644` for this write-integrity rule. These read-shared modes are not proof of payload
-confidentiality: private staged-data write authority before resume remains OPEN/STOP-SHIP.
-Evidence: `.harness-state/verifier-vm/receive-file-modes-a0ea097b.json`. R-S8 states the
-standing admission rule and read-only final-target distinction. These are nonroot
-Linux library/filesystem mode-bit observations. Actual foreign-principal/root-service
-execution, ACL and non-local-filesystem behavior, native macOS/iOS/Windows owner/DACL
-acceptance, application/peer effects, R-S0/R-F5 and release acceptance remain OPEN.
+**Receive-artifact authority — Linux permission comparison ACCEPTED; installed/ACL/platform acceptance OPEN.**
+`9b907415` rejects group/other write and special mode bits using the retained
+receive-artifact descriptor. `268b8cdd` additionally distinguishes payload from digest
+in the lease's opening API. A staged payload must have no group/other permission bits
+before resume metadata or writable-stream ownership is accepted. Digest/lease files
+retain the minimum integrity rule; ordinary final-destination inspection retains its
+read-only policy. Rejected existing artifacts are preserved without chmod/chown,
+truncation or unlink to manufacture admission. A valid acquired lease retires on refusal.
+
+At unchanged-product preparation `3d12a2b0`, both expanded mode regressions fail with
+52 other named passes. All eight newly targeted payload inspection/resume cases are
+admitted, and four resumed writes deliver new bytes to an already-open reader. The
+identical 7,288-byte mode regression passes after correction. At `6350d8a1`, all 135
+required `--file-metadata-tests` cases pass in 34 groups/199 VM seconds. The
+72-scenario matrix proves 50 permission refusals and 22 controls: rejected payloads
+preserve bytes/inode/mode/mtime and the reader's original bytes; private `0600` payloads
+retain exact inspection and complete resumed publication. Readable metadata/empty-lock
+controls retain their own policy. Valid hand-written partial-data fixtures use the
+product's private creation mode. One additional partial-write fault fixture was
+corrected after its initial `0644` setup refused before the fault; the actual fault,
+production correction and assertions are unchanged, and the full lane then passes.
+
+Evidence: `.harness-state/verifier-vm/receive-private-payload-d6169800.json`.
+The earlier `receive-file-modes-a0ea097b.json` records the historical minimum integrity
+comparison, not current payload acceptance. R-S8 states the private-payload requirement.
+These are nonroot Linux library/filesystem observations with a same-principal retained
+reader, not a foreign-principal/root-service transaction. Actual unauthorized/authorized
+principals, ACL and non-local-filesystem behavior, native macOS/iOS/Windows owner/DACL
+acceptance, application/peer effects, namespace races, R-S0/R-F5 and release acceptance
+remain OPEN.
 
 **Native receive-path identity — Linux file transactions ACCEPTED; caller/platform acceptance OPEN.**
 `c1df5d00` preserves native bytes when appending receive staging suffixes.

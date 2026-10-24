@@ -14799,22 +14799,34 @@ succeeds, and byte accounting remains representable. Malformed or over-limit zst
 explicit write failure rather than a successful empty block.
 
 **Native receive-path identity — Linux file transactions ACCEPTED; caller/platform acceptance OPEN.**
-`c1df5d00` derives receive staging paths by appending each suffix to the native `PathBuf`.
-The former UTF-8 conversion substituted an empty string for a non-UTF-8 destination,
-selecting working-directory lease/download/digest names. At baseline `c973ea1c`, both
-new tests fail with 48 other named passes: four absolute/relative write/resume cases
-report success with an incorrect selected destination and changed working-directory
-state; four UTF-8 controls pass. The identical two-test block passes after correction,
-and all 131 required `--file-metadata-tests` cases pass in 34 groups/190 VM seconds.
-All eight new cases produce exact destination bytes, preserve the unrelated working-directory
-file and decoy sidecars, and retire selected staging names. Each case runs in a joined
-child of the same source-bound test artifact with a private working directory. Fresh
-writes exercise `TransferJob::write` and `finalize_write`; resume exercises the production
-`ReceiveWriteClaim` directly. Evidence: `.harness-state/verifier-vm/receive-native-path-1eb71c10.json`.
-This is nonroot Linux library/filesystem execution, not a demonstrated GUI/FFI or
-privileged-service path. Non-UTF-8 wire names are not enabled. Current application/peer,
-installed/wrong-principal and other-platform acceptance, component-length limits,
-namespace races, physical durability, R-S0/R-F5 and release acceptance remain OPEN.
+`c1df5d00` preserves native bytes when appending receive staging suffixes.
+`e8bb5a19` keeps a native `PathBuf` through digest admission, blocking destination/resume
+inspection and its result; the read-only inspector accepts native paths directly.
+The viewer converts only the dialog label to text. Confirmation still addresses the
+owning session/job/file, and never reparses that label as a filesystem destination.
+This removes empty-string fallback from both staging and inspection address selection.
+
+`receive-native-path-1eb71c10.json` retains the eight write/resume comparisons: the old
+helper reported success with wrong destination/cwd effects on four non-UTF-8 cases;
+UTF-8 controls passed. `receive-inspection-path-746ef804.json` retains eight inspection
+comparisons. At unchanged-product baseline `d2b70906`, both new tests fail with 50
+other named passes: non-UTF-8 existing-file inspection refuses, while resume inspection
+accepts unrelated cwd partial metadata and commits the incoming cache. Inspected file
+identities and bytes are preserved, and UTF-8 controls pass. The identical test block returns exact
+native paths and expected metadata, commits the cache after successful inspection,
+preserves destination/partial/digest identities and bytes, and retires the lease in all
+eight cases. All 133 required `--file-metadata-tests` cases pass in 34 groups/203 VM seconds,
+including all 131 previous tests. The four path tests cover sixteen scenarios in joined
+children of the same source-bound artifact with private working directories. Writes use
+`TransferJob::write`/`finalize_write`; inspection uses `inspect_receive_digest`; the
+standalone resume cases use production `ReceiveWriteClaim`.
+
+This is nonroot Linux library/filesystem evidence. The viewer label/type change is
+source-reviewed only; full-parent execution stays parked. CM source and parked receive
+helpers are unchanged. No GUI/FFI or installed privileged-service reachability is
+established, and non-UTF-8 wire names are not enabled. Application/peer, installed/wrong-
+principal and other-platform acceptance, component-length limits, namespace races,
+physical durability, R-S0/R-F5 and release acceptance remain OPEN.
 
 **Default send enumeration — Linux library A/B ACCEPTED; application/platform evidence OPEN.**
 `TransferJob::new_read`, used by viewer local SendFiles/AddJob, now selects the existing

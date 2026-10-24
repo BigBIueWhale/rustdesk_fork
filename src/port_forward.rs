@@ -378,7 +378,7 @@ fn report_connection_result(
 // R-F1/R-D6/R-S5/PF-1..PF-5: one mapping owns its exclusive listener, immutable
 // target, cancellation domain, and every setup/relay task. Local application bytes are not read
 // until PeerInfo authorizes the connection; mapping shutdown cancels and joins all accepted work.
-pub(crate) async fn listen(
+pub(crate) async fn listen_one_off(
     id: String,
     port: i32,
     interface: impl Interface,
@@ -386,6 +386,9 @@ pub(crate) async fn listen(
     remote_host: String,
     remote_port: i32,
 ) -> ResultType<()> {
+    if !(1..=u16::MAX as i32).contains(&port) {
+        bail!("Invalid local port-forward port");
+    }
     ensure_port_forward_owner_reaper();
     let mapping_permit = PortForwardMappingPermit::try_acquire().map_err(|err| anyhow!(err))?;
     let thread = std::thread::Builder::new()

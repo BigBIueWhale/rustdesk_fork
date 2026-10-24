@@ -175,7 +175,7 @@ pub async fn start_one_port_forward(
     let (sender, _receiver) = viewer_command_channel();
     let handler = Session::new(&id, ConnType::PORT_FORWARD, sender);
     let (_control, receiver) = crate::port_forward::port_forward_control();
-    if let Err(err) = crate::port_forward::listen(
+    if let Err(err) = crate::port_forward::listen_one_off(
         handler.id.clone(),
         port,
         handler.clone(),

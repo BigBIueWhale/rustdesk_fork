@@ -530,25 +530,13 @@ async fn confirm_viewer_file_job(
     Ok(true)
 }
 
-fn inspect_viewer_download_digest(
+async fn inspect_viewer_download_digest(
     job: &mut fs::TransferJob,
     digest: &FileTransferDigest,
     peer_supports_resume: bool,
 ) -> Result<(DigestCheckResult, String), String> {
-    if digest.id != job.id() {
-        return Err(format!(
-            "digest job id {} does not match active job {}",
-            digest.id,
-            job.id()
-        ));
-    }
-    if digest.file_num != job.file_num() {
-        return Err(format!(
-            "digest file number {} does not match active file {}",
-            digest.file_num,
-            job.file_num()
-        ));
-    }
+    job.admit_receive_digest(digest).await
+        .map_err(|error| error.to_string())?;
     let file_num = usize::try_from(digest.file_num)
         .map_err(|_| format!("digest file number {} is negative", digest.file_num))?;
     let file = job
@@ -556,8 +544,6 @@ fn inspect_viewer_download_digest(
         .get(file_num)
         .ok_or_else(|| format!("digest file number {} is out of range", digest.file_num))?;
     let write_path = get_string(&fs::TransferJob::join(job.path(), &file.name));
-    job.set_digest(digest.file_size, digest.last_modified)
-        .map_err(|error| error.to_string())?;
     let result =
         fs::inspect_write_destination(peer_supports_resume && job.is_resume, &write_path, digest)
             .map_err(|error| error.to_string())?;
@@ -3274,7 +3260,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                         job,
                                         &digest,
                                         peer_supports_resume,
-                                    )
+                                    ).await
                                 };
                                 let (result, write_path) = match inspected {
                                     Ok(inspected) => inspected,
@@ -4787,8 +4773,8 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[test]
-    fn r_s11fj_download_digest_metadata_failure_is_explicit() {
+    #[tokio::test]
+    async fn r_s11fj_download_digest_metadata_failure_is_explicit() {
         use std::os::unix::ffi::OsStrExt;
 
         let temp = ViewerFileTestDir::new();
@@ -4834,7 +4820,7 @@ mod tests {
             ..Default::default()
         };
 
-        let error = match inspect_viewer_download_digest(&mut job, &digest, false) {
+        let error = match inspect_viewer_download_digest(&mut job, &digest, false).await {
             Ok(_) => panic!("an unrepresentable local timestamp must not disappear"),
             Err(error) => error,
         };
@@ -4843,8 +4829,8 @@ mod tests {
         assert_eq!(job.file_num(), 0);
     }
 
-    #[test]
-    fn r_s11fj_download_digest_requires_the_exact_active_file() {
+    #[tokio::test]
+    async fn r_s11fj_download_digest_requires_the_exact_active_file() {
         let temp = ViewerFileTestDir::new();
         let mut entry = FileEntry::new();
         entry.name = "incoming.bin".to_owned();
@@ -4868,7 +4854,7 @@ mod tests {
             ..Default::default()
         };
 
-        let error = match inspect_viewer_download_digest(&mut job, &wrong_file, false) {
+        let error = match inspect_viewer_download_digest(&mut job, &wrong_file, false).await {
             Ok(_) => panic!("a digest for another file cannot advance the active job"),
             Err(error) => error,
         };
@@ -4876,8 +4862,8 @@ mod tests {
         assert_eq!(job.file_num(), 0);
     }
 
-    #[test]
-    fn r_s11fj_download_digest_refuses_size_changed_after_listing() {
+    #[tokio::test]
+    async fn r_s11fj_download_digest_refuses_size_changed_after_listing() {
         let temp = ViewerFileTestDir::new();
         let mut entry = FileEntry::new();
         entry.name = "incoming.bin".to_owned();
@@ -4902,7 +4888,7 @@ mod tests {
             ..Default::default()
         };
 
-        let error = match inspect_viewer_download_digest(&mut job, &digest, false) {
+        let error = match inspect_viewer_download_digest(&mut job, &digest, false).await {
             Ok(_) => panic!("a changed source size must not enter the destination inspection"),
             Err(error) => error,
         };

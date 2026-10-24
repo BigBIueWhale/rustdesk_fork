@@ -2930,26 +2930,20 @@ async fn handle_fs(
             let result = if let Some(job) =
                 get_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
-                if job.job.file_num() != file_num || file_num < 0 {
-                    ipc::CmWriteDigestResult::Error(format!(
-                        "digest file {} does not match active write file {}",
-                        file_num,
-                        job.job.file_num()
-                    ))
+                let digest = FileTransferDigest {
+                    id,
+                    file_num,
+                    last_modified,
+                    file_size,
+                    ..Default::default()
+                };
+                if let Err(error) = job.job.admit_receive_digest(&digest).await {
+                    ipc::CmWriteDigestResult::Error(error.to_string())
                 } else {
-                    let digest = FileTransferDigest {
-                        id,
-                        file_num,
-                        last_modified,
-                        file_size,
-                        ..Default::default()
-                    };
                     match job.job.files().get(file_num as usize) {
                         Some(file) => {
                             let path = get_string(&fs::TransferJob::join(job.job.path(), &file.name));
-                            match job.job.set_digest(file_size, last_modified).and_then(|()| {
-                                inspect_write_destination(is_resume, &path, &digest)
-                            }) {
+                            match inspect_write_destination(is_resume, &path, &digest) {
                                 Ok(DigestCheckResult::NoSuchFile) => {
                                     ipc::CmWriteDigestResult::SendConfirm { skip: false }
                                 }

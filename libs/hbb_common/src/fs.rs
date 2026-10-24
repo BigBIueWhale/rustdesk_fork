@@ -3743,7 +3743,17 @@ impl TransferJob {
     }
 
     #[inline]
-    pub fn set_digest(&mut self, size: u64, modified: u64) -> ResultType<()> {
+    pub async fn admit_receive_digest(&mut self, digest: &FileTransferDigest) -> ResultType<()> {
+        if digest.id != self.id {
+            bail!("digest job {} does not match active job {}", digest.id, self.id);
+        }
+        if digest.file_num != self.file_num {
+            bail!(
+                "digest file number {} does not match active file {}",
+                digest.file_num, self.file_num
+            );
+        }
+        let (size, modified) = (digest.file_size, digest.last_modified);
         if self.role != TransferRole::Receive {
             bail!("cannot admit an incoming digest into a send job");
         }
@@ -5864,6 +5874,120 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn file_metadata_next_digest_completes_the_previous_file() {
+        let mut outcomes = Vec::new();
+        for (case, sizes) in [[3usize, 5, 0], [0, 4, 2], [3, 3, 3]].iter().enumerate() {
+            let tmp = TestTempDir::new("rustdesk_next_digest");
+            let source = tmp.join("source");
+            let target = tmp.join("target");
+            std::fs::create_dir_all(&source).unwrap();
+            std::fs::create_dir_all(&target).unwrap();
+            for (index, size) in sizes.iter().enumerate() {
+                let name = format!("{index}.zip");
+                std::fs::write(source.join(&name), vec![b'a' + index as u8; *size]).unwrap();
+                std::fs::write(target.join(&name), b"original").unwrap();
+            }
+            let mut sender = TransferJob::new_read(
+                83, JobType::Generic, String::new(), source.clone(), 0, false, false, true,
+            ).unwrap();
+            let files = sender.files().clone();
+            assert_eq!(files.len(), 3);
+            let mut receiver = TransferJob::new_write(
+                83, JobType::Generic, String::new(), target.clone(), 0, false, false, true,
+            ).with_files(files.clone()).unwrap();
+            let mut admitted = true;
+            for (index, entry) in files.iter().enumerate() {
+                let (modified, size) = sender.init_data_stream_for_cm().await.unwrap().unwrap();
+                let digest = FileTransferDigest {
+                    id: 83, file_num: index as i32, file_size: size, last_modified: modified,
+                    ..Default::default()
+                };
+                if let Err(error) = receiver.admit_receive_digest(&digest).await {
+                    println!("RECEIVE_NEXT_DIGEST=refused case={case} file={index} error={error}");
+                    admitted = false;
+                    break;
+                }
+                assert_eq!(receiver.file_num(), index as i32);
+                for previous in &files[..index] {
+                    assert_eq!(std::fs::read(target.join(&previous.name)).unwrap(),
+                               std::fs::read(source.join(&previous.name)).unwrap());
+                }
+                let path = target.join(&entry.name);
+                assert!(matches!(inspect_write_destination(false, path.to_str().unwrap(), &digest)
+                    .unwrap(), DigestCheckResult::NeedConfirm(_)));
+                let confirmation = receiver.confirm_with_offset(index as i32, 0).await.unwrap();
+                sender.confirm(&confirmation).await.unwrap();
+                while sender.file_num() == index as i32 {
+                    let block = sender.read().await.unwrap().unwrap();
+                    assert_eq!(block.file_num, index as i32);
+                    receiver.write(block).await.unwrap();
+                }
+            }
+            let committed = admitted && receiver.finalize_write(sender.file_num()).await.is_ok();
+            if !committed {
+                receiver.retire_current_file_state().unwrap();
+            }
+            let exact = files.iter().all(|entry| {
+                std::fs::read(target.join(&entry.name)).unwrap()
+                    == std::fs::read(source.join(&entry.name)).unwrap()
+            });
+            let clean = files.iter().all(|entry| [".download", ".digest", ".download.lock"]
+                .iter().all(|suffix| !recv_sidecar_path(&target.join(&entry.name), suffix).exists()));
+            let counted = receiver.finished_size() == sender.total_size()
+                && sender.finished_size() == sender.total_size();
+            println!("RECEIVE_NEXT_DIGEST=observed case={case} admitted={admitted} committed={committed} exact_bytes={exact} sidecars_absent={clean} counted={counted}");
+            outcomes.push(committed && exact && clean && counted);
+        }
+        assert!(outcomes.into_iter().all(|passed| passed));
+    }
+
+    #[tokio::test]
+    async fn file_metadata_next_digest_refusal_preserves_the_current_claim() {
+        for prefix in [2, 4] {
+            let tmp = TestTempDir::new("rustdesk_next_digest_refusal");
+            std::fs::create_dir_all(&tmp.path).unwrap();
+            let mut receiver = TransferJob::new_write(
+                84, JobType::Generic, String::new(), tmp.path.clone(), 0, false, false, true,
+            ).with_files(vec![
+                FileEntry { name: "first.zip".into(), size: 4, ..Default::default() },
+                FileEntry { name: "next.zip".into(), size: 3, ..Default::default() },
+                FileEntry { name: "last.zip".into(), size: 1, ..Default::default() },
+            ]).unwrap();
+            receiver.admit_receive_digest(&FileTransferDigest {
+                id: 84, file_num: 0, file_size: 4, last_modified: 17,
+                ..Default::default()
+            }).await.unwrap();
+            receiver.confirm_with_offset(0, 0).await.unwrap();
+            receiver.write(FileTransferBlock {
+                id: 84, file_num: 0, data: b"abcd"[..prefix].to_vec().into(),
+                ..Default::default()
+            }).await.unwrap();
+            let mut cases = vec![("wrong-job", 85, 1, 3), ("negative", 84, -1, 3),
+                ("past-list", 84, 3, 1), ("skipped-index", 84, 2, 1),
+                ("wrong-size", 84, 1, 9)];
+            if prefix == 2 { cases.push(("short-predecessor", 84, 1, 3)); }
+            for (case, id, file_num, file_size) in cases {
+                let result = receiver.admit_receive_digest(&FileTransferDigest {
+                    id, file_num, file_size, last_modified: 23, ..Default::default()
+                }).await;
+                let preserved = receiver.file_num() == 0 && receiver.file_confirmed()
+                    && receiver.digest == FileDigest { size: 4, modified: 17 }
+                    && receiver.receive_file_offset == prefix as u64
+                    && receiver.finished_size() == prefix as u64
+                    && receiver.transferred() == prefix as u64
+                    && receiver.data_stream.is_some() && receiver.receive_write_claim.is_some()
+                    && std::fs::read(tmp.join("first.zip.download")).unwrap() == b"abcd"[..prefix]
+                    && !tmp.join("first.zip").exists() && !tmp.join("next.zip").exists()
+                    && !tmp.join("next.zip.download").exists();
+                println!("RECEIVE_NEXT_DIGEST_REFUSAL=observed prefix={prefix} case={case} refused={} preserved={preserved}", result.is_err());
+                assert!(result.is_err() && preserved);
+            }
+            receiver.retire_current_file_state().unwrap();
+            assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 0);
+        }
+    }
+
+    #[tokio::test]
     async fn file_metadata_receive_digest_stays_bound_to_admitted_size() {
         let mut outcomes = Vec::new();
         for (case, incoming_size) in [
@@ -5882,8 +6006,8 @@ mod tests {
             }]).unwrap();
             // Observe the admitted state independently of the setter's return type, so this
             // regression also executes against the former unchecked setter.
-            let _ = job.set_digest(3, 17);
-            let _ = job.set_digest(incoming_size, 23);
+            let _ = job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: 3, last_modified: 17, ..Default::default() }).await;
+            let _ = job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: incoming_size, last_modified: 23, ..Default::default() }).await;
             let admitted = job.digest.size == 3
                 && job.digest.modified == if incoming_size == 3 { 23 } else { 17 };
             let unchanged = std::fs::read(&path).unwrap() == b"old!"
@@ -5994,7 +6118,7 @@ mod tests {
                 name: "incoming.bin".into(), size: 3, modified_time: 1_600_000_000,
                 ..Default::default()
             }]).unwrap();
-            job.set_digest(3, 1_600_000_000).unwrap();
+            job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: 3, last_modified: 1_600_000_000, ..Default::default() }).await.unwrap();
             job.confirm_with_offset(0, available as u64).await.unwrap();
             if available < 3 {
                 job.write(FileTransferBlock {
@@ -8108,7 +8232,7 @@ mod tests {
             .expect("create resumed receive job");
         job.files[0].size = 4;
         job.is_resume = true;
-        job.set_digest(4, 17).expect("admit the matching resume digest");
+        job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: 4, last_modified: 17, ..Default::default() }).await.expect("admit the matching resume digest");
         job.confirm(&FileTransferSendConfirmRequest {
             id: 98,
             file_num: 0,
@@ -8368,7 +8492,7 @@ mod tests {
                 let mut job =
                     new_write_job(90, path, "incoming.bin").expect("create owning receive job");
                 job.files[0].size = TOTAL_SIZE;
-                job.set_digest(TOTAL_SIZE, MODIFIED).unwrap();
+                job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: TOTAL_SIZE, last_modified: MODIFIED, ..Default::default() }).await.unwrap();
                 job.write(FileTransferBlock {
                     id: 90,
                     file_num: 0,
@@ -8387,7 +8511,7 @@ mod tests {
                 let mut job =
                     new_write_job(91, path, "incoming.bin").expect("create competing receive job");
                 job.files[0].size = TOTAL_SIZE;
-                job.set_digest(TOTAL_SIZE, MODIFIED).unwrap();
+                job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: TOTAL_SIZE, last_modified: MODIFIED, ..Default::default() }).await.unwrap();
                 let error = job
                     .write(FileTransferBlock {
                         id: 91,
@@ -8411,7 +8535,7 @@ mod tests {
                     new_write_job(92, path, "incoming.bin").expect("create resumed receive job");
                 job.files[0].size = TOTAL_SIZE;
                 job.is_resume = true;
-                job.set_digest(TOTAL_SIZE, MODIFIED).unwrap();
+                job.admit_receive_digest(&FileTransferDigest { id: job.id(), file_num: job.file_num(), file_size: TOTAL_SIZE, last_modified: MODIFIED, ..Default::default() }).await.unwrap();
                 job.confirm(&FileTransferSendConfirmRequest {
                     id: 92,
                     file_num: 0,

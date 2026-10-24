@@ -3742,9 +3742,13 @@ impl TransferJob {
         Ok(())
     }
 
-    /// Admit the current or immediately succeeding receive-file digest. The sender
-    /// requests the next file's decision before it can send that file's first block.
-    async fn admit_receive_digest(&mut self, digest: &FileTransferDigest) -> ResultType<()> {
+    /// Inspect the current or immediately succeeding receive file before publishing
+    /// its digest cache. A completed predecessor remains committed if inspection fails.
+    pub async fn inspect_receive_digest(
+        &mut self,
+        digest: &FileTransferDigest,
+        is_resume: bool,
+    ) -> ResultType<(DigestCheckResult, String)> {
         if digest.id != self.id {
             bail!("digest job {} does not match active job {}", digest.id, self.id);
         }
@@ -3771,6 +3775,7 @@ impl TransferJob {
                 file.size
             );
         }
+        let path = get_string(&Self::join(&self.path, &file.name));
         if digest.file_num != self.file_num {
             // All incoming metadata is checked before publishing the previous
             // file. Its exact claim must complete before the next index exists.
@@ -3779,21 +3784,6 @@ impl TransferJob {
             self.set_file_confirmed(false);
             self.set_file_is_waiting(false);
         }
-        self.digest = FileDigest { size, modified };
-        Ok(())
-    }
-
-    pub async fn inspect_receive_digest(
-        &mut self,
-        digest: &FileTransferDigest,
-        is_resume: bool,
-    ) -> ResultType<(DigestCheckResult, String)> {
-        self.admit_receive_digest(digest).await?;
-        let file_num = usize::try_from(digest.file_num)
-            .map_err(|_| anyhow!("invalid digest file number {}", digest.file_num))?;
-        let file = self.files.get(file_num)
-            .ok_or_else(|| anyhow!("invalid digest file number {}", digest.file_num))?;
-        let path = get_string(&Self::join(&self.path, &file.name));
         let request = FileTransferDigest {
             id: digest.id,
             file_num: digest.file_num,
@@ -3801,10 +3791,12 @@ impl TransferJob {
             last_modified: digest.last_modified,
             ..Default::default()
         };
-        tokio::task::spawn_blocking(move || {
+        let inspected = tokio::task::spawn_blocking(move || {
             inspect_write_destination(is_resume, &path, &request)
                 .map(|result| (result, path))
-        }).await?
+        }).await??;
+        self.digest = FileDigest { size, modified };
+        Ok(inspected)
     }
 
     #[inline]
@@ -5931,7 +5923,7 @@ mod tests {
                 83, JobType::Generic, String::new(), target.clone(), 0, false, false, true,
             ).with_files(files.clone()).unwrap();
             let mut admitted = true;
-            for (index, entry) in files.iter().enumerate() {
+            for (index, _) in files.iter().enumerate() {
                 let (modified, size) = sender.init_data_stream_for_cm().await.unwrap().unwrap();
                 let digest = FileTransferDigest {
                     id: 83, file_num: index as i32, file_size: size, last_modified: modified,

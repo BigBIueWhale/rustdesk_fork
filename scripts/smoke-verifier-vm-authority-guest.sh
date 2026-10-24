@@ -3489,6 +3489,8 @@ run_focused_rust_tests() {
                 libs/hbb_common/src/config/linux_directory.rs
             )
             required_tests=(
+                config::option_tests::stored_prs_rejects_invalid_decoded_values_without_mutation
+                config::option_tests::prs_storage_writer_and_runtime_share_canonical_value_admission
                 password_security::test::test_storage_wrappers
                 password_security::test::test_storage_key_lookup_failure_refuses_wrapping
                 password_security::test::test_is_encrypted

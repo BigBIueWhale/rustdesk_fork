@@ -1,6 +1,118 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
+fn invalid_prs_values() -> Vec<(&'static str, String)> {
+    let valid = base64::encode(&[0xffu8; PERMANENT_PASSWORD_H1_LEN], base64::Variant::Original);
+    let mut pad_bits = valid.clone().into_bytes();
+    pad_bits[42] = b'9';
+    vec![
+        ("not-base64", "not a PRS".into()),
+        ("short", base64::encode(&[0x5au8; 31], base64::Variant::Original)),
+        ("long", base64::encode(&[0x5au8; 33], base64::Variant::Original)),
+        ("unpadded", valid.trim_end_matches('=').into()),
+        ("extra-padding", format!("{valid}=")),
+        ("leading-space", format!(" {valid}")),
+        ("trailing-newline", format!("{valid}\n")),
+        ("urlsafe", valid.replace('/', "_")),
+        ("pad-bits", String::from_utf8(pad_bits).unwrap()),
+        ("unicode", "é".into()),
+    ]
+}
+
+#[test]
+fn stored_prs_rejects_invalid_decoded_values_without_mutation() {
+    use std::os::unix::fs::MetadataExt;
+    in_private_process("config::option_tests::stored_prs_rejects_invalid_decoded_values_without_mutation", |_| {
+        assert!(RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().is_none());
+        let (password, healthy_storage) = derive_permanent_password_storages("stored PRS fixture password").unwrap();
+        let healthy = decrypt_permanent_password_prs_storage(&healthy_storage).unwrap();
+        let file = Config::file_("");
+        let mut cases: Vec<_> = invalid_prs_values().into_iter()
+            .map(|(kind, value)| (kind, value.into_bytes())).collect();
+        cases.push(("invalid-utf8", vec![0xff, 0xfe]));
+        let mut all_refused = true;
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        for (kind, plain) in cases {
+            let cipher = crate::password_security::symmetric_crypt(&plain, true).unwrap();
+            let storage = permanent_password::PERMANENT_PASSWORD_ENC_VERSION.to_owned()
+                + &base64::encode(cipher, base64::Variant::Original);
+            let config = Config {
+                password: password.clone(), password_prs: storage,
+                salt: "preserved-salt".into(), ..Default::default()
+            };
+            store_path(file.clone(), &config).unwrap();
+            *CONFIG.write().unwrap() = read_config_view::<Config>(&file).unwrap();
+            let bytes = fs::read(&file).unwrap();
+            let identity = |path: &Path| { let m = fs::metadata(path).unwrap(); (m.dev(), m.ino(), m.mode(), m.len()) };
+            let before = identity(&file);
+            let names = || {
+                let mut entries: Vec<_> = fs::read_dir(file.parent().unwrap()).unwrap()
+                    .map(|entry| entry.unwrap().file_name()).collect();
+                entries.sort(); entries
+            };
+            let original_names = names();
+            let cache = toml::to_string(&*CONFIG.read().unwrap()).unwrap();
+            let generation = *PERMANENT_PASSWORD_CREDENTIAL_GENERATION.read().unwrap();
+            let mut refused = true;
+            for _ in 0..2 {
+                refused &= Config::read_permanent_password_prs() == PermanentPasswordPrsRead::UndecryptableStorage;
+                refused &= !Config::has_permanent_password();
+                refused &= Config::read_permanent_password_credential_snapshot().into_parts()
+                    == (PermanentPasswordPrsRead::UndecryptableStorage, generation);
+            }
+            let preserved = fs::read(&file).unwrap() == bytes && identity(&file) == before
+                && names() == original_names && toml::to_string(&*CONFIG.read().unwrap()).unwrap() == cache;
+            println!("OPTION_COMMIT_PRS_READER=observed kind={kind} refused={refused} preserved={preserved}");
+            all_refused &= refused && preserved;
+        }
+        for (kind, storage, expected) in [
+            ("valid", healthy_storage, PermanentPasswordPrsRead::Available(healthy)),
+            ("clear", String::new(), PermanentPasswordPrsRead::Empty),
+            ("encrypted-empty", permanent_password::encrypt_permanent_password_prs_storage("").unwrap(), PermanentPasswordPrsRead::Empty),
+        ] {
+            let config = Config { password: password.clone(), password_prs: storage, salt: "preserved-salt".into(), ..Default::default() };
+            store_path(file.clone(), &config).unwrap();
+            *CONFIG.write().unwrap() = read_config_view::<Config>(&file).unwrap();
+            let correct = Config::read_permanent_password_prs() == expected
+                && Config::has_permanent_password() == expected.is_available();
+            println!("OPTION_COMMIT_PRS_READER=control kind={kind} correct={correct}");
+            assert!(correct);
+        }
+        let after_fds = fds();
+        println!("OPTION_COMMIT_PRS_READER=handles before={before_fds} after={after_fds}");
+        assert_eq!(before_fds, after_fds);
+        assert!(all_refused);
+    });
+}
+
+#[test]
+fn prs_storage_writer_and_runtime_share_canonical_value_admission() {
+    in_private_process("config::option_tests::prs_storage_writer_and_runtime_share_canonical_value_admission", |_| {
+        let valid = base64::encode(&[0x5au8; PERMANENT_PASSWORD_H1_LEN], base64::Variant::Original);
+        assert!(Config::set_permanent_password_prs_for_runtime(&valid).unwrap());
+        let generation = Config::read_permanent_password_credential_snapshot().generation();
+        let mut all_refused = true;
+        for (kind, value) in invalid_prs_values() {
+            let write_refused = permanent_password::encrypt_permanent_password_prs_storage(&value).is_none();
+            let runtime_refused = Config::set_permanent_password_prs_for_runtime(&value).is_err();
+            let preserved = Config::read_permanent_password_credential_snapshot().into_parts()
+                == (PermanentPasswordPrsRead::Available(valid.clone()), generation);
+            println!("OPTION_COMMIT_PRS_WRITER=observed kind={kind} write_refused={write_refused} runtime_refused={runtime_refused} preserved={preserved}");
+            all_refused &= write_refused && runtime_refused && preserved;
+        }
+        let storage = permanent_password::encrypt_permanent_password_prs_storage(&valid).unwrap();
+        assert_eq!(decrypt_permanent_password_prs_storage(&storage), Some(valid));
+        assert!(Config::set_permanent_password_prs_for_runtime("").unwrap());
+        assert_eq!(Config::read_permanent_password_prs(), PermanentPasswordPrsRead::Empty);
+        let cleared = permanent_password::encrypt_permanent_password_prs_storage("").unwrap();
+        assert_eq!(decrypt_permanent_password_prs_storage(&cleared), Some(String::new()));
+        assert!(!Config::file_("").exists());
+        println!("OPTION_COMMIT_PRS_WRITER=controls valid_round_trip=true clear=true runtime_nonpersistent=true");
+        assert!(all_refused);
+    });
+}
+
 #[path = "local_transaction_tests.rs"]
 mod local_transaction_tests;
 

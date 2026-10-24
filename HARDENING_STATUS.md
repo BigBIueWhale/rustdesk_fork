@@ -12297,14 +12297,16 @@ despite stale sender clones. R-S11gw / Appendix C #358 is the normative contract
 
 **Current evidence shared with R-S11gy/R-S11gz.** The focused command is
 `bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
-At `a51224db`, all 60 named native Rust cases pass with actual Tokio channels,
-OS threads and production-generated protobufs. All 26 input receipts and 36 source
-parts match that source. The prior 57 bodies remain unchanged. Three new voice
-cases cover six allowed action/type controls, 42 owner/type/admission outcomes and
-three joined delayed-replacement schedules. `cm-voice-owner-a82d8f2a.json` binds
-source, artifacts, dependencies, A/B observations, bounded-RAM storage and joined
-cleanup. Earlier close/history, owner, chat, cursor, marker and growth-refusal
-evidence remains in `cm-close-admission-073543c5.json`,
+At `bd528a32`, all 64 named Rust cases pass in the native Linux component,
+including real Tokio channels, OS threads and generated protobufs. All 29 input
+receipts and 40 source parts match that source. The prior 60 bodies stay unchanged.
+Four new viewer voice tests execute the production receive/close/stop branches
+with explicit audio, handler, transport and clock doubles: four matching/failure
+controls, 24 mismatches, two manual cancellations and eight remote-close schedules.
+`viewer-voice-finality-77b80354.json` binds source, artifacts, locked dependencies,
+A/B observations and joined bounded-RAM cleanup. Earlier CM voice, close/history,
+owner, chat, cursor, marker and growth-refusal evidence remains in
+`cm-voice-owner-a82d8f2a.json`, `cm-close-admission-073543c5.json`,
 `cm-disconnect-owner-feb8f4cd.json`, `chat-send-owner-6c616053.json`,
 `cursor-echo-clock-2b2aaacb.json`, `recent-document-markers-571ee664.json` and
 `file-clipboard-growth-fc23970f.json`; Windows Shell is unexecuted.
@@ -12323,7 +12325,7 @@ clipboard, complete service producers, connection loops and CM IPC do not.
 Owner/deallocation flags establish lifetime, not RSS or whole-process memory bounds;
 error formatting and surrounding allocations remain available during selective faults.
 The older raw-backing baseline has test/artifact receipts but lacks full input/source
-receipts; its corrected run and the current 60-case run supply those bindings.
+receipts; its corrected run and the current 64-case run supply those bindings.
 Script wiring, source patterns and historical string mutations do not establish behavior.
 The profile remains 2 GiB guest / 6 GiB RAM scratch / 4 GiB overlay / 6 GiB host
 headroom / 1 GiB overhead, with no disk fallback and joined retirement.
@@ -13341,6 +13343,46 @@ controls/dialog lifetime, MainService/device notifications, per-call identity
 within one registry generation, full parent, installed/other-platform behavior,
 all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
 Every full-parent/bootstrap and other user park remains unchanged.
+
+**Viewer voice reply consumption and pending cancellation — production control flow
+verified with I/O doubles; full native audio/peer acceptance OPEN.** `bd528a32`
+clears the pending voice-request slot at the start of `stop_voice_call`, including
+the early return with no active audio. A remote close treats a pending request as
+owned work and routes it through that stop method. An unmatched response leaves
+the pending slot intact; only a matching timestamp consumes it, synchronously
+before the first response await. Accepted/refused behavior, prior exact audio stop,
+start failure notification and explicit peer close retain their existing paths.
+The destructive pre-validation `mem::replace` is removed.
+
+At unchanged-product preparation `cd9ac810`, 61 tests pass and three new tests
+fail. All 24 mismatches consume the current pending request and suppress its
+subsequent valid response. Manual stop leaves the slot live: late acceptance calls
+audio start, while late refusal publishes an extra close callback. Remote close
+also fails pending-only or pending-plus-active cancellation. The identical corrected
+64-case cohort passes: four accepted/refused/replacement/start-failure controls,
+eight duplicate replies, 24 mismatch schedules, two manual cancellations and eight
+remote-close schedules. Late replies are delivered before any replacement request.
+All prior 60 bodies and locked dependencies stay unchanged. Across 29 inputs
+and 40 parts, only `src/client/io_loop.rs` and its receive/stop parts differ.
+An earlier 61/3 run omitted new per-case output; its bounded diagnostic is retained
+separately, and the repeated unchanged-product baseline supplies full observations.
+The first corrected execution passed all 64 but its final VM receipt interleaved
+with shutdown output; the exact candidate was repeated for outer acceptance.
+
+The executed bodies are the actual production VoiceCallRequest/Response branches,
+manual-close branch, stop method and message constructors, with generated protobufs.
+Audio start/stop, handler callbacks, transport and clock are explicit fixture doubles.
+This proves control-flow state and effect selection; it does not execute the complete
+IoLoop, microphone, subscription/input lease, real transport or displayed interaction.
+Flutter, public FFI, constructors, wire schema, controlled-side service/CM and Android
+sources are unchanged; no fresh Dart or parent build is claimed.
+
+Evidence: `.harness-state/verifier-vm/viewer-voice-finality-77b80354.json`.
+Full parent/IoLoop and real-peer/native audio/device cleanup, rendered controls,
+globally fresh request IDs and overlap admission, CM per-call identity, Android
+notification/device behavior, installed/other-platform execution, all fifteen
+credential actions, R-S0/R-F5, soak and release acceptance remain OPEN.
+All full-parent/bootstrap and other user parks remain unchanged.
 
 Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests

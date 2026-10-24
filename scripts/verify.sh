@@ -14265,7 +14265,7 @@ grep -q 'open_recv_write_no_follow(Path::new(&path), true)' libs/hbb_common/src/
 grep -q 'fn finish_recv_write_no_follow' libs/hbb_common/src/fs.rs                       || r_s8ft_missing="$r_s8ft_missing finish-helper"
 grep -q 'renameat' libs/hbb_common/src/fs.rs                                             || r_s8ft_missing="$r_s8ft_missing renameat"
 grep -q 'set_file_handle_times' libs/hbb_common/src/fs.rs                                || r_s8ft_missing="$r_s8ft_missing handle-mtime"
-grep -q 'read_recv_sidecar_to_string_no_follow' libs/hbb_common/src/fs.rs                || r_s8ft_missing="$r_s8ft_missing sidecar-read-nofollow"
+grep -q 'lease.read_sidecar(&digest_path, 4096)' libs/hbb_common/src/fs.rs                || r_s8ft_missing="$r_s8ft_missing lease-sidecar-read"
 if grep -qE 'File::create\(&path\)' libs/hbb_common/src/fs.rs; then r_s8ft_missing="$r_s8ft_missing raw-File::create-remains"; fi
 # --- Windows equivalent: the reparse-safe, handle-relative NT walk (mirrors the Unix openat walk) ---
 grep -q 'mod nt_nofollow' libs/hbb_common/src/fs.rs                                      || r_s8ft_missing="$r_s8ft_missing win-nt-module"

@@ -1717,12 +1717,6 @@ fn sync_recv_directory(directory: &std::fs::File) -> std::io::Result<()> {
 }
 
 #[cfg(unix)]
-fn sync_recv_parent_no_follow(path: &Path) -> std::io::Result<()> {
-    let parent = open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
-    sync_recv_directory(&parent)
-}
-
-#[cfg(unix)]
 fn stat_is_regular(stat: &crate::libc::stat) -> bool {
     (stat.st_mode & (crate::libc::S_IFMT as crate::libc::mode_t))
         == (crate::libc::S_IFREG as crate::libc::mode_t)
@@ -2767,6 +2761,7 @@ mod nt_nofollow {
         }
         Ok(content)
     }
+
 }
 
 /// R-S8 / R-A5: open a file-transfer RECEIVE-write target with NO-FOLLOW semantics across the
@@ -2786,6 +2781,7 @@ enum ReceiveFileCreation {
     CreateNew,
 }
 
+#[cfg(any(test, not(unix)))]
 fn open_recv_file_no_follow_std(
     path: &Path,
     truncate: bool,
@@ -2905,52 +2901,62 @@ fn unlink_recv_child_no_follow(parent_fd: i32, name: &std::ffi::CStr) -> std::io
     }
 }
 
-#[cfg(any(unix, windows))]
-fn ensure_recv_path_matches_open_file(path: &Path, file: &std::fs::File) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::{fs::MetadataExt, io::AsRawFd};
-
-        let parent =
-            open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
-        let name = cstring_file_name(path)?;
-        let named = fstatat_regular_no_follow(parent.as_raw_fd(), &name)?
-            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
-        let opened = file.metadata()?;
-        if named.st_dev as u64 != opened.dev() || named.st_ino as u64 != opened.ino() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "receive artifact generation changed while its lease was held",
-            ));
-        }
-        return Ok(());
+#[cfg(unix)]
+fn ensure_recv_child_matches_open_file(
+    parent: &std::fs::File,
+    name: &std::ffi::CStr,
+    file: &std::fs::File,
+) -> std::io::Result<()> {
+    use std::os::unix::{fs::MetadataExt, io::AsRawFd};
+    let named = fstatat_regular_no_follow(parent.as_raw_fd(), name)?
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
+    let opened = file.metadata()?;
+    if named.st_dev as u64 != opened.dev() || named.st_ino as u64 != opened.ino() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "receive artifact generation changed while its lease was held",
+        ));
     }
-
-    #[cfg(windows)]
-    {
-        nt_nofollow::ensure_recv_path_matches_open_file(path, file)
-    }
+    Ok(())
 }
 
+#[cfg(unix)]
+fn remove_recv_child_at(
+    parent: &std::fs::File,
+    name: &std::ffi::CStr,
+    file: &std::fs::File,
+) -> std::io::Result<()> {
+    use std::os::unix::{fs::MetadataExt, io::AsRawFd};
+    match ensure_recv_child_matches_open_file(parent, name, file) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound
+            && file.metadata()?.nlink() == 0 => return Ok(()),
+        Err(error) => return Err(error),
+    }
+    unlink_recv_child_no_follow(parent.as_raw_fd(), name)?;
+    if fstatat_regular_no_follow(parent.as_raw_fd(), name)?.is_some()
+        || file.metadata()?.nlink() != 0
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "receive artifact removal is uncertain because its name or retained object is still linked",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn ensure_recv_path_matches_open_file(path: &Path, file: &std::fs::File) -> std::io::Result<()> {
+    nt_nofollow::ensure_recv_path_matches_open_file(path, file)
+}
+
+#[cfg(any(test, not(unix)))]
 fn remove_open_recv_file_no_follow(path: &Path, file: &std::fs::File) -> std::io::Result<()> {
     #[cfg(unix)]
     {
-        use std::os::unix::{fs::MetadataExt, io::AsRawFd};
-
-        match ensure_recv_path_matches_open_file(path, file) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                if file.metadata()?.nlink() == 0 {
-                    return Ok(());
-                }
-                return Err(error);
-            }
-            Err(error) => return Err(error),
-        }
         let parent =
             open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
-        let name = cstring_file_name(path)?;
-        return unlink_recv_child_no_follow(parent.as_raw_fd(), &name);
+        return remove_recv_child_at(&parent, &cstring_file_name(path)?, file);
     }
 
     #[cfg(windows)]
@@ -2967,12 +2973,17 @@ fn remove_open_recv_file_no_follow(path: &Path, file: &std::fs::File) -> std::io
 }
 
 fn remove_receive_artifacts_and_sync_parent(
-    final_path: &Path,
+    lease: &ReceivePathLease,
     artifacts: &[(&Path, &std::fs::File)],
 ) -> std::io::Result<()> {
     let mut first_error = None;
     for (path, file) in artifacts {
-        if let Err(error) = remove_open_recv_file_no_follow(path, file) {
+        #[cfg(unix)]
+        let result = lease.child_name(path)
+            .and_then(|name| remove_recv_child_at(&lease.parent, &name, file));
+        #[cfg(not(unix))]
+        let result = remove_open_recv_file_no_follow(path, file);
+        if let Err(error) = result {
             if first_error.is_none() {
                 first_error = Some(error);
             } else {
@@ -2988,13 +2999,13 @@ fn remove_receive_artifacts_and_sync_parent(
     // Persist every namespace removal that did succeed, even when another exact artifact could
     // not be removed. Only a fully successful barrier permits retirement of the stable lock name.
     #[cfg(unix)]
-    if let Err(error) = sync_recv_parent_no_follow(final_path) {
+    if let Err(error) = sync_recv_directory(&lease.parent) {
         if first_error.is_none() {
             first_error = Some(error);
         } else {
             log::warn!(
                 "additional receive cleanup directory synchronization failure for {}: {}",
-                final_path.display(),
+                lease.path.display(),
                 error
             );
         }
@@ -3007,7 +3018,7 @@ fn remove_receive_artifacts_and_sync_parent(
             } else {
                 log::warn!(
                     "additional receive cleanup full-storage synchronization failure for {}: {}",
-                    final_path.display(),
+                    lease.path.display(),
                     error
                 );
             }
@@ -3029,6 +3040,43 @@ fn visible_receive_commit_durability_error(error: std::io::Error) -> std::io::Er
     )
 }
 
+#[cfg(unix)]
+fn finish_recv_write_at(
+    parent: &std::fs::File,
+    path: &Path,
+    download_file: &std::fs::File,
+    digest_file: &std::fs::File,
+    modified_time: u64,
+    published: &mut bool,
+) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+    if *published {
+        return Err(io_invalid_input("receive generation is already published"));
+    }
+    let mtime = checked_file_mtime(modified_time)?;
+    let final_name = cstring_file_name(path)?;
+    let download_name = cstring_file_name(&recv_sidecar_path(path, ".download"))?;
+    let digest_name = cstring_file_name(&recv_sidecar_path(path, ".digest"))?;
+    ensure_recv_child_matches_open_file(parent, &download_name, download_file)?;
+    filetime::set_file_handle_times(download_file, None, Some(mtime))?;
+    sync_recv_regular_file(download_file)?;
+    remove_recv_child_at(parent, &digest_name, digest_file)?;
+    if unsafe {
+        crate::libc::renameat(
+            parent.as_raw_fd(), download_name.as_ptr(),
+            parent.as_raw_fd(), final_name.as_ptr(),
+        )
+    } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    *published = true;
+    sync_recv_directory(parent).map_err(visible_receive_commit_durability_error)?;
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    sync_recv_regular_file(download_file).map_err(visible_receive_commit_durability_error)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
 fn finish_recv_write_no_follow(
     path: &Path,
     download_file: &std::fs::File,
@@ -3043,40 +3091,6 @@ fn finish_recv_write_no_follow(
         ));
     }
     let mtime = checked_file_mtime(modified_time)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::io::AsRawFd;
-
-        let parent =
-            open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
-        let final_name = cstring_file_name(path)?;
-        let download_path = recv_sidecar_path(path, ".download");
-        let download_name = cstring_file_name(&download_path)?;
-        filetime::set_file_handle_times(&download_file, None, Some(mtime))?;
-        sync_recv_regular_file(download_file)?;
-        ensure_recv_path_matches_open_file(&download_path, download_file)?;
-        remove_open_recv_file_no_follow(&recv_sidecar_path(path, ".digest"), digest_file)?;
-        if unsafe {
-            crate::libc::renameat(
-                parent.as_raw_fd(),
-                download_name.as_ptr(),
-                parent.as_raw_fd(),
-                final_name.as_ptr(),
-            )
-        } != 0
-        {
-            return Err(std::io::Error::last_os_error());
-        }
-        *published = true;
-        // File-data synchronization does not persist the containing directory entry. The rename
-        // is already visible if this barrier fails, so return an explicit outcome-uncertain error
-        // rather than pretending the publication did not happen.
-        sync_recv_directory(&parent).map_err(visible_receive_commit_durability_error)?;
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        sync_recv_regular_file(download_file).map_err(visible_receive_commit_durability_error)?;
-        return Ok(());
-    }
-
     #[cfg(windows)]
     {
         nt_nofollow::finish_recv_write(path, download_file, digest_file, mtime, published)
@@ -3096,58 +3110,17 @@ fn finish_recv_write_no_follow(
     }
 }
 
-fn read_recv_sidecar_to_string_no_follow(path: &Path, max_bytes: u64) -> std::io::Result<String> {
-    #[cfg(unix)]
-    {
-        use std::io::Read;
-        let file = open_existing_regular_no_follow(path)?;
-        validate_recv_file_authority(&file)?;
-        let mut reader = file.take(max_bytes.saturating_add(1));
-        let mut content = String::new();
-        reader.read_to_string(&mut content)?;
-        if content.len() as u64 > max_bytes {
-            return Err(io_invalid_input("receive sidecar is too large"));
-        }
-        return Ok(content);
-    }
-
-    #[cfg(windows)]
-    {
-        nt_nofollow::read_recv_sidecar(path, max_bytes)
-    }
-
-    #[cfg(all(not(unix), not(windows)))]
-    {
-        let _ = max_bytes;
-        std::fs::read_to_string(path)
-    }
-}
-
-/// On supported native targets, open an existing destination as a regular file without following
-/// its name or any parent link. Receive-artifact ownership checks intentionally remain on
-/// `.digest`/`.download`, not on a pre-existing user destination that this read-only decision does
-/// not own.
+/// Read-only destination inspection does not require ownership of an existing user file.
+#[cfg(not(unix))]
 fn open_recv_inspection_file_no_follow(path: &Path) -> std::io::Result<std::fs::File> {
-    #[cfg(unix)]
-    {
-        open_existing_regular_no_follow(path)
-    }
-
     #[cfg(windows)]
     {
         nt_nofollow::open_recv_inspection(path)
     }
-
-    #[cfg(all(not(unix), not(windows)))]
+    #[cfg(not(windows))]
     {
         std::fs::File::open(path)
     }
-}
-
-fn open_recv_sidecar_for_inspection(path: &Path) -> std::io::Result<std::fs::File> {
-    let file = open_recv_inspection_file_no_follow(path)?;
-    validate_recv_file_authority(&file)?;
-    Ok(file)
 }
 
 fn acquire_receive_path_lock(file: &std::fs::File) -> std::io::Result<()> {
@@ -3263,31 +3236,124 @@ fn release_receive_path_lock(file: &std::fs::File) -> std::io::Result<()> {
 struct ReceivePathLease {
     path: PathBuf,
     file: std::fs::File,
+    #[cfg(unix)]
+    parent: std::fs::File,
 }
 
 impl ReceivePathLease {
     fn acquire(final_path: &Path, create_parent: bool) -> std::io::Result<Self> {
         let path = recv_sidecar_path(final_path, ".download.lock");
+        #[cfg(unix)]
+        let parent = open_parent_dir_no_follow(
+            path.parent().unwrap_or_else(|| Path::new(".")), create_parent,
+        )?;
+        #[cfg(unix)]
+        let file = {
+            let name = cstring_file_name(&path)?;
+            let file = open_regular_child_no_follow(
+                &parent, &name, RegularFileAccess::Write, ReceiveFileCreation::OpenOrCreate,
+            )?;
+            validate_recv_file_authority(&file)?;
+            file
+        };
+        #[cfg(not(unix))]
         let file = open_recv_file_no_follow_std(
-            &path,
-            false,
-            ReceiveFileCreation::OpenOrCreate,
-            create_parent,
-            false,
+            &path, false, ReceiveFileCreation::OpenOrCreate, create_parent, false,
         )?;
         acquire_receive_path_lock(&file)?;
-        #[cfg(any(unix, windows))]
+        #[cfg(unix)]
+        ensure_recv_child_matches_open_file(&parent, &cstring_file_name(&path)?, &file)?;
+        #[cfg(windows)]
         ensure_recv_path_matches_open_file(&path, &file)?;
         sync_recv_regular_file(&file)?;
         #[cfg(unix)]
-        sync_recv_parent_no_follow(final_path)?;
+        sync_recv_directory(&parent)?;
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         sync_recv_regular_file(&file)?;
-        Ok(Self { path, file })
+        Ok(Self {
+            path, file,
+            #[cfg(unix)]
+            parent,
+        })
+    }
+
+    #[cfg(unix)]
+    fn child_name(&self, path: &Path) -> std::io::Result<std::ffi::CString> {
+        if path.parent() != self.path.parent() {
+            return Err(io_invalid_input("receive artifact belongs to a different parent"));
+        }
+        cstring_file_name(path)
+    }
+
+    fn open_receive_file(
+        &self,
+        path: &Path,
+        creation: ReceiveFileCreation,
+        readable: bool,
+    ) -> std::io::Result<std::fs::File> {
+        #[cfg(unix)]
+        {
+            let name = self.child_name(path)?;
+            let access = if readable { RegularFileAccess::ReadWrite } else { RegularFileAccess::Write };
+            let file = open_regular_child_no_follow(&self.parent, &name, access, creation)?;
+            if let Err(error) = validate_recv_file_authority(&file) {
+                if matches!(creation, ReceiveFileCreation::CreateNew) {
+                    let cleanup = remove_recv_child_at(&self.parent, &name, &file)
+                        .and_then(|()| sync_recv_directory(&self.parent));
+                    if let Err(cleanup_error) = cleanup {
+                        return Err(std::io::Error::new(error.kind(), format!(
+                            "{error}; newly created receive artifact cleanup failed: {cleanup_error}"
+                        )));
+                    }
+                }
+                return Err(error);
+            }
+            Ok(file)
+        }
+        #[cfg(not(unix))]
+        {
+            open_recv_file_no_follow_std(path, false, creation, false, readable)
+        }
+    }
+
+    fn open_inspection_file(
+        &self,
+        path: &Path,
+        owned: bool,
+    ) -> std::io::Result<std::fs::File> {
+        #[cfg(unix)]
+        let file = open_regular_child_no_follow(
+            &self.parent, &self.child_name(path)?, RegularFileAccess::Read,
+            ReceiveFileCreation::Existing,
+        )?;
+        #[cfg(not(unix))]
+        let file = open_recv_inspection_file_no_follow(path)?;
+        if owned {
+            validate_recv_file_authority(&file)?;
+        }
+        Ok(file)
+    }
+
+    fn read_sidecar(&self, path: &Path, max_bytes: u64) -> std::io::Result<String> {
+        #[cfg(windows)]
+        {
+            nt_nofollow::read_recv_sidecar(path, max_bytes)
+        }
+        #[cfg(not(windows))]
+        {
+            use std::io::Read;
+            let file = self.open_inspection_file(path, true)?;
+            let mut content = String::new();
+            file.take(max_bytes.saturating_add(1)).read_to_string(&mut content)?;
+            if content.len() as u64 > max_bytes {
+                return Err(io_invalid_input("receive sidecar is too large"));
+            }
+            Ok(content)
+        }
     }
 
     fn retire(&mut self) -> std::io::Result<()> {
-        remove_receive_artifacts_and_sync_parent(&self.path, &[(&self.path, &self.file)])
+        remove_receive_artifacts_and_sync_parent(self, &[(&self.path, &self.file)])
     }
 }
 
@@ -3332,13 +3398,7 @@ impl ReceiveWriteClaim {
         let download_path = recv_sidecar_path(&final_path, ".download");
         let digest_path = recv_sidecar_path(&final_path, ".digest");
         let download_file =
-            match open_recv_file_no_follow_std(
-                &download_path,
-                false,
-                ReceiveFileCreation::CreateNew,
-                false,
-                false,
-            ) {
+            match lease.open_receive_file(&download_path, ReceiveFileCreation::CreateNew, false) {
                 Ok(file) => file,
                 Err(err) => {
                     if let Err(cleanup_err) = lease.retire() {
@@ -3350,17 +3410,11 @@ impl ReceiveWriteClaim {
                 }
             };
         let mut digest_file =
-            match open_recv_file_no_follow_std(
-                &digest_path,
-                false,
-                ReceiveFileCreation::CreateNew,
-                false,
-                true,
-            ) {
+            match lease.open_receive_file(&digest_path, ReceiveFileCreation::CreateNew, true) {
                 Ok(file) => file,
                 Err(err) => {
                     let cleanup_result = remove_receive_artifacts_and_sync_parent(
-                        &final_path,
+                        &lease,
                         &[(&download_path, &download_file)],
                     );
                     match cleanup_result.and_then(|()| lease.retire()) {
@@ -3379,7 +3433,7 @@ impl ReceiveWriteClaim {
             digest_file.write_all(json!(digest).to_string().as_bytes())?;
             sync_recv_regular_file(&digest_file)?;
             #[cfg(unix)]
-            sync_recv_parent_no_follow(&final_path)?;
+            sync_recv_directory(&lease.parent)?;
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             sync_recv_regular_file(&digest_file)?;
             Ok(download_file.try_clone()?)
@@ -3388,7 +3442,7 @@ impl ReceiveWriteClaim {
             Ok(file) => file,
             Err(err) => {
                 let cleanup_result = remove_receive_artifacts_and_sync_parent(
-                    &final_path,
+                    &lease,
                     &[
                         (&digest_path, &digest_file),
                         (&download_path, &download_file),
@@ -3433,13 +3487,7 @@ impl ReceiveWriteClaim {
             let download_path = recv_sidecar_path(&final_path, ".download");
             let digest_path = recv_sidecar_path(&final_path, ".digest");
             let mut digest_file =
-                open_recv_file_no_follow_std(
-                    &digest_path,
-                    false,
-                    ReceiveFileCreation::Existing,
-                    false,
-                    true,
-                )?;
+                lease.open_receive_file(&digest_path, ReceiveFileCreation::Existing, true)?;
             let mut content = String::new();
             (&mut digest_file).take(4097).read_to_string(&mut content)?;
             if content.len() > 4096 {
@@ -3450,13 +3498,7 @@ impl ReceiveWriteClaim {
                 bail!("resume digest does not match the active transfer");
             }
             let download_file =
-                open_recv_file_no_follow_std(
-                    &download_path,
-                    false,
-                    ReceiveFileCreation::Existing,
-                    false,
-                    false,
-                )?;
+                lease.open_receive_file(&download_path, ReceiveFileCreation::Existing, false)?;
             let available = download_file.metadata()?.len();
             validate_resume_file_length(available, expected_size)?;
             if offset > available {
@@ -3498,6 +3540,16 @@ impl ReceiveWriteClaim {
                 "received file has {actual_size} bytes, expected {expected_size}"
             )));
         }
+        #[cfg(unix)]
+        let result = finish_recv_write_at(
+            &self._lease.parent,
+            &self.final_path,
+            &self.download_file,
+            &self.digest_file,
+            modified_time,
+            &mut self.published,
+        );
+        #[cfg(not(unix))]
         let result = finish_recv_write_no_follow(
             &self.final_path,
             &self.download_file,
@@ -3522,7 +3574,7 @@ impl ReceiveWriteClaim {
     fn retire(&mut self) -> std::io::Result<()> {
         if self.published {
             #[cfg(unix)]
-            sync_recv_parent_no_follow(&self.final_path)?;
+            sync_recv_directory(&self._lease.parent)?;
             sync_recv_regular_file(&self.download_file)?;
             self._lease.retire()?;
             return Ok(());
@@ -3531,7 +3583,7 @@ impl ReceiveWriteClaim {
         let digest_path = recv_sidecar_path(&self.final_path, ".digest");
         let download_path = recv_sidecar_path(&self.final_path, ".download");
         remove_receive_artifacts_and_sync_parent(
-            &self.final_path,
+            &self._lease,
             &[
                 (&digest_path, &self.digest_file),
                 (&download_path, &self.download_file),
@@ -4742,13 +4794,13 @@ pub fn inspect_write_destination(
     let result = (|| -> ResultType<_> {
         if is_resume {
             let digest_path = recv_sidecar_path(path, ".digest");
-            let stored_digest = match read_recv_sidecar_to_string_no_follow(&digest_path, 4096) {
+            let stored_digest = match lease.read_sidecar(&digest_path, 4096) {
                 Ok(content) => Some(serde_json::from_str::<FileDigest>(&content)?),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
                 Err(error) => return Err(error.into()),
             };
             let download_path = recv_sidecar_path(path, ".download");
-            let download_file = match open_recv_sidecar_for_inspection(&download_path) {
+            let download_file = match lease.open_inspection_file(&download_path, true) {
                 Ok(file) => Some(file),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
                 Err(error) => return Err(error.into()),
@@ -4772,7 +4824,7 @@ pub fn inspect_write_destination(
             }
         }
 
-        let destination = match open_recv_inspection_file_no_follow(path) {
+        let destination = match lease.open_inspection_file(path, false) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(DigestCheckResult::NoSuchFile)
@@ -6893,7 +6945,8 @@ mod tests {
         .expect("open exact digest");
 
         let mut published = false;
-        finish_recv_write_no_follow(&final_path, &download_file, &digest_file, 1, &mut published)
+        let parent = open_parent_dir_no_follow(&downloads, false).expect("retain receive parent");
+        finish_recv_write_at(&parent, &final_path, &download_file, &digest_file, 1, &mut published)
             .expect("finish receive write");
         assert!(published);
 
@@ -6940,7 +6993,9 @@ mod tests {
         .expect("open exact digest");
 
         let mut published = false;
-        let result = finish_recv_write_no_follow(
+        let parent = open_parent_dir_no_follow(&tmp.path, false).expect("retain receive parent");
+        let result = finish_recv_write_at(
+            &parent,
             &final_path,
             &download_file,
             &digest_file,
@@ -6984,7 +7039,10 @@ mod tests {
         let digest = downloads.join("incoming.txt.digest");
         std::os::unix::fs::symlink(&secret, &digest).expect("create digest symlink");
 
-        let res = read_recv_sidecar_to_string_no_follow(&digest, 4096);
+        let mut lease = ReceivePathLease::acquire(&downloads.join("incoming.txt"), false)
+            .expect("acquire the exact inspection parent");
+        let res = lease.read_sidecar(&digest, 4096);
+        lease.retire().expect("retire the inspection lease");
         assert!(
             res.is_err(),
             "resume digest reads must not follow a symlink sidecar"

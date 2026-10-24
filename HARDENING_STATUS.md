@@ -2181,6 +2181,15 @@ parks remain unchanged. `qos-activity-epoch-source-2c95be52.json` binds source r
 prepared/candidate hashes and exact refused admissions; the earlier source finding
 remains in `qos-activity-epoch-audit-82aa2e57.json`. This item remains OPEN for work.
 
+**Validation blocked by available RAM.** At `2c061c77`, a further canonical
+`--video-qos-controller-tests` attempt refused before allocation: 20,480 MiB
+required and 11,081 MiB available. The same resource blocker has persisted across
+three consecutive goal turns. Product source remains `6c51a5f6`, uncompiled and
+unexecuted; preserve it and resume this exact lane when resources admit it.
+No VM, compiler or test payload started, no resource limit was lowered and no disk
+fallback was used. This is an external validation prerequisite, not completion.
+Retained admission/source closure: `qos-activity-epoch-ram-block-2c061c77.json`.
+
 | Correction | Native evidence and limits | Retained capsules |
 | --- | --- | --- |
 | Generation-bound support/activity sinks — `fbf1036c` | Existing capture callers already guarded these writes under the QoS lock; the two shared setters still accepted only a name. Baseline `467ddcad` passes 26 controls and fails the new direct-sink regression: seven of ten cases change state through stale/wrong generations or missing-display activity. The identical regression passes with explicit generation arguments: all eight noncurrent cases preserve support/activity/FPS/ratio/period state, and both current-owner cases apply. All 27 component tests pass in 122 outer seconds. Earlier test data/oracles are unchanged after normalizing the required fixture bindings; legacy parent labels/inventory require 22 shared cases, but that parked lane was not run. Full capture startup/application compilation, real codec/peer/presentation, installed/other-platform and R-S0/R-F5 acceptance remain OPEN. | `qos-generation-02dbb4cd.json` |

@@ -12297,15 +12297,17 @@ despite stale sender clones. R-S11gw / Appendix C #358 is the normative contract
 
 **Current evidence shared with R-S11gy/R-S11gz.** The focused command is
 `bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
-At `bd528a32`, all 64 named Rust cases pass in the native Linux component,
-including real Tokio channels, OS threads and generated protobufs. All 29 input
-receipts and 40 source parts match that source. The prior 60 bodies stay unchanged.
-Four new viewer voice tests execute the production receive/close/stop branches
-with explicit audio, handler, transport and clock doubles: four matching/failure
-controls, 24 mismatches, two manual cancellations and eight remote-close schedules.
-`viewer-voice-finality-77b80354.json` binds source, artifacts, locked dependencies,
-A/B observations and joined bounded-RAM cleanup. Earlier CM voice, close/history,
-owner, chat, cursor, marker and growth-refusal evidence remains in
+At `b292e2bf`, all 69 named Rust cases pass in the native Linux component.
+All 29 input receipts and 41 source parts match that source. All prior 64
+assertions remain; one old close-constructor call is adapted. Five new cases
+execute the production ID allocator/constructors and new-request branch: five
+clock inputs, 64 concurrent requests on four joined threads, checked exhaustion,
+four owner states, four cancel/retry schedules and failed-send retirement.
+`viewer-voice-requests-432b6236.json` binds exact A/B source/artifacts, locked
+dependencies, observations and joined bounded-RAM cleanup. Audio, handler,
+transport and clock remain explicit doubles for viewer control-flow checks.
+Earlier cancellation, CM voice, close/history, chat, cursor, marker and queue
+evidence remains in `viewer-voice-finality-77b80354.json`,
 `cm-voice-owner-a82d8f2a.json`, `cm-close-admission-073543c5.json`,
 `cm-disconnect-owner-feb8f4cd.json`, `chat-send-owner-6c616053.json`,
 `cursor-echo-clock-2b2aaacb.json`, `recent-document-markers-571ee664.json` and
@@ -12325,7 +12327,7 @@ clipboard, complete service producers, connection loops and CM IPC do not.
 Owner/deallocation flags establish lifetime, not RSS or whole-process memory bounds;
 error formatting and surrounding allocations remain available during selective faults.
 The older raw-backing baseline has test/artifact receipts but lacks full input/source
-receipts; its corrected run and the current 64-case run supply those bindings.
+receipts; its corrected run and the current 69-case run supply those bindings.
 Script wiring, source patterns and historical string mutations do not establish behavior.
 The profile remains 2 GiB guest / 6 GiB RAM scratch / 4 GiB overlay / 6 GiB host
 headroom / 1 GiB overhead, with no disk fallback and joined retirement.
@@ -13379,10 +13381,60 @@ sources are unchanged; no fresh Dart or parent build is claimed.
 
 Evidence: `.harness-state/verifier-vm/viewer-voice-finality-77b80354.json`.
 Full parent/IoLoop and real-peer/native audio/device cleanup, rendered controls,
-globally fresh request IDs and overlap admission, CM per-call identity, Android
+end-to-end request identity and admission, CM per-call identity, Android
 notification/device behavior, installed/other-platform execution, all fifteen
 credential actions, R-S0/R-F5, soak and release acceptance remain OPEN.
 All full-parent/bootstrap and other user parks remain unchanged.
+
+**Viewer voice request creation — process-lifetime identity and single-owner
+admission verified in the native component; full peer/installed acceptance OPEN.**
+`b292e2bf` mints positive request IDs from one private checked AtomicI64 namespace,
+shared across viewer contexts and independent of wall time. IDs cannot wrap or
+repeat within that process, including after cancellation or send failure.
+Exhaustion or invalid counter state refuses without mutation. The request
+constructor returns its NonZeroI64 owner together with the exact message; a
+separate close constructor does not mint a request ID or read the clock. The existing
+`req_timestamp` wire field carries the ID; response `ack_timestamp` remains
+diagnostic. Schema and public FFI are unchanged. This namespace is not an
+authentication credential or durable uniqueness across process restart;
+fresh authenticated transports remain required.
+
+NewVoiceCall preserves an existing pending or active owner without minting,
+sending or publishing another waiting event. An idle request installs the exact
+owner before send and reports waiting only after success. Send error clears
+pending authority, reports closed/error and returns false to end that transport
+round. This is control-flow finality, not proof of complete socket or audio cleanup.
+
+API preparation `7f22b236` retains clock minting, overwrite and logged-only
+send failure under the new typed surface. It preserves ordinary positive-clock
+behavior; zero clock now refuses rather than reproducing the earlier unwrap panic.
+Its 69-case baseline passes 64 and fails all five new tests. Frozen-clock
+constructors produce one ID across 64 callers; zero/negative/backward clocks
+cannot establish valid fresh ownership. Duplicate commands overwrite pending
+state or add a request during active audio. After cancel/new at a frozen clock,
+the retired reply consumes the new request. Failed send still reports waiting
+and a late reply invokes audio start.
+
+The identical corrected cohort passes 69/69 in 2.05 native seconds, 106 outer.
+Five clock inputs and four joined threads yield distinct positive IDs. The actual
+allocator core admits its last positive ID, then refuses without wrapping; local
+counter instances also prove negative-state refusal. All four owner states,
+four stale-reply retry combinations, and failed-send plus fresh-owner recovery
+pass. Core exhaustion is executed; the live global counter's exhaustion UI path
+is source-wired only. All prior 64 assertions and locked dependencies remain.
+Across 29 inputs/41 parts, only the helper allocator and new-request branch differ.
+The server change is exactly its close-constructor import/call; no server parent
+executes. Existing cancellation/receive/stop and constructors execute with generated
+protobufs and explicit audio, handler, transport and clock doubles. Flutter and
+public FFI sources are unchanged; no new Dart, full parent or device run is claimed.
+
+Evidence: `.harness-state/verifier-vm/viewer-voice-requests-432b6236.json`.
+Complete Remote/IoLoop, real-peer/transport/audio/device and resource finality,
+rendered waiting/error behavior, process-restart/cross-version evidence,
+controlled request validation and CM per-call authority, Android notifications,
+installed/other-platform behavior, all fifteen credential actions, R-S0/R-F5,
+soak and release acceptance remain OPEN. All full-parent/bootstrap and other
+user parks are unchanged.
 
 Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests

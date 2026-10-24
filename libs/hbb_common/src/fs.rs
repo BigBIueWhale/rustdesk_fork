@@ -5810,6 +5810,127 @@ mod tests {
     use crate::protobuf::Message as _;
 
     #[cfg(target_os = "linux")]
+    fn file_metadata_receive_mode_case(
+        action: &str, artifact: &str, mode: u32, should_refuse: bool,
+    ) -> serde_json::Value {
+        use std::{io::Write, os::unix::fs::{MetadataExt, PermissionsExt}};
+        let root = TestTempDir::new("rustdesk_receive_file_modes");
+        std::fs::create_dir_all(&root.path).unwrap();
+        let final_path = root.join("incoming.bin");
+        let download = root.join("incoming.bin.download");
+        let digest_path = root.join("incoming.bin.digest");
+        let lock = root.join("incoming.bin.download.lock");
+        let digest = FileDigest { size: 6, modified: 31 };
+        std::fs::write(&final_path, b"original").unwrap();
+        std::fs::write(&download, b"abc").unwrap();
+        std::fs::write(&digest_path, serde_json::to_vec(&digest).unwrap()).unwrap();
+        std::fs::write(&lock, b"").unwrap();
+        for path in [&download, &digest_path, &lock] {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        let selected = match artifact {
+            "download" => &download, "digest" => &digest_path,
+            "lease" => &lock, _ => panic!("unknown fixture artifact"),
+        };
+        std::fs::set_permissions(selected, std::fs::Permissions::from_mode(mode)).unwrap();
+        assert_eq!(std::fs::metadata(selected).unwrap().mode() & 0o7777, mode);
+        let snapshot = |path: &Path| std::fs::symlink_metadata(path).ok().map(|m| (
+            m.dev(), m.ino(), m.mode(), m.len(), m.mtime(), m.mtime_nsec(),
+            std::fs::read(path).unwrap(),
+        ));
+        let before = [snapshot(&final_path), snapshot(&download),
+            snapshot(&digest_path), snapshot(&lock)];
+        let result = if action == "inspect" {
+            inspect_write_destination(true, &final_path, &FileTransferDigest {
+                id: 492, file_num: 0, file_size: 6, last_modified: 31,
+                ..Default::default()
+            }).and_then(|result| match result {
+                DigestCheckResult::NeedConfirm(digest) if digest.transferred_size == 3 => Ok(()),
+                _ => Err(anyhow!("resume inspection did not return the selected partial")),
+            })
+        } else {
+            assert_eq!(action, "resume");
+            match ReceiveWriteClaim::resume(final_path.clone(), digest, 6, 3) {
+                Ok((mut stream, mut claim)) => {
+                    if should_refuse {
+                        // Observe admission, then let the ordinary abandoned-claim cleanup run.
+                        drop(stream);
+                        drop(claim);
+                        Ok(())
+                    } else {
+                        let result = stream.write_all(b"def").and_then(|()| stream.sync_all());
+                        drop(stream);
+                        result.and_then(|()| claim.finish(6, 31)).map_err(Into::into)
+                    }
+                }
+                Err(error) => Err(error),
+            }
+        };
+        let refused = result.is_err();
+        let permission_refusal = result.as_ref().err()
+            .and_then(|e| e.downcast_ref::<std::io::Error>())
+            .map(|e| e.kind() == std::io::ErrorKind::PermissionDenied).unwrap_or(false);
+        let after = [snapshot(&final_path), snapshot(&download),
+            snapshot(&digest_path), snapshot(&lock)];
+        let state_correct = if should_refuse || action == "inspect" {
+            before[..3] == after[..3]
+                && if should_refuse && artifact == "lease" {
+                    before[3] == after[3]
+                } else { after[3].is_none() }
+        } else {
+            let published = std::fs::metadata(&final_path).unwrap();
+            let original = before[1].as_ref().unwrap();
+            std::fs::read(&final_path).unwrap() == b"abcdef"
+                && (published.dev(), published.ino()) == (original.0, original.1)
+                && published.mode() & 0o7777 == if artifact == "download" { mode } else { 0o600 }
+                && published.mtime() == 31
+                && after[1..].iter().all(Option::is_none)
+                && std::fs::read_dir(&root.path).unwrap().count() == 1
+        };
+        serde_json::json!({
+            "action": action, "artifact": artifact, "mode": mode,
+            "should_refuse": should_refuse, "refused": refused,
+            "permission_refusal": permission_refusal, "state_correct": state_correct,
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn assert_file_metadata_receive_modes(action: &str) {
+        let mut passed = true;
+        let mut cases = 0;
+        for artifact in ["lease", "download", "digest"] {
+            for (mode, should_refuse) in [
+                (0o600, false), (0o640, false), (0o644, false),
+                (0o602, true), (0o620, true), (0o666, true),
+                (0o1600, true), (0o2600, true), (0o4600, true), (0o7600, true),
+            ] {
+                let observation = file_metadata_receive_mode_case(
+                    action, artifact, mode, should_refuse,
+                );
+                passed &= observation["refused"] == should_refuse
+                    && observation["permission_refusal"] == should_refuse
+                    && observation["state_correct"] == true;
+                println!("FILE_METADATA_RECEIVE_MODE={observation}");
+                cases += 1;
+            }
+        }
+        assert_eq!(cases, 30);
+        assert!(passed, "receive-owned artifacts must reject unsafe native permissions");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn file_metadata_receive_modes_gate_inspection() {
+        assert_file_metadata_receive_modes("inspect");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn file_metadata_receive_modes_gate_resume() {
+        assert_file_metadata_receive_modes("resume");
+    }
+
+    #[cfg(target_os = "linux")]
     async fn file_metadata_native_path_case(
         kind: &str, spelling: &str, invalid: bool,
     ) -> serde_json::Value {

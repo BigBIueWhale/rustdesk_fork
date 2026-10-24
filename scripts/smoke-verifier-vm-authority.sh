@@ -6343,17 +6343,26 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clip
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
     mapfile -t control_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=57 unchanged=before-after$'
+            'CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=60 unchanged=before-after$'
     )
     [ "${#control_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'control-egress artifact receipt differs'
     require_exact_fixed_receipt \
-        "CONTROL_EGRESS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=57 target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "CONTROL_EGRESS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=60 target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused control-egress receipt'
     require_exact_fixed_receipt \
         'CURSOR_ECHO_CLOCK=pass cases=2 wall_fault_ms=600000 window_ms=300 elapsed=native source=production-sender' \
         'cursor echo suppression uses native elapsed time'
+    require_exact_fixed_receipt \
+        'CM_VOICE_CONTROLS=pass actions=3 conn_types=2 messages=6 siblings=preserved registry=production ffi=production queues=real' \
+        'CM voice current-owner controls'
+    require_exact_fixed_receipt \
+        'CM_VOICE_OWNER=pass actions=3 cases=42 invalid=refused pending=refused stale=refused disconnected=refused type=confined queue=truthful fresh=usable' \
+        'CM voice exact-owner and admission outcomes'
+    require_exact_fixed_receipt \
+        'CM_VOICE_DELAYED=pass actions=3 replacement=observed stale=refused successor=preserved fresh=usable workers=joined' \
+        'delayed CM voice commands preserve replacement owners'
     require_exact_fixed_receipt \
         'CM_CHAT_CONTROLS=pass conn_types=5 payloads=10 registry=production bridge=production queue=production' \
         'CM chat current-owner payload and session-type controls'
@@ -8308,7 +8317,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'CM_CLIPBOARD_RESPONSE_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=36 scope=production-response-type-and-assembly windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=57 scope=production-control-cm-egress-and-framing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'CONTROL_EGRESS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=60 scope=production-control-cm-egress-and-framing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=12 scope=production-file-block-decoder-and-compressor network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

@@ -508,7 +508,8 @@ class ConnectionManager extends StatelessWidget {
           icon: const Icon(Icons.phone),
           label: Text(translate("Stop")),
           onPressed: () {
-            bind.cmCloseVoiceCall(id: client.id);
+            bind.cmCloseVoiceCall(
+                id: client.id, registryGeneration: client.registryGeneration);
             gFFI.invokeMethod("cancel_notification", client.id);
           },
         ),

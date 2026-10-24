@@ -1017,7 +1017,7 @@ impl Drop for CmFileOperationTask {
 static EXIT_ON_IDLE: AtomicBool = AtomicBool::new(false);
 
 #[cfg(not(any(target_os = "ios")))]
-fn cm_egress_sender(id: i32) -> Option<CmEgressSender> {
+fn cm_voice_call_sender(id: i32, _registry_generation: i64) -> Option<CmEgressSender> {
     CLIENTS
         .read()
         .unwrap()
@@ -3687,22 +3687,24 @@ fn send_privacy_mode_state_to_current_owner(
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]
-pub fn handle_incoming_voice_call(id: i32, accept: bool) {
+pub fn handle_incoming_voice_call(id: i32, registry_generation: i64, accept: bool) -> bool {
     // Not handled in iOS yet.
     #[cfg(not(any(target_os = "ios")))]
-    if let Some(tx) = cm_egress_sender(id) {
+    if let Some(tx) = cm_voice_call_sender(id, registry_generation) {
         allow_err!(tx.send(Data::VoiceCallResponse(accept)));
     };
+    true
 }
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]
-pub fn close_voice_call(id: i32) {
+pub fn close_voice_call(id: i32, registry_generation: i64) -> bool {
     // Not handled in iOS yet.
     #[cfg(not(any(target_os = "ios")))]
-    if let Some(tx) = cm_egress_sender(id) {
+    if let Some(tx) = cm_voice_call_sender(id, registry_generation) {
         allow_err!(tx.send(Data::CloseVoiceCall("".to_owned())));
     };
+    true
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4207,7 +4209,7 @@ mod tests {
         }
         let (task, mut peer, observer, ui) = admitted_cm_native_output_test(id).await;
         let generation = CLIENTS.read().unwrap().clients[&id].registry_generation;
-        let stale_sender = cm_egress_sender(id).unwrap();
+        let stale_sender = CLIENTS.read().unwrap().clients[&id].tx.clone();
         peer.send(&Data::AuthorizedFS {
             cm_auth_token: "test-token".to_owned(),
             fs: ipc::FS::ReadDir { dir: get_string(&temp.path), include_hidden: true, request_id: 7 },
@@ -4250,7 +4252,7 @@ mod tests {
         };
         let (task, mut peer, observer, ui) = admitted_cm_native_output_test(id).await;
         let generation = CLIENTS.read().unwrap().clients[&id].registry_generation;
-        let stale_sender = cm_egress_sender(id).unwrap();
+        let stale_sender = CLIENTS.read().unwrap().clients[&id].tx.clone();
         peer.send(&request).await.unwrap();
         for expected_init in [true, false] {
             let response = tokio::time::timeout(std::time::Duration::from_secs(2), peer.next())

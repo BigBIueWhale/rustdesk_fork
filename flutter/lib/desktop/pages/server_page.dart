@@ -948,11 +948,15 @@ class _CmControlPanel extends StatelessWidget {
   }
 
   void handleVoiceCall(bool accept) {
-    bind.cmHandleIncomingVoiceCall(id: client.id, accept: accept);
+    bind.cmHandleIncomingVoiceCall(
+        id: client.id,
+        registryGeneration: client.registryGeneration,
+        accept: accept);
   }
 
   void closeVoiceCall() {
-    bind.cmCloseVoiceCall(id: client.id);
+    bind.cmCloseVoiceCall(
+        id: client.id, registryGeneration: client.registryGeneration);
   }
 }
 

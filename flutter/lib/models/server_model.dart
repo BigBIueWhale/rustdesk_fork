@@ -696,7 +696,10 @@ class ServerModel with ChangeNotifier {
 
   handleVoiceCall(Client client, bool accept) {
     parent.target?.invokeMethod("cancel_notification", client.id);
-    bind.cmHandleIncomingVoiceCall(id: client.id, accept: accept);
+    bind.cmHandleIncomingVoiceCall(
+        id: client.id,
+        registryGeneration: client.registryGeneration,
+        accept: accept);
   }
 
   showVoiceCallDialog(Client client) {

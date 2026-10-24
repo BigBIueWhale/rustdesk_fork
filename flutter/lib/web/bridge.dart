@@ -1316,12 +1316,16 @@ class RustdeskImpl {
     throw UnimplementedError("sessionCloseVoiceCall");
   }
 
-  Future<void> cmHandleIncomingVoiceCall(
-      {required int id, required bool accept, dynamic hint}) {
+  Future<bool> cmHandleIncomingVoiceCall(
+      {required int id,
+      required int registryGeneration,
+      required bool accept,
+      dynamic hint}) {
     throw UnimplementedError("cmHandleIncomingVoiceCall");
   }
 
-  Future<void> cmCloseVoiceCall({required int id, dynamic hint}) {
+  Future<bool> cmCloseVoiceCall(
+      {required int id, required int registryGeneration, dynamic hint}) {
     throw UnimplementedError("cmCloseVoiceCall");
   }
 

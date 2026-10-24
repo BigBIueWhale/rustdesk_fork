@@ -29,6 +29,7 @@ INPUTS = (
     "src/ui_session_interface.rs",
     "src/server/input_service.rs", "scripts/test-cursor-echo.rs",
     "src/flutter_ffi.rs", "scripts/test-cm-chat.rs", "scripts/test-cm-disconnect.rs",
+    "scripts/test-cm-voice.rs",
 )
 
 
@@ -161,7 +162,7 @@ def main():
         raise ValueError("CM chat client registry is absent or ambiguous")
     snippets["cm-chat-globals.rs"] = "lazy_static::lazy_static! {\n" + clients[0] + "}\n"
     snippets["cm-chat-sender.rs"] = between(
-        cm, '#[cfg(not(any(target_os = "ios")))]\nfn cm_egress_sender(',
+        cm, '#[cfg(not(any(target_os = "ios")))]\nfn cm_voice_call_sender(',
         '#[cfg(not(any(target_os = "android", target_os = "ios")))]\npub fn set_exit_on_idle(')
     snippets["cm-chat-send.rs"] = between(
         cm, '// server mode send chat to peer\n',
@@ -178,6 +179,12 @@ def main():
     snippets["cm-disconnect-ffi.rs"] = between(
         inputs["src/flutter_ffi.rs"].decode("utf-8"),
         "pub fn cm_close_connection(", "pub fn cm_should_hide(")
+    snippets["cm-voice-actions.rs"] = between(
+        cm, '#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]\n#[inline]\npub fn handle_incoming_voice_call(',
+        '#[cfg(not(any(target_os = "android", target_os = "ios")))]\npub fn quit_cm(')
+    snippets["cm-voice-ffi.rs"] = between(
+        inputs["src/flutter_ffi.rs"].decode("utf-8"),
+        "pub fn cm_handle_incoming_voice_call(", "pub fn set_voice_call_input_device(")
     ipc = inputs["src/ipc.rs"].decode("utf-8")
     enigo = inputs["libs/enigo/src/lib.rs"].decode("utf-8")
     snippets["cm-queue.rs"] = between(cm, "const CM_EGRESS_WAKE_CAPACITY:",
@@ -241,6 +248,9 @@ def main():
         ipc, "#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]\npub enum CmFileEntryType {",
         '#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]\n#[serde(tag = "t")]\npub enum CmAuthConnType {')
     snippets["cm-ipc.rs"] += enum_declaration(ipc, "CmAuthConnType") + enum_declaration(ipc, "Data")
+    snippets["cm-voice-types.rs"] = between(
+        ipc, "impl CmAuthConnType {",
+        '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]\n#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum ServiceIpcRequest {')
     snippets["enigo-types.rs"] = enum_declaration(enigo, "MouseButton") + enum_declaration(enigo, "Key")
     cm_limits = re.findall(r"^pub\(crate\) const CM_(?:IPC|FILE_BLOCK)_MAX_FRAME_BYTES: usize = [0-9 *]+;\n",
                            ipc, re.MULTILINE)
@@ -296,10 +306,14 @@ def main():
                                ("CM_CHAT_FFI", "cm-chat-ffi.rs"),
                                ("CM_CHAT_LOG", "cm-chat-log.rs"),
                                ("CM_DISCONNECT_ACTIONS", "cm-disconnect-actions.rs"),
-                               ("CM_DISCONNECT_FFI", "cm-disconnect-ffi.rs")):
+                               ("CM_DISCONNECT_FFI", "cm-disconnect-ffi.rs"),
+                               ("CM_VOICE_ACTIONS", "cm-voice-actions.rs"),
+                               ("CM_VOICE_FFI", "cm-voice-ffi.rs"),
+                               ("CM_VOICE_TYPES", "cm-voice-types.rs")):
             os.environ[variable] = str(fixture / name)
         os.environ["CM_CHAT_TESTS"] = str(repo / "scripts/test-cm-chat.rs")
         os.environ["CM_DISCONNECT_TESTS"] = str(repo / "scripts/test-cm-disconnect.rs")
+        os.environ["CM_VOICE_TESTS"] = str(repo / "scripts/test-cm-voice.rs")
 
         roots = [p for p in packages if p["name"] == "rustdesk" and "source" not in p]
         if len(roots) != 1:
@@ -320,7 +334,7 @@ def main():
             raise ValueError("file-clipboard package lock authority is ambiguous")
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
-            '[features]\ndefault = ["with_serde"]\nwith_serde = []\n'
+            '[features]\ndefault = ["with_serde", "flutter"]\nwith_serde = []\nflutter = []\n'
             '[dependencies]\n'
             f'bytes = {{ version = "={version("bytes")}", features = ["serde"] }}\nlog = "={version("log")}"\n'
             f'serde = "={version("serde")}"\nserde_derive = "={version("serde_derive")}"\n'
@@ -376,13 +390,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=57", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=60", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=57 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=60 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -391,7 +405,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=57 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=60 unchanged=before-after",
               flush=True)
 
 

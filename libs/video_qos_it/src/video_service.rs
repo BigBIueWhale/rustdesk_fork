@@ -176,6 +176,7 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
         ("set", "reset", 0), ("bitrate", "reset", 0),
         ("set", "record", 0), ("bitrate", "record", 0),
         ("set", "failure", 1),
+        ("set", "activity", 0), ("bitrate", "activity", 0),
     ] {
         let (original, generation) = reset(true);
         assert!(VIDEO_QOS.lock().unwrap().in_vbr_state());
@@ -189,9 +190,11 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
         let worker = std::thread::spawn(move || {
             let mut ratio = original;
             let mut spf = Duration::ZERO;
+            let mut count = if event == "activity" { 6 } else { 0 };
+            let mut second = Instant::now() - Duration::from_secs(2);
             let result = qos_apply::check_qos(&mut encoder, &mut ratio, &mut spf, false,
-                &mut 0, &mut Instant::now(), "monitor", &worker_generation);
-            (encoder, ratio, spf, result.err().map(|error| error.to_string()))
+                &mut count, &mut second, "monitor", &worker_generation);
+            (encoder, ratio, spf, result.err().map(|error| error.to_string()), count, second)
         });
         let entered = entered_rx.recv_timeout(Duration::from_secs(2)).is_ok();
         let applied = if let Ok(mut qos) = VIDEO_QOS.try_lock() {
@@ -213,12 +216,16 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
                     publish_test_bitrate(&mut qos, &replacement, 7777);
                 }
                 "record" => qos.user_record(7, true),
+                "activity" => {
+                    assert!(qos.set_support_changing_quality("monitor", &generation, false));
+                    assert!(qos.set_support_changing_quality("monitor", &generation, true));
+                }
                 _ => unreachable!(),
             }
             true
         } else { false };
         let released = release_tx.send(()).is_ok();
-        let (mut encoder, mut ratio, spf, error) = worker.join().unwrap();
+        let (mut encoder, mut ratio, spf, error, count, second) = worker.join().unwrap();
         joined += 1;
         available += usize::from(applied);
         let mut correct = entered && released && applied && encoder.requests == [requested];
@@ -250,14 +257,22 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
                     && ratio == original && qos.bitrate() == 2000
                     && qos.ratio() != requested && qos.fps() == 2 && encoder.bitrate_reads.get() == 0;
             }
+            "activity" => {
+                let qos = VIDEO_QOS.lock().unwrap();
+                let (stored, period) = qos.display_activity_for_test("monitor").unwrap();
+                assert!(period.elapsed() < Duration::from_secs(3), "activity fixture exceeded its period");
+                correct &= error.is_none() && ratio == requested && qos.bitrate() == 2500
+                    && count == 0 && second.elapsed() < Duration::from_secs(1) && stored == 0;
+                println!("VIDEO_QOS_APPLY=activity stage={stage} stored={stored} pending={count} retired={correct}");
+            }
             _ => unreachable!(),
         }
         passed += usize::from(correct);
         println!("VIDEO_QOS_ENCODER_OWNER=observed stage={stage} event={event} available={applied} entered={entered} released={released} joined=true correct={correct} error={error:?}");
     }
-    println!("VIDEO_QOS_ENCODER_OWNER=observed cases=9 available={available} passed={passed} joined={joined}");
-    assert_eq!(passed, 9);
-    assert_eq!(available, 9);
-    assert_eq!(joined, 9);
-    println!("VIDEO_QOS_ENCODER_OWNER=pass cases=9 available=9 passed=9 joined=9 stale=refused feedback=preserved retries=pass");
+    println!("VIDEO_QOS_ENCODER_OWNER=observed cases=11 available={available} passed={passed} joined={joined}");
+    assert_eq!(passed, 11);
+    assert_eq!(available, 11);
+    assert_eq!(joined, 11);
+    println!("VIDEO_QOS_ENCODER_OWNER=pass cases=11 available=11 passed=11 joined=11 stale=refused feedback=preserved retries=pass");
 }

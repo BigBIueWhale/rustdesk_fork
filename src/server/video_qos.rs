@@ -144,6 +144,11 @@ impl Default for VideoQoS {
 
 // Basic functionality
 impl VideoQoS {
+    #[cfg(test)]
+    pub(super) fn display_activity_for_test(&self, name: &str) -> Option<(usize, Instant)> {
+        self.displays.get(name).map(|display| (display.send_counter, self.adjust_ratio_instant))
+    }
+
     // Calculate seconds per frame based on current FPS
     pub fn spf(&self) -> Duration {
         Duration::from_secs_f32(1. / (self.fps() as f32))
@@ -752,7 +757,7 @@ mod tests {
                 let correct = if role != "current" {
                     before == after
                 } else if action == "support" {
-                    after.3 == Some((false, 1, 0))
+                    after.3 == Some((false, 0, 0)) && after.2 > before.2
                 } else {
                     after.3 == Some((true, 0, 0)) && after.2 > before.2
                         && after.0 == before.0 && after.1 == before.1
@@ -823,9 +828,35 @@ mod tests {
             println!("VIDEO_QOS_ACTIVITY=observed case=threshold count={count} expected={expected} retired={retired}");
             outcomes.push(expected && retired);
         }
+        for transition in ["support", "sibling"] {
+            let mut qos = healthy_controller();
+            let generation = qos.new_display("monitor".into());
+            assert!(qos.set_support_changing_quality("monitor", &generation, true));
+            qos.displays.get_mut("monitor").unwrap().send_counter = threshold;
+            qos.ratio = BR_BALANCED / 2.0;
+            let before = qos.ratio;
+            qos.adjust_ratio_instant = Instant::now().checked_sub(Duration::from_secs(4)).unwrap();
+            let previous_period = qos.adjust_ratio_instant;
+            if transition == "support" {
+                assert!(qos.set_support_changing_quality("monitor", &generation, false));
+                assert!(qos.set_support_changing_quality("monitor", &generation, true));
+            } else {
+                let blocked = qos.new_display("blocked".into());
+                qos.remove_display("blocked", &blocked);
+            }
+            let retired = qos.displays["monitor"].send_counter == 0
+                && qos.adjust_ratio_instant > previous_period;
+            qos.update_test_display_data("monitor", 0);
+            let fresh_window = qos.ratio == before;
+            qos.adjust_ratio_instant = Instant::now().checked_sub(Duration::from_secs(4)).unwrap();
+            qos.update_test_display_data("monitor", threshold);
+            let fresh_growth = qos.ratio > before;
+            println!("VIDEO_QOS_ACTIVITY=observed case=transition-{transition} retired={retired} fresh_window={fresh_window} fresh_growth={fresh_growth}");
+            outcomes.push(retired && fresh_window && fresh_growth);
+        }
         assert!(outcomes.into_iter().all(|correct| correct),
             "only bounded activity from the current adaptation window may affect quality");
-        println!("VIDEO_QOS_ACTIVITY=pass cases=7 counter=bounded unavailable=retired reenable=fresh threshold=preserved clock=controlled");
+        println!("VIDEO_QOS_ACTIVITY=pass cases=9 counter=bounded unavailable=retired reenable=fresh threshold=preserved clock=controlled");
     }
 
     #[test]

@@ -7050,7 +7050,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = vide
         && [ "$(/usr/bin/grep -Fc 'VIDEO_QOS_CONTROLLER_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'video QoS controller artifact receipt differs'
     require_exact_fixed_receipt \
-        'VIDEO_QOS_ENCODER_OWNER=pass cases=9 available=9 passed=9 joined=9 stale=refused feedback=preserved retries=pass' \
+        'VIDEO_QOS_ENCODER_OWNER=pass cases=11 available=11 passed=11 joined=11 stale=refused feedback=preserved retries=pass' \
         'codec calls release QoS ownership and reject stale display completion'
     require_exact_fixed_receipt \
         'VIDEO_QOS_BITRATE_STEP=complete cases=45 panics=0 budget_violations=0 failures=0' \

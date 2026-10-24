@@ -7006,7 +7006,7 @@ PY
             && [ "$(grep -Fc 'VIDEO_QOS_CONTROLLER_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^test server::(video_qos::tests|video_service)::.* \.\.\. ok$' "$output")" -eq "${#required_tests[@]}" ] \
             || { tail -c 131072 "$output" >&2; fail 'video QoS controller artifact or named outcomes differ'; }
-        [ "$(grep -Fxc 'VIDEO_QOS_ENCODER_OWNER=pass cases=9 available=9 passed=9 joined=9 stale=refused feedback=preserved retries=pass' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'VIDEO_QOS_ENCODER_OWNER=pass cases=11 available=11 passed=11 joined=11 stale=refused feedback=preserved retries=pass' "$output")" -eq 1 ] \
             || fail 'video QoS encoder ownership result differs'
         [ "$(grep -Fxc 'VIDEO_QOS_BITRATE_STEP=complete cases=45 panics=0 budget_violations=0 failures=0' "$output")" -eq 1 ] \
             || { tail -c 131072 "$output" >&2; fail 'video QoS bitrate growth result differs'; }

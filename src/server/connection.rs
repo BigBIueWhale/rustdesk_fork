@@ -20,7 +20,7 @@ use crate::virtual_display_manager;
 use crate::{
     client::{
         native_opus_format_admission, native_opus_format_key, native_opus_format_within_limit,
-        new_voice_call_request, new_voice_call_response, start_audio_thread,
+        new_voice_call_close, new_voice_call_response, start_audio_thread,
         AudioFormatAdmission, AudioFrameAdmission, NativeOpusFormatAdmission, OwnedMediaThread,
     },
     display_service, ipc, privacy_mode, video_service, VERSION,
@@ -6844,7 +6844,7 @@ impl Connection {
                         ipc::Data::CloseVoiceCall(_reason) => {
                             log::debug!("Close the voice call from the ipc.");
                             if conn.close_voice_call().await {
-                                let msg = new_voice_call_request(false);
+                                let msg = new_voice_call_close();
                                 conn.send(msg).await;
                             }
                         }

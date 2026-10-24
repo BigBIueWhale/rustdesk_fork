@@ -4275,6 +4275,11 @@ run_focused_rust_tests() {
                 src/client/io_loop.rs src/client/helper.rs scripts/test-viewer-voice.rs
             )
             required_tests=(
+                viewer_voice::tests::viewer_voice_request_ids_ignore_clock_changes_and_share_process_ownership
+                viewer_voice::tests::viewer_voice_request_id_exhaustion_never_wraps_or_mutates_refusal
+                viewer_voice::tests::viewer_voice_new_request_preserves_pending_and_active_owners
+                viewer_voice::tests::viewer_voice_cancel_retry_ignores_the_retired_request_reply
+                viewer_voice::tests::viewer_voice_request_send_failure_retires_before_late_reply
                 viewer_voice::tests::viewer_voice_matching_replies_complete_once
                 viewer_voice::tests::viewer_voice_mismatch_preserves_pending_for_matching_reply
                 viewer_voice::tests::viewer_voice_manual_close_retires_pending_before_late_reply
@@ -6211,7 +6216,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=64 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=69 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6530,9 +6535,20 @@ PY
             || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=64 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=69 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
+        [ "$(grep -Fxc 'VIEWER_VOICE_REQUEST_IDS=pass clocks=5 threads=4 requests=64 namespace=process-wide workers=joined' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'VIEWER_VOICE_REQUEST_ALLOC=pass cases=4 exhaustion=refused negative=refused last_positive=usable' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'VIEWER_VOICE_REQUEST_OWNER=pass cases=4 idle=usable repeated=quiet pending=preserved active=preserved' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'VIEWER_VOICE_REQUEST_RETRY=pass cases=4 clock=frozen retired=ignored current=usable' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'VIEWER_VOICE_REQUEST_SEND=pass attempts=1 pending=retired waiting=absent round=failed fresh=usable' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^VIEWER_VOICE_REQUEST_CLOCK_CASE=.* correct=true$' "$output")" -eq 5 ] \
+            && [ "$(grep -Ec '^VIEWER_VOICE_REQUEST_ALLOC_CASE=.* correct=true$' "$output")" -eq 4 ] \
+            && [ "$(grep -Ec '^VIEWER_VOICE_REQUEST_OWNER_CASE=.* correct=true$' "$output")" -eq 4 ] \
+            && [ "$(grep -Ec '^VIEWER_VOICE_REQUEST_RETRY_CASE=.* correct=true$' "$output")" -eq 4 ] \
+            && [ "$(grep -Ec '^VIEWER_VOICE_REQUEST_SEND_CASE=.* correct=true$' "$output")" -eq 1 ] \
+            || fail 'viewer voice request identity/admission evidence differs'
         [ "$(grep -Fxc 'VIEWER_VOICE_CONTROLS=pass cases=4 duplicate_replies=8 matching=once audio_failure=closed replacement=stopped constructors=production' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'VIEWER_VOICE_MISMATCH=pass cases=24 stale=ignored pending=preserved matching=usable' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'VIEWER_VOICE_MANUAL=pass cases=2 pending=retired late_reply=ignored peer_close=once' "$output")" -eq 1 ] \

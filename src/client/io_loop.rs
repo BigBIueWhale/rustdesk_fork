@@ -9,8 +9,8 @@ use crate::{
 };
 use crate::{
     client::{
-        self, classify_connection_error, new_voice_call_request, AudioFormatAdmission,
-        AudioFrameAdmission, Client, ConnectionErrorPresentation, Data, Interface,
+        self, classify_connection_error, new_voice_call_close, new_voice_call_request,
+        AudioFormatAdmission, AudioFrameAdmission, Client, ConnectionErrorPresentation, Data, Interface,
         LoginConfigHandler, OwnedMediaThread, OwnedVideoThread, QualityStatus, VideoControl,
         VideoControlAdmission, VideoFrameAdmission, ViewerCommandReceiver, ViewerCommandSender,
         MAX_PEER_VIDEO_DISPLAYS, MILLI1, SEC30,
@@ -2395,18 +2395,18 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
             }
             Data::NewVoiceCall => {
-                let msg = new_voice_call_request(true);
-                // Save the voice call request timestamp for the further validation.
-                self.voice_call_request_timestamp = Some(
-                    NonZeroI64::new(msg.voice_call_request().req_timestamp)
-                        .unwrap_or(NonZeroI64::new(get_time()).unwrap()),
-                );
+                let Some((request_id, msg)) = new_voice_call_request() else {
+                    self.handler
+                        .on_voice_call_closed("Failed to allocate a voice-call request ID");
+                    return true;
+                };
+                self.voice_call_request_timestamp = Some(request_id);
                 allow_err!(peer.send(&msg).await);
                 self.handler.on_voice_call_waiting();
             }
             Data::CloseVoiceCall => {
                 self.stop_voice_call().await;
-                let msg = new_voice_call_request(false);
+                let msg = new_voice_call_close();
                 self.handler
                     .on_voice_call_closed("Closed manually by the peer");
                 allow_err!(peer.send(&msg).await);
@@ -3770,7 +3770,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                 } else {
                                     self.handler
                                         .on_voice_call_closed("Failed to start voice call audio");
-                                    let msg = new_voice_call_request(false);
+                                    let msg = new_voice_call_close();
                                     allow_err!(peer.send(&msg).await);
                                 }
                             } else {

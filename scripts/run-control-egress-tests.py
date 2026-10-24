@@ -203,9 +203,15 @@ def main():
         "match Data::CloseVoiceCall {\n" + between(
             viewer, "            Data::CloseVoiceCall => {",
             "            Data::ResetDecoder(display) => match display {")
-        + "}\n}\n}\n")
+        + "_ => {}\n}\n}\n}\n")
+    snippets["viewer-voice-request.rs"] = (
+        "impl ViewerVoice {\nasync fn request(&mut self, peer: &mut Peer) -> bool {\n"
+        "match Data::NewVoiceCall {\n" + between(
+            viewer, "            Data::NewVoiceCall => {",
+            "            Data::CloseVoiceCall => {")
+        + "_ => {}\n}\ntrue\n}\n}\n")
     helper = inputs["src/client/helper.rs"].decode("utf-8")
-    marker = "#[inline]\npub fn new_voice_call_request("
+    marker = "static VOICE_CALL_REQUEST_ID: AtomicI64 = AtomicI64::new(0);"
     if helper.count(marker) != 1:
         raise ValueError("viewer voice constructor boundary is missing or ambiguous")
     snippets["viewer-voice-helpers.rs"] = helper[helper.index(marker):]
@@ -337,6 +343,7 @@ def main():
                                ("VIEWER_VOICE_STOP", "viewer-voice-stop.rs"),
                                ("VIEWER_VOICE_RECEIVE", "viewer-voice-receive.rs"),
                                ("VIEWER_VOICE_COMMAND", "viewer-voice-command.rs"),
+                               ("VIEWER_VOICE_REQUEST", "viewer-voice-request.rs"),
                                ("VIEWER_VOICE_HELPERS", "viewer-voice-helpers.rs")):
             os.environ[variable] = str(fixture / name)
         os.environ["CM_CHAT_TESTS"] = str(repo / "scripts/test-cm-chat.rs")
@@ -418,13 +425,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=64", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=69", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=64 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=69 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -433,7 +440,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=64 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=69 unchanged=before-after",
               flush=True)
 
 

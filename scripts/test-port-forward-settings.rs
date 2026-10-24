@@ -3,7 +3,7 @@
 // installed settings, the full parent application or a remote tunnel peer.
 use crate::{anyhow::{anyhow, bail}, message_proto::*, ResultType, tokio, log};
 use protobuf::Message as _;
-use std::{path::PathBuf, sync::{Arc, Mutex, RwLock}, time::Duration};
+use std::{ops::Deref, path::PathBuf, sync::{Arc, Mutex, RwLock}, time::Duration};
 use tokio::time::Duration as TokioDuration;
 #[cfg(pf_settings_results)]
 use std::{collections::HashMap, net::SocketAddr, sync::atomic::{AtomicUsize, Ordering}};
@@ -55,6 +55,7 @@ struct Session<T: InvokeUiSession = TestHandler> {
     sender: Arc<RwLock<Option<ViewerCommandSender>>>,
     args: Vec<String>,
     rdp: bool,
+    startup_errors: Option<Arc<Mutex<Vec<String>>>>,
     ui_handler: T,
     #[cfg(pf_settings_results)]
     listener_starts: Arc<AtomicUsize>,
@@ -63,7 +64,13 @@ impl<T: InvokeUiSession> Session<T> {
     fn is_port_forward(&self) -> bool { true }
     fn is_rdp(&self) -> bool { self.rdp }
     fn get_id(&self) -> String { self.lc.read().unwrap().id.clone() }
-    fn on_error(&self, error: &str) { panic!("unexpected mapping task error: {error}"); }
+    fn on_error(&self, error: &str) {
+        if let Some(errors) = &self.startup_errors {
+            errors.lock().unwrap().push(error.to_owned());
+        } else {
+            panic!("unexpected mapping task error: {error}");
+        }
+    }
 }
 include!(env!("PF_SETTINGS_PRODUCER"));
 include!(env!("PF_SETTINGS_SEND"));
@@ -83,6 +90,7 @@ impl Fixture {
             sender: Arc::new(RwLock::new(sender)),
             args: Vec::new(),
             rdp: false,
+            startup_errors: None,
             ui_handler: TestHandler,
             #[cfg(pf_settings_results)]
             listener_starts: Arc::new(AtomicUsize::new(0)),
@@ -118,6 +126,77 @@ impl<T: InvokeUiSession> Interface for Session<T> {
 include!(env!("PF_SETTINGS_LISTEN_WAIT"));
 #[cfg(pf_settings_results)]
 fn run_rdp(_port: u16) -> ResultType<()> { Ok(()) }
+
+
+#[cfg(pf_settings_results)]
+include!(env!("PF_SETTINGS_STARTUP"));
+
+#[cfg(pf_settings_results)]
+#[tokio::test(flavor = "current_thread")]
+async fn saved_mapping_startup_keeps_independent_listeners_after_refusal() {
+    let mut all_correct = true;
+    for name in ["first-collision", "middle-invalid", "last-collision", "mixed", "healthy", "empty"] {
+        let mut fixture = Fixture::new(None);
+        let errors = Arc::new(Mutex::new(Vec::new()));
+        fixture.session.startup_errors = Some(Arc::clone(&errors));
+        let blocker = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+        let blocked_addr = blocker.local_addr().unwrap();
+        let first = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+        let first_addr = first.local_addr().unwrap();
+        let second = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+        let second_addr = second.local_addr().unwrap();
+        let blocked = i32::from(blocked_addr.port());
+        let a = i32::from(first_addr.port());
+        let b = i32::from(second_addr.port());
+        let invalid = i32::from(u16::MAX) + 1;
+        let (ports, expected_errors) = match name {
+            "first-collision" => (vec![blocked, a, b], 1),
+            "middle-invalid" => (vec![a, invalid, b], 1),
+            "last-collision" => (vec![a, b, blocked], 1),
+            "mixed" => (vec![blocked, a, invalid, b, blocked], 3),
+            "healthy" => (vec![a, b], 0),
+            "empty" => (vec![], 0),
+            _ => unreachable!(),
+        };
+        let expected_active = if name == "empty" { 0 } else { 2 };
+        let mappings = ports.into_iter().map(|port| (port, "localhost".into(), 22)).collect();
+        {
+            let mut lc = fixture.session.lc.write().unwrap();
+            lc.config.port_forwards = mappings;
+            lc.config.store(&lc.id).unwrap();
+        }
+        let saved = fixture.bytes();
+        drop(first);
+        drop(second);
+        let supervisor = PortForwardSupervisorOwner::start(fixture.session.clone()).unwrap();
+        start_saved_mappings(&fixture.session, &supervisor).await;
+        let active = usize::from(tcp::new_exclusive_listener(first_addr).await.is_err())
+            + usize::from(tcp::new_exclusive_listener(second_addr).await.is_err());
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while fixture.session.listener_starts.load(Ordering::SeqCst) < active {
+                tokio::task::yield_now().await;
+            }
+        }).await.unwrap();
+        let observed_errors = errors.lock().unwrap().clone();
+        let precise_errors = (!matches!(name, "first-collision" | "last-collision" | "mixed")
+                || observed_errors.iter().any(|e| e.contains(&format!("local port {blocked}:"))))
+            && (!matches!(name, "middle-invalid" | "mixed")
+                || observed_errors.iter().any(|e| e.contains(&format!("local port {invalid}:"))
+                    && e.contains("Invalid local port-forward port")));
+        let preserved = fixture.bytes() == saved;
+        supervisor.close_and_join().await.unwrap();
+        let rebindable = tcp::new_exclusive_listener(first_addr).await.is_ok()
+            && tcp::new_exclusive_listener(second_addr).await.is_ok();
+        let blocker_unchanged = blocker.local_addr().unwrap() == blocked_addr
+            && tcp::new_exclusive_listener(blocked_addr).await.is_err();
+        let correct = active == expected_active && observed_errors.len() == expected_errors
+            && precise_errors && preserved && rebindable && blocker_unchanged;
+        println!("PF_SETTINGS_STARTUP_CASE=observed name={name} active={active} expected_active={expected_active} errors={} expected_errors={expected_errors} precise={precise_errors} saved={preserved} blocker={blocker_unchanged} rebindable={rebindable} correct={correct}", observed_errors.len());
+        all_correct &= correct;
+    }
+    assert!(all_correct, "one saved mapping refusal suppressed an independent mapping or its error");
+    println!("PF_SETTINGS_STARTUP=pass cases=6 attempts=independent errors=visible saved=unchanged listeners=native cleanup=joined");
+}
 
 #[cfg(pf_settings_results)]
 async fn selected(

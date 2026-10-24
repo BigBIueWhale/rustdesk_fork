@@ -158,7 +158,8 @@ def main():
     if rdp_results:
         os.environ["RUSTFLAGS"] = os.environ.get("RUSTFLAGS", "") + " --cfg rdp_launch_results"
     snippets["pf-settings-cache.rs"] = (
-        "impl LoginConfigHandler {\n" + between(
+        between(client, "impl Deref for LoginConfigHandler {", "impl LoginConfigHandler {")
+        + "impl LoginConfigHandler {\n" + between(
             client, "    pub fn add_port_forward(&mut self, mapping:",
             "    /// Set an option for handler's") + "}\n")
     snippets["pf-settings-peer-mutation.rs"] = (
@@ -209,6 +210,11 @@ def main():
             '#[cfg(windows)]\nfn set_exclusive_addr_use(') + between(
             tcp, 'const DEFAULT_BACKLOG:',
             '/// R-D5: bind the direct listener')
+    snippets["pf-settings-startup.rs"] = (
+        "async fn start_saved_mappings(handler: &Session, supervisor: &PortForwardSupervisorOwner) {\n"
+        + between(session, "            let pfs = handler.lc.read().unwrap().port_forwards.clone();",
+                  "            loop {\n                match receiver.recv().await {\n                    Some(Ok(Data::SavedPortForward(request)))")
+        + "}\n")
     legacy_marker = "            std::fs::File::create(&path).ok();\n"
     marker_start = "            let marker_ready = "
     marker_end = "            if marker_ready {"
@@ -456,7 +462,7 @@ def main():
         for part in ("producer", "send", "rdp-producer", "cache", "peer-mutation", "data", "queue", "target", "request", "ffi"):
             os.environ["PF_SETTINGS_" + part.replace("-", "_").upper()] = str(fixture / ("pf-settings-" + part + ".rs"))
         if transactional_settings:
-            for part in ("owner", "port-owner", "listener", "listen-wait", "native-bind"):
+            for part in ("owner", "port-owner", "listener", "listen-wait", "native-bind", "startup"):
                 os.environ["PF_SETTINGS_" + part.replace("-", "_").upper()] = str(fixture / ("pf-settings-" + part + ".rs"))
         os.environ["CM_CHAT_TESTS"] = str(repo / "scripts/test-cm-chat.rs")
         os.environ["CM_DISCONNECT_TESTS"] = str(repo / "scripts/test-cm-disconnect.rs")
@@ -538,13 +544,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=86", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=87", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=86 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=87 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -553,7 +559,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=86 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=87 unchanged=before-after",
               flush=True)
 
 

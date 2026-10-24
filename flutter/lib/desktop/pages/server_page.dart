@@ -52,13 +52,16 @@ class _DesktopServerPageState extends State<DesktopServerPage>
 
   @override
   void onWindowClose() {
-    Future.wait([gFFI.serverModel.closeAll(), gFFI.close()]).then((_) {
+    gFFI.serverModel.closeAll().then((_) => gFFI.close()).then((_) {
       if (isMacOS) {
         RdPlatformChannel.instance.terminate();
       } else {
         windowManager.setPreventClose(false);
         windowManager.close();
       }
+    }).catchError((Object error) {
+      debugPrint('CM close request failed: ${error.runtimeType}');
+      if (mounted) showToast(translate('Failed'));
     });
     super.onWindowClose();
   }
@@ -912,19 +915,35 @@ class _CmControlPanel extends StatelessWidget {
         .marginAll(4);
   }
 
-  void handleDisconnect() {
-    bind.cmCloseConnection(
-        connId: client.id, registryGeneration: client.registryGeneration);
+  Future<void> handleDisconnect() async {
+    try {
+      if (!await bind.cmCloseConnection(
+          connId: client.id, registryGeneration: client.registryGeneration)) {
+        showToast(translate('Failed'));
+      }
+    } catch (error) {
+      debugPrint('CM disconnect request failed: ${error.runtimeType}');
+      showToast(translate('Failed'));
+    }
   }
 
   // R-G7 (§19): handleAccept (the manual click-to-accept sender) is removed with the Accept
   // button — approve-mode is pinned 'password', so acceptance is automatic.
 
-  void handleClose() async {
-    await bind.cmRemoveDisconnectedConnection(
-        connId: client.id, registryGeneration: client.registryGeneration);
-    if (await bind.cmGetClientsLength() == 0) {
-      windowManager.close();
+  Future<void> handleClose() async {
+    try {
+      final removed = await bind.cmRemoveDisconnectedConnection(
+          connId: client.id, registryGeneration: client.registryGeneration);
+      if (!removed) {
+        showToast(translate('Failed'));
+        return;
+      }
+      if (await bind.cmGetClientsLength() == 0) {
+        await windowManager.close();
+      }
+    } catch (error) {
+      debugPrint('CM history dismissal failed: ${error.runtimeType}');
+      showToast(translate('Failed'));
     }
   }
 

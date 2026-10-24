@@ -485,10 +485,16 @@ class ConnectionManager extends StatelessWidget {
     final disconnectButton = ElevatedButton.icon(
       style: ButtonStyle(backgroundColor: MaterialStatePropertyAll(Colors.red)),
       icon: const Icon(Icons.close),
-      onPressed: () {
-        bind.cmCloseConnection(
-            connId: client.id, registryGeneration: client.registryGeneration);
-        gFFI.invokeMethod("cancel_notification", client.id);
+      onPressed: () async {
+        try {
+          if (!await bind.cmCloseConnection(
+              connId: client.id, registryGeneration: client.registryGeneration)) {
+            showToast(translate('Failed'));
+          }
+        } catch (error) {
+          debugPrint('CM disconnect request failed: ${error.runtimeType}');
+          showToast(translate('Failed'));
+        }
       },
       label: Text(translate("Disconnect")),
     );

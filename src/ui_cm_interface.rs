@@ -1307,15 +1307,21 @@ pub fn close(id: i32, registry_generation: i64) -> bool {
             .map(|client| client.tx.clone())
     };
     if let Some(tx) = tx {
-        allow_err!(tx.send(Data::Close));
+        match tx.send(Data::Close) {
+            Ok(()) => true,
+            Err(error) => {
+                log::error!("CM disconnect admission failed: {}", error);
+                false
+            }
+        }
     } else {
         log::debug!(
             "ignored stale CM disconnect for {}:{}",
             id,
             registry_generation
         );
+        false
     }
-    true
 }
 
 #[inline]
@@ -1332,15 +1338,15 @@ pub fn remove(id: i32, registry_generation: i64) -> bool {
             .map(|client| client.disconnected)
             .unwrap_or(false)
     {
-        clients.clients.remove(&id);
+        clients.clients.remove(&id).is_some()
     } else {
         log::debug!(
             "ignored stale or active CM history dismissal for {}:{}",
             id,
             registry_generation
         );
+        false
     }
-    true
 }
 
 // server mode send chat to peer

@@ -117,10 +117,14 @@ void retireDisconnectedCmPeerClients(
 Future<void> requestCmClientClosures(List<Client> clients,
     Future<bool> Function(int, int) closeConnection) async {
   final owners = <int, int>{
-    for (final client in clients) client.id: client.registryGeneration,
+    for (final client in clients)
+      if (!client.disconnected) client.id: client.registryGeneration,
   };
-  await Future.wait(owners.entries.map(
+  final admitted = await Future.wait(owners.entries.map(
       (owner) async => await closeConnection(owner.key, owner.value)));
+  if (admitted.any((accepted) => !accepted)) {
+    throw StateError('One or more connection close requests were refused');
+  }
 }
 
 class ServerModel with ChangeNotifier {
@@ -795,24 +799,10 @@ class ServerModel with ChangeNotifier {
     }
   }
 
-  Future<void> closeAll() async {
-    final closingOwners = <int, int>{
-      for (final client in _clients) client.id: client.registryGeneration,
-    };
-    await requestCmClientClosures(
+  Future<void> closeAll() => requestCmClientClosures(
         _clients,
         (id, generation) => bind.cmCloseConnection(
             connId: id, registryGeneration: generation));
-    for (var index = _clients.length - 1; index >= 0; index -= 1) {
-      final client = _clients[index];
-      if (closingOwners[client.id] == client.registryGeneration) {
-        _clients.removeAt(index);
-        tabController.remove(index);
-      }
-    }
-    _commitClientStateMutation();
-    if (isAndroid) androidUpdatekeepScreenOn();
-  }
 
   void _commitClientStateMutation() {
     _clientStateRevision += 1;

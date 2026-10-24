@@ -2862,6 +2862,12 @@ fn validate_recv_file_authority(file: &std::fs::File) -> std::io::Result<()> {
                 "receive artifact must have exactly one filesystem link",
             ));
         }
+        if metadata.mode() & 0o7022 != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "receive artifact has unsafe write permissions or special mode bits",
+            ));
+        }
         return Ok(());
     }
 

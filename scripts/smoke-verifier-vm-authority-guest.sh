@@ -3489,8 +3489,6 @@ run_focused_rust_tests() {
                 libs/hbb_common/src/config/linux_directory.rs
             )
             required_tests=(
-                config::option_tests::legacy_key_pair_lookup_preserves_corrupt_source
-                config::option_tests::legacy_key_pair_lookup_preserves_read_only_and_decrypt_controls
                 config::option_tests::stored_prs_rejects_invalid_decoded_values_without_mutation
                 config::option_tests::prs_storage_writer_and_runtime_share_canonical_value_admission
                 password_security::test::test_storage_wrappers

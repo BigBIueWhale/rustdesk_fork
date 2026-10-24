@@ -3012,6 +3012,16 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Existing legacy-key lookup — OPEN/PARKED at the user's topic pivot.**
+`Config::get_existing_key_pair` still uses the recovering core-config loader; a
+cold optional lookup can therefore rename malformed TOML while returning no key.
+The read-only replacement is not implemented or validated. Commit `52e66ce8`
+preserves two prepared native regressions and their configuration-profile inventory
+entries. They were not executed; they are removed from the live suite at this
+pivot rather than leaving an unfinished regression cohort active. The production
+getter, cache and legacy-decryption path are unchanged. Resume only on explicit
+direction; no failure reproduction, correction or acceptance is claimed.
+
 **PRS value admission (`552c4fef`).** Durable PRS reads previously treated every decrypted
 nonempty string as available, while runtime replica admission already required canonical
 base64 of exactly 32 bytes. One shared validator now governs durable wrapping, decoded

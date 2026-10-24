@@ -131,7 +131,7 @@ class _PortForwardPageState extends State<PortForwardPage>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      translate('Listening ...'),
+                      translate('TCP tunneling'),
                       style: const TextStyle(fontSize: 16, color: Colors.white),
                     ),
                     Text(
@@ -219,7 +219,7 @@ class _PortForwardPageState extends State<PortForwardPage>
                     remotePort: remotePort);
               } catch (e) {
                 debugPrint("Failed to add tunnel:$e");
-                if (mounted) showToast(translate('Failed'));
+                if (mounted) showToast(e.toString());
                 return;
               }
               if (!mounted) return;
@@ -288,7 +288,7 @@ class _PortForwardPageState extends State<PortForwardPage>
                     sessionId: _ffi.sessionId, localPort: pf.localPort);
               } catch (e) {
                 debugPrint("Failed to remove tunnel:$e");
-                if (mounted) showToast(translate('Failed'));
+                if (mounted) showToast(e.toString());
                 return;
               }
               if (!mounted) return;

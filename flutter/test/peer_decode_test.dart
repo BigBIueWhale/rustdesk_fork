@@ -11,6 +11,8 @@ import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/common/widgets/chat_page.dart'
     show chatSendButtonBuilder;
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
+// Compile the tunnel page against the freshly generated bridge in this shard.
+import 'package:flutter_hbb/desktop/pages/port_forward_page.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/peer_model.dart';

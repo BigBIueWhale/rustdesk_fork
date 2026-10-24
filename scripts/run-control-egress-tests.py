@@ -156,7 +156,9 @@ def main():
     snippets["pf-settings-peer-mutation.rs"] = (
         "impl PeerConfig {\n" + between(peer_config_source, "    pub fn add_port_forward(\n",
             "    pub fn credential_status(id:") + "}\n")
-    snippets["pf-settings-data.rs"] = enum_declaration(client, "Data")
+    data_start = client.index("\npub enum Data {") + 1
+    data_end = client.index("\n}", data_start) + 2
+    snippets["pf-settings-data.rs"] = client[data_start:data_end] + "\n"
     snippets["pf-settings-queue.rs"] = between(
         client, "// One outgoing connection round owns this local command plane.",
         "/// Keycode for key events.")

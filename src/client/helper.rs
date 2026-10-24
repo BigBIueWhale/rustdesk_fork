@@ -21,8 +21,13 @@ pub struct QualityStatus {
 
 static VOICE_CALL_REQUEST_ID: AtomicI64 = AtomicI64::new(0);
 
-fn allocate_voice_call_request_id(_last_id: &AtomicI64) -> Option<NonZeroI64> {
-    NonZeroI64::new(get_time())
+fn allocate_voice_call_request_id(last_id: &AtomicI64) -> Option<NonZeroI64> {
+    let previous = last_id
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |last| {
+            last.checked_add(1).filter(|next| *next > 0)
+        })
+        .ok()?;
+    previous.checked_add(1).and_then(NonZeroI64::new)
 }
 
 #[inline]

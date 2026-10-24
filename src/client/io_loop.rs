@@ -2395,13 +2395,22 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
             }
             Data::NewVoiceCall => {
+                if self.voice_call_request_timestamp.is_some() || self.voice_call_audio.is_some() {
+                    return true;
+                }
                 let Some((request_id, msg)) = new_voice_call_request() else {
                     self.handler
                         .on_voice_call_closed("Failed to allocate a voice-call request ID");
                     return true;
                 };
                 self.voice_call_request_timestamp = Some(request_id);
-                allow_err!(peer.send(&msg).await);
+                if let Err(error) = peer.send(&msg).await {
+                    self.voice_call_request_timestamp = None;
+                    log::error!("Failed to send voice-call request: {error}");
+                    self.handler
+                        .on_voice_call_closed("Failed to send voice-call request");
+                    return false;
+                }
                 self.handler.on_voice_call_waiting();
             }
             Data::CloseVoiceCall => {

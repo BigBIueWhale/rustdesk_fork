@@ -507,10 +507,17 @@ class ConnectionManager extends StatelessWidget {
               backgroundColor: MaterialStatePropertyAll(Colors.red)),
           icon: const Icon(Icons.phone),
           label: Text(translate("Stop")),
-          onPressed: () {
-            bind.cmCloseVoiceCall(
-                id: client.id, registryGeneration: client.registryGeneration);
-            gFFI.invokeMethod("cancel_notification", client.id);
+          onPressed: () async {
+            try {
+              if (!await bind.cmCloseVoiceCall(
+                  id: client.id,
+                  registryGeneration: client.registryGeneration)) {
+                showToast(translate('Failed'));
+              }
+            } catch (error) {
+              debugPrint('CM voice close request failed: ${error.runtimeType}');
+              showToast(translate('Failed'));
+            }
           },
         ),
       );

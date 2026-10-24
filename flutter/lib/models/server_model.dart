@@ -694,12 +694,18 @@ class ServerModel with ChangeNotifier {
         .updateConnIdOfKey(MessageKey(client.peerId, client.id));
   }
 
-  handleVoiceCall(Client client, bool accept) {
-    parent.target?.invokeMethod("cancel_notification", client.id);
-    bind.cmHandleIncomingVoiceCall(
-        id: client.id,
-        registryGeneration: client.registryGeneration,
-        accept: accept);
+  Future<void> handleVoiceCall(Client client, bool accept) async {
+    try {
+      if (!await bind.cmHandleIncomingVoiceCall(
+          id: client.id,
+          registryGeneration: client.registryGeneration,
+          accept: accept)) {
+        showToast(translate('Failed'));
+      }
+    } catch (error) {
+      debugPrint('CM voice response request failed: ${error.runtimeType}');
+      showToast(translate('Failed'));
+    }
   }
 
   showVoiceCallDialog(Client client) {

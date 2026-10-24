@@ -295,6 +295,8 @@ class MainService : Service() {
                     }
                     if (incomingVoiceCall) {
                         voiceCallRequestNotification(id, "Voice Call Request", username, peerId)
+                    } else {
+                        cancelNotification(id)
                     }
                 } catch (e: JSONException) {
                     e.printStackTrace()

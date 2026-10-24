@@ -947,16 +947,30 @@ class _CmControlPanel extends StatelessWidget {
     }
   }
 
-  void handleVoiceCall(bool accept) {
-    bind.cmHandleIncomingVoiceCall(
-        id: client.id,
-        registryGeneration: client.registryGeneration,
-        accept: accept);
+  Future<void> handleVoiceCall(bool accept) async {
+    try {
+      if (!await bind.cmHandleIncomingVoiceCall(
+          id: client.id,
+          registryGeneration: client.registryGeneration,
+          accept: accept)) {
+        showToast(translate('Failed'));
+      }
+    } catch (error) {
+      debugPrint('CM voice response request failed: ${error.runtimeType}');
+      showToast(translate('Failed'));
+    }
   }
 
-  void closeVoiceCall() {
-    bind.cmCloseVoiceCall(
-        id: client.id, registryGeneration: client.registryGeneration);
+  Future<void> closeVoiceCall() async {
+    try {
+      if (!await bind.cmCloseVoiceCall(
+          id: client.id, registryGeneration: client.registryGeneration)) {
+        showToast(translate('Failed'));
+      }
+    } catch (error) {
+      debugPrint('CM voice close request failed: ${error.runtimeType}');
+      showToast(translate('Failed'));
+    }
   }
 }
 

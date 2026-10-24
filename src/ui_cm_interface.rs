@@ -1017,12 +1017,20 @@ impl Drop for CmFileOperationTask {
 static EXIT_ON_IDLE: AtomicBool = AtomicBool::new(false);
 
 #[cfg(not(any(target_os = "ios")))]
-fn cm_voice_call_sender(id: i32, _registry_generation: i64) -> Option<CmEgressSender> {
-    CLIENTS
-        .read()
-        .unwrap()
+fn cm_voice_call_sender(id: i32, registry_generation: i64) -> Option<CmEgressSender> {
+    let owner = CmClientOwner {
+        id,
+        generation: registry_generation,
+    };
+    let clients = CLIENTS.read().unwrap();
+    clients
         .clients
         .get(&id)
+        .filter(|client| {
+            clients.is_current(owner)
+                && !client.disconnected
+                && client.conn_type.allows_voice_call()
+        })
         .map(|client| client.tx.clone())
 }
 
@@ -3688,23 +3696,33 @@ fn send_privacy_mode_state_to_current_owner(
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]
 pub fn handle_incoming_voice_call(id: i32, registry_generation: i64, accept: bool) -> bool {
-    // Not handled in iOS yet.
     #[cfg(not(any(target_os = "ios")))]
     if let Some(tx) = cm_voice_call_sender(id, registry_generation) {
-        allow_err!(tx.send(Data::VoiceCallResponse(accept)));
+        return match tx.send(Data::VoiceCallResponse(accept)) {
+            Ok(()) => true,
+            Err(error) => {
+                log::error!("CM voice response admission failed: {}", error);
+                false
+            }
+        };
     };
-    true
+    false
 }
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]
 pub fn close_voice_call(id: i32, registry_generation: i64) -> bool {
-    // Not handled in iOS yet.
     #[cfg(not(any(target_os = "ios")))]
     if let Some(tx) = cm_voice_call_sender(id, registry_generation) {
-        allow_err!(tx.send(Data::CloseVoiceCall("".to_owned())));
+        return match tx.send(Data::CloseVoiceCall(String::new())) {
+            Ok(()) => true,
+            Err(error) => {
+                log::error!("CM voice close admission failed: {}", error);
+                false
+            }
+        };
     };
-    true
+    false
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

@@ -8946,7 +8946,7 @@ mod tests {
         std::fs::create_dir_all(&tmp.path).expect("create private receive directory");
         let final_path = tmp.join("incoming.bin");
         let staged_path = tmp.join("incoming.bin.download");
-        std::fs::write(&staged_path, b"old!").expect("seed an already full-length resume file");
+        write_receive_partial_fixture(&staged_path, b"old!").expect("seed an already full-length resume file");
         std::fs::write(
             tmp.join("incoming.bin.digest"),
             serde_json::to_vec(&FileDigest {

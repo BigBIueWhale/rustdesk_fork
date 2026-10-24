@@ -299,7 +299,10 @@ void main() {
       calls.add([id, generation]);
       return true;
     });
-    expect(calls, [[7, 19], [8, 20]]);
+    expect(calls, [
+      [7, 19],
+      [8, 20]
+    ]);
     expect(clients, [same(first), same(second)]);
     expect(clients.every((client) => !client.disconnected), isTrue);
   });
@@ -307,8 +310,7 @@ void main() {
   test('CM close batch refuses a false native result', () async {
     final client = _incomingClient(19);
     final clients = [client];
-    await expectLater(
-        requestCmClientClosures(clients, (_, __) async => false),
+    await expectLater(requestCmClientClosures(clients, (_, __) async => false),
         throwsStateError);
     expect(clients.single, same(client));
     expect(client.disconnected, isFalse);
@@ -374,7 +376,9 @@ void main() {
     clients[0] = replacement;
     reply.complete(true);
     await close;
-    expect(calls, [[7, 19]]);
+    expect(calls, [
+      [7, 19]
+    ]);
     expect(clients.single, same(replacement));
     expect(replacement.disconnected, isFalse);
   });

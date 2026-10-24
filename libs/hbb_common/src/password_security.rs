@@ -416,6 +416,7 @@ mod test {
     #[test]
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn test_storage_key_lookup_failure_refuses_wrapping() {
+        use super::{encrypt_str_or_original, encrypt_vec_or_original};
         use crate::libc;
         const CHILD: &str = "RUSTDESK_STORAGE_KEY_FAILURE_CHILD";
         const TEST: &str = "password_security::test::test_storage_key_lookup_failure_refuses_wrapping";

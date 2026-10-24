@@ -13436,6 +13436,46 @@ installed/other-platform behavior, all fifteen credential actions, R-S0/R-F5,
 soak and release acceptance remain OPEN. All full-parent/bootstrap and other
 user parks are unchanged.
 
+**Controlled voice-request admission — native component verified; full server/CM
+per-call acceptance OPEN.** `6c33c79a` requires the exact positive peer ID after the
+actual Remote/ViewCamera predicate and before pending ownership. Zero and negative
+IDs refuse without a CM notice; the wall-clock replacement and eager fallback
+unwrap are removed. Pending/active overlap still refuses. A closed or timed-out
+CM notification clears the just-installed pending ID, runs connection cleanup
+with locking disabled and returns false. The failure latch and five-second queue
+deadline are preserved. The old outer loop already closed after this latch;
+this correction does not establish an earlier indefinite leak or installed crash.
+
+At unchanged-product preparation `b761dae0`, 70 tests pass and three new tests
+fail. Twelve invalid-ID/clock cases either queue an invented/negative ID or catch
+the eager-unwrap panic; six positive-ID cases with zero clock catch the same panic.
+Both real CM failures retain pending 42 and return true. The corrected 73-case
+cohort passes in 7.02 native seconds, 109 outer, including 30 valid/type/overlap controls, 12 invalid cases, six
+zero-clock positive cases and closed/full real Tokio channels. The full channel
+executes the production five-second deadline; its filler survives and no incoming
+notice is accepted. Positive 1, 42 and i64::MAX remain exact for both allowed types.
+
+All four test bodies and prior 69 assertions are unchanged across A/B. The final
+fixture adds only an on_close double checking the actual reason/lock arguments.
+Across 30 input/44 part receipts, only connection.rs, that auxiliary double and
+the extracted request arm differ. The type predicates, CM sender/deadline,
+dependencies and other parts remain exact. Source review also covers the normal
+tail and closed guard: cleanup with lock=false precedes the generic End/lock=true
+tail, preserving CM-failure policy. An intermediate 73/73 execution is retained;
+the final candidate is rerun for this cleanup correction.
+
+Actual request/type/sender bodies and generated protobufs execute in the isolated
+Linux component with real bounded CM channels. Post-auth identity, input-lease
+presence, wall clock, unused voice-close and on_close effects are explicit doubles.
+No complete server, CPace/kernel identity, native CM IPC, physical audio or installed
+artifact executes. The caught panic uses the test profile; release abort behavior
+is unexecuted. Scope is admission/control flow, not complete cleanup or LPE immunity.
+
+Evidence: `.harness-state/verifier-vm/controlled-voice-admission-161fc857.json`.
+Complete peer/CM per-call authority, native audio/resource finality, rendered UI,
+full parent, installed/other-platform behavior, all fifteen credential actions,
+R-S0/R-F5, soak and release acceptance remain OPEN. All user parks are unchanged.
+
 Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests
 on `6dfedef7` passed eight cases and failed the two live-metadata privacy cases, exposing synthetic

@@ -4277,6 +4277,8 @@ run_focused_rust_tests() {
                 ui_cm_interface::chat_tests::cm_chat_requires_current_owner_during_admission_and_reuse
                 ui_cm_interface::chat_tests::cm_chat_delayed_command_refuses_after_registry_replacement
                 ui_cm_interface::disconnect_tests::cm_disconnect_current_owners_keep_all_session_types
+                ui_cm_interface::disconnect_tests::cm_disconnect_result_matches_queue_admission
+                ui_cm_interface::disconnect_tests::cm_history_result_matches_exact_removal
                 ui_cm_interface::disconnect_tests::cm_disconnect_requires_exact_live_owner
                 ui_cm_interface::disconnect_tests::cm_history_removal_requires_exact_disconnected_owner
                 ui_cm_interface::disconnect_tests::cm_disconnect_and_history_delayed_commands_do_not_retarget
@@ -6200,7 +6202,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=55 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=57 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6519,7 +6521,7 @@ PY
             || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=55 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=57 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
         [ "$(grep -Fxc 'CM_CHAT_CONTROLS=pass conn_types=5 payloads=10 registry=production bridge=production queue=production' "$output")" -eq 1 ] \
@@ -6534,6 +6536,9 @@ PY
             && [ "$(grep -Ec '^CM_HISTORY_OWNER_CASE=observed case=[a-z-]+ preserved=true fresh_removed=true queues_empty=true correct=true$' "$output")" -eq 7 ] \
             && [ "$(grep -Ec '^CM_DISCONNECT_DELAYED_CASE=observed history=(true|false) old=0 new=0 successor_preserved=true fresh=true correct=true$' "$output")" -eq 2 ] \
             || fail 'CM disconnect or history generation ownership differs'
+        [ "$(grep -Fxc 'CM_CLOSE_RESULT=pass cases=8 current=accepted stale=refused pending=refused gone=refused saturation=refused' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'CM_HISTORY_RESULT=pass cases=6 current=removed stale=refused pending=refused active=refused repeat=refused' "$output")" -eq 1 ] \
+            || fail 'CM close or history result differs from its effect'
         [ "$(grep -Fxc 'CURSOR_ECHO_CLOCK=pass cases=2 wall_fault_ms=600000 window_ms=300 elapsed=native source=production-sender' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^CURSOR_ECHO_CLOCK_CASE=observed case=(backward|forward) delta_ms=-?600000 wall_ms=[0-9]+ fresh=7 expired=0 fresh_us=[0-9]+ expired_ms=[0-9]+ correct=true$' "$output")" -eq 2 ] \
             && [ "$(grep -Fxc 'CURSOR_ECHO_WRITERS=pass paths=3 owner=exact position=preserved default=none movement=unchanged snapshots=exact' "$output")" -eq 1 ] \
@@ -7278,7 +7283,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
-            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|cursor_echo::sender::.*|ui_cm_interface::(chat_tests|disconnect_tests)::.*|file_clipboard::(tests|allocation_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+|cm_read_block_[a-z_]+|recent_document_markers_preserve_existing_objects_and_refuse_creation_failure) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^RECENT_DOCUMENT_|^CURSOR_ECHO_|^CM_(CHAT|DISCONNECT|HISTORY)_|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_PROTO_|^CM_READ_BLOCK_|^FILE_CLIP_QUEUE_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
+            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|cursor_echo::sender::.*|ui_cm_interface::(chat_tests|disconnect_tests)::.*|file_clipboard::(tests|allocation_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+|cm_read_block_[a-z_]+|recent_document_markers_preserve_existing_objects_and_refuse_creation_failure) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^RECENT_DOCUMENT_|^CURSOR_ECHO_|^CM_(CHAT|DISCONNECT|HISTORY|CLOSE)_|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_PROTO_|^CM_READ_BLOCK_|^FILE_CLIP_QUEUE_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
             printf 'CONTROL_EGRESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
@@ -10111,7 +10116,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_PEER_DATA_TEST_JSON
-            expected_result='suites=1 tests=39'
+            expected_result='suites=1 tests=45'
         elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
             memory=3g
             memory_bytes=3221225472
@@ -11056,7 +11061,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
-        printf 'FLUTTER_PEER_DATA_TESTS_VM=pass commit=%s tree=%s suites=1 tests=39 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-peer-decode-tests cleanup=joined\n' \
+        printf 'FLUTTER_PEER_DATA_TESTS_VM=pass commit=%s tree=%s suites=1 tests=45 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-peer-decode-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

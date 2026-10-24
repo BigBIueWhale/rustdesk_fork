@@ -1293,7 +1293,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
 
 #[inline]
 #[cfg(not(any(target_os = "ios")))]
-pub fn close(id: i32, registry_generation: i64) {
+pub fn close(id: i32, registry_generation: i64) -> bool {
     let owner = CmClientOwner {
         id,
         generation: registry_generation,
@@ -1315,10 +1315,11 @@ pub fn close(id: i32, registry_generation: i64) {
             registry_generation
         );
     }
+    true
 }
 
 #[inline]
-pub fn remove(id: i32, registry_generation: i64) {
+pub fn remove(id: i32, registry_generation: i64) -> bool {
     let owner = CmClientOwner {
         id,
         generation: registry_generation,
@@ -1339,6 +1340,7 @@ pub fn remove(id: i32, registry_generation: i64) {
             registry_generation
         );
     }
+    true
 }
 
 // server mode send chat to peer

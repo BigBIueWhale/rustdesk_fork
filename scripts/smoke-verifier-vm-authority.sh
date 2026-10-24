@@ -6343,13 +6343,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clip
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
     mapfile -t control_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=55 unchanged=before-after$'
+            'CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=57 unchanged=before-after$'
     )
     [ "${#control_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'control-egress artifact receipt differs'
     require_exact_fixed_receipt \
-        "CONTROL_EGRESS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=55 target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "CONTROL_EGRESS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=57 target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused control-egress receipt'
     require_exact_fixed_receipt \
         'CURSOR_ECHO_CLOCK=pass cases=2 wall_fault_ms=600000 window_ms=300 elapsed=native source=production-sender' \
@@ -6375,6 +6375,12 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cont
     require_exact_fixed_receipt \
         'CM_DISCONNECT_DELAYED=pass commands=2 registry=replaced successor=preserved fresh=usable workers=joined' \
         'delayed CM disconnect and history commands preserve successors'
+    require_exact_fixed_receipt \
+        'CM_CLOSE_RESULT=pass cases=8 current=accepted stale=refused pending=refused gone=refused saturation=refused' \
+        'CM close reports actual queue admission'
+    require_exact_fixed_receipt \
+        'CM_HISTORY_RESULT=pass cases=6 current=removed stale=refused pending=refused active=refused repeat=refused' \
+        'CM history reports actual registry removal'
     require_exact_fixed_receipt \
         'CURSOR_ECHO_WRITERS=pass paths=3 owner=exact position=preserved default=none movement=unchanged snapshots=exact' \
         'cursor echo input writers and sender controls'
@@ -7762,7 +7768,7 @@ else
             'focused Flutter file navigation receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_PEER_DATA_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=39 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-peer-decode-tests cleanup=joined" \
+            "FLUTTER_PEER_DATA_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=45 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-peer-decode-tests cleanup=joined" \
             'focused Flutter peer decode receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
         require_exact_fixed_receipt \
@@ -8302,7 +8308,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'CM_CLIPBOARD_RESPONSE_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=36 scope=production-response-type-and-assembly windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=55 scope=production-control-cm-egress-and-framing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'CONTROL_EGRESS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=57 scope=production-control-cm-egress-and-framing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=12 scope=production-file-block-decoder-and-compressor network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

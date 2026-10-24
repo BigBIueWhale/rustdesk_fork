@@ -114,6 +114,15 @@ void retireDisconnectedCmPeerClients(
   }
 }
 
+Future<void> requestCmClientClosures(List<Client> clients,
+    Future<bool> Function(int, int) closeConnection) async {
+  final owners = <int, int>{
+    for (final client in clients) client.id: client.registryGeneration,
+  };
+  await Future.wait(owners.entries.map(
+      (owner) async => await closeConnection(owner.key, owner.value)));
+}
+
 class ServerModel with ChangeNotifier {
   final _androidServiceUiState = AndroidServiceUiState();
   bool _directListenerBound = false;
@@ -790,8 +799,10 @@ class ServerModel with ChangeNotifier {
     final closingOwners = <int, int>{
       for (final client in _clients) client.id: client.registryGeneration,
     };
-    await Future.wait(closingOwners.entries.map((owner) => bind.cmCloseConnection(
-        connId: owner.key, registryGeneration: owner.value)));
+    await requestCmClientClosures(
+        _clients,
+        (id, generation) => bind.cmCloseConnection(
+            connId: id, registryGeneration: generation));
     for (var index = _clients.length - 1; index >= 0; index -= 1) {
       final client = _clients[index];
       if (closingOwners[client.id] == client.registryGeneration) {

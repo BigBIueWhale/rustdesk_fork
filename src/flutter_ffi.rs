@@ -1928,14 +1928,26 @@ pub fn cm_send_chat(conn_id: i32, registry_generation: i64, msg: String) {
     crate::ui_cm_interface::send_chat(conn_id, registry_generation, msg);
 }
 
-pub fn cm_close_connection(conn_id: i32, registry_generation: i64) {
+pub fn cm_close_connection(conn_id: i32, registry_generation: i64) -> bool {
     #[cfg(not(any(target_os = "ios")))]
-    crate::ui_cm_interface::close(conn_id, registry_generation);
+    {
+        crate::ui_cm_interface::close(conn_id, registry_generation)
+    }
+    #[cfg(target_os = "ios")]
+    {
+        false
+    }
 }
 
-pub fn cm_remove_disconnected_connection(conn_id: i32, registry_generation: i64) {
+pub fn cm_remove_disconnected_connection(conn_id: i32, registry_generation: i64) -> bool {
     #[cfg(not(any(target_os = "ios")))]
-    crate::ui_cm_interface::remove(conn_id, registry_generation);
+    {
+        crate::ui_cm_interface::remove(conn_id, registry_generation)
+    }
+    #[cfg(target_os = "ios")]
+    {
+        false
+    }
 }
 
 pub fn cm_should_hide() -> Result<bool> {

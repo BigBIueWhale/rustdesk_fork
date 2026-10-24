@@ -290,6 +290,104 @@ void main() {
     peers.dispose();
   });
 
+  test('CM close batch retains rows after accepted submissions', () async {
+    final first = _incomingClient(19);
+    final second = _incomingClient(20)..id = 8;
+    final clients = [first, second];
+    final calls = <List<int>>[];
+    await requestCmClientClosures(clients, (id, generation) async {
+      calls.add([id, generation]);
+      return true;
+    });
+    expect(calls, [[7, 19], [8, 20]]);
+    expect(clients, [same(first), same(second)]);
+    expect(clients.every((client) => !client.disconnected), isTrue);
+  });
+
+  test('CM close batch refuses a false native result', () async {
+    final client = _incomingClient(19);
+    final clients = [client];
+    await expectLater(
+        requestCmClientClosures(clients, (_, __) async => false),
+        throwsStateError);
+    expect(clients.single, same(client));
+    expect(client.disconnected, isFalse);
+  });
+
+  test('CM close batch waits for all mixed results', () async {
+    final clients = [_incomingClient(19), _incomingClient(20)..id = 8];
+    final first = Completer<bool>();
+    final second = Completer<bool>();
+    var settled = false;
+    final close = requestCmClientClosures(
+        clients, (id, _) => id == 7 ? first.future : second.future);
+    close.then<void>((_) {
+      settled = true;
+    }, onError: (Object _) {
+      settled = true;
+    });
+    final checked = expectLater(close, throwsStateError);
+    first.complete(false);
+    await Future<void>.delayed(Duration.zero);
+    expect(settled, isFalse);
+    expect(clients, hasLength(2));
+    second.complete(true);
+    await checked;
+    expect(settled, isTrue);
+    expect(clients, hasLength(2));
+  });
+
+  test('CM close batch joins requests after a bridge error', () async {
+    final clients = [_incomingClient(19), _incomingClient(20)..id = 8];
+    final first = Completer<bool>();
+    final calls = <int>[];
+    var settled = false;
+    final close = requestCmClientClosures(clients, (id, _) {
+      calls.add(id);
+      if (id == 8) throw StateError('synthetic bridge failure');
+      return first.future;
+    });
+    close.then<void>((_) {
+      settled = true;
+    }, onError: (Object _) {
+      settled = true;
+    });
+    final checked = expectLater(close, throwsStateError);
+    await Future<void>.delayed(Duration.zero);
+    expect(calls, [7, 8]);
+    expect(settled, isFalse);
+    first.complete(true);
+    await checked;
+    expect(settled, isTrue);
+    expect(clients, hasLength(2));
+  });
+
+  test('CM close batch captures owners before replacement', () async {
+    final clients = [_incomingClient(19)];
+    final reply = Completer<bool>();
+    final calls = <List<int>>[];
+    final close = requestCmClientClosures(clients, (id, generation) {
+      calls.add([id, generation]);
+      return reply.future;
+    });
+    final replacement = _incomingClient(20);
+    clients[0] = replacement;
+    reply.complete(true);
+    await close;
+    expect(calls, [[7, 19]]);
+    expect(clients.single, same(replacement));
+    expect(replacement.disconnected, isFalse);
+  });
+
+  test('CM close batch accepts an empty snapshot without dispatch', () async {
+    var calls = 0;
+    await requestCmClientClosures([], (_, __) async {
+      calls += 1;
+      return true;
+    });
+    expect(calls, 0);
+  });
+
   for (final caseName in [
     'missing client',
     'reused id',

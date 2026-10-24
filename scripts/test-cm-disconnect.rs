@@ -20,6 +20,83 @@ mod disconnect_tests {
     }
 
     #[test]
+    fn cm_disconnect_result_matches_queue_admission() {
+        let mut correct = true;
+        for case in ["missing", "wrong-generation", "pending", "disconnected", "reused",
+            "receiver-gone", "saturated", "accepted"]
+        {
+            *CLIENTS.write().unwrap() = CmClientRegistry::default();
+            let (mut current, receiver) = client(7, "first", ipc::CmAuthConnType::Remote);
+            let mut receiver = Some(receiver);
+            if case == "saturated" {
+                let (sender, limited_receiver) = crate::cm_egress_channel_with_limits(
+                    crate::CmEgressLimits { max_messages: 0, ..crate::CM_EGRESS_LIMITS });
+                current.tx = sender;
+                receiver = Some(limited_receiver);
+            }
+            let owner = admit(&mut current, 1);
+            let (mut replacement, mut replacement_receiver) = client(7, "replacement", ipc::CmAuthConnType::Remote);
+            let pending = if case == "pending" {
+                Some(CLIENTS.write().unwrap().prepare_admission(&mut replacement, 2).unwrap())
+            } else { None };
+            if case == "disconnected" {
+                assert!(CLIENTS.write().unwrap().retire(owner, false));
+            } else if case == "reused" {
+                admit(&mut replacement, 2);
+            } else if case == "receiver-gone" {
+                drop(receiver.take());
+            }
+            let id = if case == "missing" { 404 } else { owner.id };
+            let generation = owner.generation + if case == "wrong-generation" { 1 } else { 0 };
+            let reported = crate::cm_close_connection(id, generation);
+            let queued = if case == "saturated" {
+                assert!(matches!(receiver.as_mut().unwrap().take_next().unwrap(),
+                    Some(CmEgressItem::Failed(crate::CmEgressFailure::MessageCapacity))));
+                0
+            } else if let Some(receiver) = receiver.as_mut() {
+                closes(receiver)
+            } else { 0 };
+            assert_eq!(closes(&mut replacement_receiver), 0);
+            if let Some(pending) = pending { CLIENTS.write().unwrap().abort_admission(pending); }
+            let expected = case == "accepted";
+            let case_correct = reported == expected && queued == if expected { 1 } else { 0 };
+            println!("CM_CLOSE_RESULT_CASE=observed case={case} reported={reported} queued={queued} expected={expected} correct={case_correct}");
+            correct &= case_correct;
+        }
+        assert!(correct, "CM close result reported submission without queue admission");
+        println!("CM_CLOSE_RESULT=pass cases=8 current=accepted stale=refused pending=refused gone=refused saturation=refused");
+    }
+
+    #[test]
+    fn cm_history_result_matches_exact_removal() {
+        let mut correct = true;
+        for case in ["missing", "wrong-generation", "pending", "active", "accepted", "repeat"] {
+            *CLIENTS.write().unwrap() = CmClientRegistry::default();
+            let (mut current, mut receiver) = client(7, "first", ipc::CmAuthConnType::Remote);
+            let owner = admit(&mut current, 1);
+            if case != "active" { assert!(CLIENTS.write().unwrap().retire(owner, false)); }
+            let (mut replacement, _replacement_receiver) = client(7, "replacement", ipc::CmAuthConnType::Remote);
+            let pending = if case == "pending" {
+                Some(CLIENTS.write().unwrap().prepare_admission(&mut replacement, 2).unwrap())
+            } else { None };
+            if case == "repeat" { assert!(crate::cm_remove_disconnected_connection(owner.id, owner.generation)); }
+            let existed = present(owner);
+            let id = if case == "missing" { 404 } else { owner.id };
+            let generation = owner.generation + if case == "wrong-generation" { 1 } else { 0 };
+            let reported = crate::cm_remove_disconnected_connection(id, generation);
+            let removed = existed && !present(owner);
+            let expected = case == "accepted";
+            let case_correct = reported == expected && removed == expected;
+            assert_eq!(closes(&mut receiver), 0);
+            if let Some(pending) = pending { CLIENTS.write().unwrap().abort_admission(pending); }
+            println!("CM_HISTORY_RESULT_CASE=observed case={case} reported={reported} removed={removed} expected={expected} correct={case_correct}");
+            correct &= case_correct;
+        }
+        assert!(correct, "CM history result reported success without removal");
+        println!("CM_HISTORY_RESULT=pass cases=6 current=removed stale=refused pending=refused active=refused repeat=refused");
+    }
+
+    #[test]
     fn cm_disconnect_current_owners_keep_all_session_types() {
         *CLIENTS.write().unwrap() = CmClientRegistry::default();
         let (mut sibling, mut sibling_receiver) = client(99, "sibling", ipc::CmAuthConnType::Remote);

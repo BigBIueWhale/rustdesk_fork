@@ -710,6 +710,12 @@ FILE_NAVIGATION_SUITES = {
     },
 }
 PEER_DATA_TESTS = {
+    "CM close batch retains rows after accepted submissions",
+    "CM close batch refuses a false native result",
+    "CM close batch waits for all mixed results",
+    "CM close batch joins requests after a bridge error",
+    "CM close batch captures owners before replacement",
+    "CM close batch accepts an empty snapshot without dispatch",
     "chat draft survives missing client at both send inputs",
     "chat draft survives reused id at both send inputs",
     "chat draft survives invalid generation at both send inputs",

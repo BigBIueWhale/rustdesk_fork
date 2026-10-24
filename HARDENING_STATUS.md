@@ -14798,36 +14798,33 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
-**Receive-artifact authority — Linux permission comparison ACCEPTED; installed/ACL/platform acceptance OPEN.**
-`9b907415` rejects group/other write and special mode bits using the retained
-receive-artifact descriptor. `268b8cdd` additionally distinguishes payload from digest
-in the lease's opening API. A staged payload must have no group/other permission bits
-before resume metadata or writable-stream ownership is accepted. Digest/lease files
-retain the minimum integrity rule; ordinary final-destination inspection retains its
-read-only policy. Rejected existing artifacts are preserved without chmod/chown,
-truncation or unlink to manufacture admission. A valid acquired lease retires on refusal.
+**Receive-artifact authority — Linux opening/finalization components ACCEPTED; installed/platform acceptance OPEN.**
+Unix receive-owned artifacts use retained-descriptor owner, single-link and permission
+admission. `268b8cdd` distinguishes payload privacy from digest/lock integrity;
+`e3e6ec88` reuses the payload and digest validators at the beginning of finalization,
+before file-time changes, digest removal or publication. A visible invalid state
+refuses with `PermissionDenied` without those commit effects. Read-only final-target
+inspection and ordinary consuming cancellation retain their separate policies.
 
-At unchanged-product preparation `3d12a2b0`, both expanded mode regressions fail with
-52 other named passes. All eight newly targeted payload inspection/resume cases are
-admitted, and four resumed writes deliver new bytes to an already-open reader. The
-identical 7,288-byte mode regression passes after correction. At `6350d8a1`, all 135
-required `--file-metadata-tests` cases pass in 34 groups/199 VM seconds. The
-72-scenario matrix proves 50 permission refusals and 22 controls: rejected payloads
-preserve bytes/inode/mode/mtime and the reader's original bytes; private `0600` payloads
-retain exact inspection and complete resumed publication. Readable metadata/empty-lock
-controls retain their own policy. Valid hand-written partial-data fixtures use the
-product's private creation mode. One additional partial-write fault fixture was
-corrected after its initial `0644` setup refused before the fault; the actual fault,
-production correction and assertions are unchanged, and the full lane then passes.
+At unchanged-product preparation `e6a1ae69`, both new finalization regressions fail
+with 54 other named passes: 20 invalid cases falsely succeed, and two hard-linked
+digest cases fail only after changing file state. Ten valid controls pass. The
+complete test module is identical for correction. All 137 required
+`--file-metadata-tests` cases pass in 34 groups/193 VM seconds. The new
+32-scenario matrix covers 24 permission states and eight hard-link/control states:
+all 22 invalid cases now refuse before commit changes; ten valid cases retain exact
+bytes/inode/mode/mtime and sidecar retirement. Explicit cancellation preserves the
+final target; an extra hard link remains reported as cleanup uncertainty. All 135
+earlier cases, including the 72 opening/resume permission scenarios, remain required
+and pass. Evidence: `.harness-state/verifier-vm/receive-finalization-authority-e21b422a.json`.
+The earlier opening comparisons remain in `receive-file-modes-a0ea097b.json` and
+`receive-private-payload-d6169800.json`. R-S8 requires admission and finalization checks.
 
-Evidence: `.harness-state/verifier-vm/receive-private-payload-d6169800.json`.
-The earlier `receive-file-modes-a0ea097b.json` records the historical minimum integrity
-comparison, not current payload acceptance. R-S8 states the private-payload requirement.
-These are nonroot Linux library/filesystem observations with a same-principal retained
-reader, not a foreign-principal/root-service transaction. Actual unauthorized/authorized
-principals, ACL and non-local-filesystem behavior, native macOS/iOS/Windows owner/DACL
-acceptance, application/peer effects, namespace races, R-S0/R-F5 and release acceptance
-remain OPEN.
+These are nonroot Linux library/filesystem observations with staged same-principal
+metadata changes, not concurrent mutation after the last check or a foreign-principal/
+root-service transaction. Installed authorized/refused actors, ACL/non-local-filesystem
+and native other-platform owner/DACL acceptance, application/peer effects, namespace
+races, R-S0/R-F5 and release acceptance remain OPEN.
 
 **Native receive-path identity — Linux file transactions ACCEPTED; caller/platform acceptance OPEN.**
 `c1df5d00` preserves native bytes when appending receive staging suffixes.
@@ -15720,10 +15717,10 @@ namespace-durability evidence. On macOS/iOS, regular-file synchronization perfor
 followed by mandatory `F_FULLFSYNC`, and namespace transactions place another exact-file full-sync
 after the directory barrier. Apple documents `F_FULLFSYNC` as the stronger persistence request but a
 best-effort guarantee; the source has not been compiled or exercised on the current native Apple
-targets. Unix has no general rename-by-file-descriptor primitive: it revalidates the staged device/inode
-immediately before `renameat`, so deterministic substitution fails closed, but a narrow hostile
-same-UID pathname race between the last check and rename/unlink remains unproved. Advisory leases do
-not constrain a noncooperating process with the receiver's own filesystem identity. Required follow-up
+targets. Unix has no general rename-by-file-descriptor primitive. Retained-handle checks reject
+visible invalid authority and staged-name substitution, but the pathname race between the last check
+and rename/unlink remains OPEN for noncooperating actors allowed to change the staging directory's
+entries. File ownership and advisory leases do not protect that directory namespace. Required follow-up
 is exact installed Windows, Linux, macOS, Android, and iOS file transactions; native
 contention/crash/reconnect and storage-failure injection; physical power-loss/remount testing where
 practical; bounded resource/latency soak; current artifact binding; cold R-B2/R-B10 equality;

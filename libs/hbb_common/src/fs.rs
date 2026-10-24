@@ -3750,7 +3750,7 @@ impl TransferJob {
         &mut self,
         digest: &FileTransferDigest,
         is_resume: bool,
-    ) -> ResultType<(DigestCheckResult, String)> {
+    ) -> ResultType<(DigestCheckResult, PathBuf)> {
         if digest.id != self.id {
             bail!("digest job {} does not match active job {}", digest.id, self.id);
         }
@@ -3777,7 +3777,7 @@ impl TransferJob {
                 file.size
             );
         }
-        let path = get_string(&Self::join(&self.path, &file.name));
+        let path = Self::join(&self.path, &file.name);
         if digest.file_num != self.file_num {
             // All incoming metadata is checked before publishing the previous
             // file. Its exact claim must complete before the next index exists.
@@ -4837,12 +4837,12 @@ pub enum DigestCheckResult {
 }
 
 #[inline]
-pub fn inspect_write_destination(
+pub fn inspect_write_destination<P: AsRef<Path>>(
     is_resume: bool,
-    file_path: &str,
+    file_path: P,
     digest: &FileTransferDigest,
 ) -> ResultType<DigestCheckResult> {
-    let path = Path::new(file_path);
+    let path = file_path.as_ref();
     // Inspection and receive mutation serialize on the same destination lease name. This makes the
     // observed digest and partial length one coherent snapshot; the later resume/open reacquires the
     // lease and validates the digest again before publishing stream ownership.

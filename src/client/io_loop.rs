@@ -534,7 +534,7 @@ async fn inspect_viewer_download_digest(
     job: &mut fs::TransferJob,
     digest: &FileTransferDigest,
     peer_supports_resume: bool,
-) -> Result<(DigestCheckResult, String), String> {
+) -> Result<(DigestCheckResult, PathBuf), String> {
     job.inspect_receive_digest(digest, peer_supports_resume && job.is_resume).await
         .map_err(|error| error.to_string())
 }
@@ -3328,7 +3328,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                             self.handler.override_file_confirm(
                                                 digest.id,
                                                 digest.file_num,
-                                                write_path,
+                                                write_path.to_string_lossy().into_owned(),
                                                 false,
                                             );
                                         }

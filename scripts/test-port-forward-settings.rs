@@ -112,6 +112,8 @@ include!(env!("PF_SETTINGS_PORT_OWNER"));
 #[cfg(pf_settings_results)]
 include!(env!("PF_SETTINGS_LISTENER"));
 #[cfg(pf_settings_results)]
+include!(env!("PF_SETTINGS_ONE_OFF"));
+#[cfg(pf_settings_results)]
 mod tcp {
     use crate::{anyhow::Context, ResultType, tokio::net::{lookup_host, TcpListener, TcpSocket, ToSocketAddrs}};
     include!(env!("PF_SETTINGS_NATIVE_BIND"));

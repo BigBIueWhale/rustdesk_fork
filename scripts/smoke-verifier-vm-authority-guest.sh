@@ -4275,7 +4275,7 @@ run_focused_rust_tests() {
                 src/client/io_loop.rs src/client/helper.rs scripts/test-viewer-voice.rs
                 scripts/test-controlled-voice.rs src/client.rs
                 scripts/test-port-forward-settings.rs src/port_forward.rs
-                scripts/test-rdp-launch.rs scripts/test-tunnel-port-kind.rs
+                scripts/test-rdp-launch.rs scripts/test-tunnel-port-kind.rs src/cli.rs
                 libs/hbb_common/src/tcp.rs
             )
             required_tests=(
@@ -4286,6 +4286,7 @@ run_focused_rust_tests() {
                 port_forward_settings::tunnel_port_kind_tests::ordinary_mapping_producer_rejects_reserved_and_invalid_ports
                 port_forward_settings::tunnel_port_kind_tests::saved_mapping_writer_validates_ports_and_preserves_legacy_removal
                 port_forward_settings::tunnel_port_kind_tests::mapping_receiver_binds_port_kind_to_its_session_owner
+                port_forward_settings::tunnel_port_kind_tests::one_off_mappings_refuse_reserved_ports_and_join_their_listener
                 port_forward_settings::bridge_exports_return_worker_results
                 port_forward_settings::rdp_launch_tests::rdp_request_refuses_unavailable_and_wrong_kind_rounds
                 port_forward_settings::rdp_launch_tests::rdp_request_reports_manager_admission_and_deadline_finality
@@ -6241,7 +6242,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=90 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=91 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6573,7 +6574,10 @@ PY
             && [ "$(grep -Fxc 'PF_SETTINGS_PORT_OWNER=pass cases=4 RDP=ephemeral-only ordinary=fixed-only refusal=before-bind-and-launch cleanup=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PF_SETTINGS_PORT_OWNER_CASE=observed .* correct=true$' "$output")" -eq 4 ] \
             || fail 'ordinary tunnel or RDP local-port ownership differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=90 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'PF_SETTINGS_ONE_OFF=pass cases=4 invalid=before-bind-and-launch valid=native-listener owner-thread=joined ports=rebindable' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^PF_SETTINGS_ONE_OFF_CASE=observed .* correct=true$' "$output")" -eq 4 ] \
+            || fail 'one-off local-port refusal or owned thread/listener finality differs'
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=91 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
         [ "$(grep -Fxc 'CM_VOICE_CALL_ACTION=pass cases=108 identity=exact phase=exact invalid=refused queues=real' "$output")" -eq 1 ] \

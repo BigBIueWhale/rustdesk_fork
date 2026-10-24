@@ -1,5 +1,55 @@
 use super::*;
 
+#[cfg(not(explicit_one_off))]
+use super::listen as listen_one_off;
+
+#[tokio::test(flavor = "current_thread")]
+async fn one_off_mappings_refuse_reserved_ports_and_join_their_listener() {
+    let mut correct = true;
+    for name in ["zero", "negative", "oversized", "valid"] {
+        let fixture = Fixture::new(None);
+        let reservation = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+        let valid_port = reservation.local_addr().unwrap().port();
+        drop(reservation);
+        let port = match name { "zero" => 0, "negative" => -1, "oversized" => 65536,
+            "valid" => i32::from(valid_port), _ => unreachable!() };
+        let (control, receiver) = port_forward_control();
+        let launch_start = RDP_LAUNCH_PORTS.lock().unwrap().len();
+        let session = fixture.session.clone();
+        let operation = tokio::spawn(listen_one_off(
+            session.get_id(), port, session, receiver, "localhost".into(), 22));
+        let observed = tokio::time::timeout(Duration::from_secs(2), async {
+            while !operation.is_finished()
+                && fixture.session.listener_starts.load(Ordering::SeqCst) == 0 {
+                tokio::task::yield_now().await;
+            }
+        }).await.is_ok();
+        let started = fixture.session.listener_starts.load(Ordering::SeqCst) == 1;
+        let launches = RDP_LAUNCH_PORTS.lock().unwrap()[launch_start..].to_vec();
+        let owned_ports = if port == 0 { launches.clone() }
+            else if started { vec![valid_port] } else { vec![] };
+        let mut bound = true;
+        for local in &owned_ports {
+            bound &= tcp::new_exclusive_listener(("127.0.0.1", *local)).await.is_err();
+        }
+        control.close();
+        let outcome = operation.await.unwrap();
+        let mut rebindable = true;
+        for local in owned_ports {
+            rebindable &= tcp::new_exclusive_listener(("127.0.0.1", local)).await.is_ok();
+        }
+        let valid = name == "valid";
+        let precise = valid || outcome.as_ref().err()
+            .is_some_and(|e| e.to_string().contains("Invalid local port-forward port"));
+        let case_correct = observed && outcome.is_ok() == valid && started == valid
+            && launches.is_empty() && bound && rebindable && precise;
+        println!("PF_SETTINGS_ONE_OFF_CASE=observed name={name} accepted={} started={started} launch_branch={} observed={observed} bound={bound} rebindable={rebindable} precise={precise} correct={case_correct}", outcome.is_ok(), launches.len());
+        correct &= case_correct;
+    }
+    assert!(correct, "the one-off route admitted the RDP sentinel or failed owned listener cleanup");
+    println!("PF_SETTINGS_ONE_OFF=pass cases=4 invalid=before-bind-and-launch valid=native-listener owner-thread=joined ports=rebindable");
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn ordinary_mapping_producer_rejects_reserved_and_invalid_ports() {
     let mut correct = true;
@@ -111,4 +161,3 @@ async fn mapping_receiver_binds_port_kind_to_its_session_owner() {
     assert!(correct, "a mapping's port kind escaped its session owner");
     println!("PF_SETTINGS_PORT_OWNER=pass cases=4 RDP=ephemeral-only ordinary=fixed-only refusal=before-bind-and-launch cleanup=joined");
 }
-

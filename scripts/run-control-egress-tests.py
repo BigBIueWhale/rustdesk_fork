@@ -34,7 +34,7 @@ INPUTS = (
     "scripts/test-controlled-voice.rs",
     "src/client.rs", "scripts/test-port-forward-settings.rs",
     "src/port_forward.rs", "libs/hbb_common/src/tcp.rs",
-    "scripts/test-rdp-launch.rs", "scripts/test-tunnel-port-kind.rs",
+    "scripts/test-rdp-launch.rs", "scripts/test-tunnel-port-kind.rs", "src/cli.rs",
 )
 
 
@@ -196,6 +196,18 @@ def main():
         snippets["pf-settings-port-owner.rs"] = between(
             port_forward, 'const MAX_PORT_FORWARD_CONNECTIONS_PER_MAPPING:',
             '#[cfg(test)]\nstruct TestMappingAdmission {')
+        one_off_named = "pub(crate) async fn listen_one_off(" in port_forward
+        one_off_name = "listen_one_off" if one_off_named else "listen"
+        snippets["pf-settings-one-off.rs"] = between(
+            port_forward, f"pub(crate) async fn {one_off_name}(",
+            "pub(crate) struct PreparedPortForwardListener {")
+        calls = re.findall(r"crate::port_forward::(listen(?:_one_off)?)\(",
+                           inputs["src/cli.rs"].decode("utf-8"))
+        if calls != [one_off_name]:
+            raise ValueError("one-off CLI caller differs from its production API")
+        if one_off_named:
+            os.environ["RUSTFLAGS"] = os.environ.get("RUSTFLAGS", "") + " --cfg explicit_one_off"
+        print(f"PF_SETTINGS_ONE_OFF_WIRING=pass caller=src/cli.rs API={one_off_name} scope=source-only", flush=True)
         snippets["pf-settings-listener.rs"] = between(
             port_forward, 'pub(crate) struct PreparedPortForwardListener {',
             'pub(crate) async fn listen_admitted(')
@@ -462,7 +474,7 @@ def main():
         for part in ("producer", "send", "rdp-producer", "cache", "peer-mutation", "data", "queue", "target", "request", "ffi"):
             os.environ["PF_SETTINGS_" + part.replace("-", "_").upper()] = str(fixture / ("pf-settings-" + part + ".rs"))
         if transactional_settings:
-            for part in ("owner", "port-owner", "listener", "listen-wait", "native-bind", "startup"):
+            for part in ("owner", "port-owner", "listener", "listen-wait", "native-bind", "startup", "one-off"):
                 os.environ["PF_SETTINGS_" + part.replace("-", "_").upper()] = str(fixture / ("pf-settings-" + part + ".rs"))
         os.environ["CM_CHAT_TESTS"] = str(repo / "scripts/test-cm-chat.rs")
         os.environ["CM_DISCONNECT_TESTS"] = str(repo / "scripts/test-cm-disconnect.rs")
@@ -544,13 +556,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=90", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=91", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=90 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=91 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -559,7 +571,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=90 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=91 unchanged=before-after",
               flush=True)
 
 

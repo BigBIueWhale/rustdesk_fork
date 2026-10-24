@@ -125,7 +125,7 @@ def qmp_child(base, scenario):
         if not term_notification.pop('pending', False):
             return
         publish(base / 'term', {'signal': signum})
-        if scenario == 'graceful':
+        if scenario in ('graceful', 'startup-launch', 'startup-install'):
             raise SystemExit(0)
 
     signal.signal(signal.SIGTERM, term)
@@ -160,15 +160,36 @@ def supervisor_worker(helper, base, scenario):
     subject = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(subject)
     original = subprocess.Popen
+    original_signal = signal.signal
+    early = scenario in ('startup-launch', 'startup-install')
+    previous = {s: signal.getsignal(s)
+                for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
 
     def launch(argv, **kwargs):
         assert argv == ['/usr/bin/qemu-system-x86_64', '-S']
-        return original([sys.executable, '-B', '-I', '-S', __file__,
-                         '--qmp-child', base, scenario], **kwargs)
+        if early:
+            kwargs.update(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        child = original([sys.executable, '-B', '-I', '-S', __file__,
+                          '--qmp-child', base, scenario], **kwargs)
+        if early:
+            # Preserve the exact child identity even if the old supervisor dies
+            # before Popen returns. The fixture subreaper owns any orphan.
+            publish(Path(base) / 'child-created', {'pid': child.pid})
+            assert wait_for(Path(base) / 'run/qmp.sock', child), 'early child did not bind'
+            if scenario == 'startup-launch':
+                os.kill(os.getpid(), signal.SIGTERM)
+        return child
+
+    def install(signum, handler):
+        if scenario == 'startup-install' and signum == signal.SIGINT and callable(handler):
+            raise OSError('injected partial signal-handler installation failure')
+        return original_signal(signum, handler)
 
     # Only executable selection is substituted. The production supervisor owns
     # the real child, pidfd, signals, prlimit, QMP exchange, wait and receipt.
     subject.subprocess.Popen = launch
+    if early:
+        subject.signal.signal = install
     try:
         result = subject.run_qemu(SimpleNamespace(
             memory_mib=2048, storage_profile='ledger-token-count',
@@ -177,6 +198,81 @@ def supervisor_worker(helper, base, scenario):
         raise SystemExit(result if result >= 0 else 128 - result)
     finally:
         subject.subprocess.Popen = original
+        subject.signal.signal = original_signal
+        if early:
+            publish(Path(base) / 'handlers-restored', {
+                'restored': all(signal.getsignal(s) == handler
+                                for s, handler in previous.items())})
+
+
+def run_early_supervisor_case(helper, scenario):
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.prctl.argtypes = [ctypes.c_int] + [ctypes.c_ulong] * 4
+    libc.prctl.restype = ctypes.c_int
+    previous = ctypes.c_int()
+    assert libc.prctl(37, ctypes.addressof(previous), 0, 0, 0) == 0
+    assert libc.prctl(36, 1, 0, 0, 0) == 0  # PR_SET_CHILD_SUBREAPER, guest only.
+    supervisor = None
+    child_pid = None
+    forced = False
+    fixture_joined = False
+    try:
+        with tempfile.TemporaryDirectory(prefix='storage-early.', dir='/dev/shm') as name:
+            base = Path(name)
+            (base / 'run').mkdir(mode=0o700)
+            try:
+                supervisor = subprocess.Popen(
+                    [sys.executable, '-B', '-I', '-S', __file__, '--supervise',
+                     helper, name, scenario], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    umask=0o077)
+                output, error = supervisor.communicate(timeout=3)
+                assert len(output) + len(error) <= 8192, 'early diagnostics exceed their bound'
+                created = base / 'child-created'
+                child_pid = json.loads(created.read_bytes())['pid'] if created.exists() else None
+                alive = child_pid is not None and Path(f'/proc/{child_pid}').exists()
+                receipt_path = base / 'run/storage.qemu-io'
+                receipt = json.loads(receipt_path.read_bytes()) if receipt_path.exists() else None
+                restored_path = base / 'handlers-restored'
+                restored = (json.loads(restored_path.read_bytes())['restored']
+                            if restored_path.exists() else False)
+                passed = (supervisor.returncode == 1 and restored
+                          and not (base / 'run/storage.limit').exists())
+                if scenario == 'startup-launch':
+                    passed = (passed and child_pid is not None and not alive
+                              and receipt is not None and receipt['qemu_pid'] == child_pid
+                              and receipt['returncode'] == 0 and (base / 'term').exists())
+                else:
+                    passed = passed and child_pid is None and receipt is None
+            finally:
+                if supervisor is not None and supervisor.poll() is None:
+                    supervisor.kill()
+                    supervisor.communicate(timeout=3)
+                # The old supervisor can die before acquiring its child. Adopt
+                # and join that exact descendant; never count fixture cleanup
+                # as a successful production join.
+                created = base / 'child-created'
+                if created.exists():
+                    child_pid = json.loads(created.read_bytes())['pid']
+                    if Path(f'/proc/{child_pid}').exists():
+                        forced = True
+                        identity = os.pidfd_open(child_pid)
+                        try:
+                            signal.pidfd_send_signal(identity, signal.SIGKILL)
+                            joined, _ = os.waitpid(child_pid, 0)
+                            fixture_joined = joined == child_pid
+                        finally:
+                            os.close(identity)
+            return {'case': scenario, 'passed': bool(passed and not forced),
+                    'supervisor_exit': supervisor.returncode, 'child_pid': child_pid,
+                    'child_alive_after_supervisor': alive, 'handlers_restored': restored,
+                    'receipt': receipt, 'fixture_forced_cleanup': forced,
+                    'fixture_joined': fixture_joined,
+                    'child': 'native-python-qmp-surrogate', 'qemu': 'not-started',
+                    'schedule': 'controlled', 'signal': 'native-SIGTERM' if scenario
+                    == 'startup-launch' else 'injected-installation-error',
+                    'stderr': error.decode(errors='replace')[-2048:]}
+    finally:
+        assert libc.prctl(36, previous.value, 0, 0, 0) == 0
 
 
 def run_supervisor_case(helper, scenario):
@@ -373,6 +469,14 @@ def main():
         raise SystemExit('production storage supervisor startup cancellation regression failed')
     print('VM_TRANSIENT_STARTUP=pass cases=2 greeting=killed-joined response=killed-joined '
           'admission=not-reached qmp=fixture qemu=not-started')
+    results = [run_early_supervisor_case(sys.argv[1], case)
+               for case in ('startup-launch', 'startup-install')]
+    for result in results:
+        print('VM_TRANSIENT_EARLY_STARTUP_CASE=' + json.dumps(result, sort_keys=True), flush=True)
+    if not all(result['passed'] for result in results):
+        raise SystemExit('production storage supervisor early startup regression failed')
+    print('VM_TRANSIENT_EARLY_STARTUP=pass cases=2 launch-cancel=joined '
+          'install-failure=no-child handlers=restored qmp=fixture qemu=not-started')
 
 
 if __name__ == '__main__':

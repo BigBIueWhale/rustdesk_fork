@@ -2076,14 +2076,15 @@ Frame-vector refusal is source reviewed rather than separately injected. Persist
 global/C-heap OOM, full application error consumption and presentation, other native
 targets, installed R-S0, R-F5 recovery/soaks and release acceptance remain OPEN.
 
-**Video QoS — Linux controller/application components accepted at the named sources; end-to-end latency OPEN.**
+**Video QoS — named Linux component evidence retained; current activity-epoch correction unvalidated; end-to-end latency OPEN.**
 
-Current component evidence reaches `fbf1036c`: all twenty-two controller tests and
+The latest accepted component evidence remains `fbf1036c`: all twenty-two controller tests and
 five quality-application tests pass in the focused Linux lane. The controller,
 application function and test sources are imported directly; shared configuration,
 protocol types and Quality are production definitions. Elapsed/RTT inputs and the
 encoder boundary are controlled. This is not real codec/device, packet, renderer
-or installed-service acceptance.
+or installed-service acceptance. The later activity-epoch source below has not
+been compiled or executed; those historical passes do not validate it.
 
 The current behavior is:
 
@@ -2126,8 +2127,9 @@ The current behavior is:
   setter is removed. Only the existing status field clamps the wide live sum to `u32`.
 - Display activity retains at most the six frames needed for the dynamic-screen
   decision. An activity update while adaptation is unavailable clears every
-  display's stored activity and restarts the period. Availability changes between
-  updates and capture-local batches remain open below. The existing
+  display's stored activity and restarts the period. Current source additionally
+  retires the activity epoch on availability transitions and binds capture-local
+  batches to that epoch; compilation/native verification remains open below. The existing
   three-second period, six-frame threshold and fixed requested quality remain.
 - Codec-support and activity setters are server-private exact-generation operations.
   Missing, replaced, reset or wrong-display generations return refusal before
@@ -2141,36 +2143,43 @@ native results/artifacts, endpoint observations and joined cleanup. Source-only
 references are marked. Counts describe historical named runs, not additional
 current full-parent or platform execution.
 
-**OPEN — activity-window ownership across adaptation transitions.** The current
-`VideoQoS::set_support_changing_quality` changes support without retiring activity;
-`new_display` inserts an unsupported registration and `remove_display` can remove
-that blocker without an intervening activity update. Thus the stored counters and
-`adjust_ratio_instant` are not invalidated at those availability transitions.
-The seven-case activity regression exercises unavailability through
-`update_display_data`; it does not cover a disable/re-enable or blocking-sibling
-admission/removal entirely between updates. This is a source-level coverage and
-ownership gap, not an observed peer/presentation failure.
+**Activity epochs (`6c51a5f6`) — source implemented; compilation and native verification OPEN.**
+The prior controller retired activity only on an update made while adaptation was
+unavailable. Support/blocking-display transitions entirely between updates could
+retain stored activity; clearing that alone would leave capture-local batches.
+Current source replaces the capture loop's separate counter/timer with one
+non-cloneable `DisplayActivity`, retaining its exact display generation and the
+controller's opaque activity epoch. Both encode paths use its bounded frame counter.
+Only a current display can acquire the object. Admission refuses a mismatched or
+retired display before mutation; an obsolete activity epoch drops the batch and
+restarts its local period while preserving the live display.
 
-The capture loop also owns a separate `send_counter` and `second_instant` in
-`src/server/video_service.rs`; both encode paths increment that counter and
-`video_qos_apply::check_qos` later submits it. Clearing only the controller's
-counters would leave previously collected batches able to cross a transition.
-The complete correction needs an activity epoch shared by controller transitions
-and capture-local accumulation, with checks on both sides of the unlocked encoder
-call. Preserve exact display-generation refusal, authorized current activity,
-quality/FPS behavior and fresh-window adaptation. Required regressions cover both
-transition paths before a timer update, a delayed old batch, a transition during
-an encoder call, fresh zero/six-frame controls and stale-generation inertness.
+Support publication, display registration/removal and connection-time ABR changes
+retire the shared epoch, stored counts and adaptation period when availability
+changes. Repeated unchanged availability preserves the current window. `check_qos`
+rechecks the activity object before and after unlocked encoder calls; periodic
+publication consumes its owned count/timer. The raw-counter API and capture locals
+are removed. Existing quality, bitrate, recording and pacing ownership remain.
 
-At source `82aa2e57`, the unchanged canonical `--video-qos-controller-tests`
-entry refused before allocation: 20,480 MiB required including RAM scratch and
-headroom, 14,234 MiB available. No VM, build or test payload ran, and there was no
-disk fallback. Production code, tests and resource limits are unchanged; the
-coupled correction and native proof remain OPEN. Source trace, exact admission
-output and unchanged-source metadata: `qos-activity-epoch-audit-82aa2e57.json`.
-This item is open for further work when its prerequisites are available; it is
-not a new user park. Existing explicit parks and all R-F5 end-to-end obligations
-remain unchanged.
+The existing 27-test inventory is retained. Prepared regressions add support and
+sibling-display transitions between updates and two paused-encoder activity cases;
+the expected joined-worker result increases from nine to eleven in both harness
+checks. Candidate tests additionally cover delayed old batches, fresh zero/six-frame
+growth, incompatible activity/display ownership and local counter saturation.
+Fixture bindings use the production activity object and controlled elapsed time;
+the current-owner support test now expects immediate counter/period retirement.
+None of these new expectations is a passed-test claim.
+
+Both canonical `--video-qos-controller-tests` attempts refused before allocation:
+preparation `e30cdb1b` had 12,622 MiB available and product source `6c51a5f6` had
+13,554 MiB, against the unchanged 20,480-MiB requirement including scratch/headroom.
+No compiler, VM or test payload ran; no empirical A/B or successful compilation is
+claimed. `git diff --check` and shell syntax checks pass. The current full capture
+loop, component regressions, other platforms, installed authority and actual R-F5
+presentation/impairment/soak still require execution. Resource limits and all user
+parks remain unchanged. `qos-activity-epoch-source-2c95be52.json` binds source review,
+prepared/candidate hashes and exact refused admissions; the earlier source finding
+remains in `qos-activity-epoch-audit-82aa2e57.json`. This item remains OPEN for work.
 
 | Correction | Native evidence and limits | Retained capsules |
 | --- | --- | --- |

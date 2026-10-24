@@ -5834,6 +5834,67 @@ mod tests {
         std::fs::write(&cwd_file, b"working-directory sentinel").unwrap();
         let digest = FileDigest { size: 6, modified: 31 };
         let digest_bytes = serde_json::to_vec(&digest).unwrap();
+        if matches!(kind, "inspect" | "inspect-resume") {
+            use std::os::unix::fs::MetadataExt;
+            let resume = kind == "inspect-resume";
+            std::fs::write(&final_path, b"abcdef").unwrap();
+            filetime::set_file_mtime(&final_path,
+                filetime::FileTime::from_unix_time(31, 0)).unwrap();
+            if resume {
+                std::fs::write(&selected_download, b"abc").unwrap();
+                std::fs::write(&selected_digest, &digest_bytes).unwrap();
+                std::fs::write(cwd.join(".download"), b"x").unwrap();
+                std::fs::write(cwd.join(".digest"), &digest_bytes).unwrap();
+            }
+            let identity = |path: &Path| std::fs::symlink_metadata(path)
+                .map(|m| (m.dev(), m.ino(), m.mode(), m.len(), m.mtime(), m.mtime_nsec())).ok();
+            let destination_identity = identity(&final_path);
+            let partial_identity = identity(&selected_download);
+            let digest_identity = identity(&selected_digest);
+            let mut job = TransferJob::new_write(
+                491, JobType::Generic, String::new(), parent.clone(),
+                0, false, false, true,
+            ).with_files(vec![FileEntry {
+                name: "incoming.bin".into(), size: 6, modified_time: 31,
+                ..Default::default()
+            }]).unwrap();
+            let inspected = job.inspect_receive_digest(&FileTransferDigest {
+                id: 491, file_num: 0, file_size: 6, last_modified: 31,
+                ..Default::default()
+            }, resume).await;
+            let mut path_exact = false;
+            let mut metadata_exact = false;
+            if let Ok((result, path)) = &inspected {
+                path_exact = Path::new(path) == final_path;
+                metadata_exact = matches!(result, DigestCheckResult::NeedConfirm(digest)
+                    if digest.id == 491 && digest.file_num == 0
+                        && digest.file_size == 6 && digest.last_modified == 31
+                        && digest.transferred_size == if resume { 3 } else { 0 });
+            }
+            let absent = |path: &Path| matches!(std::fs::symlink_metadata(path),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound);
+            return serde_json::json!({
+                "kind": kind, "spelling": spelling, "invalid": invalid,
+                "inspection_ok": inspected.is_ok(), "path_exact": path_exact,
+                "metadata_exact": metadata_exact, "cache_committed": job.digest == digest,
+                "destination_preserved": identity(&final_path) == destination_identity
+                    && std::fs::read(&final_path).unwrap() == b"abcdef",
+                "cwd_preserved": std::fs::read(&cwd_file).unwrap() == b"working-directory sentinel"
+                    && if resume {
+                        std::fs::read(cwd.join(".download")).ok().as_deref() == Some(&b"x"[..])
+                            && std::fs::read(cwd.join(".digest")).ok().as_deref() == Some(digest_bytes.as_slice())
+                    } else {
+                        absent(&cwd.join(".download")) && absent(&cwd.join(".digest"))
+                    },
+                "sidecars_preserved": identity(&selected_download) == partial_identity
+                    && identity(&selected_digest) == digest_identity
+                    && if resume {
+                        std::fs::read(&selected_download).unwrap() == b"abc"
+                            && std::fs::read(&selected_digest).unwrap() == digest_bytes
+                    } else { absent(&selected_download) && absent(&selected_digest) },
+                "lease_retired": absent(&selected_lock) && absent(&cwd.join(".download.lock")),
+            });
+        }
         let result = if kind == "write" {
             let mut job = TransferJob::new_write(
                 491, JobType::Generic, String::new(), parent.clone(),
@@ -5893,6 +5954,9 @@ mod tests {
     #[cfg(target_os = "linux")]
     async fn assert_file_metadata_native_paths(kind: &str, test_name: &str) {
         const CASE: &str = "RUSTDESK_RECEIVE_NATIVE_PATH_CASE";
+        let prefix = if kind.starts_with("inspect") {
+            "FILE_METADATA_NATIVE_INSPECT="
+        } else { "FILE_METADATA_NATIVE_PATH=" };
         if let Ok(case) = std::env::var(CASE) {
             let fields: Vec<_> = case.split('/').collect();
             assert_eq!(fields.len(), 3);
@@ -5902,7 +5966,7 @@ mod tests {
             let observation = file_metadata_native_path_case(
                 kind, fields[1], fields[2] == "true",
             ).await;
-            println!("FILE_METADATA_NATIVE_PATH={observation}");
+            println!("{prefix}{observation}");
             return;
         }
         let mut passed = true;
@@ -5921,7 +5985,7 @@ mod tests {
                 assert!(output.stdout.len() < 16 * 1024);
                 let stdout = std::str::from_utf8(&output.stdout).unwrap();
                 let observations: Vec<_> = stdout.lines()
-                    .filter_map(|line| line.strip_prefix("FILE_METADATA_NATIVE_PATH="))
+                    .filter_map(|line| line.strip_prefix(prefix))
                     .collect();
                 assert_eq!(observations.len(), 1);
                 let observation: serde_json::Value =
@@ -5929,9 +5993,14 @@ mod tests {
                 assert_eq!(observation["kind"], kind);
                 assert_eq!(observation["spelling"], spelling);
                 assert_eq!(observation["invalid"], invalid);
-                passed &= ["operation_ok", "destination_exact", "cwd_preserved", "sidecars_retired"]
-                    .iter().all(|key| observation[*key] == true);
-                println!("FILE_METADATA_NATIVE_PATH={}", observations[0]);
+                let checks: &[&str] = if kind.starts_with("inspect") {
+                    &["inspection_ok", "path_exact", "metadata_exact", "cache_committed",
+                        "destination_preserved", "cwd_preserved", "sidecars_preserved", "lease_retired"]
+                } else {
+                    &["operation_ok", "destination_exact", "cwd_preserved", "sidecars_retired"]
+                };
+                passed &= checks.iter().all(|key| observation[*key] == true);
+                println!("{prefix}{}", observations[0]);
                 cases += 1;
             }
         }
@@ -5951,6 +6020,20 @@ mod tests {
     async fn file_metadata_receive_native_path_resumes_stay_with_destination() {
         assert_file_metadata_native_paths("resume",
             "fs::tests::file_metadata_receive_native_path_resumes_stay_with_destination").await;
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn file_metadata_receive_native_path_inspection_keeps_destination_identity() {
+        assert_file_metadata_native_paths("inspect",
+            "fs::tests::file_metadata_receive_native_path_inspection_keeps_destination_identity").await;
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn file_metadata_receive_native_path_resume_inspection_keeps_partial_identity() {
+        assert_file_metadata_native_paths("inspect-resume",
+            "fs::tests::file_metadata_receive_native_path_resume_inspection_keeps_partial_identity").await;
     }
 
     #[cfg(target_os = "linux")]

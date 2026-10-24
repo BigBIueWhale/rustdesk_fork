@@ -213,7 +213,7 @@ obligation mapping, exact comparisons and any counts for their named historical 
 | Appendix C #125/#131/#162/#335 | Installer, policy-selector, IPC-drain and FFI authority; R-S11ga owns binding diagnostics and negative controls | `authority-history-0f9c2048.json` |
 | Appendix C #154–#160 and #161/#163/#168/#169/#171/#172 | Service/lifecycle/admission/helper-provenance and verification-authority failures; required dispositions remain in the specification | `service-entry-document-role.json`; `service-admission-document-role.json` |
 | Appendix C #174–#179 | Enduring process-context, direct-only API and verification failure classes replace repair narration. All six required-disposition cells and the linked normative clauses remain unchanged; native and exact-artifact acceptance remains required. | `appendix-repair-history-57b70551.json` |
-| Appendix C #180–#203 | Eighteen implementation-history findings become enduring failure classes. Four existing timeless findings and every required-disposition cell remain unchanged. | `appendix-finding-roles-8aa901f1.json` |
+| Appendix C #180–#203 | Eighteen historical findings are expressed as enduring failure classes; four timeless findings remain. #185–#191 refer to their complete unchanged primary contracts; duplicate dispositions and seven action-status badges are removed. Other disposition cells remain unchanged. Product and verifier code are unchanged; native and exact-artifact acceptance remains OPEN. | `appendix-finding-roles-8aa901f1.json`; `direct-viewer-inventory-9dd16625.json` |
 | Appendix C #212–#232 (selected) | Thirteen historical listener, installer, package, helper and build-authority findings become timeless boundaries. Six disposition summaries replace progress tense and FIX markers with obligations; mechanisms, acceptance duties and requirement references remain. All other specification bytes, IDs, anchors and links are unchanged. Native and exact-artifact acceptance remains OPEN. | `execution-authority-document-role-333795e3.json` |
 | Controlled-host launch and local administration | R-X9–R-X11 now agree with R-S11b/R-S11c/R-S11f/R-S11i/R-S11x: exact service-owned launch, direct Linux credential drop, protected macOS LaunchAgent/helper roles, no generic elevation or runtime service-disable actuator, and functional typed administrator operations. Installed/native acceptance remains OPEN. | `launch-authority-document-role-bc6f0c09.json` |
 | Capture and input backend contracts | R-X12/R-X13/R-X12a and Appendix C #192 state enduring X11/XTEST, alternate-source/endpoint absence, macOS backend and iOS viewer-only limits. Inherited dual-backend/uinput repair narration and the obsolete sole-cross-user-socket claim are removed; supported injection, session/display authorization, consent and native/artifact acceptance remain required. Product and verifier sources are unchanged; native/release acceptance remains OPEN. | `capture-input-contract-role-ed085c5d.json` |
@@ -14882,6 +14882,15 @@ preserve exact destination ownership, native names, resume/crash recovery,
 concurrent different-file transfers, durable publication and bounded cleanup.
 Other platforms/filesystems, installed/peer integration, R-S0/R-F5 and release
 acceptance remain OPEN.
+
+**OPEN/PARKED — receive implementation at user topic pivot.** The unfinished
+private-staging implementation and fixture migration are preserved in stash
+`263bbb965d97c3113658b6cf0e3c2d330568ffa7`, based on `9dd16625`. It contains
+`libs/hbb_common/src/fs.rs` and the new `fs/receive_namespace.rs`; neither was
+compiled or executed. The committed production path and three reproduced timing
+failures remain unchanged and OPEN. Do not resume this parked implementation
+from a general goal continuation; work proceeds on other topics until the user
+specifically resumes it.
 
 **Native receive-path identity — Linux file transactions ACCEPTED; caller/platform acceptance OPEN.**
 `c1df5d00` preserves native bytes when appending receive staging suffixes.

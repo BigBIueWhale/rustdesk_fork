@@ -830,7 +830,7 @@ impl<T: InvokeUiSession> Session<T> {
         remote_host: String,
         remote_port: i32,
     ) -> ResultType<()> {
-        if port != 0 && !(1..=u16::MAX as i32).contains(&port) {
+        if !(1..=u16::MAX as i32).contains(&port) {
             bail!("Invalid local port-forward port");
         }
         PortForwardTarget::new(remote_host.clone(), remote_port)?;
@@ -2718,7 +2718,12 @@ async fn add_owned_port_forward<T: InvokeUiSession>(
     mapping: PortForwardMappingSpec,
 ) -> Result<(), String> {
     let port = mapping.port;
-    if port != 0 && !(1..=u16::MAX as i32).contains(&port) {
+    let valid_local_port = if handler.is_rdp() {
+        port == 0
+    } else {
+        (1..=u16::MAX as i32).contains(&port)
+    };
+    if !valid_local_port {
         return Err("Invalid local port-forward port".to_owned());
     }
     PortForwardTarget::new(mapping.remote_host.clone(), mapping.remote_port)

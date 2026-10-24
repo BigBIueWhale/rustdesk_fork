@@ -4094,6 +4094,9 @@ impl PeerConfig {
         id: &str,
         mapping: &(i32, String, i32),
     ) -> crate::ResultType<(Vec<(i32, String, i32)>, bool)> {
+        if !(1..=u16::MAX as i32).contains(&mapping.0) {
+            return Err(anyhow!("Invalid local port-forward port"));
+        }
         let mut config = Self::load_for_write(id)?;
         if let Some(entry) = config.port_forwards.iter_mut().find(|entry| entry.0 == mapping.0) {
             if *entry == *mapping {

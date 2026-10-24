@@ -5910,7 +5910,7 @@ mod tests {
                 let root = TestTempDir::new("rustdesk_receive_native_path");
                 std::fs::create_dir_all(&root.path).unwrap();
                 let output = tokio::process::Command::new(std::env::current_exe().unwrap())
-                    .args(["--exact", test_name, "--nocapture", "--test-threads=1"])
+                    .args(["--exact", test_name, "--show-output", "--test-threads=1"])
                     .env(CASE, format!("{kind}/{spelling}/{invalid}"))
                     .current_dir(&root.path)
                     .output().await.unwrap();

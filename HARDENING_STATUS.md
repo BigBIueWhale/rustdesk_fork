@@ -2071,7 +2071,7 @@ targets, installed R-S0, R-F5 recovery/soaks and release acceptance remain OPEN.
 
 **Video QoS — Linux controller/application components accepted at the named sources; end-to-end latency OPEN.**
 
-Current component evidence reaches `3d66afeb`: all twenty-one controller tests and
+Current component evidence reaches `fbf1036c`: all twenty-two controller tests and
 five quality-application tests pass in the focused Linux lane. The controller,
 application function and test sources are imported directly; shared configuration,
 protocol types and Quality are production definitions. Elapsed/RTT inputs and the
@@ -2121,6 +2121,11 @@ The current behavior is:
   decision. Unavailable adaptation clears every display's activity and restarts
   the period; later adaptation cannot consume that retired window. The existing
   three-second period, six-frame threshold and fixed requested quality remain.
+- Codec-support and activity setters are server-private exact-generation operations.
+  Missing, replaced, reset or wrong-display generations return refusal before
+  changing display or shared state. Startup and periodic callers check that result;
+  periodic counter/timer retirement follows successful admission. Their existing
+  generation/recording checks remain under the same QoS lock.
 
 **Retained evidence.** The named capsules are under
 `.harness-state/verifier-vm/`. They retain source/provenance and, for executed runs,
@@ -2130,6 +2135,7 @@ current full-parent or platform execution.
 
 | Correction | Native evidence and limits | Retained capsules |
 | --- | --- | --- |
+| Generation-bound support/activity sinks — `fbf1036c` | Existing capture callers already guarded these writes under the QoS lock; the two shared setters still accepted only a name. Baseline `467ddcad` passes 26 controls and fails the new direct-sink regression: seven of ten cases change state through stale/wrong generations or missing-display activity. The identical regression passes with explicit generation arguments: all eight noncurrent cases preserve support/activity/FPS/ratio/period state, and both current-owner cases apply. All 27 component tests pass in 122 outer seconds. Earlier test data/oracles are unchanged after normalizing the required fixture bindings; legacy parent labels/inventory require 22 shared cases, but that parked lane was not run. Full capture startup/application compilation, real codec/peer/presentation, installed/other-platform and R-S0/R-F5 acceptance remain OPEN. | `qos-generation-02dbb4cd.json` |
 | Bounded activity and unavailable-window retirement — `3d66afeb` | Baseline `142ed23e` passes 25 controls and fails the new seven-case regression: disabled adaptation, an unsupported codec and a blocked sibling retain activity across re-enablement; `usize::MAX` followed by one panics. The identical regression passes after correction, including zero/five/six-frame controls. All 26 component tests pass in 122 outer seconds on one stable artifact. Clock/ratio state and extreme counts are controlled; this is neither a long-uptime run nor a natural counter-overflow observation. The legacy parent inventory/labels now require 21 shared tests, but that parked lane was not run. No attribution or recovery claim for the retained six-second viewer failure follows. Real codec/capture, peer/presentation, other platforms, installed and R-F5 acceptance remain OPEN. | `qos-activity-c2caefba.json` |
 | Live display bitrate ownership — `22b4d3ef` / `98401d5b` | At `30c85201`, all 25 component tests pass. Six paired-display cases preserve the configured aggregate 150-kbps growth ceiling in both publication orders, exact live totals and clamped status above `u32`; nine checks cover removal, replacement, stale/missing publication, stale retirement, final zero and surviving viewer limits. The original 45 bitrate cases and nine joined encoder-owner scenarios pass on the same stable artifact. Source publication is exact-generation scoped and removal retires that display's contribution. A historical-source attempt was refused before VM startup by the unchanged pushed-master authority; no empirical original/fixed failure is claimed. Inputs and encoder boundary are controlled; real codec/peer, capture-loop startup, installed/other-platform, actual presentation/latency and release acceptance remain OPEN. | `qos-display-bitrate-native-30c85201.json` |
 | Pending probes — `7c537a6c` | Baseline `50570c81` has two failures/two controls passing; the same four cases pass after correction. Covers nonmanufactured RTT history, reply retirement, waiting rate/quality reduction, unknown users, three same-owner outage/recovery input cycles and final retirement. A rejected fingerprint ran no application test. | `video-qos-probe-baseline-50570c81.json`; `video-qos-probe-accepted-7c537a6c.json` |
@@ -2147,7 +2153,7 @@ current full-parent or platform execution.
 | Bitrate-growth arithmetic — `93f37385` | At `f9802627`, the 45-case regression observes fifteen overflow panics and four budget violations while all 24 prior tests pass. The unchanged test passes after correction across five qualities and nine bitrates from zero through `u32::MAX`; viewer limits, selected quality, rate, metadata and subsequent adaptation remain correct. All 25 component tests pass in 127 seconds at `757ebd0d`. Two rejected wrapper-count runs remain unaccepted; internal named/total checks now derive from the required-test list, and failure output is bounded and retained. Inputs and encoder behavior are controlled; real bitrate/peer/presentation and installed/release acceptance remain OPEN. | `qos-bitrate-growth-f7692cab.json` |
 
 **Verification tiers.** `--video-qos-controller-tests` is the ordinary focused lane;
-the latest accepted 26-case transaction took 122 seconds.
+the latest accepted 27-case transaction took 122 seconds.
 `--video-qos-tests` retains complete-parent integration for
 relevant milestones. Its older eighteen-case pass does not validate the current
 whole application. The shared Rust 1.75 compiler admits only its closed target tuples and

@@ -12297,14 +12297,14 @@ despite stale sender clones. R-S11gw / Appendix C #358 is the normative contract
 
 **Current evidence shared with R-S11gy/R-S11gz.** The focused command is
 `bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
-At `d7489810`, all 57 named native Rust cases pass with actual Tokio channels,
-OS threads and production-generated protobufs. All 25 input receipts and 33 source
-parts match that source. The prior 55 test bodies remain unchanged. Two additional
-cases compare returned close/history results with real queue admission and registry
-effects across eight close and six history schedules, including receiver loss and
-saturation. `cm-close-admission-073543c5.json` binds current source, artifacts,
-dependencies, A/B observations, bounded-RAM storage and joined cleanup. Earlier
-owner, chat, cursor, marker and growth-refusal evidence remains in
+At `a51224db`, all 60 named native Rust cases pass with actual Tokio channels,
+OS threads and production-generated protobufs. All 26 input receipts and 36 source
+parts match that source. The prior 57 bodies remain unchanged. Three new voice
+cases cover six allowed action/type controls, 42 owner/type/admission outcomes and
+three joined delayed-replacement schedules. `cm-voice-owner-a82d8f2a.json` binds
+source, artifacts, dependencies, A/B observations, bounded-RAM storage and joined
+cleanup. Earlier close/history, owner, chat, cursor, marker and growth-refusal
+evidence remains in `cm-close-admission-073543c5.json`,
 `cm-disconnect-owner-feb8f4cd.json`, `chat-send-owner-6c616053.json`,
 `cursor-echo-clock-2b2aaacb.json`, `recent-document-markers-571ee664.json` and
 `file-clipboard-growth-fc23970f.json`; Windows Shell is unexecuted.
@@ -12323,7 +12323,7 @@ clipboard, complete service producers, connection loops and CM IPC do not.
 Owner/deallocation flags establish lifetime, not RSS or whole-process memory bounds;
 error formatting and surrounding allocations remain available during selective faults.
 The older raw-backing baseline has test/artifact receipts but lacks full input/source
-receipts; its corrected run and the current 57-case run supply those bindings.
+receipts; its corrected run and the current 60-case run supply those bindings.
 Script wiring, source patterns and historical string mutations do not establish behavior.
 The profile remains 2 GiB guest / 6 GiB RAM scratch / 4 GiB overlay / 6 GiB host
 headroom / 1 GiB overhead, with no disk fallback and joined retirement.
@@ -13297,9 +13297,50 @@ hashes rather than per-case JSON or a compiled test image.
 Evidence: `.harness-state/verifier-vm/cm-close-admission-073543c5.json`. Source/artifact
 bindings and joined bounded-RAM cleanup are retained. Complete native CM IPC and peer
 teardown, full ServerModel/rendered controls, native window/notification effects,
-resource finality/drain, full Rust parent, installed/other-platform behavior, separate
-voice-command generation binding, all fifteen credential actions, R-S0/R-F5 and release
+resource finality/drain, full Rust parent, installed/other-platform behavior,
+voice-call lifecycle, all fifteen credential actions, R-S0/R-F5 and release
 acceptance remain OPEN. All full-parent/bootstrap and other user parks are unchanged.
+
+**CM voice command ownership — native component verified; complete voice lifecycle
+and Android notification behavior OPEN.** `a51224db` requires the displayed
+Client's registry generation through both Accept/Dismiss and Stop FFI methods.
+The receiver clones only the exact current live Remote/ViewCamera owner's sender
+under the registry read lock, then releases the lock before nonblocking queue
+admission. Invalid generations, pending replacement, disconnected or reused owners,
+wrong session types, receiver loss and saturation refuse. The former bare-ID
+sender lookup is removed; no voice action reselects a successor. The returned
+boolean means queue admission, not peer response or audio completion. Unsupported
+iOS receivers return false; web methods remain explicitly unimplemented.
+
+Desktop/mobile callers carry the retained Client generation, await the result and
+show refusal/errors. Their ID-only notification cancellation on submission is
+removed. Android's existing serialized, current-generation voice-state callback
+cancels a request notification when the accepted state is no longer incoming;
+the incoming branch still posts it. This two-line Kotlin branch is source-reviewed
+only: MainService compilation and device notification effects did not run.
+
+At API preparation `3a435b6a`, generation is deliberately ignored and unit
+completion is represented by true, preserving the old lookup/submission behavior.
+The native cohort passes 58 controls and fails two new tests. All three delayed
+actions reach the successor mailbox, and invalid/pending/disconnected/wrong-type
+requests can queue. The identical corrected 60-case cohort passes. Six allowed
+Remote/ViewCamera action controls preserve siblings; 42 owner/type/result cases
+and three joined delayed actions prove exact queue selection and truthful
+admission. All prior 57 bodies and locked dependencies are unchanged; only the
+sender and voice-receiver parts differ across 26 input/36 part receipts.
+
+The existing 45-case Dart cohort and three parser controls pass with fresh pinned
+bridge generation and caller/import compilation. These tests do not execute the
+voice buttons, dialog, native bridge transport or notification branch; no new
+Dart voice-behavior claim is made. Strict summaries and generated hashes are
+retained rather than per-case successful JSON or a compiled Dart image.
+
+Evidence: `.harness-state/verifier-vm/cm-voice-owner-a82d8f2a.json`.
+Complete native CM IPC, authenticated peer/audio and resource finality, rendered
+controls/dialog lifetime, MainService/device notifications, per-call identity
+within one registry generation, full parent, installed/other-platform behavior,
+all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
+Every full-parent/bootstrap and other user park remains unchanged.
 
 Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests

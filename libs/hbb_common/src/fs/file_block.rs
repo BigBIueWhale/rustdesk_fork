@@ -43,6 +43,7 @@ pub(super) mod tests {
         static REFUSE_ALL_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
         static DECODER_INPUT_ALLOCATION: Cell<(usize, usize, bool)> = const { Cell::new((0, 0, false)) };
         static SHARED_OUTPUT_ALLOCATION: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
+        static SHARED_OUTPUT_BUDGET: Cell<(usize, usize, usize)> = const { Cell::new((0, 0, 0)) };
     }
 
     struct OutputAllocator;
@@ -71,6 +72,15 @@ pub(super) mod tests {
     }
 
     fn refuse_allocation(size: usize) -> bool {
+        if SHARED_OUTPUT_BUDGET.try_with(|state| {
+            let (limit, peak, refusals) = state.get();
+            if limit == 0 { return false; }
+            let refused = size > limit;
+            state.set((limit, peak.max(size), refusals + usize::from(refused)));
+            refused
+        }).unwrap_or(false) {
+            return true;
+        }
         if SHARED_OUTPUT_ALLOCATION.try_with(|state| {
             let (target, count) = state.get();
             if target == 0 {
@@ -232,7 +242,55 @@ pub(super) mod tests {
                 all_ok &= correct;
             }
         }
-        assert!(all_ok, "shared decoder allocation failure must be recoverable at every growth point");
+        fn with_output_budget<T>(limit: usize, action: impl FnOnce() -> T) -> (T, usize, usize) {
+            struct Reset;
+            impl Drop for Reset {
+                fn drop(&mut self) {
+                    SHARED_OUTPUT_BUDGET.with(|state| state.set((0, 0, 0)));
+                }
+            }
+            SHARED_OUTPUT_BUDGET.with(|state| {
+                assert_eq!(state.get(), (0, 0, 0));
+                state.set((limit, 0, 0));
+            });
+            let reset = Reset;
+            let result = action();
+            let (_, peak, refusals) = SHARED_OUTPUT_BUDGET.with(Cell::get);
+            drop(reset);
+            (result, peak, refusals)
+        }
+
+        let mut budget_cases = 0;
+        for (path, limit) in [("limited", 8192), ("limited", 8193),
+                              ("limited", SIZE - 1), ("limited", SIZE),
+                              ("limited", SIZE + 1), ("default", 64 * 1024 * 1024)] {
+            let input = vec![0x5a; limit + 1];
+            let exact = compress(&input[..limit]).unwrap();
+            let over = compress(&input).unwrap();
+            let mut concatenated = exact.clone();
+            concatenated.extend(compress(b"Z").unwrap());
+            for (kind, encoded) in [("exact", &exact), ("over", &over),
+                                     ("concatenated", &concatenated)] {
+                let original = encoded.clone();
+                let (result, peak, refusals) = with_output_budget(limit,
+                    || decode_shared(path, encoded, limit));
+                let outcome = if kind == "exact" {
+                    result.as_ref().map(|bytes| bytes == &input[..limit]).unwrap_or(false)
+                } else {
+                    matches!(result.as_ref(), Err(err) if err.kind() == io::ErrorKind::InvalidData)
+                };
+                let retry = decode_shared(path, &exact, limit).unwrap() == input[..limit];
+                let correct = outcome && peak <= limit && refusals == 0 && retry
+                    && encoded == &original;
+                println!("SHARED_DECODE_ALLOC_BUDGET_CASE=observed path={path} kind={kind} limit={limit} peak_request={peak} refusals={refusals} error={:?} outcome={outcome} retry_exact={retry} correct={correct}",
+                    result.as_ref().err().map(io::Error::kind));
+                all_ok &= correct;
+                budget_cases += 1;
+            }
+        }
+        assert_eq!(budget_cases, 18);
+        assert!(all_ok, "shared decoder must respect its allocation budget and preserve exact retry");
+        println!("SHARED_DECODE_ALLOC_BUDGET=pass cases=18 exact=6 oversized=6 concatenated=6 requests=bounded retries=exact");
         println!("SHARED_DECODE_ALLOC=pass paths=2 refusal_points=4 refusals=8 controls=10 probe=SIGABRT children=joined");
     }
 

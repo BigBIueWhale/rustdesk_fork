@@ -10257,12 +10257,15 @@ impl Connection {
                 }
                 Some(message::Union::VoiceCallRequest(request)) => {
                     if request.is_connect {
-                        // R-S19: voice calls are legit only for Remote/ViewCamera (the client refuses
-                        // to offer them for file-transfer/terminal/port-forward, io_loop.rs) — do not
-                        // even raise the operator's incoming-call prompt for other session types.
                         if !self.can_drive_voice_call() {
                             return true;
                         }
+                        let Some(request_id) =
+                            NonZeroI64::new(request.req_timestamp).filter(|id| id.get() > 0)
+                        else {
+                            log::debug!("Ignored voice-call request with a nonpositive ID");
+                            return true;
+                        };
                         if self.voice_call_input.is_some()
                             || self.voice_call_request_timestamp.is_some()
                         {
@@ -10271,12 +10274,11 @@ impl Connection {
                             );
                             return true;
                         }
-                        self.voice_call_request_timestamp = Some(
-                            NonZeroI64::new(request.req_timestamp)
-                                .unwrap_or(NonZeroI64::new(get_time()).unwrap()),
-                        );
-                        // Notify the connection manager.
-                        self.send_to_cm(Data::VoiceCallIncoming).await;
+                        self.voice_call_request_timestamp = Some(request_id);
+                        if !self.send_to_cm(Data::VoiceCallIncoming).await {
+                            self.voice_call_request_timestamp = None;
+                            return false;
+                        }
                     } else {
                         self.close_voice_call().await;
                     }

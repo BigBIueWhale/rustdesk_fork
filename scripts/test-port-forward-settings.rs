@@ -53,7 +53,6 @@ impl InvokeUiSession for TestHandler {}
 struct Session<T: InvokeUiSession = TestHandler> {
     lc: Arc<RwLock<LoginConfigHandler>>,
     sender: Arc<RwLock<Option<ViewerCommandSender>>>,
-    args: Vec<String>,
     rdp: bool,
     startup_errors: Option<Arc<Mutex<Vec<String>>>>,
     ui_handler: T,
@@ -91,7 +90,6 @@ impl Fixture {
         Self { root, session: Session {
             lc: Arc::new(RwLock::new(LoginConfigHandler { id, config: PeerConfig::default() })),
             sender: Arc::new(RwLock::new(sender)),
-            args: Vec::new(),
             rdp: false,
             startup_errors: None,
             ui_handler: TestHandler,

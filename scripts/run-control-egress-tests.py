@@ -196,18 +196,14 @@ def main():
         snippets["pf-settings-port-owner.rs"] = between(
             port_forward, 'const MAX_PORT_FORWARD_CONNECTIONS_PER_MAPPING:',
             '#[cfg(test)]\nstruct TestMappingAdmission {')
-        one_off_named = "pub(crate) async fn listen_one_off(" in port_forward
-        one_off_name = "listen_one_off" if one_off_named else "listen"
         snippets["pf-settings-one-off.rs"] = between(
-            port_forward, f"pub(crate) async fn {one_off_name}(",
+            port_forward, "pub(crate) async fn listen_one_off(",
             "pub(crate) struct PreparedPortForwardListener {")
         calls = re.findall(r"crate::port_forward::(listen(?:_one_off)?)\(",
                            inputs["src/cli.rs"].decode("utf-8"))
-        if calls != [one_off_name]:
+        if calls != ["listen_one_off"]:
             raise ValueError("one-off CLI caller differs from its production API")
-        if one_off_named:
-            os.environ["RUSTFLAGS"] = os.environ.get("RUSTFLAGS", "") + " --cfg explicit_one_off"
-        print(f"PF_SETTINGS_ONE_OFF_WIRING=pass caller=src/cli.rs API={one_off_name} scope=source-only", flush=True)
+        print("PF_SETTINGS_ONE_OFF_WIRING=pass caller=src/cli.rs API=listen_one_off scope=source-only", flush=True)
         snippets["pf-settings-listener.rs"] = between(
             port_forward, 'pub(crate) struct PreparedPortForwardListener {',
             'pub(crate) async fn listen_admitted(')
@@ -224,8 +220,8 @@ def main():
             '/// R-D5: bind the direct listener')
     snippets["pf-settings-startup.rs"] = (
         "async fn start_saved_mappings(handler: &Session, supervisor: &PortForwardSupervisorOwner) {\n"
-        + between(session, "        } else if handler.args.len() == 0 {\n",
-                  "            loop {\n                match receiver.recv().await {\n                    Some(Ok(Data::SavedPortForward(request)))")[len("        } else if handler.args.len() == 0 {\n"):]
+        + between(session, "        } else {\n            let pfs = {",
+                  "            loop {\n                match receiver.recv().await {\n                    Some(Ok(Data::SavedPortForward(request)))")[len("        } else {\n"):]
         + "}\n")
     legacy_marker = "            std::fs::File::create(&path).ok();\n"
     marker_start = "            let marker_ready = "

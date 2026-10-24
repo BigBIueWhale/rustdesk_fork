@@ -68,7 +68,6 @@ const CHANGE_RESOLUTION_VALID_TIMEOUT_SECS: u64 = 15;
 #[derive(Clone, Default)]
 pub struct Session<T: InvokeUiSession> {
     pub password: String,
-    pub args: Vec<String>,
     pub lc: Arc<RwLock<LoginConfigHandler>>,
     pub(crate) sender: Arc<RwLock<Option<ViewerCommandSender>>>,
     pub(crate) video_refresh_sender: Arc<RwLock<Option<ViewerVideoRefreshSender>>>,
@@ -843,7 +842,7 @@ impl<T: InvokeUiSession> Session<T> {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn change_saved_port_forward(&self, change: SavedPortForwardChange) -> ResultType<()> {
-        if !self.is_port_forward() || self.is_rdp() || !self.args.is_empty() {
+        if !self.is_port_forward() || self.is_rdp() {
             bail!("Saved tunnel settings require their port-forward session");
         }
         let (completed, result) = std::sync::mpsc::sync_channel(1);
@@ -2385,18 +2384,6 @@ async fn run_io_runtime<T: InvokeUiSession>(
     *handler.sender.write().unwrap() = Some(sender.clone());
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if handler.is_port_forward() {
-        let one_off = !handler.is_rdp() && !handler.args.is_empty();
-        if one_off {
-            let port = handler.args[0].parse::<i32>().unwrap_or(0);
-            if handler.args.len() != 3
-                || handler.args[2].parse::<i32>().unwrap_or(0) <= 0
-                || port <= 0
-            {
-                handler.on_error("Invalid arguments, usage:<br><br> rustdesk --port-forward remote-id listen-port remote-host remote-port");
-                return Ok(None);
-            }
-        }
-
         let supervisor = match PortForwardSupervisorOwner::start(handler.clone()) {
             Ok(supervisor) => supervisor,
             Err(err) => {
@@ -2437,7 +2424,7 @@ async fn run_io_runtime<T: InvokeUiSession>(
                     }
                 }
             }
-        } else if handler.args.len() == 0 {
+        } else {
             let pfs = {
                 let lc = handler.lc.read().unwrap();
                 (lc.port_forwards.len() <= MAX_OWNED_PORT_FORWARD_MAPPINGS)
@@ -2488,33 +2475,6 @@ async fn run_io_runtime<T: InvokeUiSession>(
                         log::error!("{err}");
                         handler.on_error(&err);
                         break;
-                    }
-                }
-            }
-        } else {
-            let port = handler.args[0].parse::<i32>().unwrap_or(0);
-            let remote_host = handler.args[1].clone();
-            let remote_port = handler.args[2].parse::<i32>().unwrap_or(0);
-            if let Err(err) = supervisor
-                .add(PortForwardMappingSpec {
-                    port,
-                    remote_host,
-                    remote_port,
-                })
-                .await
-            {
-                handler.on_error(&err);
-            } else {
-                loop {
-                    match receiver.recv().await {
-                        Some(Ok(Data::Close)) | None => break,
-                        Some(Ok(_)) => {}
-                        Some(Err(err)) => {
-                            let err = format!("viewer command channel failed: {err}");
-                            log::error!("{err}");
-                            handler.on_error(&err);
-                            break;
-                        }
                     }
                 }
             }

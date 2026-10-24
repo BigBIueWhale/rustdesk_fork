@@ -1,8 +1,5 @@
 use super::*;
 
-#[cfg(not(explicit_one_off))]
-use super::listen as listen_one_off;
-
 #[tokio::test(flavor = "current_thread")]
 async fn one_off_mappings_refuse_reserved_ports_and_join_their_listener() {
     let mut correct = true;

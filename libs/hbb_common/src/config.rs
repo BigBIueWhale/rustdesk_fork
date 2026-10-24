@@ -1343,21 +1343,9 @@ impl Config2 {
         Config::file_("2")
     }
 
-    fn store(&self) -> crate::ResultType<()> {
-        store_path(Self::file(), self)
-    }
-
     fn update(mutate: impl Fn(&mut Self)) -> crate::ResultType<()> {
         let mut config = CONFIG2.write().unwrap();
-        let loaded: Self = read_config_view(&Self::file())
-            .map_err(|_| anyhow!("Failed to read options"))?;
-        let mut candidate = loaded.clone();
-        mutate(&mut candidate);
-        if candidate != loaded {
-            candidate.store()?;
-        }
-        *config = candidate;
-        Ok(())
+        update_preferences(Self::file(), &mut *config, "Failed to read options", mutate)
     }
 }
 

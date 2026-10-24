@@ -4,6 +4,8 @@ use hbb_common::{
     config::{self, Config, PermanentPasswordPrsRead},
     log, sleep, tokio, ResultType,
 };
+#[cfg(target_os = "linux")]
+mod resource_limits;
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "android")]
 use std::sync::Mutex;
@@ -484,56 +486,6 @@ fn assert_socket_surface(port: u16) {
 ///
 /// AV1 is wire-only and libaom is absent, so this service entry stands up no benchmark,
 /// encoder, or decoder for it at startup; VP9 is the software-video default.
-/// R-T1(a) (§20): self-enforce a per-process file-descriptor ceiling at startup so the flood/leak
-/// blast-radius bound holds under ANY launcher (systemd, a per-user supervisor, a bare container —
-/// R-D8), not only the unit's LimitNOFILE. Legitimate single-user use is a handful of sessions; a
-/// high fd ceiling only serves an attacker or a descriptor leak. The concurrent-authorized-session
-/// cap (connection.rs, MAX_AUTHED_SESSIONS) is the companion in-process bound. A per-process RSS
-/// ceiling has no clean setrlimit (RLIMIT_AS is virtual not resident; RLIMIT_NPROC is per-UID), so
-/// the cgroup MemoryMax/TasksMax remains the redundant outer RSS/task bound.
-#[cfg(target_os = "linux")]
-fn self_enforce_resource_limits() {
-    use hbb_common::libc;
-    // R-T1(a): bound THIS process's open-fd ceiling so an accept()-flood is service-fatal, not
-    // host-fatal, under ANY launcher (systemd / a per-user supervisor / a bare container — R-D8).
-    // We lower only the SOFT limit and PRESERVE the inherited HARD ceiling: the --server is held
-    // at SOFT_NOFILE (the kernel returns EMFILE past it — R-T12 backs off), while a child the
-    // --server spawns — notably the owner's full-access terminal (R-F1) — can raise its own soft
-    // limit back via `ulimit -n`. A resource bound is launcher-independent AND owner-safe; a
-    // PRIVILEGE/syscall sandbox is neither, so the binary never self-applies one (R-D3a — that is
-    // the launcher's job, since a self-applied prctl latch would confine the owner's shell too).
-    const SOFT_NOFILE: libc::rlim_t = 8192;
-    let mut lim = libc::rlimit {
-        rlim_cur: 0,
-        rlim_max: 0,
-    };
-    // SAFETY: valid resource id + writable rlimit pointer.
-    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } != 0 {
-        log::warn!(
-            "R-T1(a): getrlimit(RLIMIT_NOFILE) failed, fd ceiling not self-enforced: {}",
-            std::io::Error::last_os_error()
-        );
-        return;
-    }
-    lim.rlim_cur = SOFT_NOFILE.min(lim.rlim_max);
-    // SAFETY: same; lowers the soft limit only, never raises the inherited hard ceiling.
-    let rc = unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &lim) };
-    if rc == 0 {
-        log::info!(
-            "R-T1(a): self-enforced RLIMIT_NOFILE soft={} (hard ceiling {} preserved for child shells)",
-            lim.rlim_cur, lim.rlim_max
-        );
-    } else {
-        log::warn!(
-            "R-T1(a): setrlimit(RLIMIT_NOFILE) failed: {}",
-            std::io::Error::last_os_error()
-        );
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn self_enforce_resource_limits() {}
-
 #[cfg(all(not(any(target_os = "android", target_os = "ios")), unix))]
 pub(crate) struct ControlledServerShutdownSignals {
     sigterm: tokio::signal::unix::Signal,
@@ -841,7 +793,17 @@ pub async fn start_direct_only(
         }
         return;
     }
-    self_enforce_resource_limits();
+    #[cfg(target_os = "linux")]
+    match resource_limits::enforce_fd_ceiling() {
+        Ok(limits) => log::info!(
+            "R-T1(a): file-descriptor soft limit {} (hard ceiling {} preserved)",
+            limits.rlim_cur, limits.rlim_max
+        ),
+        Err(err) => {
+            log::error!("Controlled-server resource initialization failed closed: {err}");
+            std::process::exit(1);
+        }
+    }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let server = if config::is_outgoing_only() {

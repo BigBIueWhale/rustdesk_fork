@@ -12775,12 +12775,11 @@ grep -qE '^RestartSec=[0-9]+$'  res/rustdesk.service            || r_t1_missing=
 # now the REDUNDANT outer RSS/task bound): the --server self-applies RLIMIT_NOFILE at startup and rejects
 # past a hard global concurrent-authorized-session cap (MAX_AUTHED_SESSIONS) at on_open, so the §20
 # fd/session blast-radius bound holds under supervisord / a bare container too, not only the cgroup.
-grep -q 'fn self_enforce_resource_limits' src/direct_service.rs              || r_t1_missing="$r_t1_missing self:rlimit-fn"
-grep -q 'setrlimit(libc::RLIMIT_NOFILE' src/direct_service.rs                || r_t1_missing="$r_t1_missing self:rlimit-nofile"
-# soft-only / hard-preserving: getrlimit reads the inherited hard ceiling, which we KEEP so the
-# owner's terminal child (R-F1) can `ulimit -n` back up — a resource bound, not a privilege confinement.
-grep -q 'getrlimit(libc::RLIMIT_NOFILE' src/direct_service.rs                || r_t1_missing="$r_t1_missing self:rlimit-hard-preserved"
-grep -q 'self_enforce_resource_limits();' src/direct_service.rs              || r_t1_missing="$r_t1_missing self:rlimit-called"
+# These structural checks supplement the real kernel resource-limit cohort.
+grep -qF 'fn enforce_fd_ceiling() -> io::Result<libc::rlimit>' src/direct_service/resource_limits.rs || r_t1_missing="$r_t1_missing self:fallible-rlimit"
+grep -qF 'getrlimit(libc::RLIMIT_NOFILE' src/direct_service/resource_limits.rs || r_t1_missing="$r_t1_missing self:rlimit-query"
+grep -qF 'setrlimit(libc::RLIMIT_NOFILE' src/direct_service/resource_limits.rs || r_t1_missing="$r_t1_missing self:rlimit-apply"
+grep -qF 'match resource_limits::enforce_fd_ceiling()' src/direct_service.rs || r_t1_missing="$r_t1_missing self:rlimit-checked-at-entry"
 grep -q 'const MAX_AUTHED_SESSIONS' src/server/connection.rs                 || r_t1_missing="$r_t1_missing self:session-cap-const"
 grep -q 'authenticated_connection_reservation_count() >= MAX_AUTHED_SESSIONS' src/server/connection.rs || r_t1_missing="$r_t1_missing self:session-cap-check"
 # R-D3a: the unit MUST NOT actively set NoNewPrivileges — it would break the owner's sudo in the

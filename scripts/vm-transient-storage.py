@@ -223,23 +223,20 @@ def run_qemu(args):
     initial_limit = max(overlay_limit, args.memory_mib * 1024 ** 2)
     resource.setrlimit(resource.RLIMIT_FSIZE, (initial_limit, initial_limit))
     output_before = resource.getrusage(resource.RUSAGE_CHILDREN).ru_oublock
-    child = subprocess.Popen(args.qemu + ['-S'], close_fds=False)
-    try:
-        child_identity = os.pidfd_open(child.pid)
-    except BaseException:
-        child.kill()
-        child.wait()
-        raise
+    child = None
+    child_identity = None
     cancelled = False
     qmp_channel = None
+    handlers = {}
 
     def cancel(signum, frame):
         nonlocal cancelled
         cancelled = True
-        try:
-            signal.pidfd_send_signal(child_identity, signum)
-        except ProcessLookupError:
-            pass
+        if child_identity is not None:
+            try:
+                signal.pidfd_send_signal(child_identity, signum)
+            except ProcessLookupError:
+                pass
         if qmp_channel is not None and qmp_channel.fileno() >= 0:
             try:
                 qmp_channel.shutdown(socket.SHUT_RDWR)
@@ -247,8 +244,14 @@ def run_qemu(args):
                 if error.errno != errno.ENOTCONN:
                     raise
 
-    handlers = {s: signal.signal(s, cancel) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
     try:
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            handlers[signum] = signal.signal(signum, cancel)
+        require(not cancelled, 'QEMU startup cancelled')
+        # Cancellation during creation is latched until Popen returns the
+        # waitable child. Every subsequent failure retains cleanup ownership.
+        child = subprocess.Popen(args.qemu + ['-S'], close_fds=False)
+        child_identity = os.pidfd_open(child.pid)
         deadline = time.monotonic() + 15
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
             qmp_channel = channel
@@ -312,7 +315,12 @@ def run_qemu(args):
                 return child.wait()
         raise ValueError('QEMU run cancelled')
     finally:
-        if child.returncode is None:
+        if child is not None and child_identity is None:
+            # SIGCHLD remains waitable: this unreaped direct child's PID cannot
+            # be reused if acquiring its pidfd failed.
+            child.kill()
+            child.wait()
+        if child is not None and child.returncode is None:
             try:
                 signal.pidfd_send_signal(child_identity, signal.SIGTERM)
             except ProcessLookupError:
@@ -327,15 +335,17 @@ def run_qemu(args):
                 child.wait()
         for signum, handler in handlers.items():
             signal.signal(signum, handler)
-        os.close(child_identity)
+        if child_identity is not None:
+            os.close(child_identity)
         # This supervisor creates and waits for only this child. Linux accounts
         # its output in 512-byte blocks; no PID-file process lookup is needed.
-        output_blocks = resource.getrusage(resource.RUSAGE_CHILDREN).ru_oublock - output_before
-        require(output_blocks >= 0, 'QEMU child output accounting decreased')
-        publish(Path(args.run) / 'storage.qemu-io', {
-            'qemu_pid': child.pid, 'returncode': child.returncode,
-            'write_bytes': output_blocks * 512,
-        })
+        if child is not None:
+            output_blocks = resource.getrusage(resource.RUSAGE_CHILDREN).ru_oublock - output_before
+            require(output_blocks >= 0, 'QEMU child output accounting decreased')
+            publish(Path(args.run) / 'storage.qemu-io', {
+                'qemu_pid': child.pid, 'returncode': child.returncode,
+                'write_bytes': output_blocks * 512,
+            })
 
 
 def watch(args):

@@ -2761,7 +2761,6 @@ mod nt_nofollow {
         }
         Ok(content)
     }
-
 }
 
 /// R-S8 / R-A5: open a file-transfer RECEIVE-write target with NO-FOLLOW semantics across the

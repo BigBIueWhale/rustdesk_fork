@@ -3439,6 +3439,23 @@ run_focused_rust_tests() {
                 fs::atomic_write::unix::tests::failed_publication_preserves_directory_and_cleans_temporary_file
                 fs::atomic_write::unix::tests::normal_paths_and_directory_links_preserve_bytes_and_requested_mode
                 fs::atomic_write::unix::tests::late_error_never_removes_a_published_file
+                fs::tests::abandoned_blocking_receive_result_retires_its_exact_sidecars
+                fs::tests::abandoned_blocking_finalize_error_retires_only_its_claim
+                fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes
+                fs::tests::receive_write_owns_native_io_until_retirement_can_close_the_stream
+                fs::tests::receive_write_refuses_a_real_partial_write_with_matching_staged_length
+                fs::tests::receive_write_refuses_done_before_the_admitted_file_list_ends
+                fs::tests::receive_next_file_setup_failure_preserves_committed_file_and_foreign_digest
+                fs::tests::receive_write_completes_the_full_file_list_with_an_empty_last_file
+                fs::tests::receive_done_requires_successful_file_list_admission
+                fs::tests::receive_write_completes_empty_and_explicitly_skipped_file_lists
+                fs::tests::resume_confirmation_refuses_wrapped_offsets_and_preserves_files
+                fs::tests::resume_confirmation_preserves_the_largest_wire_offset
+                fs::tests::resume_confirmation_zero_starts_a_fresh_transfer
+                fs::tests::recv_finish_renameat_replaces_symlink_final_without_touching_target
+                fs::tests::recv_finish_reports_visible_but_uncertain_after_parent_sync_failure
+                fs::tests::recv_digest_read_no_follow_refuses_symlink_sidecar
+                fs::tests::receive_file_list_replacement_cannot_authorize_early_done
             )
         fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then
@@ -5556,6 +5573,33 @@ run_focused_rust_tests() {
                                     exit "$group_status"
                                 fi
                             done
+                            for receive_case in fs::tests::abandoned_blocking_receive_result_retires_its_exact_sidecars \
+                                fs::tests::abandoned_blocking_finalize_error_retires_only_its_claim \
+                                fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes \
+                                fs::tests::receive_write_owns_native_io_until_retirement_can_close_the_stream \
+                                fs::tests::receive_write_refuses_a_real_partial_write_with_matching_staged_length \
+                                fs::tests::receive_write_refuses_done_before_the_admitted_file_list_ends \
+                                fs::tests::receive_next_file_setup_failure_preserves_committed_file_and_foreign_digest \
+                                fs::tests::receive_write_completes_the_full_file_list_with_an_empty_last_file \
+                                fs::tests::receive_done_requires_successful_file_list_admission \
+                                fs::tests::receive_write_completes_empty_and_explicitly_skipped_file_lists \
+                                fs::tests::resume_confirmation_refuses_wrapped_offsets_and_preserves_files \
+                                fs::tests::resume_confirmation_preserves_the_largest_wire_offset \
+                                fs::tests::resume_confirmation_zero_starts_a_fresh_transfer \
+                                fs::tests::recv_finish_renameat_replaces_symlink_final_without_touching_target \
+                                fs::tests::recv_finish_reports_visible_but_uncertain_after_parent_sync_failure \
+                                fs::tests::recv_digest_read_no_follow_refuses_symlink_sidecar \
+                                fs::tests::receive_file_list_replacement_cannot_authorize_early_done; do
+                                receive_status=0
+                                timeout --signal=TERM --kill-after=5s 20s \
+                                    "$test_executable" --exact "$receive_case" --color never --test-threads=1 --show-output \
+                                    || receive_status=$?
+                                [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                                if [ "$receive_status" -ne 0 ]; then
+                                    printf "FILE_METADATA_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" "$artifact_sha" "$receive_status"
+                                    exit "$receive_status"
+                                fi
+                            done
                             cd /source
                             cargo test --offline --locked -p surface_it --test surface --no-run \
                                 --message-format=json-render-diagnostics --color never \
@@ -6379,7 +6423,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         expected_groups=9
         # The two digest cases share one invocation; all other send cases run exactly.
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=$(( ${#required_tests[@]} - 1 )); fi
-        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=16; fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=33; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=12; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=7; fi
@@ -7263,6 +7307,7 @@ PY
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'file metadata test total differs'
             grep -E '^test (policy_[a-z0-9_]+|r_f4_pinned_port_constant) [.][.][.] ok$|^SOCKET_DESCRIPTOR=|^SOCKET_POLICY_ARTIFACT' "$output"
+            grep -E '^test fs::tests::(abandoned_blocking_|new_receive_|receive_write_|receive_next_|receive_done_|resume_confirmation_|recv_finish_|recv_digest_|receive_file_list_replacement_cannot_authorize_early_done)[[:alnum:]_]* [.][.][.] ok$' "$output"
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|rename_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^SOCKET_DESCRIPTOR_LIFETIME=|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=|^test socket_surface::tests::[a-z0-9_]+ [.][.][.] ok$|^SOCKET_SURFACE_IO=' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'

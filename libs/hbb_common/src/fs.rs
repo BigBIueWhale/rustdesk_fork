@@ -3565,6 +3565,8 @@ impl ReceiveWriteClaim {
     }
 
     fn finish(&mut self, expected_size: u64, modified_time: u64) -> std::io::Result<()> {
+        ReceiveOwnedArtifact::Payload.validate(&self.download_file)?;
+        ReceiveOwnedArtifact::Digest.validate(&self.digest_file)?;
         let actual_size = self.download_file.metadata()?.len();
         if actual_size != expected_size {
             return Err(io_invalid_input(format!(

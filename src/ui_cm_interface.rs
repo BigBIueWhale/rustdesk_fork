@@ -2947,13 +2947,13 @@ async fn handle_fs(
                     match job.job.files().get(file_num as usize) {
                         Some(file) => {
                             let path = get_string(&fs::TransferJob::join(job.job.path(), &file.name));
-                            match inspect_write_destination(is_resume, &path, &digest) {
+                            match job.job.set_digest(file_size, last_modified).and_then(|()| {
+                                inspect_write_destination(is_resume, &path, &digest)
+                            }) {
                                 Ok(DigestCheckResult::NoSuchFile) => {
-                                    job.job.set_digest(file_size, last_modified);
                                     ipc::CmWriteDigestResult::SendConfirm { skip: false }
                                 }
                                 Ok(DigestCheckResult::NeedConfirm(digest)) => {
-                                    job.job.set_digest(file_size, last_modified);
                                     ipc::CmWriteDigestResult::Digest {
                                         last_modified: digest.last_modified,
                                         file_size: digest.file_size,

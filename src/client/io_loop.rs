@@ -555,17 +555,12 @@ fn inspect_viewer_download_digest(
         .files()
         .get(file_num)
         .ok_or_else(|| format!("digest file number {} is out of range", digest.file_num))?;
-    if digest.file_size != file.size {
-        return Err(format!(
-            "download digest size {} does not match listed file size {}",
-            digest.file_size, file.size
-        ));
-    }
     let write_path = get_string(&fs::TransferJob::join(job.path(), &file.name));
+    job.set_digest(digest.file_size, digest.last_modified)
+        .map_err(|error| error.to_string())?;
     let result =
         fs::inspect_write_destination(peer_supports_resume && job.is_resume, &write_path, digest)
             .map_err(|error| error.to_string())?;
-    job.set_digest(digest.file_size, digest.last_modified);
     Ok((result, write_path))
 }
 

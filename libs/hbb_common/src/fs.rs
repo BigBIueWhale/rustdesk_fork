@@ -3743,9 +3743,23 @@ impl TransferJob {
     }
 
     #[inline]
-    pub fn set_digest(&mut self, size: u64, modified: u64) {
-        self.digest.size = size;
-        self.digest.modified = modified;
+    pub fn set_digest(&mut self, size: u64, modified: u64) -> ResultType<()> {
+        if self.role != TransferRole::Receive {
+            bail!("cannot admit an incoming digest into a send job");
+        }
+        let file = usize::try_from(self.file_num)
+            .ok()
+            .and_then(|index| self.files.get(index))
+            .ok_or_else(|| anyhow!("invalid digest file number {}", self.file_num))?;
+        if size != file.size {
+            bail!(
+                "receive digest size {} does not match listed file size {}",
+                size,
+                file.size
+            );
+        }
+        self.digest = FileDigest { size, modified };
+        Ok(())
     }
 
     #[inline]
@@ -5941,7 +5955,8 @@ mod tests {
                 name: "incoming.bin".into(), size: 3, modified_time: 1_600_000_000,
                 ..Default::default()
             }]).unwrap();
-            job.set_digest(stored_size, 1_600_000_000);
+            // Exercise the resume sink's independent manifest bound even with a corrupt cache.
+            job.digest = FileDigest { size: stored_size, modified: 1_600_000_000 };
             let result = job.confirm_with_offset(0, 1).await;
             let unadmitted = !job.file_confirmed() && job.data_stream.is_none()
                 && job.receive_write_claim.is_none() && job.receive_file_offset == 0
@@ -5979,7 +5994,7 @@ mod tests {
                 name: "incoming.bin".into(), size: 3, modified_time: 1_600_000_000,
                 ..Default::default()
             }]).unwrap();
-            job.set_digest(3, 1_600_000_000);
+            job.set_digest(3, 1_600_000_000).unwrap();
             job.confirm_with_offset(0, available as u64).await.unwrap();
             if available < 3 {
                 job.write(FileTransferBlock {
@@ -8093,7 +8108,7 @@ mod tests {
             .expect("create resumed receive job");
         job.files[0].size = 4;
         job.is_resume = true;
-        job.set_digest(4, 17);
+        job.set_digest(4, 17).expect("admit the matching resume digest");
         job.confirm(&FileTransferSendConfirmRequest {
             id: 98,
             file_num: 0,
@@ -8353,7 +8368,7 @@ mod tests {
                 let mut job =
                     new_write_job(90, path, "incoming.bin").expect("create owning receive job");
                 job.files[0].size = TOTAL_SIZE;
-                job.set_digest(TOTAL_SIZE, MODIFIED);
+                job.set_digest(TOTAL_SIZE, MODIFIED).unwrap();
                 job.write(FileTransferBlock {
                     id: 90,
                     file_num: 0,
@@ -8372,7 +8387,7 @@ mod tests {
                 let mut job =
                     new_write_job(91, path, "incoming.bin").expect("create competing receive job");
                 job.files[0].size = TOTAL_SIZE;
-                job.set_digest(TOTAL_SIZE, MODIFIED);
+                job.set_digest(TOTAL_SIZE, MODIFIED).unwrap();
                 let error = job
                     .write(FileTransferBlock {
                         id: 91,
@@ -8396,7 +8411,7 @@ mod tests {
                     new_write_job(92, path, "incoming.bin").expect("create resumed receive job");
                 job.files[0].size = TOTAL_SIZE;
                 job.is_resume = true;
-                job.set_digest(TOTAL_SIZE, MODIFIED);
+                job.set_digest(TOTAL_SIZE, MODIFIED).unwrap();
                 job.confirm(&FileTransferSendConfirmRequest {
                     id: 92,
                     file_num: 0,

@@ -2125,8 +2125,9 @@ The current behavior is:
   derives the aggregate only from live registrations. The context-free global
   setter is removed. Only the existing status field clamps the wide live sum to `u32`.
 - Display activity retains at most the six frames needed for the dynamic-screen
-  decision. Unavailable adaptation clears every display's activity and restarts
-  the period; later adaptation cannot consume that retired window. The existing
+  decision. An activity update while adaptation is unavailable clears every
+  display's stored activity and restarts the period. Availability changes between
+  updates and capture-local batches remain open below. The existing
   three-second period, six-frame threshold and fixed requested quality remain.
 - Codec-support and activity setters are server-private exact-generation operations.
   Missing, replaced, reset or wrong-display generations return refusal before
@@ -2139,6 +2140,37 @@ The current behavior is:
 native results/artifacts, endpoint observations and joined cleanup. Source-only
 references are marked. Counts describe historical named runs, not additional
 current full-parent or platform execution.
+
+**OPEN — activity-window ownership across adaptation transitions.** The current
+`VideoQoS::set_support_changing_quality` changes support without retiring activity;
+`new_display` inserts an unsupported registration and `remove_display` can remove
+that blocker without an intervening activity update. Thus the stored counters and
+`adjust_ratio_instant` are not invalidated at those availability transitions.
+The seven-case activity regression exercises unavailability through
+`update_display_data`; it does not cover a disable/re-enable or blocking-sibling
+admission/removal entirely between updates. This is a source-level coverage and
+ownership gap, not an observed peer/presentation failure.
+
+The capture loop also owns a separate `send_counter` and `second_instant` in
+`src/server/video_service.rs`; both encode paths increment that counter and
+`video_qos_apply::check_qos` later submits it. Clearing only the controller's
+counters would leave previously collected batches able to cross a transition.
+The complete correction needs an activity epoch shared by controller transitions
+and capture-local accumulation, with checks on both sides of the unlocked encoder
+call. Preserve exact display-generation refusal, authorized current activity,
+quality/FPS behavior and fresh-window adaptation. Required regressions cover both
+transition paths before a timer update, a delayed old batch, a transition during
+an encoder call, fresh zero/six-frame controls and stale-generation inertness.
+
+At source `82aa2e57`, the unchanged canonical `--video-qos-controller-tests`
+entry refused before allocation: 20,480 MiB required including RAM scratch and
+headroom, 14,234 MiB available. No VM, build or test payload ran, and there was no
+disk fallback. Production code, tests and resource limits are unchanged; the
+coupled correction and native proof remain OPEN. Source trace, exact admission
+output and unchanged-source metadata: `qos-activity-epoch-audit-82aa2e57.json`.
+This item is open for further work when its prerequisites are available; it is
+not a new user park. Existing explicit parks and all R-F5 end-to-end obligations
+remain unchanged.
 
 | Correction | Native evidence and limits | Retained capsules |
 | --- | --- | --- |

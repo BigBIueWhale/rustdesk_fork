@@ -224,8 +224,8 @@ def main():
             '/// R-D5: bind the direct listener')
     snippets["pf-settings-startup.rs"] = (
         "async fn start_saved_mappings(handler: &Session, supervisor: &PortForwardSupervisorOwner) {\n"
-        + between(session, "            let pfs = handler.lc.read().unwrap().port_forwards.clone();",
-                  "            loop {\n                match receiver.recv().await {\n                    Some(Ok(Data::SavedPortForward(request)))")
+        + between(session, "        } else if handler.args.len() == 0 {\n",
+                  "            loop {\n                match receiver.recv().await {\n                    Some(Ok(Data::SavedPortForward(request)))")[len("        } else if handler.args.len() == 0 {\n"):]
         + "}\n")
     legacy_marker = "            std::fs::File::create(&path).ok();\n"
     marker_start = "            let marker_ready = "
@@ -556,13 +556,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=91", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=92", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=91 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=92 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -571,7 +571,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=91 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=92 unchanged=before-after",
               flush=True)
 
 

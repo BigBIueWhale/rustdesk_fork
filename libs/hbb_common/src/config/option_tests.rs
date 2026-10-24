@@ -2196,6 +2196,88 @@ fn peer_port_forward_write_failure_reports_error_and_retries_add_remove() {
 }
 
 #[test]
+fn peer_port_forward_edit_resolves_duplicate_identity() {
+    in_private_process("config::option_tests::peer_port_forward_edit_resolves_duplicate_identity", |_| {
+        use std::os::unix::fs::MetadataExt;
+        let id = "peer-port-forward-identity";
+        let sibling = "peer-port-forward-identity-sibling";
+        let selected = (8000, "selected".to_owned(), 443);
+        let stale = (8000, "stale".to_owned(), 22);
+        let older = (8000, "older".to_owned(), 80);
+        let a = (8001, "first".to_owned(), 81);
+        let b = (8002, "second".to_owned(), 82);
+        let mut peer = PeerConfig::default();
+        peer.password_prs = b"fixture-port-forward-identity-prs".to_vec();
+        peer.info.hostname = "preserved-host".into();
+        peer.options.insert("alias".into(), "preserved".into());
+        peer.ui_flutter.insert("canvas".into(), "preserved".into());
+        peer.transfer.read_jobs.push("preserved-job".into());
+        peer.store(sibling).unwrap();
+        let sibling_path = PeerConfig::path(sibling);
+        let sibling_bytes = fs::read(&sibling_path).unwrap();
+        let sibling_inode = fs::metadata(&sibling_path).unwrap().ino();
+        let capacity: Vec<_> = (0..31).map(|i| (8100 + i, "other".into(), 100 + i)).collect();
+        let mut overfull = vec![selected.clone()];
+        overfull.extend(capacity.clone());
+        overfull.push(stale.clone());
+        let mut repaired_capacity = vec![selected.clone()];
+        repaired_capacity.extend(capacity);
+        let cases = [
+            ("first-identical", vec![selected.clone(), stale.clone()], vec![selected.clone()], true),
+            ("first-stale", vec![stale.clone(), older], vec![selected.clone()], true),
+            ("identical-duplicates", vec![selected.clone(), selected.clone()], vec![selected.clone()], true),
+            ("interleaved", vec![a.clone(), stale.clone(), b.clone(), selected.clone()], vec![a, selected.clone(), b], true),
+            ("legacy-overcapacity", overfull, repaired_capacity, true),
+            ("canonical", vec![selected.clone()], vec![selected.clone()], false),
+        ];
+        let mut all_correct = true;
+        for (name, original, expected_mappings, changed) in cases {
+            peer.port_forwards = original;
+            peer.store(id).unwrap();
+            let path = PeerConfig::path(id);
+            let original_bytes = fs::read(&path).unwrap();
+            let original_inode = fs::metadata(&path).unwrap().ino();
+            let result = PeerConfig::add_port_forward(id, &selected).unwrap();
+            let mut expected = peer.clone();
+            expected.port_forwards = expected_mappings.clone();
+            let stored = PeerConfig::load_for_write(id).unwrap();
+            let bytes = fs::read(&path).unwrap();
+            let inode = fs::metadata(&path).unwrap().ino();
+            let retry = PeerConfig::add_port_forward(id, &selected).unwrap();
+            let retry_unchanged = fs::read(&path).unwrap() == bytes
+                && fs::metadata(&path).unwrap().ino() == inode;
+            let preserved = stored == expected && fs::read(&sibling_path).unwrap() == sibling_bytes
+                && fs::metadata(&sibling_path).unwrap().ino() == sibling_inode;
+            let correct = result == (expected_mappings.clone(), changed)
+                && retry == (expected_mappings, false) && retry_unchanged && preserved
+                && (changed || (bytes == original_bytes && inode == original_inode));
+            println!("OPTION_COMMIT_PF_IDENTITY_CASE=observed name={name} changed={} preserved={preserved} retry_unchanged={retry_unchanged} correct={correct}", result.1);
+            all_correct &= correct;
+        }
+        peer.port_forwards = vec![selected.clone(), stale];
+        peer.store(id).unwrap();
+        let path = PeerConfig::path(id);
+        let original = fs::read(&path).unwrap();
+        let original_inode = fs::metadata(&path).unwrap().ino();
+        let parent = path.parent().unwrap();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        let refused = PeerConfig::add_port_forward(id, &selected).is_err();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        let unchanged = fs::read(&path).unwrap() == original
+            && fs::metadata(&path).unwrap().ino() == original_inode;
+        let retry = PeerConfig::add_port_forward(id, &selected).unwrap();
+        peer.port_forwards = vec![selected.clone()];
+        let recovered = retry == (vec![selected], true)
+            && PeerConfig::load_for_write(id).unwrap() == peer;
+        let correct = refused && unchanged && recovered;
+        println!("OPTION_COMMIT_PF_IDENTITY_CASE=observed name=write-failure refused={refused} unchanged={unchanged} recovered={recovered} correct={correct}");
+        all_correct &= correct;
+        assert!(all_correct, "explicit tunnel edit did not leave exactly one durable selected target");
+        println!("OPTION_COMMIT_PF_IDENTITY=pass cases=7 storage=real-peer-file credentials=preserved siblings=unchanged retry=no-write failure=reported");
+    });
+}
+
+#[test]
 fn peer_port_forward_unreadable_source_refuses_add_remove() {
     in_private_process("config::option_tests::peer_port_forward_unreadable_source_refuses_add_remove", |_| {
         let id = "peer-port-forward-read";

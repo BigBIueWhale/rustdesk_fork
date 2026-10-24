@@ -3644,6 +3644,7 @@ run_focused_rust_tests() {
                 config::option_tests::peer_ui_info_invalid_utf8_and_directory_refuse_without_mutation
                 config::option_tests::peer_ui_info_does_not_load_controlled_credentials
                 config::option_tests::peer_port_forward_write_failure_reports_error_and_retries_add_remove
+                config::option_tests::peer_port_forward_edit_resolves_duplicate_identity
                 config::option_tests::peer_port_forward_unreadable_source_refuses_add_remove
                 config::option_tests::peer_port_forward_edits_preserve_other_fields_siblings_and_capacity
                 config::option_tests::peer_port_forward_idempotent_edits_avoid_writes
@@ -4282,6 +4283,7 @@ run_focused_rust_tests() {
                 port_forward_settings::unavailable_mapping_round_refuses_before_persistence
                 port_forward_settings::identical_saved_mapping_still_requests_runtime_application
                 port_forward_settings::mapping_bind_failure_retries_the_saved_target
+                port_forward_settings::saved_mapping_startup_refuses_ambiguous_and_oversized_lists
                 port_forward_settings::saved_mapping_startup_keeps_independent_listeners_after_refusal
                 port_forward_settings::tunnel_port_kind_tests::ordinary_mapping_producer_rejects_reserved_and_invalid_ports
                 port_forward_settings::tunnel_port_kind_tests::saved_mapping_writer_validates_ports_and_preserves_legacy_removal
@@ -6242,7 +6244,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=91 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=92 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6566,6 +6568,9 @@ PY
         [ "$(grep -Fxc 'PF_SETTINGS_STARTUP=pass cases=6 attempts=independent errors=visible saved=unchanged listeners=native cleanup=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PF_SETTINGS_STARTUP_CASE=observed .* correct=true$' "$output")" -eq 6 ] \
             || fail 'saved mapping startup independence or native cleanup differs'
+        [ "$(grep -Fxc 'PF_SETTINGS_UNIQUE_STARTUP=pass cases=4 duplicates=unbound capacity=32 oversized=unbound saved=unchanged repair=usable cleanup=joined' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^PF_SETTINGS_UNIQUE_STARTUP_CASE=observed .* correct=true$' "$output")" -eq 4 ] \
+            || fail 'saved mapping identity, capacity or explicit repair differs'
         [ "$(grep -Fxc 'PF_SETTINGS_PORT_PRODUCER=pass cases=5 invalid=prequeue-refused bounds=accepted saved=unchanged' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PF_SETTINGS_PORT_PRODUCER_CASE=observed .* correct=true$' "$output")" -eq 5 ] \
             && [ "$(grep -Fxc 'PF_SETTINGS_PORT_WRITER=pass cases=5 invalid=unchanged bounds=stored legacy-removal=usable' "$output")" -eq 1 ] \
@@ -6577,7 +6582,7 @@ PY
         [ "$(grep -Fxc 'PF_SETTINGS_ONE_OFF=pass cases=4 invalid=before-bind-and-launch valid=native-listener owner-thread=joined ports=rebindable' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PF_SETTINGS_ONE_OFF_CASE=observed .* correct=true$' "$output")" -eq 4 ] \
             || fail 'one-off local-port refusal or owned thread/listener finality differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=91 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=92 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
         [ "$(grep -Fxc 'CM_VOICE_CALL_ACTION=pass cases=108 identity=exact phase=exact invalid=refused queues=real' "$output")" -eq 1 ] \

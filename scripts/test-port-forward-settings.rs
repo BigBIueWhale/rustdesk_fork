@@ -6,7 +6,7 @@ use protobuf::Message as _;
 use std::{ops::Deref, path::PathBuf, sync::{Arc, Mutex, RwLock}, time::Duration};
 use tokio::time::Duration as TokioDuration;
 #[cfg(pf_settings_results)]
-use std::{collections::HashMap, net::SocketAddr, sync::atomic::{AtomicUsize, Ordering}};
+use std::{collections::{HashMap, HashSet}, net::SocketAddr, sync::atomic::{AtomicUsize, Ordering}};
 #[cfg(pf_settings_results)]
 use tokio::sync::{mpsc, Semaphore, OwnedSemaphorePermit};
 #[cfg(pf_settings_results)]
@@ -206,6 +206,89 @@ async fn saved_mapping_startup_keeps_independent_listeners_after_refusal() {
     }
     assert!(all_correct, "one saved mapping refusal suppressed an independent mapping or its error");
     println!("PF_SETTINGS_STARTUP=pass cases=6 attempts=independent errors=visible saved=unchanged listeners=native cleanup=joined");
+}
+
+#[cfg(pf_settings_results)]
+#[tokio::test(flavor = "current_thread")]
+async fn saved_mapping_startup_refuses_ambiguous_and_oversized_lists() {
+    let mut all_correct = true;
+    for name in ["conflicting", "identical", "oversized", "capacity"] {
+        let mut fixture = Fixture::new(None);
+        let errors = Arc::new(Mutex::new(Vec::new()));
+        fixture.session.startup_errors = Some(Arc::clone(&errors));
+        let mut reservations = Vec::new();
+        let mut addresses = Vec::new();
+        for _ in 0..32 {
+            let listener = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+            addresses.push(listener.local_addr().unwrap());
+            reservations.push(listener);
+        }
+        let mapping = |i: usize| (i32::from(addresses[i].port()), "localhost".to_owned(), 22);
+        let (mappings, expected_active, expected_errors) = match name {
+            "conflicting" => {
+                let mut stale = mapping(0);
+                stale.1 = "stale".into();
+                (vec![mapping(0), mapping(1), stale, mapping(2)], 2, 2)
+            }
+            "identical" => (vec![mapping(0), mapping(1), mapping(0), mapping(2)], 2, 2),
+            "oversized" => {
+                let mut mappings = vec![mapping(0); 31];
+                mappings.extend([mapping(1), mapping(2)]);
+                (mappings, 0, 1)
+            }
+            "capacity" => ((0..32).map(mapping).collect(), 32, 0),
+            _ => unreachable!(),
+        };
+        {
+            let mut lc = fixture.session.lc.write().unwrap();
+            lc.config.port_forwards = mappings;
+            lc.config.store(&lc.id).unwrap();
+        }
+        let saved = fixture.bytes();
+        drop(reservations);
+        let supervisor = PortForwardSupervisorOwner::start(fixture.session.clone()).unwrap();
+        start_saved_mappings(&fixture.session, &supervisor).await;
+        let mut active = Vec::new();
+        for address in &addresses {
+            active.push(tcp::new_exclusive_listener(*address).await.is_err());
+        }
+        let observed_active = active.iter().filter(|bound| **bound).count();
+        let observed_errors = errors.lock().unwrap().clone();
+        let precise = match name {
+            "conflicting" | "identical" => observed_errors.iter().all(|error|
+                error.contains(&format!("local port {}:", addresses[0].port()))
+                    && error.contains("Duplicate saved tunnel mapping")),
+            "oversized" => observed_errors.iter().all(|error|
+                error.contains("Saved tunnel mapping limit (32) exceeded")),
+            _ => observed_errors.is_empty(),
+        };
+        let selected_ports = match name {
+            "conflicting" | "identical" => !active[0] && active[1] && active[2],
+            "oversized" => !active.iter().any(|bound| *bound),
+            _ => active.iter().all(|bound| *bound),
+        };
+        let preserved = fixture.bytes() == saved;
+        let repaired = if name != "capacity" {
+            fixture.session.apply_saved_port_forward(
+                SavedPortForwardChange::Remove(i32::from(addresses[0].port())), &supervisor).await.unwrap();
+            fixture.session.apply_saved_port_forward(
+                SavedPortForwardChange::Add(mapping(0)), &supervisor).await.unwrap();
+            tcp::new_exclusive_listener(addresses[0]).await.is_err()
+                && fixture.session.lc.read().unwrap().config.port_forwards.iter()
+                    .filter(|entry| entry.0 == i32::from(addresses[0].port())).count() == 1
+        } else { true };
+        supervisor.close_and_join().await.unwrap();
+        let mut rebindable = true;
+        for address in &addresses {
+            rebindable &= tcp::new_exclusive_listener(*address).await.is_ok();
+        }
+        let correct = observed_active == expected_active && selected_ports
+            && observed_errors.len() == expected_errors && precise && preserved && repaired && rebindable;
+        println!("PF_SETTINGS_UNIQUE_STARTUP_CASE=observed name={name} active={observed_active} expected_active={expected_active} errors={} expected_errors={expected_errors} precise={precise} saved={preserved} repaired={repaired} rebindable={rebindable} correct={correct}", observed_errors.len());
+        all_correct &= correct;
+    }
+    assert!(all_correct, "ambiguous or oversized saved mappings started listeners");
+    println!("PF_SETTINGS_UNIQUE_STARTUP=pass cases=4 duplicates=unbound capacity=32 oversized=unbound saved=unchanged repair=usable cleanup=joined");
 }
 
 #[cfg(pf_settings_results)]

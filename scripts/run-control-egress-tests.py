@@ -31,6 +31,7 @@ INPUTS = (
     "src/flutter_ffi.rs", "scripts/test-cm-chat.rs", "scripts/test-cm-disconnect.rs",
     "scripts/test-cm-voice.rs",
     "src/client/io_loop.rs", "src/client/helper.rs", "scripts/test-viewer-voice.rs",
+    "scripts/test-controlled-voice.rs",
 )
 
 
@@ -215,6 +216,27 @@ def main():
     if helper.count(marker) != 1:
         raise ValueError("viewer voice constructor boundary is missing or ambiguous")
     snippets["viewer-voice-helpers.rs"] = helper[helper.index(marker):]
+    snippets["controlled-voice-types.rs"] = (
+        enum_declaration(connection, "AuthConnType") + "impl ControlledVoice {\n"
+        + between(connection, "    fn is_authed_remote_conn(&self) -> bool {",
+                  "    fn authenticated_video_source(")
+        + between(connection, "    fn can_drive_voice_call(&self) -> bool {",
+                  '    #[cfg(feature = "unix-file-copy-paste")]\n    async fn handle_file_clip(')
+        + "}\n")
+    snippets["controlled-voice-receive.rs"] = (
+        "impl ControlledVoice {\nasync fn receive(&mut self, incoming: Message) -> bool {\n"
+        "match incoming.union {\n" + between(
+            connection, "                Some(message::Union::VoiceCallRequest(request)) => {",
+            "                Some(message::Union::VoiceCallResponse(_response)) => {")
+        + "_ => {}\n}\ntrue\n}\n}\n")
+    deadlines = re.findall(r"^const CM_COMMAND_QUEUE_SEND_TIMEOUT: Duration = Duration::from_secs\([0-9]+\);\n",
+                           connection, re.MULTILINE)
+    if len(deadlines) != 1:
+        raise ValueError("controlled voice CM deadline is missing or ambiguous")
+    snippets["controlled-voice-send.rs"] = (
+        deadlines[0] + "impl ControlledVoice {\n"
+        + between(connection, "    #[inline]\n    async fn send_to_cm(",
+                  "    fn publish_cm_terminal(") + "}\n")
     ipc = inputs["src/ipc.rs"].decode("utf-8")
     enigo = inputs["libs/enigo/src/lib.rs"].decode("utf-8")
     snippets["cm-queue.rs"] = between(cm, "const CM_EGRESS_WAKE_CAPACITY:",
@@ -344,7 +366,10 @@ def main():
                                ("VIEWER_VOICE_RECEIVE", "viewer-voice-receive.rs"),
                                ("VIEWER_VOICE_COMMAND", "viewer-voice-command.rs"),
                                ("VIEWER_VOICE_REQUEST", "viewer-voice-request.rs"),
-                               ("VIEWER_VOICE_HELPERS", "viewer-voice-helpers.rs")):
+                               ("VIEWER_VOICE_HELPERS", "viewer-voice-helpers.rs"),
+                               ("CONTROLLED_VOICE_TYPES", "controlled-voice-types.rs"),
+                               ("CONTROLLED_VOICE_RECEIVE", "controlled-voice-receive.rs"),
+                               ("CONTROLLED_VOICE_SEND", "controlled-voice-send.rs")):
             os.environ[variable] = str(fixture / name)
         os.environ["CM_CHAT_TESTS"] = str(repo / "scripts/test-cm-chat.rs")
         os.environ["CM_DISCONNECT_TESTS"] = str(repo / "scripts/test-cm-disconnect.rs")
@@ -425,13 +450,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=69", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=73", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=69 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=73 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -440,7 +465,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=69 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=73 unchanged=before-after",
               flush=True)
 
 

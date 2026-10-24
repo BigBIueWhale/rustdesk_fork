@@ -18,6 +18,9 @@ mod cursor_echo;
 #[path = "test-viewer-voice.rs"]
 mod viewer_voice;
 
+#[path = "test-controlled-voice.rs"]
+mod controlled_voice;
+
 include!(env!("RECENT_DOCUMENT_MARKER_SOURCE"));
 
 #[path = "../libs/hbb_common/src/bytes_codec.rs"]

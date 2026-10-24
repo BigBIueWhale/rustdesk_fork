@@ -256,6 +256,7 @@ mod linux {
         use hbb_common::{anyhow::{anyhow, ensure}, serde_json::{json, Value}, ResultType};
         use std::{
             collections::BTreeSet,
+            convert::TryFrom,
             fs,
             io::{self, Read},
             os::unix::{ffi::OsStringExt, process::{CommandExt, ExitStatusExt}},

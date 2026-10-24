@@ -5815,11 +5815,25 @@ mod tests {
     use crate::compress::try_decompress;
     use crate::protobuf::Message as _;
 
+    fn write_receive_partial_fixture<P: AsRef<Path>, C: AsRef<[u8]>>(
+        path: P, content: C,
+    ) -> std::io::Result<()> {
+        use std::io::Write;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options.open(path)?.write_all(content.as_ref())
+    }
+
     #[cfg(target_os = "linux")]
     fn file_metadata_receive_mode_case(
         action: &str, artifact: &str, mode: u32, should_refuse: bool,
     ) -> serde_json::Value {
-        use std::{io::Write, os::unix::fs::{MetadataExt, PermissionsExt}};
+        use std::{io::{Read, Write}, os::unix::fs::{MetadataExt, PermissionsExt}};
         let root = TestTempDir::new("rustdesk_receive_file_modes");
         std::fs::create_dir_all(&root.path).unwrap();
         let final_path = root.join("incoming.bin");
@@ -5846,6 +5860,9 @@ mod tests {
         ));
         let before = [snapshot(&final_path), snapshot(&download),
             snapshot(&digest_path), snapshot(&lock)];
+        let mut reader = if artifact == "download" {
+            Some(std::fs::File::open(&download).unwrap())
+        } else { None };
         let result = if action == "inspect" {
             inspect_write_destination(true, &final_path, &FileTransferDigest {
                 id: 492, file_num: 0, file_size: 6, last_modified: 31,
@@ -5859,6 +5876,10 @@ mod tests {
             match ReceiveWriteClaim::resume(final_path.clone(), digest, 6, 3) {
                 Ok((mut stream, mut claim)) => {
                     if should_refuse {
+                        if artifact == "download" && mode & 0o077 != 0 {
+                            stream.write_all(b"def").unwrap();
+                            stream.sync_all().unwrap();
+                        }
                         // Observe admission, then let the ordinary abandoned-claim cleanup run.
                         drop(stream);
                         drop(claim);
@@ -5878,6 +5899,13 @@ mod tests {
             .map(|e| e.kind() == std::io::ErrorKind::PermissionDenied).unwrap_or(false);
         let after = [snapshot(&final_path), snapshot(&download),
             snapshot(&digest_path), snapshot(&lock)];
+        let reader_bytes = reader.as_mut().map(|file| {
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).unwrap();
+            bytes
+        });
+        let reader_preserved = !should_refuse || reader_bytes.as_deref()
+            .map(|bytes| bytes == b"abc").unwrap_or(true);
         let state_correct = if should_refuse || action == "inspect" {
             before[..3] == after[..3]
                 && if should_refuse && artifact == "lease" {
@@ -5897,6 +5925,7 @@ mod tests {
             "action": action, "artifact": artifact, "mode": mode,
             "should_refuse": should_refuse, "refused": refused,
             "permission_refusal": permission_refusal, "state_correct": state_correct,
+            "reader_preserved": reader_preserved, "reader_bytes": reader_bytes,
         })
     }
 
@@ -5907,21 +5936,25 @@ mod tests {
         for artifact in ["lease", "download", "digest"] {
             for (mode, should_refuse) in [
                 (0o600, false), (0o640, false), (0o644, false),
+                (0o601, false), (0o610, false),
                 (0o602, true), (0o620, true), (0o666, true),
                 (0o1600, true), (0o2600, true), (0o4600, true), (0o7600, true),
             ] {
+                let should_refuse = should_refuse
+                    || artifact == "download" && mode & 0o077 != 0;
                 let observation = file_metadata_receive_mode_case(
                     action, artifact, mode, should_refuse,
                 );
                 passed &= observation["refused"] == should_refuse
                     && observation["permission_refusal"] == should_refuse
-                    && observation["state_correct"] == true;
+                    && observation["state_correct"] == true
+                    && observation["reader_preserved"] == true;
                 println!("FILE_METADATA_RECEIVE_MODE={observation}");
                 cases += 1;
             }
         }
-        assert_eq!(cases, 30);
-        assert!(passed, "receive-owned artifacts must reject unsafe native permissions");
+        assert_eq!(cases, 36);
+        assert!(passed, "receive artifacts must enforce integrity and private payload admission");
     }
 
     #[cfg(target_os = "linux")]
@@ -5968,7 +6001,7 @@ mod tests {
             filetime::set_file_mtime(&final_path,
                 filetime::FileTime::from_unix_time(31, 0)).unwrap();
             if resume {
-                std::fs::write(&selected_download, b"abc").unwrap();
+                write_receive_partial_fixture(&selected_download, b"abc").unwrap();
                 std::fs::write(&selected_digest, &digest_bytes).unwrap();
                 std::fs::write(cwd.join(".download"), b"x").unwrap();
                 std::fs::write(cwd.join(".digest"), &digest_bytes).unwrap();
@@ -6042,7 +6075,7 @@ mod tests {
         } else {
             assert_eq!(kind, "resume");
             // Independent native names are the oracle; do not use recv_sidecar_path here.
-            std::fs::write(&selected_download, b"abc").unwrap();
+            write_receive_partial_fixture(&selected_download, b"abc").unwrap();
             std::fs::write(&selected_digest, &digest_bytes).unwrap();
             std::fs::write(cwd.join(".download"), b"bad").unwrap();
             std::fs::write(cwd.join(".digest"), &digest_bytes).unwrap();
@@ -6400,7 +6433,7 @@ mod tests {
                 ..Default::default()
             }, false).await.unwrap();
             if case == "malformed-resume" {
-                std::fs::write(recv_sidecar_path(&path, ".download"), b"ne").unwrap();
+                write_receive_partial_fixture(recv_sidecar_path(&path, ".download"), b"ne").unwrap();
                 std::fs::write(recv_sidecar_path(&path, ".digest"), b"not json").unwrap();
             } else if case == "linked-destination" {
                 let target = tmp.join("target.bin");
@@ -6443,7 +6476,7 @@ mod tests {
             let path = tmp.join("incoming.bin");
             if case != "missing" { std::fs::write(&path, b"original").unwrap(); }
             if case == "resume" {
-                std::fs::write(recv_sidecar_path(&path, ".download"), b"ne").unwrap();
+                write_receive_partial_fixture(recv_sidecar_path(&path, ".download"), b"ne").unwrap();
                 std::fs::write(recv_sidecar_path(&path, ".digest"),
                     json!(FileDigest { size: 3, modified: 23 }).to_string()).unwrap();
             }
@@ -6491,7 +6524,7 @@ mod tests {
             id: 87, file_num: 0, data: b"one".to_vec().into(), ..Default::default()
         }).await.unwrap();
         let next = tmp.join("next.bin");
-        std::fs::write(recv_sidecar_path(&next, ".download"), b"ol").unwrap();
+        write_receive_partial_fixture(recv_sidecar_path(&next, ".download"), b"ol").unwrap();
         std::fs::write(recv_sidecar_path(&next, ".digest"), b"not json").unwrap();
         let result = job.inspect_receive_digest(&FileTransferDigest {
             id: 87, file_num: 1, file_size: 4, last_modified: 23, ..Default::default()
@@ -6558,7 +6591,7 @@ mod tests {
         std::fs::create_dir_all(&tmp.path).unwrap();
         let path = tmp.join("incoming.bin");
         std::fs::write(&path, b"original").unwrap();
-        std::fs::write(recv_sidecar_path(&path, ".download"), partial).unwrap();
+        write_receive_partial_fixture(recv_sidecar_path(&path, ".download"), partial).unwrap();
         let digest = json!(FileDigest { size: stored_size, modified: 1_600_000_000 })
             .to_string().into_bytes();
         std::fs::write(recv_sidecar_path(&path, ".digest"), &digest).unwrap();
@@ -9379,7 +9412,7 @@ mod tests {
     fn r_s11fj_confirmation_probe_retires_its_snapshot_lease() {
         let tmp = TestTempDir::new("rustdesk_receive_confirmation_lease");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+        write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
             .expect("stage resumable download");
         let stored = FileDigest {
             size: 7,
@@ -9434,7 +9467,7 @@ mod tests {
     fn r_s11fj_invalid_resume_digest_is_explicit_and_preserved() {
         let tmp = TestTempDir::new("rustdesk_receive_confirmation_invalid_digest");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+        write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
             .expect("stage resumable download");
         std::fs::write(tmp.join("incoming.bin.digest"), b"not-json")
             .expect("stage invalid resume digest");
@@ -9477,7 +9510,7 @@ mod tests {
     fn r_s11fj_nonmatching_resume_digest_is_not_an_inspection_failure() {
         let tmp = TestTempDir::new("rustdesk_receive_confirmation_stale_digest");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+        write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
             .expect("stage resumable download");
         let stored = FileDigest {
             size: 7,
@@ -9526,7 +9559,7 @@ mod tests {
                 std::fs::write(&source, digest).expect("stage digest source");
                 std::fs::hard_link(&source, tmp.join("incoming.bin.digest"))
                     .expect("stage hard-linked resume digest");
-                std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+                write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
                     .expect("stage resumable download");
             } else {
                 std::fs::write(tmp.join("incoming.bin.digest"), digest)
@@ -11272,7 +11305,7 @@ mod tests {
     async fn confirmation_rejects_wrong_job_and_duplicate_progress() {
         let tmp = TestTempDir::new("rustdesk_receive_confirm_identity");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+        write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
             .expect("stage partial download");
         std::fs::write(
             tmp.join("incoming.bin.digest"),
@@ -11319,7 +11352,7 @@ mod tests {
     async fn resume_counter_overflow_does_not_publish_stream_ownership() {
         let tmp = TestTempDir::new("rustdesk_receive_resume_overflow");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+        write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
             .expect("stage partial download");
         std::fs::write(tmp.join("incoming.bin.digest"), b"{}").expect("stage resume digest");
         let mut job =
@@ -11354,7 +11387,7 @@ mod tests {
             let digest_path = tmp.join("incoming.bin.digest");
             let digest = json!(FileDigest::default()).to_string();
             std::fs::write(&source, b"partial").expect("create send source");
-            std::fs::write(&download, b"pa").expect("stage receive prefix");
+            write_receive_partial_fixture(&download, b"pa").expect("stage receive prefix");
             std::fs::write(&digest_path, &digest).expect("stage receive digest");
             let mut job = if receive {
                 let mut entry = new_file_entry("incoming.bin");

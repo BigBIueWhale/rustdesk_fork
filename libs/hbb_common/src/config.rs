@@ -1346,6 +1346,19 @@ impl Config2 {
     fn store(&self) -> crate::ResultType<()> {
         store_path(Self::file(), self)
     }
+
+    fn update(mutate: impl Fn(&mut Self)) -> crate::ResultType<()> {
+        let mut config = CONFIG2.write().unwrap();
+        let loaded: Self = read_config_view(&Self::file())
+            .map_err(|_| anyhow!("Failed to read options"))?;
+        let mut candidate = loaded.clone();
+        mutate(&mut candidate);
+        if candidate != loaded {
+            candidate.store()?;
+        }
+        *config = candidate;
+        Ok(())
+    }
 }
 
 fn keep_encrypted_storage_if_plaintext_unchanged(plain: &str, stored: &str) -> String {
@@ -3575,22 +3588,16 @@ impl Config {
         let desired = (is_option_can_save(&OVERWRITE_SETTINGS, &k, &DEFAULT_SETTINGS, &v)
             && !v.is_empty())
             .then_some(v);
-        let mut config = CONFIG2.write().unwrap();
-        let mut candidate: Config2 = read_config_view(&Config2::file())
-            .map_err(|_| anyhow!("Failed to read options"))?;
-        if candidate.options.get(&k) != desired.as_ref() {
-            match desired {
+        Config2::update(|candidate| {
+            match &desired {
                 Some(value) => {
-                    candidate.options.insert(k, value);
+                    candidate.options.insert(k.clone(), value.clone());
                 }
                 None => {
                     candidate.options.remove(&k);
                 }
             }
-            candidate.store()?;
-        }
-        *config = candidate;
-        Ok(())
+        })
     }
 
     /// Sets the local permanent password.

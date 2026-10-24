@@ -5,39 +5,44 @@ const ROLE: &str = "RUSTDESK_LOCAL_TRANSACTION_ROLE";
 const PREFIX: &str = "config::option_tests::local_transaction_tests::";
 
 #[derive(Clone, Copy, Debug)]
-enum Store { Local, Defaults }
+enum Store { Local, Defaults, Options }
 
 impl Store {
-    fn name(self) -> &'static str { match self { Self::Local => "local", Self::Defaults => "defaults" } }
-    fn path(self) -> PathBuf { Config::file_(match self { Self::Local => "_local", Self::Defaults => "_default" }) }
+    fn name(self) -> &'static str { match self { Self::Local => "local", Self::Defaults => "defaults", Self::Options => "options" } }
+    fn path(self) -> PathBuf { Config::file_(match self { Self::Local => "_local", Self::Defaults => "_default", Self::Options => "2" }) }
     fn set(self, value: &str) -> crate::ResultType<()> {
         match self {
             Self::Local => LocalConfig::set_option("selected".into(), value.into()),
             Self::Defaults => UserDefaultConfig::set_option("selected".into(), value.into()).map(|_| ()),
+            Self::Options => Config::set_option("selected".into(), value.into()),
         }
     }
     fn cached(self) -> String {
         match self {
             Self::Local => LOCAL_CONFIG.read().unwrap().options.get("selected").cloned().unwrap_or_default(),
             Self::Defaults => USER_DEFAULT_CONFIG.read().unwrap().0.get("selected"),
+            Self::Options => CONFIG2.read().unwrap().options.get("selected").cloned().unwrap_or_default(),
         }
     }
     fn stored(self) -> String {
         match self {
             Self::Local => read_config_view::<LocalConfig>(&self.path()).unwrap().options.get("selected").cloned().unwrap_or_default(),
             Self::Defaults => read_config_view::<UserDefaultConfig>(&self.path()).unwrap().get("selected"),
+            Self::Options => read_config_view::<Config2>(&self.path()).unwrap().options.get("selected").cloned().unwrap_or_default(),
         }
     }
     fn update(self, mutate: impl Fn(&mut HashMap<String, String>)) -> crate::ResultType<()> {
         match self {
             Self::Local => LocalConfig::update(|candidate| mutate(&mut candidate.options)),
             Self::Defaults => UserDefaultConfig::update(|candidate| mutate(&mut candidate.options)),
+            Self::Options => Config2::update(|candidate| mutate(&mut candidate.options)),
         }
     }
     fn child_change(self) -> crate::ResultType<()> {
         match self {
             Self::Local => LocalConfig::set_favorites(vec!["child-peer".into()], true),
             Self::Defaults => UserDefaultConfig::set_option("child-key".into(), "child-value".into()).map(|_| ()),
+            Self::Options => Config::set_option("child-key".into(), "child-value".into()),
         }
     }
     fn child_preserved(self) -> bool {
@@ -46,6 +51,8 @@ impl Store {
                 && LocalConfig::get_fav() == ["child-peer"],
             Self::Defaults => read_config_view::<UserDefaultConfig>(&self.path()).unwrap().get("child-key") == "child-value"
                 && USER_DEFAULT_CONFIG.read().unwrap().0.get("child-key") == "child-value",
+            Self::Options => read_config_view::<Config2>(&self.path()).unwrap().options.get("child-key").map(String::as_str) == Some("child-value")
+                && CONFIG2.read().unwrap().options.get("child-key").map(String::as_str) == Some("child-value"),
         }
     }
 }
@@ -97,7 +104,7 @@ fn run_actor() -> bool {
     let role = match std::env::var(ROLE) { Ok(role) => role, Err(_) => return false };
     assert_ne!(unsafe { crate::libc::geteuid() }, 0);
     let store = match std::env::var("RUSTDESK_PREFERENCE_TEST_STORE").unwrap().as_str() {
-        "local" => Store::Local, "defaults" => Store::Defaults, _ => panic!("invalid actor store"),
+        "local" => Store::Local, "defaults" => Store::Defaults, "options" => Store::Options, _ => panic!("invalid actor store"),
     };
     let root = PathBuf::from(std::env::var_os("RUSTDESK_OPTION_COMMIT_TEST_ROOT").unwrap());
     assert!(store.path().starts_with(root));
@@ -112,6 +119,7 @@ fn run_actor() -> bool {
     match store {
         Store::Local => { LocalConfig::get_option("selected"); }
         Store::Defaults => { UserDefaultConfig::get_option("selected"); }
+        Store::Options => { Config::get_option("selected"); }
     }
     let original_cache = store.cached();
     let result = if role == "child-change" {
@@ -131,7 +139,7 @@ fn run_actor() -> bool {
 
 fn in_stores(test: &str, run: impl Fn(Store)) {
     in_private_process(&format!("{PREFIX}{test}"), |_| {
-        for store in [Store::Local, Store::Defaults] { run(store); }
+        for store in [Store::Local, Store::Defaults, Store::Options] { run(store); }
     });
 }
 

@@ -15302,11 +15302,34 @@ review and release acceptance remain OPEN.
 | Whole-list receive completion | `finalize_write` first requires successful file-list admission, then requires the active file's exact next index to equal the whole admitted list length before consuming the stream or publishing the claim. A missing or rejected list cannot become a successful empty transfer. Explicitly admitted empty and skipped lists retain their no-stream completion path. |
 | Send length and EOF | `read` owns a per-file position and probes at most the admitted remainder plus one byte, capped at 128 KiB. Short EOF or overrun closes the stream and fails before publishing the affected block or changing counters/file number. Successful seek establishes the position; skip, retirement, fresh open and exact EOF reset it. |
 | Overwrite digest size | `get_current_digest` requires the retained source's observed length to equal the admitted entry size before either CM or keyed TCP digest publication and before entering confirmation wait. A changed length refuses without replacing list authority or advancing counters; later read/EOF checks remain required. |
-| Direct read-step retirement | `handle_read_jobs` uses one selected vector entry through initialization and reading, retires that exact entry before awaiting its terminal notification, and returns at most one exact writer receipt. Notification failure propagates; a nonterminal admission error does not remove the active job. The separate initializer and numeric-ID finished list are deleted. Linux library/keyed-TCP refusal checks pass; application/platform integration remains OPEN below. |
+| Direct read-step retirement | `handle_read_jobs` selects the first `is_read_step_ready` entry, bypassing outstanding overwrite confirmation while retaining paused jobs. The viewer uses that same predicate for write-completion context. The selected vector entry owns initialization and reading, retires before its terminal notification is awaited, and returns at most one exact writer receipt. Notification failure propagates; a nonterminal admission error does not remove the active job. The separate initializer and numeric-ID finished list are deleted. Linux library/keyed-TCP refusal checks pass; application/platform integration remains OPEN below. |
 | Send resume source ownership | `set_stream_offset` checks metadata and seeks on the retained send `FileStream`; it does not reopen the pathname to replace an active stream. A first open remains provisional until length validation and seek succeed. Refused offsets preserve confirmation and accounting. |
 | Resume admitted size | Both roles reject offsets beyond the admitted entry size before path resolution, open, seek or accounting. Send also checks the retained object's actual length; in-place growth does not enlarge the admitted authority. |
 | File confirmation entry | Every filesystem-backed skip, overwrite and resume action requires a present entry at the exact matching current index before changing flags, counters, streams or cleanup state. Empty and completed lists cannot confirm an absent file; a present zero-byte file remains valid. |
 | File-list construction | `read_dir_with_budget`, both recursive scanners and `new_read_with_budget` propagate iterator, root/entry metadata and descendant failures. Unsupported UTF-8 names, unavailable modification times and pre-epoch times fail explicitly. Every scanned entry consumes quota even when hidden filtering excludes it; recursive byte accounting includes the complete relative name. Flat and empty-directory results reserve each full returned path in the shared byte counter before copying it. The private scanner returns entries without allocating a discarded directory path. Child-error string classification and partial-success branches are deleted. |
+
+**Direct send confirmation scheduling — Linux library/keyed TCP comparison ACCEPTED; viewer integration OPEN.**
+`1d23ce8f` adds one owned-state readiness predicate for common read selection and viewer
+write-completion context. Previously, the first nonpaused job waiting for an overwrite
+decision was selected on every tick, leaving later runnable transfers idle. Only a generic,
+overwrite-enabled, waiting and unconfirmed job is bypassed; confirmed jobs resume even
+while their waiting flag remains set. Explicit pause still takes precedence. Queue order,
+one-entry retirement and the single returned writer receipt are preserved.
+The unchanged two-test cohort fails on baseline `8b15f08d` and passes on the corrected
+source. With one and two genuinely digest-waiting jobs on keyed guest-loopback TCP, the
+later transfer now delivers exact bytes, EOF and Done; waiting entries retain their source
+handles, order, indexes, flags and zero progress. Confirmation and overwrite-disabled
+controls preserve pause and complete exactly. Both socket writers are joined in each new
+scenario, including the expected baseline failure. All twelve focused
+`--file-send-digest-tests` cases pass in 136 VM seconds, including the ten prior
+size/allocation/retirement/backpressure checks. Evidence and cleanup are retained in
+`.harness-state/verifier-vm/send-confirmation-readiness-76019ec7.json`.
+This executes the common library and native keyed TCP with fixture keys, not PAKE, the
+viewer application or installed services. The viewer context change is source-reviewed;
+full-parent execution remains parked. The separate CM scheduling path remains
+OPEN/PARKED and unchanged, including the analogous waiting-selection gap. General
+scheduler fairness, real-peer/app/platform acceptance, R-S0/R-F5 and release acceptance
+remain OPEN.
 
 **CM read-tick scheduling — OPEN/PARKED at the user's request; no automatic resumption.**
 Source `e3544227` selects and retires one exact send job per tick; initialization failure

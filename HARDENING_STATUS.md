@@ -14798,6 +14798,24 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
+**Native receive-path identity — Linux file transactions ACCEPTED; caller/platform acceptance OPEN.**
+`c1df5d00` derives receive staging paths by appending each suffix to the native `PathBuf`.
+The former UTF-8 conversion substituted an empty string for a non-UTF-8 destination,
+selecting working-directory lease/download/digest names. At baseline `c973ea1c`, both
+new tests fail with 48 other named passes: four absolute/relative write/resume cases
+report success with an incorrect selected destination and changed working-directory
+state; four UTF-8 controls pass. The identical two-test block passes after correction,
+and all 131 required `--file-metadata-tests` cases pass in 34 groups/190 VM seconds.
+All eight new cases produce exact destination bytes, preserve the unrelated working-directory
+file and decoy sidecars, and retire selected staging names. Each case runs in a joined
+child of the same source-bound test artifact with a private working directory. Fresh
+writes exercise `TransferJob::write` and `finalize_write`; resume exercises the production
+`ReceiveWriteClaim` directly. Evidence: `.harness-state/verifier-vm/receive-native-path-1eb71c10.json`.
+This is nonroot Linux library/filesystem execution, not a demonstrated GUI/FFI or
+privileged-service path. Non-UTF-8 wire names are not enabled. Current application/peer,
+installed/wrong-principal and other-platform acceptance, component-length limits,
+namespace races, physical durability, R-S0/R-F5 and release acceptance remain OPEN.
+
 **Default send enumeration — Linux library A/B ACCEPTED; application/platform evidence OPEN.**
 `TransferJob::new_read`, used by viewer local SendFiles/AddJob, now selects the existing
 finite standard budget before collecting or publishing its file list: 10,000 scanned entries,

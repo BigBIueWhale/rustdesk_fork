@@ -4159,6 +4159,37 @@ Faults target only the Rust output vectors;
 C codec allocations, persistent/global memory pressure, full receive/filesystem
 effects, other platforms, installed and release acceptance remain OPEN.
 
+**Shared decoded-output allocation budget (`5f30b037`).** The shared decoder
+checks each decoded chunk against the caller's total limit before reservation or
+append. Fallible geometric growth uses exact reservation capped at that limit;
+it does not allocate the whole ceiling upfront. The redundant post-append check
+is removed. Default/tighter output limits, max-plus-one excess detection, independent
+64-MiB history limit, interrupted reads, explicit codec/allocation errors, API and
+caller propagation remain. The fixed file-block decoder is unchanged. Rust permits
+speculative `try_reserve` growth; `try_reserve_exact` avoids that deliberate excess
+([Vec API](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.try_reserve_exact)).
+
+At unchanged-product preparation `589b8254`, eleven component tests pass and the
+expanded allocation test fails fifteen of eighteen budget observations. A 64-MiB
+output ceiling requests 128 MiB for one excess decoded byte, including excess
+across concatenated frames; three valid streams also fail when speculative growth
+crosses their admitted budgets. The identical test body at `5f30b037` passes all
+twelve codec tests and all eighteen observations: six exact-boundary decodes,
+six oversized streams and six concatenations at five caller limits plus the
+64-MiB default. Every observed allocation request stays within its budget; excess
+returns InvalidData, every exact retry succeeds, and compressed inputs remain
+unchanged. Existing eight allocation-failure/retry children, empty/tiny/chunk-boundary,
+history, malformed/truncated, raw file-block and compressor controls pass.
+
+`shared-output-budget-a3b712df.json` binds sources, unchanged test/dependency bytes,
+both actual artifacts, observations and joined bounded-RAM cleanup. The corrected
+canonical `--file-block-tests` receipt takes 82 outer seconds. This is Rust 1.75/Linux
+production codec-component evidence; allocation requests are not allocator usable
+size, simultaneous live storage, native C allocations or process RSS. Full callers,
+native UI/IPC/peers, other platforms, installed authority, R-S0/R-F5, throughput/soak,
+cold/release, independent reproduction and external review remain OPEN. Every
+explicit user park, including the legacy-key lookup, remains parked.
+
 At source `3156926f`, actual filesystem admission passed, standard admission refused at
 19,745 MiB available, and a filesystem profile with a 4 GiB guest refused. Before launch,
 available RAM fell to 18,787,524 KiB, below the 19 GiB floor even without the observation

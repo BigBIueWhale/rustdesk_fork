@@ -4834,6 +4834,7 @@ mod tests {
         for action in ["finish", "cleanup", "resume-finish"] {
             for replacement in ["directory", "symlink", "missing", "unchanged"] {
                 let tmp = TestTempDir::new("receive-owned-parent");
+                std::fs::create_dir_all(&tmp.path).unwrap();
                 let parent = tmp.join("parent");
                 let retained = tmp.join("retained");
                 let foreign = tmp.join("foreign");

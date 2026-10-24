@@ -109,7 +109,7 @@ pub(super) struct DisplayGeneration(Arc<()>);
 #[derive(Default, Debug, Clone)]
 struct DisplayData {
     generation: DisplayGeneration,
-    send_counter: usize, // Number of times encode during period
+    send_counter: usize, // Encoded frames, bounded by the dynamic-screen threshold
     support_changing_quality: bool,
     bitrate: u32,
 }
@@ -413,7 +413,9 @@ impl VideoQoS {
 
     pub fn update_display_data(&mut self, video_service_name: &str, send_counter: usize) {
         if let Some(display) = self.displays.get_mut(video_service_name) {
-            display.send_counter += send_counter;
+            display.send_counter = display.send_counter
+                .saturating_add(send_counter)
+                .min(ADJUST_RATIO_INTERVAL * DYNAMIC_SCREEN_THRESHOLD);
         }
         self.adjust_fps();
         let abr_enabled = self.in_vbr_state();
@@ -429,6 +431,10 @@ impl VideoQoS {
                 self.adjust_ratio(dynamic_screen);
             }
         } else {
+            for display in self.displays.values_mut() {
+                display.send_counter = 0;
+            }
+            self.adjust_ratio_instant = Instant::now();
             self.ratio = self.latest_quality().ratio();
         }
     }

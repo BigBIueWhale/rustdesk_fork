@@ -25,7 +25,8 @@ void _voiceOwnerTests() {
       ..voiceCallId = 42
       ..incomingVoiceCall = true;
     final owner = CmVoiceCallOwner(client);
-    final callback = () => <int>[owner.id, owner.registryGeneration, owner.callId];
+    final callback =
+        () => <int>[owner.id, owner.registryGeneration, owner.callId];
     client
       ..voiceCallId = 43
       ..incomingVoiceCall = false

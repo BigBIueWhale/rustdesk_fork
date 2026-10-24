@@ -3356,6 +3356,7 @@ run_focused_rust_tests() {
                 fs::tests::directory_entry_link_cycle_preserves_the_link_entry
                 fs::tests::directory_entry_link_nondirectory_target_preserves_the_link_entry
                 fs::tests::file_metadata_receive_parent_ownership_survives_path_replacement
+                fs::tests::file_metadata_receive_digest_stays_bound_to_admitted_size
                 fs::tests::file_metadata_digest_matching_subseconds_keep_overwrite_hint
                 fs::tests::file_metadata_rename_existing_targets_are_preserved
                 fs::tests::file_metadata_rename_late_collision_is_atomic

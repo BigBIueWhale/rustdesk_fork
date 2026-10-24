@@ -5849,6 +5849,50 @@ mod tests {
         assert!(outcomes.into_iter().all(|identical| !identical));
     }
 
+    #[tokio::test]
+    async fn file_metadata_receive_digest_stays_bound_to_admitted_size() {
+        let mut outcomes = Vec::new();
+        for (case, incoming_size) in [
+            ("zero", 0), ("short", 2), ("long", 4), ("maximum", u64::MAX),
+            ("matching", 3),
+        ] {
+            let tmp = TestTempDir::new("rustdesk_receive_digest_binding");
+            std::fs::create_dir_all(&tmp.path).unwrap();
+            let path = tmp.join("incoming.bin");
+            std::fs::write(&path, b"old!").unwrap();
+            let mut job = TransferJob::new_write(
+                81, JobType::Generic, String::new(), tmp.path.clone(), 0, false, false, true,
+            ).with_files(vec![FileEntry {
+                name: "incoming.bin".into(), size: 3, modified_time: 17,
+                ..Default::default()
+            }]).unwrap();
+            // Observe the admitted state independently of the setter's return type, so this
+            // regression also executes against the former unchecked setter.
+            let _ = job.set_digest(3, 17);
+            let _ = job.set_digest(incoming_size, 23);
+            let admitted = job.digest.size == 3
+                && job.digest.modified == if incoming_size == 3 { 23 } else { 17 };
+            let unchanged = std::fs::read(&path).unwrap() == b"old!"
+                && [".download", ".digest", ".download.lock"].iter()
+                    .all(|suffix| !recv_sidecar_path(&path, suffix).exists());
+            println!("RECEIVE_DIGEST_ADMISSION=observed case={case} admitted={admitted} unchanged={unchanged}");
+            outcomes.push(admitted && unchanged);
+            if incoming_size == 3 {
+                job.write(FileTransferBlock {
+                    id: 81, file_num: 0, data: b"new".to_vec().into(),
+                    ..Default::default()
+                }).await.unwrap();
+                job.finalize_write(1).await.unwrap();
+                assert_eq!(std::fs::read(&path).unwrap(), b"new");
+                assert_eq!(job.finished_size(), 3);
+                assert!([".download", ".digest", ".download.lock"].iter()
+                    .all(|suffix| !recv_sidecar_path(&path, suffix).exists()));
+                println!("RECEIVE_DIGEST_ADMISSION=observed case=roundtrip committed=true exact_bytes=true sidecars_absent=true");
+            }
+        }
+        assert!(outcomes.into_iter().all(|passed| passed));
+    }
+
     fn file_metadata_resume_fixture(
         tmp: &TestTempDir,
         stored_size: u64,
